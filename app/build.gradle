@@ -16,6 +16,7 @@ android {
             cmake {
                 cppFlags "-std=c++17 -O3"
                 cFlags "-O3 -D_FILE_OFFSET_BITS=64"
+                arguments "-DANDROID_STL=c++_shared"
             }
         }
     }
