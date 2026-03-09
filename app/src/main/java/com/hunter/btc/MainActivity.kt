@@ -31,23 +31,28 @@ class MainActivity : Activity() {
     private lateinit var tvTemp: TextView
     private var csvPath: String = ""
     private var lastFoundCount: Long = 0
+    private var currentTemp: Float = 0f
+
     private val battReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
-            val temp = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-            tvTemp.text = "Temp: %.1f C".format(temp / 10.0)
+            val raw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+            currentTemp = raw / 10.0f
             val color = when {
-                temp < 350 -> Color.WHITE
-                temp < 420 -> Color.parseColor("#FFFF00")
+                currentTemp < 35f -> Color.WHITE
+                currentTemp < 42f -> Color.parseColor("#FFFF00")
                 else -> Color.parseColor("#FF4444")
             }
+            tvTemp.text = "Temp: ${"%.1f".format(currentTemp)}°C"
             tvTemp.setTextColor(color)
         }
     }
 
     companion object {
         const val REQ_CSV = 1001
-        const val NOTIF_CHANNEL = "wallet_hunter_matches"
-        const val NOTIF_ID = 1
+        const val CHANNEL_MATCH = "wh_match"
+        const val CHANNEL_STATUS = "wh_status"
+        const val NOTIF_MATCH = 1
+        const val NOTIF_STATUS = 2
         val ORANGE = Color.parseColor("#FF8C00")
         val GREEN  = Color.parseColor("#33CC33")
         val RED    = Color.parseColor("#CC2222")
@@ -61,7 +66,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         buildUI()
         checkStoragePermission()
-        createNotificationChannel()
+        createChannels()
         registerReceiver(battReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         startUpdater()
     }
@@ -70,50 +75,94 @@ class MainActivity : Activity() {
         super.onDestroy()
         handler.removeCallbacks(updater)
         unregisterReceiver(battReceiver)
+        getSystemService(NotificationManager::class.java).cancel(NOTIF_STATUS)
         if (HunterEngine.isRunning()) HunterEngine.stopHunting()
     }
 
-    private fun createNotificationChannel() {
+    private fun createChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
-            val audioAttr = AudioAttributes.Builder()
+            val nm = getSystemService(NotificationManager::class.java)
+
+            // Canal match - alarma con sonido
+            val alarmSound = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM)
+            val alarmAttr = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-                .build()
-            val channel = NotificationChannel(
-                NOTIF_CHANNEL, "Matches encontrados",
-                NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                description = "Notifica cuando se encuentra una wallet con fondos"
-                enableLights(true)
-                lightColor = Color.YELLOW
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_MATCH,
+                "Match encontrado", NotificationManager.IMPORTANCE_HIGH).apply {
+                enableLights(true); lightColor = Color.YELLOW
                 enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
-                setSound(soundUri, audioAttr)
-            }
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+                vibrationPattern = longArrayOf(0,300,150,300,150,300)
+                setSound(alarmSound, alarmAttr)
+            })
+
+            // Canal estado - silencioso persistente
+            nm.createNotificationChannel(NotificationChannel(CHANNEL_STATUS,
+                "Estado del hunter", NotificationManager.IMPORTANCE_LOW).apply {
+                setSound(null, null)
+                enableVibration(false)
+            })
         }
     }
 
     private fun sendMatchNotification(count: Long, details: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 200)
-                return
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 200)
+            return
         }
-        val intent = PendingIntent.getActivity(this, 0,
-            Intent(this, MainActivity::class.java),
+        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
-        val notif = Notification.Builder(this, NOTIF_CHANNEL)
-            .setContentTitle("WALLET ENCONTRADA! ($count total)")
-            .setContentText(details.take(100))
+        val notif = Notification.Builder(this, CHANNEL_MATCH)
+            .setContentTitle("WALLET ENCONTRADA ($count total)")
+            .setContentText(details.lines().firstOrNull()?.take(80) ?: "")
+            .setStyle(Notification.BigTextStyle().bigText(details.take(400)))
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentIntent(intent)
+            .setContentIntent(pi)
             .setAutoCancel(true)
             .build()
-        getSystemService(NotificationManager::class.java).notify(NOTIF_ID, notif)
+        getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH, notif)
+    }
+
+    private fun updateStatusNotification(wps: Double, count: Long, elapsed: Long,
+                                          found: Long, running: Boolean) {
+        if (!running) {
+            getSystemService(NotificationManager::class.java).cancel(NOTIF_STATUS)
+            return
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+            != android.content.pm.PackageManager.PERMISSION_GRANTED) return
+
+        val h = elapsed/3600; val m = (elapsed%3600)/60; val s = elapsed%60
+        val wpsStr = if(wps>=1000) "${"%.1f".format(wps/1000)}K w/s" else "${wps.toInt()} w/s"
+        val countStr = if(count>=1_000_000) "${"%.2f".format(count/1e6)}M seeds" else "$count seeds"
+        val mi = ActivityManager.MemoryInfo()
+        getSystemService(ActivityManager::class.java).getMemoryInfo(mi)
+        val ramPct = (mi.totalMem - mi.availMem) * 100 / mi.totalMem
+
+        val bigText = """
+Velocidad : $wpsStr
+Seeds     : $countStr
+Tiempo    : %02d:%02d:%02d
+Matches   : $found
+RAM       : $ramPct%
+Temp      : ${"%.1f".format(currentTemp)}°C
+        """.trimIndent().format(h, m, s)
+
+        val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val notif = Notification.Builder(this, CHANNEL_STATUS)
+            .setContentTitle("BTC Hunter — $wpsStr | Matches: $found")
+            .setContentText("$countStr | %02d:%02d:%02d | Temp ${"%.0f".format(currentTemp)}°C".format(h,m,s))
+            .setStyle(Notification.BigTextStyle().bigText(bigText))
+            .setSmallIcon(android.R.drawable.ic_menu_search)
+            .setContentIntent(pi)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        getSystemService(NotificationManager::class.java).notify(NOTIF_STATUS, notif)
     }
 
     private fun checkStoragePermission() {
@@ -121,7 +170,7 @@ class MainActivity : Activity() {
             if (!Environment.isExternalStorageManager()) {
                 AlertDialog.Builder(this)
                     .setTitle("Permiso necesario")
-                    .setMessage("Para leer el CSV de 3GB necesitas dar permiso de 'Acceso a todos los archivos'. Toca OK para abrir Ajustes.")
+                    .setMessage("Para leer el CSV necesitas dar permiso de 'Acceso a todos los archivos'.")
                     .setPositiveButton("OK") { _, _ ->
                         startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                             Uri.parse("package:$packageName")))
@@ -136,12 +185,10 @@ class MainActivity : Activity() {
 
     private fun buildUI() {
         val root = ScrollView(this).apply { setBackgroundColor(BG) }
-        val main = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24,24,24,24) }
-
+        val main = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(24,24,24,24) }
         main.addView(TextView(this).apply { text="Bitcoin Wallet Hunter"; textSize=22f; setTextColor(ORANGE); gravity=Gravity.CENTER })
-        main.addView(TextView(this).apply { text="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh"; textSize=11f; setTextColor(DIM); gravity=Gravity.CENTER; setPadding(0,0,0,16) })
+        main.addView(TextView(this).apply { text="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh"; textSize=11f; setTextColor(DIM); gravity=Gravity.CENTER; setPadding(0,0,0,8) })
 
-        // Panel sistema
         val sysPanel = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,8,12,8) }
         tvRam  = TextView(this).apply { text="RAM: --"; setTextColor(Color.WHITE); textSize=12f; layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f) }
         tvTemp = TextView(this).apply { text="Temp: --"; setTextColor(Color.WHITE); textSize=12f }
@@ -149,8 +196,7 @@ class MainActivity : Activity() {
         main.addView(sysPanel)
 
         main.addView(sectionLabel("ARCHIVO CSV"))
-        val btnCsv = Button(this).apply { text="SELECCIONAR CSV..."; setBackgroundColor(ORANGE); setTextColor(Color.BLACK); setOnClickListener { pickCsv() } }
-        main.addView(btnCsv)
+        main.addView(Button(this).apply { text="SELECCIONAR CSV..."; setBackgroundColor(ORANGE); setTextColor(Color.BLACK); setOnClickListener{pickCsv()} })
         tvStatus = TextView(this).apply { text="Ningun archivo cargado"; setTextColor(DIM); textSize=12f; setPadding(0,8,0,16) }
         main.addView(tvStatus)
 
@@ -161,8 +207,7 @@ class MainActivity : Activity() {
             setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
                 override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels()}
                 override fun onStartTrackingTouch(sb:SeekBar){}
-                override fun onStopTrackingTouch(sb:SeekBar){}})
-        }
+                override fun onStopTrackingTouch(sb:SeekBar){}}) }
         main.addView(sbThreads)
         tvCpu = TextView(this).apply { setTextColor(Color.WHITE); textSize=13f; setPadding(0,12,0,0) }
         main.addView(tvCpu)
@@ -170,8 +215,7 @@ class MainActivity : Activity() {
             setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
                 override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels(); if(HunterEngine.isRunning()) HunterEngine.setCpuLimit(p+10)}
                 override fun onStartTrackingTouch(sb:SeekBar){}
-                override fun onStopTrackingTouch(sb:SeekBar){}})
-        }
+                override fun onStopTrackingTouch(sb:SeekBar){}}) }
         main.addView(sbCpu)
         updateLabels()
 
@@ -214,14 +258,13 @@ class MainActivity : Activity() {
         val usedMB = (mi.totalMem - mi.availMem) / 1048576
         val totalMB = mi.totalMem / 1048576
         val pct = usedMB * 100 / totalMB
-        tvRam.text = "RAM: ${usedMB}MB / ${totalMB}MB (${pct}%)"
-        tvRam.setTextColor(if(pct<70) Color.WHITE else if(pct<85) YELLOW else RED)
+        tvRam.text = "RAM: ${usedMB}MB/${totalMB}MB (${pct}%)"
+        tvRam.setTextColor(if(pct<70)Color.WHITE else if(pct<85)YELLOW else RED)
     }
 
     private fun pickCsv() {
         startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{
-            addCategory(Intent.CATEGORY_OPENABLE); type="*/*"
-        }, REQ_CSV)
+            addCategory(Intent.CATEGORY_OPENABLE); type="*/*"}, REQ_CSV)
     }
 
     override fun onActivityResult(requestCode:Int, resultCode:Int, data:Intent?) {
@@ -239,17 +282,11 @@ class MainActivity : Activity() {
                     Thread {
                         try {
                             val dest = File(getExternalFilesDir(null), "utxos.csv")
-                            contentResolver.openInputStream(uri)?.use { input ->
-                                FileOutputStream(dest).use { out -> input.copyTo(out, 65536) }
+                            contentResolver.openInputStream(uri)?.use { i ->
+                                FileOutputStream(dest).use { o -> i.copyTo(o, 65536) }
                             }
-                            runOnUiThread {
-                                csvPath = dest.absolutePath
-                                tvStatus.text = "Cargando: utxos.csv"
-                                HunterEngine.loadCsv(csvPath)
-                            }
-                        } catch(e: Exception) {
-                            runOnUiThread { tvStatus.text = "Error: ${e.message}" }
-                        }
+                            runOnUiThread { csvPath=dest.absolutePath; tvStatus.text="Cargando: utxos.csv"; HunterEngine.loadCsv(csvPath) }
+                        } catch(e:Exception) { runOnUiThread { tvStatus.text="Error: ${e.message}" } }
                     }.start()
                 }
             }
@@ -291,15 +328,12 @@ class MainActivity : Activity() {
         val count=HunterEngine.getCount(); tvCount.text=if(count>=1_000_000)"%.2f M seeds".format(count/1e6) else "$count seeds"
         val e=HunterEngine.getElapsed(); tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
         val found=HunterEngine.getFound(); tvMatches.text="Matches: $found"; tvMatches.setTextColor(if(found>0)YELLOW else Color.WHITE)
-        val m=HunterEngine.getMatches()
-        if(m.isNotEmpty()){tvMatchList.text=m;tvMatchList.setTextColor(YELLOW)}
-        // Notificacion cuando hay nuevo match
-        if(found > lastFoundCount) {
-            lastFoundCount = found
-            sendMatchNotification(found, m)
-        }
+        val m=HunterEngine.getMatches(); if(m.isNotEmpty()){tvMatchList.text=m;tvMatchList.setTextColor(YELLOW)}
+        if(found > lastFoundCount){ lastFoundCount=found; sendMatchNotification(found, m) }
         updateRam()
+        updateStatusNotification(wps, count, e, found, running)
         handler.postDelayed(this,1000L)
     }}
+
     private fun startUpdater(){handler.post(updater)}
 }
