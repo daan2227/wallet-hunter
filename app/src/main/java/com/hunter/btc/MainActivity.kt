@@ -30,17 +30,19 @@ class MainActivity : Activity() {
     private lateinit var sbCpu: SeekBar
     private lateinit var tvThreads: TextView
     private lateinit var tvCpu: TextView
+    private lateinit var tvLangLabel: TextView
     private var csvPath: String = ""
     private var lastFoundCount: Long = 0
     private var currentTemp: Float = 0f
     private val recentAddrs = mutableListOf<String>()
     private var addrTick = 0
+    private var s = Strings.ES
 
     private val battReceiver = object : BroadcastReceiver() {
         override fun onReceive(ctx: Context?, intent: Intent?) {
             val raw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             currentTemp = raw / 10.0f
-            tvTemp.text = "Temp: ${"%.1f".format(currentTemp)}C"
+            tvTemp.text = "${s.temp}: ${"%.1f".format(currentTemp)}C"
             tvTemp.setTextColor(when {
                 currentTemp < 35f -> Color.WHITE
                 currentTemp < 42f -> YELLOW
@@ -67,6 +69,9 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
+        val langKey = prefs.getString("lang", "ES") ?: "ES"
+        s = Strings.ALL[langKey] ?: Strings.ES
         buildUI()
         checkStoragePermission()
         createChannels()
@@ -113,7 +118,7 @@ class MainActivity : Activity() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH,
             Notification.Builder(this, CHANNEL_MATCH)
-                .setContentTitle("WALLET ENCONTRADA ($count total)")
+                .setContentTitle("${s.notifMatchTitle} ($count total)")
                 .setContentText(details.lines().firstOrNull()?.take(80) ?: "")
                 .setStyle(Notification.BigTextStyle().bigText(details.take(400)))
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
@@ -123,19 +128,19 @@ class MainActivity : Activity() {
     private fun updateStatusNotif(wps: Double, count: Long, elapsed: Long, found: Long, running: Boolean) {
         if (!running) { getSystemService(NotificationManager::class.java).cancel(NOTIF_STATUS); return }
         if (!hasPerm()) return
-        val h = elapsed/3600; val m = (elapsed%3600)/60; val s = elapsed%60
+        val h = elapsed/3600; val m = (elapsed%3600)/60; val sc = elapsed%60
         val wStr = if(wps>=1000) "${"%.1f".format(wps/1000)}K w/s" else "${wps.toInt()} w/s"
         val cStr = if(count>=1_000_000) "${"%.2f".format(count/1e6)}M" else "$count"
         val mi = ActivityManager.MemoryInfo()
         getSystemService(ActivityManager::class.java).getMemoryInfo(mi)
         val ramPct = (mi.totalMem-mi.availMem)*100/mi.totalMem
-        val big = "Velocidad : $wStr\nSeeds     : $cStr\nTiempo    : %02d:%02d:%02d\nMatches   : $found\nRAM       : $ramPct%%\nTemp      : ${"%.1f".format(currentTemp)}C".format(h,m,s)
+        val big = "${s.speed}: $wStr\n${s.seeds}: $cStr\n${s.time}: %02d:%02d:%02d\n${s.matches}: $found\n${s.ram}: $ramPct%%\n${s.temp}: ${"%.1f".format(currentTemp)}C".format(h,m,sc)
         val pi = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         getSystemService(NotificationManager::class.java).notify(NOTIF_STATUS,
             Notification.Builder(this, CHANNEL_STATUS)
-                .setContentTitle("BTC Hunter  $wStr | Match: $found")
-                .setContentText("$cStr seeds | %02d:%02d:%02d | ${currentTemp.toInt()}C".format(h,m,s))
+                .setContentTitle("${s.notifStatusTitle}  $wStr | ${s.matches}: $found")
+                .setContentText("$cStr ${s.seeds} | %02d:%02d:%02d | ${currentTemp.toInt()}C".format(h,m,sc))
                 .setStyle(Notification.BigTextStyle().bigText(big))
                 .setSmallIcon(android.R.drawable.ic_menu_search)
                 .setContentIntent(pi).setOngoing(true).setOnlyAlertOnce(true).build())
@@ -144,8 +149,8 @@ class MainActivity : Activity() {
     private fun checkStoragePermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             if (!Environment.isExternalStorageManager())
-                AlertDialog.Builder(this).setTitle("Permiso necesario")
-                    .setMessage("Para leer el CSV necesitas 'Acceso a todos los archivos'.")
+                AlertDialog.Builder(this).setTitle(s.permTitle)
+                    .setMessage(s.permMsg)
                     .setPositiveButton("OK") { _,_ ->
                         startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                             Uri.parse("package:$packageName")))
@@ -159,41 +164,71 @@ class MainActivity : Activity() {
         val root = ScrollView(this).apply { setBackgroundColor(BG) }
         val main = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(20,20,20,20) }
 
+        // Titulo
         main.addView(TextView(this).apply {
-            text="Bitcoin Wallet Hunter"; textSize=20f; setTextColor(ORANGE)
+            text=s.title; textSize=20f; setTextColor(ORANGE)
             gravity=Gravity.CENTER; setTypeface(null, Typeface.BOLD)
         })
         main.addView(TextView(this).apply {
-            text="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh"
-            textSize=10f; setTextColor(DIM); gravity=Gravity.CENTER; setPadding(0,2,0,8)
+            text=s.subtitle; textSize=10f; setTextColor(DIM)
+            gravity=Gravity.CENTER; setPadding(0,2,0,4)
         })
 
-        // RAM + Temp barra
+        // Selector de idioma
+        val langRow = LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL
+            setPadding(0,0,0,8)
+        }
+        tvLangLabel = TextView(this).apply {
+            text="${s.language}: "; setTextColor(DIM); textSize=11f
+        }
+        val langSpinner = Spinner(this)
+        val langKeys = Strings.ALL.keys.toList()
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, langKeys)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        langSpinner.adapter = adapter
+        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
+        val currentLang = prefs.getString("lang", "ES") ?: "ES"
+        langSpinner.setSelection(langKeys.indexOf(currentLang).coerceAtLeast(0))
+        langSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            var init = true
+            override fun onItemSelected(parent: AdapterView<*>, view: android.view.View?, pos: Int, id: Long) {
+                if (init) { init = false; return }
+                val key = langKeys[pos]
+                prefs.edit().putString("lang", key).apply()
+                s = Strings.ALL[key] ?: Strings.ES
+                recreate()
+            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+        langRow.addView(tvLangLabel); langRow.addView(langSpinner); main.addView(langRow)
+
+        // RAM + Temp
         val sysRow = LinearLayout(this).apply {
             orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,6,12,6)
         }
-        tvRam  = TextView(this).apply { text="RAM: --"; setTextColor(Color.WHITE); textSize=11f
+        tvRam  = TextView(this).apply { text="${s.ram}: --"; setTextColor(Color.WHITE); textSize=11f
             layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f) }
-        tvTemp = TextView(this).apply { text="Temp: --"; setTextColor(Color.WHITE); textSize=11f }
+        tvTemp = TextView(this).apply { text="${s.temp}: --"; setTextColor(Color.WHITE); textSize=11f }
         sysRow.addView(tvRam); sysRow.addView(tvTemp); main.addView(sysRow)
 
-        // CSV row
-        main.addView(sectionLabel("ARCHIVO CSV"))
+        // CSV
+        main.addView(sectionLabel(s.csvSection))
         val csvRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
         val btnCsv = Button(this).apply {
-            text="CSV"; setBackgroundColor(ORANGE); setTextColor(Color.BLACK)
+            text=s.csvBtn; setBackgroundColor(ORANGE); setTextColor(Color.BLACK)
             textSize=11f; setPadding(24,0,24,0)
             layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, 80)
             setOnClickListener { pickCsv() }
         }
         tvStatus = TextView(this).apply {
-            text="Sin archivo"; setTextColor(DIM); textSize=11f; setPadding(12,0,0,0)
+            text=s.noFile; setTextColor(DIM); textSize=11f; setPadding(12,0,0,0)
             layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)
         }
         csvRow.addView(btnCsv); csvRow.addView(tvStatus); main.addView(csvRow)
 
         // Config
-        main.addView(sectionLabel("CONFIGURACION"))
+        main.addView(sectionLabel(s.configSection))
         tvThreads = TextView(this).apply { setTextColor(Color.WHITE); textSize=12f }
         main.addView(tvThreads)
         sbThreads = SeekBar(this).apply { max=7; progress=3
@@ -209,9 +244,9 @@ class MainActivity : Activity() {
         main.addView(sbCpu)
         updateLabels()
 
-        // Boton toggle unico
+        // Boton toggle
         btnToggle = Button(this).apply {
-            text="INICIAR"; setBackgroundColor(GREEN); setTextColor(Color.WHITE)
+            text=s.start; setBackgroundColor(GREEN); setTextColor(Color.WHITE)
             textSize=16f; setTypeface(null, Typeface.BOLD)
             layoutParams=LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 120).apply { topMargin=20; bottomMargin=8 }
@@ -220,19 +255,19 @@ class MainActivity : Activity() {
         main.addView(btnToggle)
 
         // Stats
-        main.addView(sectionLabel("ESTADISTICAS"))
+        main.addView(sectionLabel(s.statsSection))
         val sp = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
         tvWps     = mkStat("0 w/s", true)
-        tvCount   = mkStat("0 seeds", false)
+        tvCount   = mkStat("0 ${s.seeds}", false)
         tvTime    = mkStat("00:00:00", false)
-        tvMatches = mkStat("Matches: 0", false)
+        tvMatches = mkStat("${s.matches}: 0", false)
         sp.addView(tvWps); sp.addView(tvCount); sp.addView(tvTime); sp.addView(tvMatches)
         main.addView(sp)
 
         // Feed en vivo
-        main.addView(sectionLabel("CONSULTANDO EN VIVO"))
+        main.addView(sectionLabel(s.liveSection))
         tvAddrFeed = TextView(this).apply {
-            text="Esperando inicio..."
+            text=s.waitingStart
             setTextColor(Color.parseColor("#44BB44"))
             textSize=10f; typeface=Typeface.MONOSPACE
             setBackgroundColor(DARK); setPadding(10,8,10,8)
@@ -241,15 +276,15 @@ class MainActivity : Activity() {
         main.addView(tvAddrFeed)
 
         // Coincidencias
-        main.addView(sectionLabel("COINCIDENCIAS").apply { setPadding(0,12,0,0) })
+        main.addView(sectionLabel(s.matchSection).apply { setPadding(0,12,0,0) })
         tvMatchList = TextView(this).apply {
-            text="Ninguna aun..."; setTextColor(YELLOW); textSize=11f
+            text=s.noMatch; setTextColor(YELLOW); textSize=11f
             setBackgroundColor(PANEL); setPadding(12,10,12,10)
         }
         main.addView(tvMatchList)
 
         // Log
-        main.addView(sectionLabel("LOG").apply { setPadding(0,12,0,0) })
+        main.addView(sectionLabel(s.logSection).apply { setPadding(0,12,0,0) })
         tvLog = TextView(this).apply {
             text=""; setTextColor(DIM); textSize=10f
             setBackgroundColor(PANEL); setPadding(10,8,10,8)
@@ -277,10 +312,10 @@ class MainActivity : Activity() {
     }
 
     private fun updateLabels() {
-        tvThreads.text = "Threads: ${sbThreads.progress+1}"
+        tvThreads.text = "${s.threads}: ${sbThreads.progress+1}"
         val cpu = sbCpu.progress+10
         tvCpu.setTextColor(if(cpu<=40) GREEN else if(cpu<=70) YELLOW else RED)
-        tvCpu.text = "Limite CPU: $cpu% (${if(cpu<=40)"silencioso" else if(cpu<=70)"balanceado" else "rendimiento"})"
+        tvCpu.text = "${s.cpuLimit}: $cpu% (${if(cpu<=40) s.silent else if(cpu<=70) s.balanced else s.performance})"
     }
 
     private fun updateRam() {
@@ -289,7 +324,7 @@ class MainActivity : Activity() {
         val used = (mi.totalMem-mi.availMem)/1048576
         val total = mi.totalMem/1048576
         val pct = used*100/total
-        tvRam.text = "RAM: ${used}MB/${total}MB (${pct}%)"
+        tvRam.text = "${s.ram}: ${used}MB/${total}MB (${pct}%)"
         tvRam.setTextColor(if(pct<70) Color.WHITE else if(pct<85) YELLOW else RED)
     }
 
@@ -308,7 +343,7 @@ class MainActivity : Activity() {
                     tvStatus.setTextColor(YELLOW)
                     HunterEngine.loadCsv(csvPath)
                 } else {
-                    tvStatus.text = "Copiando CSV..."; tvStatus.setTextColor(YELLOW)
+                    tvStatus.text = s.copying; tvStatus.setTextColor(YELLOW)
                     Thread {
                         try {
                             val dest = File(getExternalFilesDir(null), "utxos.csv")
@@ -346,14 +381,14 @@ class MainActivity : Activity() {
     private fun doToggle() {
         if (HunterEngine.isRunning()) {
             HunterEngine.stopHunting()
-            btnToggle.text = "INICIAR"; btnToggle.setBackgroundColor(GREEN)
+            btnToggle.text = s.start; btnToggle.setBackgroundColor(GREEN)
         } else {
             if (!HunterEngine.isCsvLoaded()) {
-                Toast.makeText(this, "Carga el CSV primero", Toast.LENGTH_SHORT).show(); return
+                Toast.makeText(this, s.loadFirst, Toast.LENGTH_SHORT).show(); return
             }
             lastFoundCount = 0
             HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
-            btnToggle.text = "DETENER"; btnToggle.setBackgroundColor(RED)
+            btnToggle.text = s.stop; btnToggle.setBackgroundColor(RED)
         }
     }
 
@@ -361,7 +396,6 @@ class MainActivity : Activity() {
 
     private val updater = object : Runnable {
         override fun run() {
-            // Drenar log
             var msg: String
             while (true) {
                 msg = HunterEngine.popLog()
@@ -379,9 +413,8 @@ class MainActivity : Activity() {
                 tvStatus.text = HunterEngine.getLoadStatus()
                 tvStatus.setTextColor(if(loading) YELLOW else GREEN)
             }
-
-            if (!running && btnToggle.text == "DETENER") {
-                btnToggle.text = "INICIAR"; btnToggle.setBackgroundColor(GREEN)
+            if (!running && btnToggle.text == s.stop) {
+                btnToggle.text = s.start; btnToggle.setBackgroundColor(GREEN)
             }
             btnToggle.isEnabled = loaded && !loading
 
@@ -392,24 +425,23 @@ class MainActivity : Activity() {
             tvWps.setTextColor(if(running) ORANGE else DIM)
 
             val count = HunterEngine.getCount()
-            tvCount.text = if(count>=1_000_000) "%.2f M seeds".format(count/1e6) else "$count seeds"
+            tvCount.text = if(count>=1_000_000) "%.2f M ${s.seeds}".format(count/1e6) else "$count ${s.seeds}"
 
-            val e = HunterEngine.getElapsed()
-            tvTime.text = "%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
+            val elapsed = HunterEngine.getElapsed()
+            tvTime.text = "%02d:%02d:%02d".format(elapsed/3600,(elapsed%3600)/60,elapsed%60)
 
             val found = HunterEngine.getFound()
-            tvMatches.text = "Matches: $found"
+            tvMatches.text = "${s.matches}: $found"
             tvMatches.setTextColor(if(found>0) YELLOW else Color.WHITE)
 
-            val matches = HunterEngine.getMatches()
-            if (matches.isNotEmpty()) {
-                tvMatchList.text = matches; tvMatchList.setTextColor(YELLOW)
+            val matchStr = HunterEngine.getMatches()
+            if (matchStr.isNotEmpty()) {
+                tvMatchList.text = matchStr; tvMatchList.setTextColor(YELLOW)
             }
             if (found > lastFoundCount) {
-                lastFoundCount = found; sendMatchNotification(found, matches)
+                lastFoundCount = found; sendMatchNotification(found, matchStr)
             }
 
-            // Feed de addresses en vivo - drenar y mostrar 3 cada segundo
             if (running) {
                 var addr: String
                 while (true) {
@@ -421,16 +453,15 @@ class MainActivity : Activity() {
                 addrTick++
                 if (addrTick >= 3) {
                     addrTick = 0
-                    if (recentAddrs.isNotEmpty()) {
+                    if (recentAddrs.isNotEmpty())
                         tvAddrFeed.text = recentAddrs.takeLast(3).joinToString("\n")
-                    }
                 }
             } else if (!loaded) {
-                tvAddrFeed.text = "Esperando inicio..."
+                tvAddrFeed.text = s.waitingStart
             }
 
             updateRam()
-            updateStatusNotif(wps, count, e, found, running)
+            updateStatusNotif(wps, count, elapsed, found, running)
             handler.postDelayed(this, 333L)
         }
     }
