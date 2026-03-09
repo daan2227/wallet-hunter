@@ -5,6 +5,8 @@ find_package(openssl REQUIRED CONFIG)
 
 add_library(secp256k1 STATIC
     secp256k1/src/secp256k1.c
+    secp256k1/src/precomputed_ecmult.c
+    secp256k1/src/precomputed_ecmult_gen.c
 )
 target_include_directories(secp256k1 PUBLIC
     secp256k1
@@ -18,6 +20,8 @@ target_compile_definitions(secp256k1 PRIVATE
     USE_NUM_NONE
     USE_FIELD_INV_BUILTIN
     USE_SCALAR_INV_BUILTIN
+    ECMULT_WINDOW_SIZE=15
+    ECMULT_GEN_PREC_BITS=4
 )
 
 add_library(hunter_jni SHARED hunter_jni.cpp)
