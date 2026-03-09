@@ -236,7 +236,7 @@ class MainActivity : Activity() {
             setTextColor(Color.parseColor("#44BB44"))
             textSize=10f; typeface=Typeface.MONOSPACE
             setBackgroundColor(DARK); setPadding(10,8,10,8)
-            lineSpacingMultiplier=1.3f
+            setLineSpacing(0f, 1.3f)
         }
         main.addView(tvAddrFeed)
 
