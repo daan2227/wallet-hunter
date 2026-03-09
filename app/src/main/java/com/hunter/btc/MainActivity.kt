@@ -58,7 +58,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         // Bloquear capturas de pantalla
-        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         s = Strings.ALL[prefs.getString("lang","ES")] ?: Strings.ES
         csvPath = prefs.getString("csvPath","") ?: ""
@@ -341,8 +340,8 @@ class MainActivity : Activity() {
         if(running){
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
-            addrTick++
-            if(addrTick>=3){addrTick=0;if(recentAddrs.isNotEmpty())tvAddrFeed.text=recentAddrs.takeLast(3).joinToString("\n")}
+
+            if(recentAddrs.isNotEmpty())tvAddrFeed.text=recentAddrs.takeLast(3).joinToString("\n  → 0.00000000 BTC\n").plus("\n  → 0.00000000 BTC")
         } else if(!loaded) tvAddrFeed.text=s.waitingStart
         updateRam()
         handler.postDelayed(this,333L)
