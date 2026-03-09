@@ -196,14 +196,38 @@ class MainActivity : Activity() {
         main.addView(sbCpu)
         updateLabels()
 
+        // Boton redondo estilo moneda Bitcoin
+        val btnSize = (resources.displayMetrics.widthPixels * 0.42).toInt()
+        val coinGreen = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(GREEN)
+            setStroke(8, Color.parseColor("#22FF22"))
+        }
+        val coinRed = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL
+            setColor(RED)
+            setStroke(8, Color.parseColor("#FF4444"))
+        }
         btnToggle = Button(this).apply {
-            text=s.start; setBackgroundColor(GREEN); setTextColor(Color.WHITE)
-            textSize=16f; setTypeface(null,Typeface.BOLD)
-            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,120)
-                .apply{topMargin=20;bottomMargin=8}
+            text = s.start
+            background = coinGreen
+            setTextColor(Color.WHITE)
+            textSize = 15f
+            setTypeface(null, Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                gravity = android.view.Gravity.CENTER_HORIZONTAL
+                topMargin = 20; bottomMargin = 8
+            }
             setOnClickListener { doToggle() }
         }
-        main.addView(btnToggle)
+        // guardar drawables para toggle
+        btnToggle.tag = arrayOf(coinGreen, coinRed)
+        val btnWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+        }
+        btnWrap.addView(btnToggle)
+        main.addView(btnWrap)
 
         tvStatsSec = sectionLabel(s.statsSection); main.addView(tvStatsSec)
         val sp = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
@@ -312,13 +336,16 @@ class MainActivity : Activity() {
     }
 
     private fun doToggle() {
+        val drawables = btnToggle.tag as? Array<*>
+        val coinGreen = drawables?.get(0) as? android.graphics.drawable.GradientDrawable
+        val coinRed   = drawables?.get(1) as? android.graphics.drawable.GradientDrawable
         if(HunterEngine.isRunning()){
             HunterEngine.stopHunting()
-            btnToggle.text=s.start; btnToggle.setBackgroundColor(GREEN)
+            btnToggle.text=s.start; btnToggle.background=coinGreen
         } else {
             if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show();return}
             HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
-            btnToggle.text=s.stop; btnToggle.setBackgroundColor(RED)
+            btnToggle.text=s.stop; btnToggle.background=coinRed
         }
     }
 
@@ -328,7 +355,7 @@ class MainActivity : Activity() {
         tvLog.text=logBuf.toString()
         val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
-        if(!running && btnToggle.text==s.stop){btnToggle.text=s.start;btnToggle.setBackgroundColor(GREEN)}
+        if(!running && btnToggle.text==s.stop){btnToggle.text=s.start;btnToggle.background=(btnToggle.tag as? Array<*>)?.get(0) as? android.graphics.drawable.GradientDrawable ?: btnToggle.background}
         btnToggle.isEnabled=loaded&&!loading
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
@@ -341,7 +368,7 @@ class MainActivity : Activity() {
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
 
-            if(recentAddrs.isNotEmpty())tvAddrFeed.text=recentAddrs.takeLast(3).joinToString("\n  → 0.00000000 BTC\n").plus("\n  → 0.00000000 BTC")
+            if(recentAddrs.isNotEmpty())tvAddrFeed.text=recentAddrs.takeLast(3).joinToString("\n  → 0.00000000 BTC") + "  → 0.00000000 BTC"
         } else if(!loaded) tvAddrFeed.text=s.waitingStart
         updateRam()
         handler.postDelayed(this,333L)
