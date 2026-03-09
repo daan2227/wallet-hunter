@@ -1,15 +1,20 @@
 package com.hunter.btc
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.Handler
 import android.os.Looper
+import android.provider.Settings
 import android.view.Gravity
 import android.widget.*
 import java.io.File
+import java.io.FileOutputStream
 
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
@@ -27,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var tvCpu: TextView
     private lateinit var tvMatchList: TextView
     private var csvPath: String = ""
+
     companion object {
         const val REQ_CSV = 1001
         val ORANGE = Color.parseColor("#FF8C00")
@@ -37,11 +43,35 @@ class MainActivity : Activity() {
         val BG     = Color.parseColor("#1A1A1E")
         val PANEL  = Color.parseColor("#242428")
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         buildUI()
+        checkStoragePermission()
         startUpdater()
     }
+
+    private fun checkStoragePermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            if (!Environment.isExternalStorageManager()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Permiso necesario")
+                    .setMessage("Para leer el CSV de 3GB necesitas dar permiso de 'Acceso a todos los archivos'. Toca OK para abrir Ajustes.")
+                    .setPositiveButton("OK") { _, _ ->
+                        val intent = Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                            Uri.parse("package:$packageName"))
+                        startActivity(intent)
+                    }
+                    .show()
+            }
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            requestPermissions(arrayOf(
+                android.Manifest.permission.READ_EXTERNAL_STORAGE,
+                android.Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ), 100)
+        }
+    }
+
     private fun buildUI() {
         val root = ScrollView(this).apply { setBackgroundColor(BG) }
         val main = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(24,24,24,24) }
@@ -56,13 +86,19 @@ class MainActivity : Activity() {
         tvThreads = TextView(this).apply { setTextColor(Color.WHITE); textSize=13f }
         main.addView(tvThreads)
         sbThreads = SeekBar(this).apply { max=7; progress=3
-            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{ override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels()} ; override fun onStartTrackingTouch(sb:SeekBar){} ; override fun onStopTrackingTouch(sb:SeekBar){} })
+            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
+                override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels()}
+                override fun onStartTrackingTouch(sb:SeekBar){}
+                override fun onStopTrackingTouch(sb:SeekBar){}})
         }
         main.addView(sbThreads)
         tvCpu = TextView(this).apply { setTextColor(Color.WHITE); textSize=13f; setPadding(0,12,0,0) }
         main.addView(tvCpu)
         sbCpu = SeekBar(this).apply { max=90; progress=70
-            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{ override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels(); if(HunterEngine.isRunning()) HunterEngine.setCpuLimit(p+10)} ; override fun onStartTrackingTouch(sb:SeekBar){} ; override fun onStopTrackingTouch(sb:SeekBar){} })
+            setOnSeekBarChangeListener(object:SeekBar.OnSeekBarChangeListener{
+                override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){updateLabels(); if(HunterEngine.isRunning()) HunterEngine.setCpuLimit(p+10)}
+                override fun onStartTrackingTouch(sb:SeekBar){}
+                override fun onStopTrackingTouch(sb:SeekBar){}})
         }
         main.addView(sbCpu)
         updateLabels()
@@ -85,45 +121,90 @@ class MainActivity : Activity() {
         main.addView(tvLog)
         root.addView(main); setContentView(root)
     }
+
     private fun sectionLabel(t:String)=TextView(this).apply{text=t;textSize=13f;setTextColor(ORANGE);setPadding(0,12,0,6)}
+
     private fun updateLabels() {
         tvThreads.text="Threads: ${sbThreads.progress+1}"
         val cpu=sbCpu.progress+10
         tvCpu.setTextColor(if(cpu<=40)GREEN else if(cpu<=70)YELLOW else RED)
         tvCpu.text="Limite CPU: $cpu% (${if(cpu<=40)"silencioso" else if(cpu<=70)"balanceado" else "rendimiento"})"
     }
-    private fun pickCsv() { startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{addCategory(Intent.CATEGORY_OPENABLE);type="*/*"}, REQ_CSV) }
+
+    private fun pickCsv() {
+        startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply{
+            addCategory(Intent.CATEGORY_OPENABLE); type="*/*"
+        }, REQ_CSV)
+    }
+
     override fun onActivityResult(requestCode:Int,resultCode:Int,data:Intent?) {
-        if(requestCode==REQ_CSV&&resultCode==RESULT_OK) {
+        if(requestCode==REQ_CSV && resultCode==RESULT_OK) {
             data?.data?.let { uri ->
-                val path=getRealPath(uri)
-                if(path!=null){csvPath=path;tvStatus.text="Cargando: ${File(csvPath).name}";tvStatus.setTextColor(YELLOW);HunterEngine.loadCsv(csvPath)}
-                else Toast.makeText(this,"Error: copia el CSV al almacenamiento interno",Toast.LENGTH_LONG).show()
+                val path = getRealPath(uri)
+                if (path != null) {
+                    csvPath = path
+                    tvStatus.text = "Cargando: ${File(csvPath).name}"
+                    tvStatus.setTextColor(YELLOW)
+                    HunterEngine.loadCsv(csvPath)
+                } else {
+                    // Copiar via ContentResolver al almacenamiento privado
+                    tvStatus.text = "Copiando CSV... (puede tardar varios minutos)"
+                    tvStatus.setTextColor(YELLOW)
+                    Thread {
+                        try {
+                            val dest = File(getExternalFilesDir(null), "utxos.csv")
+                            contentResolver.openInputStream(uri)?.use { input ->
+                                FileOutputStream(dest).use { out -> input.copyTo(out, 65536) }
+                            }
+                            runOnUiThread {
+                                csvPath = dest.absolutePath
+                                tvStatus.text = "Cargando: utxos.csv"
+                                HunterEngine.loadCsv(csvPath)
+                            }
+                        } catch(e: Exception) {
+                            runOnUiThread { tvStatus.text = "Error: ${e.message}" }
+                        }
+                    }.start()
+                }
             }
         }
     }
-    private fun getRealPath(uri:Uri):String? {
-        uri.lastPathSegment?.let{seg->if(seg.startsWith("primary:")){val f=File("/storage/emulated/0/${seg.removePrefix("primary:")}");if(f.exists())return f.absolutePath}}
-        val path=uri.path?:return null
-        if(path.startsWith("/storage")||path.startsWith("/sdcard")){val f=File(path);if(f.exists())return f.absolutePath}
+
+    private fun getRealPath(uri: Uri): String? {
+        uri.lastPathSegment?.let { seg ->
+            if (seg.startsWith("primary:")) {
+                val f = File("/storage/emulated/0/${seg.removePrefix("primary:")}")
+                if (f.exists()) return f.absolutePath
+            }
+        }
+        val path = uri.path ?: return null
+        if (path.startsWith("/storage") || path.startsWith("/sdcard")) {
+            val f = File(path); if (f.exists()) return f.absolutePath
+        }
         return null
     }
-    private fun doStart(){if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,"Carga el CSV primero",Toast.LENGTH_SHORT).show();return};HunterEngine.startHunting(sbThreads.progress+1,sbCpu.progress+10)}
-    private fun doStop(){HunterEngine.stopHunting()}
-    private var logBuf=StringBuilder()
-    private val updater=object:Runnable{override fun run(){
-        var msg:String; while(true){msg=HunterEngine.popLog();if(msg.isEmpty())break;logBuf.insert(0,msg+"\n");if(logBuf.length>4000)logBuf.setLength(4000)}
+
+    private fun doStart() {
+        if (!HunterEngine.isCsvLoaded()) { Toast.makeText(this,"Carga el CSV primero",Toast.LENGTH_SHORT).show(); return }
+        HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
+    }
+    private fun doStop() { HunterEngine.stopHunting() }
+
+    private var logBuf = StringBuilder()
+    private val updater = object:Runnable { override fun run() {
+        var msg: String
+        while(true){msg=HunterEngine.popLog();if(msg.isEmpty())break;logBuf.insert(0,msg+"\n");if(logBuf.length>4000)logBuf.setLength(4000)}
         tvLog.text=logBuf.toString()
-        val loading=HunterEngine.isLoading();val loaded=HunterEngine.isCsvLoaded();val running=HunterEngine.isRunning()
+        val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
-        btnStart.isEnabled=loaded&&!running&&!loading;btnStop.isEnabled=running
+        btnStart.isEnabled=loaded&&!running&&!loading; btnStop.isEnabled=running
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
         tvWps.setTextColor(if(running)ORANGE else DIM)
-        val count=HunterEngine.getCount();tvCount.text=if(count>=1_000_000)"%.2f M seeds".format(count/1e6) else "$count seeds"
-        val e=HunterEngine.getElapsed();tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
-        val found=HunterEngine.getFound();tvMatches.text="Matches: $found";tvMatches.setTextColor(if(found>0)YELLOW else Color.WHITE)
-        val m=HunterEngine.getMatches();if(m.isNotEmpty()){tvMatchList.text=m;tvMatchList.setTextColor(YELLOW)}
+        val count=HunterEngine.getCount(); tvCount.text=if(count>=1_000_000)"%.2f M seeds".format(count/1e6) else "$count seeds"
+        val e=HunterEngine.getElapsed(); tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
+        val found=HunterEngine.getFound(); tvMatches.text="Matches: $found"; tvMatches.setTextColor(if(found>0)YELLOW else Color.WHITE)
+        val m=HunterEngine.getMatches(); if(m.isNotEmpty()){tvMatchList.text=m;tvMatchList.setTextColor(YELLOW)}
         handler.postDelayed(this,1000L)
     }}
     private fun startUpdater(){handler.post(updater)}
