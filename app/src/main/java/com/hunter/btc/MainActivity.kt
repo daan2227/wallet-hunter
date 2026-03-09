@@ -336,13 +336,13 @@ class MainActivity : Activity() {
         if(running){
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break
-                if(addrBuffer.size>=6)addrBuffer.removeFirst()
-                addrBuffer.addLast(addr)
+                if(addrBuf.size>=6)addrBuf.removeFirst()
+                addrBuf.addLast(addr)
             }
             addrTickCounter++
             if(addrTickCounter>=3){
                 addrTickCounter=0
-                if(addrBuffer.isNotEmpty()) tvAddrFeed.text=addrBuffer.takeLast(3).joinToString("\n")
+                if(addrBuf.isNotEmpty()) tvAddrFeed.text=addrBuf.takeLast(3).joinToString("\n")
             }
         } else {
             if(!loaded) tvAddrFeed.text="Esperando inicio..."
