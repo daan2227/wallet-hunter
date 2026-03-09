@@ -71,6 +71,13 @@ static time_t g_start_time = 0;
 static long  g_last_count = 0;
 static time_t g_last_wps_t = 0;
 
+static std::mutex              g_addr_mutex;
+static std::deque<std::string> g_recent_addrs;
+static void add_addr(const std::string &a){
+    std::lock_guard<std::mutex> lk(g_addr_mutex);
+    g_recent_addrs.push_front(a);
+    if(g_recent_addrs.size()>50)g_recent_addrs.pop_back();
+}
 static void add_log(const std::string &msg){
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_log.push_front(msg);
@@ -191,6 +198,7 @@ static void *worker_fn(void *){
             for(int pi=0;pi<N_PATHS&&!g_stop.load();pi++){
                 HDKey hd;derive_path(ctx,seed,PATHS[pi],&hd);
                 pk_to_h160(ctx,hd.key,h160);local_done++;
+                {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
                 int64_t idx=bsearch_h160(h160);
                 if(idx>=0){hits[nhits].idx=idx;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,hd.key,PRIVKEY_BYTES);hits[nhits].pi=pi;nhits++;}
             }
@@ -350,4 +358,11 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
     return env->NewStringUTF(all.c_str());
 }
 
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
+    std::lock_guard<std::mutex> lk(g_addr_mutex);
+    if(g_recent_addrs.empty())return env->NewStringUTF("");
+    std::string s=g_recent_addrs.front();g_recent_addrs.pop_front();
+    return env->NewStringUTF(s.c_str());
+}
 } /* extern C */
