@@ -2,7 +2,6 @@ package com.hunter.btc
 
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }
-
     external fun loadCsv(path: String)
     external fun startHunting(threads: Int, cpuLimit: Int)
     external fun stopHunting()
@@ -17,4 +16,5 @@ object HunterEngine {
     external fun getElapsed(): Long
     external fun popLog(): String
     external fun getMatches(): String
+    external fun popRecentAddr(): String
 }

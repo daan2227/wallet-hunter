@@ -33,7 +33,7 @@ class MainActivity : Activity() {
     private var csvPath: String = ""
     private var lastFoundCount: Long = 0
     private var currentTemp: Float = 0f
-    private val addrBuffer = ArrayDeque<String>(6)
+    private var addrBuffer = ArrayDeque<String>(6)
     private var addrTickCounter = 0
 
     private val battReceiver = object : BroadcastReceiver() {
