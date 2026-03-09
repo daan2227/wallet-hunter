@@ -368,7 +368,7 @@ class MainActivity : Activity() {
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
 
-            if(recentAddrs.isNotEmpty())tvAddrFeed.text=recentAddrs.takeLast(3).joinToString("\n  → 0.00000000 BTC") + "  → 0.00000000 BTC"
+            if(recentAddrs.isNotEmpty()) tvAddrFeed.text = recentAddrs.takeLast(3).map { "$it  -> 0.00000000 BTC" }.joinToString("\n")
         } else if(!loaded) tvAddrFeed.text=s.waitingStart
         updateRam()
         handler.postDelayed(this,333L)
