@@ -7,7 +7,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.*
 import android.provider.Settings
-import android.view.Gravity
+import android.view.*
 import android.widget.*
 import java.io.*
 
@@ -23,11 +23,20 @@ class MainActivity : Activity() {
     private lateinit var tvRam: TextView
     private lateinit var tvTemp: TextView
     private lateinit var tvLog: TextView
+    private lateinit var tvFooter: TextView
     private lateinit var btnToggle: Button
     private lateinit var sbThreads: SeekBar
     private lateinit var sbCpu: SeekBar
     private lateinit var tvThreads: TextView
     private lateinit var tvCpu: TextView
+    private lateinit var tvCsvSec: TextView
+    private lateinit var tvConfigSec: TextView
+    private lateinit var tvStatsSec: TextView
+    private lateinit var tvLiveSec: TextView
+    private lateinit var tvMatchSec: TextView
+    private lateinit var tvLogSec: TextView
+    private lateinit var tvLangLbl: TextView
+    private lateinit var btnCsv: Button
     private var csvPath: String = ""
     private var s = Strings.ES
     private val recentAddrs = mutableListOf<String>()
@@ -48,18 +57,25 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Bloquear capturas de pantalla
+        window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         s = Strings.ALL[prefs.getString("lang","ES")] ?: Strings.ES
+        csvPath = prefs.getString("csvPath","") ?: ""
         buildUI()
         checkStoragePermission()
-        // Arrancar servicio en segundo plano
         startService(Intent(this, HunterService::class.java))
-        // Recibir temperatura del servicio
         HunterService.tempCallback = { temp ->
             runOnUiThread {
                 tvTemp.text = "${s.temp}: ${"%.1f".format(temp)}C"
                 tvTemp.setTextColor(when { temp<35f->Color.WHITE; temp<42f->YELLOW; else->RED })
             }
+        }
+        // Auto-cargar CSV guardado
+        if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded()) {
+            tvStatus.text = "Cargando: ${File(csvPath).name}"
+            tvStatus.setTextColor(YELLOW)
+            HunterEngine.loadCsv(csvPath)
         }
     }
 
@@ -76,7 +92,25 @@ class MainActivity : Activity() {
     override fun onDestroy() {
         super.onDestroy()
         HunterService.tempCallback = null
-        // NO detener servicio ni hunting al cerrar Activity
+    }
+
+    private fun applyLang(key: String) {
+        s = Strings.ALL[key] ?: Strings.ES
+        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
+        prefs.edit().putString("lang", key).apply()
+        // Actualizar todos los textos sin recrear
+        tvLangLbl.text = "${s.language}: "
+        tvCsvSec.text = s.csvSection
+        btnCsv.text = s.csvBtn
+        tvConfigSec.text = s.configSection
+        tvStatsSec.text = s.statsSection
+        tvLiveSec.text = s.liveSection
+        tvMatchSec.text = s.matchSection
+        tvLogSec.text = s.logSection
+        btnToggle.text = if (HunterEngine.isRunning()) s.stop else s.start
+        tvMatchList.text = s.noMatch
+        tvAddrFeed.text = s.waitingStart
+        updateLabels()
     }
 
     private fun checkStoragePermission() {
@@ -95,6 +129,7 @@ class MainActivity : Activity() {
     private fun buildUI() {
         val root = ScrollView(this).apply { setBackgroundColor(BG) }
         val main = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setPadding(20,20,20,20) }
+        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
 
         main.addView(TextView(this).apply {
             text=s.title; textSize=20f; setTextColor(ORANGE)
@@ -105,10 +140,9 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER; setPadding(0,2,0,4)
         })
 
-        // Selector idioma
-        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
+        // Selector idioma - sin recreate()
         val langRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
-        langRow.addView(TextView(this).apply { text="${s.language}: "; setTextColor(DIM); textSize=11f })
+        tvLangLbl = TextView(this).apply { text="${s.language}: "; setTextColor(DIM); textSize=11f }
         val langKeys = Strings.ALL.keys.toList()
         val spinner = Spinner(this)
         spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, langKeys)
@@ -118,12 +152,11 @@ class MainActivity : Activity() {
             var init = true
             override fun onItemSelected(p: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
                 if(init){init=false;return}
-                prefs.edit().putString("lang",langKeys[pos]).apply()
-                recreate()
+                applyLang(langKeys[pos])
             }
             override fun onNothingSelected(p: AdapterView<*>) {}
         }
-        langRow.addView(spinner); main.addView(langRow)
+        langRow.addView(tvLangLbl); langRow.addView(spinner); main.addView(langRow)
 
         // RAM + Temp
         val sysRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,6,12,6) }
@@ -133,9 +166,9 @@ class MainActivity : Activity() {
         sysRow.addView(tvRam); sysRow.addView(tvTemp); main.addView(sysRow)
 
         // CSV
-        main.addView(sectionLabel(s.csvSection))
+        tvCsvSec = sectionLabel(s.csvSection); main.addView(tvCsvSec)
         val csvRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
-        val btnCsv = Button(this).apply {
+        btnCsv = Button(this).apply {
             text=s.csvBtn; setBackgroundColor(ORANGE); setTextColor(Color.BLACK)
             textSize=11f; setPadding(24,0,24,0)
             layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,80)
@@ -148,7 +181,7 @@ class MainActivity : Activity() {
         csvRow.addView(btnCsv); csvRow.addView(tvStatus); main.addView(csvRow)
 
         // Config
-        main.addView(sectionLabel(s.configSection))
+        tvConfigSec = sectionLabel(s.configSection); main.addView(tvConfigSec)
         tvThreads = TextView(this).apply { setTextColor(Color.WHITE); textSize=12f }
         main.addView(tvThreads)
         sbThreads = SeekBar(this).apply { max=7; progress=3
@@ -173,7 +206,7 @@ class MainActivity : Activity() {
         }
         main.addView(btnToggle)
 
-        main.addView(sectionLabel(s.statsSection))
+        tvStatsSec = sectionLabel(s.statsSection); main.addView(tvStatsSec)
         val sp = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
         tvWps     = mkStat("0 w/s",true)
         tvCount   = mkStat("0 ${s.seeds}",false)
@@ -182,7 +215,7 @@ class MainActivity : Activity() {
         sp.addView(tvWps);sp.addView(tvCount);sp.addView(tvTime);sp.addView(tvMatches)
         main.addView(sp)
 
-        main.addView(sectionLabel(s.liveSection))
+        tvLiveSec = sectionLabel(s.liveSection); main.addView(tvLiveSec)
         tvAddrFeed = TextView(this).apply {
             text=s.waitingStart; setTextColor(Color.parseColor("#44BB44"))
             textSize=10f; typeface=Typeface.MONOSPACE
@@ -191,19 +224,28 @@ class MainActivity : Activity() {
         }
         main.addView(tvAddrFeed)
 
-        main.addView(sectionLabel(s.matchSection).apply{setPadding(0,12,0,0)})
+        tvMatchSec = sectionLabel(s.matchSection).apply{setPadding(0,12,0,0)}; main.addView(tvMatchSec)
         tvMatchList = TextView(this).apply {
             text=s.noMatch; setTextColor(YELLOW); textSize=11f
             setBackgroundColor(PANEL); setPadding(12,10,12,10)
         }
         main.addView(tvMatchList)
 
-        main.addView(sectionLabel(s.logSection).apply{setPadding(0,12,0,0)})
+        tvLogSec = sectionLabel(s.logSection).apply{setPadding(0,12,0,0)}; main.addView(tvLogSec)
         tvLog = TextView(this).apply {
             text=""; setTextColor(DIM); textSize=10f
             setBackgroundColor(PANEL); setPadding(10,8,10,8)
         }
         main.addView(tvLog)
+
+        // Footer firma
+        tvFooter = TextView(this).apply {
+            text="Propiedad de Dax2201 | Optimizado por Claude"
+            textSize=9f; setTextColor(Color.parseColor("#444448"))
+            gravity=Gravity.CENTER; setPadding(0,20,0,4)
+            setTypeface(null,Typeface.ITALIC)
+        }
+        main.addView(tvFooter)
 
         root.addView(main); setContentView(root)
     }
@@ -241,7 +283,9 @@ class MainActivity : Activity() {
             data?.data?.let { uri ->
                 val path=getRealPath(uri)
                 if(path!=null){
-                    csvPath=path; tvStatus.text="Cargando: ${File(csvPath).name}"
+                    csvPath=path
+                    getSharedPreferences("hunter",MODE_PRIVATE).edit().putString("csvPath",csvPath).apply()
+                    tvStatus.text="Cargando: ${File(csvPath).name}"
                     tvStatus.setTextColor(YELLOW); HunterEngine.loadCsv(csvPath)
                 } else {
                     tvStatus.text=s.copying; tvStatus.setTextColor(YELLOW)
@@ -249,7 +293,11 @@ class MainActivity : Activity() {
                         try {
                             val dest=File(getExternalFilesDir(null),"utxos.csv")
                             contentResolver.openInputStream(uri)?.use{i->FileOutputStream(dest).use{o->i.copyTo(o,65536)}}
-                            runOnUiThread{csvPath=dest.absolutePath;tvStatus.text="Cargando: utxos.csv";HunterEngine.loadCsv(csvPath)}
+                            runOnUiThread{
+                                csvPath=dest.absolutePath
+                                getSharedPreferences("hunter",MODE_PRIVATE).edit().putString("csvPath",csvPath).apply()
+                                tvStatus.text="Cargando: utxos.csv"; HunterEngine.loadCsv(csvPath)
+                            }
                         } catch(e:Exception){runOnUiThread{tvStatus.text="Error: ${e.message}"}}
                     }.start()
                 }
@@ -299,6 +347,4 @@ class MainActivity : Activity() {
         updateRam()
         handler.postDelayed(this,333L)
     }}
-
-    private fun startUpdater(){handler.post(updater)}
 }
