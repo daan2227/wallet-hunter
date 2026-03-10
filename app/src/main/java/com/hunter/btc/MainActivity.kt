@@ -238,41 +238,69 @@ class MainActivity : Activity() {
         }
         layoutPuzzle.addView(etRangeEnd)
 
+        // Selector de puzzle por numero
         layoutPuzzle.addView(TextView(this).apply {
-            text = "Target Address (dejar vacio para usar CSV):"
-            setTextColor(DIM); textSize=11f; setPadding(0,12,0,2)
+            text = "Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,12,0,4)
+        })
+
+        // Datos: numero, address, start, end, BTC
+        data class PuzzleInfo(val num:Int, val addr:String, val start:String, val end:String, val btc:String)
+        val puzzles = listOf(
+            PuzzleInfo(67,"1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9","0000000000000000","ffffffffffffffff","6.7 BTC"),
+            PuzzleInfo(68,"1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ","0000000000000000","1ffffffffffffffff","6.8 BTC"),
+            PuzzleInfo(69,"19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG","0000000000000000","3ffffffffffffffff","6.9 BTC"),
+            PuzzleInfo(70,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.0 BTC"),
+            PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
+            PuzzleInfo(72,"1tBmmAuwdPXXnBKBDFBgGHvCbX4jxDdwt", "800000000000000000","ffffffffffffffffff","7.2 BTC"),
+            PuzzleInfo(73,"1NAeBPJaAVPPUMkXzGrHKb7YAmxsLoKFGM","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
+            PuzzleInfo(74,"1Me6EfpwZK5kQziBwBfvLiHjaPGxCKLoJi","2000000000000000000","3ffffffffffffffffff","7.4 BTC"),
+            PuzzleInfo(75,"1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS","4000000000000000000","7ffffffffffffffffff","7.5 BTC")
+        )
+
+        // Dia del año determina puzzle por defecto
+        val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+        val defaultIdx = dayOfYear % puzzles.size
+
+        val puzzleLabels = puzzles.map { "#${it.num} - ${it.btc} - ${it.addr.take(16)}..." }
+        val puzzleSpinner = Spinner(this)
+        puzzleSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, puzzleLabels)
+            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+        puzzleSpinner.setSelection(defaultIdx)
+        layoutPuzzle.addView(puzzleSpinner)
+
+        // Aplicar puzzle seleccionado
+        fun applyPuzzle(p: PuzzleInfo) {
+            etRangeStart.setText(p.start)
+            etRangeEnd.setText(p.end)
+            etTarget.setText(p.addr)
+        }
+        applyPuzzle(puzzles[defaultIdx])
+
+        puzzleSpinner.onItemSelectedListener = object: AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
+                applyPuzzle(puzzles[pos])
+            }
+            override fun onNothingSelected(parent: AdapterView<*>) {}
+        }
+
+        // Separador
+        layoutPuzzle.addView(TextView(this).apply {
+            text = "- o edita manualmente -"; setTextColor(Color.parseColor("#444448"))
+            textSize=10f; gravity=Gravity.CENTER; setPadding(0,8,0,4)
+        })
+
+        layoutPuzzle.addView(TextView(this).apply {
+            text = "Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,4,0,2)
         })
         etTarget = EditText(this).apply {
-            hint = "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU"
-            setHintTextColor(Color.parseColor("#555558"))
             setTextColor(YELLOW); textSize=11f
             setBackgroundColor(DARK); setPadding(8,8,8,8)
             typeface = Typeface.MONOSPACE
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         layoutPuzzle.addView(etTarget)
+        applyPuzzle(puzzles[defaultIdx])
 
-        // Boton presets puzzles conocidos
-        val presetsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(0,8,0,0)
-        }
-        listOf(
-            Triple("#67","400000000000000000","7fffffffffffffff"),
-            Triple("#68","800000000000000000","ffffffffffffffffffff"),
-            Triple("#71","400000000000000000","7fffffffffffffffff")
-        ).forEach { (label, s, e) ->
-            presetsRow.addView(Button(this).apply {
-                text = label; textSize = 10f
-                setBackgroundColor(Color.parseColor("#333336"))
-                setTextColor(ORANGE); setPadding(16,4,16,4)
-                layoutParams = LinearLayout.LayoutParams(0, 72, 1f).apply { marginEnd=4 }
-                setOnClickListener {
-                    etRangeStart.setText(s)
-                    etRangeEnd.setText(e)
-                }
-            })
-        }
-        layoutPuzzle.addView(presetsRow)
         main.addView(layoutPuzzle)
 
         val modeToggle = { isPuzzle: Boolean ->
