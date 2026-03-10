@@ -349,7 +349,7 @@ static void *worker_puzzle_fn(void *){
     uint8_t privkey[32],h160[HASH160_BYTES];
     long local_done=0;
     XR128 rng; xr_init(&rng);
-    const int SEQ_BATCH=1000;
+    const int SEQ_BATCH=5000;
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
         local_done=0;
@@ -367,7 +367,7 @@ static void *worker_puzzle_fn(void *){
             uint8_t sha[32]; SHA256(pub33,33,sha);
             RIPEMD160(sha,32,h160);
             local_done++;
-            {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+            if(local_done%50==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
             int match=0;
             char sats_buf[24]="0"; char type_buf[12]="?";
             if(g_has_target){
