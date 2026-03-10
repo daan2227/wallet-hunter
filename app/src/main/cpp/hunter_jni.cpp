@@ -61,6 +61,8 @@ static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
 
 static uint8_t g_range_start[32] = {0};
 static uint8_t g_range_end[32]   = {0};
+static uint8_t g_target_h160[20]  = {0};
+static int     g_has_target       = 0;
 
 static std::mutex               g_log_mutex;
 static std::deque<std::string>  g_log;
@@ -279,16 +281,26 @@ static void *worker_puzzle_fn(void *){
             pk_to_h160(ctx,privkey,h160);
             local_done++;
             {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-            int64_t idx=bsearch_h160(h160);
-            if(idx>=0){
+            int match=0;
+            char sats_buf[24]="0"; char type_buf[12]="?";
+            if(g_has_target){
+                /* Comparar contra direccion objetivo */
+                if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
+            } else if(g_csv_loaded.load()){
+                /* Fallback: buscar en CSV */
+                int64_t idx=bsearch_h160(h160);
+                if(idx>=0){match=1;read_row(idx,sats_buf,type_buf);}
+            }
+            if(match){
                 g_found.fetch_add(1);
-                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
+                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
                 h160_to_addr(h160,addr);pk_to_wif(privkey,wif);
                 for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",privkey[b]);
-                read_row(idx,sats,type_);
-                uint64_t satval=(uint64_t)strtoull(sats,NULL,10);double btc=satval/1e8;
+                uint64_t satval=(uint64_t)strtoull(sats_buf,NULL,10);
+                double btc=g_has_target?0.0:satval/1e8;
                 char extra[128];snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
                 save_match(pkhex,addr,btc,wif,extra);
+                add_log(std::string("*** PUZZLE RESUELTO *** ADDR:")+addr+" PRIV:"+pkhex);
             }
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
@@ -451,6 +463,30 @@ Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
     if(g_recent_addrs.empty())return env->NewStringUTF("");
     std::string s=g_recent_addrs.front();g_recent_addrs.pop_front();
     return env->NewStringUTF(s.c_str());
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
+    const char *a=env->GetStringUTFChars(addr,nullptr);
+    if(a&&a[0]){
+        uint8_t h160[20]={0};
+        if(addr_to_h160(a,h160)){
+            memcpy(g_target_h160,h160,20);
+            g_has_target=1;
+            add_log(std::string("Target: ")+a);
+        } else {
+            g_has_target=0;
+            add_log("ERROR: direccion invalida");
+        }
+    } else {
+        g_has_target=0;
+    }
+    env->ReleaseStringUTFChars(addr,a);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_hasTarget(JNIEnv *,jobject){
+    return (jboolean)(g_has_target==1);
 }
 
 } /* extern C */

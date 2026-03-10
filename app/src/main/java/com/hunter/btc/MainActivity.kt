@@ -45,6 +45,7 @@ class MainActivity : Activity() {
     private lateinit var etRangeStart: EditText
     private lateinit var etRangeEnd: EditText
     private lateinit var layoutPuzzle: LinearLayout
+    private lateinit var etTarget: EditText
     private var addrTick = 0
     private val logBuf = StringBuilder()
 
@@ -236,6 +237,42 @@ class MainActivity : Activity() {
             inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         layoutPuzzle.addView(etRangeEnd)
+
+        layoutPuzzle.addView(TextView(this).apply {
+            text = "Target Address (dejar vacio para usar CSV):"
+            setTextColor(DIM); textSize=11f; setPadding(0,12,0,2)
+        })
+        etTarget = EditText(this).apply {
+            hint = "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU"
+            setHintTextColor(Color.parseColor("#555558"))
+            setTextColor(YELLOW); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8)
+            typeface = Typeface.MONOSPACE
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        layoutPuzzle.addView(etTarget)
+
+        // Boton presets puzzles conocidos
+        val presetsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(0,8,0,0)
+        }
+        listOf(
+            Triple("#67","400000000000000000","7fffffffffffffff"),
+            Triple("#68","800000000000000000","ffffffffffffffffffff"),
+            Triple("#71","400000000000000000","7fffffffffffffffff")
+        ).forEach { (label, s, e) ->
+            presetsRow.addView(Button(this).apply {
+                text = label; textSize = 10f
+                setBackgroundColor(Color.parseColor("#333336"))
+                setTextColor(ORANGE); setPadding(16,4,16,4)
+                layoutParams = LinearLayout.LayoutParams(0, 72, 1f).apply { marginEnd=4 }
+                setOnClickListener {
+                    etRangeStart.setText(s)
+                    etRangeEnd.setText(e)
+                }
+            })
+        }
+        layoutPuzzle.addView(presetsRow)
         main.addView(layoutPuzzle)
 
         val modeToggle = { isPuzzle: Boolean ->
@@ -383,12 +420,20 @@ class MainActivity : Activity() {
             HunterEngine.stopHunting()
             btnToggle.text=s.start; btnToggle.background=coinGreen
         } else {
-            if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show();return}
+            if(!HunterEngine.isCsvLoaded() && !puzzleMode){
+                Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show(); return
+            }
             if(puzzleMode) {
                 val rs = etRangeStart.text.toString().trim()
                 val re = etRangeEnd.text.toString().trim()
                 if(rs.isEmpty()||re.isEmpty()){Toast.makeText(this,"Ingresa el rango hex",Toast.LENGTH_SHORT).show();return}
                 HunterEngine.setRange(rs, re)
+                val tgt = etTarget.text.toString().trim()
+                HunterEngine.setTarget(tgt)
+                if(tgt.isEmpty() && !HunterEngine.isCsvLoaded()){
+                    Toast.makeText(this,"Ingresa una direccion objetivo o carga el CSV",Toast.LENGTH_LONG).show()
+                    return
+                }
             }
             HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
             btnToggle.text=s.stop; btnToggle.background=coinRed
