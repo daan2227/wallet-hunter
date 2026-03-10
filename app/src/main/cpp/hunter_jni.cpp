@@ -380,7 +380,8 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
-    if(!g_csv_loaded.load()||g_running.load())return;
+    if(g_running.load())return;
+    if(!g_csv_loaded.load()&&g_mode.load()!=1)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
     g_last_count=0;g_last_wps_t=time(nullptr);
