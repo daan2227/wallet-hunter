@@ -206,22 +206,82 @@ static void hex_to_bytes32(const char *hex, uint8_t *out){
     }
 }
 
-/* Genera clave privada aleatoria en [start, end] */
-static int gen_privkey_range(uint8_t *out){
-    BIGNUM *bn_s=BN_new(),*bn_e=BN_new(),*bn_r=BN_new(),*bn_rnd=BN_new();
-    BN_CTX *ctx=BN_CTX_new();
-    BN_bin2bn(g_range_start,32,bn_s);
-    BN_bin2bn(g_range_end,  32,bn_e);
-    BN_sub(bn_r,bn_e,bn_s);BN_add_word(bn_r,1);
-    uint8_t rnd[32];
+/* === FAST RNG para puzzle mode ===
+   Usa xorshift128+ por thread - sin malloc, sin syscall, sin BN
+   Range en bytes: calcula bits activos y genera solo esos bits */
+
+/* Calcula cuantos bytes/bits son el rango */
+static int       g_range_bits  = 0;   /* bits activos del rango */
+static uint8_t   g_range_mask  = 0;   /* mascara para el byte superior */
+
+static void precompute_range(){
+    /* Encontrar el bit mas alto del rango */
+    /* end - start para saber el tamano */
+    uint8_t diff[32];
+    int borrow=0;
+    for(int i=31;i>=0;i--){
+        int d=(int)g_range_end[i]-(int)g_range_start[i]-borrow;
+        if(d<0){d+=256;borrow=1;}else borrow=0;
+        diff[i]=(uint8_t)d;
+    }
+    /* Encontrar byte mas alto */
+    g_range_bits=0;
+    for(int i=0;i<32;i++){
+        if(diff[i]){
+            g_range_bits=(32-i)*8;
+            uint8_t b=diff[i];
+            while(b>>=1) g_range_bits--;
+            g_range_bits++;
+            /* mascara para el byte superior del rango */
+            int top_byte=32-(g_range_bits+7)/8;
+            int bits_in_top=g_range_bits%8;
+            g_range_mask=(bits_in_top==0)?0xFF:((1<<bits_in_top)-1);
+            break;
+        }
+    }
+}
+
+/* xorshift128+ - ultra rapido, un estado por thread */
+struct XR128 { uint64_t s0,s1; };
+
+static void xr_init(XR128 *x){
+    /* seed con urandom una vez por thread */
     FILE *ur=fopen("/dev/urandom","rb");
-    if(ur){fread(rnd,1,32,ur);fclose(ur);}
-    BN_bin2bn(rnd,32,bn_rnd);
-    BN_mod(bn_rnd,bn_rnd,bn_r,ctx);
-    BN_add(bn_rnd,bn_rnd,bn_s);
-    memset(out,0,32);BN_bn2binpad(bn_rnd,out,32);
-    BN_free(bn_s);BN_free(bn_e);BN_free(bn_r);BN_free(bn_rnd);BN_CTX_free(ctx);
-    return 1;
+    if(ur){fread(&x->s0,8,1,ur);fread(&x->s1,8,1,ur);fclose(ur);}
+    if(!x->s0) x->s0=0xdeadbeefcafeULL;
+    if(!x->s1) x->s1=0x123456789abcULL;
+}
+
+static uint64_t xr_next(XR128 *x){
+    uint64_t s1=x->s0, s0=x->s1;
+    x->s0=s0; s1^=s1<<23; s1^=s1>>17; s1^=s0; s1^=s0>>26;
+    x->s1=s1; return s0+s1;
+}
+
+static void gen_privkey_fast(uint8_t *out, XR128 *rng){
+    /* Copiar start como base */
+    memcpy(out, g_range_start, 32);
+    /* Generar bytes aleatorios para los bits del rango */
+    int range_bytes = (g_range_bits+7)/8;
+    int top_idx     = 32 - range_bytes;
+    /* Llenar con xorshift128+ */
+    uint64_t r;
+    for(int i=31; i>=top_idx; i-=8){
+        r=xr_next(rng);
+        for(int j=0;j<8&&(i-j)>=top_idx;j++)
+            out[i-j]=(uint8_t)(r>>(j*8));
+    }
+    /* Aplicar mascara al byte superior para no salir del rango */
+    out[top_idx] &= g_range_mask;
+    /* Sumar start con carry */
+    int carry=0;
+    for(int i=31;i>=0;i--){
+        int s=(int)out[i]+(int)g_range_start[i]+carry;
+        out[i]=(uint8_t)(s&0xFF); carry=s>>8;
+    }
+    /* Si supera end, usar start (raro) */
+    if(memcmp(out, g_range_end, 32)>0)
+        memcpy(out, g_range_start, 32);
 }
 
 /* Guardar match */
@@ -284,11 +344,14 @@ static void *worker_puzzle_fn(void *){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     uint8_t privkey[32],h160[HASH160_BYTES];
     long local_done=0;
+    XR128 rng; xr_init(&rng);
+    /* Batch grande para puzzle - sin CSV overhead */
+    const int PUZZLE_BATCH=200;
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
         local_done=0;
-        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
-            gen_privkey_range(privkey);
+        for(int bi=0;bi<PUZZLE_BATCH&&!g_stop.load();bi++){
+            gen_privkey_fast(privkey,&rng);
             if(!secp256k1_ec_seckey_verify(ctx,privkey)) continue;
             pk_to_h160(ctx,privkey,h160);
             local_done++;
@@ -388,6 +451,7 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
     hex_to_bytes32(e,g_range_end);
     env->ReleaseStringUTFChars(start,s);
     env->ReleaseStringUTFChars(end,e);
+    precompute_range();
 }
 
 JNIEXPORT void JNICALL
