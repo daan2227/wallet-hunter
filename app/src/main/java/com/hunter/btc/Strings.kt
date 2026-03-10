@@ -17,7 +17,8 @@ object Strings {
         val language: String, val langBtn: String,
         val modeSection: String, val modeBip39: String, val modePuzzle: String,
         val puzzleSelect: String, val rangeStart: String, val rangeEnd: String,
-        val targetAddr: String, val enterRange: String, val enterTarget: String
+        val targetAddr: String, val enterRange: String, val enterTarget: String,
+        val loading: String, val errorPrefix: String, val footer: String
     )
 
     val ES = Lang(
@@ -34,7 +35,7 @@ object Strings {
         speed="Velocidad", seeds="Seeds", time="Tiempo", matches="Matches",
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
         modeSection="MODO DE BUSQUEDA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (rango hex)",
-        puzzleSelect="Seleccionar Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
+        puzzleSelect="Seleccionar Puzzle:", rangeStart="Rango Inicio (hex):", rangeEnd="Rango Fin (hex):",
         targetAddr="Direccion Objetivo:", enterRange="Ingresa el rango hex", enterTarget="Ingresa la direccion objetivo",
         loading="Cargando", errorPrefix="Error", footer="Propiedad de Dax2201 | Optimizado por Claude"
     )
@@ -124,7 +125,7 @@ object Strings {
         speed="Vitesse", seeds="Seeds", time="Temps", matches="Corresp.",
         ram="RAM", temp="Temp", language="Langue", langBtn="Langue",
         modeSection="MODE DE RECHERCHE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (plage hex)",
-        puzzleSelect="Choisir Puzzle:", rangeStart="Debut de plage (hex):", rangeEnd="Fin de plage (hex):",
+        puzzleSelect="Choisir Puzzle:", rangeStart="Debut plage (hex):", rangeEnd="Fin plage (hex):",
         targetAddr="Adresse cible:", enterRange="Entrer la plage hex", enterTarget="Entrer l'adresse cible",
         loading="Chargement", errorPrefix="Erreur", footer="Propriete de Dax2201 | Optimise par Claude"
     )
@@ -138,11 +139,11 @@ object Strings {
         matchSection="СОВПАДЕНИЯ", noMatch="Пока нет...", logSection="ЛОГ",
         loadFirst="Сначала загрузите CSV", copying="Копирование CSV...",
         permTitle="Нужно разрешение", permMsg="Для чтения CSV нужен доступ ко всем файлам.",
-        notifMatchTitle="КОШЕЛЁК НАЙДЕН", notifStatusTitle="BTC Hunter",
+        notifMatchTitle="КОШЕЛЕК НАЙДЕН", notifStatusTitle="BTC Hunter",
         speed="Скорость", seeds="Сидов", time="Время", matches="Совпад.",
         ram="ОЗУ", temp="Темп", language="Язык", langBtn="Язык",
         modeSection="РЕЖИМ ПОИСКА", modeBip39="BIP39 (seed-фразы)", modePuzzle="Паззл (hex диапазон)",
-        puzzleSelect="Выбрать паззл:", rangeStart="Начало диапазона (hex):", rangeEnd="Конец диапазона (hex):",
+        puzzleSelect="Выбрать паззл:", rangeStart="Начало (hex):", rangeEnd="Конец (hex):",
         targetAddr="Целевой адрес:", enterRange="Введите hex диапазон", enterTarget="Введите целевой адрес",
         loading="Загрузка", errorPrefix="Ошибка", footer="Собственность Dax2201 | Оптимизировано Claude"
     )
@@ -160,7 +161,7 @@ object Strings {
         speed="Velocidade", seeds="Seeds", time="Tempo", matches="Corresp.",
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
         modeSection="MODO DE BUSCA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (intervalo hex)",
-        puzzleSelect="Selecionar Puzzle:", rangeStart="Inicio do intervalo (hex):", rangeEnd="Fim do intervalo (hex):",
+        puzzleSelect="Selecionar Puzzle:", rangeStart="Inicio intervalo (hex):", rangeEnd="Fim intervalo (hex):",
         targetAddr="Endereco alvo:", enterRange="Digite o intervalo hex", enterTarget="Digite o endereco alvo",
         loading="Carregando", errorPrefix="Erro", footer="Propriedade de Dax2201 | Otimizado por Claude"
     )
@@ -170,10 +171,8 @@ object Strings {
         "DE" to DE, "FR" to FR, "RU" to RU, "PT" to PT
     )
 
-    // Detectar idioma del sistema
     fun fromSystem(): String {
-        val sysLang = java.util.Locale.getDefault().language
-        return when(sysLang) {
+        return when(java.util.Locale.getDefault().language) {
             "es" -> "ES"
             "en" -> "EN"
             "ja" -> "JA"
