@@ -291,7 +291,7 @@ class MainActivity : Activity() {
             setTextColor(Color.WHITE)
             textSize = 15f
             setTypeface(null, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply {
+            layoutParams = LinearLayout.LayoutParams(btnSize/2, btnSize/2).apply {
                 gravity = android.view.Gravity.CENTER_HORIZONTAL
                 topMargin = 20; bottomMargin = 8
             }
@@ -447,7 +447,7 @@ class MainActivity : Activity() {
         val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
         if(!running && btnToggle.text==s.stop){btnToggle.text=s.start;btnToggle.background=(btnToggle.tag as? Array<*>)?.get(0) as? android.graphics.drawable.GradientDrawable ?: btnToggle.background}
-        btnToggle.isEnabled=loaded&&!loading
+        btnToggle.isEnabled=(loaded&&!loading)||puzzleMode
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
         tvWps.setTextColor(if(running)ORANGE else DIM)
