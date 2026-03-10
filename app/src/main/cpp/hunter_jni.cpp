@@ -340,29 +340,39 @@ static void *worker_bip39_fn(void *){
 /* =========================================================
    Worker PUZZLE (modo 1) - rango de clave privada
    ========================================================= */
+static void privkey_increment(uint8_t *k){
+    for(int i=31;i>=0;i--){if(++k[i])break;}
+}
+
 static void *worker_puzzle_fn(void *){
-    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
     uint8_t privkey[32],h160[HASH160_BYTES];
     long local_done=0;
     XR128 rng; xr_init(&rng);
-    /* Batch grande para puzzle - sin CSV overhead */
-    const int PUZZLE_BATCH=200;
+    const int SEQ_BATCH=1000;
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
         local_done=0;
-        for(int bi=0;bi<PUZZLE_BATCH&&!g_stop.load();bi++){
-            gen_privkey_fast(privkey,&rng);
-            if(!secp256k1_ec_seckey_verify(ctx,privkey)) continue;
-            pk_to_h160(ctx,privkey,h160);
+        /* Punto de inicio aleatorio en el rango */
+        gen_privkey_fast(privkey,&rng);
+        if(!secp256k1_ec_seckey_verify(ctx,privkey))
+            memcpy(privkey,g_range_start,32);
+        /* Una sola multiplicacion escalar por bloque */
+        secp256k1_pubkey pubkey;
+        if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)) continue;
+        for(int bi=0;bi<SEQ_BATCH&&!g_stop.load();bi++){
+            /* Serializar y hashear */
+            uint8_t pub33[33]; size_t plen=33;
+            secp256k1_ec_pubkey_serialize(ctx,pub33,&plen,&pubkey,SECP256K1_EC_COMPRESSED);
+            uint8_t sha[32]; SHA256(pub33,33,sha);
+            RIPEMD160(sha,32,h160);
             local_done++;
             {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
             int match=0;
             char sats_buf[24]="0"; char type_buf[12]="?";
             if(g_has_target){
-                /* Comparar contra direccion objetivo */
                 if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
             } else if(g_csv_loaded.load()){
-                /* Fallback: buscar en CSV */
                 int64_t idx=bsearch_h160(h160);
                 if(idx>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
             }
@@ -376,6 +386,12 @@ static void *worker_puzzle_fn(void *){
                 char extra[128];snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
                 save_match(pkhex,addr,btc,wif,extra);
                 add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
+            }
+            if(bi<SEQ_BATCH-1){
+                privkey_increment(privkey);
+                if(memcmp(privkey,g_range_end,32)>0) break;
+                uint8_t one[32]={0}; one[31]=1;
+                if(!secp256k1_ec_pubkey_tweak_add(ctx,&pubkey,one)) break;
             }
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
