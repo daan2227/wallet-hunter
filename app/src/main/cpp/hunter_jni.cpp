@@ -301,7 +301,7 @@ static void *worker_puzzle_fn(void *){
             } else if(g_csv_loaded.load()){
                 /* Fallback: buscar en CSV */
                 int64_t idx=bsearch_h160(h160);
-                if(idx>=0){match=1;read_row(idx,sats_buf,type_buf);}
+                if(idx>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
             }
             if(match){
                 g_found.fetch_add(1);
