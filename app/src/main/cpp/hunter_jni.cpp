@@ -1,7 +1,3 @@
-/*
- * Bitcoin Wallet Hunter - JNI Bridge para Android
- * Mismo motor que hunter_a56.c pero envuelto para Java/Kotlin
- */
 #include <jni.h>
 #include <android/log.h>
 #include <string>
@@ -25,7 +21,7 @@
 #include <openssl/ripemd.h>
 
 #define TAG "HunterJNI"
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, TAG, __VA_ARGS__)
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PBKDF2_ITERS  1
@@ -38,12 +34,15 @@
 #define MAX_ADDR      64
 #define N_PATHS       8
 
+/* Paths BIP44 para modo BIP39 */
 static const char *PATHS[N_PATHS]={
     "m/44'/0'/0'/0/0","m/44'/0'/0'/0/1","m/44'/0'/0'/0/2","m/44'/0'/0'/0/3",
     "m/44'/0'/0'/0/4","m/49'/0'/0'/0/0","m/84'/0'/0'/0/0","m/44'/0'/0'/1/0"
 };
 
-/* Estado global */
+/* =========================================================
+   Estado global compartido
+   ========================================================= */
 static uint8_t  *g_h160   = nullptr;
 static uint64_t *g_offset = nullptr;
 static uint64_t  g_total  = 0;
@@ -58,31 +57,33 @@ static std::atomic<int>    g_cpu_limit(80);
 static std::atomic<int>    g_nthreads(4);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
+static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
 
-static std::mutex              g_log_mutex;
-static std::deque<std::string> g_log;
-static std::mutex              g_match_mutex;
+static uint8_t g_range_start[32] = {0};
+static uint8_t g_range_end[32]   = {0};
+
+static std::mutex               g_log_mutex;
+static std::deque<std::string>  g_log;
+static std::mutex               g_match_mutex;
 static std::vector<std::string> g_matches;
+static std::mutex               g_addr_mutex;
+static std::deque<std::string>  g_recent_addrs;
 
-static char g_load_status[256] = "";
+static char   g_load_status[256] = "";
 static time_t g_start_time = 0;
-
-/* WPS */
-static long  g_last_count = 0;
+static long   g_last_count = 0;
 static time_t g_last_wps_t = 0;
 
-static std::mutex              g_addr_mutex;
-static std::deque<std::string> g_recent_addrs;
-static void add_addr(const std::string &a){
-    std::lock_guard<std::mutex> lk(g_addr_mutex);
-    g_recent_addrs.push_front(a);
-    if(g_recent_addrs.size()>50)g_recent_addrs.pop_back();
-}
 static void add_log(const std::string &msg){
     std::lock_guard<std::mutex> lk(g_log_mutex);
     g_log.push_front(msg);
-    if(g_log.size()>200)g_log.pop_back();
+    if(g_log.size()>200) g_log.pop_back();
     LOGI("%s", msg.c_str());
+}
+static void add_addr(const std::string &a){
+    std::lock_guard<std::mutex> lk(g_addr_mutex);
+    g_recent_addrs.push_front(a);
+    if(g_recent_addrs.size()>50) g_recent_addrs.pop_back();
 }
 
 /* =========================================================
@@ -133,8 +134,6 @@ static int split_line(char *line,char **f,int mx){
     while(n<mx){f[n++]=p;while(*p&&*p!=g_sep&&*p!='\n'&&*p!='\r')p++;if(*p==g_sep){*p++='\0';}else{*p='\0';break;}}
     return n;
 }
-
-/* BIP39 */
 static const char *BIP39[]={
 #include "bip39_words.h"
 };
@@ -181,11 +180,54 @@ static void read_row(int64_t idx,char *sats,char *type){
 }
 
 /* =========================================================
-   Worker
+   Rango hex -> bytes
+   ========================================================= */
+static void hex_to_bytes32(const char *hex, uint8_t *out){
+    memset(out,0,32);
+    int hlen=(int)strlen(hex);
+    for(int i=0;i<hlen&&i<64;i++){
+        char c=hex[hlen-1-i];
+        uint8_t v=(c>='0'&&c<='9')?c-'0':(c>='a'&&c<='f')?c-'a'+10:(c>='A'&&c<='F')?c-'A'+10:0;
+        out[31-i/2]|=(i%2==0)?v:(v<<4);
+    }
+}
+
+/* Genera clave privada aleatoria en [start, end] */
+static int gen_privkey_range(uint8_t *out){
+    BIGNUM *bn_s=BN_new(),*bn_e=BN_new(),*bn_r=BN_new(),*bn_rnd=BN_new();
+    BN_CTX *ctx=BN_CTX_new();
+    BN_bin2bn(g_range_start,32,bn_s);
+    BN_bin2bn(g_range_end,  32,bn_e);
+    BN_sub(bn_r,bn_e,bn_s);BN_add_word(bn_r,1);
+    uint8_t rnd[32];
+    FILE *ur=fopen("/dev/urandom","rb");
+    if(ur){fread(rnd,1,32,ur);fclose(ur);}
+    BN_bin2bn(rnd,32,bn_rnd);
+    BN_mod(bn_rnd,bn_rnd,bn_r,ctx);
+    BN_add(bn_rnd,bn_rnd,bn_s);
+    memset(out,0,32);BN_bn2binpad(bn_rnd,out,32);
+    BN_free(bn_s);BN_free(bn_e);BN_free(bn_r);BN_free(bn_rnd);BN_CTX_free(ctx);
+    return 1;
+}
+
+/* Guardar match */
+static void save_match(const char *privhex, const char *addr, double btc, const char *wif, const char *extra){
+    std::string outpath=std::string(g_csv_path);
+    size_t sl=outpath.rfind('/');
+    if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    FILE *fo=fopen(outpath.c_str(),"a");
+    if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
+    std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
+    add_log(oss.str());
+    {std::lock_guard<std::mutex> lk(g_match_mutex);g_matches.push_back(oss.str());}
+}
+
+/* =========================================================
+   Worker BIP39 (modo 0)
    ========================================================= */
 typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;}Hit;
 
-static void *worker_fn(void *){
+static void *worker_bip39_fn(void *){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     char mn[256];uint8_t seed[64],h160[HASH160_BYTES];
     Hit hits[LOCAL_BATCH*N_PATHS];int nhits=0;long local_done=0;
@@ -205,7 +247,7 @@ static void *worker_fn(void *){
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
-        if(cpu<100){double sleep_ms=work_ms*(100.0-cpu)/cpu;if(sleep_ms>0.5)std::this_thread::sleep_for(std::chrono::milliseconds((int)sleep_ms));}
+        if(cpu<100){double sl=work_ms*(100.0-cpu)/cpu;if(sl>0.5)std::this_thread::sleep_for(std::chrono::milliseconds((int)sl));}
         g_count.fetch_add(local_done);
         for(int i=0;i<nhits;i++){
             g_found.fetch_add(1);
@@ -214,16 +256,45 @@ static void *worker_fn(void *){
             for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
             read_row(hits[i].idx,sats,type_);
             uint64_t satval=(uint64_t)strtoull(sats,NULL,10);double btc=satval/1e8;
-            /* Guardar en almacenamiento externo */
-            std::string outpath=std::string(g_csv_path);
-            size_t sl=outpath.rfind('/');
-            if(sl!=std::string::npos)outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
-            FILE *fo=fopen(outpath.c_str(),"a");
-            if(fo){fprintf(fo,"SEED:%s PATH:%s ADDR:%s BTC:%.8f WIF:%s PRIV:%s\n",hits[i].mn,PATHS[hits[i].pi],addr,btc,wif,pkhex);fclose(fo);}
-            std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC "<<hits[i].mn;
-            add_log(oss.str());
-            {std::lock_guard<std::mutex> lk(g_match_mutex);g_matches.push_back(oss.str());}
+            char extra[512];snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
+            save_match(pkhex,addr,btc,wif,extra);
         }
+    }
+    secp256k1_context_destroy(ctx);return nullptr;
+}
+
+/* =========================================================
+   Worker PUZZLE (modo 1) - rango de clave privada
+   ========================================================= */
+static void *worker_puzzle_fn(void *){
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    uint8_t privkey[32],h160[HASH160_BYTES];
+    long local_done=0;
+    while(!g_stop.load()){
+        auto t0=std::chrono::high_resolution_clock::now();
+        local_done=0;
+        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
+            gen_privkey_range(privkey);
+            if(!secp256k1_ec_seckey_verify(ctx,privkey)) continue;
+            pk_to_h160(ctx,privkey,h160);
+            local_done++;
+            {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+            int64_t idx=bsearch_h160(h160);
+            if(idx>=0){
+                g_found.fetch_add(1);
+                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
+                h160_to_addr(h160,addr);pk_to_wif(privkey,wif);
+                for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",privkey[b]);
+                read_row(idx,sats,type_);
+                uint64_t satval=(uint64_t)strtoull(sats,NULL,10);double btc=satval/1e8;
+                char extra[128];snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
+                save_match(pkhex,addr,btc,wif,extra);
+            }
+        }
+        double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
+        int cpu=g_cpu_limit.load();
+        if(cpu<100){double sl=work_ms*(100.0-cpu)/cpu;if(sl>0.5)std::this_thread::sleep_for(std::chrono::milliseconds((int)sl));}
+        g_count.fetch_add(local_done);
     }
     secp256k1_context_destroy(ctx);return nullptr;
 }
@@ -281,6 +352,21 @@ Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
 }
 
 JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
+    g_mode.store(mode);
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstring end){
+    const char *s=env->GetStringUTFChars(start,nullptr);
+    const char *e=env->GetStringUTFChars(end,nullptr);
+    hex_to_bytes32(s,g_range_start);
+    hex_to_bytes32(e,g_range_end);
+    env->ReleaseStringUTFChars(start,s);
+    env->ReleaseStringUTFChars(end,e);
+}
+
+JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     if(!g_csv_loaded.load()||g_running.load())return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
@@ -288,17 +374,19 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     g_last_count=0;g_last_wps_t=time(nullptr);
     g_start_time=time(nullptr);g_running.store(true);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
-    for(int i=0;i<n;i++)pthread_create(&g_workers[i],nullptr,worker_fn,nullptr);
-    g_active=n;add_log("Iniciado | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
+    void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn : worker_bip39_fn;
+    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,nullptr);
+    g_active=n;
+    const char *modeStr=(g_mode.load()==1)?"PUZZLE":"BIP39";
+    add_log(std::string("Iniciado | modo:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
 }
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
     if(!g_running.load())return;
     g_stop.store(true);
-    /* join en hilo separado para no bloquear UI */
     std::thread([]{
-        for(int i=0;i<g_active;i++)pthread_join(g_workers[i],nullptr);
+        for(int i=0;i<g_active;i++) pthread_join(g_workers[i],nullptr);
         g_running.store(false);g_active=0;
         add_log("Detenido | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
     }).detach();
@@ -323,8 +411,7 @@ JNIEXPORT jdouble JNICALL
 Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
     time_t now=time(nullptr);
     if(now!=g_last_wps_t&&g_last_wps_t>0){
-        long cur=g_count.load();
-        double el=difftime(now,g_last_wps_t);
+        long cur=g_count.load();double el=difftime(now,g_last_wps_t);
         if(el>0)g_wps.store((cur-g_last_count)/el);
         g_last_count=cur;g_last_wps_t=now;
     } else if(g_last_wps_t==0) g_last_wps_t=now;
@@ -365,4 +452,5 @@ Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
     std::string s=g_recent_addrs.front();g_recent_addrs.pop_front();
     return env->NewStringUTF(s.c_str());
 }
+
 } /* extern C */

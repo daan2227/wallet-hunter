@@ -3,6 +3,8 @@ package com.hunter.btc
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }
     external fun loadCsv(path: String)
+    external fun setMode(mode: Int)        // 0=BIP39, 1=PUZZLE
+    external fun setRange(start: String, end: String)
     external fun startHunting(threads: Int, cpuLimit: Int)
     external fun stopHunting()
     external fun setCpuLimit(v: Int)

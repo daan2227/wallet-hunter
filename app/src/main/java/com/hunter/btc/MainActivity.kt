@@ -9,6 +9,7 @@ import android.os.*
 import android.provider.Settings
 import android.view.*
 import android.widget.*
+import android.text.InputType
 import java.io.*
 
 class MainActivity : Activity() {
@@ -40,6 +41,10 @@ class MainActivity : Activity() {
     private var csvPath: String = ""
     private var s = Strings.ES
     private val recentAddrs = mutableListOf<String>()
+    private var puzzleMode = false
+    private lateinit var etRangeStart: EditText
+    private lateinit var etRangeEnd: EditText
+    private lateinit var layoutPuzzle: LinearLayout
     private var addrTick = 0
     private val logBuf = StringBuilder()
 
@@ -208,7 +213,42 @@ class MainActivity : Activity() {
             setColor(RED)
             setStroke(8, Color.parseColor("#FF4444"))
         }
-        btnToggle = Button(this).apply {
+        // Selector de modo
+        main.addView(sectionLabel("MODO DE BUSQUEDA"))
+        val modeRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,4,0,4) }
+        val rbBip39 = RadioButton(this).apply { text="BIP39 (seeds)"; setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
+        val rbPuzzle = RadioButton(this).apply { text="Puzzle (rango hex)"; setTextColor(Color.WHITE); textSize=13f; isChecked=puzzleMode; setPadding(20,0,0,0) }
+        modeRow.addView(rbBip39); modeRow.addView(rbPuzzle); main.addView(modeRow)
+
+        // Panel rango puzzle
+        layoutPuzzle = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=if(puzzleMode) android.view.View.VISIBLE else android.view.View.GONE }
+        layoutPuzzle.addView(TextView(this).apply { text="Range Start (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        etRangeStart = EditText(this).apply {
+            setText("4000000000000000"); setTextColor(Color.WHITE); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        layoutPuzzle.addView(etRangeStart)
+        layoutPuzzle.addView(TextView(this).apply { text="Range End (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        etRangeEnd = EditText(this).apply {
+            setText("7fffffffffffffff"); setTextColor(Color.WHITE); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        layoutPuzzle.addView(etRangeEnd)
+        main.addView(layoutPuzzle)
+
+        val modeToggle = { isPuzzle: Boolean ->
+            puzzleMode = isPuzzle
+            rbBip39.isChecked = !isPuzzle
+            rbPuzzle.isChecked = isPuzzle
+            layoutPuzzle.visibility = if(isPuzzle) android.view.View.VISIBLE else android.view.View.GONE
+            HunterEngine.setMode(if(isPuzzle) 1 else 0)
+        }
+        rbBip39.setOnClickListener  { modeToggle(false) }
+        rbPuzzle.setOnClickListener { modeToggle(true)  }
+
+                btnToggle = Button(this).apply {
             text = s.start
             background = coinGreen
             setTextColor(Color.WHITE)
@@ -344,6 +384,12 @@ class MainActivity : Activity() {
             btnToggle.text=s.start; btnToggle.background=coinGreen
         } else {
             if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show();return}
+            if(puzzleMode) {
+                val rs = etRangeStart.text.toString().trim()
+                val re = etRangeEnd.text.toString().trim()
+                if(rs.isEmpty()||re.isEmpty()){Toast.makeText(this,"Ingresa el rango hex",Toast.LENGTH_SHORT).show();return}
+                HunterEngine.setRange(rs, re)
+            }
             HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
             btnToggle.text=s.stop; btnToggle.background=coinRed
         }
