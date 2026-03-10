@@ -53,15 +53,15 @@ class MainActivity : Activity() {
     data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
 
     private val puzzles = listOf(
-        PuzzleInfo(70,"1DiRy9K5Jo2pNPh2qkomYeci9en6HoTVST","40000000000000000","7fffffffffffffffff","7.0 BTC - ACTIVO"),
         PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
-        PuzzleInfo(72,"1tBmmAuwdPXXnBKBDFBgGHvCbX4jxDdwt","800000000000000000","ffffffffffffffffff","7.2 BTC"),
-        PuzzleInfo(73,"1NAeBPJaAVPPUMkXzGrHKb7YAmxsLoKFGM","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
-        PuzzleInfo(74,"1Me6EfpwZK5kQziBwBfvLiHjaPGxCKLoJi","2000000000000000000","3ffffffffffffffffff","7.4 BTC"),
-        PuzzleInfo(75,"1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS","4000000000000000000","7ffffffffffffffffff","7.5 BTC"),
-        PuzzleInfo(76,"1L4ezGbYs8CzQ6TMBEHWmYheLy7TRKxBBT","8000000000000000000","fffffffffffffffffff","7.6 BTC"),
-        PuzzleInfo(77,"1GSBbkTWTn9MHGMKEhpjceibcDJfVFNerp","10000000000000000000","1fffffffffffffffffff","7.7 BTC"),
-        PuzzleInfo(78,"1MHf33UKRnr7S6z5zyHGEBh2S3eLpPdR5x","20000000000000000000","3fffffffffffffffffff","7.8 BTC")
+        PuzzleInfo(72,"1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR","800000000000000000","ffffffffffffffffff","7.2 BTC"),
+        PuzzleInfo(73,"12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
+        PuzzleInfo(74,"1FWGcVDK3JGzCC3WtkYetULPszMaK2Jksv","2000000000000000000","3ffffffffffffffffff","7.4 BTC"),
+        PuzzleInfo(76,"1DJh2eHFYQfACPmrvpyWc8MSTYKh7w9eRF","8000000000000000000","fffffffffffffffffff","7.6 BTC"),
+        PuzzleInfo(77,"1Bxk4CQdqL9p22JEtDfdXMsng1XacifUtE","10000000000000000000","1fffffffffffffffffff","7.7 BTC"),
+        PuzzleInfo(78,"15qF6X51huDjqTmF9BJgxXdt1xcj46Jmhb","20000000000000000000","3fffffffffffffffffff","7.8 BTC"),
+        PuzzleInfo(79,"1ARk8HWJMn8js8tQmGUJeQHjSE7KRkn2t8","40000000000000000000","7fffffffffffffffffff","7.9 BTC"),
+        PuzzleInfo(81,"15qsCm78whspNQFydGJQk5rexzxTQopnHZ","100000000000000000000","1fffffffffffffffffff","8.1 BTC")
     )
 
     companion object {
