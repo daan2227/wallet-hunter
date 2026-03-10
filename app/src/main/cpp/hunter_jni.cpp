@@ -19,6 +19,7 @@
 #include <openssl/evp.h>
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
+#include "sha256_ripemd160.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -361,11 +362,10 @@ static void *worker_puzzle_fn(void *){
         secp256k1_pubkey pubkey;
         if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)) continue;
         for(int bi=0;bi<SEQ_BATCH&&!g_stop.load();bi++){
-            /* Serializar y hashear */
+            /* Serializar y hashear - inline sin overhead OpenSSL */
             uint8_t pub33[33]; size_t plen=33;
             secp256k1_ec_pubkey_serialize(ctx,pub33,&plen,&pubkey,SECP256K1_EC_COMPRESSED);
-            uint8_t sha[32]; SHA256(pub33,33,sha);
-            RIPEMD160(sha,32,h160);
+            hash160_inline(pub33,h160);
             local_done++;
             if(local_done%50==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
             int match=0;
