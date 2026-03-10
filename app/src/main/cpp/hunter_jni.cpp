@@ -44,7 +44,6 @@ static const char *PATHS[N_PATHS]={
    Estado global compartido
    ========================================================= */
 static uint8_t  *g_h160   = nullptr;
-static uint64_t *g_offset = nullptr;
 static uint64_t  g_total  = 0;
 static char      g_csv_path[1024] = "";
 
@@ -123,7 +122,7 @@ static int addr_to_h160(const char *a,uint8_t *out){
     if(a[0]=='b'&&a[1]=='c'&&a[2]=='1')return 0;
     return base58_to_h160(a,out);
 }
-typedef struct{uint8_t h[HASH160_BYTES];uint64_t off;}LE;
+typedef struct{uint8_t h[HASH160_BYTES];}LE;
 static int cmp_le(const void *a,const void *b){return memcmp(((LE*)a)->h,((LE*)b)->h,HASH160_BYTES);}
 static int64_t bsearch_h160(const uint8_t *t){
     int64_t lo=0,hi=(int64_t)g_total-1;
@@ -173,11 +172,24 @@ static void b58enc(const uint8_t *pl,int plen,char *out,int osz){
 }
 static void h160_to_addr(const uint8_t *h,char *a){uint8_t v[21];v[0]=0;memcpy(v+1,h,20);b58enc(v,21,a,MAX_ADDR);}
 static void pk_to_wif(const uint8_t *k,char *w){uint8_t v[34];v[0]=0x80;memcpy(v+1,k,32);v[33]=1;b58enc(v,34,w,60);}
-static void read_row(int64_t idx,char *sats,char *type){
-    strcpy(sats,"0");strcpy(type,"?");FILE *f=fopen(g_csv_path,"r");if(!f)return;
-    fseeko(f,(off_t)g_offset[idx],SEEK_SET);
+static void read_row_by_h160(const uint8_t *h160,char *sats,char *type){
+    strcpy(sats,"0");strcpy(type,"?");
+    FILE *f=fopen(g_csv_path,"r");if(!f)return;
     char line[MAX_LINE],*fields[8];
-    if(fgets(line,sizeof(line),f)){char tmp[MAX_LINE];strncpy(tmp,line,MAX_LINE-1);int n=split_line(tmp,fields,8);if(n>=2){strncpy(sats,fields[1],23);trim_str(sats);}if(n>=3){strncpy(type,fields[2],11);trim_str(type);}}
+    // skip header
+    fgets(line,sizeof(line),f);
+    while(fgets(line,sizeof(line),f)){
+        char tmp[MAX_LINE];strncpy(tmp,line,MAX_LINE-1);
+        int n=split_line(tmp,fields,8);if(n<1)continue;
+        char addr[MAX_ADDR];strncpy(addr,fields[0],MAX_ADDR-1);trim_str(addr);
+        uint8_t h[HASH160_BYTES];
+        if(!addr_to_h160(addr,h))continue;
+        if(memcmp(h,h160,HASH160_BYTES)==0){
+            if(n>=2){strncpy(sats,fields[1],23);trim_str(sats);}
+            if(n>=3){strncpy(type,fields[2],11);trim_str(type);}
+            break;
+        }
+    }
     fclose(f);
 }
 
@@ -256,7 +268,7 @@ static void *worker_bip39_fn(void *){
             char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
             uint8_t h160b[20];pk_to_h160(ctx,hits[i].pk,h160b);h160_to_addr(h160b,addr);pk_to_wif(hits[i].pk,wif);
             for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
-            read_row(hits[i].idx,sats,type_);
+            uint8_t h160b2[20];pk_to_h160(ctx,hits[i].pk,h160b2);read_row_by_h160(h160b2,sats,type_);
             uint64_t satval=(uint64_t)strtoull(sats,NULL,10);double btc=satval/1e8;
             char extra[512];snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
             save_match(pkhex,addr,btc,wif,extra);
@@ -321,7 +333,7 @@ static void *load_fn(void *){
     g_loading.store(true);snprintf(g_load_status,sizeof(g_load_status),"Opening CSV...");
     FILE *f=fopen(g_csv_path,"r");
     if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: could not open file");g_loading.store(false);return nullptr;}
-    if(g_h160){free(g_h160);g_h160=nullptr;}if(g_offset){free(g_offset);g_offset=nullptr;}g_total=0;g_csv_loaded.store(false);
+    if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;g_csv_loaded.store(false);
     LE *tmp=(LE*)malloc(MAX_CSV_ROWS*sizeof(LE));
     if(!tmp){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");fclose(f);g_loading.store(false);return nullptr;}
     char line[MAX_LINE],*fields[8];
@@ -334,17 +346,17 @@ static void *load_fn(void *){
         char tl[MAX_LINE];strncpy(tl,line,MAX_LINE-1);int n=split_line(tl,fields,8);if(n<=ca){skip++;continue;}
         char addr[MAX_ADDR];strncpy(addr,fields[ca],MAX_ADDR-1);trim_str(addr);if(!addr[0]){skip++;continue;}
         uint8_t h160[HASH160_BYTES];if(!addr_to_h160(addr,h160)){skip++;continue;}
-        memcpy(tmp[ok].h,h160,HASH160_BYTES);tmp[ok].off=off;ok++;
+        memcpy(tmp[ok].h,h160,HASH160_BYTES);ok++;
         if(rows%1000000==0)snprintf(g_load_status,sizeof(g_load_status),"Leyendo %.0fM... OK:%llu",(double)rows/1e6,(unsigned long long)ok);
     }
     fclose(f);
     snprintf(g_load_status,sizeof(g_load_status),"Ordenando %llu entradas...",(unsigned long long)ok);
     qsort(tmp,ok,sizeof(LE),cmp_le);
-    g_h160=(uint8_t*)malloc(ok*HASH160_BYTES);g_offset=(uint64_t*)malloc(ok*sizeof(uint64_t));
-    if(!g_h160||!g_offset){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");free(tmp);g_loading.store(false);return nullptr;}
-    for(uint64_t i=0;i<ok;i++){memcpy(g_h160+i*HASH160_BYTES,tmp[i].h,HASH160_BYTES);g_offset[i]=tmp[i].off;}
+    g_h160=(uint8_t*)malloc(ok*HASH160_BYTES);
+    if(!g_h160){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");free(tmp);g_loading.store(false);return nullptr;}
+    for(uint64_t i=0;i<ok;i++){memcpy(g_h160+i*HASH160_BYTES,tmp[i].h,HASH160_BYTES);}
     free(tmp);g_total=ok;
-    snprintf(g_load_status,sizeof(g_load_status),"Listo: %.1fM dir | %.2f GB",(double)ok/1e6,ok*28.0/1e9);
+    snprintf(g_load_status,sizeof(g_load_status),"Listo: %.1fM dir | %.2f GB",(double)ok/1e6,ok*20.0/1e9);
     g_csv_loaded.store(true);g_loading.store(false);
     add_log(std::string("CSV ready: ")+g_load_status);
     return nullptr;
