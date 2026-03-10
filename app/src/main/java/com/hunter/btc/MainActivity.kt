@@ -77,7 +77,10 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
-        s = Strings.ALL[prefs.getString("lang","ES")] ?: Strings.ES
+        val savedLang = prefs.getString("lang", null)
+        val langKey = savedLang ?: Strings.fromSystem()
+        if (savedLang == null) prefs.edit().putString("lang", langKey).apply()
+        s = Strings.ALL[langKey] ?: Strings.EN
         csvPath = prefs.getString("csvPath","") ?: ""
         buildUI()
         checkStoragePermission()
@@ -99,6 +102,7 @@ class MainActivity : Activity() {
     override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
     override fun onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
 
+    private lateinit var btnLangRef: Button
     private fun applyLang(key: String) {
         s = Strings.ALL[key] ?: Strings.ES
         getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
@@ -149,22 +153,40 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER; setPadding(0,2,0,4)
         })
 
-        val langRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
-        tvLangLbl = TextView(this).apply { text="${s.language}: "; setTextColor(DIM); textSize=11f }
-        val langKeys = Strings.ALL.keys.toList()
-        val spinner = Spinner(this)
-        spinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, langKeys)
-            .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
-        spinner.setSelection(langKeys.indexOf(prefs.getString("lang","ES")).coerceAtLeast(0))
-        spinner.onItemSelectedListener = object: AdapterView.OnItemSelectedListener {
-            var init = true
-            override fun onItemSelected(p: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
-                if(init){init=false;return}
-                applyLang(langKeys[pos])
-            }
-            override fun onNothingSelected(p: AdapterView<*>) {}
+        val langRow = LinearLayout(this).apply {
+            orientation=LinearLayout.HORIZONTAL
+            gravity=Gravity.END
+            setPadding(0,0,0,4)
         }
-        langRow.addView(tvLangLbl); langRow.addView(spinner); main.addView(langRow)
+        tvLangLbl = TextView(this).apply {
+            text=""
+            setTextColor(DIM); textSize=11f
+            layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)
+        }
+        val btnLang = Button(this).apply {
+            text="${s.langBtn}: ${prefs.getString("lang","EN")}"
+            setBackgroundColor(Color.parseColor("#333336"))
+            setTextColor(ORANGE); textSize=11f; setPadding(20,4,20,4)
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,72)
+            setOnClickListener {
+                val langKeys = Strings.ALL.keys.toList()
+                val langNames = mapOf(
+                    "ES" to "Espanol", "EN" to "English", "JA" to "Japanese",
+                    "KO" to "Korean",  "DE" to "Deutsch", "FR" to "Francais",
+                    "RU" to "Russian", "PT" to "Portugues"
+                )
+                val items = langKeys.map { "${langNames[it] ?: it} ($it)" }.toTypedArray()
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle(s.language)
+                    .setItems(items) { _, pos ->
+                        val key = langKeys[pos]
+                        applyLang(key)
+                        text = "${s.langBtn}: $key"
+                    }
+                    .show()
+            }
+        }
+        langRow.addView(tvLangLbl); langRow.addView(btnLang); main.addView(langRow)
 
         val sysRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,6,12,6) }
         tvRam = TextView(this).apply { text="${s.ram}: --"; setTextColor(Color.WHITE); textSize=11f

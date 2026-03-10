@@ -2,38 +2,22 @@ package com.hunter.btc
 
 object Strings {
     data class Lang(
-        val title: String,
-        val subtitle: String,
-        val csvSection: String,
-        val csvBtn: String,
-        val noFile: String,
-        val configSection: String,
-        val threads: String,
-        val cpuLimit: String,
-        val silent: String,
-        val balanced: String,
-        val performance: String,
-        val start: String,
-        val stop: String,
-        val statsSection: String,
-        val liveSection: String,
-        val waitingStart: String,
-        val matchSection: String,
-        val noMatch: String,
-        val logSection: String,
-        val loadFirst: String,
-        val copying: String,
-        val permTitle: String,
-        val permMsg: String,
-        val notifMatchTitle: String,
-        val notifStatusTitle: String,
-        val speed: String,
-        val seeds: String,
-        val time: String,
-        val matches: String,
-        val ram: String,
-        val temp: String,
-        val language: String
+        val title: String, val subtitle: String,
+        val csvSection: String, val csvBtn: String, val noFile: String,
+        val configSection: String, val threads: String, val cpuLimit: String,
+        val silent: String, val balanced: String, val performance: String,
+        val start: String, val stop: String, val statsSection: String,
+        val liveSection: String, val waitingStart: String,
+        val matchSection: String, val noMatch: String, val logSection: String,
+        val loadFirst: String, val copying: String,
+        val permTitle: String, val permMsg: String,
+        val notifMatchTitle: String, val notifStatusTitle: String,
+        val speed: String, val seeds: String, val time: String,
+        val matches: String, val ram: String, val temp: String,
+        val language: String, val langBtn: String,
+        val modeSection: String, val modeBip39: String, val modePuzzle: String,
+        val puzzleSelect: String, val rangeStart: String, val rangeEnd: String,
+        val targetAddr: String, val enterRange: String, val enterTarget: String
     )
 
     val ES = Lang(
@@ -45,12 +29,14 @@ object Strings {
         liveSection="CONSULTANDO EN VIVO", waitingStart="Esperando inicio...",
         matchSection="COINCIDENCIAS", noMatch="Ninguna aun...", logSection="LOG",
         loadFirst="Carga el CSV primero", copying="Copiando CSV...",
-        permTitle="Permiso necesario", permMsg="Para leer el CSV necesitas 'Acceso a todos los archivos'.",
+        permTitle="Permiso necesario", permMsg="Para leer el CSV necesitas acceso a todos los archivos.",
         notifMatchTitle="WALLET ENCONTRADA", notifStatusTitle="BTC Hunter",
         speed="Velocidad", seeds="Seeds", time="Tiempo", matches="Matches",
-        ram="RAM", temp="Temp", language="Idioma"
+        ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
+        modeSection="MODO DE BUSQUEDA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (rango hex)",
+        puzzleSelect="Seleccionar Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
+        targetAddr="Direccion Objetivo:", enterRange="Ingresa el rango hex", enterTarget="Ingresa la direccion objetivo"
     )
-
     val EN = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="CSV FILE", csvBtn="CSV", noFile="No file",
@@ -60,12 +46,14 @@ object Strings {
         liveSection="LIVE SCAN", waitingStart="Waiting to start...",
         matchSection="MATCHES", noMatch="None yet...", logSection="LOG",
         loadFirst="Load CSV first", copying="Copying CSV...",
-        permTitle="Permission needed", permMsg="To read the CSV you need 'All files access'.",
+        permTitle="Permission needed", permMsg="To read the CSV you need all files access.",
         notifMatchTitle="WALLET FOUND", notifStatusTitle="BTC Hunter",
         speed="Speed", seeds="Seeds", time="Time", matches="Matches",
-        ram="RAM", temp="Temp", language="Language"
+        ram="RAM", temp="Temp", language="Language", langBtn="Language",
+        modeSection="SEARCH MODE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (hex range)",
+        puzzleSelect="Select Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
+        targetAddr="Target Address:", enterRange="Enter hex range", enterTarget="Enter target address"
     )
-
     val JA = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="CSVファイル", csvBtn="CSV", noFile="ファイルなし",
@@ -78,9 +66,11 @@ object Strings {
         permTitle="権限が必要", permMsg="CSVを読むには全ファイルアクセスが必要です。",
         notifMatchTitle="ウォレット発見", notifStatusTitle="BTC Hunter",
         speed="速度", seeds="シード", time="時間", matches="一致数",
-        ram="RAM", temp="温度", language="言語"
+        ram="RAM", temp="温度", language="言語", langBtn="言語",
+        modeSection="検索モード", modeBip39="BIP39 (シード)", modePuzzle="パズル (16進範囲)",
+        puzzleSelect="パズル選択:", rangeStart="範囲開始 (hex):", rangeEnd="範囲終了 (hex):",
+        targetAddr="ターゲットアドレス:", enterRange="16進範囲を入力", enterTarget="ターゲットアドレスを入力"
     )
-
     val KO = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="CSV 파일", csvBtn="CSV", noFile="파일 없음",
@@ -93,9 +83,11 @@ object Strings {
         permTitle="권한 필요", permMsg="CSV를 읽으려면 전체 파일 접근이 필요합니다.",
         notifMatchTitle="지갑 발견", notifStatusTitle="BTC Hunter",
         speed="속도", seeds="시드", time="시간", matches="일치수",
-        ram="RAM", temp="온도", language="언어"
+        ram="RAM", temp="온도", language="언어", langBtn="언어",
+        modeSection="검색 모드", modeBip39="BIP39 (시드)", modePuzzle="퍼즐 (16진 범위)",
+        puzzleSelect="퍼즐 선택:", rangeStart="범위 시작 (hex):", rangeEnd="범위 끝 (hex):",
+        targetAddr="대상 주소:", enterRange="16진 범위 입력", enterTarget="대상 주소 입력"
     )
-
     val DE = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="CSV-DATEI", csvBtn="CSV", noFile="Keine Datei",
@@ -105,12 +97,14 @@ object Strings {
         liveSection="LIVE-SCAN", waitingStart="Warte auf Start...",
         matchSection="TREFFER", noMatch="Noch keine...", logSection="LOG",
         loadFirst="CSV zuerst laden", copying="CSV wird kopiert...",
-        permTitle="Berechtigung erforderlich", permMsg="Zum Lesen der CSV benoetigen Sie Zugriff auf alle Dateien.",
+        permTitle="Berechtigung erforderlich", permMsg="Zum Lesen der CSV wird Zugriff auf alle Dateien benoetigt.",
         notifMatchTitle="WALLET GEFUNDEN", notifStatusTitle="BTC Hunter",
         speed="Geschwindigkeit", seeds="Seeds", time="Zeit", matches="Treffer",
-        ram="RAM", temp="Temp", language="Sprache"
+        ram="RAM", temp="Temp", language="Sprache", langBtn="Sprache",
+        modeSection="SUCHMODUS", modeBip39="BIP39 (Seeds)", modePuzzle="Puzzle (Hex-Bereich)",
+        puzzleSelect="Puzzle auswaehlen:", rangeStart="Bereich Start (hex):", rangeEnd="Bereich Ende (hex):",
+        targetAddr="Zieladresse:", enterRange="Hex-Bereich eingeben", enterTarget="Zieladresse eingeben"
     )
-
     val FR = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="FICHIER CSV", csvBtn="CSV", noFile="Aucun fichier",
@@ -122,10 +116,12 @@ object Strings {
         loadFirst="Charger le CSV d'abord", copying="Copie du CSV...",
         permTitle="Permission requise", permMsg="Pour lire le CSV vous avez besoin de l'acces a tous les fichiers.",
         notifMatchTitle="PORTEFEUILLE TROUVE", notifStatusTitle="BTC Hunter",
-        speed="Vitesse", seeds="Seeds", time="Temps", matches="Correspond.",
-        ram="RAM", temp="Temp", language="Langue"
+        speed="Vitesse", seeds="Seeds", time="Temps", matches="Corresp.",
+        ram="RAM", temp="Temp", language="Langue", langBtn="Langue",
+        modeSection="MODE DE RECHERCHE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (plage hex)",
+        puzzleSelect="Choisir Puzzle:", rangeStart="Debut de plage (hex):", rangeEnd="Fin de plage (hex):",
+        targetAddr="Adresse cible:", enterRange="Entrer la plage hex", enterTarget="Entrer l'adresse cible"
     )
-
     val RU = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="CSV ФАЙЛ", csvBtn="CSV", noFile="Нет файла",
@@ -138,9 +134,11 @@ object Strings {
         permTitle="Нужно разрешение", permMsg="Для чтения CSV нужен доступ ко всем файлам.",
         notifMatchTitle="КОШЕЛЁК НАЙДЕН", notifStatusTitle="BTC Hunter",
         speed="Скорость", seeds="Сидов", time="Время", matches="Совпад.",
-        ram="ОЗУ", temp="Темп", language="Язык"
+        ram="ОЗУ", temp="Темп", language="Язык", langBtn="Язык",
+        modeSection="РЕЖИМ ПОИСКА", modeBip39="BIP39 (seed-фразы)", modePuzzle="Паззл (hex диапазон)",
+        puzzleSelect="Выбрать паззл:", rangeStart="Начало диапазона (hex):", rangeEnd="Конец диапазона (hex):",
+        targetAddr="Целевой адрес:", enterRange="Введите hex диапазон", enterTarget="Введите целевой адрес"
     )
-
     val PT = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
         csvSection="ARQUIVO CSV", csvBtn="CSV", noFile="Sem arquivo",
@@ -153,11 +151,30 @@ object Strings {
         permTitle="Permissao necessaria", permMsg="Para ler o CSV precisa de acesso a todos os arquivos.",
         notifMatchTitle="CARTEIRA ENCONTRADA", notifStatusTitle="BTC Hunter",
         speed="Velocidade", seeds="Seeds", time="Tempo", matches="Corresp.",
-        ram="RAM", temp="Temp", language="Idioma"
+        ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
+        modeSection="MODO DE BUSCA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (intervalo hex)",
+        puzzleSelect="Selecionar Puzzle:", rangeStart="Inicio do intervalo (hex):", rangeEnd="Fim do intervalo (hex):",
+        targetAddr="Endereco alvo:", enterRange="Digite o intervalo hex", enterTarget="Digite o endereco alvo"
     )
 
     val ALL = linkedMapOf(
         "ES" to ES, "EN" to EN, "JA" to JA, "KO" to KO,
         "DE" to DE, "FR" to FR, "RU" to RU, "PT" to PT
     )
+
+    // Detectar idioma del sistema
+    fun fromSystem(): String {
+        val sysLang = java.util.Locale.getDefault().language
+        return when(sysLang) {
+            "es" -> "ES"
+            "en" -> "EN"
+            "ja" -> "JA"
+            "ko" -> "KO"
+            "de" -> "DE"
+            "fr" -> "FR"
+            "ru" -> "RU"
+            "pt" -> "PT"
+            else -> "EN"
+        }
+    }
 }
