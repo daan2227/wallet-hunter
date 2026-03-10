@@ -300,7 +300,7 @@ static void *worker_puzzle_fn(void *){
                 double btc=g_has_target?0.0:satval/1e8;
                 char extra[128];snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
                 save_match(pkhex,addr,btc,wif,extra);
-                add_log(std::string("*** PUZZLE RESUELTO *** ADDR:")+addr+" PRIV:"+pkhex);
+                add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
             }
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
@@ -318,12 +318,12 @@ static int g_active=0;
    CSV loader
    ========================================================= */
 static void *load_fn(void *){
-    g_loading.store(true);snprintf(g_load_status,sizeof(g_load_status),"Abriendo CSV...");
+    g_loading.store(true);snprintf(g_load_status,sizeof(g_load_status),"Opening CSV...");
     FILE *f=fopen(g_csv_path,"r");
-    if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: no se pudo abrir");g_loading.store(false);return nullptr;}
+    if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: could not open file");g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}if(g_offset){free(g_offset);g_offset=nullptr;}g_total=0;g_csv_loaded.store(false);
     LE *tmp=(LE*)malloc(MAX_CSV_ROWS*sizeof(LE));
-    if(!tmp){snprintf(g_load_status,sizeof(g_load_status),"Error: sin memoria");fclose(f);g_loading.store(false);return nullptr;}
+    if(!tmp){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");fclose(f);g_loading.store(false);return nullptr;}
     char line[MAX_LINE],*fields[8];
     if(!fgets(line,sizeof(line),f)){fclose(f);free(tmp);g_loading.store(false);return nullptr;}
     if(strchr(line,';'))g_sep=';';else if(strchr(line,'\t'))g_sep='\t';else g_sep=',';
@@ -341,12 +341,12 @@ static void *load_fn(void *){
     snprintf(g_load_status,sizeof(g_load_status),"Ordenando %llu entradas...",(unsigned long long)ok);
     qsort(tmp,ok,sizeof(LE),cmp_le);
     g_h160=(uint8_t*)malloc(ok*HASH160_BYTES);g_offset=(uint64_t*)malloc(ok*sizeof(uint64_t));
-    if(!g_h160||!g_offset){snprintf(g_load_status,sizeof(g_load_status),"Error: sin memoria");free(tmp);g_loading.store(false);return nullptr;}
+    if(!g_h160||!g_offset){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");free(tmp);g_loading.store(false);return nullptr;}
     for(uint64_t i=0;i<ok;i++){memcpy(g_h160+i*HASH160_BYTES,tmp[i].h,HASH160_BYTES);g_offset[i]=tmp[i].off;}
     free(tmp);g_total=ok;
     snprintf(g_load_status,sizeof(g_load_status),"Listo: %.1fM dir | %.2f GB",(double)ok/1e6,ok*28.0/1e9);
     g_csv_loaded.store(true);g_loading.store(false);
-    add_log(std::string("CSV listo: ")+g_load_status);
+    add_log(std::string("CSV ready: ")+g_load_status);
     return nullptr;
 }
 
@@ -391,7 +391,7 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,nullptr);
     g_active=n;
     const char *modeStr=(g_mode.load()==1)?"PUZZLE":"BIP39";
-    add_log(std::string("Iniciado | modo:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
+    add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
 }
 
 JNIEXPORT void JNICALL
@@ -401,7 +401,7 @@ Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
     std::thread([]{
         for(int i=0;i<g_active;i++) pthread_join(g_workers[i],nullptr);
         g_running.store(false);g_active=0;
-        add_log("Detenido | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
+        add_log("Stopped | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
     }).detach();
 }
 
@@ -477,7 +477,7 @@ Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
             add_log(std::string("Target: ")+a);
         } else {
             g_has_target=0;
-            add_log("ERROR: direccion invalida");
+            add_log("ERROR: invalid address");
         }
     } else {
         g_has_target=0;

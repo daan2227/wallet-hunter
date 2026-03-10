@@ -42,6 +42,8 @@ class MainActivity : Activity() {
     private lateinit var etRangeEnd: EditText
     private lateinit var etTarget: EditText
     private lateinit var layoutPuzzle: LinearLayout
+    private lateinit var rbBip39: RadioButton
+    private lateinit var rbPuzzle: RadioButton
     private var csvPath: String = ""
     private var s = Strings.ES
     private var puzzleMode = false
@@ -117,6 +119,8 @@ class MainActivity : Activity() {
         btnToggle.text = if (HunterEngine.isRunning()) s.stop else s.start
         tvMatchList.text = s.noMatch
         tvAddrFeed.text = s.waitingStart
+        rbBip39.text = s.modeBip39
+        rbPuzzle.text = s.modePuzzle
         updateLabels()
     }
 
@@ -226,8 +230,8 @@ class MainActivity : Activity() {
 
         main.addView(sectionLabel(s.modeSection))
         val modeRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,4,0,4) }
-        val rbBip39  = RadioButton(this).apply { text="BIP39 (seeds)";      setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
-        val rbPuzzle = RadioButton(this).apply { text="Puzzle (rango hex)"; setTextColor(Color.WHITE); textSize=13f; isChecked=puzzleMode; setPadding(20,0,0,0) }
+        rbBip39  = RadioButton(this).apply { text=s.modeBip39;      setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
+        rbPuzzle = RadioButton(this).apply { text=s.modePuzzle; setTextColor(Color.WHITE); textSize=13f; isChecked=puzzleMode; setPadding(20,0,0,0) }
         modeRow.addView(rbBip39); modeRow.addView(rbPuzzle); main.addView(modeRow)
 
         layoutPuzzle = LinearLayout(this).apply {
