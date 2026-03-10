@@ -35,7 +35,8 @@ object Strings {
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
         modeSection="MODO DE BUSQUEDA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (rango hex)",
         puzzleSelect="Seleccionar Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
-        targetAddr="Direccion Objetivo:", enterRange="Ingresa el rango hex", enterTarget="Ingresa la direccion objetivo"
+        targetAddr="Direccion Objetivo:", enterRange="Ingresa el rango hex", enterTarget="Ingresa la direccion objetivo",
+        loading="Cargando", errorPrefix="Error", footer="Propiedad de Dax2201 | Optimizado por Claude"
     )
     val EN = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -52,7 +53,8 @@ object Strings {
         ram="RAM", temp="Temp", language="Language", langBtn="Language",
         modeSection="SEARCH MODE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (hex range)",
         puzzleSelect="Select Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
-        targetAddr="Target Address:", enterRange="Enter hex range", enterTarget="Enter target address"
+        targetAddr="Target Address:", enterRange="Enter hex range", enterTarget="Enter target address",
+        loading="Loading", errorPrefix="Error", footer="Property of Dax2201 | Optimized by Claude"
     )
     val JA = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -69,7 +71,8 @@ object Strings {
         ram="RAM", temp="温度", language="言語", langBtn="言語",
         modeSection="検索モード", modeBip39="BIP39 (シード)", modePuzzle="パズル (16進範囲)",
         puzzleSelect="パズル選択:", rangeStart="範囲開始 (hex):", rangeEnd="範囲終了 (hex):",
-        targetAddr="ターゲットアドレス:", enterRange="16進範囲を入力", enterTarget="ターゲットアドレスを入力"
+        targetAddr="ターゲットアドレス:", enterRange="16進範囲を入力", enterTarget="ターゲットアドレスを入力",
+        loading="読込中", errorPrefix="エラー", footer="Dax2201 所有 | Claude 最適化"
     )
     val KO = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -86,7 +89,8 @@ object Strings {
         ram="RAM", temp="온도", language="언어", langBtn="언어",
         modeSection="검색 모드", modeBip39="BIP39 (시드)", modePuzzle="퍼즐 (16진 범위)",
         puzzleSelect="퍼즐 선택:", rangeStart="범위 시작 (hex):", rangeEnd="범위 끝 (hex):",
-        targetAddr="대상 주소:", enterRange="16진 범위 입력", enterTarget="대상 주소 입력"
+        targetAddr="대상 주소:", enterRange="16진 범위 입력", enterTarget="대상 주소 입력",
+        loading="로딩중", errorPrefix="오류", footer="Dax2201 소유 | Claude 최적화"
     )
     val DE = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -103,7 +107,8 @@ object Strings {
         ram="RAM", temp="Temp", language="Sprache", langBtn="Sprache",
         modeSection="SUCHMODUS", modeBip39="BIP39 (Seeds)", modePuzzle="Puzzle (Hex-Bereich)",
         puzzleSelect="Puzzle auswaehlen:", rangeStart="Bereich Start (hex):", rangeEnd="Bereich Ende (hex):",
-        targetAddr="Zieladresse:", enterRange="Hex-Bereich eingeben", enterTarget="Zieladresse eingeben"
+        targetAddr="Zieladresse:", enterRange="Hex-Bereich eingeben", enterTarget="Zieladresse eingeben",
+        loading="Laden", errorPrefix="Fehler", footer="Eigentum von Dax2201 | Optimiert von Claude"
     )
     val FR = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -120,7 +125,8 @@ object Strings {
         ram="RAM", temp="Temp", language="Langue", langBtn="Langue",
         modeSection="MODE DE RECHERCHE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (plage hex)",
         puzzleSelect="Choisir Puzzle:", rangeStart="Debut de plage (hex):", rangeEnd="Fin de plage (hex):",
-        targetAddr="Adresse cible:", enterRange="Entrer la plage hex", enterTarget="Entrer l'adresse cible"
+        targetAddr="Adresse cible:", enterRange="Entrer la plage hex", enterTarget="Entrer l'adresse cible",
+        loading="Chargement", errorPrefix="Erreur", footer="Propriete de Dax2201 | Optimise par Claude"
     )
     val RU = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -137,7 +143,8 @@ object Strings {
         ram="ОЗУ", temp="Темп", language="Язык", langBtn="Язык",
         modeSection="РЕЖИМ ПОИСКА", modeBip39="BIP39 (seed-фразы)", modePuzzle="Паззл (hex диапазон)",
         puzzleSelect="Выбрать паззл:", rangeStart="Начало диапазона (hex):", rangeEnd="Конец диапазона (hex):",
-        targetAddr="Целевой адрес:", enterRange="Введите hex диапазон", enterTarget="Введите целевой адрес"
+        targetAddr="Целевой адрес:", enterRange="Введите hex диапазон", enterTarget="Введите целевой адрес",
+        loading="Загрузка", errorPrefix="Ошибка", footer="Собственность Dax2201 | Оптимизировано Claude"
     )
     val PT = Lang(
         title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | PBKDF2:1 | p2pkh+p2sh+p2wpkh",
@@ -154,7 +161,8 @@ object Strings {
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
         modeSection="MODO DE BUSCA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (intervalo hex)",
         puzzleSelect="Selecionar Puzzle:", rangeStart="Inicio do intervalo (hex):", rangeEnd="Fim do intervalo (hex):",
-        targetAddr="Endereco alvo:", enterRange="Digite o intervalo hex", enterTarget="Digite o endereco alvo"
+        targetAddr="Endereco alvo:", enterRange="Digite o intervalo hex", enterTarget="Digite o endereco alvo",
+        loading="Carregando", errorPrefix="Erro", footer="Propriedade de Dax2201 | Otimizado por Claude"
     )
 
     val ALL = linkedMapOf(

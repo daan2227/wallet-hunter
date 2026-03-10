@@ -92,7 +92,7 @@ class MainActivity : Activity() {
             }
         }
         if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded()) {
-            tvStatus.text = "Cargando: ${File(csvPath).name}"
+            tvStatus.text = "${s.loading}: ${File(csvPath).name}"
             tvStatus.setTextColor(YELLOW)
             HunterEngine.loadCsv(csvPath)
         }
@@ -224,7 +224,7 @@ class MainActivity : Activity() {
         main.addView(sbCpu)
         updateLabels()
 
-        main.addView(sectionLabel("MODO DE BUSQUEDA"))
+        main.addView(sectionLabel(s.modeSection))
         val modeRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,4,0,4) }
         val rbBip39  = RadioButton(this).apply { text="BIP39 (seeds)";      setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
         val rbPuzzle = RadioButton(this).apply { text="Puzzle (rango hex)"; setTextColor(Color.WHITE); textSize=13f; isChecked=puzzleMode; setPadding(20,0,0,0) }
@@ -236,7 +236,7 @@ class MainActivity : Activity() {
         }
 
         layoutPuzzle.addView(TextView(this).apply {
-            text="Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,4)
+            text=s.puzzleSelect; setTextColor(DIM); textSize=11f; setPadding(0,8,0,4)
         })
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
@@ -247,7 +247,7 @@ class MainActivity : Activity() {
         puzzleSpinner.setSelection(defaultIdx)
         layoutPuzzle.addView(puzzleSpinner)
 
-        layoutPuzzle.addView(TextView(this).apply { text="Range Start (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        layoutPuzzle.addView(TextView(this).apply { text=s.rangeStart; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
         etRangeStart = EditText(this).apply {
             setTextColor(Color.WHITE); textSize=11f
             setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
@@ -255,7 +255,7 @@ class MainActivity : Activity() {
         }
         layoutPuzzle.addView(etRangeStart)
 
-        layoutPuzzle.addView(TextView(this).apply { text="Range End (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        layoutPuzzle.addView(TextView(this).apply { text=s.rangeEnd; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
         etRangeEnd = EditText(this).apply {
             setTextColor(Color.WHITE); textSize=11f
             setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
@@ -263,7 +263,7 @@ class MainActivity : Activity() {
         }
         layoutPuzzle.addView(etRangeEnd)
 
-        layoutPuzzle.addView(TextView(this).apply { text="Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        layoutPuzzle.addView(TextView(this).apply { text=s.targetAddr; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
         etTarget = EditText(this).apply {
             setTextColor(YELLOW); textSize=11f
             setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
@@ -393,7 +393,7 @@ class MainActivity : Activity() {
                 if(path!=null){
                     csvPath=path
                     getSharedPreferences("hunter",MODE_PRIVATE).edit().putString("csvPath",csvPath).apply()
-                    tvStatus.text="Cargando: ${File(csvPath).name}"
+                    tvStatus.text="${s.loading}: ${File(csvPath).name}"
                     tvStatus.setTextColor(YELLOW); HunterEngine.loadCsv(csvPath)
                 } else {
                     tvStatus.text=s.copying; tvStatus.setTextColor(YELLOW)
@@ -404,9 +404,9 @@ class MainActivity : Activity() {
                             runOnUiThread{
                                 csvPath=dest.absolutePath
                                 getSharedPreferences("hunter",MODE_PRIVATE).edit().putString("csvPath",csvPath).apply()
-                                tvStatus.text="Cargando: utxos.csv"; HunterEngine.loadCsv(csvPath)
+                                tvStatus.text="${s.loading}: utxos.csv"; HunterEngine.loadCsv(csvPath)
                             }
-                        } catch(e:Exception){runOnUiThread{tvStatus.text="Error: ${e.message}"}}
+                        } catch(e:Exception){runOnUiThread{tvStatus.text="${s.errorPrefix}: ${e.message}"}}
                     }.start()
                 }
             }
@@ -432,8 +432,8 @@ class MainActivity : Activity() {
                 val rs=etRangeStart.text.toString().trim()
                 val re=etRangeEnd.text.toString().trim()
                 val tgt=etTarget.text.toString().trim()
-                if(rs.isEmpty()||re.isEmpty()){Toast.makeText(this,"Ingresa el rango hex",Toast.LENGTH_SHORT).show();return}
-                if(tgt.isEmpty()){Toast.makeText(this,"Ingresa la direccion objetivo",Toast.LENGTH_SHORT).show();return}
+                if(rs.isEmpty()||re.isEmpty()){Toast.makeText(this,s.enterRange,Toast.LENGTH_SHORT).show();return}
+                if(tgt.isEmpty()){Toast.makeText(this,s.enterTarget,Toast.LENGTH_SHORT).show();return}
                 HunterEngine.setRange(rs,re)
                 HunterEngine.setTarget(tgt)
             } else {
