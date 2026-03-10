@@ -7,9 +7,9 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.os.*
 import android.provider.Settings
+import android.text.InputType
 import android.view.*
 import android.widget.*
-import android.text.InputType
 import java.io.*
 
 class MainActivity : Activity() {
@@ -38,23 +38,23 @@ class MainActivity : Activity() {
     private lateinit var tvLogSec: TextView
     private lateinit var tvLangLbl: TextView
     private lateinit var btnCsv: Button
-    private var csvPath: String = ""
-    private var s = Strings.ES
-    private val recentAddrs = mutableListOf<String>()
-    private var puzzleMode = false
     private lateinit var etRangeStart: EditText
     private lateinit var etRangeEnd: EditText
-    private lateinit var layoutPuzzle: LinearLayout
     private lateinit var etTarget: EditText
-    private var addrTick = 0
+    private lateinit var layoutPuzzle: LinearLayout
+    private var csvPath: String = ""
+    private var s = Strings.ES
+    private var puzzleMode = false
+    private val recentAddrs = mutableListOf<String>()
     private val logBuf = StringBuilder()
 
-    data class PuzzleInfo(val num:Int, val addr:String, val start:String, val end:String, val btc:String)
-    val puzzles = listOf(
-        PuzzleInfo(67,"1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9","0000000000000000","ffffffffffffffff","6.7 BTC"),
-        PuzzleInfo(68,"1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ","0000000000000000","1ffffffffffffffff","6.8 BTC"),
-        PuzzleInfo(69,"19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG","0000000000000000","3ffffffffffffffff","6.9 BTC"),
-        PuzzleInfo(70,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.0 BTC"),
+    data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
+
+    private val puzzles = listOf(
+        PuzzleInfo(67,"1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9","400000000000000000","7fffffffffffffff","6.7 BTC"),
+        PuzzleInfo(68,"1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ","800000000000000000","1ffffffffffffffff","6.8 BTC"),
+        PuzzleInfo(69,"19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG","1000000000000000000","3ffffffffffffffff","6.9 BTC"),
+        PuzzleInfo(70,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","2000000000000000000","3fffffffffffffffff","7.0 BTC"),
         PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
         PuzzleInfo(72,"1tBmmAuwdPXXnBKBDFBgGHvCbX4jxDdwt","800000000000000000","ffffffffffffffffff","7.2 BTC"),
         PuzzleInfo(73,"1NAeBPJaAVPPUMkXzGrHKb7YAmxsLoKFGM","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
@@ -76,7 +76,6 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Bloquear capturas de pantalla
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         s = Strings.ALL[prefs.getString("lang","ES")] ?: Strings.ES
         csvPath = prefs.getString("csvPath","") ?: ""
@@ -89,7 +88,6 @@ class MainActivity : Activity() {
                 tvTemp.setTextColor(when { temp<35f->Color.WHITE; temp<42f->YELLOW; else->RED })
             }
         }
-        // Auto-cargar CSV guardado
         if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded()) {
             tvStatus.text = "Cargando: ${File(csvPath).name}"
             tvStatus.setTextColor(YELLOW)
@@ -97,26 +95,13 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        handler.post(updater)
-    }
-
-    override fun onPause() {
-        super.onPause()
-        handler.removeCallbacks(updater)
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        HunterService.tempCallback = null
-    }
+    override fun onResume()  { super.onResume();  handler.post(updater) }
+    override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
+    override fun onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
 
     private fun applyLang(key: String) {
         s = Strings.ALL[key] ?: Strings.ES
-        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
-        prefs.edit().putString("lang", key).apply()
-        // Actualizar todos los textos sin recrear
+        getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
         tvLangLbl.text = "${s.language}: "
         tvCsvSec.text = s.csvSection
         btnCsv.text = s.csvBtn
@@ -129,6 +114,12 @@ class MainActivity : Activity() {
         tvMatchList.text = s.noMatch
         tvAddrFeed.text = s.waitingStart
         updateLabels()
+    }
+
+    private fun applyPuzzle(p: PuzzleInfo) {
+        etRangeStart.setText(p.start)
+        etRangeEnd.setText(p.end)
+        etTarget.setText(p.addr)
     }
 
     private fun checkStoragePermission() {
@@ -158,7 +149,6 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER; setPadding(0,2,0,4)
         })
 
-        // Selector idioma - sin recreate()
         val langRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,0,0,8) }
         tvLangLbl = TextView(this).apply { text="${s.language}: "; setTextColor(DIM); textSize=11f }
         val langKeys = Strings.ALL.keys.toList()
@@ -176,14 +166,12 @@ class MainActivity : Activity() {
         }
         langRow.addView(tvLangLbl); langRow.addView(spinner); main.addView(langRow)
 
-        // RAM + Temp
         val sysRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,6,12,6) }
-        tvRam  = TextView(this).apply { text="${s.ram}: --"; setTextColor(Color.WHITE); textSize=11f
+        tvRam = TextView(this).apply { text="${s.ram}: --"; setTextColor(Color.WHITE); textSize=11f
             layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f) }
         tvTemp = TextView(this).apply { text="${s.temp}: --"; setTextColor(Color.WHITE); textSize=11f }
         sysRow.addView(tvRam); sysRow.addView(tvTemp); main.addView(sysRow)
 
-        // CSV
         tvCsvSec = sectionLabel(s.csvSection); main.addView(tvCsvSec)
         val csvRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL }
         btnCsv = Button(this).apply {
@@ -198,7 +186,6 @@ class MainActivity : Activity() {
         }
         csvRow.addView(btnCsv); csvRow.addView(tvStatus); main.addView(csvRow)
 
-        // Config
         tvConfigSec = sectionLabel(s.configSection); main.addView(tvConfigSec)
         tvThreads = TextView(this).apply { setTextColor(Color.WHITE); textSize=12f }
         main.addView(tvThreads)
@@ -215,109 +202,96 @@ class MainActivity : Activity() {
         main.addView(sbCpu)
         updateLabels()
 
-        // Boton redondo estilo moneda Bitcoin
-        val btnSize = (resources.displayMetrics.widthPixels * 0.42).toInt()
-        val coinGreen = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(GREEN)
-            setStroke(8, Color.parseColor("#22FF22"))
-        }
-        val coinRed = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(RED)
-            setStroke(8, Color.parseColor("#FF4444"))
-        }
-        // Selector de modo
         main.addView(sectionLabel("MODO DE BUSQUEDA"))
         val modeRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER_VERTICAL; setPadding(0,4,0,4) }
-        val rbBip39 = RadioButton(this).apply { text="BIP39 (seeds)"; setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
+        val rbBip39  = RadioButton(this).apply { text="BIP39 (seeds)";      setTextColor(Color.WHITE); textSize=13f; isChecked=!puzzleMode }
         val rbPuzzle = RadioButton(this).apply { text="Puzzle (rango hex)"; setTextColor(Color.WHITE); textSize=13f; isChecked=puzzleMode; setPadding(20,0,0,0) }
         modeRow.addView(rbBip39); modeRow.addView(rbPuzzle); main.addView(modeRow)
 
-        // Panel rango puzzle
-        layoutPuzzle = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; visibility=if(puzzleMode) android.view.View.VISIBLE else android.view.View.GONE }
-        layoutPuzzle.addView(TextView(this).apply { text="Range Start (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
-        etRangeStart = EditText(this).apply {
-            setText("4000000000000000"); setTextColor(Color.WHITE); textSize=11f
-            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
-            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        layoutPuzzle = LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            visibility=if(puzzleMode) View.VISIBLE else View.GONE
         }
-        layoutPuzzle.addView(etRangeStart)
-        layoutPuzzle.addView(TextView(this).apply { text="Range End (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
-        etRangeEnd = EditText(this).apply {
-            setText("7fffffffffffffff"); setTextColor(Color.WHITE); textSize=11f
-            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
-            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        }
-        layoutPuzzle.addView(etRangeEnd)
 
-        // Selector de puzzle
         layoutPuzzle.addView(TextView(this).apply {
-            text = "Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,12,0,4)
+            text="Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,4)
         })
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
-        val puzzleLabels = puzzles.map { "#${it.num} - ${it.btc} - ${it.addr.take(16)}..." }
+        val puzzleLabels = puzzles.map { "#${it.num} - ${it.btc} - ${it.addr.take(14)}..." }
         val puzzleSpinner = Spinner(this)
         puzzleSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, puzzleLabels)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         puzzleSpinner.setSelection(defaultIdx)
         layoutPuzzle.addView(puzzleSpinner)
-        fun applyPuzzle(p: PuzzleInfo) {
-            etRangeStart.setText(p.start)
-            etRangeEnd.setText(p.end)
-            etTarget.setText(p.addr)
+
+        layoutPuzzle.addView(TextView(this).apply { text="Range Start (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        etRangeStart = EditText(this).apply {
+            setTextColor(Color.WHITE); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
+        layoutPuzzle.addView(etRangeStart)
+
+        layoutPuzzle.addView(TextView(this).apply { text="Range End (hex):"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        etRangeEnd = EditText(this).apply {
+            setTextColor(Color.WHITE); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        layoutPuzzle.addView(etRangeEnd)
+
+        layoutPuzzle.addView(TextView(this).apply { text="Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2) })
+        etTarget = EditText(this).apply {
+            setTextColor(YELLOW); textSize=11f
+            setBackgroundColor(DARK); setPadding(8,8,8,8); typeface=Typeface.MONOSPACE
+            inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+        layoutPuzzle.addView(etTarget)
+
         applyPuzzle(puzzles[defaultIdx])
+
         puzzleSpinner.onItemSelectedListener = object: AdapterView.OnItemSelectedListener {
+            var init = true
             override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
+                if(init){init=false;return}
                 applyPuzzle(puzzles[pos])
             }
             override fun onNothingSelected(a: AdapterView<*>) {}
         }
-        layoutPuzzle.addView(TextView(this).apply {
-            text = "Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2)
-        })
-        etTarget = EditText(this).apply {
-            setTextColor(YELLOW); textSize=11f
-            setBackgroundColor(DARK); setPadding(8,8,8,8)
-            typeface = Typeface.MONOSPACE
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        }
-        layoutPuzzle.addView(etTarget)
-        applyPuzzle(puzzles[defaultIdx])
+
         main.addView(layoutPuzzle)
 
         val modeToggle = { isPuzzle: Boolean ->
             puzzleMode = isPuzzle
             rbBip39.isChecked = !isPuzzle
             rbPuzzle.isChecked = isPuzzle
-            layoutPuzzle.visibility = if(isPuzzle) android.view.View.VISIBLE else android.view.View.GONE
+            layoutPuzzle.visibility = if(isPuzzle) View.VISIBLE else View.GONE
             HunterEngine.setMode(if(isPuzzle) 1 else 0)
         }
         rbBip39.setOnClickListener  { modeToggle(false) }
-        rbPuzzle.setOnClickListener { modeToggle(true)  }
+        rbPuzzle.setOnClickListener { modeToggle(true) }
 
-                btnToggle = Button(this).apply {
-            text = s.start
-            background = coinGreen
-            setTextColor(Color.WHITE)
-            textSize = 15f
-            setTypeface(null, Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(btnSize/2, btnSize/2).apply {
-                gravity = android.view.Gravity.CENTER_HORIZONTAL
-                topMargin = 20; bottomMargin = 8
+        val btnSize = (resources.displayMetrics.widthPixels * 0.42).toInt()
+        val coinGreen = android.graphics.drawable.GradientDrawable().apply {
+            shape=android.graphics.drawable.GradientDrawable.OVAL
+            setColor(GREEN); setStroke(8, Color.parseColor("#22FF22"))
+        }
+        val coinRed = android.graphics.drawable.GradientDrawable().apply {
+            shape=android.graphics.drawable.GradientDrawable.OVAL
+            setColor(RED); setStroke(8, Color.parseColor("#FF4444"))
+        }
+        btnToggle = Button(this).apply {
+            text=s.start; background=coinGreen; setTextColor(Color.WHITE)
+            textSize=15f; setTypeface(null,Typeface.BOLD)
+            layoutParams=LinearLayout.LayoutParams(btnSize/2,btnSize/2).apply {
+                gravity=Gravity.CENTER_HORIZONTAL; topMargin=20; bottomMargin=8
             }
             setOnClickListener { doToggle() }
         }
-        // guardar drawables para toggle
         btnToggle.tag = arrayOf(coinGreen, coinRed)
-        val btnWrap = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-        }
-        btnWrap.addView(btnToggle)
-        main.addView(btnWrap)
+        val btnWrap = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; gravity=Gravity.CENTER }
+        btnWrap.addView(btnToggle); main.addView(btnWrap)
 
         tvStatsSec = sectionLabel(s.statsSection); main.addView(tvStatsSec)
         val sp = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
@@ -351,7 +325,6 @@ class MainActivity : Activity() {
         }
         main.addView(tvLog)
 
-        // Footer firma
         tvFooter = TextView(this).apply {
             text="Propiedad de Dax2201 | Optimizado por Claude"
             textSize=9f; setTextColor(Color.parseColor("#444448"))
@@ -433,20 +406,16 @@ class MainActivity : Activity() {
             HunterEngine.stopHunting()
             btnToggle.text=s.start; btnToggle.background=coinGreen
         } else {
-            if(!HunterEngine.isCsvLoaded() && !puzzleMode){
-                Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show(); return
-            }
-            if(puzzleMode) {
-                val rs = etRangeStart.text.toString().trim()
-                val re = etRangeEnd.text.toString().trim()
+            if(puzzleMode){
+                val rs=etRangeStart.text.toString().trim()
+                val re=etRangeEnd.text.toString().trim()
+                val tgt=etTarget.text.toString().trim()
                 if(rs.isEmpty()||re.isEmpty()){Toast.makeText(this,"Ingresa el rango hex",Toast.LENGTH_SHORT).show();return}
-                HunterEngine.setRange(rs, re)
-                val tgt = etTarget.text.toString().trim()
+                if(tgt.isEmpty()){Toast.makeText(this,"Ingresa la direccion objetivo",Toast.LENGTH_SHORT).show();return}
+                HunterEngine.setRange(rs,re)
                 HunterEngine.setTarget(tgt)
-                if(tgt.isEmpty() && !HunterEngine.isCsvLoaded()){
-                    Toast.makeText(this,"Ingresa una direccion objetivo o carga el CSV",Toast.LENGTH_LONG).show()
-                    return
-                }
+            } else {
+                if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show();return}
             }
             HunterEngine.startHunting(sbThreads.progress+1, sbCpu.progress+10)
             btnToggle.text=s.stop; btnToggle.background=coinRed
@@ -459,7 +428,10 @@ class MainActivity : Activity() {
         tvLog.text=logBuf.toString()
         val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
-        if(!running && btnToggle.text==s.stop){btnToggle.text=s.start;btnToggle.background=(btnToggle.tag as? Array<*>)?.get(0) as? android.graphics.drawable.GradientDrawable ?: btnToggle.background}
+        if(!running && btnToggle.text==s.stop){
+            btnToggle.text=s.start
+            btnToggle.background=(btnToggle.tag as? Array<*>)?.get(0) as? android.graphics.drawable.GradientDrawable ?: btnToggle.background
+        }
         btnToggle.isEnabled=(loaded&&!loading)||puzzleMode
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
@@ -471,9 +443,8 @@ class MainActivity : Activity() {
         if(running){
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
-
-            if(recentAddrs.isNotEmpty()) tvAddrFeed.text = recentAddrs.takeLast(3).map { "$it  -> 0.00000000 BTC" }.joinToString("\n")
-        } else if(!loaded) tvAddrFeed.text=s.waitingStart
+            if(recentAddrs.isNotEmpty()) tvAddrFeed.text=recentAddrs.takeLast(3).map{"$it  -> 0.00000000 BTC"}.joinToString("\n")
+        } else if(!loaded&&!puzzleMode) tvAddrFeed.text=s.waitingStart
         updateRam()
         handler.postDelayed(this,333L)
     }}
