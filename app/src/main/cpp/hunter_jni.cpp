@@ -26,7 +26,7 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PBKDF2_ITERS  1
-#define MAX_THREADS   8
+#define MAX_THREADS  16
 #define LOCAL_BATCH   20
 #define MAX_CSV_ROWS  120000000ULL
 #define HASH160_BYTES 20
