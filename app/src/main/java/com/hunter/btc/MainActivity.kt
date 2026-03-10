@@ -49,6 +49,19 @@ class MainActivity : Activity() {
     private var addrTick = 0
     private val logBuf = StringBuilder()
 
+    data class PuzzleInfo(val num:Int, val addr:String, val start:String, val end:String, val btc:String)
+    val puzzles = listOf(
+        PuzzleInfo(67,"1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9","0000000000000000","ffffffffffffffff","6.7 BTC"),
+        PuzzleInfo(68,"1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ","0000000000000000","1ffffffffffffffff","6.8 BTC"),
+        PuzzleInfo(69,"19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG","0000000000000000","3ffffffffffffffff","6.9 BTC"),
+        PuzzleInfo(70,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.0 BTC"),
+        PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
+        PuzzleInfo(72,"1tBmmAuwdPXXnBKBDFBgGHvCbX4jxDdwt","800000000000000000","ffffffffffffffffff","7.2 BTC"),
+        PuzzleInfo(73,"1NAeBPJaAVPPUMkXzGrHKb7YAmxsLoKFGM","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
+        PuzzleInfo(74,"1Me6EfpwZK5kQziBwBfvLiHjaPGxCKLoJi","2000000000000000000","3ffffffffffffffffff","7.4 BTC"),
+        PuzzleInfo(75,"1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS","4000000000000000000","7ffffffffffffffffff","7.5 BTC")
+    )
+
     companion object {
         val ORANGE = Color.parseColor("#FF8C00")
         val GREEN  = Color.parseColor("#33CC33")
@@ -242,19 +255,6 @@ class MainActivity : Activity() {
         layoutPuzzle.addView(TextView(this).apply {
             text = "Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,12,0,4)
         })
-
-        // Datos: numero, address, start, end, BTC
-        data class PuzzleInfo(val num:Int, val addr:String, val start:String, val end:String, val btc:String)
-        val puzzles = listOf(
-            PuzzleInfo(67,"1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9","0000000000000000","ffffffffffffffff","6.7 BTC"),
-            PuzzleInfo(68,"1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ","0000000000000000","1ffffffffffffffff","6.8 BTC"),
-            PuzzleInfo(69,"19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG","0000000000000000","3ffffffffffffffff","6.9 BTC"),
-            PuzzleInfo(70,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.0 BTC"),
-            PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
-            PuzzleInfo(72,"1tBmmAuwdPXXnBKBDFBgGHvCbX4jxDdwt", "800000000000000000","ffffffffffffffffff","7.2 BTC"),
-            PuzzleInfo(73,"1NAeBPJaAVPPUMkXzGrHKb7YAmxsLoKFGM","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
-            PuzzleInfo(74,"1Me6EfpwZK5kQziBwBfvLiHjaPGxCKLoJi","2000000000000000000","3ffffffffffffffffff","7.4 BTC"),
-            PuzzleInfo(75,"1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS","4000000000000000000","7ffffffffffffffffff","7.5 BTC")
         )
 
         // Dia del año determina puzzle por defecto
