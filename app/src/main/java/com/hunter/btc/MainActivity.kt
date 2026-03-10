@@ -251,46 +251,32 @@ class MainActivity : Activity() {
         }
         layoutPuzzle.addView(etRangeEnd)
 
-        // Selector de puzzle por numero
+        // Selector de puzzle
         layoutPuzzle.addView(TextView(this).apply {
             text = "Seleccionar Puzzle:"; setTextColor(DIM); textSize=11f; setPadding(0,12,0,4)
         })
-        )
-
-        // Dia del año determina puzzle por defecto
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
-
         val puzzleLabels = puzzles.map { "#${it.num} - ${it.btc} - ${it.addr.take(16)}..." }
         val puzzleSpinner = Spinner(this)
         puzzleSpinner.adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, puzzleLabels)
             .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
         puzzleSpinner.setSelection(defaultIdx)
         layoutPuzzle.addView(puzzleSpinner)
-
-        // Aplicar puzzle seleccionado
         fun applyPuzzle(p: PuzzleInfo) {
             etRangeStart.setText(p.start)
             etRangeEnd.setText(p.end)
             etTarget.setText(p.addr)
         }
         applyPuzzle(puzzles[defaultIdx])
-
         puzzleSpinner.onItemSelectedListener = object: AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(parent: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
+            override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
                 applyPuzzle(puzzles[pos])
             }
-            override fun onNothingSelected(parent: AdapterView<*>) {}
+            override fun onNothingSelected(a: AdapterView<*>) {}
         }
-
-        // Separador
         layoutPuzzle.addView(TextView(this).apply {
-            text = "- o edita manualmente -"; setTextColor(Color.parseColor("#444448"))
-            textSize=10f; gravity=Gravity.CENTER; setPadding(0,8,0,4)
-        })
-
-        layoutPuzzle.addView(TextView(this).apply {
-            text = "Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,4,0,2)
+            text = "Target Address:"; setTextColor(DIM); textSize=11f; setPadding(0,8,0,2)
         })
         etTarget = EditText(this).apply {
             setTextColor(YELLOW); textSize=11f
@@ -300,7 +286,6 @@ class MainActivity : Activity() {
         }
         layoutPuzzle.addView(etTarget)
         applyPuzzle(puzzles[defaultIdx])
-
         main.addView(layoutPuzzle)
 
         val modeToggle = { isPuzzle: Boolean ->
