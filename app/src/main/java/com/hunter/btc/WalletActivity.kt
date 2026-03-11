@@ -115,35 +115,54 @@ class WalletActivity : FragmentActivity() {
 
     /* -- PIN DIALOG -- */
     private fun showPinDialog(isSetup: Boolean, onResult: (Boolean) -> Unit) {
-        val layout = LinearLayout(this).apply {
+        // Sheet container
+        val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(20), dp(24), dp(8))
-            setBackgroundColor(BG_PANEL)
+            setBackgroundColor(Color.parseColor("#0c0f18"))
+            setPadding(dp(22), dp(16), dp(22), dp(40))
         }
-        layout.addView(TextView(this).apply {
-            text = if (isSetup) "Create PIN" else "Enter PIN"
-            textSize = 16f; setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(16))
+
+        // Handle bar
+        sheet.addView(View(this).apply {
+            background = GradientDrawable().apply { setColor(Color.parseColor("#1f2640")); cornerRadius = dp(2).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(3)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(22) }
         })
 
+        // Title
+        sheet.addView(TextView(this).apply {
+            text = if (isSetup) "Create PIN" else "Enter PIN"
+            textSize = 16f; setTextColor(TXT_PRI)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.04f
+            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(22))
+        })
+
+        // Dots row
         val pinDisplay = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(20))
+            setPadding(0, 0, 0, dp(28))
         }
         val dots = Array(6) {
             View(this).apply {
-                val sz = dp(14)
-                layoutParams = LinearLayout.LayoutParams(sz, sz).apply { marginEnd = dp(10) }
-                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(TXT_MUTED) }
+                val sz = dp(12)
+                layoutParams = LinearLayout.LayoutParams(sz, sz).apply { marginEnd = dp(14) }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.TRANSPARENT)
+                    setStroke(dp(2), Color.parseColor("#1f2640"))
+                }
             }
         }
         dots.forEach { pinDisplay.addView(it) }
-        layout.addView(pinDisplay)
+        sheet.addView(pinDisplay)
 
         val tvStatus = TextView(this).apply {
             text = if (isSetup) "Choose a 6-digit PIN" else "Enter your PIN"
-            textSize = 10f; setTextColor(TXT_SEC); gravity = Gravity.CENTER
+            textSize = 10f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            letterSpacing = 0.05f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(16))
         }
 
         val pin = StringBuilder()
@@ -151,7 +170,14 @@ class WalletActivity : FragmentActivity() {
         var dlg: AlertDialog? = null
 
         fun updateDots() = dots.forEachIndexed { i, d ->
-            (d.background as GradientDrawable).setColor(if (i < pin.length) AMBER else TXT_MUTED)
+            val bg = d.background as GradientDrawable
+            if (i < pin.length) {
+                bg.setColor(AMBER)
+                bg.setStroke(0, Color.TRANSPARENT)
+            } else {
+                bg.setColor(Color.TRANSPARENT)
+                bg.setStroke(dp(2), Color.parseColor("#1f2640"))
+            }
         }
 
         fun handleDigit(k: String) {
@@ -180,27 +206,59 @@ class WalletActivity : FragmentActivity() {
             }
         }
 
-        val numpad = GridLayout(this).apply { columnCount = 3; rowCount = 4; setPadding(dp(8), 0, dp(8), 0) }
+        // Numpad grid
+        val numpad = GridLayout(this).apply {
+            columnCount = 3; rowCount = 4
+            setPadding(0, 0, 0, dp(10))
+        }
         listOf("1","2","3","4","5","6","7","8","9","","0","DEL").forEach { k ->
             numpad.addView(Button(this).apply {
-                text = k; textSize = 20f
-                setTextColor(if (k == "DEL") RED else TXT_PRI)
-                typeface = Typeface.create("monospace", Typeface.BOLD)
-                background = GradientDrawable().apply {
-                    setColor(if (k.isEmpty()) Color.TRANSPARENT else BG_ELEV)
-                    setStroke(if (k.isEmpty()) 0 else 1, BORDER_C)
+                text = k
+                if (k == "DEL") {
+                    textSize = 12f; setTextColor(RED)
+                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    letterSpacing = 0.05f
+                } else {
+                    textSize = 22f; setTextColor(TXT_PRI)
+                    typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
                 }
-                val sz = dp(64)
-                layoutParams = GridLayout.LayoutParams().apply { width = sz; height = sz; setMargins(dp(4),dp(4),dp(4),dp(4)) }
+                background = GradientDrawable().apply {
+                    setColor(if (k.isEmpty()) Color.TRANSPARENT else Color.parseColor("#111520"))
+                    if (k.isNotEmpty()) setStroke(1, Color.parseColor("#1f2640"))
+                    cornerRadius = dp(8).toFloat()
+                }
+                val sz = dp(72)
+                layoutParams = GridLayout.LayoutParams().apply {
+                    width = sz; height = sz
+                    setMargins(dp(4), dp(4), dp(4), dp(4))
+                }
                 isEnabled = k.isNotEmpty()
                 if (k.isNotEmpty()) setOnClickListener { handleDigit(k) }
             })
         }
-        layout.addView(numpad)
-        layout.addView(tvStatus)
+        sheet.addView(numpad)
+        sheet.addView(tvStatus)
 
-        dlg = AlertDialog.Builder(this).setView(layout).setCancelable(false).create()
-        if (!isSetup) dlg!!.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancel") { _, _ -> dlg?.dismiss(); onResult(false) }
+        // Cancel button
+        val btnCancel = Button(this).apply {
+            text = "Cancel"
+            textSize = 12f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.1f; isAllCaps = true
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(1, Color.parseColor("#1f2640"))
+                cornerRadius = dp(6).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+        }
+        sheet.addView(btnCancel)
+
+        dlg = AlertDialog.Builder(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+            .setView(sheet).setCancelable(false).create()
+        dlg!!.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        btnCancel.setOnClickListener { dlg?.dismiss(); onResult(false) }
+        if (isSetup) btnCancel.visibility = View.GONE
         dlg!!.show()
     }
 
