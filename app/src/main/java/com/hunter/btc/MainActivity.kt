@@ -163,6 +163,22 @@ class MainActivity : Activity() {
     override fun onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
 
     private lateinit var btnLangRef: Button
+
+    private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
+        Thread {
+            try {
+                val url = java.net.URL("https://mempool.space/api/address/$addr")
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 5000; conn.readTimeout = 5000
+                val json = conn.inputStream.bufferedReader().readText()
+                // {"chain_stats":{"funded_txo_sum":...,"spent_txo_sum":...},...}
+                val funded = Regex('"funded_txo_sum":(\d+)').find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val spent  = Regex('"spent_txo_sum":(\d+)').find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                onResult(funded - spent)
+            } catch(e: Exception) { onResult(-1L) }
+        }.start()
+    }
+
     private fun applyLang(key: String) {
         s = Strings.ALL[key] ?: Strings.ES
         getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
@@ -186,6 +202,27 @@ class MainActivity : Activity() {
         etRangeStart.setText(p.start)
         etRangeEnd.setText(p.end)
         etTarget.setText(p.addr)
+        tvPuzzleStatus.text = "Checking balance..."
+        tvPuzzleStatus.setTextColor(Color.parseColor("#888888"))
+        checkPuzzleBalance(p.addr) { sats ->
+            runOnUiThread {
+                when {
+                    sats < 0 -> {
+                        tvPuzzleStatus.text = "Could not check balance"
+                        tvPuzzleStatus.setTextColor(Color.parseColor("#888888"))
+                    }
+                    sats == 0L -> {
+                        tvPuzzleStatus.text = "Already solved - no balance"
+                        tvPuzzleStatus.setTextColor(Color.parseColor("#FF4444"))
+                    }
+                    else -> {
+                        val btc = sats / 1e8
+                        tvPuzzleStatus.text = "Active: %.8f BTC".format(btc)
+                        tvPuzzleStatus.setTextColor(Color.parseColor("#44BB44"))
+                    }
+                }
+            }
+        }
     }
 
     private fun checkStoragePermission() {
@@ -332,6 +369,11 @@ class MainActivity : Activity() {
             inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         layoutPuzzle.addView(etTarget)
+        val tvPuzzleStatus = TextView(this).apply {
+            text=""; textSize=10f; setPadding(0,4,0,0)
+            setTextColor(Color.parseColor("#44BB44"))
+        }
+        layoutPuzzle.addView(tvPuzzleStatus)
 
         applyPuzzle(puzzles[defaultIdx])
 
