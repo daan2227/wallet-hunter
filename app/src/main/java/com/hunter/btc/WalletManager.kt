@@ -3,20 +3,28 @@ package com.hunter.btc
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.GCMParameterSpec
-import android.util.Base64
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 object WalletManager {
-    private const val KEY_ALIAS   = "hunter_wallet_key"
-    private const val PREFS_NAME  = "wallet_prefs"
-    private const val PREF_SEED   = "enc_seed"
-    private const val PREF_IV     = "enc_iv"
-    private const val PREF_ADDRS  = "wallet_addrs"
+    private const val KEY_ALIAS  = "hunter_wallet_key"
+    private const val PREFS_NAME = "wallet_prefs"
+    private const val PREF_SEED  = "enc_seed"
+    private const val PREF_IV    = "enc_iv"
+    private const val PREF_SALT  = "pin_salt"
+    private const val PREF_VER   = "pin_verify"
+    private const val PREF_VIV   = "pin_verify_iv"
+    private const val PREF_ADDRS = "wallet_addrs"
+    private const val PBKDF2_ITER = 100000
 
+    /* Keystore key solo para seed (hardware-backed) */
     private fun getOrCreateKey(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
         if (ks.containsAlias(KEY_ALIAS))
@@ -26,64 +34,82 @@ object WalletManager {
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-            .setKeySize(256)
-            .build())
+            .setKeySize(256).build())
         return kg.generateKey()
     }
 
+    /* Deriva clave AES-256 del PIN usando PBKDF2 */
+    private fun pinToKey(pin: String, salt: ByteArray): SecretKey {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITER, 256)
+        val raw  = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        return SecretKeySpec(raw, "AES")
+    }
+
+    private fun aesEncrypt(key: SecretKey, data: ByteArray): Pair<ByteArray,ByteArray> {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        return Pair(cipher.doFinal(data), cipher.iv)
+    }
+
+    private fun aesDecrypt(key: SecretKey, data: ByteArray, iv: ByteArray): ByteArray? {
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+            cipher.doFinal(data)
+        } catch(e: Exception) { null }
+    }
+
+    /* Guarda seed cifrada con Keystore (hardware) */
     fun saveSeed(ctx: Context, mnemonic: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val enc = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
-        val iv  = cipher.iv
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putString(PREF_SEED, Base64.encodeToString(enc, Base64.NO_WRAP))
-            .putString(PREF_IV,   Base64.encodeToString(iv,  Base64.NO_WRAP))
+            .putString(PREF_IV,   Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .apply()
     }
 
     fun loadSeed(ctx: Context): String? {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val encB64 = prefs.getString(PREF_SEED, null) ?: return null
-        val ivB64  = prefs.getString(PREF_IV,   null) ?: return null
+        val enc = Base64.decode(prefs.getString(PREF_SEED, null) ?: return null, Base64.NO_WRAP)
+        val iv  = Base64.decode(prefs.getString(PREF_IV,   null) ?: return null, Base64.NO_WRAP)
         return try {
-            val enc = Base64.decode(encB64, Base64.NO_WRAP)
-            val iv  = Base64.decode(ivB64,  Base64.NO_WRAP)
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
             String(cipher.doFinal(enc), Charsets.UTF_8)
         } catch(e: Exception) { null }
     }
 
-    fun hasSeed(ctx: Context): Boolean =
+    fun hasSeed(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SEED)
 
-
+    /* PIN: guarda salt + texto de verificacion cifrado con clave derivada del PIN
+       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false
+       No hay hash almacenado -> no hay brute-force offline directo */
     fun savePin(ctx: Context, pin: String) {
-        val hash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
+        val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+        val key  = pinToKey(pin, salt)
+        val (enc, iv) = aesEncrypt(key, "wallet_ok".toByteArray())
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString("pin_hash", hash).apply()
+            .putString(PREF_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+            .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
+            .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
+            .apply()
     }
 
     fun checkPin(ctx: Context, pin: String): Boolean {
-        val stored = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString("pin_hash", null) ?: return false
-        val hash = java.security.MessageDigest.getInstance("SHA-256")
-            .digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
-        return stored == hash
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val salt = Base64.decode(prefs.getString(PREF_SALT, null) ?: return false, Base64.NO_WRAP)
+        val enc  = Base64.decode(prefs.getString(PREF_VER,  null) ?: return false, Base64.NO_WRAP)
+        val iv   = Base64.decode(prefs.getString(PREF_VIV,  null) ?: return false, Base64.NO_WRAP)
+        val key  = pinToKey(pin, salt)
+        val dec  = aesDecrypt(key, enc, iv) ?: return false
+        return String(dec) == "wallet_ok"
     }
 
-    fun hasPin(ctx: Context): Boolean =
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains("pin_hash")
-
-    fun clearSeed(ctx: Context) {
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
-        try {
-            val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-            ks.deleteEntry(KEY_ALIAS)
-        } catch(e: Exception) {}
-    }
+    fun hasPin(ctx: Context) =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)
 
     fun saveAddresses(ctx: Context, json: String) {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -92,4 +118,9 @@ object WalletManager {
 
     fun loadAddresses(ctx: Context): String? =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ADDRS, null)
+
+    fun clearSeed(ctx: Context) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
+    }
 }
