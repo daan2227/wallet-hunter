@@ -304,21 +304,56 @@ typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;}Hit;
 
 static void *worker_bip39_fn(void *){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-    char mn[256];uint8_t seed[64],h160[HASH160_BYTES];
-    Hit hits[LOCAL_BATCH*N_PATHS];int nhits=0;long local_done=0;
+    char mn[256]; uint8_t seed[64],h160[HASH160_BYTES];
+    Hit hits[LOCAL_BATCH*N_PATHS]; int nhits=0; long local_done=0;
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
-        nhits=0;local_done=0;
+        nhits=0; local_done=0;
         for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
             gen_mnemonic(mn,sizeof(mn));
             PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,EVP_sha512(),64,seed);
-            for(int pi=0;pi<N_PATHS&&!g_stop.load();pi++){
-                HDKey hd;derive_path(ctx,seed,PATHS[pi],&hd);
-                pk_to_h160(ctx,hd.key,h160);local_done++;
-                {char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-                int64_t idx=bsearch_h160(h160);
-                if(idx>=0){hits[nhits].idx=idx;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,hd.key,PRIVKEY_BYTES);hits[nhits].pi=pi;nhits++;}
+            HDKey master; derive_master(seed,&master);
+            /* --- Shared subtree m/44'/0'/0' --- */
+            HDKey h44,h44_0,h44_0_0;
+            derive_child(ctx,&master,0x80000000u+44,&h44);
+            derive_child(ctx,&h44,0x80000000u+0,&h44_0);
+            derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
+            /* m/44'/0'/0'/0  (change=0) */
+            HDKey h44_ch0; derive_child(ctx,&h44_0_0,0,&h44_ch0);
+            for(int i=0;i<5;i++){
+                HDKey leaf; derive_child(ctx,&h44_ch0,i,&leaf);
+                pk_to_h160(ctx,leaf.key,h160); local_done++;
+                {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
+                int64_t ix=bsearch_h160(h160);
+                if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,leaf.key,PRIVKEY_BYTES);hits[nhits].pi=i;nhits++;}
             }
+            /* m/44'/0'/0'/1/0  (change=1) */
+            HDKey h44_ch1,h44_ch1_0;
+            derive_child(ctx,&h44_0_0,1,&h44_ch1);
+            derive_child(ctx,&h44_ch1,0,&h44_ch1_0);
+            pk_to_h160(ctx,h44_ch1_0.key,h160); local_done++;
+            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
+            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_ch1_0.key,PRIVKEY_BYTES);hits[nhits].pi=7;nhits++;}}
+            /* --- m/49'/0'/0'/0/0 --- */
+            HDKey h49,h49_0,h49_00,h49_000,h49_leaf;
+            derive_child(ctx,&master,0x80000000u+49,&h49);
+            derive_child(ctx,&h49,0x80000000u+0,&h49_0);
+            derive_child(ctx,&h49_0,0x80000000u+0,&h49_00);
+            derive_child(ctx,&h49_00,0,&h49_000);
+            derive_child(ctx,&h49_000,0,&h49_leaf);
+            pk_to_h160(ctx,h49_leaf.key,h160); local_done++;
+            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
+            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h49_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=5;nhits++;}}
+            /* --- m/84'/0'/0'/0/0 --- */
+            HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
+            derive_child(ctx,&master,0x80000000u+84,&h84);
+            derive_child(ctx,&h84,0x80000000u+0,&h84_0);
+            derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
+            derive_child(ctx,&h84_00,0,&h84_000);
+            derive_child(ctx,&h84_000,0,&h84_leaf);
+            pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
+            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
+            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
@@ -327,20 +362,16 @@ static void *worker_bip39_fn(void *){
         for(int i=0;i<nhits;i++){
             g_found.fetch_add(1);
             char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
-            uint8_t h160b[20];pk_to_h160(ctx,hits[i].pk,h160b);h160_to_addr(h160b,addr);pk_to_wif(hits[i].pk,wif);
-            for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
-            uint8_t h160b2[20];pk_to_h160(ctx,hits[i].pk,h160b2);read_row_by_h160(h160b2,sats,type_);
-            uint64_t satval=(uint64_t)strtoull(sats,NULL,10);double btc=satval/1e8;
-            char extra[512];snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
+            uint8_t h160b[20]; pk_to_h160(ctx,hits[i].pk,h160b); h160_to_addr(h160b,addr); pk_to_wif(hits[i].pk,wif);
+            for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
+            uint8_t h160b2[20]; pk_to_h160(ctx,hits[i].pk,h160b2); read_row_by_h160(h160b2,sats,type_);
+            uint64_t satval=(uint64_t)strtoull(sats,NULL,10); double btc=satval/1e8;
+            char extra[512]; snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
             save_match(pkhex,addr,btc,wif,extra);
         }
     }
-    secp256k1_context_destroy(ctx);return nullptr;
+    secp256k1_context_destroy(ctx); return nullptr;
 }
-
-/* =========================================================
-   Worker PUZZLE (modo 1) - rango de clave privada
-   ========================================================= */
 
 static void privkey_increment(uint8_t *k){
     for(int i=31;i>=0;i--){if(++k[i])break;}

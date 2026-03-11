@@ -146,7 +146,7 @@ static void jp_add_G(JP *R,const JP *P){
     fe_mul(R->z,H,P->z);
 }
 
-#define JAC_BATCH 4000
+#define JAC_BATCH 8000
 
 /* Batch normalize: given pts[0..n-1] in Jacobian, write compressed pub33[i] for each.
    Uses Montgomery batch inversion: 1 inv + 3n mults instead of n invs. */
