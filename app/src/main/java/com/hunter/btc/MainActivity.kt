@@ -319,7 +319,7 @@ class MainActivity : Activity() {
         hRow1.addView(brand)
         hRow1.addView(btnWallet)
         hRow1.addView(btnLang)
-        // Fila 2: botones pequeños
+        // Fila 2: botones pequenos
         val hRow2 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.END

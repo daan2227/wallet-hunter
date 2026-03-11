@@ -27,7 +27,7 @@
 
 #define PBKDF2_ITERS  1
 #define MAX_THREADS  16
-#define LOCAL_BATCH   20
+#define LOCAL_BATCH   32
 #define MAX_CSV_ROWS  120000000ULL
 #define HASH160_BYTES 20
 #define PRIVKEY_BYTES 32

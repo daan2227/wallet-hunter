@@ -49,7 +49,7 @@ class WalletActivity : FragmentActivity() {
         "p2wpkh_0" to "WPKH  [0]", "p2wpkh_1" to "WPKH  [1]"
     )
 
-    /* ── LIFECYCLE ── */
+    /* -- LIFECYCLE -- */
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         lastInteraction = System.currentTimeMillis()
@@ -85,7 +85,7 @@ class WalletActivity : FragmentActivity() {
         lastInteraction = System.currentTimeMillis()
     }
 
-    /* ── AUTH: biometria con fallback a PIN ── */
+    /* -- AUTH: biometria con fallback a PIN -- */
     private fun authenticate(onSuccess: () -> Unit) {
         val bm = BiometricManager.from(this)
         val canBio = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
@@ -113,7 +113,7 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
-    /* ── PIN DIALOG ── */
+    /* -- PIN DIALOG -- */
     private fun showPinDialog(isSetup: Boolean, onResult: (Boolean) -> Unit) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -204,7 +204,7 @@ class WalletActivity : FragmentActivity() {
         dlg!!.show()
     }
 
-    /* ── LOAD ADDRESSES ── */
+    /* -- LOAD ADDRESSES -- */
     private fun loadAddresses() {
         val cached = WalletManager.loadAddresses(this)
         if (cached != null) {
@@ -220,7 +220,7 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
-    /* ── MAIN UI ── */
+    /* -- MAIN UI -- */
     private fun buildUI() {
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
@@ -278,7 +278,7 @@ class WalletActivity : FragmentActivity() {
         loadBalanceTab()
     }
 
-    /* ── BALANCE ── */
+    /* -- BALANCE -- */
     private fun loadBalanceTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
@@ -316,13 +316,13 @@ class WalletActivity : FragmentActivity() {
             runOnUiThread {
                 val btcText = "%.8f BTC".format(tot / 1e8)
                 val fiatText = if (pr > 0) "~ ${"%.2f".format(tot / 1e8 * pr)} USD" else ""
-                tvTotal.text = if (balanceVisible) btcText else "••••••••"
+                tvTotal.text = if (balanceVisible) btcText else "********"
                 tvTotal.setTextColor(if (tot > 0) GREEN else AMBER)
-                if (pr > 0) tvFiat.text = if (balanceVisible) fiatText else "••••••"
+                if (pr > 0) tvFiat.text = if (balanceVisible) fiatText else "******"
                 tvTotal.setOnClickListener {
                     balanceVisible = !balanceVisible
-                    tvTotal.text = if (balanceVisible) btcText else "••••••••"
-                    tvFiat.text  = if (balanceVisible) fiatText else "••••••"
+                    tvTotal.text = if (balanceVisible) btcText else "********"
+                    tvFiat.text  = if (balanceVisible) fiatText else "******"
                 }
                 rows.forEach { (lbl, addr, bal) ->
                     val card = LinearLayout(this).apply {
@@ -344,7 +344,7 @@ class WalletActivity : FragmentActivity() {
         }.start()
     }
 
-    /* ── HISTORY ── */
+    /* -- HISTORY -- */
     private fun loadHistoryTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
@@ -387,7 +387,7 @@ class WalletActivity : FragmentActivity() {
         }.start()
     }
 
-    /* ── SEND ── */
+    /* -- SEND -- */
     private fun loadSendTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
@@ -498,7 +498,7 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
-    /* ── RECEIVE ── */
+    /* -- RECEIVE -- */
     private fun loadReceiveTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)); gravity = Gravity.CENTER_HORIZONTAL }
@@ -541,7 +541,7 @@ class WalletActivity : FragmentActivity() {
         scroll.addView(ll); tabContent.addView(scroll)
     }
 
-    /* ── MENU ── */
+    /* -- MENU -- */
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
             .setItems(arrayOf("Show seed phrase","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
@@ -556,7 +556,7 @@ class WalletActivity : FragmentActivity() {
             }.show()
     }
 
-    /* ── SETUP DIALOG ── */
+    /* -- SETUP DIALOG -- */
     private fun showSetupDialog() {
         val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20),dp(16),dp(20),dp(8)); setBackgroundColor(BG_PANEL) }
         val etSeed = EditText(this).apply {
