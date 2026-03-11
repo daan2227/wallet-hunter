@@ -58,6 +58,25 @@ object WalletManager {
     fun hasSeed(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SEED)
 
+
+    fun savePin(ctx: Context, pin: String) {
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString("pin_hash", hash).apply()
+    }
+
+    fun checkPin(ctx: Context, pin: String): Boolean {
+        val stored = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("pin_hash", null) ?: return false
+        val hash = java.security.MessageDigest.getInstance("SHA-256")
+            .digest(pin.toByteArray()).joinToString("") { "%02x".format(it) }
+        return stored == hash
+    }
+
+    fun hasPin(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains("pin_hash")
+
     fun clearSeed(ctx: Context) {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
         try {
