@@ -34,6 +34,8 @@ class WalletActivity : FragmentActivity() {
     private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
 
     private var mnemonic = ""
+    private var isTestnet = false
+    private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
     private var currentTab = 0
     private var balanceVisible = true
@@ -294,7 +296,7 @@ class WalletActivity : FragmentActivity() {
             val rows = mutableListOf<Triple<String,String,Long>>()
             addresses.forEach { (k, addr) ->
                 try {
-                    val conn = java.net.URL("https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
+                    val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$addr" else "https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val js = conn.inputStream.bufferedReader().readText()
                     val funded = Regex("\"funded_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
@@ -352,7 +354,7 @@ class WalletActivity : FragmentActivity() {
         val queryAddrs = addresses.values.toList().ifEmpty { return }
         Thread {
             try {
-                val conn = java.net.URL("https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
+                val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/${queryAddrs[0]}/txs" else "https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 val arr = JSONArray(conn.inputStream.bufferedReader().readText())
                 runOnUiThread {
@@ -402,6 +404,14 @@ class WalletActivity : FragmentActivity() {
         ll.addView(lbl("Amount (BTC)")); val etAmt = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }; ll.addView(etAmt)
         ll.addView(lbl("Fee rate (sat/vB)")); val etFee = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("5") }; ll.addView(etFee)
 
+
+        val btnCoinControl = Button(this).apply {
+            text = "Coin Control (auto)"; textSize = 9f; setTextColor(CYAN)
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#0d3a4a")) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(8) }
+        }
+        ll.addView(btnCoinControl)
+
         val tvStatus = TextView(this).apply { text = ""; textSize = 10f; setTextColor(TXT_SEC); typeface = Typeface.MONOSPACE; setPadding(0,dp(8),0,0); setLineSpacing(0f,1.3f) }
         val btnSend = Button(this).apply {
             text = "BUILD & BROADCAST"; textSize = 12f; setTextColor(Color.BLACK)
@@ -411,6 +421,44 @@ class WalletActivity : FragmentActivity() {
         ll.addView(btnSend); ll.addView(tvStatus)
         scroll.addView(ll); tabContent.addView(scroll)
 
+
+        btnCoinControl.setOnClickListener {
+            val fromKey = addresses.keys.toList().getOrNull(spinFrom.selectedItemPosition) ?: return@setOnClickListener
+            val fromAddr = addresses[fromKey] ?: return@setOnClickListener
+            tvStatus.text = "Loading UTXOs..."; tvStatus.setTextColor(TXT_SEC)
+            Thread {
+                try {
+                    val url = if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo"
+                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 5000; conn.readTimeout = 5000
+                    val utxos = JSONArray(conn.inputStream.bufferedReader().readText())
+                    if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs available"; tvStatus.setTextColor(RED) }; return@Thread }
+                    runOnUiThread {
+                        val items = Array(utxos.length()) { i ->
+                            val u = utxos.getJSONObject(i)
+                            val sat = u.getLong("value")
+                            "%.8f BTC  ${u.getString("txid").take(12)}...".format(sat/1e8)
+                        }
+                        val checked = BooleanArray(items.size) { true }
+                        selectedUtxos.clear()
+                        for (i in 0 until utxos.length()) selectedUtxos.add(utxos.getJSONObject(i))
+                        AlertDialog.Builder(this)
+                            .setTitle("Select UTXOs (Coin Control)")
+                            .setMultiChoiceItems(items, checked) { _, idx, isChecked ->
+                                if (isChecked) { if (!selectedUtxos.contains(utxos.getJSONObject(idx))) selectedUtxos.add(utxos.getJSONObject(idx)) }
+                                else selectedUtxos.remove(utxos.getJSONObject(idx))
+                            }
+                            .setPositiveButton("OK") { _, _ ->
+                                val total = selectedUtxos.sumOf { it.getLong("value") }
+                                btnCoinControl.text = "${selectedUtxos.size} UTXOs selected (%.8f BTC)".format(total/1e8)
+                                btnCoinControl.setTextColor(AMBER)
+                            }
+                            .setNegativeButton("Cancel", null)
+                            .show()
+                    }
+                } catch(e: Exception) { runOnUiThread { tvStatus.text = "Error: ${e.message}"; tvStatus.setTextColor(RED) } }
+            }.start()
+        }
         btnSend.setOnClickListener {
             val toAddr = etTo.text.toString().trim()
             val amtBtc = etAmt.text.toString().toDoubleOrNull() ?: 0.0
@@ -421,7 +469,7 @@ class WalletActivity : FragmentActivity() {
             tvStatus.text = "Fetching UTXOs..."; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
-                    val conn = java.net.URL("https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
+                    val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val utxos = JSONArray(conn.inputStream.bufferedReader().readText())
                     if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
@@ -439,7 +487,7 @@ class WalletActivity : FragmentActivity() {
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     runOnUiThread { tvStatus.text = "Broadcasting..."; tvStatus.setTextColor(TXT_SEC) }
-                    val bc = java.net.URL("https://mempool.space/api/tx").openConnection() as java.net.HttpURLConnection
+                    val bc = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/tx" else "https://mempool.space/api/tx").openConnection() as java.net.HttpURLConnection
                     bc.requestMethod = "POST"; bc.doOutput = true; bc.setRequestProperty("Content-Type","text/plain")
                     bc.outputStream.write(rawTx.toByteArray())
                     val code = bc.responseCode
@@ -496,11 +544,12 @@ class WalletActivity : FragmentActivity() {
     /* ── MENU ── */
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Show seed phrase","Change PIN","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Show seed phrase","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
                     0 -> authenticate { AlertDialog.Builder(this).setTitle("Seed - Keep Private!").setMessage(mnemonic).setPositiveButton("OK", null).show() }
                     1 -> authenticate { showPinDialog(isSetup = true) {} }
-                    2 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your seed backed up.")
+                    2 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
+                    3 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your seed backed up.")
                             .setPositiveButton("Delete") { _, _ -> WalletManager.clearSeed(this); finish() }
                             .setNegativeButton("Cancel", null).show()
                 }

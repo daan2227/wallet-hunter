@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:orientation="vertical"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#CC080b10"
+    android:padding="8dp">
+
+    <TextView
+        android:id="@+id/widget_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="STOPPED"
+        android:textColor="#f59e0b"
+        android:textSize="10sp"
+        android:fontFamily="monospace"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_kps"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0.0 k/s"
+        android:textColor="#10d97a"
+        android:textSize="18sp"
+        android:fontFamily="monospace"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/widget_count"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="0"
+        android:textColor="#e2e8f0"
+        android:textSize="11sp"
+        android:fontFamily="monospace" />
+
+    <TextView
+        android:id="@+id/widget_matches"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Matches: 0"
+        android:textColor="#64748b"
+        android:textSize="9sp"
+        android:fontFamily="monospace" />
+
+</LinearLayout>

@@ -208,6 +208,13 @@ static void hex_to_bytes32(const char *hex, uint8_t *out){
 }
 
 
+
+/* PBKDF2 parallel helper - precompute HMAC outer/inner state for speed */
+static void pbkdf2_sha512_1iter(const char *pass, int plen, const uint8_t *salt, int slen, uint8_t *out) {
+    /* Single iteration PBKDF2 - reuse existing PKCS5 with iter=1 */
+    PKCS5_PBKDF2_HMAC(pass, plen, salt, slen, 1, EVP_sha512(), 64, out);
+}
+
 /* =========================================================
    Wallet address encoding helpers
    ========================================================= */
