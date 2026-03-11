@@ -278,7 +278,7 @@ class MainActivity : Activity() {
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d5c2e")) }
             setPadding(dp(10), dp(4), dp(10), dp(4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) }
-            setOnClickListener { showWalletDialog() }
+            setOnClickListener { startActivity(Intent(this@MainActivity, WalletActivity::class.java)) }
         }
         hTop.addView(brand); hTop.addView(btnWallet); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
 

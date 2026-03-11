@@ -22,4 +22,5 @@ object HunterEngine {
     external fun getMatches(): String
     external fun popRecentAddr(): String
     external fun deriveWallet(mnemonic: String): String
+    external fun buildAndSignTx(requestJson: String): String
 }

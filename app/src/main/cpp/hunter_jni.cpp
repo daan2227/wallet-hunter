@@ -739,4 +739,180 @@ Java_com_hunter_btc_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn)
     return env->NewStringUTF(result.c_str());
 }
 
-} /* extern C */
+/* =========================================================
+   Build + Sign raw Bitcoin transaction
+   Input JSON: {"mnemonic":"...","path":"m/44'/0'/0'/0/0",
+                "utxos":[{"txid":"...","vout":0,"amount":1000}],
+                "to":"1Addr...","amount":900,"fee":100}
+   Returns: hex-encoded signed raw tx
+   ========================================================= */
+static std::string uint64_le(uint64_t v){
+    char buf[16];
+    for(int i=0;i<8;i++) buf[i]=(char)((v>>(i*8))&0xFF);
+    return std::string(buf,8);
+}
+static std::string uint32_le(uint32_t v){
+    char buf[4];
+    for(int i=0;i<4;i++) buf[i]=(char)((v>>(i*8))&0xFF);
+    return std::string(buf,4);
+}
+static std::string varint(uint64_t v){
+    char buf[9]; int n=0;
+    if(v<0xFD){buf[n++]=(char)v;}
+    else if(v<=0xFFFF){buf[n++]=0xFD;buf[n++]=v&0xFF;buf[n++]=(v>>8)&0xFF;}
+    else{buf[n++]=0xFE;for(int i=0;i<4;i++)buf[n++]=(v>>(i*8))&0xFF;}
+    return std::string(buf,n);
+}
+static std::string hex_decode(const std::string &hex){
+    std::string r; r.resize(hex.size()/2);
+    for(size_t i=0;i<r.size();i++){
+        int hi=hex[i*2],lo=hex[i*2+1];
+        hi=(hi>='a')?hi-'a'+10:(hi>='A')?hi-'A'+10:hi-'0';
+        lo=(lo>='a')?lo-'a'+10:(lo>='A')?lo-'A'+10:lo-'0';
+        r[i]=(char)((hi<<4)|lo);
+    }
+    return r;
+}
+static std::string to_hex(const uint8_t *d,int n){
+    static const char *h="0123456789abcdef";
+    std::string r; r.resize(n*2);
+    for(int i=0;i<n;i++){r[i*2]=h[d[i]>>4];r[i*2+1]=h[d[i]&0xF];}
+    return r;
+}
+static std::string reverse_bytes(const std::string &s){
+    std::string r(s.rbegin(),s.rend()); return r;
+}
+static std::string sha256d(const std::string &data){
+    uint8_t h1[32],h2[32];
+    SHA256((const uint8_t*)data.data(),data.size(),h1);
+    SHA256(h1,32,h2);
+    return std::string((char*)h2,32);
+}
+/* Parse simple JSON string field */
+static std::string json_str(const std::string &j,const char *key){
+    std::string k=std::string("\"")+key+"\":\"";
+    size_t p=j.find(k); if(p==std::string::npos)return "";
+    p+=k.size(); size_t e=j.find('"',p); if(e==std::string::npos)return "";
+    return j.substr(p,e-p);
+}
+static int64_t json_int(const std::string &j,const char *key){
+    std::string k=std::string("\"")+key+"\":";
+    size_t p=j.find(k); if(p==std::string::npos)return 0;
+    p+=k.size(); return (int64_t)strtoll(j.c_str()+p,nullptr,10);
+}
+
+static std::string build_and_sign_tx(const std::string &req){
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    /* Parse fields */
+    std::string mnemonic=json_str(req,"mnemonic");
+    std::string path=json_str(req,"path");
+    std::string to_addr=json_str(req,"to");
+    int64_t send_sat=json_int(req,"amount");
+    int64_t fee_sat=json_int(req,"fee");
+    /* Derive private key */
+    uint8_t seed[64];
+    PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+    HDKey hd; derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
+    uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
+    uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
+    /* Build scriptPubKey P2PKH: OP_DUP OP_HASH160 <20> <h160> OP_EQUALVERIFY OP_CHECKSIG */
+    std::string spk_me; spk_me+='\x76'; spk_me+='\xa9'; spk_me+='\x14';
+    spk_me+=std::string((char*)h160,20); spk_me+='\x88'; spk_me+='\xac';
+    /* Parse UTXOs from JSON array */
+    struct UTXO { std::string txid; uint32_t vout; int64_t amount; };
+    std::vector<UTXO> utxos;
+    size_t ap=req.find("\"utxos\":[");
+    if(ap!=std::string::npos){
+        ap+=9;
+        while(ap<req.size()&&req[ap]!=']'){
+            size_t ob=req.find('{',ap); if(ob==std::string::npos)break;
+            size_t cb=req.find('}',ob); if(cb==std::string::npos)break;
+            std::string u=req.substr(ob,cb-ob+1);
+            UTXO ut;
+            ut.txid=json_str(u,"txid");
+            ut.vout=(uint32_t)json_int(u,"vout");
+            ut.amount=json_int(u,"amount");
+            utxos.push_back(ut);
+            ap=cb+1;
+        }
+    }
+    if(utxos.empty()||to_addr.empty()||send_sat<=0){
+        secp256k1_context_destroy(ctx);
+        return "ERROR:invalid_params";
+    }
+    /* Build to_addr scriptPubKey */
+    uint8_t to_h160[20]; std::string to_spk;
+    if(addr_to_h160(to_addr.c_str(),to_h160)){
+        to_spk+='\x76'; to_spk+='\xa9'; to_spk+='\x14';
+        to_spk+=std::string((char*)to_h160,20); to_spk+='\x88'; to_spk+='\xac';
+    } else { secp256k1_context_destroy(ctx); return "ERROR:bad_address"; }
+    int64_t total_in=0; for(auto &u:utxos)total_in+=u.amount;
+    int64_t change=total_in-send_sat-fee_sat;
+    /* Sighash for each input */
+    std::vector<std::string> sigs;
+    for(size_t ii=0;ii<utxos.size();ii++){
+        /* Sighash preimage */
+        std::string pre;
+        pre+=uint32_le(1); /* version */
+        pre+=varint(utxos.size());
+        for(size_t j=0;j<utxos.size();j++){
+            pre+=reverse_bytes(hex_decode(utxos[j].txid));
+            pre+=uint32_le(utxos[j].vout);
+            if(j==ii){pre+=varint(spk_me.size());pre+=spk_me;}
+            else{pre+='\x00';}
+            pre+=uint32_le(0xFFFFFFFF);
+        }
+        /* Outputs */
+        int nout=(change>546)?2:1;
+        pre+=varint(nout);
+        pre+=uint64_le(send_sat); pre+=varint(to_spk.size()); pre+=to_spk;
+        if(change>546){
+            pre+=uint64_le(change); pre+=varint(spk_me.size()); pre+=spk_me;
+        }
+        pre+=uint32_le(0); /* locktime */
+        pre+=uint32_le(1); /* SIGHASH_ALL */
+        std::string hash=sha256d(pre);
+        secp256k1_ecdsa_signature sig;
+        secp256k1_ecdsa_sign(ctx,&sig,(const uint8_t*)hash.data(),hd.key,nullptr,nullptr);
+        secp256k1_ecdsa_signature_normalize(ctx,&sig,&sig);
+        uint8_t der[72]; size_t dlen=72;
+        secp256k1_ecdsa_signature_serialize_der(ctx,der,&dlen,&sig);
+        std::string sigscript;
+        sigscript+=(char)(dlen+1);
+        sigscript+=std::string((char*)der,dlen);
+        sigscript+='\x01'; /* SIGHASH_ALL */
+        sigscript+=(char)33;
+        sigscript+=std::string((char*)pub33,33);
+        sigs.push_back(sigscript);
+    }
+    /* Final tx */
+    std::string tx;
+    tx+=uint32_le(1);
+    tx+=varint(utxos.size());
+    for(size_t i=0;i<utxos.size();i++){
+        tx+=reverse_bytes(hex_decode(utxos[i].txid));
+        tx+=uint32_le(utxos[i].vout);
+        tx+=varint(sigs[i].size());
+        tx+=sigs[i];
+        tx+=uint32_le(0xFFFFFFFF);
+    }
+    int nout=(change>546)?2:1;
+    tx+=varint(nout);
+    tx+=uint64_le(send_sat); tx+=varint(to_spk.size()); tx+=to_spk;
+    if(change>546){
+        tx+=uint64_le(change); tx+=varint(spk_me.size()); tx+=spk_me;
+    }
+    tx+=uint32_le(0);
+    secp256k1_context_destroy(ctx);
+    return to_hex((const uint8_t*)tx.data(),(int)tx.size());
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq){
+    const char *req=env->GetStringUTFChars(jreq,nullptr);
+    std::string result=build_and_sign_tx(std::string(req));
+    env->ReleaseStringUTFChars(jreq,req);
+    return env->NewStringUTF(result.c_str());
+}
+
+}
