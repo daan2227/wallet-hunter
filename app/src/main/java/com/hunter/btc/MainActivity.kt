@@ -300,7 +300,21 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) }
             setOnClickListener { startActivity(Intent(this@MainActivity, WalletActivity::class.java)) }
         }
-        hTop.addView(brand); hTop.addView(btnWallet); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
+        val btnStats = Button(this).apply {
+            text = "Stats"; textSize = 9f; setTextColor(CYAN)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d3a4a")) }
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(4) }
+            setOnClickListener { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
+        }
+        val btnExport = Button(this).apply {
+            text = "Export"; textSize = 9f; setTextColor(TXT_SEC)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C) }
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(4) }
+            setOnClickListener { exportLog() }
+        }
+        hTop.addView(brand); hTop.addView(btnWallet); hTop.addView(btnStats); hTop.addView(btnExport); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
 
         /* STATUS BAR */
         val sb2 = LinearLayout(this).apply {
