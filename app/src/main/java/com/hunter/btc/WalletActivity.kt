@@ -17,18 +17,18 @@ import org.json.JSONObject
 
 class WalletActivity : FragmentActivity() {
 
-    private val AMBER     = Color.parseColor("#f59e0b")
-    private val GREEN     = Color.parseColor("#10d97a")
-    private val RED       = Color.parseColor("#ef4444")
-    private val CYAN      = Color.parseColor("#38bdf8")
-    private val BG_DEEP   = Color.parseColor("#080b10")
-    private val BG_PANEL  = Color.parseColor("#0d1117")
-    private val BG_CARD   = Color.parseColor("#111822")
-    private val BG_ELEV   = Color.parseColor("#162030")
-    private val TXT_PRI   = Color.parseColor("#e2e8f0")
-    private val TXT_SEC   = Color.parseColor("#64748b")
-    private val TXT_MUTED = Color.parseColor("#334155")
-    private val BORDER_C  = Color.parseColor("#1a2332")
+    private val AMBER     = Color.parseColor("#f0a500")
+    private val GREEN     = Color.parseColor("#2dd4a0")
+    private val RED       = Color.parseColor("#f05252")
+    private val CYAN      = Color.parseColor("#60a5fa")
+    private val BG_DEEP   = Color.parseColor("#070910")
+    private val BG_PANEL  = Color.parseColor("#0c0f18")
+    private val BG_CARD   = Color.parseColor("#111520")
+    private val BG_ELEV   = Color.parseColor("#181d2e")
+    private val TXT_PRI   = Color.parseColor("#e2e6f0")
+    private val TXT_SEC   = Color.parseColor("#7a8299")
+    private val TXT_MUTED = Color.parseColor("#3d4560")
+    private val BORDER_C  = Color.parseColor("#1f2640")
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
@@ -245,7 +245,7 @@ class WalletActivity : FragmentActivity() {
             text = ">> Hunter"; textSize = 9f; setTextColor(AMBER)
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
-                setStroke(1, Color.parseColor("#5a3a00"))
+                setStroke(1, Color.parseColor("#3d2800"))
                 cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(10), dp(2), dp(10), dp(2))
@@ -421,7 +421,7 @@ class WalletActivity : FragmentActivity() {
 
         val btnCoinControl = Button(this).apply {
             text = "Coin Control (auto)"; textSize = 9f; setTextColor(CYAN)
-            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#0d3a4a")) }
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#0a2030")) }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(8) }
         }
         ll.addView(btnCoinControl)

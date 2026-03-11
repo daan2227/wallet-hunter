@@ -84,12 +84,12 @@ class MainActivity : Activity() {
     private lateinit var sbCpu: SeekBar
     private lateinit var tvThreads: TextView
     private lateinit var tvCpu: TextView
-    private lateinit var tvCsvSec: TextView
-    private lateinit var tvConfigSec: TextView
-    private lateinit var tvStatsSec: TextView
-    private lateinit var tvLiveSec: TextView
-    private lateinit var tvMatchSec: TextView
-    private lateinit var tvLogSec: TextView
+    private lateinit var tvCsvSec: LinearLayout
+    private lateinit var tvConfigSec: LinearLayout
+    private lateinit var tvStatsSec: LinearLayout
+    private lateinit var tvLiveSec: LinearLayout
+    private lateinit var tvMatchSec: LinearLayout
+    private lateinit var tvLogSec: LinearLayout
     private lateinit var tvLangLbl: TextView
     private lateinit var btnCsv: Button
     private lateinit var csvSecView: LinearLayout
@@ -119,18 +119,18 @@ class MainActivity : Activity() {
     )
 
     companion object {
-        val BG_DEEP   = Color.parseColor("#080b10")
-        val BG_PANEL  = Color.parseColor("#0d1117")
-        val BG_CARD   = Color.parseColor("#111822")
-        val BG_ELEV   = Color.parseColor("#162030")
-        val AMBER     = Color.parseColor("#f59e0b")
-        val GREEN     = Color.parseColor("#10d97a")
-        val RED       = Color.parseColor("#ef4444")
-        val CYAN      = Color.parseColor("#38bdf8")
-        val TXT_PRI   = Color.parseColor("#e2e8f0")
-        val TXT_SEC   = Color.parseColor("#64748b")
-        val TXT_MUTED = Color.parseColor("#334155")
-        val BORDER_C  = Color.parseColor("#1a2332")
+        val BG_DEEP   = Color.parseColor("#070910")
+        val BG_PANEL  = Color.parseColor("#0c0f18")
+        val BG_CARD   = Color.parseColor("#111520")
+        val BG_ELEV   = Color.parseColor("#181d2e")
+        val AMBER     = Color.parseColor("#f0a500")
+        val GREEN     = Color.parseColor("#2dd4a0")
+        val RED       = Color.parseColor("#f05252")
+        val CYAN      = Color.parseColor("#60a5fa")
+        val TXT_PRI   = Color.parseColor("#e2e6f0")
+        val TXT_SEC   = Color.parseColor("#7a8299")
+        val TXT_MUTED = Color.parseColor("#3d4560")
+        val BORDER_C  = Color.parseColor("#1f2640")
         val ORANGE = AMBER; val YELLOW = Color.parseColor("#fbbf24")
         val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
         const val REQ_CSV = 1001
@@ -184,13 +184,13 @@ class MainActivity : Activity() {
         s = Strings.ALL[key] ?: Strings.ES
         getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
         tvLangLbl.text = ""
-        tvCsvSec.text = s.csvSection
+        (tvCsvSec.getChildAt(0) as? android.widget.TextView)?.text = s.csvSection
         btnCsv.text = s.csvBtn
-        tvConfigSec.text = s.configSection
-        tvStatsSec.text = s.statsSection
-        tvLiveSec.text = s.liveSection
-        tvMatchSec.text = s.matchSection
-        tvLogSec.text = s.logSection
+        (tvConfigSec.getChildAt(0) as? android.widget.TextView)?.text = s.configSection
+        (tvStatsSec.getChildAt(0) as? android.widget.TextView)?.text = s.statsSection
+        (tvLiveSec.getChildAt(0) as? android.widget.TextView)?.text = s.liveSection
+        (tvMatchSec.getChildAt(0) as? android.widget.TextView)?.text = s.matchSection
+        (tvLogSec.getChildAt(0) as? android.widget.TextView)?.text = s.logSection
         btnToggle.text = if (HunterEngine.isRunning()) s.stop else s.start
         tvMatchList.text = s.noMatch
         tvAddrFeed.text = s.waitingStart
@@ -224,12 +224,25 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
+    private fun cardBg() = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(6).toFloat() }
 
-    private fun sectionHdr(label: String): TextView = TextView(this).apply {
-        text = label; textSize = 9f; setTextColor(AMBER)
-        typeface = Typeface.create("monospace", Typeface.BOLD)
-        letterSpacing = 0.2f; setPadding(0, dp(14), 0, dp(8))
+    private fun sectionHdr(label: String): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+        }
+        row.addView(TextView(this).apply {
+            text = label.uppercase(); textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            letterSpacing = 0.2f
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
+        })
+        row.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 1, 1f)
+            setBackgroundColor(BORDER_C)
+        })
+        return row
     }
 
     private fun modeTabBtn(label: String) = Button(this).apply {
@@ -247,7 +260,7 @@ class MainActivity : Activity() {
             it.background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
         }
         btn.setTextColor(AMBER)
-        btn.background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#5a3a00")) }
+        btn.background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#3d2800")) }
     }
 
     private fun buildUI() {
@@ -270,22 +283,14 @@ class MainActivity : Activity() {
             text = s.title; textSize = 16f; setTextColor(AMBER)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.08f
         })
-        val badges = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, 0) }
-        for (b in listOf("libsecp256k1","PBKDF2:1","p2pkh+p2wpkh")) {
-            badges.addView(TextView(this).apply {
-                text = b; textSize = 8f; setTextColor(TXT_SEC)
-                background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C) }
-                setPadding(dp(5), dp(2), dp(5), dp(2))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(4) }
-            })
-        }
-        brand.addView(badges)
+
         val btnLang = Button(this).apply {
             text = prefs.getString("lang","EN") ?: "EN"
-            textSize = 10f; setTextColor(AMBER)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#5a3a00")) }
+            textSize = 9f; setTextColor(TXT2)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
             setPadding(dp(12), dp(4), dp(12), dp(4))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)).apply { marginEnd = dp(6) }
             setOnClickListener {
                 val langKeys = Strings.ALL.keys.toList()
                 val langNames = mapOf("ES" to "Espanol","EN" to "English","JA" to "Japanese","KO" to "Korean","DE" to "Deutsch","FR" to "Francais","RU" to "Russian","PT" to "Portugues")
@@ -297,29 +302,33 @@ class MainActivity : Activity() {
         tvLangLbl = TextView(this).apply { text = "" }
 
         val btnStats = Button(this).apply {
-            text = "Stats"; textSize = 9f; setTextColor(CYAN)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d3a4a")) }
-            setPadding(dp(8), dp(2), dp(8), dp(2))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(4) }
+            text = "Stats"; textSize = 9f; setTextColor(TXT2)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
+            setPadding(dp(9), dp(3), dp(9), dp(3))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
         }
         val btnExport = Button(this).apply {
-            text = "Export"; textSize = 9f; setTextColor(TXT_SEC)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C) }
-            setPadding(dp(8), dp(2), dp(8), dp(2))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(4) }
+            text = "Export"; textSize = 9f; setTextColor(TXT2)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
+            setPadding(dp(9), dp(3), dp(9), dp(3))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { exportLog() }
         }
         // Fila 1: titulo + wallet + lang
         val btnSwitch = Button(this).apply {
-            text = ">> Wallet"; textSize = 9f; setTextColor(AMBER)
+            text = "Wallet"; textSize = 9f; setTextColor(GOLD)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            letterSpacing = 0.06f
             background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
-                setStroke(1, Color.parseColor("#5a3a00"))
-                cornerRadius = dp(6).toFloat()
+                setColor(Color.parseColor("#111520"))
+                setStroke(1, Color.parseColor("#3d2800"))
+                cornerRadius = dp(3).toFloat()
             }
-            setPadding(dp(10), dp(2), dp(10), dp(2))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(4) }
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)).apply { marginEnd = dp(6) }
             setOnClickListener { startActivity(Intent(this@MainActivity, WalletActivity::class.java)) }
         }
         hRow1.addView(brand)
@@ -335,7 +344,13 @@ class MainActivity : Activity() {
         hRow2.addView(btnExport)
         hTop.addView(hRow1)
         hTop.addView(hRow2)
-        header.addView(hTop); main.addView(header)
+        header.addView(hTop)
+        // Bottom border
+        header.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
+            setBackgroundColor(BORDER_C)
+        })
+        main.addView(header)
 
         /* STATUS BAR */
         val sb2 = LinearLayout(this).apply {
@@ -504,22 +519,20 @@ class MainActivity : Activity() {
         /* ACTION BUTTON */
         val coinGreen = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#0a2e1a"))
-            setStroke(dp(2), GREEN)
-            cornerRadius = dp(12).toFloat()
+            setColor(Color.parseColor("#2dd4a0"))
+            cornerRadius = dp(6).toFloat()
         }
         val coinRed = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#2e0a0a"))
-            setStroke(dp(2), RED)
-            cornerRadius = dp(12).toFloat()
+            setColor(Color.parseColor("#f05252"))
+            cornerRadius = dp(6).toFloat()
         }
         btnToggle = Button(this).apply {
-            text = s.start; background = coinGreen; setTextColor(GREEN)
-            textSize = 11f; typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.15f
-            layoutParams = LinearLayout.LayoutParams(dp(160), dp(48)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(28); bottomMargin = dp(10)
+            text = s.start; background = coinGreen; setTextColor(Color.BLACK)
+            textSize = 13f; typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.12f; isAllCaps = true
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50)).apply {
+                topMargin = dp(28); bottomMargin = dp(4)
             }
             setOnClickListener { doToggle() }
         }

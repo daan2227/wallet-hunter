@@ -9,126 +9,209 @@ import android.view.*
 import android.widget.*
 
 class WelcomeActivity : Activity() {
-    private val AMBER     = Color.parseColor("#f59e0b")
-    private val GREEN     = Color.parseColor("#10d97a")
-    private val CYAN      = Color.parseColor("#38bdf8")
-    private val BG_DEEP   = Color.parseColor("#080b10")
-    private val BG_CARD   = Color.parseColor("#111822")
-    private val BG_ELEV   = Color.parseColor("#162030")
-    private val TXT_PRI   = Color.parseColor("#e2e8f0")
-    private val TXT_SEC   = Color.parseColor("#64748b")
-    private val TXT_MUTED = Color.parseColor("#334155")
-    private val BORDER_C  = Color.parseColor("#1a2332")
+    private val BG      = Color.parseColor("#070910")
+    private val S1      = Color.parseColor("#0c0f18")
+    private val S2      = Color.parseColor("#111520")
+    private val S3      = Color.parseColor("#181d2e")
+    private val S4      = Color.parseColor("#1f2640")
+    private val GOLD    = Color.parseColor("#f0a500")
+    private val GOLD2   = Color.parseColor("#ffc53d")
+    private val GREEN   = Color.parseColor("#2dd4a0")
+    private val TXT     = Color.parseColor("#e2e6f0")
+    private val TXT2    = Color.parseColor("#7a8299")
+    private val TXT3    = Color.parseColor("#3d4560")
+    private val BORDER  = 0x0fffffff
+    private val BORDER2 = 0x1affffff
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
+        window.statusBarColor = BG
+
+        val scroll = android.widget.ScrollView(this).apply {
+            setBackgroundColor(BG)
+            isVerticalScrollBarEnabled = false
+        }
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG_DEEP)
-            gravity = Gravity.CENTER
-            setPadding(dp(24), dp(32), dp(24), dp(32))
+            setBackgroundColor(BG)
+            layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // Animated title
-        val tvTitle = TextView(this).apply {
-            text = "WALLET\nHUNTER"
-            textSize = 42f; setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            gravity = Gravity.CENTER; letterSpacing = 0.15f
-            alpha = 0f
+        // ── TOP SECTION ──
+        val topSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(28), dp(56), dp(28), dp(0))
         }
-        root.addView(tvTitle)
 
-        val tvSub = TextView(this).apply {
-            text = "Bitcoin Seed Scanner"; textSize = 13f; setTextColor(TXT_SEC)
+        // Eyebrow
+        val eyebrow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(16))
+        }
+        val eyebrowLine = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(1)).apply { marginEnd = dp(8) }
+            setBackgroundColor(GOLD); alpha = 0.4f
+        }
+        eyebrow.addView(eyebrowLine)
+        eyebrow.addView(TextView(this).apply {
+            text = "BITCOIN SEED SCANNER"
+            textSize = 9f; setTextColor(TXT3)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.CENTER; setPadding(0, dp(8), 0, dp(32))
-            alpha = 0f
-        }
-        root.addView(tvSub)
+            letterSpacing = 0.22f
+        })
+        topSection.addView(eyebrow)
 
-        // Stats cards
+        // Main title
+        topSection.addView(TextView(this).apply {
+            text = "WALLET"; textSize = 48f; setTextColor(TXT)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = -0.02f; lineHeight = (textSize * 0.95f).toInt()
+        })
+        topSection.addView(TextView(this).apply {
+            text = "HUNTER"; textSize = 48f; setTextColor(GOLD)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = -0.02f
+        })
+
+        // Pills
+        val pillRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(16), 0, dp(4))
+        }
+        fun pill(txt: String) = TextView(this).apply {
+            text = txt; textSize = 9f; setTextColor(TXT3)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            letterSpacing = 0.08f
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(1, BORDER2)
+                cornerRadius = dp(100).toFloat()
+            }
+            setPadding(dp(9), dp(4), dp(9), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
+        }
+        pillRow.addView(pill("libsecp256k1"))
+        pillRow.addView(pill("PBKDF2:1"))
+        pillRow.addView(pill("arm64"))
+        topSection.addView(pillRow)
+        root.addView(topSection)
+
+        // ── STATS GRID ──
         val totalKeys    = SessionStats.totalKeys(this)
         val totalSess    = SessionStats.load(this).size
         val totalMatches = SessionStats.totalMatches(this)
         val bestKps      = SessionStats.bestKps(this)
 
-        val statsRow = LinearLayout(this).apply {
+        val statsGrid = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            alpha = 0f
+            setBackgroundColor(BORDER)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(28)
+            }
         }
 
-        fun statCard(value: String, label: String, color: Int) = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-            background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
-            setPadding(dp(8), dp(12), dp(8), dp(12))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) }
-            addView(TextView(this@WelcomeActivity).apply { text = value; textSize = 16f; setTextColor(color); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER })
-            addView(TextView(this@WelcomeActivity).apply { text = label; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.CENTER; setPadding(0, dp(2), 0, 0) })
+        fun keysStr(v: Long) = when {
+            v >= 1_000_000_000L -> "%.1fB".format(v/1e9)
+            v >= 1_000_000L -> "%.1fM".format(v/1e6)
+            v >= 1000L -> "%.1fK".format(v/1e3)
+            else -> "$v"
         }
 
-        val keysStr = when {
-            totalKeys >= 1_000_000_000L -> "%.1fB".format(totalKeys/1e9)
-            totalKeys >= 1_000_000L -> "%.1fM".format(totalKeys/1e6)
-            totalKeys >= 1000L -> "%.1fK".format(totalKeys/1e3)
-            else -> "$totalKeys"
+        fun statCell(value: String, label: String, color: Int = GOLD): LinearLayout {
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(S1)
+                setPadding(dp(12), dp(16), dp(12), dp(16))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    setMargins(1, 1, 0, 0)
+                }
+            }
+            cell.addView(TextView(this).apply {
+                text = value; textSize = 15f; setTextColor(color)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                letterSpacing = -0.02f
+            })
+            cell.addView(TextView(this).apply {
+                text = label; textSize = 8f; setTextColor(TXT3)
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                letterSpacing = 0.12f
+                setPadding(0, dp(4), 0, 0)
+            })
+            return cell
         }
-        statsRow.addView(statCard(keysStr, "KEYS", AMBER))
-        statsRow.addView(statCard("$totalSess", "SESSIONS", CYAN))
-        statsRow.addView(statCard("$totalMatches", "MATCHES", GREEN))
-        statsRow.addView(statCard("%.1f".format(bestKps), "BEST K/S", AMBER))
-        root.addView(statsRow)
 
-        // Divider
-        root.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { topMargin = dp(28); bottomMargin = dp(28) }
-            setBackgroundColor(BORDER_C)
-            alpha = 0f
-        })
+        statsGrid.addView(statCell(keysStr(totalKeys), "KEYS"))
+        statsGrid.addView(statCell("$totalSess", "SESSIONS"))
+        statsGrid.addView(statCell("$totalMatches", "MATCHES", if(totalMatches > 0) GREEN else TXT3))
+        statsGrid.addView(statCell("%.1f".format(bestKps), "BEST K/S"))
+        root.addView(statsGrid)
 
-        // Start button
+        // ── CTA SECTION ──
+        val ctaSection = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(28), dp(22), dp(48))
+        }
+
+        // Primary button - Start Hunting
         val btnStart = Button(this).apply {
-            text = "START HUNTING"; textSize = 14f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
-            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
+            text = "> Start Hunting"
+            textSize = 13f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.08f
+            background = GradientDrawable().apply {
+                setColor(GOLD)
+                cornerRadius = dp(4).toFloat()
+            }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52))
-            alpha = 0f
             setOnClickListener {
                 startActivity(Intent(this@WelcomeActivity, MainActivity::class.java))
                 overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
                 finish()
             }
         }
-        root.addView(btnStart)
+        ctaSection.addView(btnStart)
 
+        // Secondary button - Open Wallet
         val btnWallet = Button(this).apply {
-            text = "Open Wallet"; textSize = 11f; setTextColor(GREEN)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d5c2e")); cornerRadius = dp(8).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
-            alpha = 0f
+            text = "> Open Wallet"
+            textSize = 12f; setTextColor(GOLD)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.08f
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(1, Color.parseColor("#3d2800"))
+                cornerRadius = dp(4).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply {
+                topMargin = dp(10)
+            }
             setOnClickListener {
                 startActivity(Intent(this@WelcomeActivity, WalletActivity::class.java))
             }
         }
-        root.addView(btnWallet)
+        ctaSection.addView(btnWallet)
 
-        val tvVersion = TextView(this).apply {
-            text = "v1.0 | libsecp256k1 | arm64"; textSize = 8f; setTextColor(TXT_MUTED)
-            gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0); alpha = 0f
-        }
-        root.addView(tvVersion)
+        // Version
+        ctaSection.addView(TextView(this).apply {
+            text = "v1.0 · libsecp256k1 · arm64"; textSize = 9f; setTextColor(TXT3)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.CENTER; letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                topMargin = dp(14)
+            }
+        })
 
-        setContentView(root)
+        root.addView(ctaSection)
+        scroll.addView(root)
+        setContentView(scroll)
 
-        // Animate in
-        val views = listOf(tvTitle, tvSub, statsRow, btnStart, btnWallet, tvVersion)
-        views.forEachIndexed { i, v ->
-            v.animate().alpha(1f).setStartDelay((i * 120 + 200).toLong()).setDuration(400).start()
-        }
+        // Fade in
+        root.alpha = 0f
+        root.animate().alpha(1f).setDuration(400).setStartDelay(100).start()
     }
 }

@@ -8,16 +8,16 @@ import android.view.*
 import android.widget.*
 
 class StatsActivity : Activity() {
-    private val AMBER   = Color.parseColor("#f59e0b")
-    private val GREEN   = Color.parseColor("#10d97a")
-    private val CYAN    = Color.parseColor("#38bdf8")
-    private val BG_DEEP = Color.parseColor("#080b10")
-    private val BG_CARD = Color.parseColor("#111822")
-    private val BG_ELEV = Color.parseColor("#162030")
-    private val TXT_PRI = Color.parseColor("#e2e8f0")
-    private val TXT_SEC = Color.parseColor("#64748b")
-    private val TXT_MUTED = Color.parseColor("#334155")
-    private val BORDER_C = Color.parseColor("#1a2332")
+    private val AMBER   = Color.parseColor("#f0a500")
+    private val GREEN   = Color.parseColor("#2dd4a0")
+    private val CYAN    = Color.parseColor("#60a5fa")
+    private val BG_DEEP = Color.parseColor("#070910")
+    private val BG_CARD = Color.parseColor("#111520")
+    private val BG_ELEV = Color.parseColor("#181d2e")
+    private val TXT_PRI = Color.parseColor("#e2e6f0")
+    private val TXT_SEC = Color.parseColor("#7a8299")
+    private val TXT_MUTED = Color.parseColor("#3d4560")
+    private val BORDER_C = Color.parseColor("#1f2640")
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(s: Bundle?) {
@@ -27,7 +27,7 @@ class StatsActivity : Activity() {
         // Header
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#0d1117"))
+            setBackgroundColor(Color.parseColor("#0c0f18"))
             setPadding(dp(16), dp(12), dp(16), dp(12)); gravity = Gravity.CENTER_VERTICAL
         }
         header.addView(Button(this).apply {
@@ -105,7 +105,7 @@ class StatsActivity : Activity() {
                 if (s.matches > 0) topRow.addView(TextView(this).apply {
                     text = "MATCH x${s.matches}"; textSize = 9f; setTextColor(GREEN)
                     typeface = Typeface.create("monospace", Typeface.BOLD)
-                    background = GradientDrawable().apply { setColor(Color.parseColor("#0d3320")); setStroke(1, Color.parseColor("#0d5c2e")) }
+                    background = GradientDrawable().apply { setColor(Color.parseColor("#0d3320")); setStroke(1, Color.parseColor("#0a2e1a")) }
                     setPadding(dp(6), dp(2), dp(6), dp(2))
                 })
                 card.addView(topRow)
@@ -129,10 +129,10 @@ class StatsActivity : Activity() {
 }
 
 class SpeedHistoryChart(ctx: android.content.Context, private val data: List<Float>) : android.view.View(ctx) {
-    private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f59e0b"); strokeWidth = 2f; style = Paint.Style.STROKE }
+    private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f0a500"); strokeWidth = 2f; style = Paint.Style.STROKE }
     private val paintFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val paintDot  = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f59e0b"); style = Paint.Style.FILL }
-    private val paintGrid = Paint().apply { color = Color.parseColor("#1a2332"); strokeWidth = 1f }
+    private val paintDot  = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f0a500"); style = Paint.Style.FILL }
+    private val paintGrid = Paint().apply { color = Color.parseColor("#1f2640"); strokeWidth = 1f }
 
     override fun onDraw(canvas: Canvas) {
         if (data.isEmpty()) return
