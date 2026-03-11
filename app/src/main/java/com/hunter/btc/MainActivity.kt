@@ -3,6 +3,8 @@ package com.hunter.btc
 import android.app.*
 import android.content.*
 import android.graphics.Color
+import android.graphics.Path
+import android.graphics.Paint
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.*
@@ -12,11 +14,73 @@ import android.view.*
 import android.widget.*
 import java.io.*
 
+
+class SpeedChartView(context: android.content.Context) : android.view.View(context) {
+    private val maxPoints = 60
+    private val wpsPoints  = ArrayDeque<Float>()
+    private val foundPoints = ArrayDeque<Float>()
+
+    private val paintSpeed = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFFF9900.toInt(); strokeWidth = 2.5f; style = android.graphics.Paint.Style.STROKE
+    }
+    private val paintFound = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF44DD44.toInt(); strokeWidth = 2.5f; style = android.graphics.Paint.Style.STROKE
+    }
+    private val paintGrid = android.graphics.Paint().apply {
+        color = 0x22FFFFFF.toInt(); strokeWidth = 1f
+    }
+    private val paintLabel = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF888888.toInt(); textSize = 20f
+    }
+
+    fun addPoint(wps: Float, found: Float) {
+        wpsPoints.addLast(wps)
+        foundPoints.addLast(found)
+        if (wpsPoints.size > maxPoints) wpsPoints.removeFirst()
+        if (foundPoints.size > maxPoints) foundPoints.removeFirst()
+        postInvalidate()
+    }
+
+    fun reset() { wpsPoints.clear(); foundPoints.clear(); postInvalidate() }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0 || h <= 0) return
+        val pad = 4f
+
+        /* Grid lines */
+        for (i in 1..3) canvas.drawLine(pad, h*i/4, w-pad, h*i/4, paintGrid)
+
+        fun drawLine(pts: ArrayDeque<Float>, paint: android.graphics.Paint) {
+            if (pts.size < 2) return
+            val mx = pts.max().coerceAtLeast(1f)
+            val path = android.graphics.Path()
+            pts.forEachIndexed { i, v ->
+                val x = pad + (w - pad*2) * i / (maxPoints - 1)
+                val y = h - pad - (h - pad*2) * (v / mx)
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            canvas.drawPath(path, paint)
+        }
+
+        drawLine(wpsPoints, paintSpeed)
+        drawLine(foundPoints, paintFound)
+
+        /* Labels */
+        val wpsMax = wpsPoints.maxOrNull() ?: 0f
+        val label = if(wpsMax>=1e6) "%.1fM".format(wpsMax/1e6)
+                    else if(wpsMax>=1000) "%.0fK".format(wpsMax/1000)
+                    else "%.0f".format(wpsMax)
+        canvas.drawText(label, pad+2, 24f, paintLabel)
+    }
+}
+
 class MainActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvStatus: TextView
     private lateinit var tvWps: TextView
     private lateinit var tvCount: TextView
+    private lateinit var chartView: SpeedChartView
     private lateinit var tvTime: TextView
     private lateinit var tvMatches: TextView
     private lateinit var tvMatchList: TextView
@@ -320,13 +384,21 @@ class MainActivity : Activity() {
         btnWrap.addView(btnToggle); main.addView(btnWrap)
 
         tvStatsSec = sectionLabel(s.statsSection); main.addView(tvStatsSec)
-        val sp = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
+        val statsRow = LinearLayout(this).apply { orientation=LinearLayout.HORIZONTAL; setBackgroundColor(PANEL); setPadding(12,10,12,10) }
+        val sp = LinearLayout(this).apply {
+            orientation=LinearLayout.VERTICAL
+            layoutParams=LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
         tvWps     = mkStat("0 w/s",true)
         tvCount   = mkStat("0 ${s.seeds}",false)
         tvTime    = mkStat("00:00:00",false)
         tvMatches = mkStat("${s.matches}: 0",false)
         sp.addView(tvWps);sp.addView(tvCount);sp.addView(tvTime);sp.addView(tvMatches)
-        main.addView(sp)
+        chartView = SpeedChartView(this).apply {
+            layoutParams=LinearLayout.LayoutParams(0, 120, 1f)
+        }
+        statsRow.addView(sp); statsRow.addView(chartView)
+        main.addView(statsRow)
 
         tvLiveSec = sectionLabel(s.liveSection); main.addView(tvLiveSec)
         tvAddrFeed = TextView(this).apply {
@@ -461,6 +533,7 @@ class MainActivity : Activity() {
         btnToggle.isEnabled=(loaded&&!loading)||puzzleMode
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
+        if(running) chartView.addPoint(wps.toFloat(), HunterEngine.getFound().toFloat())
         tvWps.setTextColor(if(running)ORANGE else DIM)
         val count=HunterEngine.getCount(); tvCount.text=if(count>=1_000_000)"%.2f M ${s.seeds}".format(count/1e6) else "$count ${s.seeds}"
         val e=HunterEngine.getElapsed(); tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
