@@ -273,7 +273,14 @@ class MainActivity : Activity() {
             }
         }
         tvLangLbl = TextView(this).apply { text = "" }
-        hTop.addView(brand); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
+        val btnWallet = Button(this).apply {
+            text = "Wallet"; textSize = 10f; setTextColor(GREEN)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d5c2e")) }
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) }
+            setOnClickListener { showWalletDialog() }
+        }
+        hTop.addView(brand); hTop.addView(btnWallet); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
 
         /* STATUS BAR */
         val sb2 = LinearLayout(this).apply {
