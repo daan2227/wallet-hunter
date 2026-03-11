@@ -119,9 +119,9 @@ class MainActivity : Activity() {
     )
 
     companion object {
-        val BG_DEEP   = Color.parseColor("#070910")
+        val BG_DEEP   = Color.parseColor("#080b10")
         val BG_PANEL  = Color.parseColor("#0c0f18")
-        val BG_CARD   = Color.parseColor("#111520")
+        val BG_CARD   = Color.parseColor("#0d1117")
         val BG_ELEV   = Color.parseColor("#181d2e")
         val AMBER     = Color.parseColor("#f0a500")
         val GREEN     = Color.parseColor("#2dd4a0")
@@ -130,7 +130,7 @@ class MainActivity : Activity() {
         val TXT_PRI   = Color.parseColor("#e2e6f0")
         val TXT_SEC   = Color.parseColor("#7a8299")
         val TXT_MUTED = Color.parseColor("#3d4560")
-        val BORDER_C  = Color.parseColor("#1f2640")
+        val BORDER_C  = Color.parseColor("#1a2332")
         val ORANGE = AMBER; val YELLOW = Color.parseColor("#fbbf24")
         val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
         const val REQ_CSV = 1001
@@ -224,7 +224,7 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun cardBg() = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(6).toFloat() }
+    private fun cardBg() = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(6).toFloat() }
 
     private fun sectionHdr(label: String): LinearLayout {
         val row = LinearLayout(this).apply {
@@ -286,9 +286,9 @@ class MainActivity : Activity() {
 
         val btnLang = Button(this).apply {
             text = prefs.getString("lang","EN") ?: "EN"
-            textSize = 9f; setTextColor(TXT2)
+            textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
             setPadding(dp(12), dp(4), dp(12), dp(4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)).apply { marginEnd = dp(6) }
             setOnClickListener {
@@ -302,28 +302,28 @@ class MainActivity : Activity() {
         tvLangLbl = TextView(this).apply { text = "" }
 
         val btnStats = Button(this).apply {
-            text = "Stats"; textSize = 9f; setTextColor(TXT2)
+            text = "Stats"; textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
             setPadding(dp(9), dp(3), dp(9), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
         }
         val btnExport = Button(this).apply {
-            text = "Export"; textSize = 9f; setTextColor(TXT2)
+            text = "Export"; textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#111520")); setStroke(1, Color.parseColor("#1f2640")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
             setPadding(dp(9), dp(3), dp(9), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { exportLog() }
         }
         // Fila 1: titulo + wallet + lang
         val btnSwitch = Button(this).apply {
-            text = "Wallet"; textSize = 9f; setTextColor(GOLD)
+            text = "Wallet"; textSize = 9f; setTextColor(AMBER)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             letterSpacing = 0.06f
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#111520"))
+                setColor(Color.parseColor("#0d1117"))
                 setStroke(1, Color.parseColor("#3d2800"))
                 cornerRadius = dp(3).toFloat()
             }
