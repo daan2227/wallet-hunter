@@ -1,6 +1,17 @@
 package com.hunter.btc
 
 import android.app.*
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.os.BatteryManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import androidx.core.app.NotificationCompat
+import java.io.File
+
 import android.content.*
 import android.graphics.*
 import android.graphics.drawable.GradientDrawable
@@ -141,7 +152,9 @@ class MainActivity : Activity() {
 
     override fun onResume()  { super.onResume();  handler.post(updater) }
     override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
-    override fun onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
+    override fun onDestroy() { batteryReceiver?.let { unregisterReceiver(it) }; super.onDestroy() }
+    // old_onDestroy
+    override fun _onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
 
     private lateinit var btnLangRef: Button
 
@@ -640,6 +653,76 @@ class MainActivity : Activity() {
         }
     }
 
+
+    private fun createNotifChannel() {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        if (nm.getNotificationChannel(NOTIF_CHANNEL) != null) return
+        val ch = NotificationChannel(NOTIF_CHANNEL, "Match Found", NotificationManager.IMPORTANCE_HIGH)
+        ch.description = "Notifica cuando se encuentra una wallet con fondos"
+        ch.enableVibration(true)
+        nm.createNotificationChannel(ch)
+    }
+
+    private fun notifyMatch(addr: String, btc: String) {
+        val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+        val pi = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(this, NOTIF_CHANNEL)
+            .setSmallIcon(android.R.drawable.star_on)
+            .setContentTitle("MATCH FOUND!")
+            .setContentText("$addr  $btc")
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build()
+        nm.notify(NOTIF_ID, n)
+        val vib = getSystemService(VIBRATOR_SERVICE) as Vibrator
+        vib.vibrate(VibrationEffect.createWaveform(longArrayOf(0,300,100,300,100,600), -1))
+    }
+
+
+    private fun exportLog() {
+        val log = StringBuilder()
+        log.append("=== Wallet Hunter Log ===\n")
+        log.append("Exported: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())}\n")
+        log.append("Total scanned: ${HunterEngine.getCount()}\n")
+        log.append("Matches found: ${HunterEngine.getFound()}\n")
+        log.append("Speed: ${"%.0f".format(HunterEngine.getWps())} k/s\n\n")
+        log.append("=== Matches ===\n")
+        log.append(HunterEngine.getMatches().ifEmpty { "None" })
+        log.append("\n\n=== Recent Log ===\n")
+        try {
+            val f = File(getExternalFilesDir(null), "hunter_log_${System.currentTimeMillis()}.txt")
+            f.writeText(log.toString())
+            Toast.makeText(this, "Log saved: ${f.name}", Toast.LENGTH_LONG).show()
+        } catch(e: Exception) {
+            Toast.makeText(this, "Export error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    private fun registerBattery() {
+        if (batteryReceiver != null) return
+        batteryReceiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val level  = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+                val scale  = intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100)
+                val pct    = (level * 100 / scale)
+                val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+                val charging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+                               status == BatteryManager.BATTERY_STATUS_FULL
+                if (!charging && pct <= 20 && HunterEngine.isRunning()) {
+                    val cur = sbThreads.progress + 1
+                    if (cur > 1) {
+                        sbThreads.progress = 0
+                        HunterEngine.setCpuLimit(30)
+                        Toast.makeText(ctx, "Battery low ($pct%) - reduced to 1 thread, 30% CPU", Toast.LENGTH_LONG).show()
+                    }
+                }
+            }
+        }
+        registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+    }
+
     private fun mkSbl(block:()->Unit) = object:SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){block()}
         override fun onStartTrackingTouch(sb:SeekBar){}
@@ -741,6 +824,15 @@ class MainActivity : Activity() {
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
             if(recentAddrs.isNotEmpty()) tvAddrFeed.text=recentAddrs.takeLast(3).map{"$it  -> 0.00 BTC"}.joinToString("\n")
         } else if(!loaded&&!puzzleMode) tvAddrFeed.text=s.waitingStart
+
+                // Check new match
+                val curFound = HunterEngine.getFound()
+                if (curFound > lastFoundCount) {
+                    lastFoundCount = curFound
+                    val matchText = HunterEngine.getMatches()
+                    val lastLine = matchText.trim().lines().lastOrNull() ?: ""
+                    notifyMatch(lastLine.take(34), "")
+                }
         updateRam()
         handler.postDelayed(this,333L)
     }}

@@ -1,5 +1,10 @@
 package com.hunter.btc
 
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
+
 import android.app.*
 import android.content.*
 import android.graphics.*
@@ -11,7 +16,7 @@ import android.text.InputType
 import org.json.JSONObject
 import org.json.JSONArray
 
-class WalletActivity : Activity() {
+class WalletActivity : FragmentActivity() {
     private val AMBER     = Color.parseColor("#f59e0b")
     private val GREEN     = Color.parseColor("#10d97a")
     private val RED       = Color.parseColor("#ef4444")
@@ -28,6 +33,10 @@ class WalletActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
 
+    private var lastInteraction = System.currentTimeMillis()
+    private val AUTO_LOCK_MS = 2 * 60 * 1000L // 2 minutos
+    private var isLocked = false
+    private var balanceVisible = true
     private var mnemonic: String = ""
     private var addresses = mutableMapOf<String, String>()
     private var currentTab = 0
@@ -38,18 +47,78 @@ class WalletActivity : Activity() {
         "p2wpkh_0" to "WPKH  [0]","p2wpkh_1" to "WPKH  [1]"
     )
 
+
+    override fun onResume() {
+        super.onResume()
+        if (isLocked && WalletManager.hasSeed(this)) {
+            showBiometricOrPin {
+                mnemonic = WalletManager.loadSeed(this) ?: ""
+                isLocked = false
+            }
+        }
+        lastInteraction = System.currentTimeMillis()
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastInteraction = System.currentTimeMillis()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        val elapsed = System.currentTimeMillis() - lastInteraction
+        if (elapsed > AUTO_LOCK_MS) isLocked = true
+    }
+
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         if (!WalletManager.hasSeed(this)) { showSetupDialog(); return }
-        showPinDialog(isSetup = false) { ok ->
-            if (!ok) { finish(); return@showPinDialog }
+        showBiometricOrPin {
             mnemonic = WalletManager.loadSeed(this) ?: ""
             loadAddresses()
             buildUI()
-        }
+        
+
     }
 
     /* ── PIN DIALOG ── */
+
+    private fun showBiometricOrPin(onSuccess: () -> Unit) {
+        val bm = BiometricManager.from(this)
+        if (bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS) {
+            val executor = ContextCompat.getMainExecutor(this)
+            val prompt = BiometricPrompt(this, executor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    lastInteraction = System.currentTimeMillis()
+                    isLocked = false
+                    onSuccess()
+                }
+                override fun onAuthenticationError(code: Int, msg: CharSequence) {
+                    if (code == BiometricPrompt.ERROR_NEGATIVE_BUTTON || code == BiometricPrompt.ERROR_USER_CANCELED) {
+                        showBiometricOrPin {
+            mnemonic = WalletManager.loadSeed(this) ?: ""
+            loadAddresses()
+            buildUI()
+         if (ok) { isLocked = false; onSuccess() } else finish() }
+                    } else finish()
+                }
+                override fun onAuthenticationFailed() {}
+            })
+            val info = BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Wallet Hunter")
+                .setSubtitle("Verify your identity")
+                .setNegativeButtonText("Use PIN")
+                .build()
+            prompt.authenticate(info)
+        } else {
+            showBiometricOrPin {
+            mnemonic = WalletManager.loadSeed(this) ?: ""
+            loadAddresses()
+            buildUI()
+         if (ok) { isLocked = false; onSuccess() } else finish() }
+        }
+    }
+
     private fun showPinDialog(isSetup: Boolean, onResult: (Boolean) -> Unit) {
         val layout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -269,8 +338,16 @@ class WalletActivity : Activity() {
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
             runOnUiThread {
-                tvTotal.text = "%.8f BTC".format(tot/1e8); tvTotal.setTextColor(if(tot>0) GREEN else AMBER)
-                if (pr > 0) tvFiat.text = "~ ${"%.2f".format(tot/1e8*pr)} USD"
+                val btcText = "%.8f BTC".format(tot/1e8)
+                val fiatText = if(pr>0) "~ ${"%.2f".format(tot/1e8*pr)} USD" else ""
+                tvTotal.text = if(balanceVisible) btcText else "••••••••"
+                tvTotal.setTextColor(if(tot>0) GREEN else AMBER)
+                if (pr > 0) tvFiat.text = if(balanceVisible) fiatText else "••••••"
+                tvTotal.setOnClickListener {
+                    balanceVisible = !balanceVisible
+                    tvTotal.text = if(balanceVisible) btcText else "••••••••"
+                    tvFiat.text  = if(balanceVisible) fiatText else "••••••"
+                }
                 rows.forEach { (lbl, addr, bal) ->
                     val card = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; background = cardBg()
