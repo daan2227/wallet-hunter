@@ -56,6 +56,10 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
 }
 
 class MainActivity : Activity() {
+    private var batteryReceiver: android.content.BroadcastReceiver? = null
+    private var lastFoundCount = 0L
+    private val NOTIF_CHANNEL = "hunter_match"
+    private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvStatus: TextView
     private lateinit var tvWps: TextView
@@ -153,8 +157,6 @@ class MainActivity : Activity() {
     override fun onResume()  { super.onResume();  handler.post(updater) }
     override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
     override fun onDestroy() { batteryReceiver?.let { unregisterReceiver(it) }; super.onDestroy() }
-    // old_onDestroy
-    override fun _onDestroy() { super.onDestroy(); HunterService.tempCallback = null }
 
     private lateinit var btnLangRef: Button
 
