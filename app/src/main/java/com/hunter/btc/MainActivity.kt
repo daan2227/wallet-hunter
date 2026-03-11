@@ -577,7 +577,6 @@ class MainActivity : Activity() {
             setPadding(0, dp(8), 0, 0); setLineSpacing(0f, 1.4f)
         }
         layout.addView(tvResult)
-
         val dlg = AlertDialog.Builder(ctx)
             .setTitle("BTC Wallet")
             .setView(layout)
@@ -594,46 +593,41 @@ class MainActivity : Activity() {
             Thread {
                 try {
                     val json = HunterEngine.deriveWallet(mn)
-                    // Parse simple JSON
-                    val entries = json.removeSurrounding("{","}").split("","").map {
-                        val kv = it.replace(""","").split(":")
-                        if (kv.size >= 2) Pair(kv[0], kv.drop(1).joinToString(":")) else null
-                    }.filterNotNull()
+                    val inner = json.trim().removePrefix("{").removeSuffix("}")
+                    val entries = mutableListOf<Pair<String,String>>()
+                    val re = Regex(""([^"]+)":"([^"]+)"")
+                    re.findAll(inner).forEach { m -> entries.add(Pair(m.groupValues[1], m.groupValues[2])) }
                     val sb = StringBuilder()
                     val labels = mapOf(
-                        "p2pkh_0" to "P2PKH  [0]","p2pkh_1" to "P2PKH  [1]","p2pkh_2" to "P2PKH  [2]",
+                        "p2pkh_0" to "P2PKH  [0]", "p2pkh_1" to "P2PKH  [1]", "p2pkh_2" to "P2PKH  [2]",
                         "p2sh_0"  to "P2SH   [0]",
-                        "p2wpkh_0" to "P2WPKH [0]","p2wpkh_1" to "P2WPKH [1]"
+                        "p2wpkh_0" to "P2WPKH [0]", "p2wpkh_1" to "P2WPKH [1]"
                     )
                     for ((k, addr) in entries) {
                         val lbl = labels[k] ?: k
-                        sb.append("$lbl
-$addr
-")
+                        sb.append("$lbl\n$addr\n")
                         runOnUiThread { tvResult.text = sb.toString(); tvResult.setTextColor(TXT_PRI) }
-                        // Check balance
                         try {
                             val url = java.net.URL("https://mempool.space/api/address/$addr")
                             val conn = url.openConnection() as java.net.HttpURLConnection
                             conn.connectTimeout = 4000; conn.readTimeout = 4000
                             val js = conn.inputStream.bufferedReader().readText()
-                            val funded = Regex(""funded_txo_sum":(\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                            val spent  = Regex(""spent_txo_sum":(\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val funded = Regex("\"funded_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val spent  = Regex("\"spent_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                             val bal = (funded - spent) / 1e8
-                            val balStr = if (funded > 0) "%.8f BTC".format(bal) else "0 BTC"
-                            val color = if (funded - spent > 0) GREEN else TXT_MUTED
-                            sb.append("  Balance: $balStr
-
-")
-                            runOnUiThread { tvResult.text = sb.toString(); tvResult.setTextColor(TXT_PRI)
-                                if(funded-spent>0) tvResult.setTextColor(GREEN) }
-                        } catch(e: Exception) { sb.append("  Balance: error
-
-") }
-                        runOnUiThread { tvResult.text = sb.toString() }
+                            val balStr = if (funded - spent > 0) "%.8f BTC".format(bal) else "0 BTC"
+                            sb.append("  $balStr\n\n")
+                            runOnUiThread {
+                                tvResult.text = sb.toString()
+                                tvResult.setTextColor(if (funded - spent > 0) GREEN else TXT_PRI)
+                            }
+                        } catch(ex: Exception) {
+                            sb.append("  balance: error\n\n")
+                            runOnUiThread { tvResult.text = sb.toString() }
+                        }
                     }
-                } catch(e: Exception) {
-                    runOnUiThread { tvResult.text = "Error: ${e.message}"; tvResult.setTextColor(RED) }
+                } catch(ex: Exception) {
+                    runOnUiThread { tvResult.text = "Error: ${ex.message}"; tvResult.setTextColor(RED) }
                 }
             }.start()
         }
