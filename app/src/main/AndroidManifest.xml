@@ -15,6 +15,7 @@
         android:label="Wallet Hunter"
         android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
         android:requestLegacyExternalStorage="true">
+        <activity android:name=".StatsActivity" android:screenOrientation="portrait" />
         <activity android:name=".WalletActivity"
             android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" android:exported="true"

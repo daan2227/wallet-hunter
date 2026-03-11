@@ -56,6 +56,11 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
 }
 
 class MainActivity : Activity() {
+    private var filterP2PKH  = true
+    private var filterP2SH   = true
+    private var filterP2WPKH = true
+    private var sessionStartTime = 0L
+    private var sessionStartCount = 0L
     private var batteryReceiver: android.content.BroadcastReceiver? = null
     private var lastFoundCount = 0L
     private val NOTIF_CHANNEL = "hunter_match"
@@ -725,6 +730,58 @@ class MainActivity : Activity() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     }
 
+
+    private fun buildFilterRow(): LinearLayout {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), dp(6), dp(12), dp(4))
+            setBackgroundColor(BG_PANEL)
+        }
+        row.addView(TextView(this).apply { text = "Addr:"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.CENTER_VERTICAL; setPadding(0,0,dp(6),0) })
+        fun chip(label: String, active: Boolean, toggle: (Boolean)->Unit): Button {
+            val btn = Button(this).apply {
+                text = label; textSize = 8f
+                setTextColor(if(active) Color.BLACK else TXT_SEC)
+                background = GradientDrawable().apply {
+                    setColor(if(active) AMBER else BG_ELEV)
+                    setStroke(1, BORDER_C)
+                }
+                setPadding(dp(8), dp(2), dp(8), dp(2))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(4) }
+            }
+            btn.setOnClickListener {
+                val newState = btn.currentTextColor == TXT_SEC
+                btn.setTextColor(if(newState) Color.BLACK else TXT_SEC)
+                (btn.background as GradientDrawable).setColor(if(newState) AMBER else BG_ELEV)
+                toggle(newState)
+            }
+            return btn
+        }
+        row.addView(chip("P2PKH",  filterP2PKH)  { filterP2PKH  = it })
+        row.addView(chip("P2SH",   filterP2SH)   { filterP2SH   = it })
+        row.addView(chip("P2WPKH", filterP2WPKH) { filterP2WPKH = it })
+        return row
+    }
+
+
+    private fun saveCheckpoint() {
+        if (!puzzleMode) return
+        val prefs = getSharedPreferences("hunter_checkpoint", MODE_PRIVATE).edit()
+        prefs.putLong("puzzle_count", HunterEngine.getCount())
+        prefs.putString("puzzle_target", if(::etTarget.isInitialized) etTarget.text.toString() else "")
+        prefs.putString("checkpoint_time", SessionStats.nowStr())
+        prefs.apply()
+    }
+
+    private fun loadCheckpoint(): Long {
+        val prefs = getSharedPreferences("hunter_checkpoint", MODE_PRIVATE)
+        return prefs.getLong("puzzle_count", 0L)
+    }
+
+    private fun clearCheckpoint() {
+        getSharedPreferences("hunter_checkpoint", MODE_PRIVATE).edit().clear().apply()
+    }
+
     private fun mkSbl(block:()->Unit) = object:SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){block()}
         override fun onStartTrackingTouch(sb:SeekBar){}
@@ -789,7 +846,18 @@ class MainActivity : Activity() {
         val coinGreen=drawables?.get(0) as? GradientDrawable
         val coinRed=drawables?.get(1) as? GradientDrawable
         if(HunterEngine.isRunning()){
-            HunterEngine.stopHunting(); btnToggle.text=s.start; btnToggle.background=coinGreen
+            HunterEngine.stopHunting()
+
+                // Save session stats
+                val dur = (System.currentTimeMillis() - sessionStartTime) / 1000
+                val keys = HunterEngine.getCount() - sessionStartCount
+                val kps = if (dur > 0) keys.toDouble() / dur / 1000.0 else 0.0
+                SessionStats.save(this@MainActivity, Session(
+                    SessionStats.nowStr(),
+                    if (puzzleMode) "puzzle" else "bip39",
+                    keys, kps, dur, HunterEngine.getFound().toInt()
+                ))
+; btnToggle.text=s.start; btnToggle.background=coinGreen
         } else {
             if(puzzleMode){
                 val rs=etRangeStart.text.toString().trim(); val re=etRangeEnd.text.toString().trim(); val tgt=etTarget.text.toString().trim()
@@ -797,7 +865,7 @@ class MainActivity : Activity() {
                 if(tgt.isEmpty()){Toast.makeText(this,s.enterTarget,Toast.LENGTH_SHORT).show();return}
                 HunterEngine.setRange(rs,re); HunterEngine.setTarget(tgt)
             } else { if(!HunterEngine.isCsvLoaded()){Toast.makeText(this,s.loadFirst,Toast.LENGTH_SHORT).show();return} }
-            HunterEngine.startHunting(sbThreads.progress+1,sbCpu.progress+10)
+            sessionStartTime = System.currentTimeMillis(); sessionStartCount = HunterEngine.getCount(); HunterEngine.startHunting(sbThreads.progress+1,sbCpu.progress+10)
             btnToggle.text=s.stop; btnToggle.background=coinRed
         }
     }

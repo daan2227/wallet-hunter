@@ -119,6 +119,78 @@ object WalletManager {
     fun loadAddresses(ctx: Context): String? =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ADDRS, null)
 
+
+    /* -- MULTI-WALLET -- */
+    private const val PREF_WALLET_LIST = "wallet_list"
+    private const val PREF_ACTIVE_ID   = "active_wallet_id"
+
+    fun listWallets(ctx: Context): List<Pair<String,String>> {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val raw = prefs.getString(PREF_WALLET_LIST, "") ?: ""
+        if (raw.isEmpty()) return emptyList()
+        return raw.split("|").mapNotNull {
+            val parts = it.split(":")
+            if (parts.size == 2) Pair(parts[0], parts[1]) else null
+        }
+    }
+
+    fun saveWallet(ctx: Context, id: String, name: String, mnemonic: String) {
+        // Encrypt seed under id-specific key
+        val alias = "hunter_wallet_$id"
+        val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        if (!ks.containsAlias(alias)) {
+            val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+            kg.init(KeyGenParameterSpec.Builder(alias, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256).build())
+            kg.generateKey()
+        }
+        val key = (ks.getEntry(alias, null) as KeyStore.SecretKeyEntry).secretKey
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val enc = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        prefs.putString("seed_enc_$id", Base64.encodeToString(enc, Base64.NO_WRAP))
+        prefs.putString("seed_iv_$id",  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+        // Add to list
+        val list = listWallets(ctx).toMutableList()
+        if (list.none { it.first == id }) list.add(Pair(id, name))
+        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.apply()
+    }
+
+    fun loadWalletSeed(ctx: Context, id: String): String? {
+        val alias = "hunter_wallet_$id"
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val enc = Base64.decode(prefs.getString("seed_enc_$id", null) ?: return null, Base64.NO_WRAP)
+        val iv  = Base64.decode(prefs.getString("seed_iv_$id",  null) ?: return null, Base64.NO_WRAP)
+        return try {
+            val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+            val key = (ks.getEntry(alias, null) as KeyStore.SecretKeyEntry).secretKey
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+            String(cipher.doFinal(enc), Charsets.UTF_8)
+        } catch(e: Exception) { null }
+    }
+
+    fun setActiveWallet(ctx: Context, id: String) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_ACTIVE_ID, id).apply()
+    }
+
+    fun getActiveWalletId(ctx: Context): String? =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ACTIVE_ID, null)
+
+    fun deleteWallet(ctx: Context, id: String) {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+        prefs.remove("seed_enc_$id"); prefs.remove("seed_iv_$id")
+        val list = listWallets(ctx).filter { it.first != id }
+        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.apply()
+        try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
+    }
+
     fun clearSeed(ctx: Context) {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}

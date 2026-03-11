@@ -349,14 +349,14 @@ class WalletActivity : FragmentActivity() {
         val tvHead = TextView(this).apply { text = "Loading..."; textSize = 11f; setTextColor(TXT_SEC); setPadding(0,dp(12),0,dp(8)) }
         ll.addView(tvHead); scroll.addView(ll); tabContent.addView(scroll)
 
-        val firstAddr = addresses["p2pkh_0"] ?: addresses.values.firstOrNull() ?: return
+        val queryAddrs = addresses.values.toList().ifEmpty { return }
         Thread {
             try {
-                val conn = java.net.URL("https://mempool.space/api/address/$firstAddr/txs").openConnection() as java.net.HttpURLConnection
+                val conn = java.net.URL("https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 val arr = JSONArray(conn.inputStream.bufferedReader().readText())
                 runOnUiThread {
-                    tvHead.text = "${arr.length()} txs  ${firstAddr.take(14)}..."
+                    tvHead.text = "${arr.length()} txs  (${queryAddrs[0].take(14)}...)"
                     if (arr.length() == 0) { ll.addView(TextView(this).apply { text = "No transactions"; setTextColor(TXT_MUTED); textSize = 11f }); return@runOnUiThread }
                     for (i in 0 until minOf(arr.length(), 20)) {
                         val tx = arr.getJSONObject(i)
