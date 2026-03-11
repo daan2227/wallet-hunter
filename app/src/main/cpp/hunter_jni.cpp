@@ -342,43 +342,6 @@ static void *worker_bip39_fn(void *){
    Worker PUZZLE (modo 1) - rango de clave privada
    ========================================================= */
 
-/* Contexto para callback de batch normalization */
-struct PuzzleCheckCtx {
-    secp256k1_context *sec_ctx;
-    uint8_t privkey_base[32]; /* privkey del punto[0] del batch */
-    int     match_found;
-    int     match_idx;
-};
-static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw_ctx){
-    PuzzleCheckCtx *ctx=(PuzzleCheckCtx*)raw_ctx;
-    uint8_t sha[32],h160[HASH160_BYTES];
-    SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
-    int match=0;
-    char sats_buf[24]="0"; char type_buf[12]="?";
-    if(g_has_target){
-        if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
-    } else if(g_csv_loaded.load()){
-        int64_t i=bsearch_h160(h160);
-        if(i>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
-    }
-    if(idx%50==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-    if(match){
-        g_found.fetch_add(1);
-        uint8_t privkey[32]; memcpy(privkey,ctx->privkey_base,32);
-        for(int k=0;k<idx;k++){
-            for(int b=31;b>=0;b--){if(++privkey[b])break;}
-        }
-        char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-        h160_to_addr(h160,addr); pk_to_wif(privkey,wif);
-        for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
-        uint64_t satval=(uint64_t)strtoull(sats_buf,NULL,10);
-        double btc=g_has_target?0.0:satval/1e8;
-        char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
-        save_match(pkhex,addr,btc,wif,extra);
-        add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
-    }
-}
-
 static void privkey_increment(uint8_t *k){
     for(int i=31;i>=0;i--){if(++k[i])break;}
 }
