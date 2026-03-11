@@ -519,7 +519,7 @@ class MainActivity : Activity() {
             textSize = 11f; typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.15f
             layoutParams = LinearLayout.LayoutParams(dp(160), dp(48)).apply {
-                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12); bottomMargin = dp(6)
+                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(28); bottomMargin = dp(10)
             }
             setOnClickListener { doToggle() }
         }
