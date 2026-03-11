@@ -97,6 +97,7 @@ class WalletActivity : Activity() {
         }
 
         var firstPin = ""
+        var dlgRef: AlertDialog? = null
         fun handleDigit(d: String) {
             if (d == "DEL") { if (pin.isNotEmpty()) pin.deleteCharAt(pin.length-1); updateDots(); return }
             if (pin.length >= 6) return
@@ -105,9 +106,10 @@ class WalletActivity : Activity() {
                 if (isSetup) {
                     if (firstPin.isEmpty()) {
                         firstPin = pin.toString(); pin.clear(); updateDots()
-                        tvStatus.text = "Confirm PIN"
+                        tvStatus.text = "Confirm PIN"; tvStatus.setTextColor(TXT_SEC)
                     } else if (firstPin == pin.toString()) {
                         WalletManager.savePin(this, pin.toString())
+                        dlgRef?.dismiss()
                         onResult(true)
                     } else {
                         firstPin = ""; pin.clear(); updateDots()
@@ -116,6 +118,7 @@ class WalletActivity : Activity() {
                     }
                 } else {
                     if (WalletManager.checkPin(this, pin.toString())) {
+                        dlgRef?.dismiss()
                         onResult(true)
                     } else {
                         pin.clear(); updateDots()
@@ -152,8 +155,9 @@ class WalletActivity : Activity() {
             .setView(layout)
             .setCancelable(false)
             .create()
+        dlgRef = dlg
         if (!isSetup) {
-            dlg.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancel") { _, _ -> onResult(false) }
+            dlg.setButton(AlertDialog.BUTTON_NEGATIVE, "Cancel") { _, _ -> dlg.dismiss(); onResult(false) }
         }
         dlg.show()
     }
