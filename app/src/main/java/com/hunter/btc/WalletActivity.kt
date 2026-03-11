@@ -116,7 +116,7 @@ class WalletActivity : Activity() {
                     setColor(if(i==0) BG_ELEV else BG_CARD)
                 }
                 layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f)
-                setOnClickListener { switchTab(i, this@mapIndexed) }
+                setOnClickListener { switchTab(i, this) }
             }
         }
         tabBtns.forEach { tabs.addView(it) }
