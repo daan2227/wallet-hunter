@@ -20,7 +20,6 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
-#include "sha256_ripemd160.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -54,7 +53,7 @@ static std::atomic<long>   g_found(0);
 static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
-static std::atomic<int>    g_cpu_limit(80);
+static std::atomic<int>    g_cpu_limit(100);
 static std::atomic<int>    g_nthreads(4);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
@@ -384,60 +383,80 @@ static void privkey_increment(uint8_t *k){
     for(int i=31;i>=0;i--){if(++k[i])break;}
 }
 
+/* Callback para jac_batch: hash160 + check match por cada clave del batch */
+struct PuzzleBatchCtx {
+    uint8_t priv_base[32]; /* privkey del punto[0] */
+    long    done;
+};
+static PuzzleBatchCtx g_pbctx;
+
+static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
+    PuzzleBatchCtx *c=(PuzzleBatchCtx*)raw;
+    uint8_t sha[32],h160[HASH160_BYTES];
+    SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
+    c->done++;
+    if(c->done%100==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+    int match=0; char sats_buf[24]="0"; char type_buf[12]="?";
+    if(g_has_target){
+        if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
+    } else if(g_csv_loaded.load()){
+        int64_t i=bsearch_h160(h160);
+        if(i>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
+    }
+    if(match){
+        g_found.fetch_add(1);
+        /* Reconstruir privkey = base + idx */
+        uint8_t privkey[32]; memcpy(privkey,c->priv_base,32);
+        for(int k=0;k<idx;k++){for(int b=31;b>=0;b--){if(++privkey[b])break;}}
+        char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
+        h160_to_addr(h160,addr); pk_to_wif(privkey,wif);
+        for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
+        uint64_t satval=(uint64_t)strtoull(sats_buf,NULL,10);
+        double btc=g_has_target?0.0:satval/1e8;
+        char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
+        save_match(pkhex,addr,btc,wif,extra);
+        add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
+    }
+}
+
 static void *worker_puzzle_fn(void *){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
-    uint8_t privkey[32],h160[HASH160_BYTES];
     long local_done=0;
     XR128 rng; xr_init(&rng);
-    const int SEQ_BATCH=5000;
+    JP *pts=(JP*)malloc(JAC_BATCH*sizeof(JP));
+    if(!pts){secp256k1_context_destroy(ctx);return nullptr;}
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
-        local_done=0;
-        /* Punto de inicio aleatorio en el rango */
+        /* Random start in range */
+        uint8_t privkey[32];
         gen_privkey_fast(privkey,&rng);
         if(!secp256k1_ec_seckey_verify(ctx,privkey))
             memcpy(privkey,g_range_start,32);
-        /* Una sola multiplicacion escalar por bloque */
+        /* ONE scalar mult for entire batch */
         secp256k1_pubkey pubkey;
-        if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)) continue;
-        for(int bi=0;bi<SEQ_BATCH&&!g_stop.load();bi++){
-            /* Serializar y hashear - inline sin overhead OpenSSL */
-            uint8_t pub33[33]; size_t plen=33;
-            secp256k1_ec_pubkey_serialize(ctx,pub33,&plen,&pubkey,SECP256K1_EC_COMPRESSED);
-            hash160_inline(pub33,h160);
-            local_done++;
-            if(local_done%50==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-            int match=0;
-            char sats_buf[24]="0"; char type_buf[12]="?";
-            if(g_has_target){
-                if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
-            } else if(g_csv_loaded.load()){
-                int64_t idx=bsearch_h160(h160);
-                if(idx>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
-            }
-            if(match){
-                g_found.fetch_add(1);
-                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-                h160_to_addr(h160,addr);pk_to_wif(privkey,wif);
-                for(int b=0;b<32;b++)sprintf(pkhex+b*2,"%02x",privkey[b]);
-                uint64_t satval=(uint64_t)strtoull(sats_buf,NULL,10);
-                double btc=g_has_target?0.0:satval/1e8;
-                char extra[128];snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
-                save_match(pkhex,addr,btc,wif,extra);
-                add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
-            }
-            if(bi<SEQ_BATCH-1){
-                privkey_increment(privkey);
-                if(memcmp(privkey,g_range_end,32)>0) break;
-                uint8_t one[32]={0}; one[31]=1;
-                if(!secp256k1_ec_pubkey_tweak_add(ctx,&pubkey,one)) break;
-            }
+        if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)){continue;}
+        uint8_t pub65[65]; size_t plen=65;
+        secp256k1_ec_pubkey_serialize(ctx,pub65,&plen,&pubkey,SECP256K1_EC_UNCOMPRESSED);
+        jp_from_affine(&pts[0],pub65);
+        /* Fill batch: only Jacobian point additions, no inversions */
+        uint8_t cur[32]; memcpy(cur,privkey,32);
+        int actual=1;
+        for(int i=1;i<JAC_BATCH&&!g_stop.load();i++){
+            for(int b=31;b>=0;b--){if(++cur[b])break;}
+            if(memcmp(cur,g_range_end,32)>0) break;
+            jp_add_G(&pts[i],&pts[i-1]);
+            actual++;
         }
+        /* Batch normalize: 1 inversion for all 'actual' points */
+        PuzzleBatchCtx pctx; memcpy(pctx.priv_base,privkey,32); pctx.done=0;
+        jac_batch_hash160(pts,actual,puzzle_on_key,&pctx);
+        local_done+=actual;
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
         if(cpu<100){double sl=work_ms*(100.0-cpu)/cpu;if(sl>0.5)std::this_thread::sleep_for(std::chrono::milliseconds((int)sl));}
-        g_count.fetch_add(local_done);
+        g_count.fetch_add(actual);
     }
+    free(pts);
     secp256k1_context_destroy(ctx);return nullptr;
 }
 

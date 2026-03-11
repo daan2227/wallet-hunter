@@ -18,14 +18,11 @@ import java.io.*
 class SpeedChartView(context: android.content.Context) : android.view.View(context) {
     private val maxPoints = 60
     private val wpsPoints  = ArrayDeque<Float>()
-    private val foundPoints = ArrayDeque<Float>()
 
     private val paintSpeed = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
         color = 0xFFFF9900.toInt(); strokeWidth = 2.5f; style = android.graphics.Paint.Style.STROKE
     }
-    private val paintFound = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF44DD44.toInt(); strokeWidth = 2.5f; style = android.graphics.Paint.Style.STROKE
-    }
+
     private val paintGrid = android.graphics.Paint().apply {
         color = 0x22FFFFFF.toInt(); strokeWidth = 1f
     }
@@ -33,11 +30,9 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         color = 0xFF888888.toInt(); textSize = 20f
     }
 
-    fun addPoint(wps: Float, found: Float) {
+    fun addPoint(wps: Float) {
         wpsPoints.addLast(wps)
-        foundPoints.addLast(found)
         if (wpsPoints.size > maxPoints) wpsPoints.removeFirst()
-        if (foundPoints.size > maxPoints) foundPoints.removeFirst()
         postInvalidate()
     }
 
@@ -64,7 +59,6 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         }
 
         drawLine(wpsPoints, paintSpeed)
-        drawLine(foundPoints, paintFound)
 
         /* Labels */
         val wpsMax = wpsPoints.maxOrNull() ?: 0f
@@ -533,7 +527,7 @@ class MainActivity : Activity() {
         btnToggle.isEnabled=(loaded&&!loading)||puzzleMode
         val wps=HunterEngine.getWps()
         tvWps.text=if(wps>=1e6)"%.2f M w/s".format(wps/1e6) else if(wps>=1000)"%.1f K w/s".format(wps/1000) else "%.0f w/s".format(wps)
-        if(running) chartView.addPoint(wps.toFloat(), HunterEngine.getFound().toFloat())
+        if(running) chartView.addPoint(wps.toFloat())
         tvWps.setTextColor(if(running)ORANGE else DIM)
         val count=HunterEngine.getCount(); tvCount.text=if(count>=1_000_000)"%.2f M ${s.seeds}".format(count/1e6) else "$count ${s.seeds}"
         val e=HunterEngine.getElapsed(); tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
