@@ -75,6 +75,7 @@ class MainActivity : Activity() {
     private lateinit var tvWps: TextView
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
+    private lateinit var tvPuzzleStatus: TextView
     private lateinit var tvTime: TextView
     private lateinit var tvMatches: TextView
     private lateinit var tvMatchList: TextView
@@ -172,8 +173,8 @@ class MainActivity : Activity() {
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 val json = conn.inputStream.bufferedReader().readText()
                 // {"chain_stats":{"funded_txo_sum":...,"spent_txo_sum":...},...}
-                val funded = Regex('"funded_txo_sum":(\d+)').find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                val spent  = Regex('"spent_txo_sum":(\d+)').find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val funded = Regex(""""funded_txo_sum":(\d+)""").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val spent  = Regex(""""spent_txo_sum":(\d+)""").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                 onResult(funded - spent)
             } catch(e: Exception) { onResult(-1L) }
         }.start()
@@ -369,7 +370,7 @@ class MainActivity : Activity() {
             inputType=InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
         layoutPuzzle.addView(etTarget)
-        val tvPuzzleStatus = TextView(this).apply {
+        tvPuzzleStatus = TextView(this).apply {
             text=""; textSize=10f; setPadding(0,4,0,0)
             setTextColor(Color.parseColor("#44BB44"))
         }
