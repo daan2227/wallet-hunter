@@ -595,8 +595,8 @@ class MainActivity : Activity() {
                     val json = HunterEngine.deriveWallet(mn)
                     val inner = json.trim().removePrefix("{").removeSuffix("}")
                     val entries = mutableListOf<Pair<String,String>>()
-                                        val re = Regex('"([^"]+)":"([^"]+)"')
-                    re.findAll(inner).forEach { m -> entries.add(Pair(m.groupValues[1], m.groupValues[2])) }
+                                        val re = Regex("\"([^\"]+)\":[\"\'](.*?)[\"\']")
+                    re.findAll(inner).forEach { m: MatchResult -> entries.add(Pair(m.groupValues[1], m.groupValues[2])) }
                     val sb = StringBuilder()
                     val labels = mapOf(
                         "p2pkh_0" to "P2PKH  [0]", "p2pkh_1" to "P2PKH  [1]", "p2pkh_2" to "P2PKH  [2]",
