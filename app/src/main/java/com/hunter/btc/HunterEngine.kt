@@ -21,4 +21,5 @@ object HunterEngine {
     external fun popLog(): String
     external fun getMatches(): String
     external fun popRecentAddr(): String
+    external fun deriveWallet(mnemonic: String): String
 }

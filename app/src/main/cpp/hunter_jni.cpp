@@ -207,6 +207,103 @@ static void hex_to_bytes32(const char *hex, uint8_t *out){
     }
 }
 
+
+/* =========================================================
+   Wallet address encoding helpers
+   ========================================================= */
+static const char *BECH32_CHARSET="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+static uint32_t bech32_polymod(const uint8_t *v,int vlen){
+    uint32_t c=1;
+    for(int i=0;i<vlen;i++){
+        uint8_t d=c>>25; c=((c&0x1ffffff)<<5)^v[i];
+        if(d&1)c^=0x3b6a57b2; if(d&2)c^=0x26508e6d;
+        if(d&4)c^=0x1ea119fa; if(d&8)c^=0x3d4233dd; if(d&16)c^=0x2a1462b3;
+    }
+    return c;
+}
+static void h160_to_bech32(const uint8_t *h160, char *out){
+    /* Convert 20 bytes to 5-bit groups (32 values) */
+    uint8_t d5[33]; /* witness version 0 + 32 data values */
+    d5[0]=0; /* witness version */
+    uint32_t acc=0; int bits=0; int idx=1;
+    for(int i=0;i<20;i++){
+        acc=(acc<<8)|h160[i]; bits+=8;
+        while(bits>=5){ bits-=5; d5[idx++]=(acc>>bits)&31; }
+    }
+    if(bits>0) d5[idx++]=(acc<<(5-bits))&31;
+    /* Checksum */
+    const char *hrp="bc"; int hrplen=2;
+    uint8_t enc[hrplen+1+idx+6+1];
+    int p=0;
+    for(int i=0;i<hrplen;i++) enc[p++]=(uint8_t)hrp[i]>>5;
+    enc[p++]=0;
+    for(int i=0;i<hrplen;i++) enc[p++]=(uint8_t)hrp[i]&31;
+    for(int i=0;i<idx;i++) enc[p++]=d5[i];
+    for(int i=0;i<6;i++) enc[p++]=0;
+    uint32_t mod=bech32_polymod(enc,p)^1;
+    char *o=out; for(int i=0;i<hrplen;i++) *o++=hrp[i]; *o++='1';
+    for(int i=0;i<idx;i++) *o++=BECH32_CHARSET[d5[i]];
+    for(int i=0;i<6;i++) *o++=BECH32_CHARSET[(mod>>(5*(5-i)))&31];
+    *o='\0';
+}
+static void h160_to_p2sh(const uint8_t *h160, char *out){
+    /* P2SH-P2WPKH: redeem = 0x0014 + h160, then hash160 of redeem */
+    uint8_t redeem[22]; redeem[0]=0x00; redeem[1]=0x14; memcpy(redeem+2,h160,20);
+    uint8_t sha[32],rh[20];
+    SHA256(redeem,22,sha); RIPEMD160(sha,32,rh);
+    uint8_t v[21]; v[0]=0x05; memcpy(v+1,rh,20);
+    b58enc(v,21,out,MAX_ADDR);
+}
+/* Derive wallet: returns JSON string with 8 addresses */
+static std::string derive_wallet_json(const char *mnemonic){
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    uint8_t seed[64];
+    PKCS5_PBKDF2_HMAC(mnemonic,(int)strlen(mnemonic),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+    HDKey master; derive_master(seed,&master);
+    std::string json="{";
+    /* BIP44: m/44'/0'/0'/0/0-2 */
+    HDKey h44,h44_0,h44_00,h44_ext;
+    derive_child(ctx,&master,0x80000000u+44,&h44);
+    derive_child(ctx,&h44,0x80000000u+0,&h44_0);
+    derive_child(ctx,&h44_0,0x80000000u+0,&h44_00);
+    derive_child(ctx,&h44_00,0,&h44_ext);
+    for(int i=0;i<3;i++){
+        HDKey leaf; derive_child(ctx,&h44_ext,i,&leaf);
+        uint8_t h160[20]; pk_to_h160(ctx,leaf.key,h160);
+        char addr[MAX_ADDR]={0}; h160_to_addr(h160,addr);
+        char key[32]; snprintf(key,32,"\"p2pkh_%d\"",i);
+        json+=key; json+=":\""; json+=addr; json+="\",";
+    }
+    /* BIP49: m/49'/0'/0'/0/0 */
+    HDKey h49,h49_0,h49_00,h49_ext,h49_leaf;
+    derive_child(ctx,&master,0x80000000u+49,&h49);
+    derive_child(ctx,&h49,0x80000000u+0,&h49_0);
+    derive_child(ctx,&h49_0,0x80000000u+0,&h49_00);
+    derive_child(ctx,&h49_00,0,&h49_ext);
+    derive_child(ctx,&h49_ext,0,&h49_leaf);
+    {uint8_t h160[20]; pk_to_h160(ctx,h49_leaf.key,h160);
+     char addr[MAX_ADDR]={0}; h160_to_p2sh(h160,addr);
+     json+="\"p2sh_0\":\""; json+=addr; json+="\",";}
+    /* BIP84: m/84'/0'/0'/0/0-1 */
+    HDKey h84,h84_0,h84_00,h84_ext;
+    derive_child(ctx,&master,0x80000000u+84,&h84);
+    derive_child(ctx,&h84,0x80000000u+0,&h84_0);
+    derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
+    derive_child(ctx,&h84_00,0,&h84_ext);
+    for(int i=0;i<2;i++){
+        HDKey leaf; derive_child(ctx,&h84_ext,i,&leaf);
+        uint8_t h160[20]; pk_to_h160(ctx,leaf.key,h160);
+        char addr[MAX_ADDR]={0}; h160_to_bech32(h160,addr);
+        char key[32]; snprintf(key,32,"\"p2wpkh_%d\"",i);
+        json+=key; json+=":\""; json+=addr; json+="\",";
+    }
+    /* Remove trailing comma */
+    if(json.back()==',') json.pop_back();
+    json+="}";
+    secp256k1_context_destroy(ctx);
+    return json;
+}
+
 /* === FAST RNG para puzzle mode ===
    Usa xorshift128+ por thread - sin malloc, sin syscall, sin BN
    Range en bytes: calcula bits activos y genera solo esos bits */
@@ -632,6 +729,14 @@ Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
 JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_hasTarget(JNIEnv *,jobject){
     return (jboolean)(g_has_target==1);
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn){
+    const char *mn=env->GetStringUTFChars(jmn,nullptr);
+    std::string result=derive_wallet_json(mn);
+    env->ReleaseStringUTFChars(jmn,mn);
+    return env->NewStringUTF(result.c_str());
 }
 
 } /* extern C */

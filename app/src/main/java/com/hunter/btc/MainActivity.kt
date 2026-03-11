@@ -555,6 +555,90 @@ class MainActivity : Activity() {
         root.addView(main); setContentView(root)
     }
 
+
+    private fun showWalletDialog() {
+        val ctx = this
+        val layout = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(8))
+        }
+        val etSeed = EditText(ctx).apply {
+            hint = "12 or 24 word seed phrase"
+            setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C) }
+            setPadding(dp(10), dp(8), dp(10), dp(8)); textSize = 11f
+            minLines = 2; maxLines = 4
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        layout.addView(etSeed)
+        val tvResult = TextView(ctx).apply {
+            text = ""; textSize = 9f; typeface = Typeface.MONOSPACE
+            setTextColor(TXT_SEC)
+            setPadding(0, dp(8), 0, 0); setLineSpacing(0f, 1.4f)
+        }
+        layout.addView(tvResult)
+
+        val dlg = AlertDialog.Builder(ctx)
+            .setTitle("BTC Wallet")
+            .setView(layout)
+            .setPositiveButton("Derive") { _, _ -> }
+            .setNegativeButton("Close", null)
+            .create()
+        dlg.show()
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val mn = etSeed.text.toString().trim()
+            if (mn.split(" ").size < 12) {
+                tvResult.text = "Enter at least 12 words"; return@setOnClickListener
+            }
+            tvResult.text = "Deriving..."; tvResult.setTextColor(TXT_SEC)
+            Thread {
+                try {
+                    val json = HunterEngine.deriveWallet(mn)
+                    // Parse simple JSON
+                    val entries = json.removeSurrounding("{","}").split("","").map {
+                        val kv = it.replace(""","").split(":")
+                        if (kv.size >= 2) Pair(kv[0], kv.drop(1).joinToString(":")) else null
+                    }.filterNotNull()
+                    val sb = StringBuilder()
+                    val labels = mapOf(
+                        "p2pkh_0" to "P2PKH  [0]","p2pkh_1" to "P2PKH  [1]","p2pkh_2" to "P2PKH  [2]",
+                        "p2sh_0"  to "P2SH   [0]",
+                        "p2wpkh_0" to "P2WPKH [0]","p2wpkh_1" to "P2WPKH [1]"
+                    )
+                    for ((k, addr) in entries) {
+                        val lbl = labels[k] ?: k
+                        sb.append("$lbl
+$addr
+")
+                        runOnUiThread { tvResult.text = sb.toString(); tvResult.setTextColor(TXT_PRI) }
+                        // Check balance
+                        try {
+                            val url = java.net.URL("https://mempool.space/api/address/$addr")
+                            val conn = url.openConnection() as java.net.HttpURLConnection
+                            conn.connectTimeout = 4000; conn.readTimeout = 4000
+                            val js = conn.inputStream.bufferedReader().readText()
+                            val funded = Regex(""funded_txo_sum":(\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val spent  = Regex(""spent_txo_sum":(\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                            val bal = (funded - spent) / 1e8
+                            val balStr = if (funded > 0) "%.8f BTC".format(bal) else "0 BTC"
+                            val color = if (funded - spent > 0) GREEN else TXT_MUTED
+                            sb.append("  Balance: $balStr
+
+")
+                            runOnUiThread { tvResult.text = sb.toString(); tvResult.setTextColor(TXT_PRI)
+                                if(funded-spent>0) tvResult.setTextColor(GREEN) }
+                        } catch(e: Exception) { sb.append("  Balance: error
+
+") }
+                        runOnUiThread { tvResult.text = sb.toString() }
+                    }
+                } catch(e: Exception) {
+                    runOnUiThread { tvResult.text = "Error: ${e.message}"; tvResult.setTextColor(RED) }
+                }
+            }.start()
+        }
+    }
+
     private fun mkSbl(block:()->Unit) = object:SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(sb:SeekBar,p:Int,u:Boolean){block()}
         override fun onStartTrackingTouch(sb:SeekBar){}
