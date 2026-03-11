@@ -92,6 +92,7 @@ class MainActivity : Activity() {
     private lateinit var tvLogSec: TextView
     private lateinit var tvLangLbl: TextView
     private lateinit var btnCsv: Button
+    private lateinit var csvSecView: LinearLayout
     private lateinit var etRangeStart: EditText
     private lateinit var etRangeEnd: EditText
     private lateinit var etTarget: EditText
@@ -294,13 +295,7 @@ class MainActivity : Activity() {
             }
         }
         tvLangLbl = TextView(this).apply { text = "" }
-        val btnWallet = Button(this).apply {
-            text = "Wallet"; textSize = 10f; setTextColor(GREEN)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d5c2e")) }
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply { marginEnd = dp(6) }
-            setOnClickListener { startActivity(Intent(this@MainActivity, WalletActivity::class.java)) }
-        }
+
         val btnStats = Button(this).apply {
             text = "Stats"; textSize = 9f; setTextColor(CYAN)
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, Color.parseColor("#0d3a4a")) }
@@ -316,8 +311,19 @@ class MainActivity : Activity() {
             setOnClickListener { exportLog() }
         }
         // Fila 1: titulo + wallet + lang
+        val btnSwitch = Button(this).apply {
+            text = ">> Wallet"; textSize = 9f; setTextColor(AMBER)
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(1, Color.parseColor("#5a3a00"))
+                cornerRadius = dp(6).toFloat()
+            }
+            setPadding(dp(10), dp(2), dp(10), dp(2))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(4) }
+            setOnClickListener { startActivity(Intent(this@MainActivity, WalletActivity::class.java)) }
+        }
         hRow1.addView(brand)
-        hRow1.addView(btnWallet)
+        hRow1.addView(btnSwitch)
         hRow1.addView(btnLang)
         // Fila 2: botones pequenos
         val hRow2 = LinearLayout(this).apply {
@@ -350,7 +356,7 @@ class MainActivity : Activity() {
         }
 
         /* CSV */
-        val csvSec = pad().also { main.addView(it) }
+        val csvSec = pad().also { main.addView(it) }; csvSecView = csvSec
         tvCsvSec = sectionHdr(s.csvSection).also { csvSec.addView(it) }
         val csvPanel = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -488,6 +494,7 @@ class MainActivity : Activity() {
         val modeToggle = { isPuzzle: Boolean ->
             puzzleMode = isPuzzle
             layoutPuzzle.visibility = if(isPuzzle) View.VISIBLE else View.GONE
+            csvSecView.visibility   = if(isPuzzle) View.GONE else View.VISIBLE
             HunterEngine.setMode(if(isPuzzle) 1 else 0)
             if(isPuzzle) setTabActive(rbPuzzle) else setTabActive(rbBip39)
         }
@@ -495,13 +502,25 @@ class MainActivity : Activity() {
         rbPuzzle.setOnClickListener { modeToggle(true) }
 
         /* ACTION BUTTON */
-        val btnSize = (resources.displayMetrics.widthPixels * 0.36).toInt()
-        val coinGreen = GradientDrawable().apply { shape=GradientDrawable.OVAL; setColor(Color.parseColor("#0d5c2e")); setStroke(dp(2),GREEN) }
-        val coinRed   = GradientDrawable().apply { shape=GradientDrawable.OVAL; setColor(Color.parseColor("#5c0d0d")); setStroke(dp(2),RED) }
+        val coinGreen = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#0a2e1a"))
+            setStroke(dp(2), GREEN)
+            cornerRadius = dp(12).toFloat()
+        }
+        val coinRed = GradientDrawable().apply {
+            shape = GradientDrawable.RECTANGLE
+            setColor(Color.parseColor("#2e0a0a"))
+            setStroke(dp(2), RED)
+            cornerRadius = dp(12).toFloat()
+        }
         btnToggle = Button(this).apply {
-            text = s.start; background = coinGreen; setTextColor(Color.WHITE)
-            textSize = 12f; typeface = Typeface.create("monospace", Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(btnSize, btnSize).apply { gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(16); bottomMargin = dp(8) }
+            text = s.start; background = coinGreen; setTextColor(GREEN)
+            textSize = 11f; typeface = Typeface.create("monospace", Typeface.BOLD)
+            letterSpacing = 0.15f
+            layoutParams = LinearLayout.LayoutParams(dp(160), dp(48)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(12); bottomMargin = dp(6)
+            }
             setOnClickListener { doToggle() }
         }
         btnToggle.tag = arrayOf(coinGreen, coinRed)

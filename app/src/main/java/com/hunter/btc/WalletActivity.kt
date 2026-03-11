@@ -242,6 +242,20 @@ class WalletActivity : FragmentActivity() {
             setPadding(dp(12), 0, 0, 0)
         })
         header.addView(Button(this).apply {
+            text = ">> Hunter"; textSize = 9f; setTextColor(AMBER)
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT)
+                setStroke(1, Color.parseColor("#5a3a00"))
+                cornerRadius = dp(6).toFloat()
+            }
+            setPadding(dp(10), dp(2), dp(10), dp(2))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(4) }
+            setOnClickListener {
+                startActivity(Intent(this@WalletActivity, MainActivity::class.java))
+                finish()
+            }
+        })
+        header.addView(Button(this).apply {
             text = "..."; textSize = 14f; setTextColor(TXT_SEC)
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT) }
             setOnClickListener { showMenu() }
