@@ -152,8 +152,8 @@ class MainActivity : Activity() {
                 val conn = url.openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
                 val json = conn.inputStream.bufferedReader().readText()
-                val funded = Regex("["]funded_txo_sum["]:(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                val spent  = Regex("["]spent_txo_sum["]:(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val funded = Regex("\"funded_txo_sum\":(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                val spent  = Regex("\"spent_txo_sum\":(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                 onResult(funded - spent)
             } catch(e: Exception) { onResult(-1L) }
         }.start()
