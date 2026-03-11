@@ -634,8 +634,7 @@ class MainActivity : Activity() {
 
     private val updater = object:Runnable { override fun run() {
         var msg:String
-        while(true){msg=HunterEngine.popLog();if(msg.isEmpty())break;logBuf.insert(0,msg+"
-");if(logBuf.length>3000)logBuf.setLength(3000)}
+        while(true){msg=HunterEngine.popLog();if(msg.isEmpty())break;logBuf.insert(0,msg+"\n");if(logBuf.length>3000)logBuf.setLength(3000)}
         tvLog.text=logBuf.toString()
         val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
@@ -655,8 +654,7 @@ class MainActivity : Activity() {
         if(running){
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
-            if(recentAddrs.isNotEmpty()) tvAddrFeed.text=recentAddrs.takeLast(3).map{"$it  -> 0.00 BTC"}.joinToString("
-")
+            if(recentAddrs.isNotEmpty()) tvAddrFeed.text=recentAddrs.takeLast(3).map{"$it  -> 0.00 BTC"}.joinToString("\n")
         } else if(!loaded&&!puzzleMode) tvAddrFeed.text=s.waitingStart
         updateRam()
         handler.postDelayed(this,333L)
