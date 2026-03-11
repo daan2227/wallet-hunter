@@ -259,13 +259,14 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_PANEL)
             setPadding(dp(20), dp(16), dp(20), dp(14))
         }
-        val hTop = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val hTop = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val hRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val brand = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         brand.addView(TextView(this).apply {
-            text = s.title; textSize = 20f; setTextColor(AMBER)
+            text = s.title; textSize = 16f; setTextColor(AMBER)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.08f
         })
         val badges = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, 0) }
@@ -314,7 +315,21 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(4) }
             setOnClickListener { exportLog() }
         }
-        hTop.addView(brand); hTop.addView(btnWallet); hTop.addView(btnStats); hTop.addView(btnExport); hTop.addView(btnLang); header.addView(hTop); main.addView(header)
+        // Fila 1: titulo + wallet + lang
+        hRow1.addView(brand)
+        hRow1.addView(btnWallet)
+        hRow1.addView(btnLang)
+        // Fila 2: botones pequeños
+        val hRow2 = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.END
+            setPadding(0, dp(4), 0, 0)
+        }
+        hRow2.addView(btnStats)
+        hRow2.addView(btnExport)
+        hTop.addView(hRow1)
+        hTop.addView(hRow2)
+        header.addView(hTop); main.addView(header)
 
         /* STATUS BAR */
         val sb2 = LinearLayout(this).apply {
