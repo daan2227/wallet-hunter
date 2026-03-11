@@ -36,7 +36,7 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         postInvalidate()
     }
 
-    fun reset() { wpsPoints.clear(); foundPoints.clear(); postInvalidate() }
+    fun reset() { wpsPoints.clear(); postInvalidate() }
 
     override fun onDraw(canvas: android.graphics.Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
