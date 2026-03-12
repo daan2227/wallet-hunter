@@ -741,7 +741,7 @@ class WalletActivity : FragmentActivity() {
             override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
             override fun afterTextChanged(s: android.text.Editable?) {
                 val txt = s.toString()
-                val words = txt.trim().split("\s+".toRegex()).filter { it.isNotEmpty() }
+                val words = txt.trim().split(" +".toRegex()).filter { it.isNotEmpty() }
                 val cnt = words.size
                 tvCount.text = "$cnt / 24 words"
                 tvCount.setTextColor(when { cnt == 12 || cnt == 24 -> GREEN; cnt > 24 -> RED; else -> TXT_MUTED })
