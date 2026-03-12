@@ -313,9 +313,15 @@ class WalletActivity : FragmentActivity() {
     private fun loadAddresses() {
         if (isWifMode) {
             if (wifAddr.isEmpty() && wifKey.isNotEmpty()) {
-                wifAddr = try { HunterEngine.wifToAddr(wifKey) } catch(e: Exception) { "" }
+                Thread {
+                    try { wifAddr = HunterEngine.wifToAddr(wifKey) } catch(e: Exception) {}
+                    addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf("wif_0" to wifAddr)
+                    runOnUiThread { buildUI() }
+                }.start()
+            } else {
+                addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf()
+                runOnUiThread { buildUI() }
             }
-            addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf()
             return
         }
         if (mnemonic.isNotEmpty()) {
@@ -439,8 +445,8 @@ class WalletActivity : FragmentActivity() {
                     val funded = Regex("\"funded_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                     val spent  = Regex("\"spent_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                     val bal = funded - spent; totalSat += bal
-                    rows.add(Triple(labelMap[k] ?: k, addr, bal))
-                } catch(e: Exception) { rows.add(Triple(labelMap[k] ?: k, addr, -1L)) }
+                    rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, bal))
+                } catch(e: Exception) { rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, -1L)) }
             }
             var price = 0.0
             try {
