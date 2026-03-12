@@ -912,13 +912,145 @@ class MainActivity : Activity() {
         log.append("=== Matches ===\n")
         log.append(HunterEngine.getMatches().ifEmpty { "None" })
         log.append("\n\n=== Recent Log ===\n")
+        log.append(logBuf.toString())
         try {
-            val f = File(getExternalFilesDir(null), "hunter_log_${System.currentTimeMillis()}.txt")
+            val dir = getExternalFilesDir(null) ?: filesDir
+            val f = File(dir, "hunter_log_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt")
             f.writeText(log.toString())
-            Toast.makeText(this, "Log saved: ${f.name}", Toast.LENGTH_LONG).show()
+            // Mostrar dialogo con ruta y opcion de ver
+            runOnUiThread {
+                val sheet = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER_C) }
+                    setPadding(dp(22), dp(20), dp(22), dp(20))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(20),0,dp(20),0) }
+                }
+                sheet.addView(TextView(this).apply {
+                    text = "Export saved"; textSize = 15f; setTextColor(GREEN)
+                    typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                    setPadding(0, 0, 0, dp(10))
+                })
+                sheet.addView(TextView(this).apply {
+                    text = f.absolutePath; textSize = 9f; setTextColor(TXT_MUTED)
+                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    setPadding(0, 0, 0, dp(14))
+                })
+                val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+                val btnView = Button(this).apply {
+                    text = "View Log"; textSize = 11f; setTextColor(Color.BLACK)
+                    typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                    background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(7).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(8) }
+                }
+                val btnFiles = Button(this).apply {
+                    text = "All Logs"; textSize = 11f; setTextColor(TXT_PRI)
+                    typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                    background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(7).toFloat() }
+                    layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f)
+                }
+                btnRow.addView(btnView); btnRow.addView(btnFiles)
+                sheet.addView(btnRow)
+                val dlg = AlertDialog.Builder(this).setView(sheet).create()
+                dlg.window?.apply {
+                    setBackgroundDrawableResource(android.R.color.transparent)
+                    setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+                    setGravity(Gravity.CENTER)
+                }
+                dlg.show()
+                btnView.setOnClickListener { dlg.dismiss(); showLogViewer(f) }
+                btnFiles.setOnClickListener { dlg.dismiss(); showAllLogs() }
+            }
         } catch(e: Exception) {
             Toast.makeText(this, "Export error: ${e.message}", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun showLogViewer(f: File) {
+        val content = try { f.readText() } catch(e: Exception) { "Error reading file: ${e.message}" }
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER_C) }
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        sheet.addView(TextView(this).apply {
+            text = f.name; textSize = 11f; setTextColor(AMBER)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+            setPadding(0, 0, 0, dp(10))
+        })
+        val sv = android.widget.ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(400))
+        }
+        sv.addView(TextView(this).apply {
+            text = content; textSize = 9f; setTextColor(TXT_PRI)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setLineSpacing(0f, 1.4f)
+        })
+        sheet.addView(sv)
+        sheet.addView(Button(this).apply {
+            text = "Close"; textSize = 11f; setTextColor(TXT_SEC)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(7).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(42)).apply { topMargin = dp(10) }
+            setOnClickListener { (parent as? android.app.Dialog)?.dismiss() }
+        })
+        val dlg = AlertDialog.Builder(this).setView(sheet).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.95f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+        }
+        // Fix close button reference
+        val closeBtn = sheet.getChildAt(2) as? Button
+        dlg.show()
+        closeBtn?.setOnClickListener { dlg.dismiss() }
+    }
+
+    private fun showAllLogs() {
+        val dir = getExternalFilesDir(null) ?: filesDir
+        val files = dir.listFiles { f -> f.name.startsWith("hunter_log") && f.name.endsWith(".txt") }
+            ?.sortedByDescending { it.lastModified() } ?: emptyList()
+        if (files.isEmpty()) { Toast.makeText(this, "No logs found", Toast.LENGTH_SHORT).show(); return }
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER_C) }
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+        }
+        sheet.addView(TextView(this).apply {
+            text = "Saved Logs (${files.size})"; textSize = 14f; setTextColor(AMBER)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            setPadding(0, 0, 0, dp(12))
+        })
+        val sv = android.widget.ScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(350))
+        }
+        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        files.forEach { logFile ->
+            val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
+            }
+            val info = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+            info.addView(TextView(this).apply { text = logFile.name; textSize = 9f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+            info.addView(TextView(this).apply { text = sdf.format(java.util.Date(logFile.lastModified())) + " | ${"%.1f".format(logFile.length()/1024f)} KB"; textSize = 8f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+            card.addView(info)
+            card.addView(Button(this).apply {
+                text = "View"; textSize = 9f; setTextColor(Color.BLACK)
+                background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(5).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(dp(50), dp(30))
+                setOnClickListener { showLogViewer(logFile) }
+            })
+            ll.addView(card)
+        }
+        sv.addView(ll); sheet.addView(sv)
+        val dlg = AlertDialog.Builder(this).setView(sheet).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.95f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+        }
+        dlg.show()
     }
 
 
