@@ -92,6 +92,7 @@ class MainActivity : Activity() {
     private lateinit var tvRam: TextView
     private lateinit var tvTemp: TextView
     private lateinit var tvLog: TextView
+    private lateinit var puzzleSpinner: Spinner
     private lateinit var tvFooter: TextView
     private lateinit var btnToggle: Button
     private lateinit var sbThreads: SeekBar
@@ -381,6 +382,7 @@ class MainActivity : Activity() {
                 sp.putString("target", if(::etTarget.isInitialized) etTarget.text.toString() else "")
                 sp.putBoolean("wasRunning", HunterEngine.isRunning())
                 sp.putString("logBuf", logBuf.toString().take(4000))
+                sp.putInt("puzzleIdx", puzzleSpinner.selectedItemPosition)
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
@@ -502,7 +504,7 @@ class MainActivity : Activity() {
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
         layoutPuzzle.addView(TextView(this).apply { text = s.puzzleSelect; textSize = 9f; setTextColor(TXT_SEC); setPadding(0, 0, 0, dp(4)) })
-        val puzzleSpinner = Spinner(this).apply {
+        puzzleSpinner = Spinner(this).apply {
             adapter = themedAdapter(puzzles.map { "#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..." })
             setSelection(defaultIdx)
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
@@ -706,6 +708,8 @@ class MainActivity : Activity() {
             if (rs.isNotEmpty()) etRangeStart.setText(rs)
             if (re.isNotEmpty()) etRangeEnd.setText(re)
             if (tg.isNotEmpty() && ::etTarget.isInitialized) etTarget.setText(tg)
+            val savedPuzzleIdx = uiSp.getInt("puzzleIdx", 0)
+            if (savedPuzzleIdx > 0) puzzleSpinner.setSelection(savedPuzzleIdx)
             val savedLog = uiSp.getString("logBuf", "") ?: ""
             if (savedLog.isNotEmpty()) { logBuf.clear(); logBuf.append(savedLog); tvLog.text = logBuf.toString() }
             updateLabels()
