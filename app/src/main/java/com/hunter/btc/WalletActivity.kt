@@ -312,11 +312,33 @@ class WalletActivity : FragmentActivity() {
     /* -- LOAD ADDRESSES -- */
     private fun loadAddresses() {
         if (isWifMode) {
-            // En modo WIF solo hay una direccion
             addresses = mutableMapOf("wif_0" to wifAddr)
             return
         }
-/
+        if (mnemonic.isNotEmpty()) {
+            Thread {
+                try {
+                    val json = HunterEngine.deriveWallet(mnemonic)
+                    val inner = json.trim().removePrefix("{").removeSuffix("}")
+                    val entries = mutableListOf<Pair<String,String>>()
+                    inner.split(",").forEach { part ->
+                        val kv = part.trim().split(":")
+                        if (kv.size >= 2) {
+                            val k = kv[0].trim().trim('"', ' ')
+                            val v = kv[1].trim().trim('"', ' ')
+                            if (k.isNotEmpty() && v.isNotEmpty()) entries.add(Pair(k, v))
+                        }
+                    }
+                    val map = mutableMapOf<String, String>()
+                    entries.forEach { (k, v) -> map[k] = v }
+                    runOnUiThread { addresses = map; buildUI() }
+                } catch (e: Exception) {
+                    runOnUiThread { buildUI() }
+                }
+            }.start()
+        }
+    }
+
     private fun buildUI() {
         title = currentWalletName.ifEmpty { "Wallet" }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
@@ -698,36 +720,36 @@ class WalletActivity : FragmentActivity() {
         }
 
         // Wallet principal BIP39
+        var selectorDlg: AlertDialog? = null
+
         if (hasSeed) {
             walletCard("Main Wallet", "BIP39 HD Wallet") {
-                dlg.dismiss()
+                selectorDlg?.dismiss()
                 authenticate {
                     mnemonic = WalletManager.loadSeed(this) ?: ""
                     currentWalletName = "Main Wallet"; isWifMode = false
-                    loadAddresses(); buildUI()
+                    loadAddresses()
                 }
             }
         }
 
-        // Wallets adicionales
         wallets.forEach { (id, name) ->
             walletCard(name, "BIP39 HD Wallet") {
-                dlg.dismiss()
+                selectorDlg?.dismiss()
                 authenticate {
                     mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
                     currentWalletId = id; currentWalletName = name; isWifMode = false
-                    loadAddresses(); buildUI()
+                    loadAddresses()
                 }
             }
         }
 
-        // WIF puzzle match
         if (wifPair != null) {
             walletCard("Puzzle Match", "WIF Key: ${wifPair.first.take(8)}...", GREEN) {
-                dlg.dismiss()
+                selectorDlg?.dismiss()
                 wifKey = wifPair.first; wifAddr = wifPair.second
                 currentWalletName = "Puzzle Match"; isWifMode = true
-                loadAddresses(); buildUI()
+                loadAddresses()
             }
         }
 
@@ -749,6 +771,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(btnRow)
 
         val dlg = AlertDialog.Builder(this).setView(scroll).create()
+        selectorDlg = dlg
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
