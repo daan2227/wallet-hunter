@@ -371,6 +371,16 @@ class MainActivity : Activity() {
             setPadding(dp(9), dp(3), dp(9), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener {
+                // Guardar estado antes de recrear
+                val sp = getSharedPreferences("ui_state", MODE_PRIVATE).edit()
+                sp.putBoolean("puzzleMode", puzzleMode)
+                sp.putInt("threads", sbThreads.progress)
+                sp.putInt("cpu", sbCpu.progress)
+                sp.putString("rangeStart", etRangeStart.text.toString())
+                sp.putString("rangeEnd", etRangeEnd.text.toString())
+                sp.putString("target", if(::etTarget.isInitialized) etTarget.text.toString() else "")
+                sp.putBoolean("wasRunning", HunterEngine.isRunning())
+                sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
             }
@@ -675,6 +685,29 @@ class MainActivity : Activity() {
         }
         main.addView(tvFooter)
         root.addView(main); setContentView(root)
+
+        // Restaurar estado si viene de cambio de tema
+        val uiSp = getSharedPreferences("ui_state", MODE_PRIVATE)
+        if (uiSp.contains("puzzleMode")) {
+            val wasPuzzle = uiSp.getBoolean("puzzleMode", false)
+            sbThreads.progress = uiSp.getInt("threads", 3)
+            sbCpu.progress = uiSp.getInt("cpu", 70)
+            if (wasPuzzle != puzzleMode) {
+                puzzleMode = wasPuzzle
+                layoutPuzzle.visibility = if(wasPuzzle) View.VISIBLE else View.GONE
+                csvSecView.visibility   = if(wasPuzzle) View.GONE else View.VISIBLE
+                HunterEngine.setMode(if(wasPuzzle) 1 else 0)
+                if(wasPuzzle) setTabActive(rbPuzzle) else setTabActive(rbBip39)
+            }
+            val rs = uiSp.getString("rangeStart", "") ?: ""
+            val re = uiSp.getString("rangeEnd", "") ?: ""
+            val tg = uiSp.getString("target", "") ?: ""
+            if (rs.isNotEmpty()) etRangeStart.setText(rs)
+            if (re.isNotEmpty()) etRangeEnd.setText(re)
+            if (tg.isNotEmpty() && ::etTarget.isInitialized) etTarget.setText(tg)
+            updateLabels()
+            uiSp.edit().clear().apply()
+        }
     }
 
 
