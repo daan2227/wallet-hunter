@@ -6,15 +6,22 @@ out = "app/src/main/java/com/hunter/btc/Bip39Words.kt"
 
 kt = "package com.hunter.btc\n\nobject Bip39Words {\n"
 ok_langs = []
+
 for lang, fname in LANGS.items():
     try:
         data = urllib.request.urlopen(f"{BASE}/{fname}.txt", timeout=15).read().decode("utf-8")
         words = [w.strip() for w in data.split("\n") if w.strip() and not w.startswith("#")]
-        chunks = [words[i:i+8] for i in range(0, len(words), 8)]
-        kt += f"\n    val {lang} = arrayOf(\n"
-        for chunk in chunks:
-            kt += "        " + ", ".join(f'"{w}"' for w in chunk) + ",\n"
-        kt += "    )\n"
+        # Split into chunks of 256 to avoid method too large
+        # Use a function that builds the list lazily
+        kt += f"\n    private fun words{lang}(): Array<String> {{\n"
+        kt += f"        val w = ArrayList<String>({len(words)})\n"
+        # Add in batches of 50 per statement
+        for i in range(0, len(words), 50):
+            batch = words[i:i+50]
+            kt += "        w.addAll(listOf(" + ", ".join(f'"{w}"' for w in batch) + "))\n"
+        kt += "        return w.toTypedArray()\n"
+        kt += "    }\n"
+        kt += f"    val {lang}: Array<String> by lazy {{ words{lang}() }}\n"
         ok_langs.append(lang)
         print(f"{lang}: {len(words)} words OK")
     except Exception as e:
@@ -27,4 +34,4 @@ for lang in ok_langs:
 kt += "        else -> EN\n    }\n}\n"
 
 open(out, "w").write(kt)
-print(f"Written {len(ok_langs)} languages")
+print(f"Written {len(ok_langs)} languages to {out}")
