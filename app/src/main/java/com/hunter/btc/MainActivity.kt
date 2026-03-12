@@ -95,6 +95,7 @@ class MainActivity : Activity() {
     private lateinit var puzzleSpinner: Spinner
     private lateinit var tvFooter: TextView
     private lateinit var btnToggle: Button
+    private lateinit var btnSwitch: Button
     private lateinit var sbThreads: SeekBar
     private lateinit var sbCpu: SeekBar
     private lateinit var tvThreads: TextView
@@ -339,7 +340,7 @@ class MainActivity : Activity() {
             setOnClickListener { exportLog() }
         }
         // Fila 1: titulo + wallet + lang
-        val btnSwitch = Button(this).apply {
+        btnSwitch = Button(this).apply {
             text = "Wallet"; textSize = 9f; setTextColor(AMBER)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             letterSpacing = 0.06f
@@ -383,6 +384,8 @@ class MainActivity : Activity() {
                 sp.putBoolean("wasRunning", HunterEngine.isRunning())
                 sp.putString("logBuf", logBuf.toString().take(4000))
                 sp.putInt("puzzleIdx", puzzleSpinner.selectedItemPosition)
+                sp.putString("activeWallet", WalletManager.getActiveWallet(this@MainActivity))
+                sp.putBoolean("isRunning", HunterEngine.isRunning())
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
@@ -695,21 +698,33 @@ class MainActivity : Activity() {
             val wasPuzzle = uiSp.getBoolean("puzzleMode", false)
             sbThreads.progress = uiSp.getInt("threads", 3)
             sbCpu.progress = uiSp.getInt("cpu", 70)
-            if (wasPuzzle != puzzleMode) {
-                puzzleMode = wasPuzzle
-                layoutPuzzle.visibility = if(wasPuzzle) View.VISIBLE else View.GONE
-                csvSecView.visibility   = if(wasPuzzle) View.GONE else View.VISIBLE
-                HunterEngine.setMode(if(wasPuzzle) 1 else 0)
-                if(wasPuzzle) setTabActive(rbPuzzle) else setTabActive(rbBip39)
-            }
+            // Siempre restaurar modo
+            puzzleMode = wasPuzzle
+            layoutPuzzle.visibility = if(wasPuzzle) View.VISIBLE else View.GONE
+            csvSecView.visibility   = if(wasPuzzle) View.GONE else View.VISIBLE
+            HunterEngine.setMode(if(wasPuzzle) 1 else 0)
+            if(wasPuzzle) setTabActive(rbPuzzle) else setTabActive(rbBip39)
+            // Puzzle spinner
+            val savedPuzzleIdx = uiSp.getInt("puzzleIdx", 0)
+            puzzleSpinner.setSelection(savedPuzzleIdx)
+            // Campos de texto
             val rs = uiSp.getString("rangeStart", "") ?: ""
             val re = uiSp.getString("rangeEnd", "") ?: ""
             val tg = uiSp.getString("target", "") ?: ""
             if (rs.isNotEmpty()) etRangeStart.setText(rs)
             if (re.isNotEmpty()) etRangeEnd.setText(re)
             if (tg.isNotEmpty() && ::etTarget.isInitialized) etTarget.setText(tg)
-            val savedPuzzleIdx = uiSp.getInt("puzzleIdx", 0)
-            if (savedPuzzleIdx > 0) puzzleSpinner.setSelection(savedPuzzleIdx)
+            // Wallet activo
+            val savedWallet = uiSp.getString("activeWallet", "") ?: ""
+            if (savedWallet.isNotEmpty()) {
+                WalletManager.setActiveWallet(this, savedWallet)
+                val wName = WalletManager.listWallets(this).firstOrNull { it.first == savedWallet }?.second ?: "Wallet"
+                btnSwitch.text = wName.take(10)
+            }
+            // Estado START/STOP
+            val wasRunning = uiSp.getBoolean("isRunning", false)
+            btnToggle.text = if (wasRunning) Strings.get(this).stop else Strings.get(this).start
+            // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
             if (savedLog.isNotEmpty()) { logBuf.clear(); logBuf.append(savedLog); tvLog.text = logBuf.toString() }
             updateLabels()
