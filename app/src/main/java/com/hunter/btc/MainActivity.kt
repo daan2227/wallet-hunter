@@ -126,19 +126,6 @@ class MainActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         AppTheme.init(this)
-        val BG_DEEP   = AppTheme.BG_DEEP
-        val BG_PANEL  = AppTheme.BG_PANEL
-        val BG_CARD   = AppTheme.BG_CARD
-        val BG_ELEV   = AppTheme.BG_ELEV
-        val AMBER     = AppTheme.AMBER
-        val GREEN     = AppTheme.GREEN
-        val RED       = AppTheme.RED
-        val CYAN      = AppTheme.CYAN
-        val TXT_PRI   = AppTheme.TXT_PRI
-        val TXT_SEC   = AppTheme.TXT_SEC
-        val TXT_MUTED = AppTheme.TXT_MUTED
-        val BORDER_C  = AppTheme.BORDER_C
-        val ORANGE    = AppTheme.AMBER; val YELLOW = AppTheme.AMBER
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         val savedLang = prefs.getString("lang", null)
         val langKey = savedLang ?: Strings.fromSystem()
