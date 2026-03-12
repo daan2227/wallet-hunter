@@ -866,24 +866,12 @@ static int64_t json_int(const std::string &j,const char *key){
 
 static std::string addr_to_spk(const char *addr) {
     std::string spk;
-    // bech32 p2wpkh: bc1q...
+    // bech32 p2wpkh: bc1q... use existing bech32_to_h160
     if (addr[0]=='b'&&addr[1]=='c'&&addr[2]=='1'&&addr[3]=='q') {
-        // decode bech32
-        const char *BECH="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-        std::string lower; for(int i=0;addr[i];i++) lower+=(char)tolower(addr[i]);
-        int sep=(int)lower.rfind('1');
-        if(sep<0) return "";
-        std::vector<int> data5;
-        for(int i=sep+1;i<(int)lower.size()-6;i++){
-            const char *p=strchr(BECH,lower[i]); if(!p) return "";
-            data5.push_back((int)(p-BECH));
-        }
-        // convert 5-bit to 8-bit
-        int acc=0,bits=0; std::vector<uint8_t> h160v;
-        for(int v:data5){acc=(acc<<5)|v;bits+=5;while(bits>=8){bits-=8;h160v.push_back((acc>>bits)&0xff);}}
-        if(h160v.size()!=20) return "";
-        spk+='\x00'; spk+='\x14';
-        spk+=std::string((char*)h160v.data(),20);
+        uint8_t h[20];
+        if (bech32_to_h160(addr, h) != 1) return "";
+        spk += '\x00'; spk += '\x14';
+        spk += std::string((char*)h, 20);
         return spk;
     }
     // base58 decode
