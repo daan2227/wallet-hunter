@@ -289,7 +289,7 @@ class MainActivity : Activity() {
             text = prefs.getString("lang","EN") ?: "EN"
             textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(AppTheme.BG_CARD); setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(3).toFloat() }
             setPadding(dp(12), dp(4), dp(12), dp(4))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(30)).apply { marginEnd = dp(6) }
             setOnClickListener {
@@ -305,7 +305,7 @@ class MainActivity : Activity() {
         val btnStats = Button(this).apply {
             text = "Stats"; textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(AppTheme.BG_CARD); setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(3).toFloat() }
             setPadding(dp(9), dp(3), dp(9), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { startActivity(Intent(this@MainActivity, StatsActivity::class.java)) }
@@ -313,7 +313,7 @@ class MainActivity : Activity() {
         val btnExport = Button(this).apply {
             text = "Export"; textSize = 9f; setTextColor(TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(3).toFloat() }
+            background = GradientDrawable().apply { setColor(AppTheme.BG_CARD); setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(3).toFloat() }
             setPadding(dp(9), dp(3), dp(9), dp(3))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
             setOnClickListener { exportLog() }
@@ -324,7 +324,7 @@ class MainActivity : Activity() {
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             letterSpacing = 0.06f
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#0d1117"))
+                setColor(AppTheme.BG_CARD)
                 setStroke(1, Color.parseColor("#3d2800"))
                 cornerRadius = dp(3).toFloat()
             }
@@ -536,12 +536,12 @@ class MainActivity : Activity() {
         /* ACTION BUTTON */
         val coinGreen = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#2dd4a0"))
+            setColor(AppTheme.GREEN)
             cornerRadius = dp(6).toFloat()
         }
         val coinRed = GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            setColor(Color.parseColor("#f05252"))
+            setColor(AppTheme.RED)
             cornerRadius = dp(6).toFloat()
         }
         btnToggle = Button(this).apply {

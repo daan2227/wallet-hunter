@@ -17,18 +17,18 @@ import org.json.JSONObject
 
 class WalletActivity : FragmentActivity() {
 
-    private val AMBER     = Color.parseColor("#f0a500")
+    private val AMBER     get() = AppTheme.AMBER
     private val GREEN     get() = AppTheme.GREEN
     private val RED       get() = AppTheme.RED
-    private val CYAN      = Color.parseColor("#60a5fa")
-    private val BG_DEEP   = Color.parseColor("#070910")
-    private val BG_PANEL  = Color.parseColor("#0c0f18")
-    private val BG_CARD   = Color.parseColor("#111520")
-    private val BG_ELEV   = Color.parseColor("#181d2e")
-    private val TXT_PRI   = Color.parseColor("#e2e6f0")
-    private val TXT_SEC   = Color.parseColor("#7a8299")
-    private val TXT_MUTED = Color.parseColor("#3d4560")
-    private val BORDER_C  = Color.parseColor("#1f2640")
+    private val CYAN      get() = AppTheme.CYAN
+    private val BG_DEEP   get() = AppTheme.BG_DEEP
+    private val BG_PANEL  get() = AppTheme.BG_PANEL
+    private val BG_CARD   get() = AppTheme.BG_CARD
+    private val BG_ELEV   get() = AppTheme.BG_ELEV
+    private val TXT_PRI   get() = AppTheme.TXT_PRI
+    private val TXT_SEC   get() = AppTheme.TXT_SEC
+    private val TXT_MUTED get() = AppTheme.TXT_MUTED
+    private val BORDER_C  get() = AppTheme.BORDER_C
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
@@ -118,13 +118,13 @@ class WalletActivity : FragmentActivity() {
         // Sheet container
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.parseColor("#0c0f18"))
+            setBackgroundColor(AppTheme.BG_PANEL)
             setPadding(dp(22), dp(16), dp(22), dp(40))
         }
 
         // Handle bar
         sheet.addView(View(this).apply {
-            background = GradientDrawable().apply { setColor(Color.parseColor("#1f2640")); cornerRadius = dp(2).toFloat() }
+            background = GradientDrawable().apply { setColor(AppTheme.BORDER_C); cornerRadius = dp(2).toFloat() }
             layoutParams = LinearLayout.LayoutParams(dp(36), dp(3)).apply { gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = dp(22) }
         })
 
@@ -149,7 +149,7 @@ class WalletActivity : FragmentActivity() {
                 background = GradientDrawable().apply {
                     shape = GradientDrawable.OVAL
                     setColor(Color.TRANSPARENT)
-                    setStroke(dp(2), Color.parseColor("#1f2640"))
+                    setStroke(dp(2), AppTheme.BORDER_C)
                 }
             }
         }
@@ -176,7 +176,7 @@ class WalletActivity : FragmentActivity() {
                 bg.setStroke(0, Color.TRANSPARENT)
             } else {
                 bg.setColor(Color.TRANSPARENT)
-                bg.setStroke(dp(2), Color.parseColor("#1f2640"))
+                bg.setStroke(dp(2), AppTheme.BORDER_C)
             }
         }
 
@@ -223,8 +223,8 @@ class WalletActivity : FragmentActivity() {
                     typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
                 }
                 background = GradientDrawable().apply {
-                    setColor(if (k.isEmpty()) Color.TRANSPARENT else Color.parseColor("#111520"))
-                    if (k.isNotEmpty()) setStroke(1, Color.parseColor("#1f2640"))
+                    setColor(if (k.isEmpty()) Color.TRANSPARENT else AppTheme.BG_CARD)
+                    if (k.isNotEmpty()) setStroke(1, AppTheme.BORDER_C)
                     cornerRadius = dp(8).toFloat()
                 }
                 val sz = dp(72)
@@ -247,7 +247,7 @@ class WalletActivity : FragmentActivity() {
             letterSpacing = 0.1f; isAllCaps = true
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
-                setStroke(1, Color.parseColor("#1f2640"))
+                setStroke(1, AppTheme.BORDER_C)
                 cornerRadius = dp(6).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
@@ -303,7 +303,7 @@ class WalletActivity : FragmentActivity() {
             text = ">> Hunter"; textSize = 9f; setTextColor(AMBER)
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
-                setStroke(1, Color.parseColor("#3d2800"))
+                setStroke(1, AppTheme.BORDER_C)
                 cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(10), dp(2), dp(10), dp(2))
@@ -479,7 +479,7 @@ class WalletActivity : FragmentActivity() {
 
         val btnCoinControl = Button(this).apply {
             text = "Coin Control (auto)"; textSize = 9f; setTextColor(CYAN)
-            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, Color.parseColor("#0a2030")) }
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, AppTheme.BORDER_C) }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(8) }
         }
         ll.addView(btnCoinControl)

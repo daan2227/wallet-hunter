@@ -8,16 +8,16 @@ import android.view.*
 import android.widget.*
 
 class StatsActivity : Activity() {
-    private val AMBER   = Color.parseColor("#f0a500")
-    private val GREEN   = Color.parseColor("#2dd4a0")
-    private val CYAN    = Color.parseColor("#60a5fa")
-    private val BG_DEEP = Color.parseColor("#070910")
-    private val BG_CARD = Color.parseColor("#111520")
-    private val BG_ELEV = Color.parseColor("#181d2e")
-    private val TXT_PRI = Color.parseColor("#e2e6f0")
-    private val TXT_SEC = Color.parseColor("#7a8299")
-    private val TXT_MUTED = Color.parseColor("#3d4560")
-    private val BORDER_C = Color.parseColor("#1f2640")
+    private val AMBER   get() = AppTheme.AMBER
+    private val GREEN   get() = AppTheme.GREEN
+    private val CYAN    get() = AppTheme.CYAN
+    private val BG_DEEP get() = AppTheme.BG_DEEP
+    private val BG_CARD get() = AppTheme.BG_CARD
+    private val BG_ELEV get() = AppTheme.BG_ELEV
+    private val TXT_PRI get() = AppTheme.TXT_PRI
+    private val TXT_SEC get() = AppTheme.TXT_SEC
+    private val TXT_MUTED get() = AppTheme.TXT_MUTED
+    private val BORDER_C get() = AppTheme.BORDER_C
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(s: Bundle?) {
@@ -27,7 +27,7 @@ class StatsActivity : Activity() {
         // Header
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#0c0f18"))
+            setBackgroundColor(AppTheme.BG_PANEL)
             setPadding(dp(16), dp(12), dp(16), dp(12)); gravity = Gravity.CENTER_VERTICAL
         }
         header.addView(Button(this).apply {
@@ -132,7 +132,7 @@ class SpeedHistoryChart(ctx: android.content.Context, private val data: List<Flo
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f0a500"); strokeWidth = 2f; style = Paint.Style.STROKE }
     private val paintFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val paintDot  = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#f0a500"); style = Paint.Style.FILL }
-    private val paintGrid = Paint().apply { color = Color.parseColor("#1f2640"); strokeWidth = 1f }
+    private val paintGrid = Paint().apply { color = AppTheme.BORDER_C; strokeWidth = 1f }
 
     override fun onDraw(canvas: Canvas) {
         if (data.isEmpty()) return
