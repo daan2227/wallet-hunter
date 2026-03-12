@@ -380,6 +380,7 @@ class MainActivity : Activity() {
                 sp.putString("rangeEnd", etRangeEnd.text.toString())
                 sp.putString("target", if(::etTarget.isInitialized) etTarget.text.toString() else "")
                 sp.putBoolean("wasRunning", HunterEngine.isRunning())
+                sp.putString("logBuf", logBuf.toString().take(4000))
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
@@ -705,6 +706,8 @@ class MainActivity : Activity() {
             if (rs.isNotEmpty()) etRangeStart.setText(rs)
             if (re.isNotEmpty()) etRangeEnd.setText(re)
             if (tg.isNotEmpty() && ::etTarget.isInitialized) etTarget.setText(tg)
+            val savedLog = uiSp.getString("logBuf", "") ?: ""
+            if (savedLog.isNotEmpty()) { logBuf.clear(); logBuf.append(savedLog); tvLog.text = logBuf.toString() }
             updateLabels()
             uiSp.edit().clear().apply()
         }
@@ -713,33 +716,58 @@ class MainActivity : Activity() {
 
     private fun showWalletDialog() {
         val ctx = this
-        val layout = LinearLayout(ctx).apply {
+        val sheet = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(8))
+            setBackgroundColor(BG_PANEL)
+            setPadding(dp(22), dp(20), dp(22), dp(24))
         }
+        // Title
+        sheet.addView(TextView(ctx).apply {
+            text = "BTC Wallet"; textSize = 16f; setTextColor(AMBER)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            setPadding(0, 0, 0, dp(14))
+        })
         val etSeed = EditText(ctx).apply {
             hint = "12 or 24 word seed phrase"
             setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
-            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C) }
-            setPadding(dp(10), dp(8), dp(10), dp(8)); textSize = 11f
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat() }
+            setPadding(dp(12), dp(10), dp(12), dp(10)); textSize = 11f
             minLines = 2; maxLines = 4
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
-        layout.addView(etSeed)
+        sheet.addView(etSeed)
         val tvResult = TextView(ctx).apply {
             text = ""; textSize = 9f; typeface = Typeface.MONOSPACE
             setTextColor(TXT_SEC)
-            setPadding(0, dp(8), 0, 0); setLineSpacing(0f, 1.4f)
+            setPadding(0, dp(10), 0, 0); setLineSpacing(0f, 1.4f)
         }
-        layout.addView(tvResult)
+        sheet.addView(tvResult)
+        // Buttons row
+        val btnRow = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(14), 0, 0)
+        }
+        val btnDerive = Button(ctx).apply {
+            text = "Derive"; textSize = 12f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(6).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply { marginEnd = dp(8) }
+        }
+        val btnClose = Button(ctx).apply {
+            text = "Close"; textSize = 12f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+        }
+        btnRow.addView(btnDerive); btnRow.addView(btnClose)
+        sheet.addView(btnRow)
         val dlg = AlertDialog.Builder(ctx)
-            .setTitle("BTC Wallet")
-            .setView(layout)
-            .setPositiveButton("Derive") { _, _ -> }
-            .setNegativeButton("Close", null)
+            .setView(sheet)
             .create()
+        dlg.window?.setBackgroundDrawableResource(android.R.color.transparent)
         dlg.show()
-        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        btnClose.setOnClickListener { dlg.dismiss() }
+        btnDerive.setOnClickListener {
             val mn = etSeed.text.toString().trim()
             if (mn.split(" ").size < 12) {
                 tvResult.text = "Enter at least 12 words"; return@setOnClickListener
