@@ -119,6 +119,12 @@ class MainActivity : Activity() {
     )
 
     companion object {
+        val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
+        const val REQ_CSV = 1001
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         AppTheme.init(this)
         val BG_DEEP   = AppTheme.BG_DEEP
         val BG_PANEL  = AppTheme.BG_PANEL
@@ -133,12 +139,6 @@ class MainActivity : Activity() {
         val TXT_MUTED = AppTheme.TXT_MUTED
         val BORDER_C  = AppTheme.BORDER_C
         val ORANGE    = AppTheme.AMBER; val YELLOW = AppTheme.AMBER
-        val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
-        const val REQ_CSV = 1001
-    }
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
         val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         val savedLang = prefs.getString("lang", null)
         val langKey = savedLang ?: Strings.fromSystem()
