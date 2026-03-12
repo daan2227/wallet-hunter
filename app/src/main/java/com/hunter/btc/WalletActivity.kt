@@ -313,15 +313,25 @@ class WalletActivity : FragmentActivity() {
     /* -- LOAD ADDRESSES -- */
     private fun loadAddresses() {
         if (isWifMode) {
+            // Derivar addr sincrono si falta, luego buildUI
             if (wifAddr.isEmpty() && wifKey.isNotEmpty()) {
                 Thread {
-                    try { wifAddr = HunterEngine.wifToAddr(wifKey) } catch(e: Exception) {}
-                    addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf("wif_0" to wifAddr)
-                    runOnUiThread { buildUI() }
+                    try {
+                        val derived = HunterEngine.wifToAddr(wifKey)
+                        if (derived.isNotEmpty()) wifAddr = derived
+                    } catch(e: Exception) {}
+                    runOnUiThread {
+                        if (wifAddr.isNotEmpty()) {
+                            addresses = mutableMapOf("wif_0" to wifAddr)
+                        } else {
+                            addresses = mutableMapOf()
+                        }
+                        buildUI()
+                    }
                 }.start()
             } else {
-                addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf()
-                runOnUiThread { buildUI() }
+                addresses = mutableMapOf("wif_0" to wifAddr)
+                buildUI()
             }
             return
         }
