@@ -398,7 +398,8 @@ static void save_match(const char *privhex, const char *addr, double btc, const 
     if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
     add_log(oss.str());
-    {std::lock_guard<std::mutex> lk(g_match_mutex);g_matches.push_back(oss.str());}
+    std::ostringstream full;full<<"MATCH|ADDR:"<<addr<<"|BTC:"<<btc<<"|WIF:"<<wif<<"|HEX:"<<privhex;
+    {std::lock_guard<std::mutex> lk(g_match_mutex);g_matches.push_back(full.str());}
 }
 
 /* =========================================================
@@ -704,6 +705,14 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_match_mutex);
     std::string all;for(auto &m:g_matches)all+=m+"\n";
     return env->NewStringUTF(all.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
+    std::lock_guard<std::mutex> lk(g_match_mutex);
+    if(g_matches.empty())return env->NewStringUTF("");
+    std::string s=g_matches.front();g_matches.pop_front();
+    return env->NewStringUTF(s.c_str());
 }
 
 JNIEXPORT jstring JNICALL

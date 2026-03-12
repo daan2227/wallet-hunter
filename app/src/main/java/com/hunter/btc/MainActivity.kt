@@ -1236,6 +1236,17 @@ class MainActivity : Activity() {
         val e=HunterEngine.getElapsed(); tvTime.text="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
         val found=HunterEngine.getFound(); tvMatches.text="$found"; tvMatches.setTextColor(if(found>0)YELLOW else TXT_MUTED)
         val m=HunterEngine.getMatches(); if(m.isNotEmpty()){tvMatchList.text=m;tvMatchList.setTextColor(YELLOW)}
+        // Auto-import puzzle match
+        val newMatch = HunterEngine.popMatch()
+        if (newMatch.isNotEmpty() && newMatch.contains("MATCH|ADDR:")) {
+            val addr = Regex("ADDR:([^|]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: ""
+            val wif  = Regex("WIF:([^|]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: ""
+            val btc  = Regex("BTC:([^|]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: "?"
+            if (wif.isNotEmpty() && addr.isNotEmpty()) {
+                WalletManager.saveWif(this, wif, addr)
+                showMatchImportDialog(addr, wif, btc)
+            }
+        }
         if(running){
             var addr:String
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
@@ -1260,4 +1271,70 @@ class MainActivity : Activity() {
         updateRam()
         handler.postDelayed(this,333L)
     }}
+
+    private fun showMatchImportDialog(addr: String, wif: String, btc: String) {
+        runOnUiThread {
+            val sheet = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(2, GREEN) }
+                setPadding(dp(22), dp(22), dp(22), dp(24))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16),0,dp(16),0) }
+            }
+            sheet.addView(TextView(this).apply {
+                text = "WALLET FOUND!"; textSize = 20f; setTextColor(GREEN)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
+            })
+            sheet.addView(TextView(this).apply {
+                text = "$btc BTC"; textSize = 28f; setTextColor(AMBER)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                gravity = Gravity.CENTER; setPadding(0,0,0,dp(14))
+            })
+            fun row(label: String, value: String) {
+                sheet.addView(TextView(this).apply { text = label; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+                sheet.addView(TextView(this).apply {
+                    text = value; textSize = 10f; setTextColor(TXT_PRI)
+                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(6).toFloat() }
+                    setPadding(dp(10),dp(6),dp(10),dp(6))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+                })
+            }
+            row("Address", addr)
+            row("WIF Private Key", wif)
+            val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(8),0,0) }
+            val btnImport = Button(this).apply {
+                text = "Open Wallet"; textSize = 12f; setTextColor(Color.BLACK)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                background = GradientDrawable().apply { setColor(GREEN); cornerRadius = dp(8).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) }
+            }
+            val btnCopy = Button(this).apply {
+                text = "Copy WIF"; textSize = 12f; setTextColor(TXT_PRI)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+            }
+            btnRow.addView(btnImport); btnRow.addView(btnCopy)
+            sheet.addView(btnRow)
+            val dlg = AlertDialog.Builder(this).setView(sheet).setCancelable(false).create()
+            dlg.window?.apply {
+                setBackgroundDrawableResource(android.R.color.transparent)
+                setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+                setGravity(Gravity.CENTER)
+                attributes = attributes?.also { it.dimAmount = 0.85f }
+                addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            }
+            dlg.show()
+            btnCopy.setOnClickListener {
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText("WIF", wif))
+                Toast.makeText(this, "WIF copied!", Toast.LENGTH_SHORT).show()
+            }
+            btnImport.setOnClickListener {
+                dlg.dismiss()
+                startActivity(Intent(this, WalletActivity::class.java))
+            }
+        }
+    }
 }

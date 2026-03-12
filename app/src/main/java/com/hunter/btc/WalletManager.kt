@@ -60,6 +60,18 @@ object WalletManager {
     }
 
     /* Guarda seed cifrada con Keystore (hardware) */
+    fun saveWif(ctx: Context, wif: String, addr: String) {
+        val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
+        prefs.edit().putString("wif", wif).putString("addr", addr).apply()
+    }
+    fun loadWif(ctx: Context): Pair<String,String>? {
+        val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
+        val w = prefs.getString("wif", null) ?: return null
+        val a = prefs.getString("addr", "") ?: ""
+        return Pair(w, a)
+    }
+    fun hasWif(ctx: Context) = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).contains("wif")
+
     fun saveSeed(ctx: Context, mnemonic: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
