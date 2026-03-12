@@ -36,6 +36,7 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     }
     fun addPoint(wps: Float) { wpsPoints.addLast(wps); if(wpsPoints.size>maxPoints) wpsPoints.removeFirst(); postInvalidate() }
     fun reset() { wpsPoints.clear(); postInvalidate() }
+    fun getPoints(): List<Float> = wpsPoints.toList()
     override fun onDraw(canvas: Canvas) {
         val w=width.toFloat(); val h=height.toFloat()
         if(w<=0||h<=0||wpsPoints.size<2) return
@@ -386,6 +387,7 @@ class MainActivity : Activity() {
                 sp.putInt("puzzleIdx", puzzleSpinner.selectedItemPosition)
                 sp.putString("activeWallet", WalletManager.getActiveWalletId(this@MainActivity) ?: "")
                 sp.putBoolean("isRunning", HunterEngine.isRunning())
+                sp.putString("chartPts", chartView.getPoints().joinToString(","))
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
@@ -725,7 +727,20 @@ class MainActivity : Activity() {
             // Estado START/STOP
             val wasRunning = uiSp.getBoolean("isRunning", false)
             val sStr = s
-            btnToggle.text = if (wasRunning) sStr.stop else sStr.start
+            val drawables = btnToggle.tag as? Array<*>
+            if (wasRunning) {
+                btnToggle.text = sStr.stop
+                (drawables?.get(1) as? GradientDrawable)?.let { btnToggle.background = it }
+                btnToggle.setTextColor(Color.WHITE)
+            } else {
+                btnToggle.text = sStr.start
+                (drawables?.get(0) as? GradientDrawable)?.let { btnToggle.background = it }
+                btnToggle.setTextColor(Color.BLACK)
+            }
+            val chartPtsStr = uiSp.getString("chartPts", "") ?: ""
+            if (chartPtsStr.isNotEmpty()) {
+                chartPtsStr.split(",").mapNotNull { it.toFloatOrNull() }.forEach { chartView.addPoint(it) }
+            }
             // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
             if (savedLog.isNotEmpty()) { logBuf.clear(); logBuf.append(savedLog); tvLog.text = logBuf.toString() }
