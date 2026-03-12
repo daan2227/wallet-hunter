@@ -724,7 +724,7 @@ class MainActivity : Activity() {
             }
             // Estado START/STOP
             val wasRunning = uiSp.getBoolean("isRunning", false)
-            val sStr = Strings.get(applicationContext)
+            val sStr = s
             btnToggle.text = if (wasRunning) sStr.stop else sStr.start
             // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
