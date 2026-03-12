@@ -114,6 +114,25 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- PIN DIALOG -- */
+
+    private fun themedAdapter(items: List<String>): ArrayAdapter<String> {
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+            override fun getView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                val v = super.getView(pos, cv, parent)
+                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
+                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
+                return v
+            }
+            override fun getDropDownView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                val v = super.getDropDownView(pos, cv, parent)
+                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
+                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
+                (v as? TextView)?.setPadding(32, 20, 32, 20)
+                return v
+            }
+        }
+        return adapter
+    }
     private fun showPinDialog(isSetup: Boolean, onResult: (Boolean) -> Unit) {
         // Sheet container
         val sheet = LinearLayout(this).apply {
@@ -468,7 +487,7 @@ class WalletActivity : FragmentActivity() {
 
         ll.addView(lbl("From address"))
         val spinFrom = Spinner(this).apply {
-            adapter = ArrayAdapter(this@WalletActivity, android.R.layout.simple_spinner_item, addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." }).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            adapter = themedAdapter(addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." })
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
         }
         ll.addView(spinFrom)
@@ -575,7 +594,7 @@ class WalletActivity : FragmentActivity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)); gravity = Gravity.CENTER_HORIZONTAL }
         val spin = Spinner(this).apply {
-            adapter = ArrayAdapter(this@WalletActivity, android.R.layout.simple_spinner_item, addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." }).also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            adapter = themedAdapter(addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." })
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48))
         }

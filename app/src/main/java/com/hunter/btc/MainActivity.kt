@@ -225,6 +225,25 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+
+    private fun themedAdapter(items: List<String>): ArrayAdapter<String> {
+        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
+            override fun getView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                val v = super.getView(pos, cv, parent)
+                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
+                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
+                return v
+            }
+            override fun getDropDownView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
+                val v = super.getDropDownView(pos, cv, parent)
+                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
+                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
+                (v as? TextView)?.setPadding(32, 20, 32, 20)
+                return v
+            }
+        }
+        return adapter
+    }
     private fun cardBg() = GradientDrawable().apply { setColor(AppTheme.BG_CARD); setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(6).toFloat() }
 
     private fun sectionHdr(label: String): LinearLayout {
@@ -473,9 +492,7 @@ class MainActivity : Activity() {
         val defaultIdx = dayOfYear % puzzles.size
         layoutPuzzle.addView(TextView(this).apply { text = s.puzzleSelect; textSize = 9f; setTextColor(TXT_SEC); setPadding(0, 0, 0, dp(4)) })
         val puzzleSpinner = Spinner(this).apply {
-            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_item,
-                puzzles.map { "#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..." })
-                .also { it.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item) }
+            adapter = themedAdapter(puzzles.map { "#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..." })
             setSelection(defaultIdx)
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
         }
