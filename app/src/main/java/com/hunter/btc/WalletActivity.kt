@@ -312,7 +312,10 @@ class WalletActivity : FragmentActivity() {
     /* -- LOAD ADDRESSES -- */
     private fun loadAddresses() {
         if (isWifMode) {
-            addresses = mutableMapOf("wif_0" to wifAddr)
+            if (wifAddr.isEmpty() && wifKey.isNotEmpty()) {
+                wifAddr = try { HunterEngine.wifToAddr(wifKey) } catch(e: Exception) { "" }
+            }
+            addresses = if (wifAddr.isNotEmpty()) mutableMapOf("wif_0" to wifAddr) else mutableMapOf()
             return
         }
         if (mnemonic.isNotEmpty()) {
@@ -746,11 +749,17 @@ class WalletActivity : FragmentActivity() {
         }
 
         if (wifPair != null) {
-            walletCard("Puzzle Match", "WIF Key: ${wifPair.first.take(8)}...", GREEN) {
+            val wifDisplay = wifPair.first.take(8) + "..."
+            walletCard("Puzzle / WIF Wallet", wifDisplay, GREEN) {
                 selectorDlg?.dismiss()
-                wifKey = wifPair.first; wifAddr = wifPair.second
-                currentWalletName = "Puzzle Match"; isWifMode = true
-                loadAddresses()
+                showPinDialog(isSetup = false) { ok ->
+                    if (!ok) { showWalletSelectorDialog(); return@showPinDialog }
+                    wifKey = wifPair.first
+                    wifAddr = if (wifPair.second.isNotEmpty()) wifPair.second
+                              else try { HunterEngine.wifToAddr(wifPair.first) } catch(e: Exception) { "" }
+                    currentWalletName = "WIF Wallet"; isWifMode = true
+                    loadAddresses(); buildUI()
+                }
             }
         }
 
@@ -842,10 +851,14 @@ class WalletActivity : FragmentActivity() {
             val w = etWif.text.toString().trim()
             if (w.length < 50) { Toast.makeText(this, "Invalid WIF key", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
             dlg.dismiss()
-            wifKey = w; wifAddr = ""; isWifMode = true
-            currentWalletName = "WIF Wallet"
-            WalletManager.saveWif(this, w, "")
-            loadAddresses(); buildUI()
+            showPinDialog(isSetup = true) { ok ->
+                if (!ok) return@showPinDialog
+                val derivedAddr = try { HunterEngine.wifToAddr(w) } catch(e: Exception) { "" }
+                wifKey = w; wifAddr = derivedAddr; isWifMode = true
+                currentWalletName = "WIF Wallet"
+                WalletManager.saveWif(this, w, derivedAddr)
+                loadAddresses(); buildUI()
+            }
         }
     }
 

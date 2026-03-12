@@ -707,6 +707,28 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
     return env->NewStringUTF(all.c_str());
 }
 
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
+    const char *wif = env->GetStringUTFChars(jwif, nullptr);
+    if (!wif || strlen(wif) < 50) { env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF(""); }
+    // Decode WIF: base58check -> privkey bytes
+    uint8_t decoded[40] = {0};
+    size_t dec_len = sizeof(decoded);
+    if (!b58tobin(decoded, &dec_len, wif, strlen(wif))) {
+        env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF("");
+    }
+    env->ReleaseStringUTFChars(jwif, wif);
+    // privkey starts at decoded[1], length 32
+    uint8_t *privkey = decoded + 1;
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    uint8_t h160[20]; char addr[64] = {0};
+    pk_to_h160(ctx, privkey, h160);
+    h160_to_addr(h160, addr);
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(addr);
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_match_mutex);

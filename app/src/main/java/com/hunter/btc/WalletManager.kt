@@ -62,6 +62,7 @@ object WalletManager {
     /* Guarda seed cifrada con Keystore (hardware) */
     fun saveWif(ctx: Context, wif: String, addr: String) {
         val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
+        // Save single WIF (latest puzzle match or manual import)
         prefs.edit().putString("wif", wif).putString("addr", addr).apply()
     }
     fun loadWif(ctx: Context): Pair<String,String>? {
@@ -69,6 +70,9 @@ object WalletManager {
         val w = prefs.getString("wif", null) ?: return null
         val a = prefs.getString("addr", "") ?: ""
         return Pair(w, a)
+    }
+    fun clearWif(ctx: Context) {
+        ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).edit().clear().apply()
     }
     fun hasWif(ctx: Context) = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).contains("wif")
 
