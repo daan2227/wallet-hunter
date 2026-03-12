@@ -864,24 +864,75 @@ static int64_t json_int(const std::string &j,const char *key){
     p+=k.size(); return (int64_t)strtoll(j.c_str()+p,nullptr,10);
 }
 
+static std::string addr_to_spk(const char *addr) {
+    std::string spk;
+    // bech32 p2wpkh: bc1q...
+    if (addr[0]=='b'&&addr[1]=='c'&&addr[2]=='1'&&addr[3]=='q') {
+        // decode bech32
+        const char *BECH="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+        std::string lower; for(int i=0;addr[i];i++) lower+=(char)tolower(addr[i]);
+        int sep=(int)lower.rfind('1');
+        if(sep<0) return "";
+        std::vector<int> data5;
+        for(int i=sep+1;i<(int)lower.size()-6;i++){
+            const char *p=strchr(BECH,lower[i]); if(!p) return "";
+            data5.push_back((int)(p-BECH));
+        }
+        // convert 5-bit to 8-bit
+        int acc=0,bits=0; std::vector<uint8_t> h160v;
+        for(int v:data5){acc=(acc<<5)|v;bits+=5;while(bits>=8){bits-=8;h160v.push_back((acc>>bits)&0xff);}}
+        if(h160v.size()!=20) return "";
+        spk+='\x00'; spk+='\x14';
+        spk+=std::string((char*)h160v.data(),20);
+        return spk;
+    }
+    // base58 decode
+    const char *B58A="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    uint8_t buf[25]={0};
+    for(int i=0;addr[i];i++){
+        const char *p=strchr(B58A,addr[i]); if(!p) return "";
+        int carry=(int)(p-B58A);
+        for(int j=24;j>=0;j--){carry+=58*buf[j];buf[j]=carry&0xff;carry>>=8;}
+    }
+    uint8_t ver=buf[0];
+    uint8_t *h=buf+1;
+    if(ver==0x00||ver==0x6f) { // P2PKH mainnet/testnet
+        spk+='\x76'; spk+='\xa9'; spk+='\x14';
+        spk+=std::string((char*)h,20);
+        spk+='\x88'; spk+='\xac';
+    } else if(ver==0x05||ver==0xc4) { // P2SH mainnet/testnet
+        spk+='\xa9'; spk+='\x14';
+        spk+=std::string((char*)h,20);
+        spk+='\x87';
+    }
+    return spk;
+}
+
 static std::string build_and_sign_tx(const std::string &req){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-    /* Parse fields */
     std::string mnemonic=json_str(req,"mnemonic");
     std::string path=json_str(req,"path");
     std::string to_addr=json_str(req,"to");
     int64_t send_sat=json_int(req,"amount");
     int64_t fee_sat=json_int(req,"fee");
-    /* Derive private key */
+    // tx type from path
+    bool is_segwit = (path.find("84'")==std::string::npos)?false:true;
+    bool is_p2sh   = (path.find("49'")==std::string::npos)?false:true;
+    // Derive key
     uint8_t seed[64];
     PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
     HDKey hd; derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
     uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
-    /* Build scriptPubKey P2PKH: OP_DUP OP_HASH160 <20> <h160> OP_EQUALVERIFY OP_CHECKSIG */
-    std::string spk_me; spk_me+='\x76'; spk_me+='\xa9'; spk_me+='\x14';
-    spk_me+=std::string((char*)h160,20); spk_me+='\x88'; spk_me+='\xac';
-    /* Parse UTXOs from JSON array */
+    // my scriptPubKey
+    std::string spk_me;
+    if(is_segwit){
+        spk_me+='\x00'; spk_me+='\x14'; spk_me+=std::string((char*)h160,20);
+    } else {
+        spk_me+='\x76'; spk_me+='\xa9'; spk_me+='\x14';
+        spk_me+=std::string((char*)h160,20); spk_me+='\x88'; spk_me+='\xac';
+    }
+    // parse UTXOs
     struct UTXO { std::string txid; uint32_t vout; int64_t amount; };
     std::vector<UTXO> utxos;
     size_t ap=req.find("\"utxos\":[");
@@ -891,83 +942,125 @@ static std::string build_and_sign_tx(const std::string &req){
             size_t ob=req.find('{',ap); if(ob==std::string::npos)break;
             size_t cb=req.find('}',ob); if(cb==std::string::npos)break;
             std::string u=req.substr(ob,cb-ob+1);
-            UTXO ut;
-            ut.txid=json_str(u,"txid");
-            ut.vout=(uint32_t)json_int(u,"vout");
-            ut.amount=json_int(u,"amount");
-            utxos.push_back(ut);
-            ap=cb+1;
+            UTXO ut; ut.txid=json_str(u,"txid"); ut.vout=(uint32_t)json_int(u,"vout"); ut.amount=json_int(u,"amount");
+            utxos.push_back(ut); ap=cb+1;
         }
     }
-    if(utxos.empty()||to_addr.empty()||send_sat<=0){
-        secp256k1_context_destroy(ctx);
-        return "ERROR:invalid_params";
-    }
-    /* Build to_addr scriptPubKey */
-    uint8_t to_h160[20]; std::string to_spk;
-    if(addr_to_h160(to_addr.c_str(),to_h160)){
-        to_spk+='\x76'; to_spk+='\xa9'; to_spk+='\x14';
-        to_spk+=std::string((char*)to_h160,20); to_spk+='\x88'; to_spk+='\xac';
-    } else { secp256k1_context_destroy(ctx); return "ERROR:bad_address"; }
+    if(utxos.empty()||to_addr.empty()||send_sat<=0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+    std::string to_spk=addr_to_spk(to_addr.c_str());
+    if(to_spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
     int64_t total_in=0; for(auto &u:utxos)total_in+=u.amount;
     int64_t change=total_in-send_sat-fee_sat;
-    /* Sighash for each input */
+    bool has_change=(change>546);
+    // Build outputs bytes (shared for sighash)
+    std::string outs_bytes;
+    outs_bytes+=uint64_le(send_sat); outs_bytes+=varint(to_spk.size()); outs_bytes+=to_spk;
+    if(has_change){outs_bytes+=uint64_le(change);outs_bytes+=varint(spk_me.size());outs_bytes+=spk_me;}
     std::vector<std::string> sigs;
-    for(size_t ii=0;ii<utxos.size();ii++){
-        /* Sighash preimage */
-        std::string pre;
-        pre+=uint32_le(1); /* version */
-        pre+=varint(utxos.size());
-        for(size_t j=0;j<utxos.size();j++){
-            pre+=reverse_bytes(hex_decode(utxos[j].txid));
-            pre+=uint32_le(utxos[j].vout);
-            if(j==ii){pre+=varint(spk_me.size());pre+=spk_me;}
-            else{pre+='\x00';}
+    if(is_segwit){
+        // BIP143
+        // hashPrevouts
+        std::string all_prevouts;
+        for(auto &u:utxos){all_prevouts+=reverse_bytes(hex_decode(u.txid));all_prevouts+=uint32_le(u.vout);}
+        std::string hPrevouts=sha256d(all_prevouts);
+        // hashSequence
+        std::string all_seq;
+        for(size_t i=0;i<utxos.size();i++) all_seq+=uint32_le(0xFFFFFFFF);
+        std::string hSequence=sha256d(all_seq);
+        // hashOutputs
+        std::string hOutputs=sha256d(outs_bytes);
+        for(size_t ii=0;ii<utxos.size();ii++){
+            // scriptCode for P2WPKH
+            std::string scriptCode;
+            scriptCode+='\x76'; scriptCode+='\xa9'; scriptCode+='\x14';
+            scriptCode+=std::string((char*)h160,20);
+            scriptCode+='\x88'; scriptCode+='\xac';
+            std::string pre;
+            pre+=uint32_le(1); // version
+            pre+=hPrevouts;
+            pre+=hSequence;
+            pre+=reverse_bytes(hex_decode(utxos[ii].txid));
+            pre+=uint32_le(utxos[ii].vout);
+            pre+=varint(scriptCode.size()); pre+=scriptCode;
+            pre+=uint64_le(utxos[ii].amount);
             pre+=uint32_le(0xFFFFFFFF);
+            pre+=hOutputs;
+            pre+=uint32_le(0); // locktime
+            pre+=uint32_le(1); // SIGHASH_ALL
+            std::string hash=sha256d(pre);
+            secp256k1_ecdsa_signature sig;
+            secp256k1_ecdsa_sign(ctx,&sig,(const uint8_t*)hash.data(),hd.key,nullptr,nullptr);
+            secp256k1_ecdsa_signature_normalize(ctx,&sig,&sig);
+            uint8_t der[72]; size_t dlen=72;
+            secp256k1_ecdsa_signature_serialize_der(ctx,der,&dlen,&sig);
+            std::string sigder; sigder+=std::string((char*)der,dlen); sigder+='\x01';
+            sigs.push_back(sigder);
         }
-        /* Outputs */
-        int nout=(change>546)?2:1;
-        pre+=varint(nout);
-        pre+=uint64_le(send_sat); pre+=varint(to_spk.size()); pre+=to_spk;
-        if(change>546){
-            pre+=uint64_le(change); pre+=varint(spk_me.size()); pre+=spk_me;
+        // Segwit tx: version + marker + flag + inputs + outputs + witness + locktime
+        std::string tx;
+        tx+=uint32_le(1);
+        tx+='\x00'; tx+='\x01'; // marker + flag
+        tx+=varint(utxos.size());
+        for(auto &u:utxos){
+            tx+=reverse_bytes(hex_decode(u.txid));
+            tx+=uint32_le(u.vout);
+            tx+='\x00'; // empty scriptSig for segwit
+            tx+=uint32_le(0xFFFFFFFF);
         }
-        pre+=uint32_le(0); /* locktime */
-        pre+=uint32_le(1); /* SIGHASH_ALL */
-        std::string hash=sha256d(pre);
-        secp256k1_ecdsa_signature sig;
-        secp256k1_ecdsa_sign(ctx,&sig,(const uint8_t*)hash.data(),hd.key,nullptr,nullptr);
-        secp256k1_ecdsa_signature_normalize(ctx,&sig,&sig);
-        uint8_t der[72]; size_t dlen=72;
-        secp256k1_ecdsa_signature_serialize_der(ctx,der,&dlen,&sig);
-        std::string sigscript;
-        sigscript+=(char)(dlen+1);
-        sigscript+=std::string((char*)der,dlen);
-        sigscript+='\x01'; /* SIGHASH_ALL */
-        sigscript+=(char)33;
-        sigscript+=std::string((char*)pub33,33);
-        sigs.push_back(sigscript);
+        tx+=varint(has_change?2:1);
+        tx+=outs_bytes;
+        // witness for each input
+        for(size_t i=0;i<utxos.size();i++){
+            tx+='\x02'; // 2 witness items
+            tx+=varint(sigs[i].size()); tx+=sigs[i];
+            tx+=(char)33; tx+=std::string((char*)pub33,33);
+        }
+        tx+=uint32_le(0);
+        secp256k1_context_destroy(ctx);
+        return to_hex((const uint8_t*)tx.data(),(int)tx.size());
+    } else {
+        // Legacy P2PKH
+        for(size_t ii=0;ii<utxos.size();ii++){
+            std::string pre;
+            pre+=uint32_le(1);
+            pre+=varint(utxos.size());
+            for(size_t j=0;j<utxos.size();j++){
+                pre+=reverse_bytes(hex_decode(utxos[j].txid));
+                pre+=uint32_le(utxos[j].vout);
+                if(j==ii){pre+=varint(spk_me.size());pre+=spk_me;}
+                else{pre+='\x00';}
+                pre+=uint32_le(0xFFFFFFFF);
+            }
+            pre+=varint(has_change?2:1);
+            pre+=outs_bytes;
+            pre+=uint32_le(0);
+            pre+=uint32_le(1);
+            std::string hash=sha256d(pre);
+            secp256k1_ecdsa_signature sig;
+            secp256k1_ecdsa_sign(ctx,&sig,(const uint8_t*)hash.data(),hd.key,nullptr,nullptr);
+            secp256k1_ecdsa_signature_normalize(ctx,&sig,&sig);
+            uint8_t der[72]; size_t dlen=72;
+            secp256k1_ecdsa_signature_serialize_der(ctx,der,&dlen,&sig);
+            std::string sigscript;
+            sigscript+=(char)(dlen+1); sigscript+=std::string((char*)der,dlen); sigscript+='\x01';
+            sigscript+=(char)33; sigscript+=std::string((char*)pub33,33);
+            sigs.push_back(sigscript);
+        }
+        std::string tx;
+        tx+=uint32_le(1);
+        tx+=varint(utxos.size());
+        for(size_t i=0;i<utxos.size();i++){
+            tx+=reverse_bytes(hex_decode(utxos[i].txid));
+            tx+=uint32_le(utxos[i].vout);
+            tx+=varint(sigs[i].size()); tx+=sigs[i];
+            tx+=uint32_le(0xFFFFFFFF);
+        }
+        tx+=varint(has_change?2:1);
+        tx+=outs_bytes;
+        tx+=uint32_le(0);
+        secp256k1_context_destroy(ctx);
+        return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     }
-    /* Final tx */
-    std::string tx;
-    tx+=uint32_le(1);
-    tx+=varint(utxos.size());
-    for(size_t i=0;i<utxos.size();i++){
-        tx+=reverse_bytes(hex_decode(utxos[i].txid));
-        tx+=uint32_le(utxos[i].vout);
-        tx+=varint(sigs[i].size());
-        tx+=sigs[i];
-        tx+=uint32_le(0xFFFFFFFF);
-    }
-    int nout=(change>546)?2:1;
-    tx+=varint(nout);
-    tx+=uint64_le(send_sat); tx+=varint(to_spk.size()); tx+=to_spk;
-    if(change>546){
-        tx+=uint64_le(change); tx+=varint(spk_me.size()); tx+=spk_me;
-    }
-    tx+=uint32_le(0);
-    secp256k1_context_destroy(ctx);
-    return to_hex((const uint8_t*)tx.data(),(int)tx.size());
 }
 
 extern "C" JNIEXPORT jstring JNICALL
