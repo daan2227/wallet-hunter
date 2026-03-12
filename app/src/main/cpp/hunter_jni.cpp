@@ -708,19 +708,45 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
 }
 
 
+static const char B58_ALPHA[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+static bool wif_decode(const char *wif, uint8_t *privkey) {
+    // Base58 decode
+    uint8_t buf[38] = {0};
+    int buf_len = 0;
+    size_t wlen = strlen(wif);
+    for (size_t i = 0; i < wlen; i++) {
+        const char *p = strchr(B58_ALPHA, wif[i]);
+        if (!p) return false;
+        int carry = (int)(p - B58_ALPHA);
+        for (int j = buf_len - 1; j >= 0; j--) {
+            carry += 58 * buf[j];
+            buf[j] = carry & 0xff;
+            carry >>= 8;
+        }
+        while (carry) { if (buf_len >= 38) return false; memmove(buf+1,buf,buf_len); buf[0]=carry&0xff; buf_len++; carry>>=8; }
+        buf_len++;
+    }
+    // buf now has up to 38 bytes: 1 version + 32 privkey + (1 compressed flag) + 4 checksum
+    // Find start: skip leading zeros from base58 '1's
+    int leading = 0;
+    for (size_t i = 0; i < wlen && wif[i] == '1'; i++) leading++;
+    // privkey is at offset 1 (after version byte 0x80)
+    // For compressed WIF (starts with K or L): total decoded = 38 bytes
+    // For uncompressed (starts with 5): total = 37 bytes
+    int offset = buf_len - (wif[0] == '5' ? 37 : 38) + 1;
+    if (offset < 0 || offset + 32 > buf_len) return false;
+    memcpy(privkey, buf + offset, 32);
+    return true;
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     const char *wif = env->GetStringUTFChars(jwif, nullptr);
     if (!wif || strlen(wif) < 50) { env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF(""); }
-    // Decode WIF: base58check -> privkey bytes
-    uint8_t decoded[40] = {0};
-    size_t dec_len = sizeof(decoded);
-    if (!b58tobin(decoded, &dec_len, wif, strlen(wif))) {
-        env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF("");
-    }
+    uint8_t privkey[32] = {0};
+    bool ok = wif_decode(wif, privkey);
     env->ReleaseStringUTFChars(jwif, wif);
-    // privkey starts at decoded[1], length 32
-    uint8_t *privkey = decoded + 1;
+    if (!ok) return env->NewStringUTF("");
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     uint8_t h160[20]; char addr[64] = {0};
     pk_to_h160(ctx, privkey, h160);
