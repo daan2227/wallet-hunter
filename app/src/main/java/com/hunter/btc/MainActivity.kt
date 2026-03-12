@@ -384,7 +384,7 @@ class MainActivity : Activity() {
                 sp.putBoolean("wasRunning", HunterEngine.isRunning())
                 sp.putString("logBuf", logBuf.toString().take(4000))
                 sp.putInt("puzzleIdx", puzzleSpinner.selectedItemPosition)
-                sp.putString("activeWallet", WalletManager.getActiveWallet(this@MainActivity))
+                sp.putString("activeWallet", WalletManager.getActiveWalletId(this@MainActivity) ?: "")
                 sp.putBoolean("isRunning", HunterEngine.isRunning())
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
@@ -718,7 +718,7 @@ class MainActivity : Activity() {
             val savedWallet = uiSp.getString("activeWallet", "") ?: ""
             if (savedWallet.isNotEmpty()) {
                 WalletManager.setActiveWallet(this, savedWallet)
-                val wName = WalletManager.listWallets(this).firstOrNull { it.first == savedWallet }?.second ?: "Wallet"
+                val wName = WalletManager.listWallets(this).firstOrNull { pair -> pair.first == savedWallet }?.second ?: "Wallet"
                 btnSwitch.text = wName.take(10)
             }
             // Estado START/STOP
