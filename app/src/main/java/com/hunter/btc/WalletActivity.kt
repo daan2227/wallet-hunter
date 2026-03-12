@@ -34,6 +34,11 @@ class WalletActivity : FragmentActivity() {
     private fun cardBg() = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C) }
 
     private var mnemonic = ""
+    private var wifKey = ""
+    private var wifAddr = ""
+    private var isWifMode = false
+    private var currentWalletId = ""
+    private var currentWalletName = ""
     private var isTestnet = false
     private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
@@ -53,15 +58,23 @@ class WalletActivity : FragmentActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         lastInteraction = System.currentTimeMillis()
-        if (!WalletManager.hasSeed(this)) {
-            showSetupDialog()
-            return
+        // Check if coming from puzzle match with WIF
+        val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
+        val intentAddr = intent.getStringExtra("WIF_ADDR") ?: ""
+        if (intentWif.isNotEmpty()) {
+            wifKey = intentWif; wifAddr = intentAddr; isWifMode = true
+            currentWalletName = "Puzzle Match"
+            WalletManager.saveWif(this, intentWif, intentAddr)
+            loadAddresses(); buildUI(); return
         }
-        authenticate {
-            mnemonic = WalletManager.loadSeed(this) ?: ""
-            loadAddresses()
-            buildUI()
+        // Check saved WIF
+        val savedWif = WalletManager.loadWif(this)
+        val wallets = WalletManager.listWallets(this)
+        val hasSeed = WalletManager.hasSeed(this)
+        if (!hasSeed && savedWif == null && wallets.isEmpty()) {
+            showWalletSelectorDialog(); return
         }
+        showWalletSelectorDialog()
     }
 
     override fun onResume() {
@@ -298,22 +311,14 @@ class WalletActivity : FragmentActivity() {
 
     /* -- LOAD ADDRESSES -- */
     private fun loadAddresses() {
-        val cached = WalletManager.loadAddresses(this)
-        if (cached != null) {
-            try { val j = JSONObject(cached); j.keys().forEach { k -> addresses[k] = j.getString(k) }; return } catch(e: Exception) {}
+        if (isWifMode) {
+            // En modo WIF solo hay una direccion
+            addresses = mutableMapOf("wif_0" to wifAddr)
+            return
         }
-        if (mnemonic.isNotEmpty()) {
-            Thread {
-                val json = HunterEngine.deriveWallet(mnemonic)
-                WalletManager.saveAddresses(this, json)
-                try { val j = JSONObject(json); j.keys().forEach { k -> addresses[k] = j.getString(k) } } catch(e: Exception) {}
-                runOnUiThread { if (currentTab == 0) loadBalanceTab() }
-            }.start()
-        }
-    }
-
-    /* -- MAIN UI -- */
+/
     private fun buildUI() {
+        title = currentWalletName.ifEmpty { "Wallet" }
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
         val header = LinearLayout(this).apply {
@@ -648,14 +653,190 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- MENU -- */
+
+    /* -- WALLET SELECTOR -- */
+    private fun showWalletSelectorDialog() {
+        val wallets = WalletManager.listWallets(this).toMutableList()
+        val hasSeed = WalletManager.hasSeed(this)
+        val wifPair = WalletManager.loadWif(this)
+
+        // Si solo hay una seed y sin WIF extras, ir directo
+        if (hasSeed && wallets.isEmpty() && wifPair == null) {
+            authenticate {
+                mnemonic = WalletManager.loadSeed(this) ?: ""
+                currentWalletName = "Main Wallet"
+                loadAddresses(); buildUI()
+            }
+            return
+        }
+
+        val scroll = android.widget.ScrollView(this)
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, BORDER_C) }
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+        }
+        scroll.addView(sheet)
+
+        sheet.addView(TextView(this).apply {
+            text = "Select Wallet"; textSize = 17f; setTextColor(AMBER)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(16))
+        })
+
+        fun walletCard(name: String, subtitle: String, color: Int, onClick: () -> Unit) {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat() }
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+                setOnClickListener { onClick() }
+            }
+            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(col); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+            card.addView(TextView(this).apply { text = subtitle; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+            sheet.addView(card)
+        }
+
+        // Wallet principal BIP39
+        if (hasSeed) {
+            walletCard("Main Wallet", "BIP39 HD Wallet") {
+                dlg.dismiss()
+                authenticate {
+                    mnemonic = WalletManager.loadSeed(this) ?: ""
+                    currentWalletName = "Main Wallet"; isWifMode = false
+                    loadAddresses(); buildUI()
+                }
+            }
+        }
+
+        // Wallets adicionales
+        wallets.forEach { (id, name) ->
+            walletCard(name, "BIP39 HD Wallet") {
+                dlg.dismiss()
+                authenticate {
+                    mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
+                    currentWalletId = id; currentWalletName = name; isWifMode = false
+                    loadAddresses(); buildUI()
+                }
+            }
+        }
+
+        // WIF puzzle match
+        if (wifPair != null) {
+            walletCard("Puzzle Match", "WIF Key: ${wifPair.first.take(8)}...", GREEN) {
+                dlg.dismiss()
+                wifKey = wifPair.first; wifAddr = wifPair.second
+                currentWalletName = "Puzzle Match"; isWifMode = true
+                loadAddresses(); buildUI()
+            }
+        }
+
+        // Botones agregar
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
+        val btnNew = Button(this).apply {
+            text = "+ Seed"; textSize = 11f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(7).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+        }
+        val btnWif = Button(this).apply {
+            text = "+ WIF"; textSize = 11f; setTextColor(TXT_PRI)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(7).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f)
+        }
+        btnRow.addView(btnNew); btnRow.addView(btnWif)
+        sheet.addView(btnRow)
+
+        val dlg = AlertDialog.Builder(this).setView(scroll).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.75f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dlg.show()
+
+        btnNew.setOnClickListener { dlg.dismiss(); showSetupDialog() }
+        btnWif.setOnClickListener { dlg.dismiss(); showWifImportDialog() }
+
+
+    }
+
+    private fun showWifImportDialog() {
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, BORDER_C) }
+            setPadding(dp(22), dp(22), dp(22), dp(24))
+        }
+        sheet.addView(TextView(this).apply {
+            text = "Import WIF Key"; textSize = 16f; setTextColor(AMBER)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
+        })
+        sheet.addView(TextView(this).apply {
+            text = "Paste your WIF private key (starts with 5, K or L)"
+            textSize = 9f; setTextColor(TXT_MUTED); gravity = Gravity.CENTER
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setPadding(0,0,0,dp(14))
+        })
+        val etWif = EditText(this).apply {
+            hint = "5HueCGU8..."; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat() }
+            setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = 12f
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+        }
+        sheet.addView(etWif)
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
+        val btnImport = Button(this).apply {
+            text = "Import"; textSize = 12f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
+        }
+        val btnCancel = Button(this).apply {
+            text = "Cancel"; textSize = 12f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
+        }
+        btnRow.addView(btnImport); btnRow.addView(btnCancel)
+        sheet.addView(btnRow)
+        val dlg = AlertDialog.Builder(this).setView(sheet).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.75f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dlg.show()
+        btnCancel.setOnClickListener { dlg.dismiss(); showWalletSelectorDialog() }
+        btnImport.setOnClickListener {
+            val w = etWif.text.toString().trim()
+            if (w.length < 50) { Toast.makeText(this, "Invalid WIF key", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            dlg.dismiss()
+            wifKey = w; wifAddr = ""; isWifMode = true
+            currentWalletName = "WIF Wallet"
+            WalletManager.saveWif(this, w, "")
+            loadAddresses(); buildUI()
+        }
+    }
+
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Show seed phrase","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
-                    0 -> authenticate { AlertDialog.Builder(this).setTitle("Seed - Keep Private!").setMessage(mnemonic).setPositiveButton("OK", null).show() }
-                    1 -> authenticate { showPinDialog(isSetup = true) {} }
-                    2 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
-                    3 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your seed backed up.")
+                    0 -> showWalletSelectorDialog()
+                    1 -> authenticate {
+                        val msg = if (isWifMode) "WIF: $wifKey" else mnemonic
+                        AlertDialog.Builder(this).setTitle("Keep Private!").setMessage(msg).setPositiveButton("OK", null).show()
+                    }
+                    2 -> authenticate { showPinDialog(isSetup = true) {} }
+                    3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
+                    4 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
                             .setPositiveButton("Delete") { _, _ -> WalletManager.clearSeed(this); finish() }
                             .setNegativeButton("Cancel", null).show()
                 }
