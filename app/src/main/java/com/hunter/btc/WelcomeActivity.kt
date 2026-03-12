@@ -9,23 +9,23 @@ import android.view.*
 import android.widget.*
 
 class WelcomeActivity : Activity() {
-    private val BG      = Color.parseColor("#070910")
-    private val S1      = Color.parseColor("#0c0f18")
-    private val S2      = Color.parseColor("#111520")
-    private val S3      = Color.parseColor("#181d2e")
-    private val S4      = Color.parseColor("#1f2640")
-    private val GOLD    = Color.parseColor("#f0a500")
-    private val GOLD2   = Color.parseColor("#ffc53d")
-    private val GREEN   = Color.parseColor("#2dd4a0")
-    private val TXT     = Color.parseColor("#e2e6f0")
-    private val TXT2    = Color.parseColor("#7a8299")
-    private val TXT3    = Color.parseColor("#3d4560")
-    private val BORDER  = 0x0fffffff
-    private val BORDER2 = 0x1affffff
+    private val BG      get() = AppTheme.BG_DEEP
+    private val S1      get() = AppTheme.BG_PANEL
+    private val S2      get() = AppTheme.BG_CARD
+    private val S3      get() = AppTheme.BG_ELEV
+    private val GOLD    get() = AppTheme.AMBER
+    private val GOLD2   get() = AppTheme.AMBER
+    private val GREEN   get() = AppTheme.GREEN
+    private val TXT     get() = AppTheme.TXT_PRI
+    private val TXT2    get() = AppTheme.TXT_SEC
+    private val TXT3    get() = AppTheme.TXT_MUTED
+    private val BORDER  get() = AppTheme.BORDER_C
+    private val BORDER2 get() = AppTheme.BORDER_C
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        AppTheme.init(this)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN)
         window.statusBarColor = BG

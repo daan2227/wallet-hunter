@@ -18,8 +18,8 @@ import org.json.JSONObject
 class WalletActivity : FragmentActivity() {
 
     private val AMBER     = Color.parseColor("#f0a500")
-    private val GREEN     = Color.parseColor("#2dd4a0")
-    private val RED       = Color.parseColor("#f05252")
+    private val GREEN     get() = AppTheme.GREEN
+    private val RED       get() = AppTheme.RED
     private val CYAN      = Color.parseColor("#60a5fa")
     private val BG_DEEP   = Color.parseColor("#070910")
     private val BG_PANEL  = Color.parseColor("#0c0f18")

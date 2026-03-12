@@ -119,19 +119,20 @@ class MainActivity : Activity() {
     )
 
     companion object {
-        val BG_DEEP   = Color.parseColor("#080b10")
-        val BG_PANEL  = Color.parseColor("#0c0f18")
-        val BG_CARD   = Color.parseColor("#0d1117")
-        val BG_ELEV   = Color.parseColor("#181d2e")
-        val AMBER     = Color.parseColor("#f0a500")
-        val GREEN     = Color.parseColor("#2dd4a0")
-        val RED       = Color.parseColor("#f05252")
-        val CYAN      = Color.parseColor("#60a5fa")
-        val TXT_PRI   = Color.parseColor("#e2e6f0")
-        val TXT_SEC   = Color.parseColor("#7a8299")
-        val TXT_MUTED = Color.parseColor("#3d4560")
-        val BORDER_C  = Color.parseColor("#1a2332")
-        val ORANGE = AMBER; val YELLOW = Color.parseColor("#fbbf24")
+        AppTheme.init(this)
+        val BG_DEEP   = AppTheme.BG_DEEP
+        val BG_PANEL  = AppTheme.BG_PANEL
+        val BG_CARD   = AppTheme.BG_CARD
+        val BG_ELEV   = AppTheme.BG_ELEV
+        val AMBER     = AppTheme.AMBER
+        val GREEN     = AppTheme.GREEN
+        val RED       = AppTheme.RED
+        val CYAN      = AppTheme.CYAN
+        val TXT_PRI   = AppTheme.TXT_PRI
+        val TXT_SEC   = AppTheme.TXT_SEC
+        val TXT_MUTED = AppTheme.TXT_MUTED
+        val BORDER_C  = AppTheme.BORDER_C
+        val ORANGE    = AppTheme.AMBER; val YELLOW = AppTheme.AMBER
         val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
         const val REQ_CSV = 1001
     }
@@ -224,7 +225,7 @@ class MainActivity : Activity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    private fun cardBg() = GradientDrawable().apply { setColor(Color.parseColor("#0d1117")); setStroke(1, Color.parseColor("#1a2332")); cornerRadius = dp(6).toFloat() }
+    private fun cardBg() = GradientDrawable().apply { setColor(AppTheme.BG_CARD); setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(6).toFloat() }
 
     private fun sectionHdr(label: String): LinearLayout {
         val row = LinearLayout(this).apply {
@@ -340,6 +341,22 @@ class MainActivity : Activity() {
             gravity = Gravity.END
             setPadding(0, dp(4), 0, 0)
         }
+        val btnTheme = Button(this).apply {
+            text = if (AppTheme.isDark) "Day" else "Night"
+            textSize = 9f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = GradientDrawable().apply {
+                setColor(BG_CARD); setStroke(1, BORDER_C)
+                cornerRadius = dp(3).toFloat()
+            }
+            setPadding(dp(9), dp(3), dp(9), dp(3))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
+            setOnClickListener {
+                AppTheme.toggle(this@MainActivity)
+                recreate()
+            }
+        }
+        hRow2.addView(btnTheme)
         hRow2.addView(btnStats)
         hRow2.addView(btnExport)
         hTop.addView(hRow1)
