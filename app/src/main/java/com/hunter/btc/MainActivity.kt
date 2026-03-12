@@ -388,6 +388,8 @@ class MainActivity : Activity() {
                 sp.putString("activeWallet", WalletManager.getActiveWalletId(this@MainActivity) ?: "")
                 sp.putBoolean("isRunning", HunterEngine.isRunning())
                 sp.putString("chartPts", chartView.getPoints().joinToString(","))
+                sp.putString("puzzleStatus", tvPuzzleStatus.text.toString())
+                sp.putInt("puzzleStatusColor", tvPuzzleStatus.currentTextColor)
                 sp.putString("matchText", tvMatchList.text.toString())
                 sp.putString("addrFeed", tvAddrFeed.text.toString())
                 sp.apply()
@@ -750,6 +752,12 @@ class MainActivity : Activity() {
             val savedFeed = uiSp.getString("addrFeed", "") ?: ""
             if (savedFeed.isNotEmpty() && savedFeed != s.waitingStart) {
                 tvAddrFeed.text = savedFeed
+            }
+            val savedPuzzleStatus = uiSp.getString("puzzleStatus", "") ?: ""
+            val savedPuzzleColor = uiSp.getInt("puzzleStatusColor", TXT_SEC)
+            if (savedPuzzleStatus.isNotEmpty() && savedPuzzleStatus != "Checking...") {
+                tvPuzzleStatus.text = savedPuzzleStatus
+                tvPuzzleStatus.setTextColor(savedPuzzleColor)
             }
             // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
