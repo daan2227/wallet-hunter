@@ -388,6 +388,8 @@ class MainActivity : Activity() {
                 sp.putString("activeWallet", WalletManager.getActiveWalletId(this@MainActivity) ?: "")
                 sp.putBoolean("isRunning", HunterEngine.isRunning())
                 sp.putString("chartPts", chartView.getPoints().joinToString(","))
+                sp.putString("matchText", tvMatchList.text.toString())
+                sp.putString("addrFeed", tvAddrFeed.text.toString())
                 sp.apply()
                 AppTheme.toggle(this@MainActivity)
                 recreate()
@@ -740,6 +742,14 @@ class MainActivity : Activity() {
             val chartPtsStr = uiSp.getString("chartPts", "") ?: ""
             if (chartPtsStr.isNotEmpty()) {
                 chartPtsStr.split(",").mapNotNull { it.toFloatOrNull() }.forEach { chartView.addPoint(it) }
+            }
+            val savedMatch = uiSp.getString("matchText", "") ?: ""
+            if (savedMatch.isNotEmpty() && savedMatch != s.noMatch) {
+                tvMatchList.text = savedMatch; tvMatchList.setTextColor(AMBER)
+            }
+            val savedFeed = uiSp.getString("addrFeed", "") ?: ""
+            if (savedFeed.isNotEmpty() && savedFeed != s.waitingStart) {
+                tvAddrFeed.text = savedFeed
             }
             // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
