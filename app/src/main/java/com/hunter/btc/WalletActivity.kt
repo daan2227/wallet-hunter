@@ -137,8 +137,16 @@ class WalletActivity : FragmentActivity() {
         // Sheet container
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(AppTheme.BG_PANEL)
-            setPadding(dp(22), dp(16), dp(22), dp(40))
+            background = GradientDrawable().apply {
+                setColor(AppTheme.BG_PANEL)
+                cornerRadius = dp(16).toFloat()
+                setStroke(1, AppTheme.BORDER_C)
+            }
+            setPadding(dp(24), dp(20), dp(24), dp(32))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(24), 0, dp(24), 0) }
         }
 
         // Handle bar
@@ -244,9 +252,9 @@ class WalletActivity : FragmentActivity() {
                 background = GradientDrawable().apply {
                     setColor(if (k.isEmpty()) Color.TRANSPARENT else AppTheme.BG_CARD)
                     if (k.isNotEmpty()) setStroke(1, AppTheme.BORDER_C)
-                    cornerRadius = dp(8).toFloat()
+                    cornerRadius = dp(10).toFloat()
                 }
-                val sz = dp(72)
+                val sz = dp(76)
                 layoutParams = GridLayout.LayoutParams().apply {
                     width = sz; height = sz
                     setMargins(dp(4), dp(4), dp(4), dp(4))
@@ -273,9 +281,16 @@ class WalletActivity : FragmentActivity() {
         }
         sheet.addView(btnCancel)
 
-        dlg = AlertDialog.Builder(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+        dlg = AlertDialog.Builder(this)
             .setView(sheet).setCancelable(false).create()
-        dlg!!.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        dlg!!.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                      android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(android.view.Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.7f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
         btnCancel.setOnClickListener { dlg?.dismiss(); onResult(false) }
         if (isSetup) btnCancel.visibility = View.GONE
         dlg!!.show()
@@ -648,24 +663,131 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- SETUP DIALOG -- */
+    /* -- SETUP DIALOG -- */
     private fun showSetupDialog() {
-        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20),dp(16),dp(20),dp(8)); setBackgroundColor(BG_PANEL) }
+        val scroll = android.widget.ScrollView(this)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, BORDER_C)
+            }
+            setPadding(dp(24), dp(24), dp(24), dp(28))
+        }
+        scroll.addView(layout)
+        layout.addView(TextView(this).apply {
+            text = "Import Wallet"; textSize = 18f; setTextColor(AMBER)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(6))
+        })
+        layout.addView(TextView(this).apply {
+            text = "Enter your 12 or 24 word BIP39 seed phrase"
+            textSize = 10f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(20))
+        })
+        val tvCount = TextView(this).apply {
+            text = "0 / 24 words"; textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.END; setPadding(0, 0, 0, dp(4))
+        }
+        layout.addView(tvCount)
         val etSeed = EditText(this).apply {
-            hint = "Enter 12 or 24 word seed phrase"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
-            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C) }
-            setPadding(dp(10),dp(8),dp(10),dp(8)); textSize = 11f; minLines = 2; maxLines = 4
+            hint = "word1 word2 word3 ..."; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply {
+                setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat()
+            }
+            setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = 13f; minLines = 3; maxLines = 6
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
         }
         layout.addView(etSeed)
-        layout.addView(TextView(this).apply { text = "Seed encrypted with Android Keystore."; textSize = 9f; setTextColor(TXT_SEC); setPadding(0,dp(8),0,0) })
-        AlertDialog.Builder(this).setTitle("Import Wallet").setView(layout)
-            .setPositiveButton("Next") { _, _ ->
-                val mn = etSeed.text.toString().trim()
-                if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); finish(); return@setPositiveButton }
-                showPinDialog(isSetup = true) { ok ->
-                    if (ok) { WalletManager.saveSeed(this, mn); mnemonic = mn; loadAddresses(); buildUI() }
-                    else finish()
-                }
-            }.setNegativeButton("Cancel") { _, _ -> finish() }.show()
+        val suggestScroll = android.widget.HorizontalScrollView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
+            isHorizontalScrollBarEnabled = false
+            background = GradientDrawable().apply {
+                setColor(BG_DEEP); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER_C)
+            }
+        }
+        val suggestInner = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(6),dp(6),dp(6),dp(6)) }
+        suggestScroll.addView(suggestInner)
+        layout.addView(suggestScroll)
+        val bip39 = Bip39Words.WORDS
+        fun updateSuggestions(cur: String) {
+            suggestInner.removeAllViews()
+            if (cur.length < 2) return
+            bip39.filter { it.startsWith(cur) }.take(7).forEach { word ->
+                suggestInner.addView(Button(this@WalletActivity).apply {
+                    text = word; textSize = 10f; setTextColor(TXT_PRI)
+                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    background = GradientDrawable().apply {
+                        setColor(BG_CARD); setStroke(1, AMBER); cornerRadius = dp(6).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, dp(32)).apply { marginEnd = dp(6) }
+                    setPadding(dp(12), 0, dp(12), 0)
+                    setOnClickListener {
+                        val t = etSeed.text.toString()
+                        val sp = t.lastIndexOf(' ')
+                        val nt = if (sp >= 0) t.substring(0, sp + 1) + word + " " else "$word "
+                        etSeed.setText(nt); etSeed.setSelection(nt.length)
+                        suggestInner.removeAllViews()
+                    }
+                })
+            }
+        }
+        etSeed.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
+            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val txt = s.toString()
+                val words = txt.trim().split("\s+".toRegex()).filter { it.isNotEmpty() }
+                val cnt = words.size
+                tvCount.text = "$cnt / 24 words"
+                tvCount.setTextColor(when { cnt == 12 || cnt == 24 -> GREEN; cnt > 24 -> RED; else -> TXT_MUTED })
+                val lastWord = if (txt.endsWith(" ")) "" else words.lastOrNull() ?: ""
+                updateSuggestions(lastWord)
+            }
+        })
+        layout.addView(TextView(this).apply {
+            text = "Seed encrypted with Android Keystore"
+            textSize = 9f; setTextColor(TXT_MUTED); gravity = Gravity.CENTER
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setPadding(0, dp(16), 0, dp(4))
+        })
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
+        val btnNext = Button(this).apply {
+            text = "Import"; textSize = 13f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) }
+        }
+        val btnCancel = Button(this).apply {
+            text = "Cancel"; textSize = 13f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
+        }
+        btnRow.addView(btnNext); btnRow.addView(btnCancel); layout.addView(btnRow)
+        val dlg = AlertDialog.Builder(this).setView(scroll).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
+                      android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.7f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dlg.show()
+        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
+        btnNext.setOnClickListener {
+            val mn = etSeed.text.toString().trim()
+            if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            dlg.dismiss()
+            showPinDialog(isSetup = true) { ok ->
+                if (ok) { WalletManager.saveSeed(this, mn); mnemonic = mn; loadAddresses(); buildUI() }
+                else finish()
+            }
+        }
     }
 }
