@@ -718,7 +718,8 @@ class MainActivity : Activity() {
             val savedWallet = uiSp.getString("activeWallet", "") ?: ""
             if (savedWallet.isNotEmpty()) {
                 WalletManager.setActiveWallet(this, savedWallet)
-                val wName = WalletManager.listWallets(this).firstOrNull { pair -> pair.first == savedWallet }?.second ?: "Wallet"
+                val walletList: List<Pair<String,String>> = WalletManager.listWallets(this)
+                val wName = walletList.firstOrNull { p: Pair<String,String> -> p.first == savedWallet }?.second ?: "Wallet"
                 btnSwitch.text = wName.take(10)
             }
             // Estado START/STOP
