@@ -323,10 +323,12 @@ class WalletActivity : FragmentActivity() {
                     runOnUiThread {
                         if (wifAddr.isNotEmpty()) {
                             addresses = mutableMapOf("wif_0" to wifAddr)
+                            buildUI()
                         } else {
-                            addresses = mutableMapOf()
+                            // WIF decode failed - show error
+                            Toast.makeText(this@WalletActivity, "Could not derive address from WIF key", Toast.LENGTH_LONG).show()
+                            showWifImportDialog()
                         }
-                        buildUI()
                     }
                 }.start()
             } else {
@@ -434,12 +436,6 @@ class WalletActivity : FragmentActivity() {
 
     /* -- BALANCE -- */
     private fun loadBalanceTab() {
-        if (isWifMode && wifAddr.isEmpty()) {
-            val tv = TextView(this).apply { text = "Deriving address..."; textSize = 14f; setTextColor(TXT_SEC); gravity = Gravity.CENTER; setPadding(0, dp(40), 0, 0) }
-            tabContent.removeAllViews(); tabContent.addView(tv)
-            handler.postDelayed({ if (wifAddr.isNotEmpty()) loadBalanceTab() }, 500)
-            return
-        }
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
         val tvTotal = TextView(this).apply {
@@ -507,12 +503,7 @@ class WalletActivity : FragmentActivity() {
 
     /* -- HISTORY -- */
     private fun loadHistoryTab() {
-        if (isWifMode && wifAddr.isEmpty()) {
-            val tv = TextView(this).apply { text = "Deriving address..."; textSize = 14f; setTextColor(TXT_SEC); gravity = Gravity.CENTER; setPadding(0, dp(40), 0, 0) }
-            tabContent.removeAllViews(); tabContent.addView(tv)
-            handler.postDelayed({ if (wifAddr.isNotEmpty()) loadHistoryTab() }, 500)
-            return
-        }
+
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val tvHead = TextView(this).apply { text = "Loading..."; textSize = 11f; setTextColor(TXT_SEC); setPadding(0,dp(12),0,dp(8)) }
