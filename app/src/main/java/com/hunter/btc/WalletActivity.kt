@@ -344,6 +344,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun buildUI() {
         title = currentWalletName.ifEmpty { "Wallet" }
+        setContentView(android.widget.FrameLayout(this)) // clear before rebuild
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
         val header = LinearLayout(this).apply {
@@ -680,6 +681,20 @@ class WalletActivity : FragmentActivity() {
     /* -- MENU -- */
 
     /* -- WALLET SELECTOR -- */
+
+    private fun switchToWallet(onReady: () -> Unit) {
+        // Limpiar estado anterior
+        addresses.clear()
+        mnemonic = ""
+        wifKey = ""
+        wifAddr = ""
+        isWifMode = false
+        currentTab = 0
+        selectedUtxos.clear()
+        // Ejecutar la carga de la nueva wallet
+        onReady()
+    }
+
     private fun showWalletSelectorDialog() {
         val wallets = WalletManager.listWallets(this).toMutableList()
         val hasSeed = WalletManager.hasSeed(this)
@@ -729,10 +744,12 @@ class WalletActivity : FragmentActivity() {
         if (hasSeed) {
             walletCard("Main Wallet", "BIP39 HD Wallet", TXT_PRI) {
                 selectorDlg?.dismiss()
-                authenticate {
-                    mnemonic = WalletManager.loadSeed(this) ?: ""
-                    currentWalletName = "Main Wallet"; isWifMode = false
-                    loadAddresses()
+                switchToWallet {
+                    authenticate {
+                        mnemonic = WalletManager.loadSeed(this) ?: ""
+                        currentWalletName = "Main Wallet"; isWifMode = false
+                        loadAddresses()
+                    }
                 }
             }
         }
@@ -740,10 +757,12 @@ class WalletActivity : FragmentActivity() {
         wallets.forEach { (id, name) ->
             walletCard(name, "BIP39 HD Wallet", TXT_PRI) {
                 selectorDlg?.dismiss()
-                authenticate {
-                    mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
-                    currentWalletId = id; currentWalletName = name; isWifMode = false
-                    loadAddresses()
+                switchToWallet {
+                    authenticate {
+                        mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
+                        currentWalletId = id; currentWalletName = name; isWifMode = false
+                        loadAddresses()
+                    }
                 }
             }
         }
@@ -758,11 +777,13 @@ class WalletActivity : FragmentActivity() {
                 selectorDlg?.dismiss()
                 showPinDialog(isSetup = false) { ok ->
                     if (!ok) { showWalletSelectorDialog(); return@showPinDialog }
-                    wifKey = wkey
-                    wifAddr = if (waddr.isNotEmpty()) waddr
-                              else try { HunterEngine.wifToAddr(wkey) } catch(e: Exception) { "" }
-                    currentWalletName = wname; isWifMode = true
-                    loadAddresses(); buildUI()
+                    switchToWallet {
+                        wifKey = wkey
+                        wifAddr = if (waddr.isNotEmpty()) waddr
+                                  else try { HunterEngine.wifToAddr(wkey) } catch(e: Exception) { "" }
+                        currentWalletName = wname; isWifMode = true
+                        loadAddresses(); buildUI()
+                    }
                 }
             }
         }
@@ -772,9 +793,11 @@ class WalletActivity : FragmentActivity() {
         watchList.forEach { (wid, waddr, wlabel) ->
             walletCard(wlabel, waddr.take(20) + "...", CYAN) {
                 selectorDlg?.dismiss()
-                wifKey = ""; wifAddr = waddr; isWifMode = true
-                currentWalletName = wlabel
-                loadAddresses(); buildUI()
+                switchToWallet {
+                    wifKey = ""; wifAddr = waddr; isWifMode = true
+                    currentWalletName = wlabel
+                    loadAddresses(); buildUI()
+                }
             }
         }
 
