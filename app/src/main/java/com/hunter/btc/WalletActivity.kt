@@ -695,13 +695,15 @@ class WalletActivity : FragmentActivity() {
         onReady()
     }
 
-    private fun showWalletSelectorDialog() {
+    private fun showWalletSelectorDialog(forceShow: Boolean = false) {
         val wallets = WalletManager.listWallets(this).toMutableList()
         val hasSeed = WalletManager.hasSeed(this)
         val wifPair = WalletManager.loadWif(this)
 
-        // Si solo hay una seed y sin WIF extras, ir directo
-        if (hasSeed && wallets.isEmpty() && wifPair == null) {
+        // Si solo hay una seed y sin WIF extras, ir directo (solo si no se fuerza el selector)
+        val wifList2 = WalletManager.listWifs(this)
+        val watchList2 = WalletManager.listWatchers(this)
+        if (!forceShow && hasSeed && wallets.isEmpty() && wifList2.isEmpty() && watchList2.isEmpty()) {
             authenticate {
                 mnemonic = WalletManager.loadSeed(this) ?: ""
                 currentWalletName = "Main Wallet"
@@ -911,7 +913,7 @@ class WalletActivity : FragmentActivity() {
         AlertDialog.Builder(this).setTitle("Options")
             .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
-                    0 -> showWalletSelectorDialog()
+                    0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
                         val msg = if (isWifMode) "WIF: $wifKey" else mnemonic
                         AlertDialog.Builder(this).setTitle("Keep Private!").setMessage(msg).setPositiveButton("OK", null).show()
