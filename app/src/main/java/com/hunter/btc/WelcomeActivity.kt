@@ -41,7 +41,7 @@ class WelcomeActivity : Activity() {
             layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
-        // ── TOP SECTION ──
+        // -- TOP SECTION --
         val topSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(28), dp(56), dp(28), dp(0))
@@ -101,7 +101,7 @@ class WelcomeActivity : Activity() {
         topSection.addView(pillRow)
         root.addView(topSection)
 
-        // ── STATS GRID ──
+        // -- STATS GRID --
         val totalKeys    = SessionStats.totalKeys(this)
         val totalSess    = SessionStats.load(this).size
         val totalMatches = SessionStats.totalMatches(this)
@@ -151,7 +151,7 @@ class WelcomeActivity : Activity() {
         statsGrid.addView(statCell("%.1f".format(bestKps), "BEST K/S"))
         root.addView(statsGrid)
 
-        // ── CTA SECTION ──
+        // -- CTA SECTION --
         val ctaSection = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(22), dp(28), dp(22), dp(48))

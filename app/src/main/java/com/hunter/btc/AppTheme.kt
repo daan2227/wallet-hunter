@@ -19,7 +19,7 @@ object AppTheme {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY, isDark).apply()
     }
 
-    // ── NIGHT ──
+    // -- NIGHT --
     private val D_BG_DEEP   = Color.parseColor("#080b10")
     private val D_BG_PANEL  = Color.parseColor("#0c0f18")
     private val D_BG_CARD   = Color.parseColor("#0d1117")
@@ -33,7 +33,7 @@ object AppTheme {
     private val D_TXT_MUTED  = Color.parseColor("#3d4560")
     private val D_BORDER_C   = Color.parseColor("#1a2332")
 
-    // ── DAY ──
+    // -- DAY --
     private val L_BG_DEEP   = Color.parseColor("#f0f2f7")
     private val L_BG_PANEL  = Color.parseColor("#e4e8f0")
     private val L_BG_CARD   = Color.parseColor("#ffffff")
