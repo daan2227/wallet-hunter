@@ -711,7 +711,7 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_match_mutex);
     if(g_matches.empty())return env->NewStringUTF("");
-    std::string s=g_matches.front();g_matches.pop_front();
+    std::string s=g_matches.front();g_matches.erase(g_matches.begin());
     return env->NewStringUTF(s.c_str());
 }
 
