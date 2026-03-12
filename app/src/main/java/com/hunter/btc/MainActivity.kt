@@ -56,6 +56,20 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
 }
 
 class MainActivity : Activity() {
+    private val BG_DEEP   get() = AppTheme.BG_DEEP
+    private val BG_PANEL  get() = AppTheme.BG_PANEL
+    private val BG_CARD   get() = AppTheme.BG_CARD
+    private val BG_ELEV   get() = AppTheme.BG_ELEV
+    private val AMBER     get() = AppTheme.AMBER
+    private val GREEN     get() = AppTheme.GREEN
+    private val RED       get() = AppTheme.RED
+    private val CYAN      get() = AppTheme.CYAN
+    private val TXT_PRI   get() = AppTheme.TXT_PRI
+    private val TXT_SEC   get() = AppTheme.TXT_SEC
+    private val TXT_MUTED get() = AppTheme.TXT_MUTED
+    private val BORDER_C  get() = AppTheme.BORDER_C
+    private val YELLOW    get() = AppTheme.YELLOW
+    private val ORANGE    get() = AppTheme.ORANGE
     private var filterP2PKH  = true
     private var filterP2SH   = true
     private var filterP2WPKH = true
