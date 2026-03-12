@@ -133,7 +133,6 @@ class MainActivity : Activity() {
     )
 
     companion object {
-        val DIM = TXT_SEC; val BG = BG_DEEP; val PANEL = BG_PANEL; val DARK = BG_CARD
         const val REQ_CSV = 1001
     }
 
