@@ -715,7 +715,7 @@ class MainActivity : Activity() {
             val savedPuzzleIdx = uiSp.getInt("puzzleIdx", 0)
             suppressPuzzleListener = true
             puzzleSpinner.setSelection(savedPuzzleIdx)
-            suppressPuzzleListener = false
+            // flag se resetea dentro del listener despues de ignorar el evento
             // Campos de texto
             val rs = uiSp.getString("rangeStart", "") ?: ""
             val re = uiSp.getString("rangeEnd", "") ?: ""
@@ -759,8 +759,10 @@ class MainActivity : Activity() {
             val savedPuzzleStatus = uiSp.getString("puzzleStatus", "") ?: ""
             val savedPuzzleColor = uiSp.getInt("puzzleStatusColor", TXT_SEC)
             if (savedPuzzleStatus.isNotEmpty() && savedPuzzleStatus != "Checking...") {
-                tvPuzzleStatus.text = savedPuzzleStatus
-                tvPuzzleStatus.setTextColor(savedPuzzleColor)
+                handler.postDelayed({
+                    tvPuzzleStatus.text = savedPuzzleStatus
+                    tvPuzzleStatus.setTextColor(savedPuzzleColor)
+                }, 300)
             }
             // Log
             val savedLog = uiSp.getString("logBuf", "") ?: ""
