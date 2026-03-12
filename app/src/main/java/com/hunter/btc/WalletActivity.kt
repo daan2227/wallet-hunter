@@ -748,18 +748,33 @@ class WalletActivity : FragmentActivity() {
             }
         }
 
-        if (wifPair != null) {
-            val wifDisplay = wifPair.first.take(8) + "..."
-            walletCard("Puzzle / WIF Wallet", wifDisplay, GREEN) {
+        // Multiples WIF wallets
+        val wifList = WalletManager.listWifs(this)
+        wifList.forEach { (wid, wkey, wmeta) ->
+            val parts = wmeta.split("|")
+            val waddr = parts.getOrNull(0) ?: ""
+            val wname = parts.getOrNull(1) ?: "WIF Wallet"
+            walletCard(wname, "${wkey.take(8)}...", GREEN) {
                 selectorDlg?.dismiss()
                 showPinDialog(isSetup = false) { ok ->
                     if (!ok) { showWalletSelectorDialog(); return@showPinDialog }
-                    wifKey = wifPair.first
-                    wifAddr = if (wifPair.second.isNotEmpty()) wifPair.second
-                              else try { HunterEngine.wifToAddr(wifPair.first) } catch(e: Exception) { "" }
-                    currentWalletName = "WIF Wallet"; isWifMode = true
+                    wifKey = wkey
+                    wifAddr = if (waddr.isNotEmpty()) waddr
+                              else try { HunterEngine.wifToAddr(wkey) } catch(e: Exception) { "" }
+                    currentWalletName = wname; isWifMode = true
                     loadAddresses(); buildUI()
                 }
+            }
+        }
+
+        // Watcher wallets (solo lectura)
+        val watchList = WalletManager.listWatchers(this)
+        watchList.forEach { (wid, waddr, wlabel) ->
+            walletCard(wlabel, waddr.take(20) + "...", CYAN) {
+                selectorDlg?.dismiss()
+                wifKey = ""; wifAddr = waddr; isWifMode = true
+                currentWalletName = wlabel
+                loadAddresses(); buildUI()
             }
         }
 
@@ -771,13 +786,19 @@ class WalletActivity : FragmentActivity() {
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(7).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
         }
+        val btnWatch = Button(this).apply {
+            text = "+ Watch"; textSize = 11f; setTextColor(CYAN)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, CYAN); cornerRadius = dp(7).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+        }
         val btnWif = Button(this).apply {
             text = "+ WIF"; textSize = 11f; setTextColor(TXT_PRI)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(7).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f)
         }
-        btnRow.addView(btnNew); btnRow.addView(btnWif)
+        btnRow.addView(btnNew); btnRow.addView(btnWif); btnRow.addView(btnWatch)
         sheet.addView(btnRow)
 
         val dlg = AlertDialog.Builder(this).setView(scroll).create()
@@ -793,6 +814,7 @@ class WalletActivity : FragmentActivity() {
 
         btnNew.setOnClickListener { dlg.dismiss(); showSetupDialog() }
         btnWif.setOnClickListener { dlg.dismiss(); showWifImportDialog() }
+        btnWatch.setOnClickListener { dlg.dismiss(); showWatcherImportDialog() }
 
 
     }
@@ -1008,4 +1030,71 @@ class WalletActivity : FragmentActivity() {
             }
         }
     }
+
+    private fun showWatcherImportDialog() {
+        val sheet = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, CYAN) }
+            setPadding(dp(22), dp(22), dp(22), dp(24))
+        }
+        sheet.addView(TextView(this).apply {
+            text = "Watch Address"; textSize = 16f; setTextColor(CYAN)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
+        })
+        sheet.addView(TextView(this).apply {
+            text = "Monitor any Bitcoin address (read-only, no private key needed)"
+            textSize = 9f; setTextColor(TXT_MUTED); gravity = Gravity.CENTER
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setPadding(0,0,0,dp(14))
+        })
+        val etAddr = EditText(this).apply {
+            hint = "bc1q... or 1... or 3..."; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat() }
+            setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = 12f
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+        }
+        val etLabel = EditText(this).apply {
+            hint = "Label (e.g. Puzzle #71)"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat() }
+            setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = 12f
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        }
+        sheet.addView(etAddr); sheet.addView(etLabel)
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
+        val btnAdd = Button(this).apply {
+            text = "Watch"; textSize = 12f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(CYAN); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
+        }
+        val btnCancel = Button(this).apply {
+            text = "Cancel"; textSize = 12f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
+        }
+        btnRow.addView(btnAdd); btnRow.addView(btnCancel); sheet.addView(btnRow)
+        val dlg = AlertDialog.Builder(this).setView(sheet).create()
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.75f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dlg.show()
+        btnCancel.setOnClickListener { dlg.dismiss(); showWalletSelectorDialog() }
+        btnAdd.setOnClickListener {
+            val addr = etAddr.text.toString().trim()
+            val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
+            if (addr.length < 26) { Toast.makeText(this, "Invalid address", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            dlg.dismiss()
+            WalletManager.saveWatcher(this, addr, label)
+            wifKey = ""; wifAddr = addr; isWifMode = true
+            currentWalletName = label
+            loadAddresses(); buildUI()
+        }
+    }
+
 }

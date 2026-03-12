@@ -60,21 +60,62 @@ object WalletManager {
     }
 
     /* Guarda seed cifrada con Keystore (hardware) */
-    fun saveWif(ctx: Context, wif: String, addr: String) {
+    // WIF wallet: id -> "wif|addr|name"
+    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet") {
+        val id = "wif_${System.currentTimeMillis()}"
         val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
-        // Save single WIF (latest puzzle match or manual import)
-        prefs.edit().putString("wif", wif).putString("addr", addr).apply()
+        val list = listWifs(ctx).toMutableList()
+        list.add(Triple(id, wif, "$addr|$name"))
+        prefs.edit().putString("wif_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
     }
+    fun listWifs(ctx: Context): List<Triple<String,String,String>> {
+        val raw = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).getString("wif_list", "") ?: ""
+        if (raw.isEmpty()) return emptyList()
+        return raw.split(";;").mapNotNull {
+            val p = it.split("~~~")
+            if (p.size == 3) Triple(p[0], p[1], p[2]) else null
+        }
+    }
+    fun removeWif(ctx: Context, id: String) {
+        val list = listWifs(ctx).filter { it.first != id }
+        ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).edit()
+            .putString("wif_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+    }
+    // Legacy single WIF support
     fun loadWif(ctx: Context): Pair<String,String>? {
-        val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
-        val w = prefs.getString("wif", null) ?: return null
-        val a = prefs.getString("addr", "") ?: ""
-        return Pair(w, a)
+        val list = listWifs(ctx)
+        if (list.isEmpty()) return null
+        val last = list.last()
+        val addr = last.third.split("|").firstOrNull() ?: ""
+        return Pair(last.second, addr)
     }
     fun clearWif(ctx: Context) {
         ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).edit().clear().apply()
     }
-    fun hasWif(ctx: Context) = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).contains("wif")
+    fun hasWif(ctx: Context) = listWifs(ctx).isNotEmpty()
+
+    // Watcher wallets: watch-only by address
+    fun saveWatcher(ctx: Context, addr: String, label: String) {
+        val id = "watch_${System.currentTimeMillis()}"
+        val prefs = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE)
+        val raw = prefs.getString("watch_list", "") ?: ""
+        val list = if (raw.isEmpty()) mutableListOf() else raw.split(";;").toMutableList()
+        list.add("$id~~~$addr~~~$label")
+        prefs.edit().putString("watch_list", list.joinToString(";;")).apply()
+    }
+    fun listWatchers(ctx: Context): List<Triple<String,String,String>> {
+        val raw = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).getString("watch_list", "") ?: ""
+        if (raw.isEmpty()) return emptyList()
+        return raw.split(";;").mapNotNull {
+            val p = it.split("~~~")
+            if (p.size == 3) Triple(p[0], p[1], p[2]) else null
+        }
+    }
+    fun removeWatcher(ctx: Context, id: String) {
+        val list = listWatchers(ctx).filter { it.first != id }
+        ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
+            .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+    }
 
     fun saveSeed(ctx: Context, mnemonic: String) {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
