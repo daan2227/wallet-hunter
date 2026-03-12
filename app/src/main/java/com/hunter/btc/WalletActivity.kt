@@ -43,6 +43,7 @@ class WalletActivity : FragmentActivity() {
     private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
     private var currentTab = 0
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var balanceVisible = true
     private var isLocked = false
     private var lastInteraction = 0L
@@ -423,6 +424,12 @@ class WalletActivity : FragmentActivity() {
 
     /* -- BALANCE -- */
     private fun loadBalanceTab() {
+        if (isWifMode && wifAddr.isEmpty()) {
+            val tv = TextView(this).apply { text = "Deriving address..."; textSize = 14f; setTextColor(TXT_SEC); gravity = Gravity.CENTER; setPadding(0, dp(40), 0, 0) }
+            tabContent.removeAllViews(); tabContent.addView(tv)
+            handler.postDelayed({ if (wifAddr.isNotEmpty()) loadBalanceTab() }, 500)
+            return
+        }
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
         val tvTotal = TextView(this).apply {
@@ -439,6 +446,7 @@ class WalletActivity : FragmentActivity() {
             val rows = mutableListOf<Triple<String,String,Long>>()
             addresses.forEach { (k, addr) ->
                 try {
+                    if (addr.isEmpty()) { rows.add(Triple("Error", "empty address", -1L)); return@forEach }
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$addr" else "https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val js = conn.inputStream.bufferedReader().readText()
@@ -489,6 +497,12 @@ class WalletActivity : FragmentActivity() {
 
     /* -- HISTORY -- */
     private fun loadHistoryTab() {
+        if (isWifMode && wifAddr.isEmpty()) {
+            val tv = TextView(this).apply { text = "Deriving address..."; textSize = 14f; setTextColor(TXT_SEC); gravity = Gravity.CENTER; setPadding(0, dp(40), 0, 0) }
+            tabContent.removeAllViews(); tabContent.addView(tv)
+            handler.postDelayed({ if (wifAddr.isNotEmpty()) loadHistoryTab() }, 500)
+            return
+        }
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val tvHead = TextView(this).apply { text = "Loading..."; textSize = 11f; setTextColor(TXT_SEC); setPadding(0,dp(12),0,dp(8)) }
