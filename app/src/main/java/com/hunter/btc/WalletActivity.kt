@@ -714,7 +714,7 @@ class WalletActivity : FragmentActivity() {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
                 setOnClickListener { onClick() }
             }
-            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(col); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(color); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
             card.addView(TextView(this).apply { text = subtitle; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
             sheet.addView(card)
         }
