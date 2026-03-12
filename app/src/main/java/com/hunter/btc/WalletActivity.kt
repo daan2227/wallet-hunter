@@ -706,7 +706,8 @@ class WalletActivity : FragmentActivity() {
             gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(16))
         })
 
-        fun walletCard(name: String, subtitle: String, color: Int, onClick: () -> Unit) {
+        fun walletCard(name: String, subtitle: String, color: Int = -1, onClick: () -> Unit) {
+            val resolvedColor = if (color == -1) TXT_PRI else color
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(10).toFloat() }
@@ -714,7 +715,7 @@ class WalletActivity : FragmentActivity() {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
                 setOnClickListener { onClick() }
             }
-            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(c); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(resolvedColor); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
             card.addView(TextView(this).apply { text = subtitle; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
             sheet.addView(card)
         }
@@ -723,7 +724,7 @@ class WalletActivity : FragmentActivity() {
         var selectorDlg: AlertDialog? = null
 
         if (hasSeed) {
-            walletCard("Main Wallet", "BIP39 HD Wallet") {
+            walletCard("Main Wallet", "BIP39 HD Wallet", TXT_PRI) {
                 selectorDlg?.dismiss()
                 authenticate {
                     mnemonic = WalletManager.loadSeed(this) ?: ""
@@ -734,7 +735,7 @@ class WalletActivity : FragmentActivity() {
         }
 
         wallets.forEach { (id, name) ->
-            walletCard(name, "BIP39 HD Wallet") {
+            walletCard(name, "BIP39 HD Wallet", TXT_PRI) {
                 selectorDlg?.dismiss()
                 authenticate {
                     mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
