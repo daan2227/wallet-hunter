@@ -94,6 +94,7 @@ class MainActivity : Activity() {
     private lateinit var tvTemp: TextView
     private lateinit var tvLog: TextView
     private lateinit var puzzleSpinner: Spinner
+    private var suppressPuzzleListener = false
     private lateinit var tvFooter: TextView
     private lateinit var btnToggle: Button
     private lateinit var btnSwitch: Button
@@ -712,7 +713,9 @@ class MainActivity : Activity() {
             if(wasPuzzle) setTabActive(rbPuzzle) else setTabActive(rbBip39)
             // Puzzle spinner
             val savedPuzzleIdx = uiSp.getInt("puzzleIdx", 0)
+            suppressPuzzleListener = true
             puzzleSpinner.setSelection(savedPuzzleIdx)
+            suppressPuzzleListener = false
             // Campos de texto
             val rs = uiSp.getString("rangeStart", "") ?: ""
             val re = uiSp.getString("rangeEnd", "") ?: ""
