@@ -48,6 +48,10 @@ static const char *PATHS[N_PATHS]={
 static uint8_t  *g_h160   = nullptr;
 static uint64_t  g_total  = 0;
 static Bloom     g_bloom  = {nullptr,0,0};
+/* P2TR: store 32-byte x-only pubkeys separately */
+static uint8_t  *g_xonly  = nullptr;
+static uint64_t  g_total_tr = 0;
+static Bloom     g_bloom_tr = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
 
 static std::atomic<long>   g_count(0);
@@ -127,6 +131,13 @@ static int addr_to_h160(const char *a,uint8_t *out){
 }
 typedef struct{uint8_t h[HASH160_BYTES];}LE;
 static int cmp_le(const void *a,const void *b){return memcmp(((LE*)a)->h,((LE*)b)->h,HASH160_BYTES);}
+
+static int64_t bsearch_xonly(const uint8_t *t){
+    if(!bloom_check(&g_bloom_tr,t)) return -1;
+    int64_t lo=0,hi=(int64_t)g_total_tr-1;
+    while(lo<=hi){int64_t mid=(lo+hi)>>1;int c=memcmp(g_xonly+mid*32,t,32);if(!c)return mid;if(c<0)lo=mid+1;else hi=mid-1;}
+    return -1;
+}
 static int64_t bsearch_h160(const uint8_t *t){
     if(!bloom_check(&g_bloom,t)) return -1; /* bloom filter: skip bsearch */
     int64_t lo=0,hi=(int64_t)g_total-1;
@@ -231,6 +242,105 @@ static uint32_t bech32_polymod(const uint8_t *v,int vlen){
     }
     return c;
 }
+
+/* === TAPROOT (BIP86) === */
+/* Tagged hash: SHA256(SHA256(tag) || SHA256(tag) || msg) */
+static void tagged_hash(const char *tag, const uint8_t *msg, size_t mlen, uint8_t *out) {
+    uint8_t tag_hash[32];
+    SHA256((const uint8_t*)tag, strlen(tag), tag_hash);
+    SHA256_CTX ctx2;
+    SHA256_Init(&ctx2);
+    SHA256_Update(&ctx2, tag_hash, 32);
+    SHA256_Update(&ctx2, tag_hash, 32);
+    SHA256_Update(&ctx2, msg, mlen);
+    SHA256_Final(out, &ctx2);
+}
+
+/* Tweak x-only pubkey for keypath spend (no script): output = internal + t*G
+   Returns x-only output pubkey (32 bytes) */
+static int taproot_tweak_pubkey(secp256k1_context *ctx,
+                                 const uint8_t *internal_xonly, /* 32 bytes */
+                                 uint8_t *output_xonly)          /* 32 bytes out */ {
+    uint8_t tweak[32];
+    tagged_hash("TapTweak", internal_xonly, 32, tweak);
+    /* Parse x-only pubkey into full pubkey */
+    uint8_t pub33[33]; pub33[0] = 0x02;
+    memcpy(pub33+1, internal_xonly, 32);
+    secp256k1_pubkey pub;
+    if (!secp256k1_ec_pubkey_parse(ctx, &pub, pub33, 33)) return 0;
+    /* Add tweak*G */
+    if (!secp256k1_ec_pubkey_tweak_add(ctx, &pub, tweak)) return 0;
+    /* Serialize and take x coordinate */
+    uint8_t out33[33]; size_t len=33;
+    secp256k1_ec_pubkey_serialize(ctx, out33, &len, &pub, SECP256K1_EC_COMPRESSED);
+    memcpy(output_xonly, out33+1, 32);
+    return 1;
+}
+
+/* Bech32m encoding for P2TR (witness version 1, 32-byte program) */
+static void xonly_to_p2tr(const uint8_t *xonly32, char *out) {
+    /* bech32m: same as bech32 but checksum constant = 0x2bc830a3 */
+    const char *CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    /* Convert 32 bytes to 5-bit groups */
+    uint8_t d5[65]; int nd5=0;
+    /* witness version 0x01 first */
+    d5[nd5++]=1;
+    int acc=0,bits=0;
+    for(int i=0;i<32;i++){
+        acc=(acc<<8)|xonly32[i]; bits+=8;
+        while(bits>=5){bits-=5;d5[nd5++]=(acc>>bits)&31;}
+    }
+    if(bits>0) d5[nd5++]=(acc<<(5-bits))&31;
+    /* Build HRP + data for checksum */
+    const char *hrp="bc";
+    int hrplen=2;
+    /* polymod */
+    uint32_t GEN[5]={0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3};
+    uint32_t chk=1;
+    auto polymod_step=[&](uint8_t v){
+        uint8_t b=(chk>>25)&0x1f;
+        chk=((chk&0x1ffffff)<<5)^v;
+        for(int i=0;i<5;i++) if((b>>i)&1) chk^=GEN[i];
+    };
+    for(int i=0;i<hrplen;i++) polymod_step(hrp[i]>>5);
+    polymod_step(0);
+    for(int i=0;i<hrplen;i++) polymod_step(hrp[i]&31);
+    for(int i=0;i<nd5;i++) polymod_step(d5[i]);
+    for(int i=0;i<6;i++) polymod_step(0);
+    chk ^= 0x2bc830a3; /* bech32m constant */
+    /* Write output */
+    char *o=out;
+    *o++='b';*o++='c';*o++='1';*o++='p'; /* bc1p prefix for version 1 */
+    for(int i=1;i<nd5;i++) *o++=CHARSET[d5[i]]; /* skip version byte, already in prefix */
+    for(int i=0;i<6;i++) *o++=CHARSET[(chk>>(5*(5-i)))&31];
+    *o=0;
+}
+
+/* Decode bech32m bc1p address to x-only pubkey (32 bytes) */
+static int p2tr_addr_to_xonly(const char *addr, uint8_t *xonly32) {
+    if(addr[0]!='b'||addr[1]!='c'||addr[2]!='1'||addr[3]!='p') return 0;
+    const char *CHARSET="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
+    /* Find separator */
+    const char *p=addr+4; /* skip bc1p */
+    int nch=0; while(p[nch] && nch<100) nch++;
+    nch-=6; /* remove checksum */
+    if(nch<52) return 0;
+    /* Decode 5-bit values (skip witness version in bc1p prefix) */
+    std::vector<int> d5;
+    for(int i=0;i<nch;i++){
+        const char *c=strchr(CHARSET,tolower(p[i]));
+        if(!c) return 0;
+        d5.push_back((int)(c-CHARSET));
+    }
+    /* Convert 5-bit to 8-bit */
+    int acc=0,bits=0; int idx=0;
+    for(int v:d5){
+        acc=(acc<<5)|v; bits+=5;
+        while(bits>=8){bits-=8;if(idx<32)xonly32[idx++]=(acc>>bits)&0xff;}
+    }
+    return (idx==32)?1:0;
+}
+
 static void h160_to_bech32(const uint8_t *h160, char *out){
     /* Convert 20 bytes to 5-bit groups (32 values) */
     uint8_t d5[33]; /* witness version 0 + 32 data values */
@@ -306,6 +416,23 @@ static std::string derive_wallet_json(const char *mnemonic){
         char addr[MAX_ADDR]={0}; h160_to_bech32(h160,addr);
         char key[32]; snprintf(key,32,"\"p2wpkh_%d\"",i);
         json+=key; json+=":\""; json+=addr; json+="\",";
+    }
+    /* BIP86: m/86'/0'/0'/0/0-1 P2TR */
+    HDKey h86,h86_0,h86_00,h86_ext;
+    derive_child(ctx,&master,0x80000000u+86,&h86);
+    derive_child(ctx,&h86,0x80000000u+0,&h86_0);
+    derive_child(ctx,&h86_0,0x80000000u+0,&h86_00);
+    derive_child(ctx,&h86_00,0,&h86_ext);
+    for(int i=0;i<2;i++){
+        HDKey leaf; derive_child(ctx,&h86_ext,i,&leaf);
+        uint8_t pub33[33]; get_pub33(ctx,leaf.key,pub33);
+        uint8_t xonly[32]; memcpy(xonly,pub33+1,32);
+        uint8_t tweaked[32];
+        if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
+            char addr[MAX_ADDR]={0}; xonly_to_p2tr(tweaked,addr);
+            char key[32]; snprintf(key,32,""p2tr_%d"",i);
+            json+=key; json+=":""; json+=addr; json+="",";
+        }
     }
     /* Remove trailing comma */
     if(json.back()==',') json.pop_back();
@@ -462,6 +589,20 @@ static void *worker_bip39_fn(void *){
             pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
             {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            /* BIP86 P2TR */
+            {HDKey h86,h86_0,h86_00,h86_ext,h86_leaf;
+             derive_child(ctx,&master,0x80000000u+86,&h86);
+             derive_child(ctx,&h86,0x80000000u+0,&h86_0);
+             derive_child(ctx,&h86_0,0x80000000u+0,&h86_00);
+             derive_child(ctx,&h86_00,0,&h86_ext);
+             derive_child(ctx,&h86_ext,0,&h86_leaf);
+             uint8_t pub33tr[33]; get_pub33(ctx,h86_leaf.key,pub33tr);
+             uint8_t xonly[32]; memcpy(xonly,pub33tr+1,32);
+             uint8_t tweaked[32];
+             if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
+                 int64_t ix=bsearch_xonly(tweaked);
+                 if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h86_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=8;nhits++;}
+             }}
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
@@ -573,6 +714,8 @@ static void *load_fn(void *){
     FILE *f=fopen(g_csv_path,"r");
     if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: could not open file");g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;g_csv_loaded.store(false);
+    if(g_xonly){free(g_xonly);g_xonly=nullptr;}g_total_tr=0;
+    if(g_bloom_tr.bits){bloom_free(&g_bloom_tr);}
     LE *tmp=(LE*)malloc(MAX_CSV_ROWS*sizeof(LE));
     if(!tmp){snprintf(g_load_status,sizeof(g_load_status),"Error: out of memory");fclose(f);g_loading.store(false);return nullptr;}
     char line[MAX_LINE],*fields[8];
@@ -596,6 +739,17 @@ static void *load_fn(void *){
     for(uint64_t i=0;i<ok;i++){memcpy(g_h160+i*HASH160_BYTES,tmp[i].h,HASH160_BYTES);}
     free(tmp);g_total=ok;
     snprintf(g_load_status,sizeof(g_load_status),"Listo: %.1fM dir | %.2f GB",(double)ok/1e6,ok*20.0/1e9);
+    /* Sort p2tr xonly array */
+    if(g_xonly && g_total_tr>1){
+        qsort(g_xonly, g_total_tr, 32, [](const void *a,const void *b){return memcmp(a,b,32);});
+    }
+    /* Build bloom for p2tr */
+    if(g_bloom_tr.bits){bloom_free(&g_bloom_tr);}
+    if(g_xonly && g_total_tr>0){
+        g_bloom_tr=bloom_create(g_total_tr);
+        for(uint64_t bi=0;bi<g_total_tr;bi++) bloom_set(&g_bloom_tr,g_xonly+bi*32);
+    }
+    add_log("P2TR loaded: "+std::to_string(g_total_tr)+" taproot entries");
     /* Build bloom filter */
     if(g_bloom.bits){bloom_free(&g_bloom);}
     g_bloom=bloom_create(g_total);

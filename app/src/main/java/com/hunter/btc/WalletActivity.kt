@@ -52,7 +52,8 @@ class WalletActivity : FragmentActivity() {
     private val labelMap = mapOf(
         "p2pkh_0" to "P2PKH [0]", "p2pkh_1" to "P2PKH [1]", "p2pkh_2" to "P2PKH [2]",
         "p2sh_0"  to "P2SH  [0]",
-        "p2wpkh_0" to "WPKH  [0]", "p2wpkh_1" to "WPKH  [1]"
+        "p2wpkh_0" to "WPKH  [0]", "p2wpkh_1" to "WPKH  [1]",
+        "p2tr_0" to "P2TR  [0]", "p2tr_1" to "P2TR  [1]"
     )
 
     /* -- LIFECYCLE -- */
