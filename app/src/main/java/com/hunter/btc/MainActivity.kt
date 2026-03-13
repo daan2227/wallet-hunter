@@ -367,39 +367,6 @@ class MainActivity : Activity() {
             gravity = Gravity.END
             setPadding(0, dp(4), 0, 0)
         }
-        val btnTheme = Button(this).apply {
-            text = if (AppTheme.isDark) "Day" else "Night"
-            textSize = 9f; setTextColor(TXT_SEC)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = GradientDrawable().apply {
-                setColor(BG_CARD); setStroke(1, BORDER_C)
-                cornerRadius = dp(3).toFloat()
-            }
-            setPadding(dp(9), dp(3), dp(9), dp(3))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(26)).apply { marginEnd = dp(6) }
-            setOnClickListener {
-                // Guardar estado antes de recrear
-                val sp = getSharedPreferences("ui_state", MODE_PRIVATE).edit()
-                sp.putBoolean("puzzleMode", puzzleMode)
-                sp.putInt("threads", sbThreads.progress)
-                sp.putInt("cpu", sbCpu.progress)
-                sp.putString("rangeStart", etRangeStart.text.toString())
-                sp.putString("rangeEnd", etRangeEnd.text.toString())
-                sp.putString("target", if(::etTarget.isInitialized) etTarget.text.toString() else "")
-                sp.putBoolean("wasRunning", HunterEngine.isRunning())
-                sp.putString("logBuf", logBuf.toString().take(4000))
-                sp.putInt("puzzleIdx", puzzleSpinner.selectedItemPosition)
-                sp.putString("activeWallet", WalletManager.getActiveWalletId(this@MainActivity) ?: "")
-                sp.putBoolean("isRunning", HunterEngine.isRunning())
-                sp.putString("chartPts", chartView.getPoints().joinToString(","))
-                sp.putString("puzzleStatus", tvPuzzleStatus.text.toString())
-                sp.putInt("puzzleStatusColor", tvPuzzleStatus.currentTextColor)
-                sp.putString("matchText", tvMatchList.text.toString())
-                sp.putString("addrFeed", tvAddrFeed.text.toString())
-                sp.apply()
-                recreate()
-            }
-        }
         hRow2.addView(btnStats)
         hRow2.addView(btnExport)
         hTop.addView(hRow1)
