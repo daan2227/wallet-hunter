@@ -20,6 +20,7 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
+#include "bloom.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -46,6 +47,7 @@ static const char *PATHS[N_PATHS]={
    ========================================================= */
 static uint8_t  *g_h160   = nullptr;
 static uint64_t  g_total  = 0;
+static Bloom     g_bloom  = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
 
 static std::atomic<long>   g_count(0);
@@ -54,7 +56,7 @@ static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
-static std::atomic<int>    g_nthreads(4);
+static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
 static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
@@ -126,6 +128,7 @@ static int addr_to_h160(const char *a,uint8_t *out){
 typedef struct{uint8_t h[HASH160_BYTES];}LE;
 static int cmp_le(const void *a,const void *b){return memcmp(((LE*)a)->h,((LE*)b)->h,HASH160_BYTES);}
 static int64_t bsearch_h160(const uint8_t *t){
+    if(!bloom_check(&g_bloom,t)) return -1; /* bloom filter: skip bsearch */
     int64_t lo=0,hi=(int64_t)g_total-1;
     while(lo<=hi){int64_t mid=(lo+hi)>>1;int c=memcmp(g_h160+mid*HASH160_BYTES,t,HASH160_BYTES);if(!c)return mid;if(c<0)lo=mid+1;else hi=mid-1;}
     return -1;
@@ -494,7 +497,7 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     uint8_t sha[32],h160[HASH160_BYTES];
     SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
     c->done++;
-    if(c->done%100==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+    if(c->done%500==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
     int match=0; char sats_buf[24]="0"; char type_buf[12]="?";
     if(g_has_target){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
@@ -593,6 +596,11 @@ static void *load_fn(void *){
     for(uint64_t i=0;i<ok;i++){memcpy(g_h160+i*HASH160_BYTES,tmp[i].h,HASH160_BYTES);}
     free(tmp);g_total=ok;
     snprintf(g_load_status,sizeof(g_load_status),"Listo: %.1fM dir | %.2f GB",(double)ok/1e6,ok*20.0/1e9);
+    /* Build bloom filter */
+    if(g_bloom.bits){bloom_free(&g_bloom);}
+    g_bloom=bloom_create(g_total);
+    for(uint64_t bi=0;bi<g_total;bi++) bloom_set(&g_bloom,g_h160+bi*HASH160_BYTES);
+    add_log("Bloom filter ready: "+std::to_string(g_bloom.nbits/8/1024/1024)+"MB for "+std::to_string(g_total)+" entries");
     g_csv_loaded.store(true);g_loading.store(false);
     add_log(std::string("CSV ready: ")+g_load_status);
     return nullptr;
