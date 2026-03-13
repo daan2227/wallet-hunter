@@ -455,20 +455,7 @@ class MainActivity : Activity() {
         /* SETTINGS */
         val cfgSec = pad().also { main.addView(it) }
         tvConfigSec = sectionHdr(s.configSection).also { cfgSec.addView(it) }
-        val cfgGrid = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        fun miniCard(lbl: String, valTv: TextView): LinearLayout {
-            val c = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; background = cardBg()
-                setPadding(dp(12), dp(10), dp(12), dp(10))
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) }
-            }
-            c.addView(TextView(this).apply { text = lbl; textSize = 9f; setTextColor(TXT_SEC) })
-            c.addView(valTv); return c
-        }
-        val tvThreadVal = TextView(this).apply { text = "4"; textSize = 18f; setTextColor(AMBER); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        val tvCpuVal    = TextView(this).apply { text = "80%"; textSize = 18f; setTextColor(GREEN); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        cfgGrid.addView(miniCard(s.threads, tvThreadVal)); cfgGrid.addView(miniCard(s.cpuLimit, tvCpuVal))
-        cfgSec.addView(cfgGrid)
+
 
         fun sliderCard(nameTv: TextView, bar: SeekBar): LinearLayout {
             val w = LinearLayout(this).apply {
@@ -481,7 +468,7 @@ class MainActivity : Activity() {
         tvThreads = TextView(this).apply { setTextColor(TXT_PRI); textSize = 10f }
         sbThreads = SeekBar(this).apply {
             max = 7; progress = 3
-            setOnSeekBarChangeListener(mkSbl { updateLabels(); tvThreadVal.text = "${sbThreads.progress+1}" })
+            setOnSeekBarChangeListener(mkSbl { updateLabels() })
         }
         cfgSec.addView(sliderCard(tvThreads, sbThreads))
         tvCpu = TextView(this).apply { setTextColor(TXT_PRI); textSize = 10f }
@@ -489,8 +476,6 @@ class MainActivity : Activity() {
             max = 90; progress = 70
             setOnSeekBarChangeListener(mkSbl {
                 updateLabels()
-                tvCpuVal.text = "${sbCpu.progress+10}%"
-                tvCpuVal.setTextColor(if(sbCpu.progress+10<=40) GREEN else if(sbCpu.progress+10<=70) YELLOW else RED)
                 if(HunterEngine.isRunning()) HunterEngine.setCpuLimit(sbCpu.progress+10)
             })
         }
