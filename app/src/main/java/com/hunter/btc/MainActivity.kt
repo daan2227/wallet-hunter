@@ -82,6 +82,9 @@ class MainActivity : Activity() {
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvStatus: TextView
+    private lateinit var tvSpeedBig: TextView
+    private var tvQuickCsv: TextView? = null
+    private var tvQuickMatches: TextView? = null
     private lateinit var tvWps: TextView
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
