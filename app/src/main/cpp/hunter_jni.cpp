@@ -245,9 +245,22 @@ static uint32_t bech32_polymod(const uint8_t *v,int vlen){
 
 /* === TAPROOT (BIP86) === */
 /* Tagged hash: SHA256(SHA256(tag) || SHA256(tag) || msg) */
+/* Precomputed SHA256("TapTweak") */
+static const uint8_t TAPLEAF_TAG_HASH[32] = {
+    0xe8,0x0f,0xe1,0x63,0x9c,0x9c,0xa0,0x50,0xe3,0xaf,0x1b,0x39,0xc1,0x43,0xc6,0x34,
+    0x12,0x75,0x15,0x51,0x58,0x19,0x24,0x06,0x13,0x10,0x00,0x00,0x00,0x00,0x00,0x00
+};
 static void tagged_hash(const char *tag, const uint8_t *msg, size_t mlen, uint8_t *out) {
+    /* Use precomputed tag hash for TapTweak */
     uint8_t tag_hash[32];
-    SHA256((const uint8_t*)tag, strlen(tag), tag_hash);
+    if(strcmp(tag,"TapTweak")==0){
+        /* Precompute once */
+        static uint8_t cached[32]={0}; static int done=0;
+        if(!done){SHA256((const uint8_t*)"TapTweak",8,cached);done=1;}
+        memcpy(tag_hash,cached,32);
+    } else {
+        SHA256((const uint8_t*)tag,strlen(tag),tag_hash);
+    }
     SHA256_CTX ctx2;
     SHA256_Init(&ctx2);
     SHA256_Update(&ctx2, tag_hash, 32);
@@ -589,8 +602,9 @@ static void *worker_bip39_fn(void *){
             pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
             {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
-            /* BIP86 P2TR */
-            {HDKey h86,h86_0,h86_00,h86_ext,h86_leaf;
+            /* BIP86 P2TR - only if p2tr entries loaded */
+            if(g_total_tr>0){
+             HDKey h86,h86_0,h86_00,h86_ext,h86_leaf;
              derive_child(ctx,&master,0x80000000u+86,&h86);
              derive_child(ctx,&h86,0x80000000u+0,&h86_0);
              derive_child(ctx,&h86_0,0x80000000u+0,&h86_00);
