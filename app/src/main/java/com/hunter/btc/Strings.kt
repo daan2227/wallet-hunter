@@ -34,7 +34,7 @@ object Strings {
         notifMatchTitle="WALLET ENCONTRADA", notifStatusTitle="BTC Hunter",
         speed="Velocidad", seeds="Seeds", time="Tiempo", matches="Matches",
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
-        modeSection="MODO DE BUSQUEDA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (rango hex)",
+        modeSection="MODO DE BUSQUEDA", modeBip39="Seed Scan", modePuzzle="Puzzle (rango hex)",
         puzzleSelect="Seleccionar Puzzle:", rangeStart="Rango Inicio (hex):", rangeEnd="Rango Fin (hex):",
         targetAddr="Direccion Objetivo:", enterRange="Ingresa el rango hex", enterTarget="Ingresa la direccion objetivo",
         loading="Cargando", errorPrefix="Error", footer="Propiedad de Dax2201 | Optimizado por Claude"
@@ -52,7 +52,7 @@ object Strings {
         notifMatchTitle="WALLET FOUND", notifStatusTitle="BTC Hunter",
         speed="Speed", seeds="Seeds", time="Time", matches="Matches",
         ram="RAM", temp="Temp", language="Language", langBtn="Language",
-        modeSection="SEARCH MODE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (hex range)",
+        modeSection="SEARCH MODE", modeBip39="Seed Scan", modePuzzle="Puzzle (hex range)",
         puzzleSelect="Select Puzzle:", rangeStart="Range Start (hex):", rangeEnd="Range End (hex):",
         targetAddr="Target Address:", enterRange="Enter hex range", enterTarget="Enter target address",
         loading="Loading", errorPrefix="Error", footer="Property of Dax2201 | Optimized by Claude"
@@ -70,7 +70,7 @@ object Strings {
         notifMatchTitle="ウォレット発見", notifStatusTitle="BTC Hunter",
         speed="速度", seeds="シード", time="時間", matches="一致数",
         ram="RAM", temp="温度", language="言語", langBtn="言語",
-        modeSection="検索モード", modeBip39="BIP39 (シード)", modePuzzle="パズル (16進範囲)",
+        modeSection="検索モード", modeBip39="Seed Scan", modePuzzle="パズル (16進範囲)",
         puzzleSelect="パズル選択:", rangeStart="範囲開始 (hex):", rangeEnd="範囲終了 (hex):",
         targetAddr="ターゲットアドレス:", enterRange="16進範囲を入力", enterTarget="ターゲットアドレスを入力",
         loading="読込中", errorPrefix="エラー", footer="Dax2201 所有 | Claude 最適化"
@@ -88,7 +88,7 @@ object Strings {
         notifMatchTitle="지갑 발견", notifStatusTitle="BTC Hunter",
         speed="속도", seeds="시드", time="시간", matches="일치수",
         ram="RAM", temp="온도", language="언어", langBtn="언어",
-        modeSection="검색 모드", modeBip39="BIP39 (시드)", modePuzzle="퍼즐 (16진 범위)",
+        modeSection="검색 모드", modeBip39="Seed Scan", modePuzzle="퍼즐 (16진 범위)",
         puzzleSelect="퍼즐 선택:", rangeStart="범위 시작 (hex):", rangeEnd="범위 끝 (hex):",
         targetAddr="대상 주소:", enterRange="16진 범위 입력", enterTarget="대상 주소 입력",
         loading="로딩중", errorPrefix="오류", footer="Dax2201 소유 | Claude 최적화"
@@ -106,7 +106,7 @@ object Strings {
         notifMatchTitle="WALLET GEFUNDEN", notifStatusTitle="BTC Hunter",
         speed="Geschwindigkeit", seeds="Seeds", time="Zeit", matches="Treffer",
         ram="RAM", temp="Temp", language="Sprache", langBtn="Sprache",
-        modeSection="SUCHMODUS", modeBip39="BIP39 (Seeds)", modePuzzle="Puzzle (Hex-Bereich)",
+        modeSection="SUCHMODUS", modeBip39="Seed Scan", modePuzzle="Puzzle (Hex-Bereich)",
         puzzleSelect="Puzzle auswaehlen:", rangeStart="Bereich Start (hex):", rangeEnd="Bereich Ende (hex):",
         targetAddr="Zieladresse:", enterRange="Hex-Bereich eingeben", enterTarget="Zieladresse eingeben",
         loading="Laden", errorPrefix="Fehler", footer="Eigentum von Dax2201 | Optimiert von Claude"
@@ -124,7 +124,7 @@ object Strings {
         notifMatchTitle="PORTEFEUILLE TROUVE", notifStatusTitle="BTC Hunter",
         speed="Vitesse", seeds="Seeds", time="Temps", matches="Corresp.",
         ram="RAM", temp="Temp", language="Langue", langBtn="Langue",
-        modeSection="MODE DE RECHERCHE", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (plage hex)",
+        modeSection="MODE DE RECHERCHE", modeBip39="Seed Scan", modePuzzle="Puzzle (plage hex)",
         puzzleSelect="Choisir Puzzle:", rangeStart="Debut plage (hex):", rangeEnd="Fin plage (hex):",
         targetAddr="Adresse cible:", enterRange="Entrer la plage hex", enterTarget="Entrer l'adresse cible",
         loading="Chargement", errorPrefix="Erreur", footer="Propriete de Dax2201 | Optimise par Claude"
@@ -142,7 +142,7 @@ object Strings {
         notifMatchTitle="КОШЕЛЕК НАЙДЕН", notifStatusTitle="BTC Hunter",
         speed="Скорость", seeds="Сидов", time="Время", matches="Совпад.",
         ram="ОЗУ", temp="Темп", language="Язык", langBtn="Язык",
-        modeSection="РЕЖИМ ПОИСКА", modeBip39="BIP39 (seed-фразы)", modePuzzle="Паззл (hex диапазон)",
+        modeSection="РЕЖИМ ПОИСКА", modeBip39="Seed Scan", modePuzzle="Паззл (hex диапазон)",
         puzzleSelect="Выбрать паззл:", rangeStart="Начало (hex):", rangeEnd="Конец (hex):",
         targetAddr="Целевой адрес:", enterRange="Введите hex диапазон", enterTarget="Введите целевой адрес",
         loading="Загрузка", errorPrefix="Ошибка", footer="Собственность Dax2201 | Оптимизировано Claude"
@@ -160,7 +160,7 @@ object Strings {
         notifMatchTitle="CARTEIRA ENCONTRADA", notifStatusTitle="BTC Hunter",
         speed="Velocidade", seeds="Seeds", time="Tempo", matches="Corresp.",
         ram="RAM", temp="Temp", language="Idioma", langBtn="Idioma",
-        modeSection="MODO DE BUSCA", modeBip39="BIP39 (seeds)", modePuzzle="Puzzle (intervalo hex)",
+        modeSection="MODO DE BUSCA", modeBip39="Seed Scan", modePuzzle="Puzzle (intervalo hex)",
         puzzleSelect="Selecionar Puzzle:", rangeStart="Inicio intervalo (hex):", rangeEnd="Fim intervalo (hex):",
         targetAddr="Endereco alvo:", enterRange="Digite o intervalo hex", enterTarget="Digite o endereco alvo",
         loading="Carregando", errorPrefix="Erro", footer="Propriedade de Dax2201 | Otimizado por Claude"
