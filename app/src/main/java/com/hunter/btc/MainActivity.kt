@@ -397,11 +397,9 @@ class MainActivity : Activity() {
                 sp.putString("matchText", tvMatchList.text.toString())
                 sp.putString("addrFeed", tvAddrFeed.text.toString())
                 sp.apply()
-                AppTheme.toggle(this@MainActivity)
                 recreate()
             }
         }
-        hRow2.addView(btnTheme)
         hRow2.addView(btnStats)
         hRow2.addView(btnExport)
         hTop.addView(hRow1)
