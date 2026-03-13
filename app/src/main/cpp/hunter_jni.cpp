@@ -20,7 +20,6 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
-#include "sha256_arm.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -28,7 +27,7 @@
 
 #define PBKDF2_ITERS  1
 #define MAX_THREADS  16
-#define LOCAL_BATCH   64
+#define LOCAL_BATCH   32
 #define MAX_CSV_ROWS  120000000ULL
 #define HASH160_BYTES 20
 #define PRIVKEY_BYTES 32
@@ -493,7 +492,7 @@ static PuzzleBatchCtx g_pbctx;
 static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     PuzzleBatchCtx *c=(PuzzleBatchCtx*)raw;
     uint8_t sha[32],h160[HASH160_BYTES];
-    hash160_pub33(pub33,h160); (void)sha;
+    SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
     c->done++;
     if(c->done%100==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
     int match=0; char sats_buf[24]="0"; char type_buf[12]="?";
