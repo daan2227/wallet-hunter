@@ -430,7 +430,7 @@ static std::string derive_wallet_json(const char *mnemonic){
         uint8_t tweaked[32];
         if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
             char addr[MAX_ADDR]={0}; xonly_to_p2tr(tweaked,addr);
-            char key[32]; snprintf(key,32,""p2tr_%d"",i);
+            char key[32]; snprintf(key,32,"\"p2tr_%d\"",i);
             json+=key; json+=":""; json+=addr; json+="",";
         }
     }
