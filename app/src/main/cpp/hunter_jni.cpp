@@ -28,7 +28,7 @@
 
 #define PBKDF2_ITERS  1
 #define MAX_THREADS  16
-#define LOCAL_BATCH   32
+#define LOCAL_BATCH   128
 #define MAX_CSV_ROWS  120000000ULL
 #define HASH160_BYTES 20
 #define PRIVKEY_BYTES 32
@@ -571,7 +571,6 @@ static void *worker_bip39_fn(void *){
             for(int i=0;i<5;i++){
                 HDKey leaf; derive_child(ctx,&h44_ch0,i,&leaf);
                 pk_to_h160(ctx,leaf.key,h160); local_done++;
-                {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
                 int64_t ix=bsearch_h160(h160);
                 if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,leaf.key,PRIVKEY_BYTES);hits[nhits].pi=i;nhits++;}
             }
@@ -580,7 +579,6 @@ static void *worker_bip39_fn(void *){
             derive_child(ctx,&h44_0_0,1,&h44_ch1);
             derive_child(ctx,&h44_ch1,0,&h44_ch1_0);
             pk_to_h160(ctx,h44_ch1_0.key,h160); local_done++;
-            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_ch1_0.key,PRIVKEY_BYTES);hits[nhits].pi=7;nhits++;}}
             /* --- m/49'/0'/0'/0/0 --- */
             HDKey h49,h49_0,h49_00,h49_000,h49_leaf;
@@ -590,7 +588,6 @@ static void *worker_bip39_fn(void *){
             derive_child(ctx,&h49_00,0,&h49_000);
             derive_child(ctx,&h49_000,0,&h49_leaf);
             pk_to_h160(ctx,h49_leaf.key,h160); local_done++;
-            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h49_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=5;nhits++;}}
             /* --- m/84'/0'/0'/0/0 --- */
             HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
@@ -600,8 +597,9 @@ static void *worker_bip39_fn(void *){
             derive_child(ctx,&h84_00,0,&h84_000);
             derive_child(ctx,&h84_000,0,&h84_leaf);
             pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
-            {char at[MAX_ADDR]={0};h160_to_addr(h160,at);add_addr(std::string(at));}
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            /* Feed visual: solo 1 vez por batch */
+            if(bi==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
             /* BIP86 P2TR - only if p2tr entries loaded */
             if(g_total_tr>0){
              HDKey h86,h86_0,h86_00,h86_ext,h86_leaf;
