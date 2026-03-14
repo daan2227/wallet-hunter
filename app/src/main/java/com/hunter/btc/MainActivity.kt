@@ -87,6 +87,8 @@ class MainActivity : Activity() {
     private var tvQuickMatches: TextView? = null
     private lateinit var tvWps: TextView
     private lateinit var tvKps: TextView
+    private var tvQuickThreads: TextView? = null
+    private var tvQuickCpu: TextView? = null
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
@@ -417,8 +419,8 @@ class MainActivity : Activity() {
         }
         fun vDiv()=View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(1,LinearLayout.LayoutParams.MATCH_PARENT)}
         val csvLbl=if(csvPath.isNotEmpty()&&File(csvPath).exists())File(csvPath).nameWithoutExtension.take(7) else "No file"
-        val(c0,_) =qCell("${prefs.getInt("threads",3)+1}","THREADS",AMBER){goTab(3)}
-        val(c1,_) =qCell("${prefs.getInt("cpu",70)+10}%","CPU",AppTheme.CYAN){goTab(3)}
+        val(c0,tvQT)=qCell("${prefs.getInt("threads",3)+1}","THREADS",AMBER){goTab(3)};tvQuickThreads=tvQT
+        val(c1,tvQCpu)=qCell("${prefs.getInt("cpu",70)+10}%","CPU",AppTheme.CYAN){goTab(3)};tvQuickCpu=tvQCpu
         val(c2,tvQC)=qCell(csvLbl,"DATASET",TXT_MUTED){goTab(3)};tvQuickCsv=tvQC
         val(c3,tvQM)=qCell("0","MATCHES",TXT_MUTED);tvQuickMatches=tvQM
         qStrip.addView(c0);qStrip.addView(vDiv());qStrip.addView(c1);qStrip.addView(vDiv());qStrip.addView(c2);qStrip.addView(vDiv());qStrip.addView(c3)
@@ -452,14 +454,8 @@ class MainActivity : Activity() {
         statGrid.addView(statBox(tvKps,"KEYS/SEC"));statGrid.addView(statBox(tvSc2,"SCANNED"));statGrid.addView(statBox(tvTm2,"ELAPSED",true))
         statSec.addView(statGrid)
 
-        /* Matches banner */
-        val matchCard=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;background=cardBg();gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(13),dp(16),dp(13));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(6)}}
-        val mLeft=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
-        tvMatches=TextView(this).apply{text="0";textSize=28f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD)}
-        mLeft.addView(TextView(this).apply{text=s.matches.uppercase();textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.14f;setPadding(0,0,0,dp(5))})
-        mLeft.addView(tvMatches);matchCard.addView(mLeft)
-        matchCard.addView(TextView(this).apply{text="~";textSize=20f;setTextColor(AMBER);typeface=Typeface.MONOSPACE;alpha=0.35f})
-        statSec.addView(matchCard)
+        /* tvMatches — inicializado pero mostrado solo en Quick Strip y tvMatchList */
+        tvMatches=TextView(this).apply{text="0";textSize=15f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD)}
 
         /* Sparkline */
         val sparkCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();setPadding(dp(14),dp(12),dp(14),dp(12));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(6)}}
@@ -545,8 +541,8 @@ class MainActivity : Activity() {
         statsAct.addView(Button(this).apply{text="View Stats";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(10).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)};setOnClickListener{startActivity(Intent(this@MainActivity,StatsActivity::class.java))}})
         statsAct.addView(Button(this).apply{text="Export Log";textSize=11f;setTextColor(TXT_PRI);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_PANEL);setStroke(1,BORDER_C);cornerRadius=dp(10).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f);setOnClickListener{exportLog()}})
         statsBody.addView(statsAct);statsPage.addView(statsBody)
-        /* extend tag for stats sync: [tvKps,tvSc2,tvTm2, sKps,sSc,sEl,sMt, sKeyV,sDurV,sMatV] */
-        tvWps.tag=arrayOf<Any>(tvKps,tvSc2,tvTm2,sKps,sSc,sEl,sMt,sKeyV,sDurV,sMatV)
+        /* tag: [0:tvKps,1:tvSc2,2:tvTm2, 3:sKps,4:sSc,5:sEl,6:sMt, 7:sThrV,8:sCpuV,9:sMatV,10:sModeV,11:sKeyV,12:sDurV] */
+        tvWps.tag=arrayOf<Any>(tvKps,tvSc2,tvTm2,sKps,sSc,sEl,sMt,sThrV,sCpuV,sMatV,sModeV,sKeyV,sDurV)
         tvStatsSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
         tvMatchSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
         tvLogSec  =LinearLayout(this).also{it.visibility=android.view.View.GONE}
@@ -1016,9 +1012,9 @@ class MainActivity : Activity() {
             }
             return btn
         }
-        row.addView(chip("P2PKH",  filterP2PKH)  { filterP2PKH  = it })
-        row.addView(chip("P2SH",   filterP2SH)   { filterP2SH   = it })
-        row.addView(chip("P2WPKH", filterP2WPKH) { filterP2WPKH = it })
+        row.addView(chip("P2PKH",  filterP2PKH)  { filterP2PKH  = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
+        row.addView(chip("P2SH",   filterP2SH)   { filterP2SH   = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
+        row.addView(chip("P2WPKH", filterP2WPKH) { filterP2WPKH = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
         return row
     }
 
@@ -1055,6 +1051,14 @@ class MainActivity : Activity() {
         val cpuColor=if(cpu<=40)GREEN else if(cpu<=70)YELLOW else RED
         tvCpu.setTextColor(cpuColor)
         tvCpu.text="${s.cpuLimit}: $cpu% (${if(cpu<=40)s.silent else if(cpu<=70)s.balanced else s.performance})"
+        tvQuickThreads?.text="$t"
+        tvQuickCpu?.text="$cpu%"; tvQuickCpu?.setTextColor(cpuColor)
+        /* Stats session card sync */
+        (tvWps.tag as? Array<*>)?.let{tag->
+            (tag.getOrNull(7) as? TextView)?.text="$t"   // sThrV
+            (tag.getOrNull(8) as? TextView)?.text="$cpu%" // sCpuV
+            (tag.getOrNull(10) as? TextView)?.text=if(puzzleMode)"PUZZLE" else "SEED SCAN" // sModeV
+        }
     }
     private fun updateRam() {
         val mi=ActivityManager.MemoryInfo()
@@ -1147,10 +1151,18 @@ class MainActivity : Activity() {
         if(running) chartView.addPoint(wps.toFloat())
         val count=HunterEngine.getCount(); val cStr=if(count>=1_000_000)"%.2fM".format(count/1e6) else if(count>=1000)"%.1fK".format(count/1000.0) else "$count"
         tvCount.text=cStr
-        (tvWps.tag as? Array<*>)?.let{t->(t.getOrNull(1) as? TextView)?.text=cStr;(t.getOrNull(4) as? TextView)?.text=cStr}
+        (tvWps.tag as? Array<*>)?.let{t->
+            (t.getOrNull(1) as? TextView)?.text=cStr   // tvSc2
+            (t.getOrNull(4) as? TextView)?.text=cStr   // sSc
+            (t.getOrNull(11) as? TextView)?.text=cStr  // sKeyV
+        }
         val e=HunterEngine.getElapsed(); val eStr="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
         tvTime.text=eStr
-        (tvWps.tag as? Array<*>)?.let{t->(t.getOrNull(2) as? TextView)?.text=eStr;(t.getOrNull(5) as? TextView)?.text=eStr}
+        (tvWps.tag as? Array<*>)?.let{t->
+            (t.getOrNull(2) as? TextView)?.text=eStr   // tvTm2
+            (t.getOrNull(5) as? TextView)?.text=eStr   // sEl
+            (t.getOrNull(12) as? TextView)?.text=eStr  // sDurV
+        }
         val found=HunterEngine.getFound(); tvMatches.text="$found"; tvMatches.setTextColor(if(found>0)AMBER else TXT_MUTED)
         tvQuickMatches?.text="$found"; tvQuickMatches?.setTextColor(if(found>0)AMBER else TXT_MUTED)
         (tvWps.tag as? Array<*>)?.let{t->(t.getOrNull(6) as? TextView)?.also{it.text="$found";it.setTextColor(if(found>0)AMBER else TXT_MUTED)}}
