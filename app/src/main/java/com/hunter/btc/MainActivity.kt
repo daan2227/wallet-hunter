@@ -1012,9 +1012,9 @@ class MainActivity : Activity() {
             }
             return btn
         }
-        row.addView(chip("P2PKH",  filterP2PKH)  { filterP2PKH  = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
-        row.addView(chip("P2SH",   filterP2SH)   { filterP2SH   = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
-        row.addView(chip("P2WPKH", filterP2WPKH) { filterP2WPKH = it; HunterEngine.setAddrFilter(filterP2PKH, filterP2SH, filterP2WPKH) })
+        row.addView(chip("P2PKH",  filterP2PKH)  { filterP2PKH  = it })
+        row.addView(chip("P2SH",   filterP2SH)   { filterP2SH   = it })
+        row.addView(chip("P2WPKH", filterP2WPKH) { filterP2WPKH = it })
         return row
     }
 
