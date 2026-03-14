@@ -86,6 +86,7 @@ class MainActivity : Activity() {
     private var tvQuickCsv: TextView? = null
     private var tvQuickMatches: TextView? = null
     private lateinit var tvWps: TextView
+    private lateinit var tvKps: TextView
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
@@ -399,9 +400,9 @@ class MainActivity : Activity() {
         tvCount = TextView(this).apply{text="0";textSize=17f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END}
         tvTime  = TextView(this).apply{text="00:00:00";textSize=17f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END}
         heroRight.addView(tvCount)
-        heroRight.addView(TextView(this).apply{text=s.scanned.uppercase();textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,dp(12))})
+        heroRight.addView(TextView(this).apply{text="SCANNED";textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,dp(12))})
         heroRight.addView(tvTime)
-        heroRight.addView(TextView(this).apply{text=s.elapsed.uppercase();textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,0)})
+        heroRight.addView(TextView(this).apply{text="ELAPSED";textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,0)})
         heroBlock.addView(heroLeft); heroBlock.addView(heroRight)
         scanPage.addView(heroBlock)
         scanPage.addView(View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
