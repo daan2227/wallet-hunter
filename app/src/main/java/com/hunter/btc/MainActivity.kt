@@ -441,18 +441,11 @@ class MainActivity : Activity() {
         val actZone=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(14))}
         actZone.addView(btnToggle);scanPage.addView(actZone)
 
-        /* Stat cards row */
+        /* Stat cards: tvKps apunta al mismo texto que tvWps (sin duplicar UI) */
         val statSec=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0)}
-        val statGrid=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,0,0,dp(6))}
-        fun statBox(tv:TextView,lbl:String,last:Boolean=false):LinearLayout{
-            val c=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();setPadding(dp(12),dp(13),dp(12),dp(13));layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f).apply{if(!last)marginEnd=dp(6)}}
-            c.addView(tv);c.addView(TextView(this).apply{text=lbl;textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.14f;setPadding(0,dp(5),0,0)});return c
-        }
-        tvKps=TextView(this).apply{text="0";textSize=22f;setTextColor(AMBER);typeface=Typeface.create("monospace",Typeface.BOLD)}
-        val tvSc2=TextView(this).apply{text="0";textSize=18f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD)}
-        val tvTm2=TextView(this).apply{text="00:00:00";textSize=14f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD)}
-        statGrid.addView(statBox(tvKps,"KEYS/SEC"));statGrid.addView(statBox(tvSc2,"SCANNED"));statGrid.addView(statBox(tvTm2,"ELAPSED",true))
-        statSec.addView(statGrid)
+        tvKps=tvWps  // alias — no card duplicada
+        val tvSc2=tvCount
+        val tvTm2=tvTime
 
         /* tvMatches — inicializado pero mostrado solo en Quick Strip y tvMatchList */
         tvMatches=TextView(this).apply{text="0";textSize=15f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD)}
@@ -1157,11 +1150,12 @@ class MainActivity : Activity() {
             (t.getOrNull(11) as? TextView)?.text=cStr  // sKeyV
         }
         val e=HunterEngine.getElapsed(); val eStr="%02d:%02d:%02d".format(e/3600,(e%3600)/60,e%60)
-        tvTime.text=eStr
-        (tvWps.tag as? Array<*>)?.let{t->
-            (t.getOrNull(2) as? TextView)?.text=eStr   // tvTm2
-            (t.getOrNull(5) as? TextView)?.text=eStr   // sEl
-            (t.getOrNull(12) as? TextView)?.text=eStr  // sDurV
+        if(running) {
+            tvTime.text=eStr
+            (tvWps.tag as? Array<*>)?.let{t->
+                (t.getOrNull(5) as? TextView)?.text=eStr   // sEl
+                (t.getOrNull(12) as? TextView)?.text=eStr  // sDurV
+            }
         }
         val found=HunterEngine.getFound(); tvMatches.text="$found"; tvMatches.setTextColor(if(found>0)AMBER else TXT_MUTED)
         tvQuickMatches?.text="$found"; tvQuickMatches?.setTextColor(if(found>0)AMBER else TXT_MUTED)
