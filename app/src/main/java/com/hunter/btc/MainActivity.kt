@@ -472,8 +472,6 @@ class MainActivity : Activity() {
         tvFooter=TextView(this).apply{visibility=android.view.View.GONE;text=""}
         scanPage.addView(tvStatus);scanPage.addView(tvFooter)
         scanPage.addView(View(this).apply{layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(20))})
-        /* Tag: [tvKps, tvSc2, tvTm2] for updater sync */
-        tvWps.tag=arrayOf<Any>(tvKps,tvSc2,tvTm2)
         scanScroll.addView(scanPage);cf.addView(scanScroll)
 
         /* ╔═════════════════╗
@@ -1133,6 +1131,7 @@ class MainActivity : Activity() {
         val loading=HunterEngine.isLoading(); val loaded=HunterEngine.isCsvLoaded(); val running=HunterEngine.isRunning()
         if(loading||loaded){tvStatus.text=HunterEngine.getLoadStatus();tvStatus.setTextColor(if(loading)YELLOW else GREEN)}
         if(!running&&btnToggle.text==s.stop){
+            tvTime.text="00:00:00"
             btnToggle.text=s.start
             btnToggle.background=(btnToggle.tag as? Array<*>)?.get(0) as? GradientDrawable ?: btnToggle.background
         }
