@@ -737,7 +737,8 @@ static void* load_bin_fn(void*) {
     if(mapped==MAP_FAILED){snprintf(g_load_status,sizeof(g_load_status),"Error: mmap failed");g_loading.store(false);return nullptr;}
     madvise(mapped,fsz,MADV_SEQUENTIAL);
     uint64_t n; memcpy(&n,mapped,8);
-    if(fsz<8+n*HASH160_BYTES){snprintf(g_load_status,sizeof(g_load_status),"Error: .bin truncated");munmap(mapped,fsz);g_loading.store(false);return nullptr;}
+    add_log("BIN n="+std::to_string(n)+" fsz="+std::to_string(fsz));
+    if(fsz<8+n*HASH160_BYTES){snprintf(g_load_status,sizeof(g_load_status),"Error: .bin truncated n="+std::to_string(n));munmap(mapped,fsz);g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;
     if(g_xonly){free(g_xonly);g_xonly=nullptr;}g_total_tr=0;
     if(g_bloom.bits){bloom_free(&g_bloom);g_bloom.bits=nullptr;g_bloom.nbits=0;}
