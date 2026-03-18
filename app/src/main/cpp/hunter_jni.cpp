@@ -760,7 +760,8 @@ static void* load_bin_fn(void*) {
 
 static void *load_fn(void *){
     g_loading.store(true);snprintf(g_load_status,sizeof(g_load_status),"Opening CSV...");
-    {size_t pl=strlen(g_csv_path);if(pl>4&&strcmp(g_csv_path+pl-4,".bin")==0)return load_bin_fn(nullptr);}
+    add_log(std::string("PATH:")+g_csv_path);
+    {size_t pl=strlen(g_csv_path);if(pl>4&&strcmp(g_csv_path+pl-4,".bin")==0){add_log("DETECTED BIN");return load_bin_fn(nullptr);}add_log("NOT BIN pl="+std::to_string(pl));}
     FILE *f=fopen(g_csv_path,"r");
     if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: could not open file");g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;g_csv_loaded.store(false);
