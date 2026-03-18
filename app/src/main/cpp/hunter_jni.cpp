@@ -584,15 +584,7 @@ static void *worker_bip39_fn(void *){
             derive_child(ctx,&h44_ch1,0,&h44_ch1_0);
             pk_to_h160(ctx,h44_ch1_0.key,h160); local_done++;
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_ch1_0.key,PRIVKEY_BYTES);hits[nhits].pi=7;nhits++;}}
-            /* --- m/49'/0'/0'/0/0 --- */
-            HDKey h49,h49_0,h49_00,h49_000,h49_leaf;
-            derive_child(ctx,&master,0x80000000u+49,&h49);
-            derive_child(ctx,&h49,0x80000000u+0,&h49_0);
-            derive_child(ctx,&h49_0,0x80000000u+0,&h49_00);
-            derive_child(ctx,&h49_00,0,&h49_000);
-            derive_child(ctx,&h49_000,0,&h49_leaf);
-            pk_to_h160(ctx,h49_leaf.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h49_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=5;nhits++;}}
+            /* BIP49 skipped — p2sh not in dataset */
             /* --- m/84'/0'/0'/0/0 --- */
             HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
             derive_child(ctx,&master,0x80000000u+84,&h84);
