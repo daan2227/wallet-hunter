@@ -15,10 +15,20 @@ object ElectrumClient {
     data class TxEntry(val txid: String, val height: Int)
 
     private val SERVERS = listOf(
-        "electrum.blockstream.info" to 50002,
-        "electrum.emzy.de" to 50002,
-        "bitcoin.aranguren.org" to 50002
+        "electrum.blockstream.info"   to 50002,
+        "electrum.emzy.de"            to 50002,
+        "bitcoin.aranguren.org"       to 50002,
+        "electrum.bitaroo.net"        to 50002,
+        "fortress.qtornado.com"       to 50002,
+        "electrum.hodlister.co"       to 50002,
+        "e2.keff.org"                 to 50002,
+        "electrum1.bluewallet.io"     to 443,
+        "electrum2.bluewallet.io"     to 443,
+        "electrum3.bluewallet.io"     to 443
     )
+
+    private const val CONNECT_TIMEOUT_MS = 4000
+    private const val READ_TIMEOUT_MS    = 6000
 
     fun addrToScripthash(addr: String): String? {
         return try {
@@ -69,9 +79,15 @@ object ElectrumClient {
                     val line = reader.readLine() ?: return@connect null
                     JSONObject(line).optJSONObject("result")
                 }
-                if (result != null) return result
-            } catch (e: Exception) { Log.w("Electrum", "$host failed: ${e.message}") }
+                if (result != null) {
+                    Log.d("Electrum", "OK: $host")
+                    return result
+                }
+            } catch (e: Exception) {
+                Log.w("Electrum", "$host:$port failed: ${e.message}")
+            }
         }
+        Log.e("Electrum", "All ${servers.size} servers failed")
         return null
     }
 
@@ -86,8 +102,13 @@ object ElectrumClient {
                     val arr = JSONObject(line).optJSONArray("result") ?: return@connect emptyList<JSONObject>()
                     (0 until arr.length()).map { arr.getJSONObject(it) }
                 }
-                if (!result.isNullOrEmpty()) return result
-            } catch (e: Exception) { Log.w("Electrum", "$host failed: ${e.message}") }
+                if (!result.isNullOrEmpty()) {
+                    Log.d("Electrum", "OK: $host")
+                    return result
+                }
+            } catch (e: Exception) {
+                Log.w("Electrum", "$host:$port failed: ${e.message}")
+            }
         }
         return emptyList()
     }
@@ -95,8 +116,8 @@ object ElectrumClient {
     private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val raw = factory.createSocket()
-        raw.connect(java.net.InetSocketAddress(host, port), 8000)
-        raw.soTimeout = 8000
+        raw.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+        raw.soTimeout = READ_TIMEOUT_MS
         val reader = BufferedReader(InputStreamReader(raw.getInputStream()))
         val writer = BufferedWriter(OutputStreamWriter(raw.getOutputStream()))
         return block(reader, writer)
