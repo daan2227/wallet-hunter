@@ -602,7 +602,7 @@ class MainActivity : Activity() {
         cfgPage.addView(secLbl(s.csvSection))
         val dataCard=cfgCard()
         val csvRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;clipToOutline=true}
-        btnCsv=Button(this).apply{text=s.csvBtn;textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER)};setPadding(dp(18),0,dp(18),0);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(50));setOnClickListener{pickCsv()}}
+        btnCsv=Button(this).apply{text="Load Dataset";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER)};setPadding(dp(18),0,dp(18),0);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(50));setOnClickListener{pickCsv()}}
         val csvInfo=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),0,dp(14),0);layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.MATCH_PARENT,1f)}
         val tvCsvName=TextView(this).apply{text=if(csvPath.isNotEmpty()&&File(csvPath).exists())File(csvPath).name else s.noFile;setTextColor(TXT_MUTED);textSize=10f;typeface=Typeface.MONOSPACE;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
         tvStatus=tvCsvName
@@ -668,9 +668,6 @@ class MainActivity : Activity() {
         walletCard.addView(navRow("Export Log","Save matches to file"){exportLog()})
         cfgPage.addView(walletCard)
 
-        /* Address filter */
-        cfgPage.addView(secLbl("Addr. filter"))
-        cfgPage.addView(buildFilterRow().apply{background=cardBg();layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}})
 
         /* System log */
         cfgPage.addView(secLbl(s.logSection))
