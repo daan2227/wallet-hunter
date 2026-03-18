@@ -1218,7 +1218,8 @@ class MainActivity : Activity() {
             val wif  = Regex("WIF:([^|]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: ""
             val btc  = Regex("BTC:([^|]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: "?"
             if (wif.isNotEmpty() && addr.isNotEmpty()) {
-                val matchLabel = "Puzzle Match ${addr.take(8)}..."
+                val seed = Regex("SEED:([^|^ ]+)").find(newMatch)?.groupValues?.getOrNull(1) ?: ""
+                val matchLabel = if (puzzleMode) "Puzzle ${addr.take(8)}..." else "Seed ${addr.take(8)}..."
                 WalletManager.saveWif(this@MainActivity, wif, addr, matchLabel)
                 showMatchImportDialog(addr, wif, btc)
             }
