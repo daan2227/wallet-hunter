@@ -1,5 +1,7 @@
 #include <sys/mman.h>
+#include <sys/stat.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <jni.h>
 #include <android/log.h>
 #include <string>
