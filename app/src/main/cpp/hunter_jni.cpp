@@ -728,6 +728,7 @@ static int g_active=0;
 static void* load_bin_fn(void*) {
     g_loading.store(true); g_csv_loaded.store(false);
     snprintf(g_load_status,sizeof(g_load_status),"Loading .bin...");
+    add_log(std::string("BIN path: ")+g_csv_path);
     int fd=open(g_csv_path,O_RDONLY);
     if(fd<0){snprintf(g_load_status,sizeof(g_load_status),"Error: cannot open .bin");g_loading.store(false);return nullptr;}
     struct stat st; fstat(fd,&st); size_t fsz=(size_t)st.st_size;
