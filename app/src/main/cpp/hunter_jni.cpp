@@ -563,14 +563,7 @@ static void *worker_bip39_fn(void *){
         nhits=0; local_done=0;
         for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
             gen_mnemonic(mn,sizeof(mn));
-            /* HMAC-SHA512 directo — equivalente a PBKDF2 con 1 iteracion */
-            {
-                unsigned int slen=64;
-                uint8_t salt[8+4];
-                memcpy(salt,"mnemonic",8);
-                salt[8]=0;salt[9]=0;salt[10]=0;salt[11]=1; /* block=1 */
-                HMAC(EVP_sha512(),(const uint8_t*)mn,(int)strlen(mn),salt,12,seed,&slen);
-            }
+            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,EVP_sha512(),64,seed);
             HDKey master; derive_master(seed,&master);
             /* --- Shared subtree m/44'/0'/0' --- */
             HDKey h44,h44_0,h44_0_0;
@@ -595,21 +588,7 @@ static void *worker_bip39_fn(void *){
             {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
             /* Feed visual: solo 1 vez por batch */
             if(bi==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
-            /* BIP86 P2TR - only if p2tr entries loaded */
-            if(g_total_tr>0){
-             HDKey h86,h86_0,h86_00,h86_ext,h86_leaf;
-             derive_child(ctx,&master,0x80000000u+86,&h86);
-             derive_child(ctx,&h86,0x80000000u+0,&h86_0);
-             derive_child(ctx,&h86_0,0x80000000u+0,&h86_00);
-             derive_child(ctx,&h86_00,0,&h86_ext);
-             derive_child(ctx,&h86_ext,0,&h86_leaf);
-             uint8_t pub33tr[33]; get_pub33(ctx,h86_leaf.key,pub33tr);
-             uint8_t xonly[32]; memcpy(xonly,pub33tr+1,32);
-             uint8_t tweaked[32];
-             if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
-                 int64_t ix=bsearch_xonly(tweaked);
-                 if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h86_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=8;nhits++;}
-             }}
+            /* BIP86 removed */
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
