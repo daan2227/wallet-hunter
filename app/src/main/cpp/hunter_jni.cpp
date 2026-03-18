@@ -739,8 +739,8 @@ static void* load_bin_fn(void*) {
     if(fsz<8+n*HASH160_BYTES){snprintf(g_load_status,sizeof(g_load_status),"Error: .bin truncated");munmap(mapped,fsz);g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;
     if(g_xonly){free(g_xonly);g_xonly=nullptr;}g_total_tr=0;
-    if(g_bloom.bits)bloom_free(&g_bloom);
-    if(g_bloom_tr.bits)bloom_free(&g_bloom_tr);
+    if(g_bloom.bits){bloom_free(&g_bloom);g_bloom.bits=nullptr;g_bloom.nbits=0;}
+    if(g_bloom_tr.bits){bloom_free(&g_bloom_tr);g_bloom_tr.bits=nullptr;g_bloom_tr.nbits=0;}
     g_h160=(uint8_t*)malloc(n*HASH160_BYTES);
     if(!g_h160){snprintf(g_load_status,sizeof(g_load_status),"Error: OOM");munmap(mapped,fsz);g_loading.store(false);return nullptr;}
     memcpy(g_h160,(uint8_t*)mapped+8,n*HASH160_BYTES);
