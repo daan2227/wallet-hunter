@@ -25,6 +25,12 @@ target_compile_definitions(secp256k1 PRIVATE
 )
 
 add_library(hunter_jni SHARED hunter_jni.cpp)
+target_compile_options(hunter_jni PRIVATE
+    -O3
+    -march=armv8-a+crypto
+    -ffast-math
+    -funroll-loops
+)
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
 
