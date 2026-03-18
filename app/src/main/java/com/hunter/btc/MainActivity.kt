@@ -1116,8 +1116,6 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode:Int, resultCode:Int, data:Intent?) {
         if(requestCode==REQ_CSV && resultCode==RESULT_OK) {
             data?.data?.let { uri ->
-                val uriStr=uri.toString()+"|"+(uri.lastPathSegment?:"")
-                val isBin=uriStr.contains(".bin",ignoreCase=true)||uriStr.contains("bin",ignoreCase=true)
                 val path=getRealPath(uri)
                 if(path!=null){
                     csvPath=path
@@ -1128,7 +1126,9 @@ class MainActivity : Activity() {
                     tvStatus.text=s.copying; tvStatus.setTextColor(YELLOW)
                     Thread {
                         try {
-                            val dest=File(getExternalFilesDir(null),if(isBin)"utxos.bin" else "utxos.csv")
+                            var fname="dataset.csv"
+                            contentResolver.query(uri,arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use{c->if(c.moveToFirst())fname=c.getString(0)}
+                            val dest=File(getExternalFilesDir(null),fname)
                             contentResolver.openInputStream(uri)?.use{i->FileOutputStream(dest).use{o->i.copyTo(o,65536)}}
                             runOnUiThread{
                                 csvPath=dest.absolutePath
