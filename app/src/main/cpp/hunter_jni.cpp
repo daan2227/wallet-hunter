@@ -577,20 +577,12 @@ static void *worker_bip39_fn(void *){
             derive_child(ctx,&master,0x80000000u+44,&h44);
             derive_child(ctx,&h44,0x80000000u+0,&h44_0);
             derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
-            /* m/44'/0'/0'/0  (change=0) */
-            HDKey h44_ch0; derive_child(ctx,&h44_0_0,0,&h44_ch0);
-            for(int i=0;i<5;i++){
-                HDKey leaf; derive_child(ctx,&h44_ch0,i,&leaf);
-                pk_to_h160(ctx,leaf.key,h160); local_done++;
-                int64_t ix=bsearch_h160(h160);
-                if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,leaf.key,PRIVKEY_BYTES);hits[nhits].pi=i;nhits++;}
-            }
-            /* m/44'/0'/0'/1/0  (change=1) */
-            HDKey h44_ch1,h44_ch1_0;
-            derive_child(ctx,&h44_0_0,1,&h44_ch1);
-            derive_child(ctx,&h44_ch1,0,&h44_ch1_0);
-            pk_to_h160(ctx,h44_ch1_0.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_ch1_0.key,PRIVKEY_BYTES);hits[nhits].pi=7;nhits++;}}
+            /* m/44'/0'/0'/0/0 only */
+            HDKey h44_ch0,h44_leaf;
+            derive_child(ctx,&h44_0_0,0,&h44_ch0);
+            derive_child(ctx,&h44_ch0,0,&h44_leaf);
+            pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
+            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
             /* BIP49 skipped — p2sh not in dataset */
             /* --- m/84'/0'/0'/0/0 --- */
             HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
