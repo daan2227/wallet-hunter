@@ -1126,12 +1126,13 @@ class MainActivity : Activity() {
                     tvStatus.text=s.copying; tvStatus.setTextColor(YELLOW)
                     Thread {
                         try {
-                            val dest=File(getExternalFilesDir(null),"utxos.csv")
+                            val ext=if(uri.lastPathSegment?.endsWith(".bin")==true||uri.toString().contains(".bin"))"utxos.bin" else "utxos.csv"
+                            val dest=File(getExternalFilesDir(null),ext)
                             contentResolver.openInputStream(uri)?.use{i->FileOutputStream(dest).use{o->i.copyTo(o,65536)}}
                             runOnUiThread{
                                 csvPath=dest.absolutePath
                                 getSharedPreferences("hunter",MODE_PRIVATE).edit().putString("csvPath",csvPath).apply()
-                                tvStatus.text="${s.loading}: utxos.csv"; HunterEngine.loadCsv(csvPath)
+                                tvStatus.text="${s.loading}: ${dest.name}"; HunterEngine.loadCsv(csvPath)
                             }
                         } catch(e:Exception){runOnUiThread{tvStatus.text="${s.errorPrefix}: ${e.message}"}}
                     }.start()
