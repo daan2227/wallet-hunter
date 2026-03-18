@@ -419,9 +419,9 @@ class MainActivity : Activity() {
         }
         fun vDiv()=View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(1,LinearLayout.LayoutParams.MATCH_PARENT)}
         val csvLbl=if(csvPath.isNotEmpty()&&File(csvPath).exists())File(csvPath).nameWithoutExtension.take(7) else "No file"
-        val(c0,tvQT)=qCell("${prefs.getInt("threads",3)+1}","THREADS",AMBER){goTab(3)};tvQuickThreads=tvQT
-        val(c1,tvQCpu)=qCell("${prefs.getInt("cpu",70)+10}%","CPU",AppTheme.CYAN){goTab(3)};tvQuickCpu=tvQCpu
-        val(c2,tvQC)=qCell(csvLbl,"DATASET",TXT_MUTED){goTab(3)};tvQuickCsv=tvQC
+        val(c0,tvQT)=qCell("${prefs.getInt("threads",3)+1}","THREADS",AMBER){goTab(2)};tvQuickThreads=tvQT
+        val(c1,tvQCpu)=qCell("${prefs.getInt("cpu",70)+10}%","CPU",AppTheme.CYAN){goTab(2)};tvQuickCpu=tvQCpu
+        val(c2,tvQC)=qCell(csvLbl,"DATASET",TXT_MUTED){goTab(2)};tvQuickCsv=tvQC
         val(c3,tvQM)=qCell("0","MATCHES",TXT_MUTED);tvQuickMatches=tvQM
         qStrip.addView(c0);qStrip.addView(vDiv());qStrip.addView(c1);qStrip.addView(vDiv());qStrip.addView(c2);qStrip.addView(vDiv());qStrip.addView(c3)
         scanPage.addView(qStrip)
@@ -495,7 +495,7 @@ class MainActivity : Activity() {
         lfSec.addView(TextView(this).apply{text=s.noMatch;setTextColor(TXT_MUTED);textSize=11f;typeface=Typeface.MONOSPACE;background=cardBg();setPadding(dp(14),dp(12),dp(14),dp(12));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{topMargin=dp(6)}})
         livePage.addView(lfSec)
         tvLiveSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
-        liveScroll.addView(livePage);cf.addView(liveScroll)
+        liveScroll.addView(livePage) // not added to cf — tab removed
 
         /* ╔══════════════════╗
            ║  TAB 2 — STATS  ║
@@ -528,10 +528,62 @@ class MainActivity : Activity() {
         sessRow("Mode",sModeV);sessRow("Threads",sThrV);sessRow("CPU Limit",sCpuV)
         sessRow("Total Keys",sKeyV);sessRow("Duration",sDurV);sessRow("Matches",sMatV)
         statsBody.addView(sessCard)
-        val statsAct=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
-        statsAct.addView(Button(this).apply{text="View Stats";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(10).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)};setOnClickListener{startActivity(Intent(this@MainActivity,StatsActivity::class.java))}})
+        /* Action buttons */
+        val statsAct=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(12)}}
+        statsAct.addView(Button(this).apply{text="Session Stats";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(10).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)};setOnClickListener{startActivity(Intent(this@MainActivity,StatsActivity::class.java))}})
         statsAct.addView(Button(this).apply{text="Export Log";textSize=11f;setTextColor(TXT_PRI);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_PANEL);setStroke(1,BORDER_C);cornerRadius=dp(10).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f);setOnClickListener{exportLog()}})
-        statsBody.addView(statsAct);statsPage.addView(statsBody)
+        statsBody.addView(statsAct)
+
+        /* Log files list */
+        statsBody.addView(secLbl("Saved Logs"))
+        val logsCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}}
+        val logsContainer=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        fun refreshLogs() {
+            logsContainer.removeAllViews()
+            val logDir = getExternalFilesDir(null) ?: filesDir
+            val logs = logDir.listFiles{f->f.extension=="txt"}?.sortedByDescending{it.lastModified()} ?: emptyList()
+            if(logs.isEmpty()) {
+                logsContainer.addView(TextView(this).apply{text="No log files yet";textSize=11f;setTextColor(TXT_MUTED);typeface=Typeface.MONOSPACE;setPadding(dp(16),dp(14),dp(16),dp(14))})
+            } else {
+                logs.forEach { f ->
+                    val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(12),dp(12),dp(12));isClickable=true}
+                    val lc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
+                    lc.addView(TextView(this).apply{text=f.name;textSize=12f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.NORMAL)})
+                    val kb = f.length()/1024
+                    val date = java.text.SimpleDateFormat("dd MMM HH:mm",java.util.Locale.getDefault()).format(java.util.Date(f.lastModified()))
+                    lc.addView(TextView(this).apply{text="${kb}KB  ·  $date";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.MONOSPACE;setPadding(0,dp(2),0,0)})
+                    val btnView=Button(this).apply{
+                        text="View";textSize=9f;setTextColor(AMBER)
+                        typeface=Typeface.create("monospace",Typeface.BOLD)
+                        background=GradientDrawable().apply{setColor(0x1AA8FF00);setStroke(1,0x33A8FF00);cornerRadius=dp(6).toFloat()}
+                        setPadding(dp(10),dp(4),dp(10),dp(4))
+                        layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(32)).apply{marginEnd=dp(6)}
+                        setOnClickListener{
+                            val txt = try { f.readText() } catch(e:Exception){ "Error: ${e.message}" }
+                            val scroll = android.widget.ScrollView(this@MainActivity)
+                            val tv = TextView(this@MainActivity).apply{text=txt;textSize=10f;setTextColor(TXT_PRI);typeface=Typeface.MONOSPACE;setPadding(dp(16),dp(16),dp(16),dp(16))}
+                            scroll.addView(tv)
+                            AlertDialog.Builder(this@MainActivity)
+                                .setTitle(f.name)
+                                .setView(scroll)
+                                .setPositiveButton("Close",null)
+                                .setNeutralButton("Share"){_,_->
+                                    val uri=androidx.core.content.FileProvider.getUriForFile(this@MainActivity,"${packageName}.provider",f)
+                                    val i=Intent(Intent.ACTION_SEND).apply{type="text/plain";putExtra(Intent.EXTRA_STREAM,uri);addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)}
+                                    startActivity(Intent.createChooser(i,"Share log"))
+                                }
+                                .show()
+                        }
+                    }
+                    row.addView(lc); row.addView(btnView)
+                    logsContainer.addView(row)
+                    logsContainer.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
+                }
+            }
+        }
+        refreshLogs()
+        logsCard.addView(logsContainer);statsBody.addView(logsCard)
+        statsPage.addView(statsBody)
         /* tag: [0:tvKps,1:tvSc2,2:tvTm2, 3:sKps,4:sSc,5:sEl,6:sMt, 7:sThrV,8:sCpuV,9:sMatV,10:sModeV,11:sKeyV,12:sDurV] */
         tvWps.tag=arrayOf<Any>(tvKps,tvSc2,tvTm2,sKps,sSc,sEl,sMt,sThrV,sCpuV,sMatV,sModeV,sKeyV,sDurV)
         tvStatsSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
@@ -640,13 +692,13 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER;isAllCaps=true
             layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.MATCH_PARENT,1f)
         }
-        val tb0=tabBtn("⊙","Scan");val tb1=tabBtn("⟳","Live");val tb2=tabBtn("◈","Stats");val tb3=tabBtn("⚙","Config")
-        listOf(tb0,tb1,tb2,tb3).forEach{tabBar.addView(it)}
+        val tb0=tabBtn("⊙","Scan");val tb2=tabBtn("◈","Stats");val tb3=tabBtn("⚙","Config")
+        listOf(tb0,tb2,tb3).forEach{tabBar.addView(it)}
         col.addView(tabBar);root.addView(col);setContentView(root)
 
-        tabPages=listOf(scanScroll,liveScroll,statsScroll,cfgScroll)
-        tabBtns =listOf(tb0,tb1,tb2,tb3)
-        listOf(tb0,tb1,tb2,tb3).forEachIndexed{i,b->b.setOnClickListener{goTab(i)}}
+        tabPages=listOf(scanScroll,statsScroll,cfgScroll)
+        tabBtns =listOf(tb0,tb2,tb3)
+        listOf(tb0,tb2,tb3).forEachIndexed{i,b->b.setOnClickListener{goTab(i)}}
         goTab(0)
 
         /* Restore state */
@@ -1046,9 +1098,9 @@ class MainActivity : Activity() {
         tvQuickCpu?.text="$cpu%"; tvQuickCpu?.setTextColor(cpuColor)
         /* Stats session card sync */
         (tvWps.tag as? Array<*>)?.let{tag->
-            (tag.getOrNull(7) as? TextView)?.text="$t"   // sThrV
-            (tag.getOrNull(8) as? TextView)?.text="$cpu%" // sCpuV
-            (tag.getOrNull(10) as? TextView)?.text=if(puzzleMode)"PUZZLE" else "SEED SCAN" // sModeV
+            (tag.getOrNull(7) as? TextView)?.text="$t"
+            (tag.getOrNull(8) as? TextView)?.text="$cpu%"; (tag.getOrNull(8) as? TextView)?.setTextColor(cpuColor)
+            (tag.getOrNull(10) as? TextView)?.text=if(puzzleMode)"PUZZLE" else "SEED SCAN"
         }
     }
     private fun updateRam() {
