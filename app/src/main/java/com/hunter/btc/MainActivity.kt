@@ -1116,7 +1116,8 @@ class MainActivity : Activity() {
     override fun onActivityResult(requestCode:Int, resultCode:Int, data:Intent?) {
         if(requestCode==REQ_CSV && resultCode==RESULT_OK) {
             data?.data?.let { uri ->
-                val isBin=uri.lastPathSegment?.contains(".bin")==true||uri.toString().contains(".bin")
+                val uriStr=uri.toString()+"|"+(uri.lastPathSegment?:"")
+                val isBin=uriStr.contains(".bin",ignoreCase=true)||uriStr.contains("bin",ignoreCase=true)
                 val path=getRealPath(uri)
                 if(path!=null){
                     csvPath=path
