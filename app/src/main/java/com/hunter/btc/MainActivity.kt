@@ -83,6 +83,19 @@ class MainActivity : Activity() {
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
     private var fastModeEnabled = false
+    private var filterP2PKH  = true
+    private var filterP2SH   = true
+    private var filterP2WPKH = true
+    private var lblDataset: TextView? = null
+    private var lblPerformance: TextView? = null
+    private var lblMode: TextView? = null
+    private var lblWallet: TextView? = null
+    private var lblLog: TextView? = null
+    private var lblStats: TextView? = null
+    private lateinit var tvLiveSec: LinearLayout
+    private lateinit var tvMatchSec: LinearLayout
+    private lateinit var tvLogSec: LinearLayout
+    private lateinit var tvLangLbl: TextView
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
