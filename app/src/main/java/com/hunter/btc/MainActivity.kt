@@ -6,9 +6,6 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.VibrationEffect
 import android.os.Vibrator
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import androidx.core.app.NotificationCompat
 import java.io.File
 
@@ -71,9 +68,6 @@ class MainActivity : Activity() {
     private val BORDER_C  get() = AppTheme.BORDER_C
     private val YELLOW    get() = AppTheme.YELLOW
     private val ORANGE    get() = AppTheme.ORANGE
-    private var filterP2PKH  = true
-    private var filterP2SH   = true
-    private var filterP2WPKH = true
     private var sessionStartTime = 0L
     private var sessionStartCount = 0L
     private var batteryReceiver: android.content.BroadcastReceiver? = null
@@ -82,7 +76,6 @@ class MainActivity : Activity() {
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvStatus: TextView
-    private lateinit var tvSpeedBig: TextView
     private var tvQuickCsv: TextView? = null
     private var tvQuickMatches: TextView? = null
     private lateinit var tvWps: TextView
@@ -90,12 +83,6 @@ class MainActivity : Activity() {
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
     private var fastModeEnabled = false
-    private var lblDataset: TextView? = null
-    private var lblPerformance: TextView? = null
-    private var lblMode: TextView? = null
-    private var lblWallet: TextView? = null
-    private var lblLog: TextView? = null
-    private var lblStats: TextView? = null
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
@@ -118,10 +105,6 @@ class MainActivity : Activity() {
     private lateinit var tvCsvSec: LinearLayout
     private lateinit var tvConfigSec: LinearLayout
     private lateinit var tvStatsSec: LinearLayout
-    private lateinit var tvLiveSec: LinearLayout
-    private lateinit var tvMatchSec: LinearLayout
-    private lateinit var tvLogSec: LinearLayout
-    private lateinit var tvLangLbl: TextView
     private lateinit var btnCsv: Button
     private lateinit var csvSecView: LinearLayout
     private lateinit var etRangeStart: EditText
@@ -131,7 +114,7 @@ class MainActivity : Activity() {
     private lateinit var rbBip39: Button
     private lateinit var rbPuzzle: Button
     private var csvPath: String = ""
-    private var s = Strings.ES
+    private var s = Strings.EN
     private var puzzleMode = false
     private val recentAddrs = mutableListOf<String>()
     private val logBuf = StringBuilder()
@@ -182,7 +165,6 @@ class MainActivity : Activity() {
     override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
     override fun onDestroy() { batteryReceiver?.let { unregisterReceiver(it) }; super.onDestroy() }
 
-    private lateinit var btnLangRef: Button
 
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
