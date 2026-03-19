@@ -1148,7 +1148,8 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
         }
         btnRow.addView(btnAdd); btnRow.addView(btnCancel); sheet.addView(btnRow)
-        val dlg = AlertDialog.Builder(this).setView(sheet).create()
+        val dlg = AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
+        dlg.setOnCancelListener { finish() }
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
@@ -1157,7 +1158,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); showWalletSelectorDialog() }
+        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
         btnAdd.setOnClickListener {
             val addr = etAddr.text.toString().trim()
             val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
