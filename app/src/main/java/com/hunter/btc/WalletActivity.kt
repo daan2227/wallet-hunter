@@ -425,6 +425,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun buildUI() {
         title = currentWalletName.ifEmpty { "Wallet" }
+        window.setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.MATCH_PARENT)
         setContentView(android.widget.FrameLayout(this)) // clear before rebuild
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
@@ -600,6 +601,36 @@ class WalletActivity : FragmentActivity() {
                         card.addView(TextView(this).apply { text = if (confirmed) "Confirmed" else "Pending"; textSize = 9f; setTextColor(if (confirmed) GREEN else AMBER) })
                         if (received > 0) card.addView(TextView(this).apply { text = "+%.8f BTC".format(received/1e8); textSize = 12f; setTextColor(GREEN); typeface = Typeface.create("monospace",Typeface.BOLD) })
                         if (blockTime > 0) card.addView(TextView(this).apply { text = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(blockTime*1000)); textSize = 9f; setTextColor(TXT_MUTED) })
+                        /* Click -> detalle de transaccion */
+                        val txCopy = tx; val txidCopy = txid; val receivedCopy = received; val confirmedCopy = confirmed; val blockTimeCopy = blockTime
+                        card.isClickable = true
+                        card.setOnClickListener {
+                            val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(16).toFloat();setStroke(1,BORDER_C)}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
+                            sheet.addView(TextView(this).apply{text="Transaction";textSize=14f;setTextColor(AMBER);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);gravity=Gravity.CENTER;setPadding(0,0,0,dp(14))})
+                            fun row(k:String,v:String,vc:Int=TXT_PRI){
+                                val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
+                                r.addView(TextView(this).apply{text=k;textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.1f})
+                                val tv=TextView(this).apply{text=v;textSize=11f;setTextColor(vc);typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,BORDER_C);cornerRadius=dp(6).toFloat()};setPadding(dp(10),dp(7),dp(10),dp(7))}
+                                r.addView(tv);sheet.addView(r)
+                                tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
+                            }
+                            row("TXID", txidCopy, CYAN)
+                            row("STATUS", if(confirmedCopy)"Confirmed" else "Pending", if(confirmedCopy)GREEN else AMBER)
+                            if(receivedCopy>0) row("RECEIVED","%.8f BTC".format(receivedCopy/1e8),GREEN)
+                            if(blockTimeCopy>0) row("DATE",java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss",java.util.Locale.US).format(java.util.Date(blockTimeCopy*1000)))
+                            val voutArr=txCopy.getJSONArray("vout")
+                            var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
+                            row("TOTAL OUT","%.8f BTC".format(totalOut/1e8))
+                            val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
+                            val btnExplorer=android.widget.Button(this).apply{text="View on Explorer";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)}}
+                            val btnClose=android.widget.Button(this).apply{text="Close";textSize=11f;setTextColor(TXT_SEC);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f)}
+                            btnRow.addView(btnExplorer);btnRow.addView(btnClose);sheet.addView(btnRow)
+                            val txDlg=AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
+                            txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
+                            txDlg.show()
+                            btnClose.setOnClickListener{txDlg.dismiss()}
+                            btnExplorer.setOnClickListener{val url=if(isTestnet)"https://mempool.space/testnet/tx/$txidCopy" else "https://mempool.space/tx/$txidCopy";startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)))}
+                        }
                         ll.addView(card)
                     }
                 }
