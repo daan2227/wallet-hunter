@@ -17,6 +17,7 @@
         android:requestLegacyExternalStorage="true">
         <activity android:name=".StatsActivity" android:screenOrientation="portrait" />
         <activity android:name=".WalletActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog"
             android:screenOrientation="portrait" />
         <activity android:name=".WelcomeActivity"
             android:exported="true"
@@ -34,14 +35,5 @@
         <service android:name=".HunterService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
-
-        <receiver android:name=".HunterWidget" android:exported="true">
-            <intent-filter>
-                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-            </intent-filter>
-            <meta-data
-                android:name="android.appwidget.provider"
-                android:resource="@xml/widget_info" />
-        </receiver>
     </application>
 </manifest>

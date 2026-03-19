@@ -1230,12 +1230,6 @@ class MainActivity : Activity() {
                     val lastLine = matchText.trim().lines().lastOrNull() ?: ""
                     notifyMatch(lastLine.take(34), "")
                 }
-
-                HunterWidget.pushStats(this@MainActivity,
-                    HunterEngine.getWps().toFloat(),
-                    HunterEngine.getCount(),
-                    HunterEngine.isRunning(),
-                    HunterEngine.getFound().toInt()
                 )
         updateRam()
         handler.postDelayed(this,333L)
