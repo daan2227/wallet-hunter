@@ -59,6 +59,7 @@ class WalletActivity : FragmentActivity() {
     /* -- LIFECYCLE -- */
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        overridePendingTransition(0, 0)
         lastInteraction = System.currentTimeMillis()
         // Check if coming from puzzle match with WIF
         val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
@@ -1084,7 +1085,8 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
         }
         btnRow.addView(btnNext); btnRow.addView(btnCancel); layout.addView(btnRow)
-        val dlg = AlertDialog.Builder(this).setView(scroll).create()
+        val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
+        dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT,
