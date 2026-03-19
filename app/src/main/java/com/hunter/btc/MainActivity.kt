@@ -355,7 +355,7 @@ class MainActivity : Activity() {
             background=GradientDrawable().apply{setColor(0x1AA8FF00);setStroke(1,0x33A8FF00);cornerRadius=dp(7).toFloat()}
             setPadding(dp(11),dp(6),dp(11),dp(6))
             layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(32))
-            setOnClickListener{startActivity(Intent(this@MainActivity,WalletActivity::class.java))}
+            setOnClickListener{showWalletSelector()}
         }
         hRight.addView(sysCol); hRight.addView(btnSwitch)
         header.addView(mark); header.addView(brandCol); header.addView(hRight)
@@ -655,7 +655,7 @@ class MainActivity : Activity() {
         val _lblWl=secLbl("Wallet");lblWallet=_lblWl;cfgPage.addView(_lblWl)
         val walletCard=cfgCard()
         fun navRow(title:String,sub:String,click:()->Unit):LinearLayout{val r=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(13),dp(16),dp(13));isClickable=true;setOnClickListener{click()}};val lc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)};lc.addView(TextView(this).apply{text=title;textSize=13f;setTextColor(TXT_PRI)});lc.addView(TextView(this).apply{text=sub;textSize=10f;setTextColor(TXT_SEC);typeface=Typeface.MONOSPACE;setPadding(0,dp(2),0,0)});r.addView(lc);r.addView(TextView(this).apply{text="›";textSize=18f;setTextColor(TXT_MUTED)});return r}
-        walletCard.addView(navRow("Open Wallet","View balances & addresses"){startActivity(Intent(this@MainActivity,WalletActivity::class.java))})
+        walletCard.addView(navRow("Open Wallet","View balances & addresses"){showWalletSelector()})
         walletCard.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
         walletCard.addView(navRow("Export Log","Save matches to file"){exportLog()})
         cfgPage.addView(walletCard)
@@ -1099,6 +1099,117 @@ class MainActivity : Activity() {
         tvRam.text="RAM ${used}M/${total}M (${pct}%)"
         tvRam.setTextColor(if(pct<70)TXT_SEC else if(pct<85)YELLOW else RED)
     }
+
+    private fun showWalletSelector() {
+        val ctx = this
+        val AMBER   = AppTheme.AMBER
+        val GREEN   = AppTheme.GREEN
+        val CYAN    = AppTheme.CYAN
+        val BG_PANEL= AppTheme.BG_PANEL
+        val BG_CARD = AppTheme.BG_CARD
+        val BG_ELEV = AppTheme.BG_ELEV
+        val TXT_PRI = AppTheme.TXT_PRI
+        val TXT_MUTED=AppTheme.TXT_MUTED
+        val BORDER_C= AppTheme.BORDER_C
+        val RED     = AppTheme.RED
+
+        fun dpL(v:Int)=(v*resources.displayMetrics.density).toInt()
+
+        val hasSeed   = WalletManager.hasSeed(ctx)
+        val wallets   = WalletManager.listWallets(ctx)
+        val wifList   = WalletManager.listWifs(ctx)
+        val watchList = WalletManager.listWatchers(ctx)
+
+        /* Si solo hay una seed, ir directo */
+        if (hasSeed && wallets.isEmpty() && wifList.isEmpty() && watchList.isEmpty()) {
+            startActivity(Intent(ctx, WalletActivity::class.java)
+                .putExtra("MODE","seed").putExtra("WALLET_ID",""))
+            return
+        }
+
+        val scroll = android.widget.ScrollView(ctx)
+        val sheet = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply { setColor(BG_PANEL); cornerRadius=dpL(16).toFloat(); setStroke(1,BORDER_C) }
+            setPadding(dpL(20),dpL(20),dpL(20),dpL(20))
+        }
+        scroll.addView(sheet)
+
+        sheet.addView(android.widget.TextView(ctx).apply {
+            text="Select Wallet"; textSize=17f; setTextColor(AMBER)
+            typeface=android.graphics.Typeface.create("sans-serif-black",android.graphics.Typeface.BOLD)
+            gravity=android.view.Gravity.CENTER; setPadding(0,0,0,dpL(16))
+        })
+
+        var dlg: AlertDialog? = null
+
+        fun walletCard(name:String, subtitle:String, color:Int, onClick:()->Unit) {
+            val card = LinearLayout(ctx).apply {
+                orientation=LinearLayout.VERTICAL
+                background=android.graphics.drawable.GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dpL(10).toFloat()}
+                setPadding(dpL(14),dpL(12),dpL(14),dpL(12))
+                layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dpL(8)}
+                setOnClickListener{dlg?.dismiss();onClick()}
+            }
+            card.addView(android.widget.TextView(ctx).apply{text=name;textSize=13f;setTextColor(color);typeface=android.graphics.Typeface.create("sans-serif-black",android.graphics.Typeface.BOLD)})
+            card.addView(android.widget.TextView(ctx).apply{text=subtitle;textSize=9f;setTextColor(TXT_MUTED);typeface=android.graphics.Typeface.create("monospace",android.graphics.Typeface.NORMAL)})
+            sheet.addView(card)
+        }
+
+        if (hasSeed) {
+            walletCard("Main Wallet","BIP39 HD Wallet",TXT_PRI) {
+                startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","seed").putExtra("WALLET_ID",""))
+            }
+        }
+        wallets.forEach { (id,name) ->
+            walletCard(name,"BIP39 HD Wallet",TXT_PRI) {
+                startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","seed").putExtra("WALLET_ID",id))
+            }
+        }
+        wifList.forEach { (wid,wkey,wmeta) ->
+            val parts=wmeta.split("|"); val waddr=parts.getOrNull(0)?:""; val wname=parts.getOrNull(1)?:"WIF Wallet"
+            walletCard(wname,"${wkey.take(8)}...",GREEN) {
+                startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","wif").putExtra("WIF_KEY",wkey).putExtra("WIF_ADDR",waddr).putExtra("WALLET_NAME",wname))
+            }
+        }
+        watchList.forEach { (wid,waddr,wlabel) ->
+            walletCard(wlabel,"${waddr.take(20)}...",CYAN) {
+                startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","watch").putExtra("WIF_ADDR",waddr).putExtra("WALLET_NAME",wlabel))
+            }
+        }
+
+        val btnRow=LinearLayout(ctx).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dpL(8),0,0)}
+        fun addBtn(label:String,fg:Int,bg:Int,stroke:Int,click:()->Unit):android.widget.Button {
+            return android.widget.Button(ctx).apply{
+                text=label;textSize=11f;setTextColor(fg)
+                typeface=android.graphics.Typeface.create("sans-serif-black",android.graphics.Typeface.BOLD)
+                background=android.graphics.drawable.GradientDrawable().apply{setColor(bg);if(stroke!=0)setStroke(1,stroke);cornerRadius=dpL(7).toFloat()}
+                layoutParams=LinearLayout.LayoutParams(0,dpL(42),1f).apply{marginEnd=dpL(6)}
+                setOnClickListener{dlg?.dismiss();click()}
+            }
+        }
+        btnRow.addView(addBtn("+ Seed",android.graphics.Color.BLACK,AMBER,0){
+            startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","setup"))
+        })
+        btnRow.addView(addBtn("+ WIF",TXT_PRI,BG_CARD,BORDER_C){
+            startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","wif_import"))
+        })
+        btnRow.addView(addBtn("+ Watch",CYAN,BG_CARD,CYAN){
+            startActivity(Intent(ctx,WalletActivity::class.java).putExtra("MODE","watch_import"))
+        }.apply{layoutParams=(layoutParams as LinearLayout.LayoutParams).also{it.marginEnd=0}})
+        sheet.addView(btnRow)
+
+        dlg = AlertDialog.Builder(ctx).setView(scroll).setCancelable(true).create()
+        dlg!!.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels*0.92f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(android.view.Gravity.CENTER)
+            attributes=attributes?.also{it.dimAmount=0.75f}
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+        }
+        dlg!!.show()
+    }
+
     private fun pickCsv() = startActivityForResult(
         Intent(Intent.ACTION_OPEN_DOCUMENT).apply{addCategory(Intent.CATEGORY_OPENABLE);type="*/*"}, REQ_CSV)
 
@@ -1293,7 +1404,7 @@ class MainActivity : Activity() {
             }
             btnImport.setOnClickListener {
                 dlg.dismiss()
-                startActivity(Intent(this, WalletActivity::class.java))
+                showWalletSelector()
             }
         }
     }

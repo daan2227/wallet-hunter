@@ -61,23 +61,59 @@ class WalletActivity : FragmentActivity() {
         super.onCreate(s)
         overridePendingTransition(0, 0)
         lastInteraction = System.currentTimeMillis()
-        // Check if coming from puzzle match with WIF
-        val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
-        val intentAddr = intent.getStringExtra("WIF_ADDR") ?: ""
-        if (intentWif.isNotEmpty()) {
-            wifKey = intentWif; wifAddr = intentAddr; isWifMode = true
-            currentWalletName = "Puzzle Match"
-            WalletManager.saveWif(this, intentWif, intentAddr)
-            loadAddresses(); buildUI(); return
+        val mode = intent.getStringExtra("MODE") ?: ""
+        when (mode) {
+            "seed" -> {
+                val walletId = intent.getStringExtra("WALLET_ID") ?: ""
+                currentWalletName = if (walletId.isEmpty()) "Main Wallet" else walletId
+                isWifMode = false
+                authenticate {
+                    mnemonic = if (walletId.isEmpty()) WalletManager.loadSeed(this) ?: ""
+                               else WalletManager.loadWalletSeed(this, walletId) ?: ""
+                    currentWalletId = walletId
+                    loadAddresses(); buildUI()
+                }
+            }
+            "wif" -> {
+                wifKey  = intent.getStringExtra("WIF_KEY") ?: ""
+                wifAddr = intent.getStringExtra("WIF_ADDR") ?: ""
+                currentWalletName = intent.getStringExtra("WALLET_NAME") ?: "WIF Wallet"
+                isWifMode = true
+                showPinDialog(isSetup = false) { ok ->
+                    if (!ok) { finish(); return@showPinDialog }
+                    loadAddresses(); buildUI()
+                }
+            }
+            "watch" -> {
+                wifKey  = ""
+                wifAddr = intent.getStringExtra("WIF_ADDR") ?: ""
+                currentWalletName = intent.getStringExtra("WALLET_NAME") ?: "Watch"
+                isWifMode = true
+                loadAddresses(); buildUI()
+            }
+            "setup" -> {
+                showSetupDialog()
+            }
+            "wif_import" -> {
+                showWifImportDialog()
+            }
+            "watch_import" -> {
+                showWatcherImportDialog()
+            }
+            else -> {
+                /* Puzzle match o legacy */
+                val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
+                val intentAddr = intent.getStringExtra("WIF_ADDR") ?: ""
+                if (intentWif.isNotEmpty()) {
+                    wifKey = intentWif; wifAddr = intentAddr; isWifMode = true
+                    currentWalletName = "Puzzle Match"
+                    WalletManager.saveWif(this, intentWif, intentAddr)
+                    loadAddresses(); buildUI()
+                } else {
+                    showWalletSelectorDialog()
+                }
+            }
         }
-        // Check saved WIF
-        val savedWif = WalletManager.loadWif(this)
-        val wallets = WalletManager.listWallets(this)
-        val hasSeed = WalletManager.hasSeed(this)
-        if (!hasSeed && savedWif == null && wallets.isEmpty()) {
-            showWalletSelectorDialog(); return
-        }
-        showWalletSelectorDialog()
     }
 
     override fun onResume() {
