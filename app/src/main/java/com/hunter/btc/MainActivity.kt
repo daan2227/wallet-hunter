@@ -858,16 +858,12 @@ class MainActivity : Activity() {
                     tvRecoveryStatus.visibility=android.view.View.GONE
                     btnCancelRecovery.visibility=android.view.View.GONE
                     btnStartRecovery.visibility=android.view.View.VISIBLE
-                    tvRecoveryResult.text="✓ ENCONTRADO
-
-$mnemonic"
+                    tvRecoveryResult.text="✓ ENCONTRADO\n\n$mnemonic"
                     tvRecoveryResult.visibility=android.view.View.VISIBLE
                     // Guardar en logs
                     val ts=java.text.SimpleDateFormat("yyyyMMdd_HHmmss",java.util.Locale.US).format(java.util.Date())
                     val f=java.io.File(getExternalFilesDir(null),"recovery_$ts.txt")
-                    f.writeText("RECOVERY MATCH
-$mnemonic
-")
+                    f.writeText("RECOVERY MATCH\n$mnemonic\n")
                 }
             }
             override fun onNotFound(){
