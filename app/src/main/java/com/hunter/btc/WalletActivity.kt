@@ -115,6 +115,16 @@ class WalletActivity : FragmentActivity() {
         lastInteraction = System.currentTimeMillis()
     }
 
+    override fun onBackPressed() {
+        /* Si no hay wallet cargada cerrar directamente sin mostrar fondo */
+        if (mnemonic.isEmpty() && wifKey.isEmpty()) {
+            finish()
+            overridePendingTransition(0, 0)
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     /* -- AUTH: biometria con fallback a PIN -- */
     private fun authenticate(onSuccess: () -> Unit) {
         val bm = BiometricManager.from(this)
@@ -1096,11 +1106,11 @@ class WalletActivity : FragmentActivity() {
     private fun showWatcherImportDialog() {
         val sheet = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, CYAN) }
+            background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(16).toFloat(); setStroke(1, AMBER) }
             setPadding(dp(22), dp(22), dp(22), dp(24))
         }
         sheet.addView(TextView(this).apply {
-            text = "Watch Address"; textSize = 16f; setTextColor(CYAN)
+            text = "Watch Address"; textSize = 16f; setTextColor(AMBER)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
             gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
         })
@@ -1127,7 +1137,7 @@ class WalletActivity : FragmentActivity() {
         val btnAdd = Button(this).apply {
             text = "Watch"; textSize = 12f; setTextColor(Color.BLACK)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            background = GradientDrawable().apply { setColor(CYAN); cornerRadius = dp(8).toFloat() }
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
