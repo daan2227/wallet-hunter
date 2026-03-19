@@ -59,7 +59,6 @@ class WalletActivity : FragmentActivity() {
     /* -- LIFECYCLE -- */
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
-        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         lastInteraction = System.currentTimeMillis()
         // Check if coming from puzzle match with WIF
         val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
