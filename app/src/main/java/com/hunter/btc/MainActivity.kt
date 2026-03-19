@@ -788,8 +788,8 @@ class MainActivity : Activity() {
                     val combos=Math.pow(2048.0,missing.toDouble()).toLong()
                     val combosStr=when{combos<1_000_000L->"${combos/1000}K";combos<1_000_000_000L->"${combos/1_000_000}M";else->"${combos/1_000_000_000}B"}
                     val secs=combos/50_000L
-                    val timeStr=when{secs<60->"$secs seg";secs<3600->"${secs/60} min";secs<86400->"${secs/3600} h";else->"${secs/86400} días"}
-                    tvRecoveryInfo.text="Faltantes: $missing  |  Combinaciones: ~$combosStr  |  Tiempo est.: $timeStr"
+                    val timeStr=when{secs<60->"$secs seg";secs<3600->"${secs/60} min";secs<86400->"${secs/3600} h";else->"${secs/86400} dias"}
+                    tvRecoveryInfo.text="Faltan: $missing  Combos: ~$combosStr  (~$timeStr)"
                 }else{
                     tvRecoveryInfo.text="Palabras faltantes: —"
                 }
