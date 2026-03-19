@@ -19,6 +19,7 @@ import android.text.InputType
 import android.view.*
 import android.widget.*
 import java.io.*
+import com.hunter.btc.recovery.RecoveryEngine
 
 class SpeedChartView(context: android.content.Context) : android.view.View(context) {
     private val maxPoints = 60
@@ -130,6 +131,7 @@ class MainActivity : Activity() {
     private var s = Strings.EN
     private var puzzleMode = false
     private val recentAddrs = mutableListOf<String>()
+    private lateinit var recoveryEngine: RecoveryEngine
     private val logBuf = StringBuilder()
 
     data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
@@ -725,6 +727,204 @@ class MainActivity : Activity() {
         cfgScroll.addView(cfgPage);cf.addView(cfgScroll)
         col.addView(cf)
 
+
+        /* ══ RECOVERY PAGE ══ */
+        val recoveryScroll=ScrollView(this).apply{setBackgroundColor(BG_CARD)}
+        val recoveryPage=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(80))}
+
+        // Header
+        recoveryPage.addView(TextView(this).apply{
+            text="⚷  SEED RECOVERY";textSize=13f;setTextColor(AMBER)
+            typeface=Typeface.create("monospace",Typeface.BOLD);setPadding(0,dp(4),0,dp(2))
+        })
+        recoveryPage.addView(TextView(this).apply{
+            text="Ingresa tu seed phrase. Usa ??? para las palabras que no recuerdas."
+            textSize=10f;setTextColor(TXT_MUTED);typeface=Typeface.MONOSPACE
+            setPadding(0,0,0,dp(12))
+        })
+
+        // Input seed phrase
+        val etSeed=android.widget.EditText(this).apply{
+            hint="abandon ??? letter ??? advice cage absurd amount doctor acoustic avoid ???"
+            setHintTextColor(0xFF555566.toInt());setTextColor(TXT_PRI)
+            textSize=11f;typeface=Typeface.MONOSPACE
+            setBackgroundColor(BG_PANEL);setPadding(dp(12),dp(10),dp(12),dp(10))
+            inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
+            minLines=3;maxLines=5;isSingleLine=false
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(10)}
+        }
+        recoveryPage.addView(etSeed)
+
+        // Input dirección objetivo
+        recoveryPage.addView(TextView(this).apply{
+            text="DIRECCIÓN BTC OBJETIVO (opcional)";textSize=9f
+            setTextColor(TXT_MUTED);typeface=Typeface.MONOSPACE;setPadding(0,dp(4),0,dp(4))
+        })
+        val etTarget=android.widget.EditText(this).apply{
+            hint="1A2B3C... o bc1q...";setHintTextColor(0xFF555566.toInt())
+            setTextColor(TXT_PRI);textSize=11f;typeface=Typeface.MONOSPACE
+            setBackgroundColor(BG_PANEL);setPadding(dp(12),dp(10),dp(12),dp(10))
+            isSingleLine=true
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(10)}
+        }
+        recoveryPage.addView(etTarget)
+
+        // Info: combinaciones y tiempo estimado
+        val tvRecoveryInfo=TextView(this).apply{
+            text="Palabras faltantes: —";textSize=10f
+            setTextColor(AppTheme.CYAN);typeface=Typeface.MONOSPACE
+            setPadding(0,dp(4),0,dp(8))
+        }
+        recoveryPage.addView(tvRecoveryInfo)
+
+        // Actualizar info en tiempo real al escribir
+        etSeed.addTextChangedListener(object:android.text.TextWatcher{
+            override fun beforeTextChanged(s:CharSequence?,st:Int,c:Int,a:Int){}
+            override fun onTextChanged(s:CharSequence?,st:Int,b:Int,c:Int){}
+            override fun afterTextChanged(s:android.text.Editable?){
+                val input=s?.toString()?:""
+                val missing=input.split(" ").count{it.trim()=="???"}
+                if(missing>0){
+                    val combos=Math.pow(2048.0,missing.toDouble()).toLong()
+                    val combosStr=when{combos<1_000_000L->"${combos/1000}K";combos<1_000_000_000L->"${combos/1_000_000}M";else->"${combos/1_000_000_000}B"}
+                    val secs=combos/50_000L
+                    val timeStr=when{secs<60->"$secs seg";secs<3600->"${secs/60} min";secs<86400->"${secs/3600} h";else->"${secs/86400} días"}
+                    tvRecoveryInfo.text="Faltantes: $missing  |  Combinaciones: ~$combosStr  |  Tiempo est.: $timeStr"
+                }else{
+                    tvRecoveryInfo.text="Palabras faltantes: —"
+                }
+            }
+        })
+
+        // Barra de progreso
+        val pbRecovery=android.widget.ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal).apply{
+            max=1000;progress=0
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(8)).apply{bottomMargin=dp(4)}
+            visibility=android.view.View.GONE
+        }
+        recoveryPage.addView(pbRecovery)
+
+        // Status text
+        val tvRecoveryStatus=TextView(this).apply{
+            text="";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.MONOSPACE
+            setPadding(0,0,0,dp(8));visibility=android.view.View.GONE
+        }
+        recoveryPage.addView(tvRecoveryStatus)
+
+        // Resultado
+        val tvRecoveryResult=TextView(this).apply{
+            text="";textSize=11f;setTextColor(0xFF00FF88.toInt())
+            typeface=Typeface.create("monospace",Typeface.BOLD)
+            setPadding(dp(12),dp(12),dp(12),dp(12))
+            setBackgroundColor(BG_PANEL)
+            visibility=android.view.View.GONE
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(10)}
+        }
+        recoveryPage.addView(tvRecoveryResult)
+
+        // Botones Start / Cancel
+        val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
+        val btnStartRecovery=Button(this).apply{
+            text="▶  INICIAR RECOVERY";textSize=11f
+            setTextColor(0xFF000000.toInt());setBackgroundColor(AMBER)
+            typeface=Typeface.create("monospace",Typeface.BOLD)
+            layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f).apply{marginEnd=dp(8)}
+        }
+        val btnCancelRecovery=Button(this).apply{
+            text="■  CANCELAR";textSize=11f
+            setTextColor(AMBER);setBackgroundColor(BG_PANEL)
+            typeface=Typeface.create("monospace",Typeface.BOLD)
+            layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)
+            visibility=android.view.View.GONE
+        }
+        btnRow.addView(btnStartRecovery);btnRow.addView(btnCancelRecovery)
+        recoveryPage.addView(btnRow)
+
+        // Inicializar RecoveryEngine
+        recoveryEngine=RecoveryEngine(this)
+        val wordlistLoaded=recoveryEngine.loadWordlist()
+
+        recoveryEngine.listener=object:com.hunter.btc.recovery.RecoveryEngine.ProgressListener{
+            override fun onProgress(attempts:Long,total:Long,currentWord:String){
+                runOnUiThread{
+                    val pct=((attempts.toFloat()/total)*1000).toInt()
+                    pbRecovery.progress=pct
+                    tvRecoveryStatus.text="Probando: $currentWord  ($attempts / $total)"
+                }
+            }
+            override fun onFound(mnemonic:String){
+                runOnUiThread{
+                    pbRecovery.visibility=android.view.View.GONE
+                    tvRecoveryStatus.visibility=android.view.View.GONE
+                    btnCancelRecovery.visibility=android.view.View.GONE
+                    btnStartRecovery.visibility=android.view.View.VISIBLE
+                    tvRecoveryResult.text="✓ ENCONTRADO
+
+$mnemonic"
+                    tvRecoveryResult.visibility=android.view.View.VISIBLE
+                    // Guardar en logs
+                    val ts=java.text.SimpleDateFormat("yyyyMMdd_HHmmss",java.util.Locale.US).format(java.util.Date())
+                    val f=java.io.File(getExternalFilesDir(null),"recovery_$ts.txt")
+                    f.writeText("RECOVERY MATCH
+$mnemonic
+")
+                }
+            }
+            override fun onNotFound(){
+                runOnUiThread{
+                    pbRecovery.visibility=android.view.View.GONE
+                    tvRecoveryStatus.text="No encontrado. Verifica las palabras conocidas."
+                    btnCancelRecovery.visibility=android.view.View.GONE
+                    btnStartRecovery.visibility=android.view.View.VISIBLE
+                }
+            }
+            override fun onCancelled(){
+                runOnUiThread{
+                    pbRecovery.visibility=android.view.View.GONE
+                    tvRecoveryStatus.text="Cancelado."
+                    btnCancelRecovery.visibility=android.view.View.GONE
+                    btnStartRecovery.visibility=android.view.View.VISIBLE
+                }
+            }
+        }
+
+        btnStartRecovery.setOnClickListener{
+            val input=etSeed.text.toString().trim()
+            if(input.isEmpty()){
+                tvRecoveryStatus.text="Ingresa la seed phrase primero."
+                tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                return@setOnClickListener
+            }
+            if(!wordlistLoaded){
+                tvRecoveryStatus.text="Error: wordlist BIP39 no cargado."
+                tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                return@setOnClickListener
+            }
+            val wl=recoveryEngine.getWordlistSet()
+            val parseResult=com.hunter.btc.recovery.RecoveryParser.parse(input,wl)
+            when(parseResult){
+                is com.hunter.btc.recovery.ParseResult.Error->{
+                    tvRecoveryStatus.text=parseResult.message
+                    tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                }
+                is com.hunter.btc.recovery.ParseResult.Success->{
+                    tvRecoveryResult.visibility=android.view.View.GONE
+                    pbRecovery.progress=0
+                    pbRecovery.visibility=android.view.View.VISIBLE
+                    tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                    tvRecoveryStatus.text="Iniciando..."
+                    btnStartRecovery.visibility=android.view.View.GONE
+                    btnCancelRecovery.visibility=android.view.View.VISIBLE
+                    recoveryEngine.startRecovery(parseResult.parsed,etTarget.text.toString().trim())
+                }
+            }
+        }
+
+        btnCancelRecovery.setOnClickListener{ recoveryEngine.cancel() }
+
+        recoveryScroll.addView(recoveryPage)
+        cf.addView(recoveryScroll)
+
         /* ══ TABBAR ══ */
         val tabBar=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setBackgroundColor(BG_PANEL);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(62))}
         fun tabBtn(ico:String,lbl:String):android.widget.TextView=TextView(this).apply{
@@ -733,13 +933,13 @@ class MainActivity : Activity() {
             gravity=Gravity.CENTER;isAllCaps=true
             layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.MATCH_PARENT,1f)
         }
-        val tb0=tabBtn("⊙","Scan");val tb2=tabBtn("◈","Stats");val tb3=tabBtn("⚙","Config")
-        listOf(tb0,tb2,tb3).forEach{tabBar.addView(it)}
+        val tb0=tabBtn("⊙","Scan");val tb2=tabBtn("◈","Stats");val tb3=tabBtn("⚙","Config");val tb4=tabBtn("⚷","Recovery")
+        listOf(tb0,tb2,tb3,tb4).forEach{tabBar.addView(it)}
         col.addView(tabBar);root.addView(col);setContentView(root)
 
-        tabPages=listOf(scanScroll,statsScroll,cfgScroll)
-        tabBtns =listOf(tb0,tb2,tb3)
-        listOf(tb0,tb2,tb3).forEachIndexed{i,b->b.setOnClickListener{goTab(i)}}
+        tabPages=listOf(scanScroll,statsScroll,cfgScroll,recoveryScroll)
+        tabBtns =listOf(tb0,tb2,tb3,tb4)
+        listOf(tb0,tb2,tb3,tb4).forEachIndexed{i,b->b.setOnClickListener{goTab(i)}}
         goTab(0)
 
         /* Restore state */

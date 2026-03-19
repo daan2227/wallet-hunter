@@ -21,6 +21,8 @@ class RecoveryEngine(private val context: Context) {
     private var wordlist: Array<String>? = null
 
     // ── Cargar wordlist desde assets ──────────────────────────────────────────
+    fun getWordlistSet(): Set<String> = wordlist?.toSet() ?: emptySet()
+
     fun loadWordlist(): Boolean {
         return try {
             val words = context.assets
