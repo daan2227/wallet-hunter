@@ -852,6 +852,16 @@ class MainActivity : Activity() {
                     tvRecoveryStatus.text="Probando: $currentWord  ($attempts / $total)"
                 }
             }
+            override fun onFoundWithAddress(mnemonic:String,address:String){
+                runOnUiThread{
+                    pbRecovery.visibility=android.view.View.GONE
+                    tvRecoveryStatus.visibility=android.view.View.GONE
+                    btnCancelRecovery.visibility=android.view.View.GONE
+                    btnStartRecovery.visibility=android.view.View.VISIBLE
+                    tvRecoveryResult.text="DIRECCION DERIVADA:\n$address\n\nFRASE:\n$mnemonic"
+                    tvRecoveryResult.visibility=android.view.View.VISIBLE
+                }
+            }
             override fun onFound(mnemonic:String){
                 runOnUiThread{
                     pbRecovery.visibility=android.view.View.GONE
