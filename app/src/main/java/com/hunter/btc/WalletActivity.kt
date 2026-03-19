@@ -60,6 +60,9 @@ class WalletActivity : FragmentActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         lastInteraction = System.currentTimeMillis()
+        /* Evitar pantalla gris — poner fondo dark inmediatamente */
+        window.decorView.setBackgroundColor(AppTheme.BG_DEEP)
+        setContentView(android.widget.FrameLayout(this).apply { setBackgroundColor(AppTheme.BG_DEEP) })
         // Check if coming from puzzle match with WIF
         val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
         val intentAddr = intent.getStringExtra("WIF_ADDR") ?: ""
@@ -81,10 +84,25 @@ class WalletActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (isLocked && WalletManager.hasSeed(this)) {
+        if (isLocked && (mnemonic.isNotEmpty() || wifKey.isNotEmpty())) {
+            /* Mostrar overlay oscuro mientras autentica */
+            val overlay = android.widget.FrameLayout(this).apply {
+                setBackgroundColor(AppTheme.BG_DEEP)
+                layoutParams = android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+            }
+            val lockIcon = android.widget.TextView(this).apply {
+                text = "\uD83D\uDD12"; textSize = 48f; gravity = Gravity.CENTER
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT)
+            }
+            overlay.addView(lockIcon)
+            (window.decorView as? android.view.ViewGroup)?.addView(overlay)
             authenticate {
-                mnemonic = WalletManager.loadSeed(this) ?: ""
                 isLocked = false
+                (window.decorView as? android.view.ViewGroup)?.removeView(overlay)
             }
         }
         lastInteraction = System.currentTimeMillis()
@@ -92,7 +110,7 @@ class WalletActivity : FragmentActivity() {
 
     override fun onPause() {
         super.onPause()
-        if (System.currentTimeMillis() - lastInteraction > AUTO_LOCK_MS) isLocked = true
+        isLocked = true  // bloquear siempre al salir
     }
 
     override fun onUserInteraction() {
