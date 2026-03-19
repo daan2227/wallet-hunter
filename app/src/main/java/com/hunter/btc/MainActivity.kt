@@ -1221,15 +1221,13 @@ class MainActivity : Activity() {
             while(true){addr=HunterEngine.popRecentAddr();if(addr.isEmpty())break;recentAddrs.add(addr);if(recentAddrs.size>6)recentAddrs.removeAt(0)}
             if(recentAddrs.isNotEmpty()) tvAddrFeed.text=recentAddrs.takeLast(3).map{"$it  -> 0.00 BTC"}.joinToString("\n")
         } else if(!loaded&&!puzzleMode) tvAddrFeed.text=s.waitingStart
-
-                // Check new match
-                val curFound = HunterEngine.getFound()
-                if (curFound > lastFoundCount) {
-                    lastFoundCount = curFound
-                    val matchText = HunterEngine.getMatches()
-                    val lastLine = matchText.trim().lines().lastOrNull() ?: ""
-                    notifyMatch(lastLine.take(34), "")
-                }
+        val curFound = HunterEngine.getFound()
+        if (curFound > lastFoundCount) {
+            lastFoundCount = curFound
+            val matchText = HunterEngine.getMatches()
+            val lastLine = matchText.trim().lines().lastOrNull() ?: ""
+            notifyMatch(lastLine.take(34), "")
+        }
         updateRam()
         handler.postDelayed(this,333L)
     }}
