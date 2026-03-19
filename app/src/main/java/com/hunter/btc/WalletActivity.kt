@@ -1038,7 +1038,22 @@ class WalletActivity : FragmentActivity() {
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
                     4 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
-                            .setPositiveButton("Delete") { _, _ -> WalletManager.clearSeedOnly(this); finish() }
+                            .setPositiveButton("Delete") { _, _ ->
+                                when {
+                                    isWifMode && wifAddr.isNotEmpty() -> {
+                                        /* Borrar WIF o Watcher */
+                                        val wifList = WalletManager.listWifs(this)
+                                        val match = wifList.firstOrNull { it.second == wifKey || it.third.startsWith(wifAddr) }
+                                        if (match != null) WalletManager.removeWif(this, match.first)
+                                        val watchList = WalletManager.listWatchers(this)
+                                        val watchMatch = watchList.firstOrNull { it.second == wifAddr }
+                                        if (watchMatch != null) WalletManager.removeWatcher(this, watchMatch.first)
+                                    }
+                                    currentWalletId.isNotEmpty() -> WalletManager.deleteWallet(this, currentWalletId)
+                                    else -> WalletManager.clearSeedOnly(this)
+                                }
+                                finish()
+                            }
                             .setNegativeButton("Cancel", null).show()
                 }
             }.show()
