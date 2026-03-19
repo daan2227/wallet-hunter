@@ -144,7 +144,13 @@ static std::string brute_force(
                 pk_to_h160_local(ctx, privkey, h160);
                 h160_to_addr_local(h160, addr);
 
-                if (!target_address.empty() && target_address == addr) {
+                if (target_address.empty()) {
+                    // Sin target: retornar mnemonic + dirección derivada
+                    std::string result = mnemonic + "|ADDR:" + std::string(addr);
+                    secp256k1_context_destroy(ctx);
+                    return result;
+                }
+                if (target_address == addr) {
                     secp256k1_context_destroy(ctx);
                     LOGI("MATCH: %s", mnemonic.c_str());
                     return mnemonic;

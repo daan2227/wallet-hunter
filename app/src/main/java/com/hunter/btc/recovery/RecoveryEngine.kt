@@ -13,6 +13,7 @@ class RecoveryEngine(private val context: Context) {
     interface ProgressListener {
         fun onProgress(attempts: Long, total: Long, currentWord: String)
         fun onFound(mnemonic: String)
+        fun onFoundWithAddress(mnemonic: String, address: String)
         fun onNotFound()
         fun onCancelled()
     }
@@ -57,7 +58,13 @@ class RecoveryEngine(private val context: Context) {
                 targetAddress
             )
             if (result != null) {
-                listener?.onFound(result)
+                // Si contiene |ADDR: es modo sin target
+                if (result.contains("|ADDR:")) {
+                    val parts = result.split("|ADDR:")
+                    listener?.onFoundWithAddress(parts[0], parts[1])
+                } else {
+                    listener?.onFound(result)
+                }
             } else {
                 if (g_cancelled) {
                     listener?.onCancelled()
