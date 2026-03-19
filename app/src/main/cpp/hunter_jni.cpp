@@ -30,7 +30,8 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#define PBKDF2_ITERS  2048
+#define PBKDF2_ITERS_STD  2048
+#define PBKDF2_ITERS_FAST 1
 #define MAX_THREADS  16
 #define LOCAL_BATCH   128
 #define MAX_CSV_ROWS  120000000ULL
@@ -64,6 +65,7 @@ static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
+static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
@@ -591,7 +593,7 @@ static void *worker_bip39_fn(void *){
         nhits=0; local_done=0;
         for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
             gen_mnemonic(mn,sizeof(mn));
-            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,EVP_sha512(),64,seed);
+            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,g_pbkdf2_iters.load(),EVP_sha512(),64,seed);
             HDKey master; derive_master(seed,&master);
             /* --- Shared subtree m/44'/0'/0' --- */
             HDKey h44,h44_0,h44_0_0;
@@ -867,6 +869,11 @@ Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){
+    g_pbkdf2_iters.store(fast==1 ? PBKDF2_ITERS_FAST : PBKDF2_ITERS_STD);
+}
 
 JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_isCsvLoaded(JNIEnv *,jobject){return (jboolean)g_csv_loaded.load();}

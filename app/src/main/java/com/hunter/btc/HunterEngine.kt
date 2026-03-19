@@ -10,6 +10,7 @@ object HunterEngine {
     external fun startHunting(threads: Int, cpuLimit: Int)
     external fun stopHunting()
     external fun setCpuLimit(v: Int)
+    external fun setPbkdf2Mode(fast: Int)
     external fun isCsvLoaded(): Boolean
     external fun isLoading(): Boolean
     external fun isRunning(): Boolean

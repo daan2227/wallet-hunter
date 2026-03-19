@@ -89,6 +89,7 @@ class MainActivity : Activity() {
     private lateinit var tvKps: TextView
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
+    private var fastModeEnabled = false
     private var lblDataset: TextView? = null
     private var lblPerformance: TextView? = null
     private var lblMode: TextView? = null
@@ -615,6 +616,27 @@ class MainActivity : Activity() {
         perfCard.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
         perfCard.addView(sliderWrap(tvCpu,sbCpu))
         cfgPage.addView(perfCard);updateLabels()
+
+        /* Fast Scan toggle */
+        val fastCard=cfgCard()
+        val fastRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(14))}
+        val fastLeft=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
+        fastLeft.addView(TextView(this).apply{text="Fast Scan Mode";textSize=13f;setTextColor(TXT_PRI)})
+        fastLeft.addView(TextView(this).apply{text="1 iter — 60k/s vs 9k/s standard";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.NORMAL);setPadding(0,dp(2),0,0)})
+        val fastSwitch=android.widget.Switch(this).apply{
+            isChecked=fastModeEnabled
+            setOnCheckedChangeListener{_,checked->
+                fastModeEnabled=checked
+                HunterEngine.setPbkdf2Mode(if(checked)1 else 0)
+                getSharedPreferences("hunter",MODE_PRIVATE).edit().putBoolean("fastMode",checked).apply()
+            }
+        }
+        fastRow.addView(fastLeft);fastRow.addView(fastSwitch);fastCard.addView(fastRow)
+        cfgPage.addView(fastCard)
+        /* Restaurar fast mode */
+        fastModeEnabled=prefs.getBoolean("fastMode",false)
+        HunterEngine.setPbkdf2Mode(if(fastModeEnabled)1 else 0)
+        fastSwitch.isChecked=fastModeEnabled
 
         /* Search mode */
         val _lblMd=secLbl(s.modeSection);lblMode=_lblMd;cfgPage.addView(_lblMd)
