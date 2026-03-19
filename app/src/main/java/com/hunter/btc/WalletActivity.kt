@@ -874,7 +874,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(btnRow)
 
         val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
-        dlg.setOnCancelListener { finish() }
+        dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
         selectorDlg = dlg
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
@@ -934,7 +934,7 @@ class WalletActivity : FragmentActivity() {
         btnRow.addView(btnImport); btnRow.addView(btnCancel)
         sheet.addView(btnRow)
         val dlg = AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
-        dlg.setOnCancelListener { finish() }
+        dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
@@ -943,7 +943,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
+        btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnImport.setOnClickListener {
             val w = etWif.text.toString().trim()
             if (w.length < 50) { Toast.makeText(this, "Invalid WIF key", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
@@ -1094,7 +1094,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
+        btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnNext.setOnClickListener {
             val mn = etSeed.text.toString().trim()
             if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
@@ -1151,7 +1151,7 @@ class WalletActivity : FragmentActivity() {
         }
         btnRow.addView(btnAdd); btnRow.addView(btnCancel); sheet.addView(btnRow)
         val dlg = AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
-        dlg.setOnCancelListener { finish() }
+        dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
@@ -1160,7 +1160,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
+        btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnAdd.setOnClickListener {
             val addr = etAddr.text.toString().trim()
             val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
