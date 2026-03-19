@@ -873,12 +873,14 @@ class WalletActivity : FragmentActivity() {
         btnRow.addView(btnNew); btnRow.addView(btnWif); btnRow.addView(btnWatch)
         sheet.addView(btnRow)
 
-        val dlg = AlertDialog.Builder(this).setView(scroll).create()
+        val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
+        dlg.setOnCancelListener { finish() }
         selectorDlg = dlg
         dlg.window?.apply {
             setBackgroundDrawableResource(android.R.color.transparent)
             setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(), android.view.WindowManager.LayoutParams.WRAP_CONTENT)
             setGravity(Gravity.CENTER)
+            setTitle(null)
             attributes = attributes?.also { it.dimAmount = 0.75f }
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
