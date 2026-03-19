@@ -348,19 +348,6 @@ class MainActivity : Activity() {
         tvRam  = TextView(this).apply { text="RAM --"; textSize=9f; setTextColor(TXT_MUTED); typeface=Typeface.create("monospace",Typeface.NORMAL); gravity=android.view.Gravity.END }
         tvTemp = TextView(this).apply { text="--°C"; textSize=10f; setTextColor(AMBER); typeface=Typeface.create("monospace",Typeface.BOLD); gravity=android.view.Gravity.END }
         sysCol.addView(tvRam); sysCol.addView(tvTemp)
-        val btnLang = Button(this).apply {
-            text = prefs.getString("lang","EN") ?: "EN"; textSize=9f; setTextColor(TXT_MUTED)
-            typeface=Typeface.create("monospace",Typeface.NORMAL)
-            background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(3).toFloat()}
-            setPadding(dp(8),dp(3),dp(8),dp(3))
-            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(26)).apply{marginEnd=dp(6)}
-            setOnClickListener {
-                val langKeys=Strings.ALL.keys.toList()
-                val langNames=mapOf("ES" to "Espanol","EN" to "English","JA" to "Japanese","KO" to "Korean","DE" to "Deutsch","FR" to "Francais","RU" to "Russian","PT" to "Portugues")
-                val items=langKeys.map{"${langNames[it]?:it} ($it)"}.toTypedArray()
-                AlertDialog.Builder(this@MainActivity).setTitle(s.language).setItems(items){_,pos->val k=langKeys[pos];applyLang(k);text=k}.show()
-            }
-        }
         tvLangLbl = TextView(this).apply { text="" }
         btnSwitch = Button(this).apply {
             text="⊞ Wallet"; textSize=9f; setTextColor(AMBER)
@@ -370,7 +357,7 @@ class MainActivity : Activity() {
             layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(32))
             setOnClickListener{startActivity(Intent(this@MainActivity,WalletActivity::class.java))}
         }
-        hRight.addView(sysCol); hRight.addView(btnLang); hRight.addView(btnSwitch)
+        hRight.addView(sysCol); hRight.addView(btnSwitch)
         header.addView(mark); header.addView(brandCol); header.addView(hRight)
         col.addView(header)
         val stripe = View(this).apply { setBackgroundColor(BORDER_C); layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(2)) }
