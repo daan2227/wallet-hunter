@@ -1230,7 +1230,6 @@ class MainActivity : Activity() {
                     val lastLine = matchText.trim().lines().lastOrNull() ?: ""
                     notifyMatch(lastLine.take(34), "")
                 }
-                )
         updateRam()
         handler.postDelayed(this,333L)
     }}
