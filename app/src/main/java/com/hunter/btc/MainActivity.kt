@@ -198,8 +198,8 @@ class MainActivity : Activity() {
     }
 
     private fun applyLang(key: String) {
-        s = Strings.ALL[key] ?: Strings.ES
-        getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
+        s = Strings.EN
+        
         tvLangLbl.text = ""
         lblDataset?.text = s.csvSection.uppercase()
         btnCsv.text = "Load Dataset"
