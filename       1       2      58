@@ -1,0 +1,10 @@
+[33m9960f68[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m arm64-v8a only - fix __uint128_t armeabi-v7a build error
+[33mb6be270[m puzzle: Montgomery batch inversion - 1 inv per 4000 keys
+[33m3c784f5[m increase MAX_THREADS to 16
+[33ma86f25f[m puzzle: inline SHA256+RIPEMD160 no OpenSSL overhead
+[33m3562cb7[m puzzle: reduce mutex contention + batch 5000
+[33m4215c2e[m puzzle: sequential point addition 10x faster
+[33m9a98633[m puzzle mode: xorshift128+ RNG, batch 200, no BN - 10x faster
+[33m41d3e74[m fix puzzle addresses - verified from btcpuzzle.info
+[33meaa0c70[m update puzzles: #69 solved Apr 2025, #70 is now easiest active
+[33ma1300af[m fix remaining read_row call

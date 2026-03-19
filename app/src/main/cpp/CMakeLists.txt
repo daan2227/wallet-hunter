@@ -24,7 +24,11 @@ target_compile_definitions(secp256k1 PRIVATE
     ECMULT_GEN_PREC_BITS=4
 )
 
-add_library(hunter_jni SHARED hunter_jni.cpp)
+add_library(hunter_jni SHARED hunter_jni.cpp
+        mnemonic.cpp
+        bip32.cpp
+        recovery_engine.cpp
+)
 target_compile_options(hunter_jni PRIVATE
     -O3
     -march=armv8-a+crypto
