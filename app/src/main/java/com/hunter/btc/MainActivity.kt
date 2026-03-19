@@ -89,6 +89,12 @@ class MainActivity : Activity() {
     private lateinit var tvKps: TextView
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
+    private var lblDataset: TextView? = null
+    private var lblPerformance: TextView? = null
+    private var lblMode: TextView? = null
+    private var lblWallet: TextView? = null
+    private var lblLog: TextView? = null
+    private var lblStats: TextView? = null
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
@@ -195,13 +201,12 @@ class MainActivity : Activity() {
         s = Strings.ALL[key] ?: Strings.ES
         getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("lang", key).apply()
         tvLangLbl.text = ""
-        (tvCsvSec.getChildAt(0) as? android.widget.TextView)?.text = s.csvSection
-        btnCsv.text = s.csvBtn
-        (tvConfigSec.getChildAt(0) as? android.widget.TextView)?.text = s.configSection
-        (tvStatsSec.getChildAt(0) as? android.widget.TextView)?.text = s.statsSection
-        (tvLiveSec.getChildAt(0) as? android.widget.TextView)?.text = s.liveSection
-        (tvMatchSec.getChildAt(0) as? android.widget.TextView)?.text = s.matchSection
-        (tvLogSec.getChildAt(0) as? android.widget.TextView)?.text = s.logSection
+        lblDataset?.text = s.csvSection.uppercase()
+        btnCsv.text = "Load Dataset"
+        lblPerformance?.text = s.configSection.uppercase()
+        lblMode?.text = s.modeSection.uppercase()
+        lblLog?.text = s.logSection.uppercase()
+        lblStats?.text = s.statsSection.uppercase()
         btnToggle.text = if (HunterEngine.isRunning()) s.stop else s.start
         tvMatchList.text = s.noMatch
         tvAddrFeed.text = s.waitingStart
@@ -516,7 +521,7 @@ class MainActivity : Activity() {
         statsPage.addView(sHero)
         statsPage.addView(View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
         val statsBody=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(20))}
-        statsBody.addView(secLbl(s.statsSection))
+        val _lblSt=secLbl(s.statsSection);lblStats=_lblSt;statsBody.addView(_lblSt)
         val sessCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}}
         fun sessRow(key:String,tv:TextView){val r=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(11),dp(16),dp(11))};r.addView(TextView(this).apply{text=key;textSize=11f;setTextColor(TXT_SEC);layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)});r.addView(tv);sessCard.addView(r);sessCard.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})}
         val sModeV=TextView(this).apply{text=if(puzzleMode)"PUZZLE" else "SEED SCAN";textSize=11f;setTextColor(AMBER);typeface=Typeface.create("monospace",Typeface.BOLD)}
@@ -599,7 +604,7 @@ class MainActivity : Activity() {
         fun cfgCard()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}}
 
         /* Dataset */
-        cfgPage.addView(secLbl(s.csvSection))
+        val _lblDs=secLbl(s.csvSection);lblDataset=_lblDs;cfgPage.addView(_lblDs)
         val dataCard=cfgCard()
         val csvRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;clipToOutline=true}
         btnCsv=Button(this).apply{text="Load Dataset";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER)};setPadding(dp(18),0,dp(18),0);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(50));setOnClickListener{pickCsv()}}
@@ -612,7 +617,7 @@ class MainActivity : Activity() {
         cfgPage.addView(dataCard)
 
         /* Performance sliders */
-        cfgPage.addView(secLbl(s.configSection))
+        val _lblPf=secLbl(s.configSection);lblPerformance=_lblPf;cfgPage.addView(_lblPf)
         val perfCard=cfgCard()
         fun sliderWrap(tv:TextView,bar:SeekBar):LinearLayout{val w=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(14))};w.addView(tv);w.addView(bar);return w}
         tvThreads=TextView(this).apply{setTextColor(TXT_PRI);textSize=12f;setPadding(0,0,0,dp(10))}
@@ -625,7 +630,7 @@ class MainActivity : Activity() {
         cfgPage.addView(perfCard);updateLabels()
 
         /* Search mode */
-        cfgPage.addView(secLbl(s.modeSection))
+        val _lblMd=secLbl(s.modeSection);lblMode=_lblMd;cfgPage.addView(_lblMd)
         val modeCard=cfgCard()
         val modeRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(dp(12),dp(12),dp(12),dp(12));gravity=Gravity.CENTER_VERTICAL}
         rbBip39 =Button(this).apply{text=s.modeBip39;textSize=11f;setTextColor(AMBER);typeface=Typeface.create("monospace",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(40),1f).apply{marginEnd=dp(4)};setPadding(dp(4),0,dp(4),0)}
@@ -660,7 +665,7 @@ class MainActivity : Activity() {
         rbBip39.setOnClickListener{modeToggle(false)};rbPuzzle.setOnClickListener{modeToggle(true)}
 
         /* Wallet + export */
-        cfgPage.addView(secLbl("Wallet"))
+        val _lblWl=secLbl("Wallet");lblWallet=_lblWl;cfgPage.addView(_lblWl)
         val walletCard=cfgCard()
         fun navRow(title:String,sub:String,click:()->Unit):LinearLayout{val r=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(13),dp(16),dp(13));isClickable=true;setOnClickListener{click()}};val lc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)};lc.addView(TextView(this).apply{text=title;textSize=13f;setTextColor(TXT_PRI)});lc.addView(TextView(this).apply{text=sub;textSize=10f;setTextColor(TXT_SEC);typeface=Typeface.MONOSPACE;setPadding(0,dp(2),0,0)});r.addView(lc);r.addView(TextView(this).apply{text="›";textSize=18f;setTextColor(TXT_MUTED)});return r}
         walletCard.addView(navRow("Open Wallet","View balances & addresses"){startActivity(Intent(this@MainActivity,WalletActivity::class.java))})
@@ -670,7 +675,7 @@ class MainActivity : Activity() {
 
 
         /* System log */
-        cfgPage.addView(secLbl(s.logSection))
+        val _lblLg=secLbl(s.logSection);lblLog=_lblLg;cfgPage.addView(_lblLg)
         val logCard=cfgCard()
         val logHdr=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(9),dp(14),dp(9));setBackgroundColor(0x2D000000)}
         logHdr.addView(TextView(this).apply{text="System Events";textSize=9f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)})
