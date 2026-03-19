@@ -591,7 +591,7 @@ static void *worker_bip39_fn(void *){
         nhits=0; local_done=0;
         for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
             gen_mnemonic(mn,sizeof(mn));
-            fast_pbkdf2_sha512(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,seed);
+            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,EVP_sha512(),64,seed);
             HDKey master; derive_master(seed,&master);
             /* --- Shared subtree m/44'/0'/0' --- */
             HDKey h44,h44_0,h44_0_0;
