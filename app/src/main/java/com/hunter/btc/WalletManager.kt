@@ -262,5 +262,3 @@ object WalletManager {
         prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
-
-    /* Borra solo la seed principal — preserva PIN y otras wallets *}
