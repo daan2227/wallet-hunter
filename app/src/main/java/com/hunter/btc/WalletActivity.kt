@@ -1091,7 +1091,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); showWalletSelectorDialog() }
+        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
         btnNext.setOnClickListener {
             val mn = etSeed.text.toString().trim()
             if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
