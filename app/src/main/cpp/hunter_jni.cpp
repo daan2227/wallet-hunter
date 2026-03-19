@@ -227,10 +227,38 @@ static void hex_to_bytes32(const char *hex, uint8_t *out){
 
 
 
-/* PBKDF2 parallel helper - precompute HMAC outer/inner state for speed */
+/* PBKDF2-SHA512 optimizado: precalcula estado HMAC del password */
+static void fast_pbkdf2_sha512(const char *pass, int plen, const uint8_t *salt, int slen, int iters, uint8_t *out) {
+    /* Precalcular estado HMAC con el password - solo 2 SHA512 calls */
+    HMAC_CTX *hctx = HMAC_CTX_new();
+    HMAC_Init_ex(hctx, pass, plen, EVP_sha512(), nullptr);
+    /* Salt + block counter para primer bloque */
+    uint8_t saltblock[slen+4];
+    memcpy(saltblock, salt, slen);
+    saltblock[slen]=0; saltblock[slen+1]=0; saltblock[slen+2]=0; saltblock[slen+3]=1;
+    /* U1 = HMAC(pass, salt||1) */
+    uint8_t U[64], T[64];
+    unsigned int ulen=64;
+    HMAC_CTX *hctx2 = HMAC_CTX_new();
+    HMAC_CTX_copy(hctx2, hctx);
+    HMAC_Update(hctx2, saltblock, slen+4);
+    HMAC_Final(hctx2, U, &ulen);
+    HMAC_CTX_free(hctx2);
+    memcpy(T, U, 64);
+    /* U2..Un = HMAC(pass, U_prev) - reusar estado base del password */
+    for (int i = 1; i < iters; i++) {
+        HMAC_CTX *hctx3 = HMAC_CTX_new();
+        HMAC_CTX_copy(hctx3, hctx);
+        HMAC_Update(hctx3, U, 64);
+        HMAC_Final(hctx3, U, &ulen);
+        HMAC_CTX_free(hctx3);
+        for (int j=0;j<64;j++) T[j]^=U[j];
+    }
+    HMAC_CTX_free(hctx);
+    memcpy(out, T, 64);
+}
 static void pbkdf2_sha512_1iter(const char *pass, int plen, const uint8_t *salt, int slen, uint8_t *out) {
-    /* Single iteration PBKDF2 - reuse existing PKCS5 with iter=1 */
-    PKCS5_PBKDF2_HMAC(pass, plen, salt, slen, 1, EVP_sha512(), 64, out);
+    fast_pbkdf2_sha512(pass, plen, salt, slen, 1, out);
 }
 
 /* =========================================================
@@ -563,7 +591,7 @@ static void *worker_bip39_fn(void *){
         nhits=0; local_done=0;
         for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
             gen_mnemonic(mn,sizeof(mn));
-            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,EVP_sha512(),64,seed);
+            fast_pbkdf2_sha512(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,PBKDF2_ITERS,seed);
             HDKey master; derive_master(seed,&master);
             /* --- Shared subtree m/44'/0'/0' --- */
             HDKey h44,h44_0,h44_0_0;
