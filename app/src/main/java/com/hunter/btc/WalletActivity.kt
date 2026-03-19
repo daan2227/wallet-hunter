@@ -59,6 +59,7 @@ class WalletActivity : FragmentActivity() {
     /* -- LIFECYCLE -- */
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        requestWindowFeature(android.view.Window.FEATURE_NO_TITLE)
         lastInteraction = System.currentTimeMillis()
         // Check if coming from puzzle match with WIF
         val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
@@ -1091,7 +1092,7 @@ class WalletActivity : FragmentActivity() {
             addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
         dlg.show()
-        btnCancel.setOnClickListener { dlg.dismiss(); finish() }
+        btnCancel.setOnClickListener { dlg.dismiss(); showWalletSelectorDialog() }
         btnNext.setOnClickListener {
             val mn = etSeed.text.toString().trim()
             if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
