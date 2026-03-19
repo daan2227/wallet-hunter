@@ -629,8 +629,7 @@ static void *worker_bip39_fn(void *){
             char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
             uint8_t h160b[20]; pk_to_h160(ctx,hits[i].pk,h160b); h160_to_addr(h160b,addr); pk_to_wif(hits[i].pk,wif);
             for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
-            uint8_t h160b2[20]; pk_to_h160(ctx,hits[i].pk,h160b2); read_row_by_h160(h160b2,sats,type_);
-            uint64_t satval=(uint64_t)strtoull(sats,NULL,10); double btc=satval/1e8;
+            double btc=0.0; /* sats not available in .bin format — check via Electrum */
             char extra[512]; snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
             save_match(pkhex,addr,btc,wif,extra);
         }
@@ -660,7 +659,7 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
     } else if(g_csv_loaded.load()){
         int64_t i=bsearch_h160(h160);
-        if(i>=0){match=1;read_row_by_h160(h160,sats_buf,type_buf);}
+        if(i>=0){match=1;}  /* sats not in .bin */
     }
     if(match){
         g_found.fetch_add(1);
@@ -670,8 +669,7 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
         h160_to_addr(h160,addr); pk_to_wif(privkey,wif);
         for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
-        uint64_t satval=(uint64_t)strtoull(sats_buf,NULL,10);
-        double btc=g_has_target?0.0:satval/1e8;
+        double btc=0.0; /* check via Electrum */
         char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
         save_match(pkhex,addr,btc,wif,extra);
         add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
