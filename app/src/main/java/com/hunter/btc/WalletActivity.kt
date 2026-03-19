@@ -60,6 +60,9 @@ class WalletActivity : FragmentActivity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         lastInteraction = System.currentTimeMillis()
+        /* Fondo dark inmediato — evita flash gris/negro */
+        val rootBg = android.widget.FrameLayout(this).apply { setBackgroundColor(AppTheme.BG_DEEP) }
+        setContentView(rootBg)
         // Check if coming from puzzle match with WIF
         val intentWif = intent.getStringExtra("WIF_KEY") ?: ""
         val intentAddr = intent.getStringExtra("WIF_ADDR") ?: ""
