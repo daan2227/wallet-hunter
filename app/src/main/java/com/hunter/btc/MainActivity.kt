@@ -211,6 +211,41 @@ class MainActivity : Activity() {
         updateLabels()
     }
 
+    private fun autoSelectPuzzle() {
+        tvPuzzleStatus.text = "Checking puzzles..."; tvPuzzleStatus.setTextColor(TXT_SEC)
+        Thread {
+            var bestIdx = 0 // default: puzzle mas facil
+            for ((idx, p) in puzzles.withIndex()) {
+                try {
+                    val url = java.net.URL("https://mempool.space/api/address/${p.addr}")
+                    val conn = url.openConnection() as java.net.HttpURLConnection
+                    conn.connectTimeout = 4000; conn.readTimeout = 4000
+                    val json = conn.inputStream.bufferedReader().readText()
+                    val funded = Regex(""funded_txo_sum":(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    val spent  = Regex(""spent_txo_sum":(\\d+)").find(json)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    val balance = funded - spent
+                    if (balance > 0) {
+                        bestIdx = idx
+                        runOnUiThread {
+                            puzzleSpinner.setSelection(bestIdx)
+                            applyPuzzle(puzzles[bestIdx])
+                            tvPuzzleStatus.text = "Auto-selected #${p.num} — ${balance/100_000_000.0} BTC"
+                            tvPuzzleStatus.setTextColor(AppTheme.GREEN)
+                        }
+                        return@Thread
+                    }
+                } catch(e: Exception) { /* skip on network error */ }
+            }
+            /* Ningun puzzle con fondos — usar el mas facil */
+            runOnUiThread {
+                puzzleSpinner.setSelection(bestIdx)
+                applyPuzzle(puzzles[bestIdx])
+                tvPuzzleStatus.text = "No funded puzzles — using #${puzzles[bestIdx].num}"
+                tvPuzzleStatus.setTextColor(TXT_MUTED)
+            }
+        }.start()
+    }
+
     private fun applyPuzzle(p: PuzzleInfo) {
         etRangeStart.setText(p.start); etRangeEnd.setText(p.end); etTarget.setText(p.addr)
         tvPuzzleStatus.text = "Checking..."; tvPuzzleStatus.setTextColor(TXT_SEC)
@@ -666,7 +701,7 @@ class MainActivity : Activity() {
             if(isPuzzle){rbPuzzle.setTextColor(AMBER);rbPuzzle.background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};rbBip39.setTextColor(TXT_SEC);rbBip39.background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()}}
             else{rbBip39.setTextColor(AMBER);rbBip39.background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};rbPuzzle.setTextColor(TXT_SEC);rbPuzzle.background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()}}
         }
-        rbBip39.setOnClickListener{modeToggle(false)};rbPuzzle.setOnClickListener{modeToggle(true)}
+        rbBip39.setOnClickListener{modeToggle(false)};rbPuzzle.setOnClickListener{modeToggle(true); if(puzzleMode) autoSelectPuzzle()}
 
         /* Wallet + export */
         val _lblWl=secLbl("Wallet");lblWallet=_lblWl;cfgPage.addView(_lblWl)
