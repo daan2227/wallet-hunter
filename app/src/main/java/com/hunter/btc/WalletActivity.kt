@@ -79,8 +79,7 @@ class WalletActivity : FragmentActivity() {
                 wifAddr = intent.getStringExtra("WIF_ADDR") ?: ""
                 currentWalletName = intent.getStringExtra("WALLET_NAME") ?: "WIF Wallet"
                 isWifMode = true
-                showPinDialog(isSetup = false) { ok ->
-                    if (!ok) { finish(); return@showPinDialog }
+                authenticate {
                     loadAddresses(); buildUI()
                 }
             }
@@ -1008,7 +1007,7 @@ class WalletActivity : FragmentActivity() {
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
                     4 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
-                            .setPositiveButton("Delete") { _, _ -> WalletManager.clearSeed(this); finish() }
+                            .setPositiveButton("Delete") { _, _ -> WalletManager.clearSeedOnly(this); finish() }
                             .setNegativeButton("Cancel", null).show()
                 }
             }.show()
