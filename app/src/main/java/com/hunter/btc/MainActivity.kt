@@ -136,6 +136,11 @@ class MainActivity : Activity() {
     private var btnSwitch: Button? = null
     private lateinit var sbThreads: SeekBar
     private lateinit var sbCpu: SeekBar
+    // Puzzle tiene sus propios sliders independientes
+    private lateinit var sbThreadsPuzzle: SeekBar
+    private lateinit var sbCpuPuzzle: SeekBar
+    private lateinit var tvThreadsPuzzle: TextView
+    private lateinit var tvCpuPuzzle: TextView
     private lateinit var tvThreads: TextView
     private lateinit var tvCpu: TextView
     private var tvCsvSec: LinearLayout? = null
@@ -262,225 +267,437 @@ class MainActivity : Activity() {
 
     // ── BUILD SCAN TAB ────────────────────────────────────────────────────────
     private fun buildScanTab(): ScrollView {
-        val scanScroll = ScrollView(this).apply {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(BG_DEEP)
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
-                        val scanPage = LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP)
+        }
 
-        /* Speed hero */
+        // ── Sub-tab bar ───────────────────────────────────────────────────────
+        val subBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(BG_PANEL)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
+        }
+        fun subBtn(lbl: String): TextView = TextView(this).apply {
+            text = lbl; textSize = 10f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+            gravity = Gravity.CENTER; isAllCaps = true; letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        }
+        val sbRun  = subBtn("▶ Run")
+        val sbCfg  = subBtn("⚙ Config")
+        val sbLogs = subBtn("◉ Logs")
+        listOf(sbRun, sbCfg, sbLogs).forEach { subBar.addView(it) }
+        root.addView(subBar)
+
+        // ── Contenedor de sub-páginas ─────────────────────────────────────────
+        val subFrame = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        // ── RUN PAGE ──────────────────────────────────────────────────────────
+        val runPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+
+        // Speed hero
         val heroBlock = LinearLayout(this).apply {
-            orientation=LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
-            setPadding(dp(18),dp(20),dp(18),dp(18))
-            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT)
+            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
+            setPadding(dp(18), dp(20), dp(18), dp(18))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         }
-        val heroLeft = LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
-        heroLeft.addView(TextView(this).apply{text="SPEED";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.18f;setPadding(0,0,0,dp(4))})
-        tvWps = TextView(this).apply{text="0";textSize=50f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD)}
+        val heroLeft = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        heroLeft.addView(TextView(this).apply {
+            text = "SPEED"; textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.18f; setPadding(0,0,0,dp(4))
+        })
+        tvWps = TextView(this).apply { text = "0"; textSize = 50f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD) }
         heroLeft.addView(tvWps)
-        heroLeft.addView(TextView(this).apply{text="keys / second";textSize=11f;setTextColor(TXT_SEC);setPadding(0,dp(3),0,0)})
-        val heroRight = LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=android.view.Gravity.END}
-        tvCount = TextView(this).apply{text="0";textSize=17f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END}
-        tvTime  = TextView(this).apply{text="00:00:00";textSize=17f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END}
+        heroLeft.addView(TextView(this).apply { text = "keys / second"; textSize = 11f; setTextColor(TXT_SEC); setPadding(0,dp(3),0,0) })
+        val heroRight = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
+        tvCount = TextView(this).apply { text = "0"; textSize = 17f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
+        tvTime  = TextView(this).apply { text = "00:00:00"; textSize = 17f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
         heroRight.addView(tvCount)
-        heroRight.addView(TextView(this).apply{text="SCANNED";textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,dp(12))})
+        heroRight.addView(TextView(this).apply { text = "SCANNED"; textSize = 8f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0,dp(2),0,dp(12)) })
         heroRight.addView(tvTime)
-        heroRight.addView(TextView(this).apply{text="ELAPSED";textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=android.view.Gravity.END;letterSpacing=0.13f;setPadding(0,dp(2),0,0)})
+        heroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0,dp(2),0,0) })
         heroBlock.addView(heroLeft); heroBlock.addView(heroRight)
-        scanPage.addView(heroBlock)
-        scanPage.addView(View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
+        runPage.addView(heroBlock)
+        runPage.addView(View(this).apply { setBackgroundColor(BORDER_C); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
 
-        /* Quick strip */
-        val qStrip = LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setBackgroundColor(BG_PANEL);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(58))}
-        fun qCell(value:String,label:String,color:Int,click:(()->Unit)?=null):Pair<LinearLayout,TextView>{
-            val tv=TextView(this).apply{text=value;textSize=15f;setTextColor(color);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=Gravity.CENTER}
-            val lb=TextView(this).apply{text=label;textSize=8f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);gravity=Gravity.CENTER;letterSpacing=0.12f}
-            val cell=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;gravity=Gravity.CENTER;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.MATCH_PARENT,1f);if(click!=null){setOnClickListener{click()};isClickable=true}}
-            cell.addView(tv);cell.addView(lb);return Pair(cell,tv)
+        // Start/Stop button
+        val coinGreen = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(12).toFloat() }
+        val coinRed   = GradientDrawable().apply { setColor(RED);   cornerRadius = dp(12).toFloat() }
+        btnToggle = Button(this).apply {
+            text = s.start; textSize = 15f; setTextColor(android.graphics.Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
+            background = coinGreen
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
+            setOnClickListener { doToggle() }
         }
-        fun vDiv()=View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(1,LinearLayout.LayoutParams.MATCH_PARENT)}
-        val csvLbl=if(csvPath.isNotEmpty()&&File(csvPath).exists())File(csvPath).nameWithoutExtension.take(7) else "No file"
-        val(c0,tvQT)=qCell("${prefs.getInt("threads",3)+1}","THREADS",AMBER){goTab(2)};tvQuickThreads=tvQT
-        val(c1,tvQCpu)=qCell("${prefs.getInt("cpu",70)+10}%","CPU",AppTheme.CYAN){goTab(2)};tvQuickCpu=tvQCpu
-        val(c2,tvQC)=qCell(csvLbl,"DATASET",TXT_MUTED){goTab(2)};tvQuickCsv=tvQC
-        val(c3,tvQM)=qCell("0","MATCHES",TXT_MUTED);tvQuickMatches=tvQM
-        qStrip.addView(c0);qStrip.addView(vDiv());qStrip.addView(c1);qStrip.addView(vDiv());qStrip.addView(c2);qStrip.addView(vDiv());qStrip.addView(c3)
-        scanPage.addView(qStrip)
-        scanPage.addView(View(this).apply{setBackgroundColor(BORDER_C);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
+        btnToggle.tag = arrayOf(coinGreen, coinRed)
+        val actZone = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
+        actZone.addView(btnToggle); runPage.addView(actZone)
 
-        /* Big action button */
-        val coinGreen=GradientDrawable().apply{setColor(AppTheme.AMBER);cornerRadius=dp(12).toFloat()}
-        val coinRed  =GradientDrawable().apply{setColor(AppTheme.RED);cornerRadius=dp(12).toFloat()}
-        btnToggle=Button(this).apply{
-            text=s.start;textSize=15f;setTextColor(android.graphics.Color.BLACK)
-            typeface=Typeface.create("sans-serif-black",Typeface.BOLD);letterSpacing=0.12f;isAllCaps=true
-            background=coinGreen
-            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(56))
-            setOnClickListener{doToggle()}
+        // Speed chart
+        val chartCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = cardBg()
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16),0,dp(16),dp(8)) }
         }
-        btnToggle.tag=arrayOf(coinGreen,coinRed)
-        val actZone=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(14))}
-        actZone.addView(btnToggle);scanPage.addView(actZone)
+        chartCard.addView(TextView(this).apply { text = "SPEED HISTORY"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(0,0,0,dp(10)) })
+        chartView = SpeedChartView(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)) }
+        chartCard.addView(chartView); runPage.addView(chartCard)
 
-        /* Stat cards: tvKps apunta al mismo texto que tvWps (sin duplicar UI) */
-        val statSec=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0)}
-        tvKps=tvWps  // alias — no card duplicada
-        val tvSc2=tvCount
-        val tvTm2=tvTime
+        // Matches log
+        val matchCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = cardBg()
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16),0,dp(16),dp(8)) }
+        }
+        matchCard.addView(TextView(this).apply { text = "MATCHES"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(dp(14),dp(10),dp(14),dp(4)) })
+        tvMatchList = TextView(this).apply {
+            text = "No matches yet"; setTextColor(TXT_MUTED); textSize = 11f; typeface = Typeface.MONOSPACE
+            setPadding(dp(14),dp(4),dp(14),dp(12))
+        }
+        matchCard.addView(tvMatchList); runPage.addView(matchCard)
 
-        /* tvMatches — inicializado pero mostrado solo en Quick Strip y tvMatchList */
-        tvMatches=TextView(this).apply{text="0";textSize=15f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD)}
+        // System vars init
+        tvRam     = TextView(this).apply { text = "RAM --"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE; setPadding(dp(16),dp(4),dp(16),dp(8)) }
+        tvBattery = TextView(this).apply { text = "BAT --"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE }
+        tvTemp    = TextView(this).apply { text = ""; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE }
+        tvMatches = TextView(this).apply { text = "0"; textSize = 9f; setTextColor(TXT_MUTED) }
+        tvAddrFeed = TextView(this).apply { text = ""; setTextColor(TXT_SEC); textSize = 10f; typeface = Typeface.MONOSPACE }
+        tvFooter  = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
+        tvStatus  = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
+        tvKps     = tvWps
+        val sysRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16),0,dp(16),dp(8)) }
+        sysRow.addView(tvRam); sysRow.addView(tvBattery)
+        runPage.addView(sysRow)
+        runPage.addView(tvFooter); runPage.addView(tvStatus)
 
-        /* Sparkline */
-        val sparkCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();setPadding(dp(14),dp(12),dp(14),dp(12));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(6)}}
-        sparkCard.addView(TextView(this).apply{text="SPEED HISTORY";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.14f;setPadding(0,0,0,dp(10))})
-        chartView=SpeedChartView(this).apply{layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(52))}
-        sparkCard.addView(chartView);statSec.addView(sparkCard);scanPage.addView(statSec)
+        // ── CONFIG PAGE ───────────────────────────────────────────────────────
+        val cfgPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(14), dp(16), dp(24))
+            visibility = android.view.View.GONE
+        }
 
-        /* Live feed */
-        val feedSec=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),0,dp(16),0)}
-        val feedCard=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true}
-        val feedHdr=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(9),dp(14),dp(9));setBackgroundColor(0x2D000000)}
-        feedHdr.addView(View(this).apply{background=GradientDrawable().apply{shape=GradientDrawable.OVAL;setColor(AMBER)};layoutParams=LinearLayout.LayoutParams(dp(6),dp(6)).apply{marginEnd=dp(6)}})
-        feedHdr.addView(TextView(this).apply{text="STREAMING";textSize=9f;setTextColor(AMBER);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.1f;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)})
-        feedHdr.addView(TextView(this).apply{text="last 3";textSize=9f;setTextColor(TXT_MUTED)})
-        feedCard.addView(feedHdr)
-        tvAddrFeed=TextView(this).apply{text=s.waitingStart;setTextColor(TXT_SEC);textSize=10f;typeface=Typeface.MONOSPACE;setPadding(dp(14),dp(10),dp(14),dp(12));setLineSpacing(0f,1.5f)}
-        feedCard.addView(tvAddrFeed);feedSec.addView(feedCard)
-        tvMatchList=TextView(this).apply{text=s.noMatch;setTextColor(TXT_MUTED);textSize=11f;typeface=Typeface.MONOSPACE;background=cardBg();setPadding(dp(14),dp(12),dp(14),dp(12));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{topMargin=dp(6)}}
-        feedSec.addView(tvMatchList);scanPage.addView(feedSec)
-        tvStatus=TextView(this).apply{visibility=android.view.View.GONE;text=""}
-        tvFooter=TextView(this).apply{visibility=android.view.View.GONE;text=""}
-        scanPage.addView(tvStatus);scanPage.addView(tvFooter)
-        scanPage.addView(View(this).apply{layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,dp(20))})
-        ;
+        // Dataset
+        cfgPage.addView(TextView(this).apply { text = "DATASET"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(8)) })
+        val dataCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = cardBg(); clipToOutline = true; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) } }
+        val csvRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        btnCsv = Button(this).apply {
+            text = "Load CSV"; textSize = 11f; setTextColor(android.graphics.Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable().apply { setColor(AMBER) }
+            setPadding(dp(18),0,dp(18),0); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(50))
+            setOnClickListener { pickCsv() }
+        }
+        val tvCsvName = TextView(this).apply {
+            text = if (csvPath.isNotEmpty() && File(csvPath).exists()) File(csvPath).name else "No file"
+            setTextColor(TXT_MUTED); textSize = 10f; typeface = Typeface.MONOSPACE
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+            setPadding(dp(14),0,dp(14),0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        csvRow.addView(btnCsv); csvRow.addView(tvCsvName); dataCard.addView(csvRow)
+        cfgPage.addView(dataCard)
 
-        scanScroll.addView(scanPage)
-        return scanScroll
+        // Threads + CPU
+        cfgPage.addView(TextView(this).apply { text = "PERFORMANCE"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(8)) })
+        val perfCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = cardBg(); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) } }
+        tvThreads = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16),dp(12),dp(16),dp(4)) }
+        sbThreads = SeekBar(this).apply { max = 7; progress = prefs.getInt("threads",3); setPadding(dp(16),0,dp(16),dp(4)); setOnSeekBarChangeListener(mkSbl { updateLabels() }) }
+        tvCpu = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16),dp(8),dp(16),dp(4)) }
+        sbCpu = SeekBar(this).apply { max = 90; progress = prefs.getInt("cpu",70); setPadding(dp(16),0,dp(16),dp(12)); setOnSeekBarChangeListener(mkSbl { updateLabels(); if(HunterEngine.isRunning()) HunterEngine.setCpuLimit(sbCpu.progress+10) }) }
+        perfCard.addView(tvThreads); perfCard.addView(sbThreads); perfCard.addView(tvCpu); perfCard.addView(sbCpu)
+        cfgPage.addView(perfCard)
+
+        // Fast mode
+        cfgPage.addView(TextView(this).apply { text = "SCAN MODE"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(8)) })
+        val fastCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = cardBg(); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) } }
+        val fastRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(14)) }
+        val fastLeft = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        fastLeft.addView(TextView(this).apply { text = "Fast Scan Mode"; textSize = 13f; setTextColor(TXT_PRI) })
+        fastLeft.addView(TextView(this).apply { text = "1 iter — 60k/s vs 9k/s standard"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE; setPadding(0,dp(2),0,0) })
+        val fastSwitch = android.widget.Switch(this).apply {
+            isChecked = fastModeEnabled
+            setOnCheckedChangeListener { _, checked ->
+                fastModeEnabled = checked
+                HunterEngine.setPbkdf2Mode(if(checked) 1 else 0)
+                prefs.edit().putBoolean("fastMode", checked).apply()
+            }
+        }
+        fastModeEnabled = prefs.getBoolean("fastMode", false)
+        HunterEngine.setPbkdf2Mode(if(fastModeEnabled) 1 else 0)
+        fastSwitch.isChecked = fastModeEnabled
+        fastRow.addView(fastLeft); fastRow.addView(fastSwitch); fastCard.addView(fastRow)
+        cfgPage.addView(fastCard)
+
+        // ── LOGS PAGE ─────────────────────────────────────────────────────────
+        val logsPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(24))
+            visibility = android.view.View.GONE
+        }
+        logsPage.addView(TextView(this).apply { text = "SCAN LOGS"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(10)) })
+
+        fun refreshScanLogs() {
+            logsPage.removeViews(1, logsPage.childCount - 1)
+            val dir = getExternalFilesDir(null) ?: filesDir
+            val files = dir.listFiles { f -> f.name.endsWith(".txt") }
+                ?.sortedByDescending { it.lastModified() } ?: emptyList()
+            if (files.isEmpty()) {
+                logsPage.addView(TextView(this).apply { text = "No logs yet"; textSize = 11f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE; setPadding(0,dp(8),0,0) })
+            }
+            files.forEach { f ->
+                val row = LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    background = cardBg(); setPadding(dp(12),dp(10),dp(12),dp(10))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
+                }
+                val tv = TextView(this).apply {
+                    text = f.name; textSize = 10f; setTextColor(TXT_PRI); typeface = Typeface.MONOSPACE
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                val btnView = Button(this).apply {
+                    text = "View"; textSize = 9f; setTextColor(AMBER)
+                    background = GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(4).toFloat() }
+                    setPadding(dp(10),dp(4),dp(10),dp(4))
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
+                    setOnClickListener {
+                        AlertDialog.Builder(this@MainActivity).setTitle(f.name)
+                            .setMessage(f.readText()).setPositiveButton("OK", null).show()
+                    }
+                }
+                val btnShare = Button(this).apply {
+                    text = "Share"; textSize = 9f; setTextColor(TXT_MUTED)
+                    background = GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(4).toFloat() }
+                    setPadding(dp(10),dp(4),dp(10),dp(4))
+                    setOnClickListener {
+                        val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.provider", f)
+                        val i = android.content.Intent(android.content.Intent.ACTION_SEND).apply { type="text/plain"; putExtra(android.content.Intent.EXTRA_STREAM, uri); addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+                        startActivity(android.content.Intent.createChooser(i, "Share log"))
+                    }
+                }
+                row.addView(tv); row.addView(btnView); row.addView(btnShare)
+                logsPage.addView(row)
+            }
+        }
+
+        // ── Sub-tab logic ─────────────────────────────────────────────────────
+        val scanSubPages = listOf(runPage, cfgPage, logsPage)
+        val scanSubBtns  = listOf(sbRun, sbCfg, sbLogs)
+        fun goScanSub(idx: Int) {
+            scanSubPages.forEachIndexed { i, v -> v.visibility = if (i==idx) android.view.View.VISIBLE else android.view.View.GONE }
+            scanSubBtns.forEachIndexed  { i, b -> b.setTextColor(if (i==idx) AMBER else TXT_MUTED) }
+            if (idx == 2) refreshScanLogs()
+        }
+        sbRun.setOnClickListener  { goScanSub(0) }
+        sbCfg.setOnClickListener  { goScanSub(1) }
+        sbLogs.setOnClickListener { goScanSub(2) }
+        goScanSub(0)
+
+        scanSubPages.forEach { subFrame.addView(it) }
+        root.addView(subFrame)
+        scroll.addView(root)
+        return scroll
     }
 
     // ── BUILD PUZZLE TAB ──────────────────────────────────────────────────────
     private fun buildPuzzleTab(): ScrollView {
-        val cfgScroll = ScrollView(this).apply {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(BG_DEEP)
             visibility = android.view.View.GONE
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
+            layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
         }
-                        val cfgPage=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(24))}
-        fun cfgCard()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}}
+        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
-        /* Dataset */
-        val _lblDs=secLbl(s.csvSection);lblDataset=_lblDs;cfgPage.addView(_lblDs)
-        val dataCard=cfgCard()
-        val csvRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;clipToOutline=true}
-        btnCsv=Button(this).apply{text="Load Dataset";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER)};setPadding(dp(18),0,dp(18),0);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,dp(50));setOnClickListener{pickCsv()}}
-        val csvInfo=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),0,dp(14),0);layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.MATCH_PARENT,1f)}
-        val tvCsvName=TextView(this).apply{text=if(csvPath.isNotEmpty()&&File(csvPath).exists())File(csvPath).name else s.noFile;setTextColor(TXT_MUTED);textSize=10f;typeface=Typeface.MONOSPACE;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
-        tvStatus=tvCsvName
-        if(csvPath.isNotEmpty()&&File(csvPath).exists())csvInfo.addView(TextView(this).apply{text="●";textSize=8f;setTextColor(AppTheme.GREEN);setPadding(dp(6),0,0,0)})
-        csvInfo.addView(tvCsvName);csvRow.addView(btnCsv);csvRow.addView(csvInfo);dataCard.addView(csvRow)
-        csvSecView=dataCard;tvCsvSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
-        cfgPage.addView(dataCard)
+        // Sub-tab bar
+        val subBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44))
+        }
+        fun subBtn(lbl: String): TextView = TextView(this).apply {
+            text = lbl; textSize = 10f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+            gravity = Gravity.CENTER; isAllCaps = true; letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f)
+        }
+        val pbRun  = subBtn("▶ Run")
+        val pbCfg  = subBtn("⚙ Config")
+        val pbLogs = subBtn("◉ Logs")
+        listOf(pbRun, pbCfg, pbLogs).forEach { subBar.addView(it) }
+        root.addView(subBar)
 
-        /* Performance sliders */
-        val _lblPf=secLbl(s.configSection);lblPerformance=_lblPf;cfgPage.addView(_lblPf)
-        val perfCard=cfgCard()
-        fun sliderWrap(tv:TextView,bar:SeekBar):LinearLayout{val w=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(12),dp(16),dp(14))};w.addView(tv);w.addView(bar);return w}
-        tvThreads=TextView(this).apply{setTextColor(TXT_PRI);textSize=12f;setPadding(0,0,0,dp(10))}
-        sbThreads=SeekBar(this).apply{max=7;progress=prefs.getInt("threads",3);setOnSeekBarChangeListener(mkSbl{updateLabels()})}
-        tvCpu    =TextView(this).apply{setTextColor(TXT_PRI);textSize=12f;setPadding(0,0,0,dp(10))}
-        sbCpu    =SeekBar(this).apply{max=90;progress=prefs.getInt("cpu",70);setOnSeekBarChangeListener(mkSbl{updateLabels();if(HunterEngine.isRunning())HunterEngine.setCpuLimit(sbCpu.progress+10)})}
-        perfCard.addView(sliderWrap(tvThreads,sbThreads))
-        perfCard.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
-        perfCard.addView(sliderWrap(tvCpu,sbCpu))
-        cfgPage.addView(perfCard);updateLabels()
+        val subFrame = FrameLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
 
-        /* Fast Scan toggle */
-        val fastCard=cfgCard()
-        val fastRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(14))}
-        val fastLeft=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)}
-        fastLeft.addView(TextView(this).apply{text="Fast Scan Mode";textSize=13f;setTextColor(TXT_PRI)})
-        fastLeft.addView(TextView(this).apply{text="1 iter — 60k/s vs 9k/s standard";textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.NORMAL);setPadding(0,dp(2),0,0)})
-        val fastSwitch=android.widget.Switch(this).apply{
-            isChecked=fastModeEnabled
-            setOnCheckedChangeListener{_,checked->
-                fastModeEnabled=checked
-                HunterEngine.setPbkdf2Mode(if(checked)1 else 0)
-                getSharedPreferences("hunter",MODE_PRIVATE).edit().putBoolean("fastMode",checked).apply()
+        // ── RUN PAGE ──────────────────────────────────────────────────────────
+        val runPage = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(14),dp(16),dp(24)) }
+
+        runPage.addView(TextView(this).apply { text = "⬡  PUZZLE HUNT"; textSize = 13f; setTextColor(AMBER); typeface = Typeface.create("monospace", Typeface.BOLD); setPadding(0,dp(4),0,dp(12)) })
+
+        tvPuzzleStatus = TextView(this).apply {
+            text = "Select a puzzle in Config tab"; textSize = 11f; typeface = Typeface.MONOSPACE; setTextColor(GREEN)
+            background = GradientDrawable().apply { setColor(0x1510D97A); setStroke(1,0x2510D97A); cornerRadius = dp(6).toFloat() }
+            setPadding(dp(10),dp(8),dp(10),dp(8))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(14) }
+        }
+        runPage.addView(tvPuzzleStatus)
+
+        // Start/Stop puzzle
+        val pCoinGreen = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(12).toFloat() }
+        val pCoinRed   = GradientDrawable().apply { setColor(RED);   cornerRadius = dp(12).toFloat() }
+        val btnPuzzleToggle = Button(this).apply {
+            text = "▶  START PUZZLE"; textSize = 15f; setTextColor(android.graphics.Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
+            background = pCoinGreen
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(12) }
+            setOnClickListener { doToggle() }
+        }
+        btnPuzzleToggle.tag = arrayOf(pCoinGreen, pCoinRed)
+        runPage.addView(btnPuzzleToggle)
+
+        // Balance checker
+        val balCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = cardBg()
+            setPadding(dp(14),dp(12),dp(14),dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+        }
+        balCard.addView(TextView(this).apply { text = "BALANCE CHECKER"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(0,0,0,dp(8)) })
+        val tvBalResult = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(TXT_PRI); typeface = Typeface.MONOSPACE }
+        val btnCheckBal = Button(this).apply {
+            text = "Check Balance"; textSize = 11f; setTextColor(android.graphics.Color.BLACK)
+            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(6).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
+            setOnClickListener {
+                val addr = etTarget.text.toString().trim()
+                if (addr.isEmpty()) { tvBalResult.text = "No address set"; return@setOnClickListener }
+                tvBalResult.text = "Checking..."
+                checkPuzzleBalance(addr) { bal ->
+                    tvBalResult.text = if (bal > 0) "Balance: ${bal/100_000_000.0} BTC" else "Balance: 0 BTC"
+                }
             }
         }
-        fastRow.addView(fastLeft);fastRow.addView(fastSwitch);fastCard.addView(fastRow)
-        cfgPage.addView(fastCard)
-        /* Restaurar fast mode */
-        fastModeEnabled=prefs.getBoolean("fastMode",false)
-        HunterEngine.setPbkdf2Mode(if(fastModeEnabled)1 else 0)
-        fastSwitch.isChecked=fastModeEnabled
+        balCard.addView(tvBalResult); balCard.addView(btnCheckBal)
+        runPage.addView(balCard)
 
-        /* Search mode */
-        val _lblMd=secLbl(s.modeSection);lblMode=_lblMd;cfgPage.addView(_lblMd)
-        val modeCard=cfgCard()
-        val modeRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(dp(12),dp(12),dp(12),dp(12));gravity=Gravity.CENTER_VERTICAL}
-        rbBip39 =Button(this).apply{text=s.modeBip39;textSize=11f;setTextColor(AMBER);typeface=Typeface.create("monospace",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(40),1f).apply{marginEnd=dp(4)};setPadding(dp(4),0,dp(4),0)}
-        rbPuzzle=Button(this).apply{text=s.modePuzzle;textSize=11f;setTextColor(TXT_SEC);typeface=Typeface.create("monospace",Typeface.NORMAL);background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(40),1f);setPadding(dp(4),0,dp(4),0)}
-        modeRow.addView(rbBip39);modeRow.addView(rbPuzzle);modeCard.addView(modeRow)
-        layoutPuzzle=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;visibility=android.view.View.GONE;setPadding(dp(14),0,dp(14),dp(14))}
-        val dayOfYear=java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
-        val defaultIdx=dayOfYear%puzzles.size
-        layoutPuzzle.addView(TextView(this).apply{text=s.puzzleSelect;textSize=9f;setTextColor(TXT_SEC);setPadding(0,0,0,dp(4))})
-        puzzleSpinner=Spinner(this).apply{adapter=themedAdapter(puzzles.map{"#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..."});setSelection(defaultIdx);background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(6).toFloat()}}
-        layoutPuzzle.addView(puzzleSpinner)
-        val rangeRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
-        fun fld(lbl:String):Pair<LinearLayout,EditText>{val col=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f).apply{marginEnd=dp(4)}};col.addView(TextView(this).apply{text=lbl;textSize=9f;setTextColor(TXT_SEC);setPadding(0,0,0,dp(2))});val et=EditText(this).apply{setTextColor(TXT_PRI);textSize=10f;typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,BORDER_C);cornerRadius=dp(6).toFloat()};setPadding(dp(8),dp(6),dp(8),dp(6));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS};
-;return Pair(col,et)}
-        val(cS,eS)=fld(s.rangeStart);etRangeStart=eS;rangeRow.addView(cS)
-        val(cE,eE)=fld(s.rangeEnd);etRangeEnd=eE;rangeRow.addView(cE)
-        layoutPuzzle.addView(rangeRow)
-        layoutPuzzle.addView(TextView(this).apply{text=s.targetAddr;textSize=9f;setTextColor(TXT_SEC);setPadding(0,dp(8),0,dp(2))})
-        etTarget=EditText(this).apply{setTextColor(AMBER);textSize=10f;typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,BORDER_C);cornerRadius=dp(6).toFloat()};setPadding(dp(8),dp(6),dp(8),dp(6));inputType=android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS}
-        layoutPuzzle.addView(etTarget)
-        tvPuzzleStatus=TextView(this).apply{text="";textSize=10f;typeface=Typeface.MONOSPACE;setTextColor(AppTheme.GREEN);background=GradientDrawable().apply{setColor(0x1510D97A);setStroke(1,0x2510D97A);cornerRadius=dp(6).toFloat()};setPadding(dp(10),dp(6),dp(10),dp(6));layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{topMargin=dp(6)}}
-        layoutPuzzle.addView(tvPuzzleStatus);applyPuzzle(puzzles[defaultIdx])
-        puzzleSpinner.onItemSelectedListener=object:AdapterView.OnItemSelectedListener{var init=true;override fun onItemSelected(a:AdapterView<*>,v:android.view.View?,pos:Int,id:Long){if(init){init=false;return};applyPuzzle(puzzles[pos])};override fun onNothingSelected(a:AdapterView<*>){}}
-        modeCard.addView(layoutPuzzle);cfgPage.addView(modeCard)
-        tvConfigSec=LinearLayout(this).also{it.visibility=android.view.View.GONE}
-        val modeToggle={isPuzzle:Boolean->
-            puzzleMode=isPuzzle
-            layoutPuzzle.visibility=if(isPuzzle)android.view.View.VISIBLE else android.view.View.GONE
-            HunterEngine.setMode(if(isPuzzle)1 else 0)
-            if(isPuzzle){rbPuzzle.setTextColor(AMBER);rbPuzzle.background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};rbBip39.setTextColor(TXT_SEC);rbBip39.background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()}}
-            else{rbBip39.setTextColor(AMBER);rbBip39.background=GradientDrawable().apply{setColor(BG_ELEV);setStroke(1,0x33A8FF00);cornerRadius=dp(8).toFloat()};rbPuzzle.setTextColor(TXT_SEC);rbPuzzle.background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()}}
+        // ── CONFIG PAGE ───────────────────────────────────────────────────────
+        val cfgPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16),dp(14),dp(16),dp(24))
+            visibility = android.view.View.GONE
         }
-        rbBip39.setOnClickListener{modeToggle(false)};rbPuzzle.setOnClickListener{modeToggle(true); if(puzzleMode) autoSelectPuzzle()}
 
-        /* Wallet + export */
-        val _lblWl=secLbl("Wallet");lblWallet=_lblWl;cfgPage.addView(_lblWl)
-        val walletCard=cfgCard()
-        fun navRow(title:String,sub:String,click:()->Unit):LinearLayout{val r=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(16),dp(13),dp(16),dp(13));isClickable=true;setOnClickListener{click()}};val lc=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)};lc.addView(TextView(this).apply{text=title;textSize=13f;setTextColor(TXT_PRI)});lc.addView(TextView(this).apply{text=sub;textSize=10f;setTextColor(TXT_SEC);typeface=Typeface.MONOSPACE;setPadding(0,dp(2),0,0)});r.addView(lc);r.addView(TextView(this).apply{text="›";textSize=18f;setTextColor(TXT_MUTED)});return r}
-        walletCard.addView(navRow("Open Wallet","View balances & addresses"){showWalletSelector()})
-        walletCard.addView(View(this).apply{setBackgroundColor(0x08FFFFFF);layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,1)})
-        walletCard.addView(navRow("Export Log","Save matches to file"){exportLog()})
-        cfgPage.addView(walletCard)
+        cfgPage.addView(TextView(this).apply { text = "PUZZLE"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(8)) })
+        val puzzleCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = cardBg(); setPadding(dp(14),dp(12),dp(14),dp(14)); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) } }
 
+        val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
+        val defaultIdx = dayOfYear % puzzles.size
+        puzzleSpinner = Spinner(this).apply {
+            adapter = themedAdapter(puzzles.map { "#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..." })
+            setSelection(defaultIdx)
+            background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1,BORDER_C); cornerRadius = dp(6).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+        }
 
-        /* System log */
-        val _lblLg=secLbl(s.logSection);lblLog=_lblLg;cfgPage.addView(_lblLg)
-        val logCard=cfgCard()
-        val logHdr=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;gravity=Gravity.CENTER_VERTICAL;setPadding(dp(14),dp(9),dp(14),dp(9));setBackgroundColor(0x2D000000)}
-        logHdr.addView(TextView(this).apply{text="System Events";textSize=9f;setTextColor(TXT_PRI);typeface=Typeface.create("monospace",Typeface.BOLD);layoutParams=LinearLayout.LayoutParams(0,LinearLayout.LayoutParams.WRAP_CONTENT,1f)})
-        logHdr.addView(TextView(this).apply{text="last session";textSize=9f;setTextColor(TXT_MUTED)})
-        logCard.addView(logHdr)
-        tvLog=TextView(this).apply{text="";setTextColor(TXT_SEC);textSize=9f;typeface=Typeface.MONOSPACE;setPadding(dp(14),dp(8),dp(14),dp(12));setLineSpacing(0f,1.3f);maxLines=15}
-        logCard.addView(tvLog);cfgPage.addView(logCard)
-        ;
+        val btnAutoSelect = Button(this).apply {
+            text = "⚡ Auto-select best puzzle"; textSize = 11f; setTextColor(AMBER)
+            background = GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) }
+            setOnClickListener { autoSelectPuzzle() }
+        }
+        puzzleCard.addView(puzzleSpinner); puzzleCard.addView(btnAutoSelect)
 
-        cfgScroll.addView(cfgPage)
-        return cfgScroll
+        fun fld(lbl: String): Pair<LinearLayout, EditText> {
+            val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) } }
+            col.addView(TextView(this).apply { text = lbl; textSize = 9f; setTextColor(TXT_SEC); setPadding(0,0,0,dp(2)) })
+            val et = EditText(this).apply {
+                setTextColor(TXT_PRI); textSize = 10f; typeface = Typeface.MONOSPACE
+                background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1,BORDER_C); cornerRadius = dp(6).toFloat() }
+                setPadding(dp(8),dp(6),dp(8),dp(6))
+                inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            }
+            col.addView(et); return Pair(col, et)
+        }
+        val rangeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } }
+        val (cS, eS) = fld("Range Start"); etRangeStart = eS; rangeRow.addView(cS)
+        val (cE, eE) = fld("Range End");   etRangeEnd   = eE; rangeRow.addView(cE)
+        puzzleCard.addView(rangeRow)
+
+        puzzleCard.addView(TextView(this).apply { text = "Target Address"; textSize = 9f; setTextColor(TXT_SEC); setPadding(0,dp(4),0,dp(2)) })
+        etTarget = EditText(this).apply {
+            setTextColor(AMBER); textSize = 10f; typeface = Typeface.MONOSPACE
+            background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1,BORDER_C); cornerRadius = dp(6).toFloat() }
+            setPadding(dp(8),dp(6),dp(8),dp(6))
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+        }
+        puzzleCard.addView(etTarget)
+        cfgPage.addView(puzzleCard)
+
+        applyPuzzle(puzzles[defaultIdx])
+        puzzleSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            var init = true
+            override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) { if(init){init=false;return}; applyPuzzle(puzzles[pos]) }
+            override fun onNothingSelected(a: AdapterView<*>) {}
+        }
+
+        // Threads + CPU propios del puzzle
+        cfgPage.addView(TextView(this).apply { text = "PERFORMANCE"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,dp(12),0,dp(8)) })
+        val perfCard = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; background = cardBg(); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) } }
+        tvThreadsPuzzle = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16),dp(12),dp(16),dp(4)) }
+        sbThreadsPuzzle = SeekBar(this).apply { max = 7; progress = prefs.getInt("puzzle_threads",3); setPadding(dp(16),0,dp(16),dp(4)); setOnSeekBarChangeListener(mkSbl { updatePuzzleLabels() }) }
+        tvCpuPuzzle = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16),dp(8),dp(16),dp(4)) }
+        sbCpuPuzzle = SeekBar(this).apply { max = 90; progress = prefs.getInt("puzzle_cpu",70); setPadding(dp(16),0,dp(16),dp(12)); setOnSeekBarChangeListener(mkSbl { updatePuzzleLabels() }) }
+        perfCard.addView(tvThreadsPuzzle); perfCard.addView(sbThreadsPuzzle)
+        perfCard.addView(tvCpuPuzzle); perfCard.addView(sbCpuPuzzle)
+        cfgPage.addView(perfCard)
+        updatePuzzleLabels()
+
+        // ── LOGS PAGE ─────────────────────────────────────────────────────────
+        val logsPage = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(14),dp(14),dp(14),dp(24))
+            visibility = android.view.View.GONE
+        }
+        logsPage.addView(TextView(this).apply { text = "PUZZLE LOGS"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(10)) })
+        logsPage.addView(TextView(this).apply { text = "No puzzle logs yet"; textSize = 11f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE })
+
+        // Sub-tab logic
+        val subPages = listOf(runPage, cfgPage, logsPage)
+        val subBtns  = listOf(pbRun, pbCfg, pbLogs)
+        fun goPuzzleSub(idx: Int) {
+            subPages.forEachIndexed { i, v -> v.visibility = if(i==idx) android.view.View.VISIBLE else android.view.View.GONE }
+            subBtns.forEachIndexed  { i, b -> b.setTextColor(if(i==idx) AMBER else TXT_MUTED) }
+        }
+        pbRun.setOnClickListener  { goPuzzleSub(0) }
+        pbCfg.setOnClickListener  { goPuzzleSub(1) }
+        pbLogs.setOnClickListener { goPuzzleSub(2) }
+        goPuzzleSub(0)
+
+        subPages.forEach { subFrame.addView(it) }
+        root.addView(subFrame)
+        scroll.addView(root)
+        return scroll
+    }
+
+    private fun updatePuzzleLabels() {
+        val t = sbThreadsPuzzle.progress + 1
+        val c = sbCpuPuzzle.progress + 10
+        tvThreadsPuzzle.text = "Threads: $t"
+        tvCpuPuzzle.text = "CPU limit: $c%"
+        prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle.progress).putInt("puzzle_cpu", sbCpuPuzzle.progress).apply()
     }
 
     // ── BUILD WALLET TAB ──────────────────────────────────────────────────────
