@@ -840,6 +840,30 @@ class MainActivity : Activity() {
         btnRow.addView(btnStartRecovery);btnRow.addView(btnCancelRecovery)
         recoveryPage.addView(btnRow)
 
+        val btnSaveWallet=Button(this).apply{
+            text="⬇  GUARDAR EN WALLET";textSize=11f
+            setTextColor(0xFF000000.toInt());setBackgroundColor(0xFF00FF88.toInt())
+            typeface=Typeface.create("monospace",Typeface.BOLD)
+            visibility=android.view.View.GONE
+            layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{topMargin=dp(8)}
+        }
+        recoveryPage.addView(btnSaveWallet)
+
+        btnSaveWallet.setOnClickListener{
+            val foundMnemonic=it.tag as? String ?: return@setOnClickListener
+            AlertDialog.Builder(this)
+                .setTitle("Guardar en Wallet")
+                .setMessage("¿Guardar esta seed phrase en tu wallet principal?\n\n$foundMnemonic")
+                .setPositiveButton("Guardar"){_,_->
+                    WalletManager.saveSeed(this, foundMnemonic)
+                    btnSaveWallet.visibility=android.view.View.GONE
+                    tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
+                    tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                }
+                .setNegativeButton("Cancelar",null)
+                .show()
+        }
+
         // Inicializar RecoveryEngine
         recoveryEngine=RecoveryEngine(this)
         val wordlistLoaded=recoveryEngine.loadWordlist()
@@ -870,6 +894,8 @@ class MainActivity : Activity() {
                     btnStartRecovery.visibility=android.view.View.VISIBLE
                     tvRecoveryResult.text="✓ ENCONTRADO\n\n$mnemonic"
                     tvRecoveryResult.visibility=android.view.View.VISIBLE
+                    btnSaveWallet.tag=mnemonic
+                    btnSaveWallet.visibility=android.view.View.VISIBLE
                     // Guardar en logs
                     val ts=java.text.SimpleDateFormat("yyyyMMdd_HHmmss",java.util.Locale.US).format(java.util.Date())
                     val f=java.io.File(getExternalFilesDir(null),"recovery_$ts.txt")
