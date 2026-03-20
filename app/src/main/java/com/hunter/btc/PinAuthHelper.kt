@@ -24,7 +24,7 @@ object PinAuthHelper {
 
     fun show(activity: Activity, onResult: (Boolean) -> Unit) {
         val hasPin = WalletManager.hasPin(activity)
-        android.util.Log.d("PinAuthHelper", "hasPin=$hasPin")
+        android.widget.Toast.makeText(activity, "hasPin=$hasPin", android.widget.Toast.LENGTH_LONG).show()
         if (!hasPin) { onResult(true); return }
 
         val sheet = LinearLayout(activity).apply {
