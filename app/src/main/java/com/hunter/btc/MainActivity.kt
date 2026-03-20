@@ -75,9 +75,6 @@ class MainActivity : Activity() {
     private var puzzleMode = false
     data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
     private val puzzles = listOf(
-            // ── Puzzle data ───────────────────────────────────────────────────────────
-    data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
-    private val puzzles = listOf(
         PuzzleInfo(71,"1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU","400000000000000000","7fffffffffffffffff","7.1 BTC"),
         PuzzleInfo(72,"1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR","800000000000000000","ffffffffffffffffff","7.2 BTC"),
         PuzzleInfo(73,"12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4","1000000000000000000","1ffffffffffffffffff","7.3 BTC"),
