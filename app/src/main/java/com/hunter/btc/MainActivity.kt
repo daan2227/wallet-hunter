@@ -389,8 +389,15 @@ class MainActivity : Activity() {
         tvFooter  = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
         tvStatus  = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
         tvKps     = tvWps
+        val tvDatasetStatus = TextView(this).apply {
+            text = if (csvPath.isNotEmpty() && File(csvPath).exists())
+                "Dataset: ${File(csvPath).name}" else "No dataset loaded"
+            textSize = 10f; setTextColor(if (csvPath.isNotEmpty() && File(csvPath).exists()) 0xFF00FF88.toInt() else TXT_MUTED)
+            typeface = Typeface.MONOSPACE; setPadding(dp(16),dp(4),dp(16),dp(4))
+        }
         val sysRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16),0,dp(16),dp(8)) }
         sysRow.addView(tvRam); sysRow.addView(tvBattery)
+        runPage.addView(tvDatasetStatus)
         runPage.addView(sysRow)
         runPage.addView(tvFooter); runPage.addView(tvStatus)
 
@@ -461,6 +468,30 @@ class MainActivity : Activity() {
             visibility = android.view.View.GONE
         }
         logsPage.addView(TextView(this).apply { text = "SCAN LOGS"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,0,0,dp(10)) })
+
+        // Status card - dataset y estadísticas
+        val statusCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = cardBg()
+            setPadding(dp(12),dp(10),dp(12),dp(10))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
+        }
+        val tvLogDataset = TextView(this).apply {
+            text = if (csvPath.isNotEmpty() && File(csvPath).exists())
+                "✓ Dataset: ${File(csvPath).name}
+  ${File(csvPath).length()/1024}KB"
+                else "✗ No dataset loaded"
+            textSize = 10f; typeface = Typeface.MONOSPACE
+            setTextColor(if (csvPath.isNotEmpty()) 0xFF00FF88.toInt() else TXT_MUTED)
+        }
+        val tvLogStats = TextView(this).apply {
+            text = "Total keys scanned: ${formatCount(HunterEngine.getCount())}"
+            textSize = 10f; typeface = Typeface.MONOSPACE; setTextColor(TXT_PRI)
+            setPadding(0,dp(6),0,0)
+        }
+        statusCard.addView(tvLogDataset); statusCard.addView(tvLogStats)
+        logsPage.addView(statusCard)
+
+        logsPage.addView(TextView(this).apply { text = "SAVED LOGS"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.16f; setPadding(0,dp(8),0,dp(8)) })
 
         fun refreshScanLogs() {
             logsPage.removeViews(1, logsPage.childCount - 1)
@@ -1104,6 +1135,14 @@ class MainActivity : Activity() {
             }
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
+        // Actualizar dataset status si está cargando
+        if (HunterEngine.isLoading()) {
+            val status = HunterEngine.getLoadStatus()
+            tvCsvName?.text = status; tvCsvName?.setTextColor(AppTheme.CYAN)
+        } else if (HunterEngine.isCsvLoaded() && csvPath.isNotEmpty()) {
+            tvCsvName?.text = File(csvPath).name
+            tvCsvName?.setTextColor(0xFF00FF88.toInt())
+        }
         } catch (e: Exception) {
             // vars no inicializadas aún
         }
