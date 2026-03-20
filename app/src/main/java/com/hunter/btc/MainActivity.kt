@@ -297,8 +297,7 @@ class MainActivity : Activity() {
         }
         val sbRun  = subBtn("▶ Run")
         val sbCfg  = subBtn("⚙ Config")
-        val sbLogs = subBtn("◉ Logs")
-        listOf(sbRun, sbCfg, sbLogs).forEach { subBar.addView(it) }
+        listOf(sbRun, sbCfg).forEach { subBar.addView(it) }
         root.addView(subBar)
 
         // ── Contenedor de sub-páginas ─────────────────────────────────────────
@@ -535,7 +534,7 @@ class MainActivity : Activity() {
 
         // ── Sub-tab logic ─────────────────────────────────────────────────────
         val scanSubPages = listOf(runPage, cfgPage, logsPage)
-        val scanSubBtns  = listOf(sbRun, sbCfg, sbLogs)
+        val scanSubBtns  = listOf(sbRun, sbCfg)
         fun goScanSub(idx: Int) {
             scanSubPages.forEachIndexed { i, v -> v.visibility = if (i==idx) android.view.View.VISIBLE else android.view.View.GONE }
             scanSubBtns.forEachIndexed  { i, b -> b.setTextColor(if (i==idx) AMBER else TXT_MUTED) }
@@ -543,7 +542,6 @@ class MainActivity : Activity() {
         }
         sbRun.setOnClickListener  { goScanSub(0) }
         sbCfg.setOnClickListener  { goScanSub(1) }
-        sbLogs.setOnClickListener { goScanSub(2) }
         goScanSub(0)
 
         scanSubPages.forEach { subFrame.addView(it) }
@@ -574,8 +572,7 @@ class MainActivity : Activity() {
         }
         val pbRun  = subBtn("▶ Run")
         val pbCfg  = subBtn("⚙ Config")
-        val pbLogs = subBtn("◉ Logs")
-        listOf(pbRun, pbCfg, pbLogs).forEach { subBar.addView(it) }
+        listOf(pbRun, pbCfg).forEach { subBar.addView(it) }
         root.addView(subBar)
 
         val subFrame = FrameLayout(this).apply {
@@ -742,14 +739,13 @@ class MainActivity : Activity() {
 
         // Sub-tab logic
         val subPages = listOf(runPage, cfgPage, logsPage)
-        val subBtns  = listOf(pbRun, pbCfg, pbLogs)
+        val subBtns  = listOf(pbRun, pbCfg)
         fun goPuzzleSub(idx: Int) {
             subPages.forEachIndexed { i, v -> v.visibility = if(i==idx) android.view.View.VISIBLE else android.view.View.GONE }
             subBtns.forEachIndexed  { i, b -> b.setTextColor(if(i==idx) AMBER else TXT_MUTED) }
         }
         pbRun.setOnClickListener  { goPuzzleSub(0) }
         pbCfg.setOnClickListener  { goPuzzleSub(1) }
-        pbLogs.setOnClickListener { goPuzzleSub(2) }
         goPuzzleSub(0)
 
         subPages.forEach { subFrame.addView(it) }
