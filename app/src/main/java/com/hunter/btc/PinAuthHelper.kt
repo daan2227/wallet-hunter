@@ -23,7 +23,9 @@ object PinAuthHelper {
     private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     fun show(activity: Activity, onResult: (Boolean) -> Unit) {
-        if (!WalletManager.hasPin(activity)) { onResult(true); return }
+        val hasPin = WalletManager.hasPin(activity)
+        android.util.Log.d("PinAuthHelper", "hasPin=$hasPin")
+        if (!hasPin) { onResult(true); return }
 
         val sheet = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
