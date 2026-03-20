@@ -4,188 +4,147 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.widget.*
+import com.hunter.btc.AppTheme.AMBER
+import com.hunter.btc.AppTheme.BG_CARD
+import com.hunter.btc.AppTheme.BG_PANEL
+import com.hunter.btc.AppTheme.BORDER_C
+import com.hunter.btc.AppTheme.TXT_MUTED
+import com.hunter.btc.AppTheme.TXT_PRI
+import com.hunter.btc.AppTheme.TXT_SEC
 
-/**
- * Diálogo de autenticación PIN reutilizable.
- * Uso:
- *   PinAuthHelper.show(this) { ok ->
- *       if (ok) { /* autenticado */ }
- *   }
- */
 object PinAuthHelper {
 
-    private val AMBER = 0xFFFFB300.toInt()
-    private val BG    = 0xFF1A1A2E.toInt()
-    private val RED   = 0xFFFF4444.toInt()
+    private val RED = 0xFFFF4444.toInt()
+
+    private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     fun show(activity: Activity, onResult: (Boolean) -> Unit) {
-        if (!WalletManager.hasPin(activity)) {
-            // Sin PIN configurado — permitir directamente
-            onResult(true)
-            return
-        }
+        if (!WalletManager.hasPin(activity)) { onResult(true); return }
 
-        val ctx = activity
-
-        val root = LinearLayout(ctx).apply {
+        val sheet = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
-            setPadding(64, 48, 64, 32)
+            background = GradientDrawable().apply {
+                setColor(BG_PANEL); cornerRadius = activity.dp(16).toFloat()
+                setStroke(1, BORDER_C)
+            }
+            setPadding(activity.dp(24), activity.dp(20), activity.dp(24), activity.dp(32))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(activity.dp(24), 0, activity.dp(24), 0) }
         }
 
-        val tvTitle = TextView(ctx).apply {
-            text = "VERIFICAR PIN"
-            textSize = 13f
-            setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 24)
-        }
+        // Handle bar
+        sheet.addView(View(activity).apply {
+            background = GradientDrawable().apply { setColor(BORDER_C); cornerRadius = activity.dp(2).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(activity.dp(36), activity.dp(3)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL; bottomMargin = activity.dp(22)
+            }
+        })
 
-        val tvStatus = TextView(ctx).apply {
-            text = "Ingresa tu PIN de 6 dígitos"
-            textSize = 10f
-            setTextColor(Color.LTGRAY)
-            typeface = Typeface.MONOSPACE
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 16)
-        }
+        // Title
+        sheet.addView(TextView(activity).apply {
+            text = "Enter PIN"
+            textSize = 16f; setTextColor(TXT_PRI)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.04f; gravity = Gravity.CENTER
+            setPadding(0, 0, 0, activity.dp(22))
+        })
 
-        // Display de puntos
-        val pinDisplay = LinearLayout(ctx).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, 24)
+        // Dots
+        val pinDisplay = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            setPadding(0, 0, 0, activity.dp(28))
         }
-        val dots = Array(6) { TextView(ctx).apply {
-            text = "○"; textSize = 22f
-            setTextColor(Color.DKGRAY)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            setPadding(12, 0, 12, 0)
-        }}
+        val dots = Array(6) {
+            View(activity).apply {
+                val sz = activity.dp(12)
+                layoutParams = LinearLayout.LayoutParams(sz, sz).apply { marginEnd = activity.dp(14) }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    setColor(Color.TRANSPARENT)
+                    setStroke(activity.dp(2), BORDER_C)
+                }
+            }
+        }
         dots.forEach { pinDisplay.addView(it) }
+        sheet.addView(pinDisplay)
+
+        val tvStatus = TextView(activity).apply {
+            text = "Enter your PIN"
+            textSize = 10f; setTextColor(TXT_MUTED)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            letterSpacing = 0.05f; gravity = Gravity.CENTER
+            setPadding(0, 0, 0, activity.dp(16))
+        }
 
         val pin = StringBuilder()
+        var dlg: AlertDialog? = null
 
-        fun updateDots() {
-            dots.forEachIndexed { i, dot ->
-                dot.text = if (i < pin.length) "●" else "○"
-                dot.setTextColor(if (i < pin.length) AMBER else Color.DKGRAY)
+        fun updateDots() = dots.forEachIndexed { i, d ->
+            val bg = d.background as GradientDrawable
+            if (i < pin.length) { bg.setColor(AMBER); bg.setStroke(0, Color.TRANSPARENT) }
+            else { bg.setColor(Color.TRANSPARENT); bg.setStroke(activity.dp(2), BORDER_C) }
+        }
+
+        fun handleDigit(k: String) {
+            if (k == "DEL") { if (pin.isNotEmpty()) pin.deleteCharAt(pin.length - 1); updateDots(); return }
+            if (pin.length >= 6) return
+            pin.append(k); updateDots()
+            if (pin.length < 6) return
+            if (WalletManager.checkPin(activity, pin.toString())) {
+                dlg?.dismiss(); onResult(true)
+            } else {
+                pin.clear(); updateDots()
+                tvStatus.text = "Wrong PIN"; tvStatus.setTextColor(RED)
             }
         }
 
-        // Teclado numérico
-        val keypad = GridLayout(ctx).apply {
-            columnCount = 3
-            rowCount = 4
-            setPadding(0, 0, 0, 8)
-        }
-
-        val keys = listOf("1","2","3","4","5","6","7","8","9","←","0","✓")
-        keys.forEach { key ->
-            val btn = Button(ctx).apply {
-                text = key
-                textSize = 18f
-                typeface = Typeface.create("monospace", Typeface.BOLD)
-                setTextColor(if (key == "✓") Color.BLACK else AMBER)
-                setBackgroundColor(if (key == "✓") AMBER else 0xFF252540.toInt())
-                val size = 96
-                layoutParams = GridLayout.LayoutParams().apply {
-                    width = size * 3; height = size
-                    setMargins(4, 4, 4, 4)
+        // Numpad
+        val numpad = GridLayout(activity).apply { columnCount = 3; rowCount = 4; setPadding(0, 0, 0, activity.dp(10)) }
+        listOf("1","2","3","4","5","6","7","8","9","","0","DEL").forEach { k ->
+            numpad.addView(Button(activity).apply {
+                text = k
+                if (k == "DEL") { textSize = 12f; setTextColor(RED); typeface = Typeface.create("monospace", Typeface.NORMAL); letterSpacing = 0.05f }
+                else { textSize = 22f; setTextColor(TXT_PRI); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) }
+                background = GradientDrawable().apply {
+                    setColor(if (k.isEmpty()) Color.TRANSPARENT else BG_CARD)
+                    if (k.isNotEmpty()) setStroke(1, BORDER_C)
+                    cornerRadius = activity.dp(10).toFloat()
                 }
-            }
-            btn.setOnClickListener {
-                when (key) {
-                    "←" -> { if (pin.isNotEmpty()) { pin.deleteCharAt(pin.length-1); updateDots() } }
-                    "✓" -> {
-                        if (pin.length == 6) {
-                            if (WalletManager.checkPin(ctx, pin.toString())) {
-                                onResult(true)
-                                (ctx as? Activity)?.let { /* dialog se cierra solo */ }
-                            } else {
-                                tvStatus.text = "PIN incorrecto"
-                                tvStatus.setTextColor(RED)
-                                pin.clear(); updateDots()
-                            }
-                        }
-                    }
-                    else -> {
-                        if (pin.length < 6) {
-                            pin.append(key); updateDots()
-                            if (pin.length == 6) {
-                                // Auto-verificar al completar 6 dígitos
-                                if (WalletManager.checkPin(ctx, pin.toString())) {
-                                    onResult(true)
-                                } else {
-                                    tvStatus.text = "PIN incorrecto"
-                                    tvStatus.setTextColor(RED)
-                                    pin.clear(); updateDots()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            keypad.addView(btn)
+                val sz = activity.dp(76)
+                layoutParams = GridLayout.LayoutParams().apply { width = sz; height = sz; setMargins(activity.dp(4), activity.dp(4), activity.dp(4), activity.dp(4)) }
+                isEnabled = k.isNotEmpty()
+                if (k.isNotEmpty()) setOnClickListener { handleDigit(k) }
+            })
         }
+        sheet.addView(numpad)
+        sheet.addView(tvStatus)
 
-        root.addView(tvTitle)
-        root.addView(tvStatus)
-        root.addView(pinDisplay)
-        root.addView(keypad)
-
-        val dialog = AlertDialog.Builder(ctx)
-            .setView(root)
-            .setNegativeButton("Cancelar") { _, _ -> onResult(false) }
-            .setCancelable(false)
-            .create()
-
-        // Cerrar dialog en éxito
-        val originalOnResult = onResult
-        // Re-wrap para cerrar el dialog
-        keys.forEach { key ->
-            // El dialog se cierra automáticamente con el botón Cancelar
-            // Para éxito, lo cerramos desde dentro
-        }
-
-        dialog.show()
-
-        // Re-conectar botón ✓ con referencia al dialog
-        val confirmBtn = keypad.getChildAt(11) as? Button
-        confirmBtn?.setOnClickListener {
-            if (pin.length == 6) {
-                if (WalletManager.checkPin(ctx, pin.toString())) {
-                    dialog.dismiss()
-                    onResult(true)
-                } else {
-                    tvStatus.text = "PIN incorrecto"
-                    tvStatus.setTextColor(RED)
-                    pin.clear(); updateDots()
-                }
+        val btnCancel = Button(activity).apply {
+            text = "Cancel"; textSize = 12f; setTextColor(TXT_SEC)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.1f; isAllCaps = true
+            background = GradientDrawable().apply {
+                setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = activity.dp(6).toFloat()
             }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, activity.dp(48)).apply { topMargin = activity.dp(8) }
         }
+        sheet.addView(btnCancel)
 
-        // También auto-verificar al completar desde los números
-        for (i in 0..9) {
-            val numBtn = keypad.getChildAt(if (i == 0) 10 else i - 1) as? Button
-            numBtn?.setOnClickListener {
-                if (pin.length < 6) {
-                    pin.append(i.toString()); updateDots()
-                    if (pin.length == 6) {
-                        if (WalletManager.checkPin(ctx, pin.toString())) {
-                            dialog.dismiss()
-                            onResult(true)
-                        } else {
-                            tvStatus.text = "PIN incorrecto"
-                            tvStatus.setTextColor(RED)
-                            pin.clear(); updateDots()
-                        }
-                    }
-                }
-            }
+        dlg = AlertDialog.Builder(activity).setView(sheet).setCancelable(false).create()
+        dlg!!.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout(android.view.WindowManager.LayoutParams.MATCH_PARENT, android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.7f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
         }
+        btnCancel.setOnClickListener { dlg?.dismiss(); onResult(false) }
+        dlg!!.show()
     }
 }
