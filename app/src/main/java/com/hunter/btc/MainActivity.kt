@@ -1116,15 +1116,22 @@ class MainActivity : Activity() {
         try {
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
-                tvWps.text = "%.1f".format(wps)
-                tvCount.text = formatCount(HunterEngine.getCount())
-                val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
-                val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
-                tvTime?.text = "%02d:%02d:%02d".format(h, m, sc)
-                chartView?.addPoint(wps.toFloat())
-                val found = HunterEngine.getCount() - sessionStartCount
-                tvMatches?.text = "$found"
-                tvQuickMatches?.text = "$found"
+                if (puzzleMode) {
+                    tvWpsPuzzle?.text = "%.1f".format(wps)
+                    tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
+                    val elapsed2 = (System.currentTimeMillis() - sessionStartTime) / 1000
+                    tvTimePuzzle?.text = "%02d:%02d:%02d".format(elapsed2/3600,(elapsed2%3600)/60,elapsed2%60)
+                } else {
+                    tvWps.text = "%.1f".format(wps)
+                    tvCount.text = formatCount(HunterEngine.getCount())
+                    val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
+                    val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
+                    tvTime?.text = "%02d:%02d:%02d".format(h, m, sc)
+                    chartView?.addPoint(wps.toFloat())
+                    val found = HunterEngine.getCount() - sessionStartCount
+                    tvMatches?.text = "$found"
+                    tvQuickMatches?.text = "$found"
+                }
             }
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
