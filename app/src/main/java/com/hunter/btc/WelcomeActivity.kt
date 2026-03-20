@@ -38,8 +38,10 @@ class WelcomeActivity : Activity() {
     // ── PIN ENTRY (ya tiene PIN) ──────────────────────────────────────────────
     private fun showPinEntry() {
         PinAuthHelper.show(this) { ok ->
-            if (ok) showSplash(pinCreated = true)
-            else finish()
+            if (ok) {
+                PinAuthHelper.markAuthenticated()
+                showSplash(pinCreated = true)
+            } else finish()
         }
     }
 

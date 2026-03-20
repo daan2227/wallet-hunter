@@ -18,14 +18,25 @@ import com.hunter.btc.AppTheme.TXT_SEC
 
 object PinAuthHelper {
 
+    // Timestamp de la última autenticación exitosa
+    var lastAuthTime: Long = 0L
+    // Tiempo máximo sin re-autenticar (30 segundos en background)
+    private const val AUTH_TIMEOUT_MS = 30_000L
+
+    fun isSessionValid(): Boolean {
+        return System.currentTimeMillis() - lastAuthTime < AUTH_TIMEOUT_MS
+    }
+
+    fun markAuthenticated() {
+        lastAuthTime = System.currentTimeMillis()
+    }
+
     private val RED = 0xFFFF4444.toInt()
 
     private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     fun show(activity: Activity, onResult: (Boolean) -> Unit) {
-        val hasPin = WalletManager.hasPin(activity)
-        android.widget.Toast.makeText(activity, "hasPin=$hasPin", android.widget.Toast.LENGTH_LONG).show()
-        if (!hasPin) { onResult(true); return }
+        if (!WalletManager.hasPin(activity)) { onResult(true); return }
 
         val sheet = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
@@ -99,7 +110,7 @@ object PinAuthHelper {
             pin.append(k); updateDots()
             if (pin.length < 6) return
             if (WalletManager.checkPin(activity, pin.toString())) {
-                dlg?.dismiss(); onResult(true)
+                dlg?.dismiss(); markAuthenticated(); onResult(true)
             } else {
                 pin.clear(); updateDots()
                 tvStatus.text = "Wrong PIN"; tvStatus.setTextColor(RED)

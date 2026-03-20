@@ -176,8 +176,22 @@ class MainActivity : Activity() {
         }
     }
 
-    override fun onResume()  { super.onResume();  handler.post(updater) }
-    override fun onPause()   { super.onPause();   handler.removeCallbacks(updater) }
+    override fun onResume() {
+        super.onResume()
+        handler.post(updater)
+        // Pedir PIN si la sesión expiró
+        if (WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid()) {
+            PinAuthHelper.show(this) { ok ->
+                if (!ok) finish()
+            }
+        }
+    }
+    override fun onPause() {
+        super.onPause()
+        handler.removeCallbacks(updater)
+        // Registrar tiempo de salida a background
+        PinAuthHelper.lastAuthTime = System.currentTimeMillis() - 25_000L // marcar casi expirado
+    }
     override fun onDestroy() { batteryReceiver?.let { unregisterReceiver(it) }; super.onDestroy() }
 
 
@@ -855,12 +869,20 @@ class MainActivity : Activity() {
                 .setTitle("Guardar en Wallet")
                 .setMessage("¿Guardar esta seed phrase en tu wallet principal?\n\n$foundMnemonic")
                 .setPositiveButton("Guardar"){_,_->
-                    PinAuthHelper.show(this) { ok ->
-                        if (ok) {
-                            WalletManager.saveSeed(this, foundMnemonic)
-                            btnSaveWallet.visibility=android.view.View.GONE
-                            tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
-                            tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                    // Si ya está autenticado en esta sesión, guardar directo
+                    if (PinAuthHelper.isSessionValid()) {
+                        WalletManager.saveSeed(this, foundMnemonic)
+                        btnSaveWallet.visibility=android.view.View.GONE
+                        tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
+                        tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                    } else {
+                        PinAuthHelper.show(this) { ok ->
+                            if (ok) {
+                                WalletManager.saveSeed(this, foundMnemonic)
+                                btnSaveWallet.visibility=android.view.View.GONE
+                                tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
+                                tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                            }
                         }
                     }
                 }
