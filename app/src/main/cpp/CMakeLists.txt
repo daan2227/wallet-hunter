@@ -41,7 +41,6 @@ target_include_directories(hunter_jni PRIVATE secp256k1/include)
 find_library(log-lib log)
 
 target_link_libraries(hunter_jni
-        pthread
     secp256k1
     openssl::ssl
     openssl::crypto
