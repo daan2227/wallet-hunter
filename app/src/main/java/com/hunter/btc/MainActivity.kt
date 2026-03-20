@@ -588,7 +588,7 @@ class MainActivity : Activity() {
         // Start/Stop puzzle
         val pCoinGreen = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(12).toFloat() }
         val pCoinRed   = GradientDrawable().apply { setColor(RED);   cornerRadius = dp(12).toFloat() }
-        val btnPuzzleToggle = Button(this).apply {
+        btnPuzzleToggle = Button(this).apply {
             text = "▶  START PUZZLE"; textSize = 15f; setTextColor(android.graphics.Color.BLACK)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
             background = pCoinGreen
@@ -599,7 +599,7 @@ class MainActivity : Activity() {
                 doToggle(btnPuzzleToggle)
             }
         }
-        btnPuzzleToggle.tag = arrayOf(pCoinGreen, pCoinRed)
+        btnPuzzleToggle?.tag = arrayOf(pCoinGreen, pCoinRed)
         runPage.addView(btnPuzzleToggle)
 
         // Balance checker
@@ -1104,23 +1104,25 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun doToggle() {
+    private fun doToggle(callerBtn: Button? = null) {
         try {
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
-                val bg = btnToggle.tag as? Array<*>
-                btnToggle.text = s.start
-                btnToggle.background = bg?.get(0) as? GradientDrawable
+                val btn = activeToggleBtn
+                if (btn != null) {
+                    val bg = btn.tag as? Array<*>
+                    btn.text = if (puzzleMode) "▶  START PUZZLE" else s.start
+                    btn.background = bg?.get(0) as? GradientDrawable
+                }
+                activeToggleBtn = null
             } else {
-                // Verificar dataset solo en modo seed scan
                 if (!HunterEngine.isCsvLoaded() && !puzzleMode) {
                     Toast.makeText(this, "Load a dataset first (Config tab)", Toast.LENGTH_SHORT).show()
                     return
                 }
                 sessionStartTime = System.currentTimeMillis()
                 sessionStartCount = HunterEngine.getCount()
-                // Usar threads del tab activo
                 val threads: Int
                 val cpu: Int
                 if (puzzleMode) {
@@ -1134,13 +1136,14 @@ class MainActivity : Activity() {
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else 0)
                 HunterEngine.startHunting(threads, cpu)
-                val bg = btnToggle.tag as? Array<*>
-                btnToggle.text = s.stop
-                btnToggle.background = bg?.get(1) as? GradientDrawable
+                activeToggleBtn = callerBtn
+                val bg = callerBtn?.tag as? Array<*>
+                callerBtn?.text = s.stop
+                callerBtn?.background = bg?.get(1) as? GradientDrawable
                 startForegroundService(Intent(this, HunterService::class.java))
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Error: \${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
