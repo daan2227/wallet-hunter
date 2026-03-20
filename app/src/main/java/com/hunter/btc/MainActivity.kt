@@ -158,6 +158,11 @@ class MainActivity : Activity() {
     private var csvPath: String = ""
     private var s = Strings.EN
     private var puzzleMode = false
+    private var activeToggleBtn: Button? = null
+    private var tvWpsPuzzle: TextView? = null
+    private var tvCountPuzzle: TextView? = null
+    private var tvTimePuzzle: TextView? = null
+    private var btnPuzzleToggle: Button? = null
     private val recentAddrs = mutableListOf<String>()
     private lateinit var recoveryEngine: RecoveryEngine
     private val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
