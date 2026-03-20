@@ -114,35 +114,35 @@ class MainActivity : Activity() {
     private var lblWallet: TextView? = null
     private var lblLog: TextView? = null
     private var lblStats: TextView? = null
-    private lateinit var tvLiveSec: LinearLayout
-    private lateinit var tvMatchSec: LinearLayout
-    private lateinit var tvLogSec: LinearLayout
-    private lateinit var tvLangLbl: TextView
+    private var tvLiveSec: LinearLayout? = null
+    private var tvMatchSec: LinearLayout? = null
+    private var tvLogSec: LinearLayout? = null
+    private var tvLangLbl: TextView? = null
     private lateinit var tvCount: TextView
     private lateinit var chartView: SpeedChartView
     private lateinit var tvPuzzleStatus: TextView
-    private lateinit var tvTime: TextView
-    private lateinit var tvMatches: TextView
-    private lateinit var tvMatchList: TextView
-    private lateinit var tvAddrFeed: TextView
+    private var tvTime: TextView? = null
+    private var tvMatches: TextView? = null
+    private var tvMatchList: TextView? = null
+    private var tvAddrFeed: TextView? = null
     private lateinit var tvRam: TextView
-    private lateinit var tvTemp: TextView
-    private lateinit var tvBattery: TextView
+    private var tvTemp: TextView? = null
+    private var tvBattery: TextView? = null
     private lateinit var tvLog: TextView
     private lateinit var puzzleSpinner: Spinner
     private var suppressPuzzleListener = false
-    private lateinit var tvFooter: TextView
+    private var tvFooter: TextView? = null
     private lateinit var btnToggle: Button
-    private lateinit var btnSwitch: Button
+    private var btnSwitch: Button? = null
     private lateinit var sbThreads: SeekBar
     private lateinit var sbCpu: SeekBar
     private lateinit var tvThreads: TextView
     private lateinit var tvCpu: TextView
-    private lateinit var tvCsvSec: LinearLayout
-    private lateinit var tvConfigSec: LinearLayout
-    private lateinit var tvStatsSec: LinearLayout
+    private var tvCsvSec: LinearLayout? = null
+    private var tvConfigSec: LinearLayout? = null
+    private var tvStatsSec: LinearLayout? = null
     private lateinit var btnCsv: Button
-    private lateinit var csvSecView: LinearLayout
+    private var csvSecView: LinearLayout? = null
     private lateinit var etRangeStart: EditText
     private lateinit var etRangeEnd: EditText
     private lateinit var etTarget: EditText
@@ -834,20 +834,24 @@ class MainActivity : Activity() {
     }
 
     private fun updateUI() {
-        if (HunterEngine.isRunning()) {
-            val wps = HunterEngine.getWps()
-            tvWps.text = "%.1f".format(wps)
-            tvCount.text = formatCount(HunterEngine.getCount())
-            val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
-            val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
-            tvTime.text = "%02d:%02d:%02d".format(h, m, sc)
-            chartView.addPoint(wps.toFloat())
-            val found = HunterEngine.getCount() - sessionStartCount
-            tvMatches.text = "$found"
-            tvQuickMatches?.text = "$found"
+        try {
+            if (HunterEngine.isRunning()) {
+                val wps = HunterEngine.getWps()
+                tvWps.text = "%.1f".format(wps)
+                tvCount.text = formatCount(HunterEngine.getCount())
+                val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
+                val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
+                tvTime?.text = "%02d:%02d:%02d".format(h, m, sc)
+                chartView?.addPoint(wps.toFloat())
+                val found = HunterEngine.getCount() - sessionStartCount
+                tvMatches?.text = "$found"
+                tvQuickMatches?.text = "$found"
+            }
+            val rt = Runtime.getRuntime()
+            tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
+        } catch (e: Exception) {
+            // vars no inicializadas aún
         }
-        val rt = Runtime.getRuntime()
-        tvRam.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
     }
 
     private fun doToggle() {
@@ -968,7 +972,7 @@ class MainActivity : Activity() {
         batteryReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, i: Intent?) {
                 val pct = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: return
-                tvBattery.text = "BAT $pct%"
+                tvBattery?.text = "BAT $pct%"
             }
         }
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
