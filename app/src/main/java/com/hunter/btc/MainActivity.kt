@@ -127,6 +127,7 @@ class MainActivity : Activity() {
     private lateinit var tvAddrFeed: TextView
     private lateinit var tvRam: TextView
     private lateinit var tvTemp: TextView
+    private lateinit var tvBattery: TextView
     private lateinit var tvLog: TextView
     private lateinit var puzzleSpinner: Spinner
     private var suppressPuzzleListener = false
@@ -894,7 +895,7 @@ class MainActivity : Activity() {
             btnToggle.background = bg?.get(0) as? GradientDrawable
         } else {
             if (!HunterEngine.isCsvLoaded() && !puzzleMode) {
-                Toast.makeText(this, s.noDataset, Toast.LENGTH_SHORT).show(); return
+                Toast.makeText(this, "No dataset loaded", Toast.LENGTH_SHORT).show(); return
             }
             sessionStartTime = System.currentTimeMillis()
             sessionStartCount = HunterEngine.getCount()
