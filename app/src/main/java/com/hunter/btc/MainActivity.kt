@@ -476,10 +476,7 @@ class MainActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
         }
         val tvLogDataset = TextView(this).apply {
-            text = if (csvPath.isNotEmpty() && File(csvPath).exists())
-                "✓ Dataset: ${File(csvPath).name}
-  ${File(csvPath).length()/1024}KB"
-                else "✗ No dataset loaded"
+            text = if (csvPath.isNotEmpty() && File(csvPath).exists()) "✓ Dataset: ${File(csvPath).name}  (${File(csvPath).length()/1024}KB)" else "✗ No dataset loaded"
             textSize = 10f; typeface = Typeface.MONOSPACE
             setTextColor(if (csvPath.isNotEmpty()) 0xFF00FF88.toInt() else TXT_MUTED)
         }
