@@ -98,6 +98,7 @@ class MainActivity : Activity() {
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var tvStatus: TextView
+    private var tvCsvName: TextView? = null
     private var tvQuickCsv: TextView? = null
     private var tvQuickMatches: TextView? = null
     private lateinit var tvWps: TextView
@@ -342,7 +343,11 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
             background = coinGreen
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
-            setOnClickListener { doToggle() }
+            setOnClickListener {
+                puzzleMode = false
+                HunterEngine.setMode(0)
+                doToggle()
+            }
         }
         btnToggle.tag = arrayOf(coinGreen, coinRed)
         val actZone = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
@@ -402,14 +407,15 @@ class MainActivity : Activity() {
             setPadding(dp(18),0,dp(18),0); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(50))
             setOnClickListener { pickCsv() }
         }
-        val tvCsvName = TextView(this).apply {
+        val tvCsvNameLocal = TextView(this).apply {
             text = if (csvPath.isNotEmpty() && File(csvPath).exists()) File(csvPath).name else "No file"
             setTextColor(TXT_MUTED); textSize = 10f; typeface = Typeface.MONOSPACE
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(dp(14),0,dp(14),0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        csvRow.addView(btnCsv); csvRow.addView(tvCsvName); dataCard.addView(csvRow)
+        tvCsvName = tvCsvNameLocal
+        csvRow.addView(btnCsv); csvRow.addView(tvCsvNameLocal); dataCard.addView(csvRow)
         cfgPage.addView(dataCard)
 
         // Threads + CPU
@@ -564,7 +570,11 @@ class MainActivity : Activity() {
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
             background = pCoinGreen
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56)).apply { bottomMargin = dp(12) }
-            setOnClickListener { doToggle() }
+            setOnClickListener {
+                puzzleMode = true
+                HunterEngine.setMode(1)
+                doToggle()
+            }
         }
         btnPuzzleToggle.tag = arrayOf(pCoinGreen, pCoinRed)
         runPage.addView(btnPuzzleToggle)
@@ -1136,6 +1146,8 @@ class MainActivity : Activity() {
             prefs.edit().putString("csvPath", csvPath).apply()
             HunterEngine.loadCsv(csvPath)
             tvStatus?.text = dest.name
+            tvCsvName?.text = dest.name
+            tvCsvName?.setTextColor(0xFF00FF88.toInt())
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
         }
