@@ -139,11 +139,9 @@ static void worker(WorkerArgs args){
 
             bool do_full_derivation=true;
 
-            // ── FILTRO RÁPIDO (solo si hay target) ────────────────────────────
-            if(args.has_target){
-                do_full_derivation=quick_filter(seed,args.fingerprint);
-                if(do_full_derivation)g_filtered.fetch_add(1);
-            }
+            // Filtro deshabilitado - siempre derivación completa
+            if(args.has_target) g_filtered.fetch_add(1);
+            do_full_derivation=true;
 
             if(do_full_derivation){
                 uint8_t privkey[32];
