@@ -269,7 +269,6 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-        val scanPage = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
                         val scanPage = LinearLayout(this).apply{orientation=LinearLayout.VERTICAL}
 
         /* Speed hero */
@@ -372,33 +371,6 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-        }
-        val cfgPage = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(24))
-        }
-        fun cfgCard() = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        }
-        fun secLbl(t: String) = TextView(this).apply {
-            text = t.uppercase(); textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.16f; setPadding(0, 0, 0, dp(10))
-        }
-        fun mkSbl(cb: () -> Unit) = object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { cb() }
-            override fun onStartTrackingTouch(s: SeekBar?) {}
-            override fun onStopTrackingTouch(s: SeekBar?) {}
-        }
-        fun themedAdapter(items: List<String>): ArrayAdapter<String> {
-            val a = ArrayAdapter(this, android.R.layout.simple_spinner_item, items)
-            a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-            return a
         }
                         val cfgPage=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(16),dp(14),dp(16),dp(24))}
         fun cfgCard()=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;background=cardBg();clipToOutline=true;layoutParams=LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,LinearLayout.LayoutParams.WRAP_CONTENT).apply{bottomMargin=dp(8)}}
@@ -582,10 +554,6 @@ class MainActivity : Activity() {
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
-        }
-        val recoveryPage = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(14), dp(14), dp(14), dp(80))
         }
                         val recoveryPage=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(14),dp(14),dp(14),dp(80))}
 
