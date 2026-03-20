@@ -1204,7 +1204,7 @@ class MainActivity : Activity() {
 
     private fun showAllLogs() {
         val dir = getExternalFilesDir(null) ?: filesDir
-        val files = dir.listFiles { f -> f.name.startsWith("hunter_log") && f.name.endsWith(".txt") }
+        val files = dir.listFiles { f -> f.name.endsWith(".txt") }
             ?.sortedByDescending { it.lastModified() } ?: emptyList()
         if (files.isEmpty()) { Toast.makeText(this, "No logs found", Toast.LENGTH_SHORT).show(); return }
         val sheet = LinearLayout(this).apply {
