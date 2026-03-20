@@ -1072,32 +1072,42 @@ class MainActivity : Activity() {
     }
 
     private fun doToggle() {
-        if (HunterEngine.isRunning()) {
-            HunterEngine.stopHunting()
-            getSharedPreferences("ui_state", MODE_PRIVATE).edit()
-                .putBoolean("puzzleMode", puzzleMode)
-                .putInt("threads", sbThreads.progress)
-                .putInt("cpu", sbCpu.progress)
-                .apply()
-            val bg = btnToggle.tag as? Array<*>
-            btnToggle.text = s.start
-            btnToggle.background = bg?.get(0) as? GradientDrawable
-        } else {
-            if (!HunterEngine.isCsvLoaded() && !puzzleMode) {
-                Toast.makeText(this, "No dataset loaded", Toast.LENGTH_SHORT).show(); return
+        try {
+            if (HunterEngine.isRunning()) {
+                HunterEngine.stopHunting()
+                stopService(Intent(this, HunterService::class.java))
+                val bg = btnToggle.tag as? Array<*>
+                btnToggle.text = s.start
+                btnToggle.background = bg?.get(0) as? GradientDrawable
+            } else {
+                // Verificar dataset solo en modo seed scan
+                if (!HunterEngine.isCsvLoaded() && !puzzleMode) {
+                    Toast.makeText(this, "Load a dataset first (Config tab)", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                sessionStartTime = System.currentTimeMillis()
+                sessionStartCount = HunterEngine.getCount()
+                // Usar threads del tab activo
+                val threads: Int
+                val cpu: Int
+                if (puzzleMode) {
+                    threads = if (::sbThreadsPuzzle.isInitialized) sbThreadsPuzzle.progress + 1 else 4
+                    cpu     = if (::sbCpuPuzzle.isInitialized)    sbCpuPuzzle.progress + 10    else 70
+                    if (::etRangeStart.isInitialized && ::etRangeEnd.isInitialized)
+                        HunterEngine.setRange(etRangeStart.text.toString(), etRangeEnd.text.toString())
+                } else {
+                    threads = if (::sbThreads.isInitialized) sbThreads.progress + 1 else 4
+                    cpu     = if (::sbCpu.isInitialized)     sbCpu.progress + 10     else 70
+                }
+                HunterEngine.setMode(if (puzzleMode) 1 else 0)
+                HunterEngine.startHunting(threads, cpu)
+                val bg = btnToggle.tag as? Array<*>
+                btnToggle.text = s.stop
+                btnToggle.background = bg?.get(1) as? GradientDrawable
+                startForegroundService(Intent(this, HunterService::class.java))
             }
-            sessionStartTime = System.currentTimeMillis()
-            sessionStartCount = HunterEngine.getCount()
-            val threads = sbThreads.progress + 1
-            val cpu = sbCpu.progress + 10
-            if (puzzleMode) {
-                HunterEngine.setRange(etRangeStart.text.toString(), etRangeEnd.text.toString())
-            }
-            HunterEngine.startHunting(threads, cpu)
-            val bg = btnToggle.tag as? Array<*>
-            btnToggle.text = s.stop
-            btnToggle.background = bg?.get(1) as? GradientDrawable
-            startForegroundService(Intent(this, HunterService::class.java))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1113,13 +1123,21 @@ class MainActivity : Activity() {
         super.onActivityResult(req, res, data)
         if (req == 1001 && res == RESULT_OK) {
             val uri = data?.data ?: return
-            val dest = File(getExternalFilesDir(null), "dataset.csv")
+            // Obtener nombre original para preservar extensión .bin o .csv
+            val cursor = contentResolver.query(uri, null, null, null, null)
+            val origName = cursor?.use {
+                val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                it.moveToFirst(); if (idx >= 0) it.getString(idx) else "dataset.csv"
+            } ?: "dataset.csv"
+            cursor?.close()
+            val dest = File(getExternalFilesDir(null), origName)
             contentResolver.openInputStream(uri)?.use { it.copyTo(dest.outputStream()) }
             csvPath = dest.absolutePath
             prefs.edit().putString("csvPath", csvPath).apply()
             HunterEngine.loadCsv(csvPath)
-            tvStatus.text = dest.name
+            tvStatus?.text = dest.name
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
+            Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
         }
     }
 
