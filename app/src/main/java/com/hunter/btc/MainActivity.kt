@@ -346,7 +346,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 puzzleMode = false
                 HunterEngine.setMode(0)
-                doToggle()
+                doToggle(btnToggle)
             }
         }
         btnToggle.tag = arrayOf(coinGreen, coinRed)
@@ -554,6 +554,29 @@ class MainActivity : Activity() {
 
         runPage.addView(TextView(this).apply { text = "⬡  PUZZLE HUNT"; textSize = 13f; setTextColor(AMBER); typeface = Typeface.create("monospace", Typeface.BOLD); setPadding(0,dp(4),0,dp(12)) })
 
+        // Speed hero puzzle
+        val pHeroBlock = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
+            setPadding(dp(18),dp(16),dp(18),dp(16))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+        }
+        val pHeroLeft = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
+        pHeroLeft.addView(TextView(this).apply { text = "SPEED"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.18f })
+        val tvWpsP = TextView(this).apply { text = "0"; textSize = 40f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        tvWpsPuzzle = tvWpsP
+        pHeroLeft.addView(tvWpsP)
+        pHeroLeft.addView(TextView(this).apply { text = "keys / second"; textSize = 10f; setTextColor(TXT_SEC) })
+        val pHeroRight = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
+        val tvCntP = TextView(this).apply { text = "0"; textSize = 15f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
+        val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 15f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
+        tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
+        pHeroRight.addView(tvCntP)
+        pHeroRight.addView(TextView(this).apply { text = "SCANNED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0,dp(2),0,dp(8)) })
+        pHeroRight.addView(tvTmP)
+        pHeroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f })
+        pHeroBlock.addView(pHeroLeft); pHeroBlock.addView(pHeroRight)
+        runPage.addView(pHeroBlock)
+
         tvPuzzleStatus = TextView(this).apply {
             text = "Select a puzzle in Config tab"; textSize = 11f; typeface = Typeface.MONOSPACE; setTextColor(GREEN)
             background = GradientDrawable().apply { setColor(0x1510D97A); setStroke(1,0x2510D97A); cornerRadius = dp(6).toFloat() }
@@ -573,7 +596,7 @@ class MainActivity : Activity() {
             setOnClickListener {
                 puzzleMode = true
                 HunterEngine.setMode(1)
-                doToggle()
+                doToggle(btnPuzzleToggle)
             }
         }
         btnPuzzleToggle.tag = arrayOf(pCoinGreen, pCoinRed)
