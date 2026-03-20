@@ -855,10 +855,14 @@ class MainActivity : Activity() {
                 .setTitle("Guardar en Wallet")
                 .setMessage("¿Guardar esta seed phrase en tu wallet principal?\n\n$foundMnemonic")
                 .setPositiveButton("Guardar"){_,_->
-                    WalletManager.saveSeed(this, foundMnemonic)
-                    btnSaveWallet.visibility=android.view.View.GONE
-                    tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
-                    tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                    PinAuthHelper.show(this) { ok ->
+                        if (ok) {
+                            WalletManager.saveSeed(this, foundMnemonic)
+                            btnSaveWallet.visibility=android.view.View.GONE
+                            tvRecoveryStatus.text="✓ Seed guardada en wallet principal"
+                            tvRecoveryStatus.visibility=android.view.View.VISIBLE
+                        }
+                    }
                 }
                 .setNegativeButton("Cancelar",null)
                 .show()
