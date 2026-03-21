@@ -1,6 +1,7 @@
 package com.hunter.btc
 
 import android.app.Activity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.biometric.BiometricPrompt
 import androidx.biometric.BiometricManager
@@ -11,7 +12,7 @@ import android.os.*
 import android.view.*
 import android.widget.*
 
-class WelcomeActivity : Activity() {
+class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private val BG    get() = AppTheme.BG_DEEP
     private val GOLD  get() = AppTheme.AMBER

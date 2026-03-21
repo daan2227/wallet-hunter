@@ -55,7 +55,7 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     }
 }
 
-class MainActivity : Activity() {
+class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── Tema ──────────────────────────────────────────────────────────────────
     private val BG_DEEP   get() = AppTheme.BG_DEEP
