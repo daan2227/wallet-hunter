@@ -1073,6 +1073,66 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
+    private fun checkThermalThrottle() {
+        if (!thermalThrottleEnabled || !HunterEngine.isRunning()) return
+        val now = System.currentTimeMillis()
+        if (now - lastThermalCheck < 5000) return  // revisar cada 5 seg
+        lastThermalCheck = now
+
+        try {
+            // Leer temperatura de batería (más confiable en Android)
+            val temp = getBatteryTemp()
+            val cpuTemp = getCpuTemp()
+            val maxTemp = maxOf(temp, cpuTemp)
+
+            val (targetCpu, status) = when {
+                maxTemp >= 48f -> Pair(20,  "🔥 CRÍTICO ${maxTemp.toInt()}°C — 20%")
+                maxTemp >= 44f -> Pair(35,  "🌡 MUY ALTO ${maxTemp.toInt()}°C — 35%")
+                maxTemp >= 40f -> Pair(50,  "⚠ ALTO ${maxTemp.toInt()}°C — 50%")
+                maxTemp >= 36f -> Pair(70,  "✓ NORMAL ${maxTemp.toInt()}°C — 70%")
+                else           -> Pair(originalCpuLimit, "✓ FRÍO ${maxTemp.toInt()}°C — ${originalCpuLimit}%")
+            }
+
+            if (HunterEngine.isRunning()) {
+                HunterEngine.setCpuLimit(targetCpu)
+                isThrottled = maxTemp >= 40f
+                runOnUiThread {
+                    tvThermal?.text = status
+                    tvThermal?.setTextColor(when {
+                        maxTemp >= 48f -> 0xFFFF4444.toInt()
+                        maxTemp >= 44f -> 0xFFFF8800.toInt()
+                        maxTemp >= 40f -> AppTheme.AMBER
+                        else           -> AppTheme.GREEN
+                    })
+                }
+            }
+        } catch (e: Exception) {}
+    }
+
+    private fun getBatteryTemp(): Float {
+        return try {
+            val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
+            val temp = intent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
+            temp / 10f
+        } catch (e: Exception) { 0f }
+    }
+
+    private fun getCpuTemp(): Float {
+        val paths = listOf(
+            "/sys/class/thermal/thermal_zone0/temp",
+            "/sys/class/thermal/thermal_zone1/temp",
+            "/sys/class/thermal/thermal_zone2/temp",
+            "/sys/devices/virtual/thermal/thermal_zone0/temp"
+        )
+        for (p in paths) {
+            try {
+                val raw = java.io.File(p).readText().trim().toFloatOrNull() ?: continue
+                return if (raw > 1000) raw / 1000f else raw
+            } catch (e: Exception) {}
+        }
+        return 0f
+    }
+
     private fun formatCount(v: Long): String {
         val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
         return fmt.format(v)
@@ -1323,6 +1383,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private var appPausedTime = 0L
+    private var thermalThrottleEnabled = true
+    private var lastThermalCheck = 0L
+    private var originalCpuLimit = 70
+    private var isThrottled = false
+    private var tvThermal: TextView? = null
     private val LOCK_TIMEOUT_MS = 15_000L // 15 seg en background
 
     override fun onResume() {
