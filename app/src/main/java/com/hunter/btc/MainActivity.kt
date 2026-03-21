@@ -152,9 +152,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private lateinit var etRangeStart: EditText
     private lateinit var etRangeEnd: EditText
     private lateinit var etTarget: EditText
-    private lateinit var layoutPuzzle: LinearLayout
-    private lateinit var rbBip39: Button
-    private lateinit var rbPuzzle: Button
+    private var layoutPuzzle: LinearLayout? = null
+    private var rbBip39: Button? = null
+    private var rbPuzzle: Button? = null
     private var csvPath: String = ""
     private var s = Strings.EN
     private var puzzleMode = false
