@@ -1,300 +1,19 @@
-package com.hunter.btc
+#!/usr/bin/env python3
+"""
+rebuild_pin2.py
+Reemplaza showPinScreen() con diseño fiel al HTML:
+- Pantalla completa oscura
+- Top bar "Passcode"
+- Label grande + dots cuadrados redondeados con glow verde
+- Keypad con sub-letras, huella al lado del 0, delete
+- Biométrico: toca huella → lanza BiometricPrompt → fallback a PIN
+"""
 
-import android.app.Activity
-import androidx.core.content.ContextCompat
-import androidx.biometric.BiometricPrompt
-import androidx.biometric.BiometricManager
-import android.app.AlertDialog
-import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
-import android.view.Gravity
-import android.view.View
-import android.widget.*
-import com.hunter.btc.AppTheme.AMBER
-import com.hunter.btc.AppTheme.BG_CARD
-import com.hunter.btc.AppTheme.BG_PANEL
-import com.hunter.btc.AppTheme.BORDER_C
-import com.hunter.btc.AppTheme.TXT_MUTED
-import com.hunter.btc.AppTheme.TXT_PRI
-import com.hunter.btc.AppTheme.TXT_SEC
+import os, re
+PROJECT_ROOT = os.getcwd()
+KT_DIR = os.path.join(PROJECT_ROOT, "app", "src", "main", "java", "com", "hunter", "btc")
 
-object PinAuthHelper {
-
-    // Timestamp de la última autenticación exitosa
-    var lastAuthTime: Long = 0L
-    // Tiempo máximo sin re-autenticar (30 segundos en background)
-    private const val AUTH_TIMEOUT_MS = 30_000L
-
-    fun isSessionValid(): Boolean {
-        return System.currentTimeMillis() - lastAuthTime < AUTH_TIMEOUT_MS
-    }
-
-    fun markAuthenticated() {
-        lastAuthTime = System.currentTimeMillis()
-    }
-
-    private val RED = 0xFFFF4444.toInt()
-
-    private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
-        if (!WalletManager.hasPin(activity)) { onResult(true); return }
-        showPinScreen(activity, isSetup = false) { ok ->
-            if (ok) markAuthenticated()
-            onResult(ok)
-        }
-    }
-
-    private fun showPinScreen(
-        activity: android.app.Activity,
-        isSetup: Boolean,
-        onResult: (Boolean) -> Unit
-    ) {
-        val GOLD  = AppTheme.AMBER
-        val BG    = AppTheme.BG_DEEP
-        val BG2   = AppTheme.BG_CARD
-        val TXT   = AppTheme.TXT_PRI
-        val MUTED = AppTheme.TXT_MUTED
-        val RED   = 0xFFFF4D4D.toInt()
-        fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
-
-        // Root - pantalla completa
-        val root = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor(BG)
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        // Top bar
-        val topBar = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            setPadding(dp(20), dp(20), dp(20), dp(12))
-        }
-        topBar.addView(android.widget.TextView(activity).apply {
-            text = "Passcode"
-            textSize = 17f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
-            letterSpacing = -0.01f
-        })
-        root.addView(topBar)
-
-        // Body - centrado verticalmente
-        val body = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-            )
-            setPadding(dp(24), 0, dp(24), dp(32))
-        }
-
-        // Label
-        val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Create passcode" else "Enter passcode"
-            textSize = 22f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
-            letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(28) }
-        }
-        body.addView(tvLabel)
-
-        // Dots row
-        val dotsRow = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
-                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(28) }
-        }
-        val dotSize = dp(52)
-        val dots = Array(6) { i ->
-            android.view.View(activity).apply {
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(AppTheme.BG_CARD)
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(dp(2), 0xFF2A2E25.toInt())
-                }
-                layoutParams = android.widget.LinearLayout.LayoutParams(dotSize, dotSize).apply {
-                    if (i < 5) marginEnd = dp(10)
-                }
-            }
-        }
-        dots.forEach { dotsRow.addView(it) }
-        body.addView(dotsRow)
-
-        // Hint
-        val tvHint = android.widget.TextView(activity).apply {
-            text = if (isSetup)
-                "Enter your passcode. Be sure to remember it so you can unlock your wallet."
-            else
-                "Enter your PIN to continue"
-            textSize = 13f; setTextColor(MUTED)
-            gravity = android.view.Gravity.CENTER
-            lineHeight = (textSize * 1.55f).toInt()
-        }
-        body.addView(tvHint)
-        root.addView(body)
-
-        // Keypad wrap
-        val keypadWrap = android.widget.LinearLayout(activity).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0D1018.toInt())
-            setPadding(dp(10), dp(14), dp(10), dp(48))
-        }
-        val keypad = android.widget.GridLayout(activity).apply {
-            columnCount = 3; rowCount = 4
-        }
-
-        val pin = StringBuilder()
-        var firstPin = ""
-        var dlg: android.app.Dialog? = null
-
-        fun setDotFilled(i: Int, filled: Boolean, error: Boolean = false) {
-            val bg = dots[i].background as android.graphics.drawable.GradientDrawable
-            when {
-                error  -> { bg.setColor(0x33FF4D4D); bg.setStroke(dp(2), RED) }
-                filled -> { bg.setColor(0x33A8FF00); bg.setStroke(dp(2), GOLD) }
-                else   -> { bg.setColor(AppTheme.BG_CARD); bg.setStroke(dp(2), 0xFF2A2E25.toInt()) }
-            }
-        }
-
-        fun updateDots() = (0 until 6).forEach { setDotFilled(it, it < pin.length) }
-
-        fun shakeError() {
-            (0 until 6).forEach { setDotFilled(it, filled = true, error = true) }
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                pin.clear(); updateDots()
-            }, 600)
-        }
-
-        fun handleDigit(k: String) {
-            if (pin.length >= 6) return
-            pin.append(k); updateDots()
-            if (pin.length < 6) return
-
-            if (isSetup) {
-                if (firstPin.isEmpty()) {
-                    firstPin = pin.toString(); pin.clear(); updateDots()
-                    tvLabel.text = "Confirm passcode"
-                    tvHint.text = "Enter the same passcode again"
-                } else if (firstPin == pin.toString()) {
-                    WalletManager.savePin(activity, pin.toString())
-                    dlg?.dismiss(); onResult(true)
-                } else {
-                    firstPin = ""; shakeError()
-                    tvLabel.text = "Try again"
-                    tvHint.text = "Passcodes did not match"
-                }
-            } else {
-                if (WalletManager.checkPin(activity, pin.toString())) {
-                    dlg?.dismiss(); onResult(true)
-                } else {
-                    shakeError()
-                    tvHint.text = "Incorrect passcode. Try again."
-                    tvHint.setTextColor(RED)
-                }
-            }
-        }
-
-        // Keys: num, sub-label
-        val keys = listOf(
-            "1" to "", "2" to "ABC", "3" to "DEF",
-            "4" to "GHI", "5" to "JKL", "6" to "MNO",
-            "7" to "PQRS", "8" to "TUV", "9" to "WXYZ",
-            "" to "", "0" to "", "DEL" to ""
-        )
-
-        keys.forEach { (key, sub) ->
-            val cell = android.widget.FrameLayout(activity).apply {
-                val sz = dp(76)
-                layoutParams = android.widget.GridLayout.LayoutParams().apply {
-                    width = sz; height = sz
-                    setMargins(dp(5), dp(5), dp(5), dp(5))
-                }
-                if (key.isNotEmpty()) {
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(AppTheme.BG_CARD)
-                        cornerRadius = dp(12).toFloat()
-                        setStroke(1, 0x0FFFFFFF)
-                    }
-                    isClickable = true
-                    isFocusable = true
-                    setOnClickListener {
-                        if (key == "DEL") {
-                            if (pin.isNotEmpty()) { pin.deleteCharAt(pin.length - 1); updateDots() }
-                        } else {
-                            handleDigit(key)
-                        }
-                        // Feedback táctil
-                        background = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF222521.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0FFFFFFF)
-                        }
-                        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                            background = android.graphics.drawable.GradientDrawable().apply {
-                                setColor(AppTheme.BG_CARD); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0FFFFFFF)
-                            }
-                        }, 120)
-                    }
-                }
-            }
-
-            if (key.isNotEmpty() && key != "DEL") {
-                val inner = android.widget.LinearLayout(activity).apply {
-                    orientation = android.widget.LinearLayout.VERTICAL
-                    gravity = android.view.Gravity.CENTER
-                    layoutParams = android.widget.FrameLayout.LayoutParams(
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                }
-                inner.addView(android.widget.TextView(activity).apply {
-                    text = key; textSize = 28f; setTextColor(TXT)
-                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
-                    gravity = android.view.Gravity.CENTER
-                })
-                if (sub.isNotEmpty()) {
-                    inner.addView(android.widget.TextView(activity).apply {
-                        text = sub; textSize = 9f; setTextColor(MUTED)
-                        typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-                        letterSpacing = 0.12f; gravity = android.view.Gravity.CENTER
-                    })
-                }
-                cell.addView(inner)
-            } else if (key == "DEL") {
-                cell.addView(android.widget.TextView(activity).apply {
-                    text = "⌫"; textSize = 22f; setTextColor(MUTED)
-                    gravity = android.view.Gravity.CENTER
-                    layoutParams = android.widget.FrameLayout.LayoutParams(
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
-                        android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                })
-            }
-            keypad.addView(cell)
-        }
-
-        keypadWrap.addView(keypad)
-        root.addView(keypadWrap)
-
-        // Mostrar como dialog fullscreen
-        dlg = android.app.Dialog(activity, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
-        dlg!!.setContentView(root)
-        dlg!!.setCancelable(!isSetup)
-        if (!isSetup) {
-            dlg!!.setOnCancelListener { onResult(false) }
-        }
-        dlg!!.show()
-    }
-
+PIN_FUNCTION = '''
     private fun showPinScreen(
         activity: android.app.Activity,
         isSetup: Boolean,
@@ -393,7 +112,7 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
 
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
-                "Enter your passcode. Be sure to remember it\nso you can unlock your wallet."
+                "Enter your passcode. Be sure to remember it\\nso you can unlock your wallet."
             else "Use your passcode or fingerprint to unlock"
             textSize = 13f; setTextColor(MUTED)
             gravity = android.view.Gravity.CENTER
@@ -580,5 +299,63 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
         // Auto-lanzar biométrico al abrir si no es setup
         if (!isSetup) handler.postDelayed({ launchBiometric() }, 300)
     }
+'''
 
-}
+# ── Aplicar a WelcomeActivity ─────────────────────────────────────────────────
+for filename in ["WelcomeActivity.kt", "PinAuthHelper.kt"]:
+    fpath = os.path.join(KT_DIR, filename)
+    content = open(fpath).read()
+
+    # Eliminar función showPinScreen existente
+    content = re.sub(
+        r'\n    private fun showPinScreen\(.*?(?=\n    (private|public|internal|override|fun |val |var |class |object |companion|//|$))',
+        '',
+        content,
+        flags=re.DOTALL
+    )
+
+    # Si quedó algún residuo del método al final del archivo
+    # Insertar antes del último }
+    content = content.rstrip()
+    if content.endswith('}'):
+        content = content[:-1].rstrip() + '\n' + PIN_FUNCTION + '\n}\n'
+    else:
+        content += '\n' + PIN_FUNCTION + '\n}\n'
+
+    # Agregar imports necesarios si no existen
+    imports_needed = [
+        'import androidx.biometric.BiometricManager',
+        'import androidx.biometric.BiometricPrompt',
+        'import androidx.core.content.ContextCompat',
+    ]
+    for imp in imports_needed:
+        if imp not in content:
+            content = content.replace(
+                'import android.app.Activity',
+                f'import android.app.Activity\n{imp}'
+            )
+            if imp not in content:
+                # fallback: agregar después del primer import
+                first_import = content.find('\nimport ')
+                end = content.find('\n', first_import + 1)
+                content = content[:end] + f'\n{imp}' + content[end:]
+
+    with open(fpath, 'w') as f:
+        f.write(content)
+    print(f"✓ {filename} actualizado")
+
+print("""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PIN UI v2 completada:
+
+  Diseño fiel al HTML:
+  - Fondo #0e0f0e pantalla completa
+  - Dots 52x52 con glow verde/rojo
+  - Keypad #0d1018 con sub-letras
+  - Huella (⬡ ID) al lado del 0
+  - Auto-lanza biométrico al abrir
+  - Fallback a PIN si cancela huella
+
+Siguiente: git add + push
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
