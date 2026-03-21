@@ -151,6 +151,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var csvSecView: LinearLayout? = null
     private var etRangeStart: EditText? = null
     private var etRangeEnd: EditText? = null
+    private var currentRangeStart: String = ""
+    private var currentRangeEnd: String = ""
     private var etTarget: EditText? = null
     private var layoutPuzzle: LinearLayout? = null
     private var rbBip39: Button? = null
@@ -1259,6 +1261,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun applyPuzzle(p: PuzzleInfo) {
         etRangeStart?.setText(p.start)
         etRangeEnd?.setText(p.end)
+        currentRangeStart = p.start
+        currentRangeEnd = p.end
         etTarget?.setText(p.addr)
         HunterEngine.setRange(p.start, p.end)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc}"
