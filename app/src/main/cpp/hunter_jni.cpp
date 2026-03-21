@@ -73,6 +73,8 @@ static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
 
 static uint8_t g_range_start[32] = {0};
 static uint8_t g_range_end[32]   = {0};
+static uint8_t g_last_key[32]     = {0};
+static std::mutex g_last_key_mutex;
 static uint8_t g_target_h160[20]  = {0};
 static int     g_has_target       = 0;
 
@@ -689,6 +691,8 @@ static void *worker_puzzle_fn(void *){
         gen_privkey_fast(privkey,&rng);
         if(!secp256k1_ec_seckey_verify(ctx,privkey))
             memcpy(privkey,g_range_start,32);
+        /* Guardar checkpoint */
+        {std::lock_guard<std::mutex> lk(g_last_key_mutex); memcpy(g_last_key,privkey,32);}
         /* ONE scalar mult for entire batch */
         secp256k1_pubkey pubkey;
         if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)){continue;}
@@ -885,7 +889,7 @@ Java_com_hunter_btc_HunterEngine_isRunning(JNIEnv *,jobject){return (jboolean)g_
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_getLoadStatus(JNIEnv *env,jobject){return env->NewStringUTF(g_load_status);}
 
-
+JNIEXPORT jdouble JNICALL
 Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
     time_t now=time(nullptr);
     if(now!=g_last_wps_t&&g_last_wps_t>0){
@@ -895,19 +899,6 @@ Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
     } else if(g_last_wps_t==0) g_last_wps_t=now;
     return g_wps.load();
 }
-
-JNIEXPORT jstring JNICALL
-
-/* Devuelve el último key procesado como hex string */
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env, jobject){
-    std::lock_guard<std::mutex> lk(g_last_key_mutex);
-    char hex[65];
-    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",g_last_key[i]);
-    hex[64]=0;
-    return env->NewStringUTF(hex);
-}
-
 
 JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_getCount(JNIEnv *,jobject){return (jlong)g_count.load();}
@@ -1286,6 +1277,15 @@ Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq
     std::string result=build_and_sign_tx(std::string(req));
     env->ReleaseStringUTFChars(jreq,req);
     return env->NewStringUTF(result.c_str());
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env,jobject){
+    std::lock_guard<std::mutex> lk(g_last_key_mutex);
+    char hex[65];
+    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",g_last_key[i]);
+    hex[64]=0;
+    return env->NewStringUTF(hex);
 }
 
 }
