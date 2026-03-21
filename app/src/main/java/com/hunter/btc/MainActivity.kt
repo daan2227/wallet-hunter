@@ -163,6 +163,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
+    private var tvCheckpointLive: TextView? = null
     private var tvCountPuzzle: TextView? = null
     private var tvTimePuzzle: TextView? = null
     private var btnPuzzleToggle: Button? = null
@@ -668,8 +669,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         runSection.addView(tvBalResult)
 
-        // Log de checkpoint visible
-        val tvCheckpoint = TextView(this).apply {
+        // Log de checkpoint visible (se actualiza en tiempo real)
+        tvCheckpointLive = TextView(this).apply {
             text = ""; textSize = 9f; setTextColor(AppTheme.CYAN)
             typeface = Typeface.MONOSPACE; setPadding(0, dp(4), 0, dp(4))
         }
@@ -680,7 +681,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val savedTime = puzzlePrefs.getLong("last_time_$puzzleNum", 0)
         if (savedKey != null && savedTime > 0) {
             val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
-            tvCheckpoint.text = "⬡ Checkpoint #$puzzleNum: $timeStr\n${savedKey.take(16)}...${savedKey.takeLast(8)}"
+            tvCheckpointLive?.text = "⬡ Checkpoint #$puzzleNum: $timeStr\n${savedKey.take(16)}...${savedKey.takeLast(8)}"
         }
         runSection.addView(tvCheckpoint)
 
@@ -694,10 +695,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val t   = puzzlePrefs.getLong("last_time_${p.num}", 0)
                 if (key != null && t > 0) {
                     val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(t))
-                    tvCheckpoint.text = "⬡ Checkpoint #${p.num}: $ts\n${key.take(16)}...${key.takeLast(8)}"
+                    tvCheckpointLive?.text = "⬡ Checkpoint #${p.num}: $ts\n${key.take(16)}...${key.takeLast(8)}"
                 } else {
-                    tvCheckpoint.text = "Sin checkpoint #${p.num} — comenzará desde inicio"
-                    tvCheckpoint.setTextColor(TXT_MUTED)
+                    tvCheckpointLive?.text = "Sin checkpoint #${p.num} — comenzará desde inicio"
+                    tvCheckpointLive?.setTextColor(TXT_MUTED)
                 }
                 if (!suppressPuzzleListener) applyPuzzle(p)
             }
