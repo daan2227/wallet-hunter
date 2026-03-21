@@ -573,11 +573,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleCard.addView(etTarget)
         cfgSection.addView(puzzleCard)
         applyPuzzle(puzzles[defaultIdx])
-        puzzleSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            var init = true
-            override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) { if (init) { init = false; return }; applyPuzzle(puzzles[pos]) }
-            override fun onNothingSelected(a: AdapterView<*>) {}
-        }
 
         // Threads + CPU puzzle
         cfgSection.addView(TextView(this).apply {
@@ -681,9 +676,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         runSection.addView(tvCheckpoint)
 
-        // Actualizar checkpoint cuando cambia el spinner
+        // Listener unificado: aplica puzzle + muestra checkpoint
         puzzleSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            var init = true
             override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
+                if (init) { init = false; return }
                 val p = puzzles[pos]
                 val key = puzzlePrefs.getString("last_key_${p.num}", null)
                 val t   = puzzlePrefs.getLong("last_time_${p.num}", 0)
@@ -691,7 +688,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(t))
                     tvCheckpoint.text = "⬡ Checkpoint #${p.num}: $ts\n${key.take(16)}...${key.takeLast(8)}"
                 } else {
-                    tvCheckpoint.text = "Sin checkpoint para #${p.num}"
+                    tvCheckpoint.text = "Sin checkpoint #${p.num} — comenzará desde inicio"
+                    tvCheckpoint.setTextColor(TXT_MUTED)
                 }
                 if (!suppressPuzzleListener) applyPuzzle(p)
             }
