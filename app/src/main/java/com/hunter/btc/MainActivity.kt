@@ -454,7 +454,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 doToggle(btnToggle)
             }
         }
-        btnToggle.tag = arrayOf(coinGreen, coinRed)
+        btnToggle?.tag = arrayOf(coinGreen, coinRed)
         val actZone = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
         actZone.addView(btnToggle); page.addView(actZone)
 
@@ -579,7 +579,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleCard.addView(etTarget)
         cfgSection.addView(puzzleCard)
         applyPuzzle(puzzles[defaultIdx])
-        puzzleSpinner.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+        puzzleSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             var init = true
             override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) { if (init) { init = false; return }; applyPuzzle(puzzles[pos]) }
             override fun onNothingSelected(a: AdapterView<*>) {}
@@ -676,7 +676,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(6).toFloat() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
             setOnClickListener {
-                val addr = etTarget.text.toString().trim()
+                val addr = etTarget?.text.toString().trim() ?: ""
                 if (addr.isEmpty()) { tvBalResult.text = "No address set"; return@setOnClickListener }
                 tvBalResult.text = "Checking..."
                 checkPuzzleBalance(addr) { bal ->
@@ -693,8 +693,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun updatePuzzleLabels() {
-        if (!::sbThreadsPuzzle.isInitialized || !::tvThreadsPuzzle.isInitialized) return
-        val t = (sbThreadsPuzzle?.progress ?: 3) + 1
+                val t = (sbThreadsPuzzle?.progress ?: 3) + 1
         val c = (sbCpuPuzzle?.progress ?: 70) + 10
         tvThreadsPuzzle.text = "Threads: $t"
         tvCpuPuzzle.text = "CPU limit: $c%"
@@ -921,9 +920,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Inicializar RecoveryEngine
         recoveryEngine=RecoveryEngine(this)
-        val wordlistLoaded=recoveryEngine.loadWordlist()
+        val wordlistLoaded=recoveryEngine?.loadWordlist() ?: false
 
-        recoveryEngine.listener=object:com.hunter.btc.recovery.RecoveryEngine.ProgressListener{
+        recoveryEngine?.listener=object:com.hunter.btc.recovery.RecoveryEngine.ProgressListener{
             override fun onProgress(attempts:Long,total:Long,currentWord:String){
                 runOnUiThread{
                     val pct=((attempts.toFloat()/total)*1000).toInt()
@@ -987,7 +986,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvRecoveryStatus.visibility=android.view.View.VISIBLE
                 return@setOnClickListener
             }
-            val wl=recoveryEngine.getWordlistSet()
+            val wl=recoveryEngine?.getWordlistSet() ?: emptySet()
             val parseResult=com.hunter.btc.recovery.RecoveryParser.parse(input,wl)
             when(parseResult){
                 is com.hunter.btc.recovery.ParseResult.Error->{
@@ -1002,12 +1001,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvRecoveryStatus.text="Iniciando..."
                     btnStartRecovery.visibility=android.view.View.GONE
                     btnCancelRecovery.visibility=android.view.View.VISIBLE
-                    recoveryEngine.startRecovery(parseResult.parsed,etTarget.text.toString().trim())
+                    recoveryEngine?.startRecovery(parseResult.parsed,etTarget?.text.toString().trim() ?: "")
                 }
             }
         }
 
-        btnCancelRecovery.setOnClickListener{ recoveryEngine.cancel() }
+        btnCancelRecovery.setOnClickListener{ recoveryEngine?.cancel() }
 
         
 
@@ -1035,11 +1034,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun updateLabels() {
-        if (!::sbThreads.isInitialized || !::tvThreads.isInitialized) return
-        val t = (sbThreads?.progress ?: 3) + 1
+                val t = (sbThreads?.progress ?: 3) + 1
         val c = (sbCpu?.progress ?: 70) + 10
-        tvThreads.text = "Threads: $t"
-        tvCpu.text = "CPU limit: $c%"
+        tvThreads?.text = "Threads: $t"
+        tvCpu?.text = "CPU limit: $c%"
         tvQuickThreads?.text = "$t"
         tvQuickCpu?.text = "$c%"
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
@@ -1110,13 +1108,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val threads: Int
                 val cpu: Int
                 if (puzzleMode) {
-                    threads = if (::sbThreadsPuzzle.isInitialized) sbThreadsPuzzle.progress + 1 else 4
-                    cpu     = if (::sbCpuPuzzle.isInitialized)    sbCpuPuzzle.progress + 10    else 70
-                    if (::etRangeStart.isInitialized && ::etRangeEnd.isInitialized)
+                    threads = (sbThreadsPuzzle?.progress ?: 3) + 1
+                    cpu     = (sbCpuPuzzle?.progress ?: 70) + 10
+                    if (etRangeStart != null && etRangeEnd != null)
                         HunterEngine.setRange(etRangeStart?.text.toString() ?: "", etRangeEnd?.text.toString() ?: "")
                 } else {
-                    threads = if (::sbThreads.isInitialized) sbThreads.progress + 1 else 4
-                    cpu     = if (::sbCpu.isInitialized)     sbCpu.progress + 10     else 70
+                    threads = (sbThreads?.progress ?: 3) + 1
+                    cpu     = (sbCpu?.progress ?: 70) + 10
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else 0)
                 HunterEngine.startHunting(threads, cpu)
@@ -1190,11 +1188,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         etRangeEnd?.setText(p.end)
         etTarget?.setText(p.addr)
         HunterEngine.setRange(p.start, p.end)
-        tvPuzzleStatus.text = "Puzzle #${p.num} — ${p.btc}"
+        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc}"
     }
 
     private fun autoSelectPuzzle() {
-        tvPuzzleStatus.text = "Checking puzzles..."; tvPuzzleStatus.setTextColor(TXT_SEC)
+        tvPuzzleStatus?.text = "Checking puzzles..."; tvPuzzleStatus?.setTextColor(TXT_SEC)
         Thread {
             var bestIdx = 0
             for ((idx, p) in puzzles.withIndex()) {
@@ -1203,10 +1201,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         bestIdx = idx
                         runOnUiThread {
                             suppressPuzzleListener = true
-                            puzzleSpinner.setSelection(bestIdx)
+                            puzzleSpinner?.setSelection(bestIdx)
                             applyPuzzle(puzzles[bestIdx])
-                            tvPuzzleStatus.text = "Auto-selected #${p.num} — ${bal/100_000_000.0} BTC"
-                            tvPuzzleStatus.setTextColor(AppTheme.GREEN)
+                            tvPuzzleStatus?.text = "Auto-selected #${p.num} — ${bal/100_000_000.0} BTC"
+                            tvPuzzleStatus?.setTextColor(AppTheme.GREEN)
                             suppressPuzzleListener = false
                         }
                     }
