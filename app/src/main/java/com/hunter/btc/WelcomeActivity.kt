@@ -121,8 +121,6 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
 
-    private fun showPinScreen(
-        activity: android.app.Activity,
         isSetup: Boolean,
         onResult: (Boolean) -> Unit
     ) {

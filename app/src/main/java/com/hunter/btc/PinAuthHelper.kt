@@ -40,7 +40,7 @@ object PinAuthHelper {
 
 fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
         if (!WalletManager.hasPin(activity)) { onResult(true); return }
-        showPinScreen(activity, isSetup = false) { ok ->
+        activity.showPinScreen(isSetup = false) { ok ->
             if (ok) markAuthenticated()
             onResult(ok)
         }
@@ -48,8 +48,6 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
 
 
 
-    private fun showPinScreen(
-        activity: android.app.Activity,
         isSetup: Boolean,
         onResult: (Boolean) -> Unit
     ) {
