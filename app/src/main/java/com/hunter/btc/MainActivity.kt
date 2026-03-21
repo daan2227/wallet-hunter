@@ -1084,10 +1084,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (range <= java.math.BigInteger.ZERO) return "0.000000%"
             val done  = last.subtract(start).max(java.math.BigInteger.ZERO)
             // Usar 10 decimales para mostrar progreso en rangos enormes
-            val pct = done.multiply(java.math.BigInteger.TEN.pow(10))
+            val pct = done.multiply(java.math.BigInteger.TEN.pow(20))
                          .divide(range)
-            val pctDouble = pct.toDouble() / 1e8
-            "%.8f%%".format(pctDouble)
+            val pctDouble = pct.toDouble() / 1e18
+            "%.18f%%".format(pctDouble)
         } catch (e: Exception) { "—" }
     }
 
@@ -1327,10 +1327,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onPause()
         handler.removeCallbacks(updater)
         appPausedTime = System.currentTimeMillis()
+        savePuzzleCheckpoint()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        savePuzzleCheckpoint()
         batteryReceiver?.let { unregisterReceiver(it) }
     }
+
+    private fun savePuzzleCheckpoint() {
+        if (!puzzleMode) return
+        try {
+            val lastKey = HunterEngine.getLastKey()
+            if (lastKey.isEmpty() || lastKey == "0".repeat(64)) return
+            val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+            val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: return
+            puzzlePrefs.edit()
+                .putString("last_key_$puzzleNum", lastKey)
+                .putLong("last_time_$puzzleNum", System.currentTimeMillis())
+                .apply()
+        } catch (e: Exception) {}
+    }
+
+
 }
