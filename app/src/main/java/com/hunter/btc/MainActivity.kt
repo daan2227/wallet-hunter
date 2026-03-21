@@ -1083,11 +1083,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val range = end.subtract(start)
             if (range <= java.math.BigInteger.ZERO) return "0.000000%"
             val done  = last.subtract(start).max(java.math.BigInteger.ZERO)
-            // Usar 10 decimales para mostrar progreso en rangos enormes
-            val pct = done.multiply(java.math.BigInteger.TEN.pow(20))
-                         .divide(range)
-            val pctDouble = pct.toDouble() / 1e18
-            "%.18f%%".format(pctDouble)
+            // BigDecimal para precisión completa sin pérdida
+            val bdDone  = java.math.BigDecimal(done)
+            val bdRange = java.math.BigDecimal(range)
+            val pct = bdDone.multiply(java.math.BigDecimal("100"))
+                            .divide(bdRange, 18, java.math.RoundingMode.HALF_UP)
+            "${pct.toPlainString()}%"
         } catch (e: Exception) { "—" }
     }
 
