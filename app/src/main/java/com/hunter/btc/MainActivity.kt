@@ -426,7 +426,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = "SPEED"; textSize = 9f; setTextColor(TXT_MUTED)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.18f; setPadding(0, 0, 0, dp(4))
         })
-        tvWps = TextView(this).apply { text = "0"; textSize = 50f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        tvWps = TextView(this).apply { text = "0"; textSize = 50f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD) }
         heroLeft.addView(tvWps)
         heroLeft.addView(TextView(this).apply { text = "keys / second"; textSize = 11f; setTextColor(TXT_SEC); setPadding(0, dp(3), 0, 0) })
         val heroRight = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
@@ -626,7 +626,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val pHeroLeft = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) }
         pHeroLeft.addView(TextView(this).apply { text = "SPEED"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.18f })
-        val tvWpsP = TextView(this).apply { text = "0"; textSize = 40f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        val tvWpsP = TextView(this).apply { text = "0"; textSize = 40f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD) }
         tvWpsPuzzle = tvWpsP; pHeroLeft.addView(tvWpsP)
         pHeroLeft.addView(TextView(this).apply { text = "keys / second"; textSize = 10f; setTextColor(TXT_SEC) })
         val pHeroRight = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }

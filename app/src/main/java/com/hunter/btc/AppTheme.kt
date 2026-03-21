@@ -19,9 +19,9 @@ object AppTheme {
     val CYAN      = Color.parseColor("#00c8d4")
     val BLUE      = Color.parseColor("#60a5fa")
     val TXT_PRI   = Color.parseColor("#e6ead8")
-    val TXT_SEC   = Color.parseColor("#7a8a70")
-    val TXT_MUTED = Color.parseColor("#556050")
-    val BORDER_C  = Color.parseColor("#1e2420")
+    val TXT_SEC   = Color.parseColor("#a0a8a0")
+    val TXT_MUTED = Color.parseColor("#6e7a6e")
+    val BORDER_C  = Color.parseColor("#2a3028")
 
     /* aliases kept for compatibility */
     val YELLOW = AMBER
