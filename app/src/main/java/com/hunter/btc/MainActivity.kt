@@ -1295,14 +1295,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     }
 
+    private var appPausedTime = 0L
+    private val LOCK_TIMEOUT_MS = 15_000L // 15 seg en background
+
     override fun onResume() {
         super.onResume()
         handler.post(updater)
+        val elapsed = System.currentTimeMillis() - appPausedTime
+        if (appPausedTime > 0 && elapsed > LOCK_TIMEOUT_MS && WalletManager.hasPin(this)) {
+            PinAuthHelper.show(this) { ok -> if (!ok) finish() }
+        }
     }
 
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(updater)
+        appPausedTime = System.currentTimeMillis()
     }
 
     override fun onDestroy() {

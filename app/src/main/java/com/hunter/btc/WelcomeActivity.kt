@@ -233,8 +233,19 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             setBackgroundColor(BGKP)
             setPadding(dp(10), dp(14), dp(10), dp(32))
         }
+        val keypadContainer = android.widget.LinearLayout(activity).apply {
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         val keypad = android.widget.GridLayout(activity).apply {
             columnCount = 3; rowCount = 4
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
 
         val pin = StringBuilder()
@@ -372,15 +383,9 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 "bio" -> {
                     // Ícono de huella usando texto unicode
                     cell.addView(android.widget.TextView(activity).apply {
-                        text = "⬡"; textSize = 26f
+                        text = "◉"; textSize = 30f
                         setTextColor(GOLD)
                         gravity = android.view.Gravity.CENTER
-                        typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-                    })
-                    cell.addView(android.widget.TextView(activity).apply {
-                        text = "ID"; textSize = 8f; setTextColor(SUBL)
-                        typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-                        letterSpacing = 0.12f; gravity = android.view.Gravity.CENTER
                     })
                 }
                 "del" -> {
@@ -393,7 +398,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             keypad.addView(cell)
         }
 
-        keypadWrap.addView(keypad)
+        keypadContainer.addView(keypad)
+        keypadWrap.addView(keypadContainer)
         root.addView(keypadWrap)
 
         // Dialog fullscreen
