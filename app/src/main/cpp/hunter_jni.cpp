@@ -885,8 +885,18 @@ Java_com_hunter_btc_HunterEngine_isRunning(JNIEnv *,jobject){return (jboolean)g_
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_getLoadStatus(JNIEnv *env,jobject){return env->NewStringUTF(g_load_status);}
 
-JNIEXPORT jdouble JNICALL
 
+Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
+    time_t now=time(nullptr);
+    if(now!=g_last_wps_t&&g_last_wps_t>0){
+        long cur=g_count.load();double el=difftime(now,g_last_wps_t);
+        if(el>0)g_wps.store((cur-g_last_count)/el);
+        g_last_count=cur;g_last_wps_t=now;
+    } else if(g_last_wps_t==0) g_last_wps_t=now;
+    return g_wps.load();
+}
+
+JNIEXPORT jstring JNICALL
 
 /* Devuelve el último key procesado como hex string */
 JNIEXPORT jstring JNICALL
@@ -898,15 +908,6 @@ Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env, jobject){
     return env->NewStringUTF(hex);
 }
 
-Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
-    time_t now=time(nullptr);
-    if(now!=g_last_wps_t&&g_last_wps_t>0){
-        long cur=g_count.load();double el=difftime(now,g_last_wps_t);
-        if(el>0)g_wps.store((cur-g_last_count)/el);
-        g_last_count=cur;g_last_wps_t=now;
-    } else if(g_last_wps_t==0) g_last_wps_t=now;
-    return g_wps.load();
-}
 
 JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_getCount(JNIEnv *,jobject){return (jlong)g_count.load();}
