@@ -1,120 +1,16 @@
-package com.hunter.btc
+#!/usr/bin/env python3
+"""
+rebuild_pin.py
+Reemplaza showPinDialog() en WelcomeActivity y PinAuthHelper
+con el diseño del HTML: pantalla completa, dots animados, teclado con sub-letras.
+"""
 
-import android.app.Activity
-import android.content.Intent
-import android.graphics.*
-import android.graphics.drawable.GradientDrawable
-import android.os.*
-import android.view.*
-import android.widget.*
+import os
+PROJECT_ROOT = os.getcwd()
+KT_DIR = os.path.join(PROJECT_ROOT, "app", "src", "main", "java", "com", "hunter", "btc")
 
-class WelcomeActivity : Activity() {
-
-    private val BG    get() = AppTheme.BG_DEEP
-    private val GOLD  get() = AppTheme.AMBER
-    private val TXT   get() = AppTheme.TXT_PRI
-    private val TXT3  get() = AppTheme.TXT_MUTED
-    private val BORDER get() = AppTheme.BORDER_C
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-    override fun onCreate(s: Bundle?) {
-        super.onCreate(s)
-        AppTheme.init(this)
-        requestWindowFeature(Window.FEATURE_NO_TITLE)
-        window.setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                        WindowManager.LayoutParams.FLAG_FULLSCREEN)
-        window.statusBarColor = BG
-
-        if (WalletManager.hasPin(this)) {
-            showPinEntry()
-        } else {
-            showPinSetup()
-        }
-    }
-
-    // ── PIN ENTRY ─────────────────────────────────────────────────────────────
-    private fun showPinEntry() {
-        showPinScreen(this, isSetup = false) { ok ->
-            if (ok) {
-                PinAuthHelper.markAuthenticated()
-                goMain()
-            } else {
-                finish()
-            }
-        }
-    }
-
-    // ── PIN SETUP ─────────────────────────────────────────────────────────────
-    private fun showPinSetup() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
-            gravity = Gravity.CENTER
-            setPadding(dp(32), dp(80), dp(32), dp(48))
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.MATCH_PARENT
-            )
-        }
-
-        // Logo
-        root.addView(TextView(this).apply {
-            text = "WALLET\nHUNTER"
-            textSize = 42f; setTextColor(GOLD)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            letterSpacing = -0.02f; gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(8))
-        })
-        root.addView(TextView(this).apply {
-            text = "BITCOIN SEED SCANNER"
-            textSize = 9f; setTextColor(TXT3)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            letterSpacing = 0.2f; gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(48))
-        })
-
-        // Descripción
-        root.addView(TextView(this).apply {
-            text = "Crea un PIN de seguridad\npara proteger tus wallets"
-            textSize = 14f; setTextColor(TXT)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(32))
-        })
-
-        // Botón crear PIN
-        root.addView(Button(this).apply {
-            text = "⚷  CREAR PIN DE SEGURIDAD"
-            textSize = 13f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            letterSpacing = 0.06f
-            background = GradientDrawable().apply {
-                setColor(GOLD); cornerRadius = dp(6).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
-            )
-            setOnClickListener {
-                showPinScreen(this, isSetup = true) { ok ->
-                    if (ok) {
-                        PinAuthHelper.markAuthenticated()
-                        goMain()
-                    }
-                }
-            }
-        })
-
-        setContentView(root)
-        root.alpha = 0f
-        root.animate().alpha(1f).setDuration(400).setStartDelay(100).start()
-    }
-
-    private fun goMain() {
-        startActivity(Intent(this, MainActivity::class.java))
-        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
-        finish()
-    }
-
+# ── Función PIN reutilizable ──────────────────────────────────────────────────
+PIN_FUNCTION = '''
     private fun showPinScreen(
         activity: android.app.Activity,
         isSetup: Boolean,
@@ -363,5 +259,77 @@ class WelcomeActivity : Activity() {
         }
         dlg!!.show()
     }
+'''
 
-}
+# ── WelcomeActivity ───────────────────────────────────────────────────────────
+welcome_path = os.path.join(KT_DIR, "WelcomeActivity.kt")
+welcome = open(welcome_path).read()
+
+# Reemplazar showPinDialog con showPinScreen
+import re
+
+# Eliminar el método showPinDialog existente
+welcome = re.sub(
+    r'    // ── PIN DIALOG.*?^    \}',
+    '',
+    welcome, flags=re.DOTALL | re.MULTILINE
+)
+
+# Agregar showPinScreen antes del último }
+welcome = welcome.rstrip().rstrip('}').rstrip() + '\n' + PIN_FUNCTION + '\n}\n'
+
+# Reemplazar llamadas
+welcome = welcome.replace(
+    'showPinDialog(isSetup = false)',
+    'showPinScreen(this, isSetup = false)'
+)
+welcome = welcome.replace(
+    'showPinDialog(isSetup = true)',
+    'showPinScreen(this, isSetup = true)'
+)
+
+with open(welcome_path, 'w') as f:
+    f.write(welcome)
+print("✓ WelcomeActivity.kt actualizado")
+
+# ── PinAuthHelper ─────────────────────────────────────────────────────────────
+helper_path = os.path.join(KT_DIR, "PinAuthHelper.kt")
+helper_content = open(helper_path).read()
+
+# Reemplazar el método show() con uno que use showPinScreen via Activity
+new_show = '''    fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
+        if (!WalletManager.hasPin(activity)) { onResult(true); return }
+        showPinScreen(activity, isSetup = false) { ok ->
+            if (ok) markAuthenticated()
+            onResult(ok)
+        }
+    }
+'''
+
+# Reemplazar el show existente
+helper_content = re.sub(
+    r'    fun show\(activity.*?^    \}',
+    new_show.strip(),
+    helper_content, flags=re.DOTALL | re.MULTILINE
+)
+
+# Agregar showPinScreen antes del último }
+helper_content = helper_content.rstrip().rstrip('}').rstrip() + '\n' + PIN_FUNCTION + '\n}\n'
+
+with open(helper_path, 'w') as f:
+    f.write(helper_content)
+print("✓ PinAuthHelper.kt actualizado")
+
+print("""
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+PIN UI reconstruida:
+
+  - Pantalla completa (fullscreen dialog)
+  - Dots animados con glow verde/rojo
+  - Teclado con sub-letras (ABC, DEF...)
+  - Feedback táctil en cada tecla
+  - Shake animation en PIN incorrecto
+
+Siguiente: git add + push
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+""")
