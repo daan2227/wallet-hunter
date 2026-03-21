@@ -34,7 +34,7 @@ class WelcomeActivity : Activity() {
 
     // ── PIN ENTRY ─────────────────────────────────────────────────────────────
     private fun showPinEntry() {
-        showPinScreen(this, isSetup = false) { ok ->
+        showPinScreen(this@WelcomeActivity, isSetup = false) { ok ->
             if (ok) {
                 PinAuthHelper.markAuthenticated()
                 goMain()
@@ -95,7 +95,7 @@ class WelcomeActivity : Activity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
             )
             setOnClickListener {
-                showPinScreen(this, isSetup = true) { ok ->
+                showPinScreen(this@WelcomeActivity, isSetup = true) { ok ->
                     if (ok) {
                         PinAuthHelper.markAuthenticated()
                         goMain()
