@@ -887,7 +887,6 @@ Java_com_hunter_btc_HunterEngine_getLoadStatus(JNIEnv *env,jobject){return env->
 
 JNIEXPORT jdouble JNICALL
 
-extern "C" {
 
 /* Devuelve el último key procesado como hex string */
 JNIEXPORT jstring JNICALL
@@ -899,7 +898,6 @@ Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env, jobject){
     return env->NewStringUTF(hex);
 }
 
-} // extern "C" puzzle additions
 Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
     time_t now=time(nullptr);
     if(now!=g_last_wps_t&&g_last_wps_t>0){
