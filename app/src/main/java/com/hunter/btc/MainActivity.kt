@@ -160,6 +160,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzleMode = false
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
+    private var tvPctPuzzle: TextView? = null
     private var tvCountPuzzle: TextView? = null
     private var tvTimePuzzle: TextView? = null
     private var btnPuzzleToggle: Button? = null
@@ -628,10 +629,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tvCntP = TextView(this).apply { text = "0"; textSize = 15f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
         val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 15f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
         tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
+        tvPctPuzzle = TextView(this).apply {
+            text = "0.00000000%"; textSize = 11f; setTextColor(AMBER)
+            typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END
+        }
         pHeroRight.addView(tvCntP)
         pHeroRight.addView(TextView(this).apply { text = "SCANNED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, dp(8)) })
         pHeroRight.addView(tvTmP)
-        pHeroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f })
+        pHeroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, dp(4)) })
+        pHeroRight.addView(tvPctPuzzle)
         pHeroBlock.addView(pHeroLeft); pHeroBlock.addView(pHeroRight)
         runSection.addView(pHeroBlock)
 
@@ -1067,6 +1073,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun formatCount(v: Long): String {
         val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
         return fmt.format(v)
+    }
+
+    private fun calcPuzzleProgress(lastKeyHex: String, startHex: String, endHex: String): String {
+        return try {
+            val last  = java.math.BigInteger(lastKeyHex.trimStart('0').ifEmpty { "0" }, 16)
+            val start = java.math.BigInteger(startHex.trimStart('0').ifEmpty { "0" }, 16)
+            val end   = java.math.BigInteger(endHex.trimStart('0').ifEmpty { "0" }, 16)
+            val range = end.subtract(start)
+            if (range <= java.math.BigInteger.ZERO) return "0.000000%"
+            val done  = last.subtract(start).max(java.math.BigInteger.ZERO)
+            // Usar 10 decimales para mostrar progreso en rangos enormes
+            val pct = done.multiply(java.math.BigInteger.TEN.pow(10))
+                         .divide(range)
+            val pctDouble = pct.toDouble() / 1e8
+            "%.8f%%".format(pctDouble)
+        } catch (e: Exception) { "—" }
     }
 
     private fun updateUI() {
