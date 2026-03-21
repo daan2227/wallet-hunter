@@ -665,6 +665,39 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         runSection.addView(tvBalResult)
 
+        // Log de checkpoint visible
+        val tvCheckpoint = TextView(this).apply {
+            text = ""; textSize = 9f; setTextColor(AppTheme.CYAN)
+            typeface = Typeface.MONOSPACE; setPadding(0, dp(4), 0, dp(4))
+        }
+        // Cargar y mostrar checkpoint existente
+        val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+        val puzzleNum = puzzles[defaultIdx].num
+        val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
+        val savedTime = puzzlePrefs.getLong("last_time_$puzzleNum", 0)
+        if (savedKey != null && savedTime > 0) {
+            val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
+            tvCheckpoint.text = "⬡ Checkpoint #$puzzleNum: $timeStr\n${savedKey.take(16)}...${savedKey.takeLast(8)}"
+        }
+        runSection.addView(tvCheckpoint)
+
+        // Actualizar checkpoint cuando cambia el spinner
+        puzzleSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
+                val p = puzzles[pos]
+                val key = puzzlePrefs.getString("last_key_${p.num}", null)
+                val t   = puzzlePrefs.getLong("last_time_${p.num}", 0)
+                if (key != null && t > 0) {
+                    val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(t))
+                    tvCheckpoint.text = "⬡ Checkpoint #${p.num}: $ts\n${key.take(16)}...${key.takeLast(8)}"
+                } else {
+                    tvCheckpoint.text = "Sin checkpoint para #${p.num}"
+                }
+                if (!suppressPuzzleListener) applyPuzzle(p)
+            }
+            override fun onNothingSelected(a: AdapterView<*>) {}
+        }
+
         // Auto-seleccionar puzzle al entrar al tab
         checkPuzzleBalance(puzzles[defaultIdx].addr) { bal ->
             if (bal > 0) {
