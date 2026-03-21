@@ -1033,11 +1033,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
-    private fun formatCount(v: Long) = when {
-        v >= 1_000_000_000L -> "%.2fB".format(v / 1e9)
-        v >= 1_000_000L     -> "%.2fM".format(v / 1e6)
-        v >= 1_000L         -> "%.2fK".format(v / 1e3)
-        else -> "$v"
+    private fun formatCount(v: Long): String {
+        val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+        return fmt.format(v)
     }
 
     private fun updateUI() {
@@ -1184,21 +1182,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun autoSelectPuzzle() {
         tvPuzzleStatus?.text = "Checking puzzles..."; tvPuzzleStatus?.setTextColor(TXT_SEC)
         Thread {
-            var bestIdx = 0
+            // Verificar puzzles en orden de dificultad (ya están ordenados de menor a mayor)
+            // Parar en el primero que tenga fondos
             for ((idx, p) in puzzles.withIndex()) {
+                var found = false
+                val latch = java.util.concurrent.CountDownLatch(1)
                 checkPuzzleBalance(p.addr) { bal ->
                     if (bal > 0) {
-                        bestIdx = idx
+                        found = true
                         runOnUiThread {
                             suppressPuzzleListener = true
-                            puzzleSpinner?.setSelection(bestIdx)
-                            applyPuzzle(puzzles[bestIdx])
-                            tvPuzzleStatus?.text = "Auto-selected #${p.num} — ${bal/100_000_000.0} BTC"
+                            puzzleSpinner?.setSelection(idx)
+                            applyPuzzle(puzzles[idx])
+                            tvPuzzleStatus?.text = "Puzzle #${p.num} — ${bal/100_000_000.0} BTC"
                             tvPuzzleStatus?.setTextColor(AppTheme.GREEN)
                             suppressPuzzleListener = false
                         }
                     }
+                    latch.countDown()
                 }
+                latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
+                if (found) break
             }
         }.start()
     }
