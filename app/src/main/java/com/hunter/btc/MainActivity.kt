@@ -542,13 +542,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat() }
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
         }
-        val btnAutoSelect = Button(this).apply {
-            text = "⚡ Auto-select best puzzle"; textSize = 11f; setTextColor(AMBER)
-            background = GradientDrawable().apply { setColor(android.graphics.Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { bottomMargin = dp(8) }
-            setOnClickListener { autoSelectPuzzle() }
-        }
-        puzzleCard.addView(puzzleSpinner); puzzleCard.addView(btnAutoSelect)
+        puzzleCard.addView(puzzleSpinner)
 
         fun fld(lbl: String): Pair<LinearLayout, EditText> {
             val col = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(4) } }
@@ -663,29 +657,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnPuzzleToggle?.tag = arrayOf(pCoinGreen, pCoinRed)
         runSection.addView(btnPuzzleToggle)
 
-        // Balance checker
-        val balCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        // Balance - se actualiza automáticamente con autoSelectPuzzle
+        val tvBalResult = TextView(this).apply {
+            text = "Checking balance..."; textSize = 11f
+            setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE
+            setPadding(0, dp(4), 0, dp(8))
         }
-        balCard.addView(TextView(this).apply { text = "BALANCE CHECKER"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(0, 0, 0, dp(8)) })
-        val tvBalResult = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(TXT_PRI); typeface = Typeface.MONOSPACE }
-        val btnCheckBal = Button(this).apply {
-            text = "Check Balance"; textSize = 11f; setTextColor(android.graphics.Color.BLACK)
-            background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(6).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
-            setOnClickListener {
-                val addr = etTarget?.text.toString().trim() ?: ""
-                if (addr.isEmpty()) { tvBalResult.text = "No address set"; return@setOnClickListener }
-                tvBalResult.text = "Checking..."
-                checkPuzzleBalance(addr) { bal ->
-                    tvBalResult.text = if (bal > 0) "Balance: ${bal / 100_000_000.0} BTC" else "Balance: 0 BTC"
-                }
+        runSection.addView(tvBalResult)
+
+        // Auto-seleccionar puzzle al entrar al tab
+        checkPuzzleBalance(puzzles[defaultIdx].addr) { bal ->
+            if (bal > 0) {
+                tvBalResult.text = "Balance: ${bal / 100_000_000.0} BTC ✓"
+                tvBalResult.setTextColor(GREEN)
+            } else {
+                // Buscar el puzzle con menor dificultad que tenga fondos
+                autoSelectPuzzle()
+                tvBalResult.text = "Searching funded puzzles..."
             }
         }
-        balCard.addView(tvBalResult); balCard.addView(btnCheckBal)
-        runSection.addView(balCard)
         page.addView(runSection)
 
         scroll.addView(page)
