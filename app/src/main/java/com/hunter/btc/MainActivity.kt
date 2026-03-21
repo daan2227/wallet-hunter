@@ -97,12 +97,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val NOTIF_CHANNEL = "hunter_match"
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
-    private lateinit var tvStatus: TextView
+    private var tvStatus: TextView? = null
     private var tvCsvName: TextView? = null
     private var tvQuickCsv: TextView? = null
     private var tvQuickMatches: TextView? = null
-    private lateinit var tvWps: TextView
-    private lateinit var tvKps: TextView
+    private var tvWps: TextView? = null
+    private var tvKps: TextView? = null
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
     private var fastModeEnabled = false
@@ -119,39 +119,39 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvMatchSec: LinearLayout? = null
     private var tvLogSec: LinearLayout? = null
     private var tvLangLbl: TextView? = null
-    private lateinit var tvCount: TextView
-    private lateinit var chartView: SpeedChartView
-    private lateinit var tvPuzzleStatus: TextView
+    private var tvCount: TextView? = null
+    private var chartView: SpeedChartView? = null
+    private var tvPuzzleStatus: TextView? = null
     private var tvTime: TextView? = null
     private var tvMatches: TextView? = null
     private var tvMatchList: TextView? = null
     private var tvAddrFeed: TextView? = null
-    private lateinit var tvRam: TextView
+    private var tvRam: TextView? = null
     private var tvTemp: TextView? = null
     private var tvBattery: TextView? = null
-    private lateinit var tvLog: TextView
-    private lateinit var puzzleSpinner: Spinner
+    private var tvLog: TextView? = null
+    private var puzzleSpinner: Spinner? = null
     private var suppressPuzzleListener = false
     private var tvFooter: TextView? = null
-    private lateinit var btnToggle: Button
+    private var btnToggle: Button? = null
     private var btnSwitch: Button? = null
-    private lateinit var sbThreads: SeekBar
-    private lateinit var sbCpu: SeekBar
+    private var sbThreads: SeekBar? = null
+    private var sbCpu: SeekBar? = null
     // Puzzle tiene sus propios sliders independientes
-    private lateinit var sbThreadsPuzzle: SeekBar
-    private lateinit var sbCpuPuzzle: SeekBar
-    private lateinit var tvThreadsPuzzle: TextView
-    private lateinit var tvCpuPuzzle: TextView
-    private lateinit var tvThreads: TextView
-    private lateinit var tvCpu: TextView
+    private var sbThreadsPuzzle: SeekBar? = null
+    private var sbCpuPuzzle: SeekBar? = null
+    private var tvThreadsPuzzle: TextView? = null
+    private var tvCpuPuzzle: TextView? = null
+    private var tvThreads: TextView? = null
+    private var tvCpu: TextView? = null
     private var tvCsvSec: LinearLayout? = null
     private var tvConfigSec: LinearLayout? = null
     private var tvStatsSec: LinearLayout? = null
-    private lateinit var btnCsv: Button
+    private var btnCsv: Button? = null
     private var csvSecView: LinearLayout? = null
-    private lateinit var etRangeStart: EditText
-    private lateinit var etRangeEnd: EditText
-    private lateinit var etTarget: EditText
+    private var etRangeStart: EditText? = null
+    private var etRangeEnd: EditText? = null
+    private var etTarget: EditText? = null
     private var layoutPuzzle: LinearLayout? = null
     private var rbBip39: Button? = null
     private var rbPuzzle: Button? = null
@@ -164,7 +164,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvTimePuzzle: TextView? = null
     private var btnPuzzleToggle: Button? = null
     private val recentAddrs = mutableListOf<String>()
-    private lateinit var recoveryEngine: RecoveryEngine
+    private var recoveryEngine: RecoveryEngine? = null
     private val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
 
     data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
@@ -694,11 +694,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun updatePuzzleLabels() {
         if (!::sbThreadsPuzzle.isInitialized || !::tvThreadsPuzzle.isInitialized) return
-        val t = sbThreadsPuzzle.progress + 1
-        val c = sbCpuPuzzle.progress + 10
+        val t = (sbThreadsPuzzle?.progress ?: 3) + 1
+        val c = (sbCpuPuzzle?.progress ?: 70) + 10
         tvThreadsPuzzle.text = "Threads: $t"
         tvCpuPuzzle.text = "CPU limit: $c%"
-        prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle.progress).putInt("puzzle_cpu", sbCpuPuzzle.progress).apply()
+        prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle?.progress ?: 3).putInt("puzzle_cpu", sbCpuPuzzle?.progress ?: 70).apply()
     }
 
     // ── BUILD WALLET TAB ──────────────────────────────────────────────────────
@@ -1036,13 +1036,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun updateLabels() {
         if (!::sbThreads.isInitialized || !::tvThreads.isInitialized) return
-        val t = sbThreads.progress + 1
-        val c = sbCpu.progress + 10
+        val t = (sbThreads?.progress ?: 3) + 1
+        val c = (sbCpu?.progress ?: 70) + 10
         tvThreads.text = "Threads: $t"
         tvCpu.text = "CPU limit: $c%"
         tvQuickThreads?.text = "$t"
         tvQuickCpu?.text = "$c%"
-        prefs.edit().putInt("threads", sbThreads.progress).putInt("cpu", sbCpu.progress).apply()
+        prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
     private fun formatCount(v: Long) = when {
@@ -1062,8 +1062,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val elapsed2 = (System.currentTimeMillis() - sessionStartTime) / 1000
                     tvTimePuzzle?.text = "%02d:%02d:%02d".format(elapsed2/3600,(elapsed2%3600)/60,elapsed2%60)
                 } else {
-                    tvWps.text = "%.1f".format(wps)
-                    tvCount.text = formatCount(HunterEngine.getCount())
+                    tvWps?.text = "%.1f".format(wps)
+                    tvCount?.text = formatCount(HunterEngine.getCount())
                     val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
                     val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
                     tvTime?.text = "%02d:%02d:%02d".format(h, m, sc)
@@ -1113,7 +1113,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     threads = if (::sbThreadsPuzzle.isInitialized) sbThreadsPuzzle.progress + 1 else 4
                     cpu     = if (::sbCpuPuzzle.isInitialized)    sbCpuPuzzle.progress + 10    else 70
                     if (::etRangeStart.isInitialized && ::etRangeEnd.isInitialized)
-                        HunterEngine.setRange(etRangeStart.text.toString(), etRangeEnd.text.toString())
+                        HunterEngine.setRange(etRangeStart?.text.toString() ?: "", etRangeEnd?.text.toString() ?: "")
                 } else {
                     threads = if (::sbThreads.isInitialized) sbThreads.progress + 1 else 4
                     cpu     = if (::sbCpu.isInitialized)     sbCpu.progress + 10     else 70
@@ -1186,9 +1186,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun applyPuzzle(p: PuzzleInfo) {
-        etRangeStart.setText(p.start)
-        etRangeEnd.setText(p.end)
-        etTarget.setText(p.addr)
+        etRangeStart?.setText(p.start)
+        etRangeEnd?.setText(p.end)
+        etTarget?.setText(p.addr)
         HunterEngine.setRange(p.start, p.end)
         tvPuzzleStatus.text = "Puzzle #${p.num} — ${p.btc}"
     }
