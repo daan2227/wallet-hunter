@@ -210,15 +210,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        val scanScroll     = buildScanTab()
-        val puzzleScroll   = buildPuzzleTab()
-        val walletScroll   = buildWalletTab()
-        val recoveryScroll = buildRecoveryTab()
+        var scanScroll: ScrollView? = null
+        var puzzleScroll: ScrollView? = null
+        var walletScroll: ScrollView? = null
+        var recoveryScroll: ScrollView? = null
+        try {
+            android.widget.Toast.makeText(this, "Building Scan...", android.widget.Toast.LENGTH_SHORT).show()
+            scanScroll = buildScanTab()
+            android.widget.Toast.makeText(this, "Building Puzzle...", android.widget.Toast.LENGTH_SHORT).show()
+            puzzleScroll = buildPuzzleTab()
+            android.widget.Toast.makeText(this, "Building Wallet...", android.widget.Toast.LENGTH_SHORT).show()
+            walletScroll = buildWalletTab()
+            android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
+            recoveryScroll = buildRecoveryTab()
+            android.widget.Toast.makeText(this, "All tabs built OK", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "CRASH: ${e.javaClass.simpleName}: ${e.message?.take(80)}", android.widget.Toast.LENGTH_LONG).show()
+            finish(); return
+        }
 
-        cf.addView(scanScroll)
-        cf.addView(puzzleScroll)
-        cf.addView(walletScroll)
-        cf.addView(recoveryScroll)
+        scanScroll?.let { cf.addView(it) }
+        puzzleScroll?.let { cf.addView(it) }
+        walletScroll?.let { cf.addView(it) }
+        recoveryScroll?.let { cf.addView(it) }
         root.addView(cf)
 
         // ── TabBar ────────────────────────────────────────────────────────────
@@ -244,7 +258,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(tabBar)
         setContentView(root)
 
-        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
+        tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
         tabBtns  = listOf(tb0, tb1, tb2, tb3)
         listOf(tb0, tb1, tb2, tb3).forEachIndexed { i, b ->
             b.setOnClickListener {
