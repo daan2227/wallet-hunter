@@ -1179,12 +1179,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val rangeEnd = etRangeEnd?.text.toString() ?: ""
                         if (savedKey != null && savedKey.isNotEmpty()) {
                             HunterEngine.setRange(savedKey, rangeEnd)
+                            currentRangeStart = savedKey
+                            currentRangeEnd = rangeEnd
                             val savedTime = puzzlePrefs.getLong("last_time_$puzzleNum", 0)
                             val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
                             tvPuzzleStatus?.text = "Resumiendo desde checkpoint ($timeStr)"
                             tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
                         } else {
-                            HunterEngine.setRange(etRangeStart?.text.toString() ?: "", rangeEnd)
+                            val rangeStart = etRangeStart?.text.toString() ?: ""
+                            HunterEngine.setRange(rangeStart, rangeEnd)
+                            currentRangeStart = rangeStart
+                            currentRangeEnd = rangeEnd
                         }
                     }
                 } else {
