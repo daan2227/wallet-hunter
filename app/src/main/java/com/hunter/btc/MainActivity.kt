@@ -258,11 +258,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         goTab(0)
 
         // Init
-        if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())
-            HunterEngine.loadCsv(csvPath)
-        setupNotificationChannel()
-        registerBatteryReceiver()
-        updateLabels()
+        try {
+            if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())
+                HunterEngine.loadCsv(csvPath)
+            setupNotificationChannel()
+            registerBatteryReceiver()
+            updateLabels()
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "Init error: ${e.message}", e)
+        }
 
         val uiSp = getSharedPreferences("ui_state", MODE_PRIVATE)
         if (uiSp.contains("puzzleMode")) {
@@ -675,6 +679,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun updatePuzzleLabels() {
+        if (!::sbThreadsPuzzle.isInitialized || !::tvThreadsPuzzle.isInitialized) return
         val t = sbThreadsPuzzle.progress + 1
         val c = sbCpuPuzzle.progress + 10
         tvThreadsPuzzle.text = "Threads: $t"
@@ -1016,6 +1021,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun updateLabels() {
+        if (!::sbThreads.isInitialized || !::tvThreads.isInitialized) return
         val t = sbThreads.progress + 1
         val c = sbCpu.progress + 10
         tvThreads.text = "Threads: $t"
