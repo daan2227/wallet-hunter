@@ -284,8 +284,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val uiSp = getSharedPreferences("ui_state", MODE_PRIVATE)
         if (uiSp.contains("puzzleMode")) {
-            sbThreads.progress = uiSp.getInt("threads", 3)
-            sbCpu.progress = uiSp.getInt("cpu", 70)
+            sbThreads?.progress = uiSp.getInt("threads", 3)
+            sbCpu?.progress = uiSp.getInt("cpu", 70)
         }
     }
 
@@ -358,7 +358,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(16), 0, dp(16), dp(12))
             setOnSeekBarChangeListener(mkSbl {
                 updateLabels()
-                if (HunterEngine.isRunning()) HunterEngine.setCpuLimit(sbCpu.progress + 10)
+                if (HunterEngine.isRunning()) HunterEngine.setCpuLimit((sbCpu?.progress ?: 70) + 10)
             })
         }
         perfCard.addView(tvThreads); perfCard.addView(sbThreads)
@@ -695,8 +695,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun updatePuzzleLabels() {
                 val t = (sbThreadsPuzzle?.progress ?: 3) + 1
         val c = (sbCpuPuzzle?.progress ?: 70) + 10
-        tvThreadsPuzzle.text = "Threads: $t"
-        tvCpuPuzzle.text = "CPU limit: $c%"
+        tvThreadsPuzzle?.text = "Threads: $t"
+        tvCpuPuzzle?.text = "CPU limit: $c%"
         prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle?.progress ?: 3).putInt("puzzle_cpu", sbCpuPuzzle?.progress ?: 70).apply()
     }
 
