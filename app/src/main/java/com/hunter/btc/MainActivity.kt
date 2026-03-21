@@ -683,7 +683,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
             tvCheckpointLive?.text = "⬡ Checkpoint #$puzzleNum: $timeStr\n${savedKey.take(16)}...${savedKey.takeLast(8)}"
         }
-        runSection.addView(tvCheckpoint)
+        runSection.addView(tvCheckpointLive)
 
         // Listener unificado: aplica puzzle + muestra checkpoint
         puzzleSpinner?.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
