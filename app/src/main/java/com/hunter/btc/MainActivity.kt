@@ -1061,6 +1061,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
+        // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
+        if (puzzleMode && HunterEngine.isRunning()) {
+            val cycleCount = (System.currentTimeMillis() / 800).toInt()
+            if (cycleCount % 37 == 0) {
+                try {
+                    val lastKey = HunterEngine.getLastKey()
+                    if (lastKey.isNotEmpty() && lastKey != "0".repeat(64)) {
+                        val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+                        val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                        puzzlePrefs.edit()
+                            .putString("last_key_$puzzleNum", lastKey)
+                            .putLong("last_time_$puzzleNum", System.currentTimeMillis())
+                            .apply()
+                    }
+                } catch (e: Exception) {}
+            }
+        }
         // Actualizar dataset status si está cargando
         if (HunterEngine.isLoading()) {
             val status = HunterEngine.getLoadStatus()
@@ -1098,8 +1115,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (puzzleMode) {
                     threads = (sbThreadsPuzzle?.progress ?: 3) + 1
                     cpu     = (sbCpuPuzzle?.progress ?: 70) + 10
-                    if (etRangeStart != null && etRangeEnd != null)
-                        HunterEngine.setRange(etRangeStart?.text.toString() ?: "", etRangeEnd?.text.toString() ?: "")
+                    if (etRangeStart != null && etRangeEnd != null) {
+                        // Cargar checkpoint si existe
+                        val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+                        val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                        val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
+                        val rangeEnd = etRangeEnd?.text.toString() ?: ""
+                        if (savedKey != null && savedKey.isNotEmpty()) {
+                            HunterEngine.setRange(savedKey, rangeEnd)
+                            val savedTime = puzzlePrefs.getLong("last_time_$puzzleNum", 0)
+                            val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
+                            tvPuzzleStatus?.text = "Resumiendo desde checkpoint ($timeStr)"
+                            tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
+                        } else {
+                            HunterEngine.setRange(etRangeStart?.text.toString() ?: "", rangeEnd)
+                        }
+                    }
                 } else {
                     threads = (sbThreads?.progress ?: 3) + 1
                     cpu     = (sbCpu?.progress ?: 70) + 10
