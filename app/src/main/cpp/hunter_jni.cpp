@@ -682,6 +682,21 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 }
 
 static void *worker_puzzle_fn(void *){
+
+/* ── CPU Affinity ── */
+static int  g_big_cores[8]  = {4,5,6,7,-1,-1,-1,-1};
+static int  g_n_big_cores   = 4;
+static bool g_use_affinity  = false;
+
+static void set_thread_affinity(int thread_idx) {
+    if (!g_use_affinity) return;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    int core = g_big_cores[thread_idx % g_n_big_cores];
+    if (core >= 0) CPU_SET(core, &cpuset);
+    sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
+}
+
     set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
     long local_done=0;
