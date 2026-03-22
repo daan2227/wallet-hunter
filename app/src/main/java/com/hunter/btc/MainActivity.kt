@@ -1090,39 +1090,33 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun checkThermalThrottle() {
-        if (!thermalThrottleEnabled || !HunterEngine.isRunning()) return
+        if (!thermalThrottleEnabled) return
         val now = System.currentTimeMillis()
-        if (now - lastThermalCheck < 5000) return  // revisar cada 5 seg
+        if (now - lastThermalCheck < 3000) return
         lastThermalCheck = now
 
         try {
-            // Leer temperatura de batería (más confiable en Android)
-            val temp = getBatteryTemp()
+            val batTemp = getBatteryTemp()
             val cpuTemp = getCpuTemp()
-            val maxTemp = maxOf(temp, cpuTemp)
+            val maxTemp = maxOf(batTemp, cpuTemp)
 
-            val (targetCpu, status) = when {
-                maxTemp >= 48f -> Pair(20,  "🔥 CRÍTICO ${maxTemp.toInt()}°C — 20%")
-                maxTemp >= 44f -> Pair(35,  "🌡 MUY ALTO ${maxTemp.toInt()}°C — 35%")
-                maxTemp >= 40f -> Pair(50,  "⚠ ALTO ${maxTemp.toInt()}°C — 50%")
-                maxTemp >= 36f -> Pair(70,  "✓ NORMAL ${maxTemp.toInt()}°C — 70%")
-                else           -> Pair(originalCpuLimit, "✓ FRÍO ${maxTemp.toInt()}°C — ${originalCpuLimit}%")
+            val (targetCpu, status, color) = when {
+                maxTemp >= 48f -> Triple(20,  "🔥 ${maxTemp.toInt()}°C CRITICO — CPU 20%",  0xFFFF4444.toInt())
+                maxTemp >= 44f -> Triple(35,  "🌡 ${maxTemp.toInt()}°C MUY ALTO — CPU 35%", 0xFFFF8800.toInt())
+                maxTemp >= 40f -> Triple(50,  "⚠ ${maxTemp.toInt()}°C ALTO — CPU 50%",      AppTheme.AMBER)
+                maxTemp >= 30f -> Triple(originalCpuLimit, "✓ ${maxTemp.toInt()}°C OK",     AppTheme.GREEN)
+                else           -> Triple(originalCpuLimit, "🌡 Bat:${batTemp.toInt()}° CPU:${cpuTemp.toInt()}°", AppTheme.TXT_MUTED)
             }
 
-            if (HunterEngine.isRunning()) {
-                HunterEngine.setCpuLimit(targetCpu)
-                isThrottled = maxTemp >= 40f
-                runOnUiThread {
-                    tvThermal?.text = status
-                    tvThermal?.setTextColor(when {
-                        maxTemp >= 48f -> 0xFFFF4444.toInt()
-                        maxTemp >= 44f -> 0xFFFF8800.toInt()
-                        maxTemp >= 40f -> AppTheme.AMBER
-                        else           -> AppTheme.GREEN
-                    })
-                }
+            if (HunterEngine.isRunning()) HunterEngine.setCpuLimit(targetCpu)
+            isThrottled = maxTemp >= 40f
+            runOnUiThread {
+                tvThermal?.text = status
+                tvThermal?.setTextColor(color)
             }
-        } catch (e: Exception) {}
+        } catch (e: Exception) {
+            runOnUiThread { tvThermal?.text = "Temp: error lectura" }
+        }
     }
 
     private fun getBatteryTemp(): Float {
@@ -1134,16 +1128,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun getCpuTemp(): Float {
-        val paths = listOf(
-            "/sys/class/thermal/thermal_zone0/temp",
-            "/sys/class/thermal/thermal_zone1/temp",
-            "/sys/class/thermal/thermal_zone2/temp",
-            "/sys/devices/virtual/thermal/thermal_zone0/temp"
-        )
-        for (p in paths) {
+        // Buscar en todas las zonas térmicas disponibles
+        try {
+            val base = java.io.File("/sys/class/thermal")
+            if (base.exists()) {
+                val temps = base.listFiles()
+                    ?.filter { it.name.startsWith("thermal_zone") }
+                    ?.mapNotNull {
+                        try {
+                            val t = java.io.File(it, "temp").readText().trim().toFloatOrNull()
+                            if (t != null && t > 0) if (t > 1000) t / 1000f else t else null
+                        } catch (e: Exception) { null }
+                    } ?: emptyList()
+                if (temps.isNotEmpty()) return temps.max()
+            }
+        } catch (e: Exception) {}
+        // Fallback paths Samsung
+        for (p in listOf(
+            "/sys/class/thermal/thermal_zone4/temp",
+            "/sys/class/thermal/thermal_zone7/temp",
+            "/sys/devices/virtual/thermal/thermal_zone0/temp",
+            "/sys/kernel/debug/spmi/spmi-0/address"
+        )) {
             try {
                 val raw = java.io.File(p).readText().trim().toFloatOrNull() ?: continue
-                return if (raw > 1000) raw / 1000f else raw
+                if (raw > 0) return if (raw > 1000) raw / 1000f else raw
             } catch (e: Exception) {}
         }
         return 0f
