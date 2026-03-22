@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include <jni.h>
 #include <android/log.h>
+#include <sched.h>
+#include <sys/syscall.h>
 #include <string>
 #include <atomic>
 #include <mutex>
@@ -65,6 +67,7 @@ static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
+static std::atomic<int>    g_batch_size(16000); // dinámico
 static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
@@ -679,6 +682,7 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 }
 
 static void *worker_puzzle_fn(void *){
+    set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
     long local_done=0;
     XR128 rng; xr_init(&rng);
@@ -702,7 +706,8 @@ static void *worker_puzzle_fn(void *){
         /* Fill batch: only Jacobian point additions, no inversions */
         uint8_t cur[32]; memcpy(cur,privkey,32);
         int actual=1;
-        for(int i=1;i<JAC_BATCH&&!g_stop.load();i++){
+        int cur_batch=g_batch_size.load();
+        for(int i=1;i<cur_batch&&!g_stop.load();i++){
             for(int b=31;b>=0;b--){if(++cur[b])break;}
             if(memcmp(cur,g_range_end,32)>0) break;
             jp_add_G(&pts[i],&pts[i-1]);
@@ -1286,6 +1291,30 @@ Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env,jobject){
     for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",g_last_key[i]);
     hex[64]=0;
     return env->NewStringUTF(hex);
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setBigCores(JNIEnv *env, jobject, jintArray cores, jboolean enable){
+    g_use_affinity = enable;
+    if (!enable) return;
+    jint *c = env->GetIntArrayElements(cores, nullptr);
+    int n = env->GetArrayLength(cores);
+    g_n_big_cores = 0;
+    for(int i=0;i<n&&i<8;i++){
+        g_big_cores[i]=c[i];
+        if(c[i]>=0) g_n_big_cores++;
+    }
+    env->ReleaseIntArrayElements(cores, c, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setBatchSize(JNIEnv *env, jobject, jint size){
+    g_batch_size.store(size);
+}
+
+JNIEXPORT jint JNICALL
+Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
+    return g_batch_size.load();
 }
 
 }

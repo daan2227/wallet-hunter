@@ -1264,12 +1264,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun applyHardwareProfile(profile: HardwareProfile) {
-        // Aplicar threads recomendados al slider de Scan
         val threadProgress = (profile.recommendedThreads - 1).coerceIn(0, 7)
         sbThreads?.progress = threadProgress
         sbThreadsPuzzle?.progress = threadProgress
 
-        // Aplicar CPU recomendado
         val cpuProgress = (profile.recommendedCpu - 10).coerceIn(0, 90)
         sbCpu?.progress = cpuProgress
         sbCpuPuzzle?.progress = cpuProgress
@@ -1277,12 +1275,34 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         updateLabels()
         updatePuzzleLabels()
 
-        // Guardar en prefs
+        // CPU Affinity: big cores en Exynos/Snapdragon big.LITTLE
+        val totalCores = profile.cores
+        val bigCores = if (totalCores >= 8) {
+            // Últimos 4 cores suelen ser los big (A78/Kryo)
+            intArrayOf(4, 5, 6, 7)
+        } else if (totalCores >= 6) {
+            intArrayOf(4, 5)
+        } else {
+            intArrayOf(0, 1, 2, 3)
+        }
+        try { HunterEngine.setBigCores(bigCores, true) } catch (e: Exception) {}
+
+        // Batch dinámico según RAM
+        val batchSize = when {
+            profile.ramMB > 3000 -> 32000  // RAM alta → batch grande
+            profile.ramMB > 1500 -> 16000  // normal
+            profile.ramMB > 800  -> 8000   // conservador
+            else                 -> 4000
+        }
+        try { HunterEngine.setBatchSize(batchSize) } catch (e: Exception) {}
+
         prefs.edit()
             .putInt("threads", threadProgress)
             .putInt("cpu", cpuProgress)
             .putInt("puzzle_threads", threadProgress)
             .putInt("puzzle_cpu", cpuProgress)
+            .putIntArray("big_cores", bigCores)
+            .putInt("batch_size", batchSize)
             .apply()
     }
 
@@ -1299,6 +1319,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Configuración recomendada:
             • Threads: ${profile.recommendedThreads}
             • CPU limit: ${profile.recommendedCpu}%
+            
+            Batch size: ${if (profile.ramMB > 3000) 32000 else if (profile.ramMB > 1500) 16000 else 8000} keys
+            Big cores: ${if (profile.cores >= 8) "4-7" else "auto"}
             
             ¿Aplicar configuración óptima?
         """.trimIndent()
