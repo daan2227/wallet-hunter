@@ -595,6 +595,15 @@ static int  g_n_big_cores   = 4;
 static bool g_use_affinity  = false;
 
 
+static void set_thread_affinity(int thread_idx) {
+    if (!g_use_affinity) return;
+    cpu_set_t cpuset;
+    CPU_ZERO(&cpuset);
+    int core = g_big_cores[thread_idx % g_n_big_cores];
+    if (core >= 0) CPU_SET(core, &cpuset);
+    sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
+}
+
 static void *worker_bip39_fn(void *){
     set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -689,14 +698,6 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 }
 
 
-static void set_thread_affinity(int thread_idx) {
-    if (!g_use_affinity) return;
-    cpu_set_t cpuset;
-    CPU_ZERO(&cpuset);
-    int core = g_big_cores[thread_idx % g_n_big_cores];
-    if (core >= 0) CPU_SET(core, &cpuset);
-    sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
-}
 
 static void *worker_puzzle_fn(void *){
 
