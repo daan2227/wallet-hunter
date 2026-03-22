@@ -95,6 +95,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var batteryReceiver: android.content.BroadcastReceiver? = null
     private var lastFoundCount = 0L
     private val NOTIF_CHANNEL = "hunter_match"
+    private val REQ_IMPORT_CONFIG = 2002
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private var tvStatus: TextView? = null
@@ -437,6 +438,34 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setOnClickListener { showSchedulerDialog() }
         }
         cfgSection.addView(btnSched)
+
+        // Botones Export/Import configuración
+        val btnExport = Button(this).apply {
+            text = "📤 Exportar Config"
+            textSize = 11f; setTextColor(AMBER)
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
+            ).apply { topMargin = dp(8) }
+            setOnClickListener { exportConfig() }
+        }
+        val btnImport = Button(this).apply {
+            text = "📥 Importar Config"
+            textSize = 11f; setTextColor(AppTheme.CYAN)
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
+            ).apply { topMargin = dp(4) }
+            setOnClickListener { importConfig() }
+        }
+        cfgSection.addView(btnExport)
+        cfgSection.addView(btnImport)
 
         // Botón auto-configurar hardware
         val btnHw = Button(this).apply {
@@ -1651,6 +1680,94 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }.start()
     }
 
+
+
+    // ── Export / Import Configuración ────────────────────────────────────────
+    private fun exportConfig() {
+        try {
+            val cfg = org.json.JSONObject().apply {
+                put("threads",        prefs.getInt("threads", 3))
+                put("cpu",            prefs.getInt("cpu", 70))
+                put("puzzle_threads", prefs.getInt("puzzle_threads", 3))
+                put("puzzle_cpu",     prefs.getInt("puzzle_cpu", 70))
+                put("fastMode",       prefs.getBoolean("fastMode", false))
+                put("sched_start",    prefs.getInt("sched_start", -1))
+                put("sched_stop",     prefs.getInt("sched_stop", -1))
+                put("batch_size",     prefs.getInt("batch_size", 16000))
+                put("big_cores",      prefs.getString("big_cores", "4,5,6,7"))
+                put("hw_detected",    prefs.getBoolean("hw_detected", false))
+                put("exported_at",    System.currentTimeMillis())
+                put("device",         android.os.Build.MODEL)
+                put("app_version",    "1.0")
+            }
+            val json = cfg.toString(2)
+            val file = java.io.File(getExternalFilesDir(null), "wallet_hunter_config.json")
+            file.writeText(json)
+
+            // Compartir archivo
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.provider", file
+            )
+            val intent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(Intent.EXTRA_SUBJECT, "Wallet Hunter Config")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(Intent.createChooser(intent, "Exportar configuración"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error exportando: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun importConfig() {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "application/json"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        startActivityForResult(intent, REQ_IMPORT_CONFIG)
+    }
+
+    private fun applyImportedConfig(uri: android.net.Uri) {
+        try {
+            val json = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
+            val cfg = org.json.JSONObject(json)
+
+            val edit = prefs.edit()
+            if (cfg.has("threads"))        edit.putInt("threads",        cfg.getInt("threads"))
+            if (cfg.has("cpu"))            edit.putInt("cpu",            cfg.getInt("cpu"))
+            if (cfg.has("puzzle_threads")) edit.putInt("puzzle_threads", cfg.getInt("puzzle_threads"))
+            if (cfg.has("puzzle_cpu"))     edit.putInt("puzzle_cpu",     cfg.getInt("puzzle_cpu"))
+            if (cfg.has("fastMode"))       edit.putBoolean("fastMode",   cfg.getBoolean("fastMode"))
+            if (cfg.has("sched_start"))    edit.putInt("sched_start",    cfg.getInt("sched_start"))
+            if (cfg.has("sched_stop"))     edit.putInt("sched_stop",     cfg.getInt("sched_stop"))
+            if (cfg.has("batch_size"))     edit.putInt("batch_size",     cfg.getInt("batch_size"))
+            if (cfg.has("big_cores"))      edit.putString("big_cores",   cfg.getString("big_cores"))
+            edit.apply()
+
+            // Aplicar inmediatamente
+            sbThreads?.progress     = prefs.getInt("threads", 3)
+            sbCpu?.progress         = prefs.getInt("cpu", 70)
+            sbThreadsPuzzle?.progress = prefs.getInt("puzzle_threads", 3)
+            sbCpuPuzzle?.progress   = prefs.getInt("puzzle_cpu", 70)
+            updateLabels(); updatePuzzleLabels()
+
+            // Restaurar scheduler
+            scheduledStart = prefs.getInt("sched_start", -1)
+            scheduledStop  = prefs.getInt("sched_stop", -1)
+            if (scheduledStart >= 0) startScheduler()
+
+            val device = cfg.optString("device", "desconocido")
+            val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.US)
+                .format(java.util.Date(cfg.optLong("exported_at", 0)))
+            Toast.makeText(this,
+                "✓ Config importada\nDispositivo: $device\nFecha: $date",
+                Toast.LENGTH_LONG).show()
+
+        } catch (e: Exception) {
+            Toast.makeText(this, "Error importando: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     // ── Modo Scheduled ────────────────────────────────────────────────────────
     private var scheduledStart: Int = -1  // hora de inicio (-1 = deshabilitado)
