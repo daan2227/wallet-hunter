@@ -1044,6 +1044,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val ts=java.text.SimpleDateFormat("yyyyMMdd_HHmmss",java.util.Locale.US).format(java.util.Date())
                     val f=java.io.File(getExternalFilesDir(null),"recovery_$ts.txt")
                     f.writeText("RECOVERY MATCH\n$mnemonic\n")
+                    // Notificación push
+                    sendMatchNotification(mnemonic.take(30), "RECOVERY")
                 }
             }
             override fun onNotFound(){
