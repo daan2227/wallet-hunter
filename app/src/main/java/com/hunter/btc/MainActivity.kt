@@ -1301,7 +1301,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putInt("cpu", cpuProgress)
             .putInt("puzzle_threads", threadProgress)
             .putInt("puzzle_cpu", cpuProgress)
-            .putIntArray("big_cores", bigCores)
+            .putString("big_cores", bigCores.joinToString(","))
             .putInt("batch_size", batchSize)
             .apply()
     }
