@@ -681,7 +681,6 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     }
 }
 
-static void *worker_puzzle_fn(void *){
 
 /* ── CPU Affinity ── */
 static int  g_big_cores[8]  = {4,5,6,7,-1,-1,-1,-1};
@@ -696,6 +695,9 @@ static void set_thread_affinity(int thread_idx) {
     if (core >= 0) CPU_SET(core, &cpuset);
     sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
 }
+
+static void *worker_puzzle_fn(void *){
+
 
     set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
