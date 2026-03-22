@@ -16,6 +16,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class WalletActivity : FragmentActivity() {
+    private val REQ_IMPORT_BACKUP = 1002
 
     private val AMBER     get() = AppTheme.AMBER
     private val GREEN     get() = AppTheme.GREEN
@@ -1339,7 +1340,7 @@ class WalletActivity : FragmentActivity() {
                 if (count >= 0) {
                     android.widget.Toast.makeText(this,
                         "✓ $count wallet(s) restauradas", android.widget.Toast.LENGTH_SHORT).show()
-                    loadWallets()
+                    buildUI()
                 } else {
                     android.widget.Toast.makeText(this,
                         "Error: PIN incorrecto o archivo inválido", android.widget.Toast.LENGTH_SHORT).show()
