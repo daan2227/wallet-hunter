@@ -1789,8 +1789,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 .setContentTitle("🎯 MATCH ENCONTRADO!")
                 .setContentText("Addr: ${addr.take(20)}...")
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle()
-                    .bigText("Dirección: $addr
-WIF: $wif"))
+                    .bigText("Dirección: $addr\nWIF: $wif"))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
                 .setAutoCancel(true)
                 .setContentIntent(intent)
