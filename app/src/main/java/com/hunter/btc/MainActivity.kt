@@ -669,6 +669,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnPuzzleToggle?.tag = arrayOf(pCoinGreen, pCoinRed)
         runSection.addView(btnPuzzleToggle)
 
+        // Temperatura thermal
+        val tvThermalPuzzle = TextView(this).apply {
+            text = "Temperatura: --"; textSize = 10f; setTextColor(AppTheme.GREEN)
+            typeface = Typeface.MONOSPACE; setPadding(0, dp(4), 0, dp(4))
+        }
+        tvThermal = tvThermalPuzzle
+        runSection.addView(tvThermalPuzzle)
+
         // Balance - se actualiza automáticamente con autoSelectPuzzle
         val tvBalResult = TextView(this).apply {
             text = "Checking balance..."; textSize = 11f
