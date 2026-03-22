@@ -590,6 +590,7 @@ static void save_match(const char *privhex, const char *addr, double btc, const 
 typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;}Hit;
 
 static void *worker_bip39_fn(void *){
+    set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     char mn[256]; uint8_t seed[64],h160[HASH160_BYTES];
     Hit hits[LOCAL_BATCH*N_PATHS]; int nhits=0; long local_done=0;
