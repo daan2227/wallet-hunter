@@ -153,6 +153,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var etRangeEnd: EditText? = null
     private var currentRangeStart: String = ""
     private var currentRangeEnd: String = ""
+    private val BLOCK_SIZE = java.math.BigInteger("1000000") // 1M keys por bloque
+    private var currentBlockId: String = ""
+    private var tvBlockProgress: TextView? = null
     private var etTarget: EditText? = null
     private var layoutPuzzle: LinearLayout? = null
     private var rbBip39: Button? = null
@@ -636,11 +639,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = "0.00000000%"; textSize = 11f; setTextColor(AMBER)
             typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END
         }
+        tvBlockProgress = TextView(this).apply {
+            text = "Bloques: 0 / —"; textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = Typeface.MONOSPACE; gravity = Gravity.END
+        }
         pHeroRight.addView(tvCntP)
         pHeroRight.addView(TextView(this).apply { text = "SCANNED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, dp(8)) })
         pHeroRight.addView(tvTmP)
         pHeroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, dp(4)) })
         pHeroRight.addView(tvPctPuzzle)
+        pHeroRight.addView(tvBlockProgress)
         pHeroBlock.addView(pHeroLeft); pHeroBlock.addView(pHeroRight)
         runSection.addView(pHeroBlock)
 
@@ -1138,6 +1146,54 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         return fmt.format(v)
     }
 
+    // ── Registro local de bloques escaneados ─────────────────────────────────
+    private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
+
+    private fun getNextUnscannedBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): Pair<String, String>? {
+        return try {
+            val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+            val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+            val range = end.subtract(start)
+            val totalBlocks = range.divide(BLOCK_SIZE).toLong()
+
+            val prefs = getBlockPrefs()
+            val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet()) ?: emptySet()
+
+            // Elegir bloque aleatorio no escaneado
+            val unscanned = (0 until totalBlocks).filter { !scanned.contains(it.toString()) }
+            if (unscanned.isEmpty()) return null
+
+            val blockIdx = unscanned.random()
+            val blockStart = start.add(BLOCK_SIZE.multiply(java.math.BigInteger.valueOf(blockIdx)))
+            val blockEnd   = blockStart.add(BLOCK_SIZE).min(end)
+
+            currentBlockId = blockIdx.toString()
+            Pair(
+                blockStart.toString(16).padStart(18, '0'),
+                blockEnd.toString(16).padStart(18, '0')
+            )
+        } catch (e: Exception) { null }
+    }
+
+    private fun markBlockScanned(puzzleNum: Int) {
+        if (currentBlockId.isEmpty()) return
+        val prefs = getBlockPrefs()
+        val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet())?.toMutableSet() ?: mutableSetOf()
+        scanned.add(currentBlockId)
+        prefs.edit().putStringSet("scanned_$puzzleNum", scanned).apply()
+    }
+
+    private fun getBlockProgressText(puzzleNum: Int, rangeStart: String, rangeEnd: String): String {
+        return try {
+            val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+            val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+            val total = end.subtract(start).divide(BLOCK_SIZE).toLong()
+            val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size ?: 0
+            val pct = if (total > 0) scanned * 100.0 / total else 0.0
+            "Bloques: $scanned / $total (%.4f%%)".format(pct)
+        } catch (e: Exception) { "" }
+    }
+
     private fun calcPuzzleProgress(lastKeyHex: String, startHex: String, endHex: String): String {
         return try {
             val last  = java.math.BigInteger(lastKeyHex.trimStart('0').ifEmpty { "0" }, 16)
@@ -1213,6 +1269,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
+                // Marcar bloque como escaneado al detener
+                if (puzzleMode) {
+                    val pNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                    markBlockScanned(pNum)
+                }
                 val btn = activeToggleBtn
                 if (btn != null) {
                     val bg = btn.tag as? Array<*>
@@ -1238,18 +1299,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
                         val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
                         val rangeEnd = etRangeEnd?.text.toString() ?: ""
-                        if (savedKey != null && savedKey.isNotEmpty()) {
+                        // Elegir bloque no escaneado
+                        val fullStart = etRangeStart?.text.toString() ?: ""
+                        val block = getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
+                        if (block != null) {
+                            val (bStart, bEnd) = block
+                            HunterEngine.setRange(bStart, bEnd)
+                            currentRangeStart = bStart
+                            currentRangeEnd = bEnd
+                            tvPuzzleStatus?.text = "Bloque #$currentBlockId de ${getBlockProgressText(puzzleNum, fullStart, rangeEnd)}"
+                            tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
+                        } else if (savedKey != null && savedKey.isNotEmpty()) {
                             HunterEngine.setRange(savedKey, rangeEnd)
                             currentRangeStart = savedKey
                             currentRangeEnd = rangeEnd
-                            val savedTime = puzzlePrefs.getLong("last_time_$puzzleNum", 0)
-                            val timeStr = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
-                            tvPuzzleStatus?.text = "Resumiendo desde checkpoint ($timeStr)"
-                            tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
                         } else {
-                            val rangeStart = etRangeStart?.text.toString() ?: ""
-                            HunterEngine.setRange(rangeStart, rangeEnd)
-                            currentRangeStart = rangeStart
+                            HunterEngine.setRange(fullStart, rangeEnd)
+                            currentRangeStart = fullStart
                             currentRangeEnd = rangeEnd
                         }
                     }
