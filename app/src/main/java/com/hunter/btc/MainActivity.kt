@@ -153,7 +153,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var etRangeEnd: EditText? = null
     private var currentRangeStart: String = ""
     private var currentRangeEnd: String = ""
-    private val BLOCK_SIZE = java.math.BigInteger("1000000") // 1M keys por bloque
+    private val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
     private var etTarget: EditText? = null
@@ -1162,16 +1162,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
             val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
             val range = end.subtract(start)
-            val totalBlocks = range.divide(BLOCK_SIZE).toLong()
+            val totalBlocks = range.divide(BLOCK_SIZE).toLong().coerceAtMost(100_000)
 
             val prefs = getBlockPrefs()
             val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet()) ?: emptySet()
 
-            // Elegir bloque aleatorio no escaneado
-            val unscanned = (0 until totalBlocks).filter { !scanned.contains(it.toString()) }
-            if (unscanned.isEmpty()) return null
+            // Elegir bloque aleatorio no escaneado sin cargar lista entera
+            var attempts = 0
+            var blockIdx: Long
+            do {
+                blockIdx = (Math.random() * totalBlocks).toLong()
+                attempts++
+            } while (scanned.contains(blockIdx.toString()) && attempts < 100)
 
-            val blockIdx = unscanned.random()
+            if (attempts >= 100) return null  // todo escaneado
+
             val blockStart = start.add(BLOCK_SIZE.multiply(java.math.BigInteger.valueOf(blockIdx)))
             val blockEnd   = blockStart.add(BLOCK_SIZE).min(end)
 
