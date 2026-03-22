@@ -589,6 +589,12 @@ static void save_match(const char *privhex, const char *addr, double btc, const 
    ========================================================= */
 typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;}Hit;
 
+/* ── CPU Affinity ── */
+static int  g_big_cores[8]  = {4,5,6,7,-1,-1,-1,-1};
+static int  g_n_big_cores   = 4;
+static bool g_use_affinity  = false;
+
+
 static void *worker_bip39_fn(void *){
     set_thread_affinity(0);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -682,11 +688,6 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     }
 }
 
-
-/* ── CPU Affinity ── */
-static int  g_big_cores[8]  = {4,5,6,7,-1,-1,-1,-1};
-static int  g_n_big_cores   = 4;
-static bool g_use_affinity  = false;
 
 static void set_thread_affinity(int thread_idx) {
     if (!g_use_affinity) return;
