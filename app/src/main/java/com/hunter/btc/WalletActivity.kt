@@ -1256,4 +1256,98 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
+    private fun showBackupDialog() {
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(64, 32, 64, 16)
+        }
+        val etPin = android.widget.EditText(this).apply {
+            hint = "Ingresa tu PIN"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setTextColor(0xFFE6EAD8.toInt())
+            setHintTextColor(0xFF556050.toInt())
+        }
+        root.addView(android.widget.TextView(this).apply {
+            text = "PIN para cifrar el backup:"
+            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setPadding(0, 0, 0, 8)
+        })
+        root.addView(etPin)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("📦 Exportar Backup")
+            .setView(root)
+            .setPositiveButton("Exportar") { _, _ ->
+                val pin = etPin.text.toString()
+                if (pin.length < 4) {
+                    android.widget.Toast.makeText(this, "PIN muy corto", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val file = WalletManager.exportBackup(this, pin)
+                if (file != null) {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(
+                        this, "$packageName.provider", file)
+                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                        type = "application/octet-stream"
+                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                        putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Backup")
+                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    startActivity(android.content.Intent.createChooser(intent, "Compartir backup"))
+                } else {
+                    android.widget.Toast.makeText(this, "No hay wallets para exportar", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun showRestoreDialog() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+            type = "*/*"
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+        }
+        startActivityForResult(intent, REQ_IMPORT_BACKUP)
+    }
+
+    private fun doRestore(uri: android.net.Uri) {
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(64, 32, 64, 16)
+        }
+        val etPin = android.widget.EditText(this).apply {
+            hint = "PIN del backup"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setTextColor(0xFFE6EAD8.toInt())
+        }
+        root.addView(android.widget.TextView(this).apply {
+            text = "PIN usado al crear el backup:"
+            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setPadding(0, 0, 0, 8)
+        })
+        root.addView(etPin)
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("📥 Restaurar Backup")
+            .setView(root)
+            .setPositiveButton("Restaurar") { _, _ ->
+                val pin = etPin.text.toString()
+                val data = contentResolver.openInputStream(uri)?.readBytes() ?: return@setPositiveButton
+                val count = WalletManager.importBackup(this, pin, data)
+                if (count >= 0) {
+                    android.widget.Toast.makeText(this,
+                        "✓ $count wallet(s) restauradas", android.widget.Toast.LENGTH_SHORT).show()
+                    loadWallets()
+                } else {
+                    android.widget.Toast.makeText(this,
+                        "Error: PIN incorrecto o archivo inválido", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+
 }

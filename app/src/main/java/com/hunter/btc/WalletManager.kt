@@ -262,4 +262,87 @@ object WalletManager {
         prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
+
+    // ── Backup cifrado de wallets ─────────────────────────────────────────────
+    fun exportBackup(ctx: Context, pin: String): java.io.File? {
+        return try {
+            val wallets = listWallets(ctx)
+            if (wallets.isEmpty()) return null
+
+            val backupData = org.json.JSONArray()
+            for ((id, name) in wallets) {
+                val seed = loadWalletSeed(ctx, id) ?: continue
+                backupData.put(org.json.JSONObject().apply {
+                    put("id",   id)
+                    put("name", name)
+                    put("seed", seed)
+                })
+            }
+
+            val json = org.json.JSONObject().apply {
+                put("version",    1)
+                put("app",        "WalletHunter")
+                put("created_at", System.currentTimeMillis())
+                put("wallets",    backupData)
+            }.toString()
+
+            // Derivar clave del PIN con PBKDF2
+            val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+            val key  = deriveKeyFromPin(pin, salt)
+
+            // Cifrar con AES/GCM
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
+            val encrypted = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
+
+            // Formato: [4 salt_len][salt][4 iv_len][iv][encrypted]
+            val out = java.io.ByteArrayOutputStream()
+            val dos = java.io.DataOutputStream(out)
+            dos.writeInt(salt.size);      dos.write(salt)
+            dos.writeInt(cipher.iv.size); dos.write(cipher.iv)
+            dos.write(encrypted)
+            dos.flush()
+
+            val file = java.io.File(ctx.getExternalFilesDir(null),
+                "wh_backup_${System.currentTimeMillis()}.whbak")
+            file.writeBytes(out.toByteArray())
+            file
+        } catch (e: Exception) { null }
+    }
+
+    fun importBackup(ctx: Context, pin: String, data: ByteArray): Int {
+        return try {
+            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
+            val saltLen = dis.readInt()
+            val salt    = ByteArray(saltLen).also { dis.readFully(it) }
+            val ivLen   = dis.readInt()
+            val iv      = ByteArray(ivLen).also { dis.readFully(it) }
+            val enc     = dis.readBytes()
+
+            val key = deriveKeyFromPin(pin, salt)
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key,
+                javax.crypto.spec.GCMParameterSpec(128, iv))
+            val json = String(cipher.doFinal(enc), Charsets.UTF_8)
+
+            val root    = org.json.JSONObject(json)
+            val wallets = root.getJSONArray("wallets")
+            var count   = 0
+            for (i in 0 until wallets.length()) {
+                val w = wallets.getJSONObject(i)
+                saveWallet(ctx, w.getString("id"), w.getString("name"), w.getString("seed"))
+                count++
+            }
+            count
+        } catch (e: Exception) { -1 }
+    }
+
+    private fun deriveKeyFromPin(pin: String, salt: ByteArray): javax.crypto.SecretKey {
+        val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
+        val tmp  = factory.generateSecret(spec)
+        return javax.crypto.spec.SecretKeySpec(tmp.encoded, "AES")
+    }
+
+
 }
