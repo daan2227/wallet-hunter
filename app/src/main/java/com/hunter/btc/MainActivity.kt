@@ -285,6 +285,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setupNotificationChannel()
             registerBatteryReceiver()
             // Auto-detectar hardware en primera ejecución
+            // Restaurar scheduler si estaba activo
+            scheduledStart = prefs.getInt("sched_start", -1)
+            scheduledStop  = prefs.getInt("sched_stop",  -1)
+            if (scheduledStart >= 0) startScheduler()
+
             if (!prefs.getBoolean("hw_detected", false)) {
                 val profile = detectHardware()
                 applyHardwareProfile(profile)
@@ -417,6 +422,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fastSwitch.isChecked = fastModeEnabled
         fastRow.addView(fastLeft); fastRow.addView(fastSwitch); fastCard.addView(fastRow)
         cfgSection.addView(fastCard)
+
+        // Botón scan programado
+        val btnSched = Button(this).apply {
+            text = "⏰ Programar Scan"
+            textSize = 11f; setTextColor(AMBER)
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
+            ).apply { topMargin = dp(8) }
+            setOnClickListener { showSchedulerDialog() }
+        }
+        cfgSection.addView(btnSched)
 
         // Botón auto-configurar hardware
         val btnHw = Button(this).apply {
@@ -1629,14 +1649,155 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }.start()
     }
 
+
+    // ── Modo Scheduled ────────────────────────────────────────────────────────
+    private var scheduledStart: Int = -1  // hora de inicio (-1 = deshabilitado)
+    private var scheduledStop:  Int = -1  // hora de parada
+    private var schedulerRunning = false
+
+    private fun startScheduler() {
+        if (schedulerRunning) return
+        schedulerRunning = true
+        Thread {
+            while (schedulerRunning) {
+                try {
+                    val cal = java.util.Calendar.getInstance()
+                    val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
+                    if (scheduledStart >= 0 && scheduledStop >= 0) {
+                        val shouldRun = if (scheduledStart <= scheduledStop) {
+                            hour in scheduledStart until scheduledStop
+                        } else {
+                            hour >= scheduledStart || hour < scheduledStop
+                        }
+                        if (shouldRun && !HunterEngine.isRunning()) {
+                            runOnUiThread {
+                                puzzleMode = false
+                                HunterEngine.setMode(0)
+                                doToggle(btnToggle)
+                            }
+                        } else if (!shouldRun && HunterEngine.isRunning()) {
+                            runOnUiThread {
+                                doToggle(activeToggleBtn)
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+                Thread.sleep(60_000) // revisar cada minuto
+            }
+        }.start()
+    }
+
+    private fun showSchedulerDialog() {
+        val hours = (0..23).map { "%02d:00".format(it) }.toTypedArray()
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(8))
+        }
+        root.addView(TextView(this).apply {
+            text = "Inicio del scan (hora):"
+            textSize = 12f; setTextColor(AppTheme.TXT_PRI)
+            setPadding(0, 0, 0, dp(4))
+        })
+        val startPicker = android.widget.NumberPicker(this).apply {
+            minValue = 0; maxValue = 23
+            displayedValues = hours
+            value = if (scheduledStart >= 0) scheduledStart else 22
+        }
+        root.addView(startPicker)
+        root.addView(TextView(this).apply {
+            text = "Parada del scan (hora):"
+            textSize = 12f; setTextColor(AppTheme.TXT_PRI)
+            setPadding(0, dp(12), 0, dp(4))
+        })
+        val stopPicker = android.widget.NumberPicker(this).apply {
+            minValue = 0; maxValue = 23
+            displayedValues = hours
+            value = if (scheduledStop >= 0) scheduledStop else 6
+        }
+        root.addView(stopPicker)
+        root.addView(TextView(this).apply {
+            text = "Ejemplo: 22:00 → 06:00 = escanea de noche"
+            textSize = 10f; setTextColor(AppTheme.TXT_MUTED)
+            typeface = Typeface.MONOSPACE; setPadding(0, dp(8), 0, 0)
+        })
+
+        AlertDialog.Builder(this)
+            .setTitle("⏰ Scan Programado")
+            .setView(root)
+            .setPositiveButton("Activar") { _, _ ->
+                scheduledStart = startPicker.value
+                scheduledStop  = stopPicker.value
+                prefs.edit()
+                    .putInt("sched_start", scheduledStart)
+                    .putInt("sched_stop",  scheduledStop)
+                    .apply()
+                startScheduler()
+                Toast.makeText(this,
+                    "Scan programado: %02d:00 → %02d:00".format(scheduledStart, scheduledStop),
+                    Toast.LENGTH_SHORT).show()
+            }
+            .setNeutralButton("Desactivar") { _, _ ->
+                scheduledStart = -1; scheduledStop = -1
+                schedulerRunning = false
+                prefs.edit().remove("sched_start").remove("sched_stop").apply()
+                Toast.makeText(this, "Scan programado desactivado", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun setupNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Canal normal
             val ch = android.app.NotificationChannel(
                 "hunter", "Hunter", android.app.NotificationManager.IMPORTANCE_LOW
             )
-            (getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager)
-                .createNotificationChannel(ch)
+            // Canal de match — alta prioridad con sonido
+            val matchCh = android.app.NotificationChannel(
+                "hunter_match", "Match Found!",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                enableVibration(true)
+                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+                enableLights(true)
+                lightColor = AppTheme.AMBER
+            }
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            nm.createNotificationChannel(ch)
+            nm.createNotificationChannel(matchCh)
         }
+    }
+
+    private fun sendMatchNotification(addr: String, wif: String) {
+        try {
+            // Vibración
+            val vib = getSystemService(android.os.Vibrator::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                vib?.vibrate(android.os.VibrationEffect.createWaveform(
+                    longArrayOf(0, 500, 200, 500, 200, 500), -1
+                ))
+            }
+            // Notificación
+            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
+            val intent = android.app.PendingIntent.getActivity(
+                this, 0,
+                Intent(this, MainActivity::class.java),
+                android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            val notif = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
+                .setSmallIcon(android.R.drawable.star_on)
+                .setContentTitle("🎯 MATCH ENCONTRADO!")
+                .setContentText("Addr: ${addr.take(20)}...")
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle()
+                    .bigText("Dirección: $addr
+WIF: $wif"))
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
+                .setAutoCancel(true)
+                .setContentIntent(intent)
+                .setColor(AppTheme.AMBER)
+                .build()
+            nm.notify(NOTIF_ID, notif)
+        } catch (e: Exception) {}
     }
 
     private fun registerBatteryReceiver() {
