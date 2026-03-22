@@ -1210,7 +1210,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 hardware.contains("Exynos", true)     -> hardware
                 hardware.contains("Dimensity", true)  -> hardware
                 hardware.isNotEmpty()                 -> hardware
-                else -> "ARM64 (${cores} cores)"
+                else -> {
+                    // Fallback: usar Build.MODEL y SOC info
+                    val soc = if (android.os.Build.VERSION.SDK_INT >= 31)
+                        android.os.Build.SOC_MODEL
+                    else ""
+                    val model = android.os.Build.MODEL
+                    when {
+                        soc.isNotEmpty() && soc != "unknown" -> "$soc ($cores cores)"
+                        model.contains("SM-S9", true) -> "Snapdragon 8 Gen 2 ($cores cores)"
+                        model.contains("SM-S8", true) -> "Snapdragon 8 Gen 1 ($cores cores)"
+                        model.contains("SM-A5", true) -> "Snapdragon 778G ($cores cores)"
+                        model.contains("SM-A3", true) -> "Snapdragon 680 ($cores cores)"
+                        else -> "ARM64 · ${model} ($cores cores)"
+                    }
+                }
             }
         } catch (e: Exception) { "ARM64 (${cores} cores)" }
 
