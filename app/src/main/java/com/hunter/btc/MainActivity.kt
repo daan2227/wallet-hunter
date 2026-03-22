@@ -284,6 +284,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 HunterEngine.loadCsv(csvPath)
             setupNotificationChannel()
             registerBatteryReceiver()
+            // Auto-detectar hardware en primera ejecución
+            if (!prefs.getBoolean("hw_detected", false)) {
+                val profile = detectHardware()
+                applyHardwareProfile(profile)
+                prefs.edit().putBoolean("hw_detected", true).apply()
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    showHardwareInfo()
+                }, 1000)
+            }
             updateLabels()
         } catch (e: Exception) {
             android.util.Log.e("MainActivity", "Init error: ${e.message}", e)
@@ -408,6 +417,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fastSwitch.isChecked = fastModeEnabled
         fastRow.addView(fastLeft); fastRow.addView(fastSwitch); fastCard.addView(fastRow)
         cfgSection.addView(fastCard)
+
+        // Botón auto-configurar hardware
+        val btnHw = Button(this).apply {
+            text = "⚙ Auto-configurar Hardware"
+            textSize = 11f; setTextColor(AMBER)
+            background = GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
+            ).apply { topMargin = dp(8) }
+            setOnClickListener { showHardwareInfo() }
+        }
+        cfgSection.addView(btnHw)
         page.addView(cfgSection)
 
         // ── DIVIDER ───────────────────────────────────────────────────────
@@ -1156,6 +1180,124 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } catch (e: Exception) {}
         }
         return 0f
+    }
+
+    // ── Auto-detección de hardware ───────────────────────────────────────────
+    data class HardwareProfile(
+        val cores: Int,
+        val recommendedThreads: Int,
+        val recommendedCpu: Int,
+        val chipName: String,
+        val ramMB: Long,
+        val archInfo: String
+    )
+
+    private fun detectHardware(): HardwareProfile {
+        val cores = Runtime.getRuntime().availableProcessors()
+
+        // Leer info del chip desde /proc/cpuinfo
+        val chipName = try {
+            val cpuinfo = java.io.File("/proc/cpuinfo").readText()
+            val hardware = cpuinfo.lines()
+                .firstOrNull { it.startsWith("Hardware") }
+                ?.substringAfter(":")?.trim() ?: ""
+            val model = cpuinfo.lines()
+                .firstOrNull { it.startsWith("model name") || it.startsWith("Model name") }
+                ?.substringAfter(":")?.trim() ?: ""
+            when {
+                hardware.contains("Snapdragon", true) -> hardware
+                model.contains("Snapdragon", true)    -> model
+                hardware.contains("Exynos", true)     -> hardware
+                hardware.contains("Dimensity", true)  -> hardware
+                hardware.isNotEmpty()                 -> hardware
+                else -> "ARM64 (${cores} cores)"
+            }
+        } catch (e: Exception) { "ARM64 (${cores} cores)" }
+
+        // RAM disponible
+        val ramMB = try {
+            val rt = Runtime.getRuntime()
+            val actManager = getSystemService(android.app.ActivityManager::class.java)
+            val memInfo = android.app.ActivityManager.MemoryInfo()
+            actManager.getMemoryInfo(memInfo)
+            memInfo.availMem / (1024 * 1024)
+        } catch (e: Exception) { 0L }
+
+        // Arquitectura
+        val arch = android.os.Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a"
+
+        // Calcular threads óptimos:
+        // - Dejar 2 cores para sistema y UI
+        // - Máximo 8 threads útiles para este tipo de workload
+        val recommendedThreads = (cores - 2).coerceIn(2, 8)
+
+        // CPU limit según RAM (menos RAM = más conservador)
+        val recommendedCpu = when {
+            ramMB > 3000 -> 90
+            ramMB > 1500 -> 75
+            ramMB > 800  -> 60
+            else         -> 50
+        }
+
+        return HardwareProfile(
+            cores = cores,
+            recommendedThreads = recommendedThreads,
+            recommendedCpu = recommendedCpu,
+            chipName = chipName,
+            ramMB = ramMB,
+            archInfo = arch
+        )
+    }
+
+    private fun applyHardwareProfile(profile: HardwareProfile) {
+        // Aplicar threads recomendados al slider de Scan
+        val threadProgress = (profile.recommendedThreads - 1).coerceIn(0, 7)
+        sbThreads?.progress = threadProgress
+        sbThreadsPuzzle?.progress = threadProgress
+
+        // Aplicar CPU recomendado
+        val cpuProgress = (profile.recommendedCpu - 10).coerceIn(0, 90)
+        sbCpu?.progress = cpuProgress
+        sbCpuPuzzle?.progress = cpuProgress
+
+        updateLabels()
+        updatePuzzleLabels()
+
+        // Guardar en prefs
+        prefs.edit()
+            .putInt("threads", threadProgress)
+            .putInt("cpu", cpuProgress)
+            .putInt("puzzle_threads", threadProgress)
+            .putInt("puzzle_cpu", cpuProgress)
+            .apply()
+    }
+
+    private fun showHardwareInfo() {
+        val profile = detectHardware()
+        val msg = """
+            🔧 Hardware detectado:
+            
+            Chip: ${profile.chipName}
+            Cores: ${profile.cores}
+            RAM libre: ${profile.ramMB} MB
+            Arch: ${profile.archInfo}
+            
+            Configuración recomendada:
+            • Threads: ${profile.recommendedThreads}
+            • CPU limit: ${profile.recommendedCpu}%
+            
+            ¿Aplicar configuración óptima?
+        """.trimIndent()
+
+        AlertDialog.Builder(this)
+            .setTitle("Auto-configuración")
+            .setMessage(msg)
+            .setPositiveButton("Aplicar") { _, _ ->
+                applyHardwareProfile(profile)
+                Toast.makeText(this, "✓ Configuración aplicada", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     private fun formatCount(v: Long): String {
