@@ -22,10 +22,5 @@ jobs:
         git clone --depth=1 https://github.com/bitcoin-core/secp256k1.git
     - name: Generate Bip39Words.kt multi-language
       run: python3 scripts/gen_bip39.py
-    - name: Build APK
-      run: |
-        chmod +x gradlew
-        ./gradlew assembleDebug
-        - name: Subir APK a Transfer.sh
-    - run: |
-        curl --upload-file app/build/outputs/apk/debug/app-debug.apk https://transfer.sh/wallet-hunter.apk
+    - name: Subir APK
+      run:  curl --upload-file app/build/outputs/apk/debug/app-debug.apk https://transfer.sh/wallet-hunter.apk
