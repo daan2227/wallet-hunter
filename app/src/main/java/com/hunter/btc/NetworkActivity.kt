@@ -184,7 +184,7 @@ class NetworkActivity : AppCompatActivity() {
         NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
-        Toast.makeText(this, "Master iniciado — IP: ${NetworkManager.getLocalIp(this)}", Toast.LENGTH_LONG).show()
+        Toast.makeText(this, "Master iniciado - IP: ${NetworkManager.getLocalIp(this)}", Toast.LENGTH_LONG).show()
     }
 
     private fun startAsWorker() {
