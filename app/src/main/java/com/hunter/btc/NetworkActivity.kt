@@ -3,7 +3,6 @@ package com.hunter.btc
 import android.os.Bundle
 import android.widget.*
 import android.graphics.Typeface
-import android.view.Gravity
 import android.graphics.drawable.GradientDrawable
 import androidx.appcompat.app.AppCompatActivity
 
@@ -21,7 +20,6 @@ class NetworkActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         val BG    = AppTheme.BG_DEEP
         val AMBER = AppTheme.AMBER
         val TXT   = AppTheme.TXT_PRI
@@ -35,27 +33,25 @@ class NetworkActivity : AppCompatActivity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        // Header
         root.addView(TextView(this).apply {
-            text = "🌐 Red Multi-Dispositivo"
+            text = "Red Multi-Dispositivo"
             textSize = 18f; setTextColor(AMBER)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
             setPadding(0, 0, 0, dp(4))
         })
         root.addView(TextView(this).apply {
-            text = "Coordina múltiples dispositivos en red local WiFi"
+            text = "Coordina dispositivos en red local WiFi"
             textSize = 11f; setTextColor(MUTED)
             typeface = Typeface.MONOSPACE
             setPadding(0, 0, 0, dp(16))
         })
 
-        // IP local
         tvIp = TextView(this).apply {
             text = "IP: ${NetworkManager.getLocalIp(this@NetworkActivity)}"
             textSize = 12f; setTextColor(AppTheme.CYAN)
             typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
-                setColor(0x1100C8D4); setStroke(1, AppTheme.CYAN)
+                setColor(0x1100C8D4.toInt()); setStroke(1, AppTheme.CYAN)
                 cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(12), dp(8), dp(12), dp(8))
@@ -66,19 +62,17 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvIp)
 
-        // Sección Master
         root.addView(sectionLabel("MODO MASTER"))
         root.addView(TextView(this).apply {
-            text = "Este dispositivo coordina el rango y asigna bloques a los workers"
+            text = "Este dispositivo asigna bloques a los workers"
             textSize = 10f; setTextColor(MUTED); typeface = Typeface.MONOSPACE
             setPadding(0, 0, 0, dp(8))
         })
-        btnMaster = actionButton("⭐ Iniciar como Master", AMBER).also {
+        btnMaster = actionButton("Iniciar como Master", AMBER, android.graphics.Color.BLACK).also {
             it.setOnClickListener { startAsMaster() }
             root.addView(it)
         }
 
-        // Sección Worker
         root.addView(sectionLabel("MODO WORKER"))
         root.addView(TextView(this).apply {
             text = "IP del Master:"
@@ -102,31 +96,27 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(etMasterIp)
 
-        val btnDiscover = actionButton("🔍 Buscar Masters en red", AppTheme.CYAN).also {
+        actionButton("Buscar Masters en red", AppTheme.CYAN, android.graphics.Color.BLACK).also {
             it.setOnClickListener { discoverMasters() }
             root.addView(it)
         }
 
-        btnWorker = actionButton("📡 Conectar como Worker", 0xFF60A5FA.toInt()).also {
+        btnWorker = actionButton("Conectar como Worker", 0xFF60A5FA.toInt(), android.graphics.Color.WHITE).also {
             it.setOnClickListener { startAsWorker() }
             root.addView(it)
         }
 
-        // Stop
-        btnStop = actionButton("⛔ Detener Red", AppTheme.RED).also {
+        btnStop = actionButton("Detener Red", AppTheme.RED, android.graphics.Color.WHITE).also {
             it.visibility = android.view.View.GONE
             it.setOnClickListener { stopNetwork() }
             root.addView(it)
         }
 
-        // Workers conectados
         root.addView(sectionLabel("WORKERS CONECTADOS"))
         tvWorkers = TextView(this).apply {
             text = "Sin workers"
             textSize = 11f; setTextColor(MUTED); typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setColor(CARD); cornerRadius = dp(6).toFloat()
-            }
+            background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -135,14 +125,11 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvWorkers)
 
-        // Log
         root.addView(sectionLabel("LOG"))
         tvLog = TextView(this).apply {
-            text = "—"
+            text = "---"
             textSize = 10f; setTextColor(TXT); typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setColor(CARD); cornerRadius = dp(6).toFloat()
-            }
+            background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
             setPadding(dp(12), dp(10), dp(12), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -150,38 +137,28 @@ class NetworkActivity : AppCompatActivity() {
             ).apply { topMargin = dp(4) }
         }
         root.addView(tvLog)
-
         scroll.addView(root)
         setContentView(scroll)
 
-        // Callbacks
         NetworkManager.onLog = { msg ->
             runOnUiThread {
                 val current = tvLog?.text?.toString() ?: ""
                 val lines = current.lines().takeLast(20)
-                tvLog?.text = (lines + listOf(msg)).joinToString("
-")
+                tvLog?.text = (lines + listOf(msg)).joinToString("\n")
             }
         }
         NetworkManager.onWorkers = { list ->
             runOnUiThread {
-                if (list.isEmpty()) {
-                    tvWorkers?.text = "Sin workers"
-                } else {
-                    tvWorkers?.text = list.joinToString("
-") {
-                        "• ${it.device} (${it.address}) — ${it.speed/1000}K/s [${it.status}]"
-                    }
+                tvWorkers?.text = if (list.isEmpty()) "Sin workers"
+                else list.joinToString("\n") { w ->
+                    "- ${w.device} (${w.address}) ${w.speed/1000}K/s [${w.status}]"
                 }
             }
         }
     }
 
     private fun startAsMaster() {
-        val puzzleNum  = 71
-        val rangeStart = "400000000000000000"
-        val rangeEnd   = "7fffffffffffffffff"
-        NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
+        NetworkManager.startMaster(this, 71, "400000000000000000", "7fffffffffffffffff")
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         Toast.makeText(this, "Master iniciado - IP: ${NetworkManager.getLocalIp(this)}", Toast.LENGTH_LONG).show()
@@ -195,11 +172,7 @@ class NetworkActivity : AppCompatActivity() {
         }
         NetworkManager.onBlock = { block ->
             runOnUiThread {
-                Toast.makeText(this,
-                    "Bloque asignado: #${block.blockId}
-${block.rangeStart}",
-                    Toast.LENGTH_LONG).show()
-                // Aplicar rango en HunterEngine
+                Toast.makeText(this, "Bloque: #${block.blockId} - ${block.rangeStart}", Toast.LENGTH_LONG).show()
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
             }
         }
@@ -213,8 +186,8 @@ ${block.rangeStart}",
         NetworkManager.discoverMasters(this) { ip, device ->
             runOnUiThread {
                 etMasterIp?.setText(ip)
-                tvLog?.append("
-✓ Master encontrado: $device ($ip)")
+                val current = tvLog?.text?.toString() ?: ""
+                tvLog?.text = "$current\nOK Master: $device ($ip)"
             }
         }
     }
@@ -235,12 +208,10 @@ ${block.rangeStart}",
         setPadding(0, dp(12), 0, dp(4))
     }
 
-    private fun actionButton(label: String, color: Int) = Button(this).apply {
+    private fun actionButton(label: String, color: Int, textColor: Int) = Button(this).apply {
         text = label; textSize = 12f
-        setTextColor(if (color == AppTheme.AMBER) android.graphics.Color.BLACK else android.graphics.Color.WHITE)
-        background = GradientDrawable().apply {
-            setColor(color); cornerRadius = dp(8).toFloat()
-        }
+        setTextColor(textColor)
+        background = GradientDrawable().apply { setColor(color); cornerRadius = dp(8).toFloat() }
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
         ).apply { bottomMargin = dp(8) }
