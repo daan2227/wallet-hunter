@@ -8,22 +8,33 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+
     - uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
+
     - name: Install NDK
       run: |
         echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-          "ndk;25.2.9519653" "cmake;3.22.1"
+          "ndk;25.1.8937393" "cmake;3.22.1"
+
     - name: Clone secp256k1
       run: |
         cd app/src/main/cpp
         git clone --depth=1 https://github.com/bitcoin-core/secp256k1.git
-    - name: Generate Bip39Words.kt multi-language
+
+    - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
-    - name: Upload Apk
+
+    - name: Build Debug APK
+      run: |
+        chmod +x gradlew
+        ./gradlew assembleDebug
+
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
         name: wallet-hunter-apk
         path: app/build/outputs/apk/debug/*.apk
+        retention-days: 1
