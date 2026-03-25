@@ -40,6 +40,8 @@ object NetworkManager {
     var isMaster  = false
     var isWorker  = false
     val isRunning = AtomicBoolean(false)
+    val globalScannedBlocks = ConcurrentHashMap.newKeySet<String>()
+    var onBlockScanned: ((String, Int) -> Unit)? = null  // blockId, puzzleNum
     var deviceId  = ""
     var onLog:     ((String) -> Unit)? = null
     var onWorkers: ((List<NetWorker>) -> Unit)? = null
@@ -116,18 +118,31 @@ object NetworkManager {
                     log("Bloque $blockId completado por $workerId")
                     assignedBlocks.remove(workerId)
                     workers[workerId]?.status = "idle"
+                    // Registrar bloque globalmente
+                    globalScannedBlocks.add(blockId)
+                    onBlockScanned?.invoke(blockId, puzzleNum)
 
                     // Asignar nuevo bloque
                     val block = nextBlock(puzzleNum, rangeStart, rangeEnd)
                     assignedBlocks[workerId] = block
                     workers[workerId]?.block = block.blockId
                     writer.println(JSONObject().apply {
-                        put("type",  "BLOCK")
-                        put("block_id",  block.blockId)
-                        put("start", block.rangeStart)
-                        put("end",   block.rangeEnd)
-                        put("puzzle", block.puzzleNum)
+                        put("type",     "BLOCK")
+                        put("block_id", block.blockId)
+                        put("start",    block.rangeStart)
+                        put("end",      block.rangeEnd)
+                        put("puzzle",   block.puzzleNum)
                     }.toString())
+                }
+                "SYNC_REQUEST" -> {
+                    // Worker pide lista de bloques escaneados
+                    val syncData = JSONObject().apply {
+                        put("type",   "SYNC_RESPONSE")
+                        put("blocks", org.json.JSONArray(globalScannedBlocks.toList()))
+                        put("puzzle", puzzleNum)
+                    }
+                    writer.println(syncData.toString())
+                    log("Sync enviado a $workerId: ${globalScannedBlocks.size} bloques")
                 }
                 "MATCH" -> {
                     val addr = msg.optString("addr")
@@ -159,7 +174,8 @@ object NetworkManager {
         do {
             blockIdx = (Math.random() * totalBlocks).toLong()
             attempts++
-        } while (assignedBlocks.values.any { it.blockId == blockIdx.toString() } && attempts < 100)
+        } while ((assignedBlocks.values.any { it.blockId == blockIdx.toString() } ||
+                  globalScannedBlocks.contains(blockIdx.toString())) && attempts < 200)
 
         val bStart = start.add(size.multiply(java.math.BigInteger.valueOf(blockIdx)))
         val bEnd   = bStart.add(size).min(end)
@@ -323,6 +339,52 @@ object NetworkManager {
             val ip = wifi.connectionInfo.ipAddress
             "${ip and 0xff}.${ip shr 8 and 0xff}.${ip shr 16 and 0xff}.${ip shr 24 and 0xff}"
         } catch (e: Exception) { "0.0.0.0" }
+    }
+
+
+    fun syncWithMaster(masterIp: String, onComplete: (Int) -> Unit) {
+        executor.submit {
+            try {
+                val socket = Socket(masterIp, TCP_PORT)
+                val writer = PrintWriter(socket.getOutputStream(), true)
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+
+                // Pedir sync
+                writer.println(JSONObject().apply {
+                    put("type", "SYNC_REQUEST")
+                    put("id",   deviceId)
+                }.toString())
+
+                val resp = JSONObject(reader.readLine() ?: return@submit)
+                if (resp.optString("type") == "SYNC_RESPONSE") {
+                    val blocks = resp.getJSONArray("blocks")
+                    var count = 0
+                    for (i in 0 until blocks.length()) {
+                        globalScannedBlocks.add(blocks.getString(i))
+                        count++
+                    }
+                    val puzzleNum = resp.optInt("puzzle", 71)
+                    log("Sync recibido: $count bloques del puzzle #$puzzleNum")
+                    onComplete(count)
+                }
+                socket.close()
+            } catch (e: Exception) {
+                log("Sync error: ${e.message}")
+                onComplete(0)
+            }
+        }
+    }
+
+    fun getGlobalProgress(rangeStart: String, rangeEnd: String): String {
+        return try {
+            val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+            val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+            val size  = java.math.BigInteger(BLOCK_SIZE_HEX, 16)
+            val total = end.subtract(start).divide(size).toLong().coerceAtMost(1_000_000)
+            val done  = globalScannedBlocks.size
+            val pct   = if (total > 0) done * 100.0 / total else 0.0
+            "Global: $done/$total bloques (%.4f%%)".format(pct)
+        } catch (e: Exception) { "Global: ${globalScannedBlocks.size} bloques" }
     }
 
     fun stop() {

@@ -1433,9 +1433,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet())?.toMutableSet() ?: mutableSetOf()
         scanned.add(currentBlockId)
         prefs.edit().putStringSet("scanned_$puzzleNum", scanned).apply()
+
+        // Si hay red activa como worker, reportar al master
+        if (NetworkManager.isWorker && NetworkManager.isRunning.get()) {
+            val masterIp = getSharedPreferences("net_prefs", MODE_PRIVATE)
+                .getString("master_ip", null) ?: return
+            NetworkManager.reportBlockDone(masterIp, currentBlockId)
+        }
+        // Agregar al registro global local
+        NetworkManager.globalScannedBlocks.add(currentBlockId)
     }
 
     private fun getBlockProgressText(puzzleNum: Int, rangeStart: String, rangeEnd: String): String {
+        // Si hay red activa, mostrar progreso global
+        if (NetworkManager.isRunning.get() && NetworkManager.globalScannedBlocks.isNotEmpty()) {
+            return NetworkManager.getGlobalProgress(rangeStart, rangeEnd) + " [RED]"
+        }
         return try {
             val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
             val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
