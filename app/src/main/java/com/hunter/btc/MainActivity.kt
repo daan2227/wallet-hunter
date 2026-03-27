@@ -798,17 +798,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             override fun onNothingSelected(a: AdapterView<*>) {}
         }
 
-        // Auto-seleccionar puzzle al entrar al tab
-        checkPuzzleBalance(puzzles[defaultIdx].addr) { bal ->
-            if (bal > 0) {
-                tvBalResult.text = "Balance: ${bal / 100_000_000.0} BTC ✓"
-                tvBalResult.setTextColor(GREEN)
-            } else {
-                // Buscar el puzzle con menor dificultad que tenga fondos
-                autoSelectPuzzle()
-                tvBalResult.text = "Searching funded puzzles..."
+        // Auto-seleccionar puzzle en background
+        Thread {
+            checkPuzzleBalance(puzzles[defaultIdx].addr) { bal ->
+                runOnUiThread {
+                    if (bal > 0) {
+                        tvBalResult.text = "Balance: ${bal / 100_000_000.0} BTC"
+                        tvBalResult.setTextColor(GREEN)
+                    } else {
+                        autoSelectPuzzle()
+                        tvBalResult.text = "Buscando puzzles con fondos..."
+                    }
+                }
             }
-        }
+        }.start()
         page.addView(runSection)
 
         scroll.addView(page)
