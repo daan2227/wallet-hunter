@@ -33,12 +33,30 @@ class NetworkActivity : AppCompatActivity() {
             setPadding(dp(16), dp(16), dp(16), dp(32))
         }
 
-        root.addView(TextView(this).apply {
+        // Header con botón back
+        val headerRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, 0, 0, dp(4))
+        }
+        headerRow.addView(Button(this).apply {
+            text = "<"
+            textSize = 14f; setTextColor(AMBER)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT)
+                setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(6).toFloat()
+            }
+            setPadding(dp(10), dp(2), dp(10), dp(2))
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) }
+            setOnClickListener { finish() }
+        })
+        headerRow.addView(TextView(this).apply {
             text = "Red Multi-Dispositivo"
             textSize = 18f; setTextColor(AMBER)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            setPadding(0, 0, 0, dp(4))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        root.addView(headerRow)
         root.addView(TextView(this).apply {
             text = "Coordina dispositivos en red local WiFi"
             textSize = 11f; setTextColor(MUTED)
@@ -140,6 +158,19 @@ class NetworkActivity : AppCompatActivity() {
         scroll.addView(root)
         setContentView(scroll)
 
+        // Restaurar estado UI si red sigue activa
+        if (NetworkManager.isRunning.get()) {
+            if (NetworkManager.isMaster) {
+                btnMaster?.isEnabled = false
+                btnStop?.visibility = android.view.View.VISIBLE
+                tvLog?.text = "Master activo en ${NetworkManager.getLocalIp(this)}"
+            } else if (NetworkManager.isWorker) {
+                btnWorker?.isEnabled = false
+                btnStop?.visibility = android.view.View.VISIBLE
+                tvLog?.text = "Worker activo"
+            }
+        }
+
         NetworkManager.onLog = { msg ->
             runOnUiThread {
                 val current = tvLog?.text?.toString() ?: ""
@@ -219,8 +250,15 @@ class NetworkActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        // No limpiar callbacks — la red sigue activa en background
+        // Solo quitar referencias a la UI destruida
         NetworkManager.onLog     = null
         NetworkManager.onWorkers = null
-        NetworkManager.onBlock   = null
+        // onBlock se mantiene para workers activos
+    }
+
+    override fun onBackPressed() {
+        super.onBackPressed()
+        finish()
     }
 }
