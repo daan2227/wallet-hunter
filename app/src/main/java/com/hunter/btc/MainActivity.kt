@@ -262,12 +262,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tb1 = tabBtn("⬡", "Puzzle")
         val tb2 = tabBtn("◈", "Wallet")
         val tb3 = tabBtn("⚷", "Recovery")
-        listOf(tb0, tb1, tb2, tb3).forEach { tabBar.addView(it) }
+        val tb4 = tabBtn("🌐", "Red")
+        listOf(tb0, tb1, tb2, tb3, tb4).forEach { tabBar.addView(it) }
         root.addView(tabBar)
         setContentView(root)
 
         tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
-        tabBtns  = listOf(tb0, tb1, tb2, tb3)
+        tabBtns  = listOf(tb0, tb1, tb2, tb3, tb4)
+        tb4.setOnClickListener {
+            startActivity(android.content.Intent(this, NetworkActivity::class.java))
+        }
         listOf(tb0, tb1, tb2, tb3).forEachIndexed { i, b ->
             b.setOnClickListener {
                 if (i == 2) {

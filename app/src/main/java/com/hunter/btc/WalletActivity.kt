@@ -1029,7 +1029,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Backup Wallets","Restaurar Backup","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
                     0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
@@ -1038,7 +1038,9 @@ class WalletActivity : FragmentActivity() {
                     }
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
-                    4 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
+                    4 -> showBackupDialog()
+                    5 -> showRestoreDialog()
+                    6 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
                             .setPositiveButton("Delete") { _, _ ->
                                 when {
                                     isWifMode && wifAddr.isNotEmpty() -> {
