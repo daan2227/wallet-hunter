@@ -1399,7 +1399,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .setMessage(msg)
             .setPositiveButton("Aplicar") { _, _ ->
                 applyHardwareProfile(profile)
-                Toast.makeText(this, "✓ Configuración aplicada", Toast.LENGTH_SHORT).show()
+                // Forzar redibujado inmediato
+                val t = profile.recommendedThreads
+                val c = profile.recommendedCpu
+                runOnUiThread {
+                    sbThreads?.progress       = (t - 1).coerceIn(0, 7)
+                    sbCpu?.progress           = (c - 10).coerceIn(0, 90)
+                    sbThreadsPuzzle?.progress = (t - 1).coerceIn(0, 7)
+                    sbCpuPuzzle?.progress     = (c - 10).coerceIn(0, 90)
+                    tvThreads?.text     = "Threads: $t"
+                    tvCpu?.text         = "CPU limit: $c%"
+                    tvThreadsPuzzle?.text = "Threads: $t"
+                    tvCpuPuzzle?.text     = "CPU limit: $c%"
+                }
+                Toast.makeText(this,
+                    "Aplicado: $t threads / $c% CPU",
+                    Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Cancelar", null)
             .show()
