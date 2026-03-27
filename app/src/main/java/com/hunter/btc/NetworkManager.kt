@@ -198,7 +198,7 @@ object NetworkManager {
 
         executor.submit {
             try {
-                val socket = Socket(masterIp, TCP_PORT)
+                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
 
@@ -233,7 +233,7 @@ object NetworkManager {
     fun reportProgress(masterIp: String, speed: Long) {
         executor.submit {
             try {
-                val socket = Socket(masterIp, TCP_PORT)
+                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 writer.println(JSONObject().apply {
                     put("type",  "PROGRESS")
@@ -248,7 +248,7 @@ object NetworkManager {
     fun reportBlockDone(masterIp: String, blockId: String) {
         executor.submit {
             try {
-                val socket = Socket(masterIp, TCP_PORT)
+                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
                 writer.println(JSONObject().apply {
@@ -274,7 +274,7 @@ object NetworkManager {
     fun reportMatch(masterIp: String, addr: String, wif: String) {
         executor.submit {
             try {
-                val socket = Socket(masterIp, TCP_PORT)
+                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 writer.println(JSONObject().apply {
                     put("type", "MATCH")
@@ -345,7 +345,7 @@ object NetworkManager {
     fun syncWithMaster(masterIp: String, onComplete: (Int) -> Unit) {
         executor.submit {
             try {
-                val socket = Socket(masterIp, TCP_PORT)
+                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
 
