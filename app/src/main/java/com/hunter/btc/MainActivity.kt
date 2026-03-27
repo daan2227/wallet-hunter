@@ -1362,6 +1362,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putString("big_cores", bigCores.joinToString(","))
             .putInt("batch_size", batchSize)
             .apply()
+
+        // Forzar actualización visual de sliders
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            sbThreads?.progress     = threadProgress
+            sbCpu?.progress         = cpuProgress
+            sbThreadsPuzzle?.progress = threadProgress
+            sbCpuPuzzle?.progress   = cpuProgress
+            updateLabels()
+            updatePuzzleLabels()
+        }
     }
 
     private fun showHardwareInfo() {
