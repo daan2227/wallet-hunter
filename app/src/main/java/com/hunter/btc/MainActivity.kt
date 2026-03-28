@@ -428,63 +428,67 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fastRow.addView(fastLeft); fastRow.addView(fastSwitch); fastCard.addView(fastRow)
         cfgSection.addView(fastCard)
 
-        // Botón scan programado
-        val btnSched = Button(this).apply {
-            text = "⏰ Programar Scan"
-            textSize = 11f; setTextColor(AMBER)
-            background = GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
-            ).apply { topMargin = dp(8) }
-            setOnClickListener { showSchedulerDialog() }
-        }
-        cfgSection.addView(btnSched)
 
-        // Botones Export/Import configuración
-        val btnExport = Button(this).apply {
-            text = "📤 Exportar Config"
-            textSize = 11f; setTextColor(AMBER)
-            background = GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
-            ).apply { topMargin = dp(8) }
-            setOnClickListener { exportConfig() }
-        }
-        val btnImport = Button(this).apply {
-            text = "📥 Importar Config"
-            textSize = 11f; setTextColor(AppTheme.CYAN)
-            background = GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
-            ).apply { topMargin = dp(4) }
-            setOnClickListener { importConfig() }
-        }
-        cfgSection.addView(btnExport)
-        cfgSection.addView(btnImport)
+        fun actionCard(icon: String, title: String, subtitle: String, color: Int, onClick: () -> Unit): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(BG_CARD); cornerRadius = dp(10).toFloat()
+                    setStroke(1, BORDER_C)
+                }
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+                isClickable = true; isFocusable = true
+                setOnClickListener { onClick() }
 
-        // Botón auto-configurar hardware
-        val btnHw = Button(this).apply {
-            text = "⚙ Auto-configurar Hardware"
-            textSize = 11f; setTextColor(AMBER)
-            background = GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+                // Icono
+                addView(TextView(context).apply {
+                    text = icon; textSize = 22f
+                    layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) }
+                    gravity = android.view.Gravity.CENTER
+                })
+
+                // Textos
+                val textCol = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                textCol.addView(TextView(context).apply {
+                    text = title; textSize = 13f; setTextColor(color)
+                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                })
+                textCol.addView(TextView(context).apply {
+                    text = subtitle; textSize = 10f; setTextColor(TXT_MUTED)
+                    typeface = android.graphics.Typeface.MONOSPACE
+                })
+                addView(textCol)
+
+                // Chevron
+                addView(TextView(context).apply {
+                    text = "›"; textSize = 20f; setTextColor(TXT_MUTED)
+                    gravity = android.view.Gravity.CENTER
+                })
             }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)
-            ).apply { topMargin = dp(8) }
-            setOnClickListener { showHardwareInfo() }
         }
-        cfgSection.addView(btnHw)
+
+        // ── Sección de herramientas Scan ──────────────────────────────────
+        cfgSection.addView(TextView(this).apply {
+            text = "HERRAMIENTAS"; textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            letterSpacing = 0.16f; setPadding(0, dp(8), 0, dp(8))
+        })
+        cfgSection.addView(actionCard("⏰", "Programar Scan",
+            "Escanea automáticamente en horario programado", AMBER) { showSchedulerDialog() })
+        cfgSection.addView(actionCard("⚙", "Auto-configurar Hardware",
+            "Detecta cores, RAM y optimiza rendimiento", AMBER) { showHardwareInfo() })
+        cfgSection.addView(actionCard("📤", "Exportar Configuración",
+            "Comparte tu config con otro dispositivo", AppTheme.CYAN) { exportConfig() })
+        cfgSection.addView(actionCard("📥", "Importar Configuración",
+            "Aplica config desde otro dispositivo", AppTheme.CYAN) { importConfig() })
         page.addView(cfgSection)
 
         // ── DIVIDER ───────────────────────────────────────────────────────
@@ -674,6 +678,61 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         perfCard.addView(tvThreadsPuzzle); perfCard.addView(sbThreadsPuzzle)
         perfCard.addView(tvCpuPuzzle); perfCard.addView(sbCpuPuzzle)
         cfgSection.addView(perfCard)
+
+        // ── Herramientas Puzzle ───────────────────────────────────────────
+        cfgSection.addView(TextView(this).apply {
+            text = "HERRAMIENTAS"; textSize = 9f; setTextColor(TXT_MUTED)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            letterSpacing = 0.16f; setPadding(0, dp(8), 0, dp(8))
+        })
+
+        fun puzzleActionCard(icon: String, title: String, subtitle: String, color: Int, onClick: () -> Unit): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(BG_CARD); cornerRadius = dp(10).toFloat(); setStroke(1, BORDER_C)
+                }
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
+                isClickable = true; isFocusable = true
+                setOnClickListener { onClick() }
+                addView(TextView(context).apply {
+                    text = icon; textSize = 22f
+                    layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) }
+                    gravity = android.view.Gravity.CENTER
+                })
+                val col = LinearLayout(context).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                col.addView(TextView(context).apply {
+                    text = title; textSize = 13f; setTextColor(color)
+                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                })
+                col.addView(TextView(context).apply {
+                    text = subtitle; textSize = 10f; setTextColor(TXT_MUTED)
+                    typeface = android.graphics.Typeface.MONOSPACE
+                })
+                addView(col)
+                addView(TextView(context).apply {
+                    text = "›"; textSize = 20f; setTextColor(TXT_MUTED)
+                    gravity = android.view.Gravity.CENTER
+                })
+            }
+        }
+
+        cfgSection.addView(puzzleActionCard("⏰", "Programar Puzzle",
+            "Ejecuta el puzzle en horario programado", AMBER) { showSchedulerDialog() })
+        cfgSection.addView(puzzleActionCard("⚙", "Auto-configurar Hardware",
+            "Optimiza threads y batch para este dispositivo", AMBER) { showHardwareInfo() })
+        cfgSection.addView(puzzleActionCard("📤", "Exportar Configuración",
+            "Comparte config de puzzle con otro dispositivo", AppTheme.CYAN) { exportConfig() })
+        cfgSection.addView(puzzleActionCard("📥", "Importar Configuración",
+            "Aplica config desde otro dispositivo", AppTheme.CYAN) { importConfig() })
+
         page.addView(cfgSection)
         updatePuzzleLabels()
 
