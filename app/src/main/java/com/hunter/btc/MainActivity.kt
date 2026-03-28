@@ -599,7 +599,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // ── BUILD PUZZLE TAB ──────────────────────────────────────────────────────
     private fun buildPuzzleTab(): ScrollView {
         val scroll = ScrollView(this).apply {
-        try {
             setBackgroundColor(BG_DEEP)
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
@@ -625,6 +624,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
+        suppressPuzzleListener = true
         puzzleSpinner = Spinner(this).apply {
             adapter = themedAdapter(puzzles.map { "#${it.num}  -  ${it.btc}  -  ${it.addr.take(16)}..." })
             setSelection(defaultIdx)
@@ -661,6 +661,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         puzzleCard.addView(etTarget)
         cfgSection.addView(puzzleCard)
+        suppressPuzzleListener = false
         applyPuzzle(puzzles[defaultIdx])
 
         // Threads + CPU puzzle
@@ -877,13 +878,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         scroll.addView(page)
         return scroll
     }
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this,
-                "PUZZLE ERROR: ${e.javaClass.simpleName}: ${e.message?.take(80)}",
-                android.widget.Toast.LENGTH_LONG).show()
-            android.util.Log.e("PuzzleTab", "crash", e)
-            return ScrollView(this)
-        }
 
     private fun updatePuzzleLabels() {
                 val t = (sbThreadsPuzzle?.progress ?: 3) + 1
