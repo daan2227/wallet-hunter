@@ -233,7 +233,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             recoveryScroll = buildRecoveryTab()
             android.widget.Toast.makeText(this, "All tabs built OK", android.widget.Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "CRASH: ${e.javaClass.simpleName}: ${e.message?.take(80)}", android.widget.Toast.LENGTH_LONG).show()
+            // Escribir error a archivo para diagnóstico
+            try {
+                val errFile = java.io.File(getExternalFilesDir(null), "crash_log.txt")
+                errFile.writeText("CRASH: ${e.javaClass.simpleName}
+${e.message}
+${e.stackTraceToString()}")
+            } catch (ex: Exception) {}
+            android.widget.Toast.makeText(this, "CRASH guardado en crash_log.txt", android.widget.Toast.LENGTH_LONG).show()
             finish(); return
         }
 
