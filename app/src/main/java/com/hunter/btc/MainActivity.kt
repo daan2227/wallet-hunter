@@ -243,7 +243,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {
             // Escribir error a archivo para diagnóstico
             try {
-                val errFile = java.io.File(getExternalFilesDir(null), "crash_log.txt")
+                val errFile = java.io.File(filesDir, "crash_log.txt")
                 errFile.writeText("CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
             } catch (ex: Exception) {}
             android.widget.Toast.makeText(this, "CRASH guardado en crash_log.txt", android.widget.Toast.LENGTH_LONG).show()
@@ -276,14 +276,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tb2 = tabBtn("◈", "Wallet")
         val tb3 = tabBtn("⚷", "Recovery")
         val tb4 = tabBtn("🌐", "Red")
-        listOf(tb0, tb1, tb2, tb3, tb4).forEach { tabBar.addView(it) }
+        val tb5 = tabBtn("🐛", "Debug")
+        listOf(tb0, tb1, tb2, tb3, tb4, tb5).forEach { tabBar.addView(it) }
         root.addView(tabBar)
         setContentView(root)
 
         tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
-        tabBtns  = listOf(tb0, tb1, tb2, tb3, tb4)
+        tabBtns  = listOf(tb0, tb1, tb2, tb3, tb4, tb5)
         tb4.setOnClickListener {
             startActivity(android.content.Intent(this, NetworkActivity::class.java))
+        }
+        tb5.setOnClickListener {
+            startActivity(android.content.Intent(this, DebugActivity::class.java))
         }
         listOf(tb0, tb1, tb2, tb3).forEachIndexed { i, b ->
             b.setOnClickListener {

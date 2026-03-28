@@ -39,6 +39,9 @@
         <service android:name=".HunterService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <activity android:name=".DebugActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar" />
+
         <activity android:name=".NetworkActivity"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
 
