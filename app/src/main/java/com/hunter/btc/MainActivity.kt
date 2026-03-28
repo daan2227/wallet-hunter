@@ -81,19 +81,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tabPages = listOf<android.view.View>()
     private var tabBtns  = listOf<android.widget.TextView>()
     private fun goTab(idx: Int) {
-        try {
-            tabPages.forEachIndexed { i, v ->
-                v.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
-            }
-            tabBtns.forEachIndexed { i, b ->
-                b.setTextColor(if (i == idx) AMBER else TXT_MUTED)
-            }
-        } catch (e: Exception) {
-            try {
-                val f = java.io.File(getExternalFilesDir(null), "crash_log.txt")
-                f.writeText("goTab($idx): ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
-            } catch (ex: Exception) {}
-            android.widget.Toast.makeText(this, "Tab crash: ${e.javaClass.simpleName}: ${e.message?.take(60)}", android.widget.Toast.LENGTH_LONG).show()
+        tabPages.forEachIndexed { i, v ->
+            v.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
+        }
+        tabBtns.forEachIndexed { i, b ->
+            b.setTextColor(if (i == idx) AMBER else TXT_MUTED)
         }
     }
 
@@ -1248,12 +1240,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun checkThermalThrottle() {
         if (!thermalThrottleEnabled) return
         val now = System.currentTimeMillis()
-        if (now - lastThermalCheck < 3000) return
+        if (now - lastThermalCheck < 10000) return  // cada 10 seg
         lastThermalCheck = now
 
         try {
             val batTemp = getBatteryTemp()
-            val cpuTemp = getCpuTemp()
+            val cpuTemp = if ((now / 10000) % 2 == 0L) getCpuTemp() else 0f  // CPU temp cada 20s
             val maxTemp = maxOf(batTemp, cpuTemp)
 
             val (targetCpu, status, color) = when {
