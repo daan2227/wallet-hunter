@@ -408,6 +408,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         perfCard.addView(tvThreads); perfCard.addView(sbThreads)
         perfCard.addView(tvCpu); perfCard.addView(sbCpu)
+        dbg(""perfCard OK"")
         cfgSection.addView(perfCard)
 
         // Fast mode
@@ -508,6 +509,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             "Comparte tu config con otro dispositivo", AppTheme.CYAN) { exportConfig() })
         cfgSection.addView(actionCard("📥", "Importar Configuración",
             "Aplica config desde otro dispositivo", AppTheme.CYAN) { importConfig() })
+        dbg(""cfgSection OK"")
         page.addView(cfgSection)
 
         // ── DIVIDER ───────────────────────────────────────────────────────
@@ -611,6 +613,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(tvFooter); page.addView(tvStatus)
         page.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(20)) })
 
+        dbg(""page OK - returning scroll"")
         scroll.addView(page)
         return scroll
     }
@@ -679,8 +682,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
         }
         puzzleCard.addView(etTarget)
+        dbg(""puzzleCard OK"")
         cfgSection.addView(puzzleCard)
         suppressPuzzleListener = false
+        dbg(""applyPuzzle OK"")
         applyPuzzle(puzzles[defaultIdx])
 
         // Threads + CPU puzzle
@@ -775,6 +780,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(10), dp(8), dp(10), dp(8))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(14) }
         }
+        dbg(""tvPuzzleStatus OK"")
         runSection.addView(tvPuzzleStatus)
 
         // Speed hero puzzle
@@ -807,6 +813,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         pHeroRight.addView(tvPctPuzzle)
         pHeroRight.addView(tvBlockProgress)
         pHeroBlock.addView(pHeroLeft); pHeroBlock.addView(pHeroRight)
+        dbg(""pHeroBlock OK"")
         runSection.addView(pHeroBlock)
 
         // Start/Stop puzzle
@@ -824,6 +831,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
         btnPuzzleToggle?.tag = arrayOf(pCoinGreen, pCoinRed)
+        dbg(""btnPuzzleToggle OK"")
         runSection.addView(btnPuzzleToggle)
 
         // Temperatura thermal
@@ -892,6 +900,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             }
         }.start()
+        dbg(""runSection OK"")
         page.addView(runSection)
 
         scroll.addView(page)
