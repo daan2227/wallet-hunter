@@ -74,7 +74,7 @@ class DebugActivity : AppCompatActivity() {
 
         // ── Crash Log ────────────────────────────────────────────────────
         root.addView(section("ULTIMO CRASH"))
-        val crashFile = File(filesDir, "crash_log.txt")
+        val crashFile = File(filesDir.absolutePath + "/crash_log.txt")
         val crashText = if (crashFile.exists()) crashFile.readText() else "Sin crashes registrados"
         val crashColor = if (crashFile.exists()) RED else GREEN
         root.addView(logBox(crashText, crashColor))
