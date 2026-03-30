@@ -344,280 +344,452 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── BUILD SCAN TAB ────────────────────────────────────────────────────────
     private fun buildScanTab(): ScrollView {
+        val LIME = 0xFF39FF14.toInt()   // neon green
+        val LIME2 = 0xFF00E600.toInt()
+
         val scroll = ScrollView(this).apply {
             setBackgroundColor(BG_DEEP)
             layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
+            )
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG_DEEP)
+            setPadding(0, 0, 0, dp(80))
         }
 
-        // ── CONFIG SECTION ────────────────────────────────────────────────
-        val cfgSection = LinearLayout(this).apply {
+        // ── STICKY MONITOR HEADER ─────────────────────────────────────────
+        val headerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(8))
+            setBackgroundColor(0xFF111411.toInt())
+            setPadding(dp(20), dp(16), dp(20), dp(16))
         }
 
-        // Dataset
-        cfgSection.addView(TextView(this).apply {
-            text = "DATASET"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.16f; setPadding(0, 0, 0, dp(8))
+        // Title
+        headerCard.addView(TextView(this).apply {
+            text = "Sticky Monitor"
+            textSize = 13f; setTextColor(0xFFCCCCCC.toInt())
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(4) }
         })
-        val dataCard = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; background = cardBg(); clipToOutline = true
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
-        }
-        btnCsv = Button(this).apply {
-            text = "Load CSV"; textSize = 11f; setTextColor(android.graphics.Color.BLACK)
+
+        // Big speed number
+        tvWps = TextView(this).apply {
+            text = "0.0"
+            textSize = 56f
+            setTextColor(LIME)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            background = GradientDrawable().apply { setColor(AMBER) }
-            setPadding(dp(18), 0, dp(18), 0)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(50))
-            setOnClickListener { pickCsv() }
+            gravity = Gravity.CENTER
+            setShadowLayer(20f, 0f, 0f, 0x8039FF14.toInt())
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
         }
-        val tvCsvNameLocal = TextView(this).apply {
-            text = if (csvPath.isNotEmpty() && File(csvPath).exists()) File(csvPath).name else "No file"
-            setTextColor(TXT_MUTED); textSize = 10f; typeface = Typeface.MONOSPACE
-            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-            setPadding(dp(14), 0, dp(14), 0)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        tvCsvName = tvCsvNameLocal
-        dataCard.addView(btnCsv); dataCard.addView(tvCsvNameLocal)
-        cfgSection.addView(dataCard)
+        headerCard.addView(tvWps)
 
-        // Threads + CPU
-        cfgSection.addView(TextView(this).apply {
-            text = "PERFORMANCE"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.16f; setPadding(0, 0, 0, dp(8))
+        // Unit label
+        headerCard.addView(TextView(this).apply {
+            text = "Velocidad de Escaneo  kKeys / s"
+            textSize = 11f; setTextColor(0xFF888888.toInt())
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(16) }
+        }.also { tv ->
+            // Color parcial en kKeys/s
+            val span = android.text.SpannableString(tv.text)
+            val idx = tv.text.indexOf("kKeys")
+            if (idx >= 0) {
+                span.setSpan(android.text.style.ForegroundColorSpan(LIME), idx, tv.text.length, 0)
+                tv.text = span
+            }
         })
-        val perfCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
-        }
-        tvThreads = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16), dp(12), dp(16), dp(4)) }
-        sbThreads = SeekBar(this).apply {
-            max = 7; progress = prefs.getInt("threads", 3)
-            setPadding(dp(16), 0, dp(16), dp(4))
-            setOnSeekBarChangeListener(mkSbl { updateLabels() })
-        }
-        tvCpu = TextView(this).apply { setTextColor(TXT_PRI); textSize = 12f; setPadding(dp(16), dp(8), dp(16), dp(4)) }
-        sbCpu = SeekBar(this).apply {
-            max = 90; progress = prefs.getInt("cpu", 70)
-            setPadding(dp(16), 0, dp(16), dp(12))
-            setOnSeekBarChangeListener(mkSbl {
-                updateLabels()
-                if (HunterEngine.isRunning()) HunterEngine.setCpuLimit((sbCpu?.progress ?: 70) + 10)
-            })
-        }
-        perfCard.addView(tvThreads); perfCard.addView(sbThreads)
-        perfCard.addView(tvCpu); perfCard.addView(sbCpu)
-        cfgSection.addView(perfCard)
 
-        // Fast mode
-        cfgSection.addView(TextView(this).apply {
-            text = "SCAN MODE"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.16f; setPadding(0, 0, 0, dp(8))
-        })
-        val fastCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(4) }
+        // Stats row: Blocks | Total Keys | Progress% | Elapsed
+        val statsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(14) }
         }
-        val fastRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-        }
-        val fastLeft = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        fastLeft.addView(TextView(this).apply { text = "Fast Scan Mode"; textSize = 13f; setTextColor(TXT_PRI) })
-        fastLeft.addView(TextView(this).apply {
-            text = "1 iter — 60k/s vs 9k/s standard"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.MONOSPACE; setPadding(0, dp(2), 0, 0)
-        })
-        val fastSwitch = android.widget.Switch(this).apply {
-            isChecked = fastModeEnabled
-            setOnCheckedChangeListener { _, checked ->
-                fastModeEnabled = checked
-                HunterEngine.setPbkdf2Mode(if (checked) 1 else 0)
-                prefs.edit().putBoolean("fastMode", checked).apply()
+
+        fun statBlock(valueView: TextView, label: String): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(valueView)
+                addView(TextView(this@MainActivity).apply {
+                    text = label; textSize = 9f
+                    setTextColor(0xFF777777.toInt())
+                    gravity = Gravity.CENTER
+                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                })
             }
         }
-        fastModeEnabled = prefs.getBoolean("fastMode", false)
-        HunterEngine.setPbkdf2Mode(if (fastModeEnabled) 1 else 0)
-        fastSwitch.isChecked = fastModeEnabled
-        fastRow.addView(fastLeft); fastRow.addView(fastSwitch); fastCard.addView(fastRow)
-        cfgSection.addView(fastCard)
 
+        fun divider() = View(this).apply {
+            setBackgroundColor(0xFF333333.toInt())
+            layoutParams = LinearLayout.LayoutParams(1, dp(32)).apply { setMargins(0, dp(4), 0, 0) }
+        }
 
-        fun actionCard(icon: String, title: String, subtitle: String, color: Int, onClick: () -> Unit): LinearLayout {
-            return LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(BG_CARD); cornerRadius = dp(10).toFloat()
-                    setStroke(1, BORDER_C)
-                }
-                setPadding(dp(14), dp(12), dp(14), dp(12))
+        tvCount = TextView(this).apply {
+            text = "0"; textSize = 18f; setTextColor(0xFFEEEEEE.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER
+        }
+        val tvTotalKeys = tvCount
+
+        val tvBlocksStat = TextView(this).apply {
+            text = "0"; textSize = 18f; setTextColor(0xFFEEEEEE.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER
+        }
+
+        val tvProgressStat = TextView(this).apply {
+            text = "0.0000%"; textSize = 16f; setTextColor(LIME)
+            typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER
+        }
+
+        tvTime = TextView(this).apply {
+            text = "00:00:00"; textSize = 16f; setTextColor(0xFFEEEEEE.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER
+        }
+
+        statsRow.addView(statBlock(tvBlocksStat, "Blocks"))
+        statsRow.addView(divider())
+        statsRow.addView(statBlock(tvTotalKeys, "Total Keys"))
+        statsRow.addView(divider())
+        statsRow.addView(statBlock(tvProgressStat, "Progress"))
+        statsRow.addView(divider())
+        statsRow.addView(statBlock(tvTime!!, "Elapsed Time"))
+        headerCard.addView(statsRow)
+
+        // Progress bar with glow
+        val progressBg = GradientDrawable().apply {
+            setColor(0xFF1A2A1A.toInt()); cornerRadius = dp(20).toFloat()
+        }
+        val progressBarContainer = FrameLayout(this).apply {
+            background = progressBg
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(14)
+            )
+        }
+        chartView = SpeedChartView(this).apply {
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        // Barra de progreso real
+        val progressFill = android.widget.ProgressBar(
+            this, null, android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            max = 10000
+            progress = 0
+            progressDrawable = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0xFF006600.toInt(), LIME)
+            ).apply { cornerRadius = dp(20).toFloat() }
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        progressBarContainer.addView(progressFill)
+        headerCard.addView(progressBarContainer)
+        page.addView(headerCard)
+
+        // Invisible views para compatibilidad
+        tvKps      = tvWps
+        tvRam      = TextView(this).apply { visibility = android.view.View.GONE }
+        tvBattery  = TextView(this).apply { visibility = android.view.View.GONE }
+        tvTemp     = TextView(this).apply { visibility = android.view.View.GONE }
+        tvMatches  = TextView(this).apply { visibility = android.view.View.GONE }
+        tvFooter   = TextView(this).apply { visibility = android.view.View.GONE }
+        tvStatus   = TextView(this).apply { visibility = android.view.View.GONE }
+        tvAddrFeed = TextView(this).apply { visibility = android.view.View.GONE }
+        tvMatchList = TextView(this).apply { visibility = android.view.View.GONE }
+        page.addView(tvRam); page.addView(tvBattery); page.addView(tvFooter); page.addView(tvStatus)
+
+        // ── HELPER: Collapsible Section ───────────────────────────────────
+        fun collapsibleSection(icon: String, title: String, build: LinearLayout.() -> Unit): LinearLayout {
+            val sectionBg = GradientDrawable().apply {
+                setColor(0xFF141814.toInt()); cornerRadius = dp(14).toFloat()
+                setStroke(1, 0xFF2A3028.toInt())
+            }
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = sectionBg
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) }
+                ).apply { setMargins(dp(12), dp(10), dp(12), 0) }
+            }
+
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(14), dp(16), dp(14))
                 isClickable = true; isFocusable = true
-                setOnClickListener { onClick() }
+            }
 
-                // Icono
-                addView(TextView(context).apply {
-                    text = icon; textSize = 22f
-                    layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) }
-                    gravity = android.view.Gravity.CENTER
-                })
+            val iconTv = TextView(this).apply {
+                text = icon; textSize = 18f
+                layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).apply { marginEnd = dp(10) }
+                gravity = Gravity.CENTER
+            }
+            val titleTv = TextView(this).apply {
+                text = title; textSize = 14f
+                setTextColor(0xFFEEEEEE.toInt())
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val arrowTv = TextView(this).apply {
+                text = "∨"; textSize = 16f; setTextColor(0xFF666666.toInt())
+            }
 
-                // Textos
-                val textCol = LinearLayout(context).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
+            container.addView(header)
+
+            val body = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = android.view.View.GONE
+                setPadding(dp(16), 0, dp(16), dp(14))
+            }
+            body.build()
+            container.addView(body)
+
+            header.setOnClickListener {
+                if (body.visibility == android.view.View.GONE) {
+                    body.visibility = android.view.View.VISIBLE
+                    arrowTv.text = "∧"
+                } else {
+                    body.visibility = android.view.View.GONE
+                    arrowTv.text = "∨"
                 }
-                textCol.addView(TextView(context).apply {
-                    text = title; textSize = 13f; setTextColor(color)
-                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                })
-                textCol.addView(TextView(context).apply {
-                    text = subtitle; textSize = 10f; setTextColor(TXT_MUTED)
-                    typeface = android.graphics.Typeface.MONOSPACE
-                })
-                addView(textCol)
+            }
+            return container
+        }
 
-                // Chevron
-                addView(TextView(context).apply {
-                    text = "›"; textSize = 20f; setTextColor(TXT_MUTED)
-                    gravity = android.view.Gravity.CENTER
+        // ── SECTION: Config Hardware ──────────────────────────────────────
+        page.addView(collapsibleSection("⚙", "Configuración del Motor (Hardware)") {
+            addView(TextView(this@MainActivity).apply {
+                text = "Dataset"; textSize = 10f; setTextColor(0xFF888888.toInt())
+                setPadding(0, dp(4), 0, dp(4))
+            })
+            val dataRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            }
+            btnCsv = Button(this@MainActivity).apply {
+                text = "Load CSV"; textSize = 10f
+                setTextColor(android.graphics.Color.BLACK)
+                background = GradientDrawable().apply { setColor(LIME); cornerRadius = dp(6).toFloat() }
+                setPadding(dp(12), 0, dp(12), 0)
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
+                setOnClickListener { pickCsv() }
+            }
+            val tvCsvLocal = TextView(this@MainActivity).apply {
+                text = if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
+                    java.io.File(csvPath).name else "Sin archivo"
+                setTextColor(0xFF888888.toInt()); textSize = 10f; typeface = Typeface.MONOSPACE
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
+                setPadding(dp(10), 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            tvCsvName = tvCsvLocal
+            dataRow.addView(btnCsv); dataRow.addView(tvCsvLocal)
+            addView(dataRow)
+
+            addView(TextView(this@MainActivity).apply {
+                text = "Threads"; textSize = 10f; setTextColor(0xFF888888.toInt())
+                setPadding(0, dp(10), 0, dp(2))
+            })
+            tvThreads = TextView(this@MainActivity).apply {
+                setTextColor(0xFFCCCCCC.toInt()); textSize = 11f
+            }
+            addView(tvThreads)
+            sbThreads = SeekBar(this@MainActivity).apply {
+                max = 7; progress = prefs.getInt("threads", 3)
+                setOnSeekBarChangeListener(mkSbl { updateLabels() })
+            }
+            addView(sbThreads)
+
+            addView(TextView(this@MainActivity).apply {
+                text = "CPU Limit"; textSize = 10f; setTextColor(0xFF888888.toInt())
+                setPadding(0, dp(8), 0, dp(2))
+            })
+            tvCpu = TextView(this@MainActivity).apply { setTextColor(0xFFCCCCCC.toInt()); textSize = 11f }
+            addView(tvCpu)
+            sbCpu = SeekBar(this@MainActivity).apply {
+                max = 90; progress = prefs.getInt("cpu", 70)
+                setOnSeekBarChangeListener(mkSbl {
+                    updateLabels()
+                    if (HunterEngine.isRunning()) HunterEngine.setCpuLimit((sbCpu?.progress ?: 70) + 10)
                 })
             }
-        }
+            addView(sbCpu)
 
-        // ── Sección de herramientas Scan ──────────────────────────────────
-        cfgSection.addView(TextView(this).apply {
-            text = "HERRAMIENTAS"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-            letterSpacing = 0.16f; setPadding(0, dp(8), 0, dp(8))
-        })
-        cfgSection.addView(actionCard("⏰", "Programar Scan",
-            "Escanea automáticamente en horario programado", AMBER) { showSchedulerDialog() })
-        cfgSection.addView(actionCard("⚙", "Auto-configurar Hardware",
-            "Detecta cores, RAM y optimiza rendimiento", AMBER) { showHardwareInfo() })
-        cfgSection.addView(actionCard("📤", "Exportar Configuración",
-            "Comparte tu config con otro dispositivo", AppTheme.CYAN) { exportConfig() })
-        cfgSection.addView(actionCard("📥", "Importar Configuración",
-            "Aplica config desde otro dispositivo", AppTheme.CYAN) { importConfig() })
-        page.addView(cfgSection)
+            // Fast mode switch
+            val fastRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(10), 0, 0)
+            }
+            fastRow.addView(TextView(this@MainActivity).apply {
+                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFCCCCCC.toInt())
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val fastSwitch = android.widget.Switch(this@MainActivity).apply {
+                isChecked = prefs.getBoolean("fastMode", false)
+                setOnCheckedChangeListener { _, c ->
+                    fastModeEnabled = c
+                    HunterEngine.setPbkdf2Mode(if (c) 1 else 0)
+                    prefs.edit().putBoolean("fastMode", c).apply()
+                }
+            }
+            fastModeEnabled = prefs.getBoolean("fastMode", false)
+            fastRow.addView(fastSwitch)
+            addView(fastRow)
 
-        // ── DIVIDER ───────────────────────────────────────────────────────
-        page.addView(View(this).apply {
-            setBackgroundColor(BORDER_C)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                setMargins(0, dp(4), 0, dp(4))
+            // Tools
+            listOf(
+                Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
+                Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
+                Triple("📤", "Exportar Config", { exportConfig() }),
+                Triple("📥", "Importar Config", { importConfig() })
+            ).forEach { (ic, lbl, action) ->
+                val row = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(10), 0, 0); isClickable = true; isFocusable = true
+                    setOnClickListener { action() }
+                }
+                row.addView(TextView(this@MainActivity).apply {
+                    text = ic; textSize = 16f; gravity = Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(10) }
+                })
+                row.addView(TextView(this@MainActivity).apply {
+                    text = lbl; textSize = 12f; setTextColor(0xFFCCCCCC.toInt())
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF555555.toInt()) })
+                addView(row)
             }
         })
 
-        // ── RUN SECTION ───────────────────────────────────────────────────
-        // Speed hero
-        val heroBlock = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
-            setPadding(dp(18), dp(20), dp(18), dp(18))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        val heroLeft = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        heroLeft.addView(TextView(this).apply {
-            text = "SPEED"; textSize = 9f; setTextColor(TXT_MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.18f; setPadding(0, 0, 0, dp(4))
-        })
-        tvWps = TextView(this).apply { text = "0"; textSize = 50f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        heroLeft.addView(tvWps)
-        heroLeft.addView(TextView(this).apply { text = "keys / second"; textSize = 11f; setTextColor(TXT_SEC); setPadding(0, dp(3), 0, 0) })
-        val heroRight = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
-        tvCount = TextView(this).apply { text = "0"; textSize = 17f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
-        tvTime  = TextView(this).apply { text = "00:00:00"; textSize = 17f; setTextColor(TXT_PRI); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END }
-        heroRight.addView(tvCount)
-        heroRight.addView(TextView(this).apply { text = "SCANNED"; textSize = 8f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, dp(12)) })
-        heroRight.addView(tvTime)
-        heroRight.addView(TextView(this).apply { text = "ELAPSED"; textSize = 8f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.END; letterSpacing = 0.13f; setPadding(0, dp(2), 0, 0) })
-        heroBlock.addView(heroLeft); heroBlock.addView(heroRight)
-        page.addView(heroBlock)
-        page.addView(View(this).apply { setBackgroundColor(BORDER_C); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
+        // ── SECTION: Red Multi-Dispositivo ────────────────────────────────
+        page.addView(collapsibleSection("🌐", "Red Multi-Dispositivo (Cluster)") {
+            addView(TextView(this@MainActivity).apply {
+                text = "MASTER_IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
+                textSize = 11f; setTextColor(0xFF888888.toInt()); typeface = Typeface.MONOSPACE
+                setPadding(0, dp(4), 0, dp(10))
+            })
 
-        // Start/Stop button
-        val coinGreen = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(12).toFloat() }
-        val coinRed   = GradientDrawable().apply { setColor(RED);   cornerRadius = dp(12).toFloat() }
+            val row1 = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            }
+            val netBtn = { txt: String, action: () -> Unit ->
+                Button(this@MainActivity).apply {
+                    text = txt; textSize = 11f; setTextColor(0xFFCCCCCC.toInt())
+                    background = GradientDrawable().apply {
+                        setColor(0xFF1E2A1E.toInt()); setStroke(1, 0xFF2A3A2A.toInt())
+                        cornerRadius = dp(8).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+                    setOnClickListener { action() }
+                }
+            }
+            row1.addView(netBtn("Mode: Master") { NetworkManager.startMaster(this@MainActivity, 71, "400000000000000000", "7fffffffffffffffff") })
+            row1.addView(netBtn("Search Masters") {
+                NetworkManager.discoverMasters(this@MainActivity) { ip, _ ->
+                    runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Master: $ip", android.widget.Toast.LENGTH_SHORT).show() }
+                }
+            })
+            addView(row1)
+
+            val row2 = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+            }
+            row2.addView(netBtn("Mode: Worker") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
+            row2.addView(netBtn("Connect") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
+            addView(row2)
+
+            // Log box
+            val tvNetLog = TextView(this@MainActivity).apply {
+                text = "Log:"
+                textSize = 10f; setTextColor(0xFF888888.toInt()); typeface = Typeface.MONOSPACE
+                background = GradientDrawable().apply { setColor(0xFF0D110D.toInt()); cornerRadius = dp(8).toFloat() }
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(80)).apply { topMargin = dp(8) }
+            }
+            NetworkManager.onLog = { msg ->
+                runOnUiThread {
+                    val cur = tvNetLog.text.toString().lines().takeLast(5)
+                    tvNetLog.text = (cur + listOf(msg)).joinToString("
+")
+                }
+            }
+            addView(tvNetLog)
+        })
+
+        // ── SECTION: Modo Scan ────────────────────────────────────────────
+        page.addView(collapsibleSection("🧩", "Modo Scan") {
+            addView(TextView(this@MainActivity).apply {
+                text = "Seed Phrase Scanner activo"; textSize = 11f
+                setTextColor(0xFF666666.toInt()); typeface = Typeface.MONOSPACE
+                setPadding(0, dp(4), 0, dp(4))
+            })
+        })
+
+        // ── SECTION: Recovery ─────────────────────────────────────────────
+        page.addView(collapsibleSection("🩹", "Recuperación de Semilla (Recovery)") {
+            addView(TextView(this@MainActivity).apply {
+                text = "Recupera seeds con palabras faltantes"; textSize = 11f
+                setTextColor(0xFF666666.toInt()); typeface = Typeface.MONOSPACE
+                setPadding(0, dp(4), 0, dp(4))
+            })
+            addView(Button(this@MainActivity).apply {
+                text = "Abrir Recovery"
+                textSize = 12f; setTextColor(android.graphics.Color.BLACK)
+                background = GradientDrawable().apply { setColor(LIME); cornerRadius = dp(8).toFloat() }
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
+                setOnClickListener { goTab(3) }
+            })
+        })
+
+        // ── START / STOP BUTTON ───────────────────────────────────────────
+        val startGreen = GradientDrawable().apply {
+            colors = intArrayOf(0xFF00CC00.toInt(), LIME)
+            orientation = GradientDrawable.Orientation.LEFT_RIGHT
+            cornerRadius = dp(16).toFloat()
+        }
+        val stopRed = GradientDrawable().apply {
+            setColor(RED); cornerRadius = dp(16).toFloat()
+        }
+
         btnToggle = Button(this).apply {
-            text = s.start; textSize = 15f; setTextColor(android.graphics.Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.12f; isAllCaps = true
-            background = coinGreen
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
+            text = s.start
+            textSize = 16f; setTextColor(android.graphics.Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            letterSpacing = 0.15f; isAllCaps = true
+            background = startGreen
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(60)
+            ).apply { setMargins(dp(12), dp(14), dp(12), dp(8)) }
             setOnClickListener {
                 puzzleMode = false
                 HunterEngine.setMode(0)
                 doToggle(btnToggle)
             }
         }
-        btnToggle?.tag = arrayOf(coinGreen, coinRed)
-        val actZone = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(14), dp(16), dp(14)) }
-        actZone.addView(btnToggle); page.addView(actZone)
-
-        // Speed chart
-        val chartCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16), 0, dp(16), dp(8)) }
-        }
-        chartCard.addView(TextView(this).apply { text = "SPEED HISTORY"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(0, 0, 0, dp(10)) })
-        chartView = SpeedChartView(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52)) }
-        chartCard.addView(chartView); page.addView(chartCard)
-
-        // Matches
-        val matchCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = cardBg()
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16), 0, dp(16), dp(8)) }
-        }
-        matchCard.addView(TextView(this).apply { text = "MATCHES"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.14f; setPadding(dp(14), dp(10), dp(14), dp(4)) })
-        tvMatchList = TextView(this).apply {
-            text = "No matches yet"; setTextColor(TXT_MUTED); textSize = 11f; typeface = Typeface.MONOSPACE
-            setPadding(dp(14), dp(4), dp(14), dp(12))
-        }
-        matchCard.addView(tvMatchList); page.addView(matchCard)
-
-        // System info
-        tvRam      = TextView(this).apply { text = "RAM --"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE }
-        tvBattery  = TextView(this).apply { text = "BAT --"; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.MONOSPACE }
-        tvTemp     = TextView(this).apply { text = ""; textSize = 9f; setTextColor(TXT_MUTED) }
-        tvMatches  = TextView(this).apply { text = "0"; textSize = 9f; setTextColor(TXT_MUTED) }
-        tvAddrFeed = TextView(this).apply { text = ""; setTextColor(TXT_SEC); textSize = 10f; typeface = Typeface.MONOSPACE }
-        tvFooter   = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
-        tvStatus   = TextView(this).apply { visibility = android.view.View.GONE; text = "" }
-        tvKps      = tvWps
-        val sysRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(16), dp(4), dp(16), dp(20)) }
-        sysRow.addView(tvRam); sysRow.addView(tvBattery)
-        page.addView(sysRow)
-
-        // Dataset status
-        val tvDatasetStatus = TextView(this).apply {
-            text = if (csvPath.isNotEmpty() && File(csvPath).exists()) "Dataset: ${File(csvPath).name}" else "No dataset loaded"
-            textSize = 10f; typeface = Typeface.MONOSPACE
-            setTextColor(if (csvPath.isNotEmpty() && File(csvPath).exists()) 0xFF00FF88.toInt() else TXT_MUTED)
-            setPadding(dp(16), 0, dp(16), dp(8))
-        }
-        page.addView(tvDatasetStatus)
-        page.addView(tvFooter); page.addView(tvStatus)
-        page.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(20)) })
+        btnToggle?.tag = arrayOf(startGreen, stopRed)
+        page.addView(btnToggle)
 
         scroll.addView(page)
         return scroll
