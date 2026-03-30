@@ -1328,6 +1328,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
+    private fun updatePuzzleLabels() {
+        val t = (sbThreadsPuzzle?.progress ?: 3) + 1
+        val c = (sbCpuPuzzle?.progress ?: 70) + 10
+        tvThreadsPuzzle?.text = "Threads: $t"
+        tvCpuPuzzle?.text = "CPU limit: $c%"
+        prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle?.progress ?: 3)
+                    .putInt("puzzle_cpu",     sbCpuPuzzle?.progress ?: 70).apply()
+    }
+
+
     private fun checkThermalThrottle() {
         if (!thermalThrottleEnabled) return
         val now = System.currentTimeMillis()
