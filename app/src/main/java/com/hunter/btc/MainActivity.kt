@@ -209,6 +209,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
         }
         AppTheme.init(this)
+        AdManager.init(this)
+        AdManager.loadInterstitial(this)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = BG_DEEP
         s = Strings.EN
@@ -260,6 +262,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(cf)
 
         // ── TabBar ────────────────────────────────────────────────────────────
+        // Banner AdMob
+        val adBanner = AdManager.createBanner(this)
+        root.addView(adBanner)
+
         val tabBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(BG_PANEL)
