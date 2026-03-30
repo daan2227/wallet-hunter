@@ -1588,6 +1588,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) { "—" }
     }
 
+
+    private fun formatElapsed(startTimeMs: Long): String {
+        if (startTimeMs <= 0) return "00:00:00"
+        val elapsed = (System.currentTimeMillis() - startTimeMs) / 1000
+        if (elapsed < 0) return "00:00:00"
+        val d  = elapsed / 86400
+        val h  = (elapsed % 86400) / 3600
+        val m  = (elapsed % 3600) / 60
+        val sc = elapsed % 60
+        return if (d > 0) "%dd %02d:%02d:%02d".format(d, h, m, sc)
+               else "%02d:%02d:%02d".format(h, m, sc)
+    }
+
     private fun updateUI() {
         try {
             if (HunterEngine.isRunning()) {
@@ -1595,14 +1608,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (puzzleMode) {
                     tvWpsPuzzle?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
-                    val elapsed2 = (System.currentTimeMillis() - sessionStartTime) / 1000
-                    tvTimePuzzle?.text = "%02d:%02d:%02d".format(elapsed2/3600,(elapsed2%3600)/60,elapsed2%60)
+                    tvTimePuzzle?.text = formatElapsed(sessionStartTime)
                 } else {
                     tvWps?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvCount?.text = formatCount(HunterEngine.getCount())
-                    val elapsed = (System.currentTimeMillis() - sessionStartTime) / 1000
-                    val h = elapsed / 3600; val m = (elapsed % 3600) / 60; val sc = elapsed % 60
-                    tvTime?.text = "%02d:%02d:%02d".format(h, m, sc)
+                    tvTime?.text = formatElapsed(sessionStartTime)
                     chartView?.addPoint(wps.toFloat())
                     val found = HunterEngine.getCount() - sessionStartCount
                     tvMatches?.text = "$found"
