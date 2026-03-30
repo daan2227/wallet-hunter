@@ -198,9 +198,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
         // Capturar crashes globales
-        val crashDir = "/data/data/com.hunter.btc/files"
-        val crashLogPath = "$crashDir/crash_log.txt"
-        java.io.File(crashDir).mkdirs()
+        val crashLogPath = (getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath) + "/crash_log.txt"
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             try {
                 val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
@@ -671,7 +669,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             selCard.addView(puzzleSpinner)
         } catch (e: Exception) {
             android.util.Log.e("PuzzleTab", "Spinner crash: ${e.message}", e)
-            java.io.File("/data/data/com.hunter.btc/files/crash_log.txt")
+            java.io.File((getExternalFilesDir(null)?.absolutePath ?: "/sdcard") + "/crash_log.txt")
                 .appendText("\nSPINNER: ${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
         }
         page.addView(selCard)
