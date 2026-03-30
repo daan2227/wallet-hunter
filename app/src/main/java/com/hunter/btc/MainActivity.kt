@@ -198,12 +198,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
         // Capturar crashes globales
-        val crashLogPath = filesDir.absolutePath + "/crash_log.txt"
+        val crashDir = "/data/data/com.hunter.btc/files"
+        val crashLogPath = "$crashDir/crash_log.txt"
+        java.io.File(crashDir).mkdirs()
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             try {
-                java.io.File(crashLogPath).writeText(
-                    "CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}"
-                )
+                val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+                java.io.File(crashLogPath).appendText("\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
             } catch (ex: Exception) {}
             android.os.Process.killProcess(android.os.Process.myPid())
         }
