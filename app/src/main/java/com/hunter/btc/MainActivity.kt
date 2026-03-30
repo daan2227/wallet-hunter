@@ -657,17 +657,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % puzzles.size
 
-        puzzleSpinner = Spinner(this).apply {
-            adapter = themedAdapter(puzzles.map { "#${it.num}  ${it.btc} BTC  ${it.addr.take(14)}..." })
-            background = GradientDrawable().apply {
-                setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+        try {
+            puzzleSpinner = Spinner(this).apply {
+                adapter = themedAdapter(puzzles.map { "#${it.num}  ${it.btc} BTC  ${it.addr.take(14)}..." })
+                background = GradientDrawable().apply {
+                    setColor(BG_ELEV); setStroke(1, BORDER_C); cornerRadius = dp(6).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(8) }
             }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
+            selCard.addView(puzzleSpinner)
+        } catch (e: Exception) {
+            android.util.Log.e("PuzzleTab", "Spinner crash: ${e.message}", e)
+            java.io.File("/data/data/com.hunter.btc/files/crash_log.txt")
+                .appendText("\nSPINNER: ${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
         }
-        selCard.addView(puzzleSpinner)
         page.addView(selCard)
 
         // ── RANGE CONFIG ──────────────────────────────────────────────────
