@@ -133,6 +133,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvLog: TextView? = null
     private var puzzleSpinner: Spinner? = null
     private var suppressPuzzleListener = false
+    private var puzzleTabReady = false
     private var tvFooter: TextView? = null
     private var btnToggle: Button? = null
     private var btnSwitch: Button? = null
@@ -751,7 +752,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             var init = true
             override fun onItemSelected(a: AdapterView<*>, v: android.view.View?, pos: Int, id: Long) {
                 if (init) { init = false; return }
-                if (!suppressPuzzleListener) applyPuzzle(puzzles[pos])
+                if (!suppressPuzzleListener && puzzleTabReady) applyPuzzle(puzzles[pos])
             }
             override fun onNothingSelected(a: AdapterView<*>) {}
         }
@@ -984,6 +985,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }.start()
 
         scroll.addView(page)
+        puzzleTabReady = true
         return scroll
     }
 
@@ -1604,7 +1606,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
             val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
             val range = end.subtract(start)
-            val totalBlocks = range.divide(BLOCK_SIZE).toLong().coerceAtMost(100_000)
+            val totalBlocksBig = range.divide(BLOCK_SIZE)
+            val totalBlocks = if (totalBlocksBig > java.math.BigInteger.valueOf(100_000))
+                100_000L else totalBlocksBig.toLong().coerceAtLeast(1)
 
             val prefs = getBlockPrefs()
             val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet()) ?: emptySet()
@@ -1875,10 +1879,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         currentRangeEnd = p.end
         etTarget?.setText(p.addr)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
-        // setRange solo si el engine ya está cargado (no durante construcción del tab)
-        if (HunterEngine.isCsvLoaded() || HunterEngine.isRunning()) {
-            try { HunterEngine.setRange(p.start, p.end) } catch (e: Exception) {}
-        }
+        // Resetear contadores al cambiar puzzle
+        sessionStartTime = 0L
+        sessionStartCount = 0L
+        tvCountPuzzle?.text = "0"
+        tvTimePuzzle?.text  = "00:00:00"
+        tvPctPuzzle?.text   = "0.000000000000000000%"
+        tvBlockProgress?.text = "Bloques: 0/—"
+        // No llamar setRange durante construcción — solo cuando engine está corriendo
     }
 
     private fun autoSelectPuzzle() {
