@@ -1870,8 +1870,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         currentRangeStart = p.start
         currentRangeEnd = p.end
         etTarget?.setText(p.addr)
-        HunterEngine.setRange(p.start, p.end)
-        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc}"
+        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
+        // setRange solo si el engine ya está cargado (no durante construcción del tab)
+        if (HunterEngine.isCsvLoaded() || HunterEngine.isRunning()) {
+            try { HunterEngine.setRange(p.start, p.end) } catch (e: Exception) {}
+        }
     }
 
     private fun autoSelectPuzzle() {
