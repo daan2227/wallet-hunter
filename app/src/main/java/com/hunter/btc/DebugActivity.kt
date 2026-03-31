@@ -90,8 +90,7 @@ class DebugActivity : AppCompatActivity() {
         val crashFile = File(crashPath)
         val crashText = if (crashFile.exists()) {
             val lines = crashFile.readLines()
-            "Total entradas: ${lines.filter { it.startsWith("===") }.size}\n\n" +
-            lines.takeLast(60).joinToString("\n")
+            "Total entradas: ${lines.filter { it.startsWith("===") }.size}" + "\n\n" + lines.takeLast(60).joinToString("\n")
         } else "Sin crashes registrados ✓"
         val crashColor = if (crashFile.exists()) RED else GREEN
         root.addView(sectionCard("ULTIMO CRASH", crashText, crashColor))
@@ -121,7 +120,7 @@ class DebugActivity : AppCompatActivity() {
             appendLine("ABI:      ${android.os.Build.SUPPORTED_ABIS.firstOrNull()}")
             appendLine("RAM:      ${usedMB}MB / ${totalMB}MB")
             appendLine("Cores:    ${Runtime.getRuntime().availableProcessors()}")
-            appendLine("Scanner:  ${if (HunterEngine.isRunning()) "▶ RUNNING" else "■ STOPPED"}")
+            appendLine("Scanner:  ${if (HunterEngine.isRunning()) "RUN" else "STOP"}")
             appendLine("WPS:      ${HunterEngine.getWps()}")
             appendLine("Count:    ${HunterEngine.getCount()}")
             appendLine("CSV:      ${if (HunterEngine.isCsvLoaded()) "✓ loaded" else "✗ not loaded"}")
