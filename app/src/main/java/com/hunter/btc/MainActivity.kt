@@ -470,7 +470,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         statsRow.addView(divider())
         statsRow.addView(statBlock(tvProgressStat, "Progress"))
         statsRow.addView(divider())
-        statsRow.addView(statBlock(tvTime!!, "Elapsed Time"))
+        statsRow.addView(statBlock(tvTime ?: TextView(this), "Elapsed Time"))
         headerCard.addView(statsRow)
 
         // Progress bar with glow
@@ -731,8 +731,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             NetworkManager.onLog = { msg ->
                 runOnUiThread {
                     val cur = tvNetLog.text.toString().lines().takeLast(5)
-                    tvNetLog.text = (cur + listOf(msg)).joinToString("
-")
+                    tvNetLog.text = (cur + listOf(msg)).joinToString(""\n")
                 }
             }
             addView(tvNetLog)
