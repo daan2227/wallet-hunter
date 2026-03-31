@@ -423,12 +423,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(14) }
         }
 
-        fun statBlock(valueView: TextView, label: String): LinearLayout {
+        fun statBlock(valueView: TextView?, label: String): LinearLayout {
             return LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                addView(valueView)
+                valueView?.let { addView(it) }
                 addView(TextView(this@MainActivity).apply {
                     text = label; textSize = 9f
                     setTextColor(0xFF777777.toInt())
