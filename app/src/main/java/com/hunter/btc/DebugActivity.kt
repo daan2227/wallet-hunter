@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.*
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.view.Gravity
 import androidx.appcompat.app.AppCompatActivity
 import java.io.File
 
@@ -11,13 +12,13 @@ class DebugActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        val BG   = AppTheme.BG_DEEP
-        val AMBER = AppTheme.AMBER
-        val TXT  = AppTheme.TXT_PRI
-        val MUTED = AppTheme.TXT_MUTED
-        val RED  = AppTheme.RED
-        val GREEN = AppTheme.GREEN
+        val LIME  = 0xFF39FF14.toInt()
+        val BG    = 0xFF0A0E0A.toInt()
+        val CARD  = 0xFF141814.toInt()
+        val TXT   = 0xFFCCCCCC.toInt()
+        val MUTED = 0xFF888888.toInt()
+        val RED   = 0xFFFF4444.toInt()
+        val GREEN = 0xFF00CC44.toInt()
 
         fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -25,130 +26,146 @@ class DebugActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
-            setPadding(dp(16), dp(16), dp(16), dp(32))
+            setPadding(dp(12), dp(12), dp(12), dp(40))
         }
 
         // Header
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(16))
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(0xFF111411.toInt())
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
         }
         header.addView(Button(this).apply {
-            text = "<"; textSize = 14f; setTextColor(AMBER)
+            text = "<"; textSize = 14f; setTextColor(LIME)
             background = GradientDrawable().apply {
                 setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(6).toFloat()
+                setStroke(1, 0xFF2A3A2A.toInt()); cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(10), dp(2), dp(10), dp(2))
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) }
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "Debug / Logs"
-            textSize = 18f; setTextColor(AMBER)
+            text = "🐛  Debug Console"
+            textSize = 18f; setTextColor(LIME)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
         })
         root.addView(header)
 
-        fun section(title: String) = TextView(this).apply {
-            text = title; textSize = 9f; setTextColor(MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.16f
-            setPadding(0, dp(12), 0, dp(6))
-        }
-
-        fun logBox(content: String, color: Int = TXT) = TextView(this).apply {
-            text = content.ifEmpty { "— vacío —" }
-            textSize = 10f; setTextColor(color)
-            typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_CARD); cornerRadius = dp(8).toFloat()
+        fun sectionCard(title: String, content: String, color: Int = TXT): LinearLayout {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(CARD); cornerRadius = dp(12).toFloat()
+                    setStroke(1, 0xFF2A3028.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(10) }
             }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
+            card.addView(TextView(this).apply {
+                text = title; textSize = 9f; setTextColor(0xFF555555.toInt())
+                typeface = Typeface.create("monospace", Typeface.BOLD)
+                letterSpacing = 0.14f
+                setPadding(dp(14), dp(10), dp(14), dp(4))
+            })
+            card.addView(View(this).apply {
+                setBackgroundColor(0xFF1E2A1E.toInt())
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
+            })
+            card.addView(TextView(this).apply {
+                text = content.ifEmpty { "— vacío —" }
+                textSize = 10f; setTextColor(color)
+                typeface = Typeface.MONOSPACE
+                setPadding(dp(14), dp(10), dp(14), dp(12))
+            })
+            return card
         }
 
-        // ── Crash Log ────────────────────────────────────────────────────
-        root.addView(section("ULTIMO CRASH"))
-        val crashFile = File((getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath) + "/crash_log.txt")
+        // Crash log
+        val crashPath = (getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath) + "/crash_log.txt"
+        val crashFile = File(crashPath)
         val crashText = if (crashFile.exists()) {
             val lines = crashFile.readLines()
-            val last = lines.takeLast(80).joinToString("\n")
-            "Total líneas: ${lines.size}\n...\n$last"
-        } else "Sin crashes registrados"
+            "Total entradas: ${lines.filter { it.startsWith("===") }.size}\n\n" +
+            lines.takeLast(60).joinToString("\n")
+        } else "Sin crashes registrados ✓"
         val crashColor = if (crashFile.exists()) RED else GREEN
-        root.addView(logBox(crashText, crashColor))
+        root.addView(sectionCard("ULTIMO CRASH", crashText, crashColor))
 
         if (crashFile.exists()) {
             root.addView(Button(this).apply {
-                text = "Borrar crash log"
+                text = "Limpiar crash log"
                 textSize = 11f; setTextColor(RED)
                 background = GradientDrawable().apply {
                     setColor(android.graphics.Color.TRANSPARENT)
-                    setStroke(1, RED); cornerRadius = dp(6).toFloat()
+                    setStroke(1, RED); cornerRadius = dp(8).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(40)
-                ).apply { bottomMargin = dp(8) }
-                setOnClickListener {
-                    crashFile.delete()
-                    Toast.makeText(this@DebugActivity, "Crash log borrado", Toast.LENGTH_SHORT).show()
-                    recreate()
-                }
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(42)
+                ).apply { bottomMargin = dp(10) }
+                setOnClickListener { crashFile.delete(); recreate() }
             })
         }
 
-        // ── Estado del sistema ───────────────────────────────────────────
-        root.addView(section("ESTADO DEL SISTEMA"))
+        // System info
         val rt = Runtime.getRuntime()
-        val usedMB = (rt.totalMemory() - rt.freeMemory()) / 1048576
-        val totalMB = rt.totalMemory() / 1048576
-        val maxMB = rt.maxMemory() / 1048576
+        val usedMB  = (rt.totalMemory() - rt.freeMemory()) / 1048576
+        val totalMB = rt.maxMemory() / 1048576
         val sysInfo = buildString {
-            appendLine("Device:  ${android.os.Build.MODEL}")
-            appendLine("Android: ${android.os.Build.VERSION.RELEASE}")
-            appendLine("ABI:     ${android.os.Build.SUPPORTED_ABIS.firstOrNull()}")
-            appendLine("RAM:     ${usedMB}MB / ${totalMB}MB (max ${maxMB}MB)")
-            appendLine("Cores:   ${Runtime.getRuntime().availableProcessors()}")
-            appendLine("Scanner: ${if (HunterEngine.isRunning()) "RUNNING" else "STOPPED"}")
-            appendLine("WPS:     ${HunterEngine.getWps()}")
-            appendLine("Count:   ${HunterEngine.getCount()}")
-            appendLine("CSV:     ${if (HunterEngine.isCsvLoaded()) "loaded" else "not loaded"}")
+            appendLine("Device:   ${android.os.Build.MODEL}")
+            appendLine("Android:  ${android.os.Build.VERSION.RELEASE}")
+            appendLine("ABI:      ${android.os.Build.SUPPORTED_ABIS.firstOrNull()}")
+            appendLine("RAM:      ${usedMB}MB / ${totalMB}MB")
+            appendLine("Cores:    ${Runtime.getRuntime().availableProcessors()}")
+            appendLine("Scanner:  ${if (HunterEngine.isRunning()) "▶ RUNNING" else "■ STOPPED"}")
+            appendLine("WPS:      ${HunterEngine.getWps()}")
+            appendLine("Count:    ${HunterEngine.getCount()}")
+            appendLine("CSV:      ${if (HunterEngine.isCsvLoaded()) "✓ loaded" else "✗ not loaded"}")
         }
-        root.addView(logBox(sysInfo, TXT))
+        root.addView(sectionCard("SISTEMA", sysInfo, TXT))
 
-        // ── Logs internos del scanner ────────────────────────────────────
-        root.addView(section("LOGS DEL SCANNER"))
+        // Scanner logs
         val scanLog = buildString {
-            repeat(20) {
+            repeat(30) {
                 val line = try { HunterEngine.popLog() } catch (e: Exception) { "" }
                 if (line.isNotEmpty()) appendLine(line)
             }
         }
-        root.addView(logBox(scanLog.ifEmpty { "Sin logs recientes" }, AppTheme.CYAN))
+        root.addView(sectionCard("SCANNER LOGS", scanLog.ifEmpty { "Sin logs recientes" }, 0xFF00CCCC.toInt()))
 
-        // ── Archivos de la app ───────────────────────────────────────────
-        root.addView(section("ARCHIVOS"))
+        // Files
         val extDir = getExternalFilesDir(null)
-        val filesList = extDir?.listFiles()?.joinToString("\n") {
-            "${it.name} (${it.length()/1024}KB)"
-        } ?: "Sin archivos"
-        root.addView(logBox(filesList, MUTED))
+        val filesList = extDir?.listFiles()?.sortedByDescending { it.lastModified() }
+            ?.take(20)?.joinToString("\n") { "${it.name} (${it.length()/1024}KB)" }
+            ?: "Sin archivos"
+        root.addView(sectionCard("ARCHIVOS", filesList, MUTED))
 
-        // ── Botón refresh ────────────────────────────────────────────────
+        // Network status
+        val netInfo = buildString {
+            appendLine("IP Local: ${NetworkManager.getLocalIp(this@DebugActivity)}")
+            appendLine("Master:   ${NetworkManager.isMaster}")
+            appendLine("Worker:   ${NetworkManager.isWorker}")
+            appendLine("Running:  ${NetworkManager.isRunning.get()}")
+            appendLine("Bloques global: ${NetworkManager.globalScannedBlocks.size}")
+        }
+        root.addView(sectionCard("RED", netInfo, TXT))
+
+        // Refresh button
         root.addView(Button(this).apply {
-            text = "Actualizar"
-            textSize = 12f; setTextColor(android.graphics.Color.BLACK)
-            background = GradientDrawable().apply {
-                setColor(AMBER); cornerRadius = dp(8).toFloat()
-            }
+            text = "↺  Actualizar"
+            textSize = 13f; setTextColor(android.graphics.Color.BLACK)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(0xFF00CC00.toInt(), LIME)
+            ).apply { cornerRadius = dp(12).toFloat() }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-            ).apply { topMargin = dp(16) }
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+            ).apply { topMargin = dp(8) }
             setOnClickListener { recreate() }
         })
 
