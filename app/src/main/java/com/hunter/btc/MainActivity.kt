@@ -470,7 +470,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         statsRow.addView(divider())
         statsRow.addView(statBlock(tvProgressStat, "Progress"))
         statsRow.addView(divider())
-        statsRow.addView(statBlock(tvTime ?: run { tvTime = TextView(this@MainActivity); tvTime!! }, "Elapsed Time"))
+        tvTime = TextView(this).apply { text = "00:00:00"; textSize = 16f; setTextColor(0xFFEEEEEE.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD); gravity = Gravity.CENTER }
+        statsRow.addView(statBlock(tvTime!!, "Elapsed Time"))
         headerCard.addView(statsRow)
 
         // Progress bar with glow
