@@ -1339,10 +1339,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             it.layoutParams = (it.layoutParams as LinearLayout.LayoutParams).apply { marginEnd = dp(8) }
         })
         miniRow1.addView(miniStat("ELAPSED", tvTmP))
-        miniRow2.addView(miniStat("PROGRESO", tvPctPuzzle).also {
+        val pctPuzzleLocal = tvPctPuzzle!!
+        miniRow2.addView(miniStat("PROGRESO", pctPuzzleLocal).also {
             it.layoutParams = (it.layoutParams as LinearLayout.LayoutParams).apply { marginEnd = dp(8) }
         })
-        miniRow2.addView(miniStat("BLOQUES", tvBlockProgress))
+        val blockProgLocal = tvBlockProgress!!
+        miniRow2.addView(miniStat("BLOQUES", blockProgLocal))
         statsCard.addView(miniRow1); statsCard.addView(miniRow2)
         page.addView(statsCard)
 
