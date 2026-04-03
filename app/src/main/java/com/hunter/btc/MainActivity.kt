@@ -1497,16 +1497,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvBalResult.text = "Verificando balance #${p.num}..."
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
-                    if (bal > 0) {
-                        tvBalResult.text = "Balance: ${bal / 100_000_000.0} BTC ✓"
-                        tvBalResult.setTextColor(ACCENT)
-                    } else {
-                        // Hide this puzzle permanently
-                        hiddenPuzzles.edit().putBoolean("hidden_${p.num}", true).apply()
-                        tvBalResult.text = "Sin fondos — puzzle #${p.num} ocultado"
-                        tvBalResult.setTextColor(0xFFFF6B35.toInt())
-                        // Remove chip from indivRow
-                        autoSelectPuzzle()
+                    when {
+                        bal > 0L -> {
+                            tvBalResult.text = "✓ ${bal / 100_000_000.0} BTC disponibles"
+                            tvBalResult.setTextColor(ACCENT)
+                        }
+                        bal == 0L -> {
+                            hiddenPuzzles.edit().putBoolean("hidden_${p.num}", true).apply()
+                            tvBalResult.text = "Sin fondos — #${p.num} ocultado"
+                            tvBalResult.setTextColor(0xFFFF6B35.toInt())
+                            autoSelectPuzzle()
+                        }
+                        else -> {
+                            tvBalResult.text = "Sin conexión — reintenta"
+                            tvBalResult.setTextColor(0xFF5A607A.toInt())
+                        }
                     }
                 }
             }
@@ -2704,10 +2709,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
             try {
-                val url = java.net.URL("https://blockchain.info/q/addressbalance/$addr")
-                val bal = url.readText().trim().toLongOrNull() ?: 0L
-                runOnUiThread { onResult(bal) }
-            } catch (e: Exception) { runOnUiThread { onResult(0L) } }
+                val bal = ElectrumClient.getBalance(addr)
+                val total = (bal?.confirmed ?: 0L) + (bal?.unconfirmed ?: 0L)
+                runOnUiThread { onResult(total) }
+            } catch (e: Exception) { runOnUiThread { onResult(-1L) } }
         }.start()
     }
 
