@@ -8,20 +8,20 @@ object AppTheme {
 
     fun init(ctx: Context) { isDark = true }
 
-    /* ── Palette from HTML ── */
-    val BG_DEEP   = Color.parseColor("#0e0f0e")
-    val BG_PANEL  = Color.parseColor("#161815")
-    val BG_CARD   = Color.parseColor("#1a1c19")
-    val BG_ELEV   = Color.parseColor("#222521")
-    val AMBER     = Color.parseColor("#a8ff00")   /* lime accent */
-    val GREEN     = Color.parseColor("#a8ff00")   /* same lime */
-    val RED       = Color.parseColor("#ff4d4d")
-    val CYAN      = Color.parseColor("#00c8d4")
-    val BLUE      = Color.parseColor("#60a5fa")
-    val TXT_PRI   = Color.parseColor("#e6ead8")
-    val TXT_SEC   = Color.parseColor("#a0a8a0")
-    val TXT_MUTED = Color.parseColor("#6e7a6e")
-    val BORDER_C  = Color.parseColor("#2a3028")
+    /* ── New dashboard palette ── */
+    val BG_DEEP   = Color.parseColor("#0B0E14")
+    val BG_PANEL  = Color.parseColor("#111520")
+    val BG_CARD   = Color.parseColor("#111520")
+    val BG_ELEV   = Color.parseColor("#171C2C")
+    val AMBER     = Color.parseColor("#00C896")   /* accent green */
+    val GREEN     = Color.parseColor("#00C896")
+    val RED       = Color.parseColor("#FF6B35")
+    val CYAN      = Color.parseColor("#0087FF")
+    val BLUE      = Color.parseColor("#0087FF")
+    val TXT_PRI   = Color.parseColor("#E8EAF0")
+    val TXT_SEC   = Color.parseColor("#A0A8C0")
+    val TXT_MUTED = Color.parseColor("#5A607A")
+    val BORDER_C  = Color.parseColor("#1E2540")
 
     /* aliases kept for compatibility */
     val YELLOW = AMBER
