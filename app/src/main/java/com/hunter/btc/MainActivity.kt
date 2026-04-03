@@ -272,7 +272,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.widget.Toast.makeText(this, "Building Scan...", android.widget.Toast.LENGTH_SHORT).show()
             scanScroll = buildScanTab()
             android.widget.Toast.makeText(this, "Building Puzzle...", android.widget.Toast.LENGTH_SHORT).show()
-            puzzleScroll = buildPuzzleTab()
+            try {
+                puzzleScroll = buildPuzzleTab()
+            } catch (e: Exception) {
+                val msg = "PUZZLE_BUILD: ${e.javaClass.simpleName}: ${e.message}"
+                android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
+                java.io.File(filesDir, "crash_log.txt").appendText("\n$msg\n${e.stackTraceToString()}\n")
+            }
             android.widget.Toast.makeText(this, "Building Wallet...", android.widget.Toast.LENGTH_SHORT).show()
             walletScroll = buildWalletTab()
             android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
