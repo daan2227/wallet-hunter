@@ -61,14 +61,42 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        // Logo
-        root.addView(TextView(this).apply {
-            text = "WALLET\nHUNTER"
-            textSize = 42f; setTextColor(GOLD)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            letterSpacing = -0.02f; gravity = Gravity.CENTER
-            setPadding(0, 0, 0, dp(8))
-        })
+        // Logo icon
+        val logoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        val logoIcon = TextView(this).apply {
+            text = "₿"
+            textSize = 20f; setTextColor(Color.BLACK)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
+                orientation = GradientDrawable.Orientation.TL_BR
+                cornerRadius = dp(12).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                marginEnd = dp(12); gravity = Gravity.CENTER_VERTICAL
+            }
+        }
+        val logoText = TextView(this).apply {
+            text = android.text.SpannableString("WalletHunter").also { sp ->
+                sp.setSpan(
+                    android.text.style.ForegroundColorSpan(0xFF00C896.toInt()),
+                    6, 12, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+            textSize = 28f; setTextColor(0xFFE8EAF0.toInt())
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        }
+        logoRow.addView(logoIcon); logoRow.addView(logoText)
+        root.addView(logoRow)
+
         root.addView(TextView(this).apply {
             text = "BITCOIN SEED SCANNER"
             textSize = 9f; setTextColor(TXT3)
@@ -88,12 +116,14 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Botón crear PIN
         root.addView(Button(this).apply {
-            text = "⚷  CREAR PIN DE SEGURIDAD"
+            text = "▶  CREAR PIN DE SEGURIDAD"
             textSize = 13f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
-            letterSpacing = 0.06f
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            letterSpacing = 0.04f
             background = GradientDrawable().apply {
-                setColor(GOLD); cornerRadius = dp(6).toFloat()
+                colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
+                orientation = GradientDrawable.Orientation.LEFT_RIGHT
+                cornerRadius = dp(14).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
@@ -126,14 +156,14 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         isSetup: Boolean,
         onResult: (Boolean) -> Unit
     ) {
-        val GOLD  = AppTheme.AMBER          // #a8ff00
-        val BG    = 0xFF0E0F0E.toInt()      // #0e0f0e
-        val BG2   = 0xFF1A1C19.toInt()      // #1a1c19
-        val BGKP  = 0xFF0D1018.toInt()      // #0d1018 keypad bg
-        val TXT   = 0xFFE6EAD8.toInt()      // #e6ead8
-        val MUTED = 0xFF556050.toInt()       // #556050
-        val SUBL  = 0xFF7A8A70.toInt()       // #7a8a70 sub-letters
-        val RED   = 0xFFFF4D4D.toInt()
+        val GOLD  = 0xFF00C896.toInt()      // #00C896 accent green
+        val BG    = 0xFF0B0E14.toInt()      // #0b0e14
+        val BG2   = 0xFF111520.toInt()      // #111520 surface
+        val BGKP  = 0xFF0B0E14.toInt()      // #0b0e14 keypad bg
+        val TXT   = 0xFFE8EAF0.toInt()      // #e8eaf0
+        val MUTED = 0xFF5A607A.toInt()       // #5a607a muted
+        val SUBL  = 0xFF3A4060.toInt()       // #3a4060 sub-letters
+        val RED   = 0xFFFF6B35.toInt()
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
             android.util.TypedValue.COMPLEX_UNIT_SP, sp, activity.resources.displayMetrics).toInt()
@@ -201,9 +231,9 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
                 when {
-                    error  -> { setColor(0x22FF4D4D); setStroke(dp(2), RED) }
-                    filled -> { setColor(0x22A8FF00); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF2A2E25.toInt()) }
+                    error  -> { setColor(0x22FF6B35); setStroke(dp(2), RED) }
+                    filled -> { setColor(0x2200C896); setStroke(dp(2), GOLD) }
+                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF1E2540.toInt()) }
                 }
             }
         val dots = Array(6) { i ->
@@ -343,7 +373,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (key.type != "empty") {
                     background = android.graphics.drawable.GradientDrawable().apply {
                         setColor(BG2); cornerRadius = dp(12).toFloat()
-                        setStroke(1, 0x0EFFFFFF)
+                        setStroke(1, 0xFF1E2540.toInt())
                     }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
@@ -354,10 +384,10 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF222521.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
+                            setColor(0xFF171C2C.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1E2540.toInt())
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
+                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1E2540.toInt())
                         }
                         background = pressedBg
                         handler.postDelayed({ background = normalBg }, 120)
