@@ -1484,8 +1484,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── BUILD WALLET TAB ──────────────────────────────────────────────────────
     private fun buildWalletTab(): ScrollView {
+        val ACCENT  = 0xFF00C896.toInt()
+        val ACCENT2 = 0xFF0087FF.toInt()
+
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(BG_DEEP)
+            setBackgroundColor(0xFF0B0E14.toInt())
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1494,49 +1497,131 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(20), dp(16), dp(80))
+            setBackgroundColor(0xFF0B0E14.toInt())
+            setPadding(dp(12), dp(16), dp(12), dp(80))
         }
 
+        // ── HEADER ────────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
-            text = "◈  WALLET"; textSize = 13f; setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            setPadding(0, dp(4), 0, dp(16))
+            text = "Wallet"
+            textSize = 22f; setTextColor(0xFFE8EAF0.toInt())
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(4) }
+        })
+        page.addView(TextView(this).apply {
+            text = "Gestión de wallets encontradas"
+            textSize = 12f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(20) }
         })
 
-        // Botones de acción
-        fun walletBtn(label: String, sub: String, click: () -> Unit): LinearLayout {
+        // ── HERO BALANCE CARD ─────────────────────────────────────────────
+        val heroCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                colors = intArrayOf(0xFF111520.toInt(), 0xFF171C2C.toInt())
+                orientation = android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
+                cornerRadius = dp(20).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+            setPadding(dp(20), dp(24), dp(20), dp(24))
+        }
+
+        heroCard.addView(TextView(this).apply {
+            text = "BALANCE TOTAL ENCONTRADO"
+            textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+            letterSpacing = 0.1f; gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        })
+        heroCard.addView(TextView(this).apply {
+            text = "0.00000000"
+            textSize = 36f; setTextColor(ACCENT)
+            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            gravity = Gravity.CENTER; letterSpacing = -0.02f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        })
+        heroCard.addView(TextView(this).apply {
+            text = "BTC  ≈  \$0.00 USD"
+            textSize = 12f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(4) }
+        })
+        page.addView(heroCard)
+
+        // ── ACTION CARDS ──────────────────────────────────────────────────
+        fun walletBtn(icon: String, label: String, sub: String, click: () -> Unit): LinearLayout {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                background = cardBg(); isClickable = true
+                setPadding(dp(16), dp(16), dp(16), dp(16))
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF111520.toInt()); cornerRadius = dp(16).toFloat()
+                    setStroke(1, 0xFF1E2540.toInt())
+                }
+                isClickable = true; isFocusable = true
                 setOnClickListener { click() }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
             }
+            val iconTv = TextView(this).apply {
+                text = icon; textSize = 20f; gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
+                    marginEnd = dp(14); gravity = Gravity.CENTER_VERTICAL
+                }
+            }
             val lc = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            lc.addView(TextView(this).apply { text = label; textSize = 13f; setTextColor(TXT_PRI) })
             lc.addView(TextView(this).apply {
-                text = sub; textSize = 10f; setTextColor(TXT_MUTED)
-                typeface = Typeface.MONOSPACE; setPadding(0, dp(2), 0, 0)
+                text = label; textSize = 14f; setTextColor(0xFFE8EAF0.toInt())
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
             })
-            r.addView(lc)
-            r.addView(TextView(this).apply { text = "›"; textSize = 18f; setTextColor(TXT_MUTED) })
+            lc.addView(TextView(this).apply {
+                text = sub; textSize = 11f; setTextColor(0xFF5A607A.toInt())
+                typeface = Typeface.MONOSPACE
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(2) }
+            })
+            r.addView(iconTv); r.addView(lc)
+            r.addView(TextView(this).apply {
+                text = "›"; textSize = 20f; setTextColor(0xFF3A4060.toInt())
+            })
             return r
         }
 
-        page.addView(walletBtn("Ver Wallet", "Balances y direcciones") {
+        page.addView(walletBtn("💰", "Ver Wallet", "Balances y direcciones") {
             startActivity(Intent(this, WalletActivity::class.java))
         })
-        page.addView(walletBtn("Importar Seed", "Restaurar desde frase semilla") {
+        page.addView(walletBtn("🔑", "Importar Seed", "Restaurar desde frase semilla") {
             startActivity(Intent(this, WalletActivity::class.java))
         })
-        page.addView(walletBtn("Exportar Log", "Guardar matches en archivo") {
+        page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
         })
 
