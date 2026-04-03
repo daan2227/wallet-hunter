@@ -1257,6 +1257,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         page.addView(tvPuzzleStatus)
 
+        // Balance indicator - debajo del puzzle seleccionado
+        val tvBalResult = TextView(this).apply {
+            text = "Verificando balance..."
+            textSize = 11f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        page.addView(tvBalResult)
+
         // ── RANGE CONFIG ──────────────────────────────────────────────────
         val rangeCard = pCard()
         rangeCard.addView(sectionLabel("RANGO HEX"))
@@ -1453,9 +1470,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tvThermalPuzzle = TextView(this).apply { text = ""; textSize = 10f; setTextColor(ACCENT); typeface = Typeface.MONOSPACE; setPadding(dp(4), dp(6), dp(4), dp(4)) }
         tvThermal = tvThermalPuzzle
         page.addView(tvThermalPuzzle)
-
-        val tvBalResult = TextView(this).apply { text = "Verificando balance..."; textSize = 11f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.MONOSPACE; setPadding(dp(4), dp(4), dp(4), dp(16)) }
-        page.addView(tvBalResult)
 
         // ── START BUTTON ──────────────────────────────────────────────────
         val startBg = android.graphics.drawable.GradientDrawable().apply {
