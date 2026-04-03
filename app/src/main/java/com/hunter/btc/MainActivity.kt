@@ -2582,7 +2582,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val lastKey = HunterEngine.getLastKey()
                     if (lastKey.isNotEmpty() && lastKey != "0".repeat(64)) {
                         val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-                        val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                        val puzzleNum = puzzles.firstOrNull { it.start == etRangeStart?.text.toString() }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
                         puzzlePrefs.edit()
                             .putString("last_key_$puzzleNum", lastKey)
                             .putLong("last_time_$puzzleNum", System.currentTimeMillis())
@@ -2611,7 +2611,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 stopService(Intent(this, HunterService::class.java))
                 // Marcar bloque como escaneado al detener
                 if (puzzleMode) {
-                    val pNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                    val pNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
                     markBlockScanned(pNum)
                 }
                 val btn = activeToggleBtn
@@ -2636,7 +2636,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     if (etRangeStart != null && etRangeEnd != null) {
                         // Cargar checkpoint si existe
                         val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-                        val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0
+                        val puzzleNum = puzzles.firstOrNull { it.start == etRangeStart?.text.toString() }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
                         val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
                         val rangeEnd = etRangeEnd?.text.toString() ?: ""
                         // Elegir bloque no escaneado
@@ -2761,6 +2761,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         runOnUiThread {
                             suppressPuzzleListener = true
                             puzzleSpinner?.setSelection(idx)
+                            puzzles.getOrNull(idx)?.let { applyPuzzle(it) }
                             applyPuzzle(puzzles[idx])
                             tvPuzzleStatus?.text = "Puzzle #${p.num} — ${bal/100_000_000.0} BTC"
                             tvPuzzleStatus?.setTextColor(AppTheme.GREEN)
@@ -3059,7 +3060,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val lastKey = HunterEngine.getLastKey()
             if (lastKey.isEmpty() || lastKey == "0".repeat(64)) return
             val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-            val puzzleNum = puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: return
+            val puzzleNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: return
             puzzlePrefs.edit()
                 .putString("last_key_$puzzleNum", lastKey)
                 .putLong("last_time_$puzzleNum", System.currentTimeMillis())
