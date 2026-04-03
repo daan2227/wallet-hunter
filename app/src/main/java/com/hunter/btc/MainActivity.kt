@@ -2764,32 +2764,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun autoSelectPuzzle() {
-        tvPuzzleStatus?.text = "Checking puzzles..."; tvPuzzleStatus?.setTextColor(TXT_SEC)
-        Thread {
-            // Verificar puzzles en orden de dificultad (ya están ordenados de menor a mayor)
-            // Parar en el primero que tenga fondos
-            for ((idx, p) in puzzles.withIndex()) {
-                var found = false
-                val latch = java.util.concurrent.CountDownLatch(1)
-                checkPuzzleBalance(p.addr) { bal ->
-                    if (bal > 0) {
-                        found = true
-                        runOnUiThread {
-                            suppressPuzzleListener = true
-                            puzzleSpinner?.setSelection(idx)
-                            puzzles.getOrNull(idx)?.let { applyPuzzle(it) }
-                            applyPuzzle(puzzles[idx])
-                            tvPuzzleStatus?.text = "Puzzle #${p.num} — ${bal/100_000_000.0} BTC"
-                            tvPuzzleStatus?.setTextColor(AppTheme.GREEN)
-                            suppressPuzzleListener = false
-                        }
-                    }
-                    latch.countDown()
-                }
-                latch.await(5, java.util.concurrent.TimeUnit.SECONDS)
-                if (found) break
-            }
-        }.start()
+        // Auto-select disabled: user selects puzzle manually via chip selector
+        runOnUiThread {
+            tvPuzzleStatus?.text = "Selecciona un puzzle"
+            tvPuzzleStatus?.setTextColor(0xFF5A607A.toInt())
+        }
     }
 
 
