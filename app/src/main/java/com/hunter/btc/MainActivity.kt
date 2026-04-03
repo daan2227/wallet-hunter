@@ -1483,7 +1483,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.1f; isAllCaps = true
             background = startBg
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)).apply { setMargins(0, dp(12), 0, dp(8)) }
-            setOnClickListener { puzzleMode = true; HunterEngine.setMode(1); doToggle(btnPuzzleToggle) }
+            setOnClickListener {
+                try {
+                    puzzleMode = true
+                    HunterEngine.setMode(1)
+                    doToggle(btnPuzzleToggle)
+                } catch (e: Exception) {
+                    val msg = "${e.javaClass.simpleName}: ${e.message}"
+                    android.widget.Toast.makeText(this@MainActivity, msg, android.widget.Toast.LENGTH_LONG).show()
+                    java.io.File(filesDir, "crash_log.txt").appendText("\nPUZZLE_BTN: $msg\n${e.stackTraceToString()}\n")
+                }
+            }
         }
         btnPuzzleToggle?.tag = arrayOf(startBg, stopRed)
         page.addView(btnPuzzleToggle)
