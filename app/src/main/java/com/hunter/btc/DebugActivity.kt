@@ -102,8 +102,11 @@ class DebugActivity : AppCompatActivity() {
             setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dp(200)
+                dp(300)
             )
+            setTextIsSelectable(true)
+            isVerticalScrollBarEnabled = true
+            movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
         }
         tvLiveLog = tvLive
         liveCard.addView(tvLive)
@@ -243,7 +246,10 @@ class DebugActivity : AppCompatActivity() {
                 setColor(0xFF0B0E14.toInt()); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER)
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(150))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
+            setTextIsSelectable(true)
+            isVerticalScrollBarEnabled = true
+            movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
         }
         engLogCard.addView(tvEngLog)
         engLogCard.addView(actionBtn("↻ REFRESCAR LOG", ACCENT2) {
