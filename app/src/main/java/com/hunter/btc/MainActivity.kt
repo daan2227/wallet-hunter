@@ -1450,6 +1450,71 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sbThreadsPuzzle?.progress = 3
         sbCpuPuzzle?.progress = 50
         powerCard.addView(powerRow)
+
+        // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
+        val batchLabels = listOf(256, 500, 1000, 2000, 4000, 8000, 16000)
+
+        val batchHeaderRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(14) }
+        }
+        batchHeaderRow.addView(TextView(this).apply {
+            text = "BATCH SIZE"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val tvBatchVal = TextView(this).apply {
+            text = "1000 keys"; textSize = 11f; setTextColor(ACCENT2)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+        }
+        batchHeaderRow.addView(tvBatchVal)
+        powerCard.addView(batchHeaderRow)
+
+        val sbBatch = SeekBar(this).apply {
+            max = batchLabels.size - 1
+            progress = 2 // default 1000
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) {
+                    val size = batchLabels[p]
+                    tvBatchVal.text = "$size keys"
+                    HunterEngine.setBatchSize(size)
+                    prefs.edit().putInt("puzzle_batch", p).apply()
+                }
+                override fun onStartTrackingTouch(s: SeekBar?) {}
+                override fun onStopTrackingTouch(s: SeekBar?) {}
+            })
+        }
+        // Restaurar valor guardado
+        sbBatch.progress = prefs.getInt("puzzle_batch", 2)
+        HunterEngine.setBatchSize(batchLabels[sbBatch.progress])
+        powerCard.addView(sbBatch)
+
+        // Labels del slider
+        val batchLabelRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(2) }
+        }
+        listOf("256", "", "1K", "", "4K", "", "16K").forEach { lbl ->
+            batchLabelRow.addView(TextView(this).apply {
+                text = lbl; textSize = 8f; setTextColor(0xFF3A4060.toInt())
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                gravity = android.view.Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
+        powerCard.addView(batchLabelRow)
+
         page.addView(powerCard)
         updatePuzzleLabels()
 
