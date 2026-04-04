@@ -717,11 +717,12 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 
 static void *worker_puzzle_fn(void *){
-    LOGI("worker_puzzle_fn: starting");
+    LOGI("worker_puzzle_fn: START");
     set_thread_affinity(0);
-    LOGI("worker_puzzle_fn: affinity set");
+    LOGI("worker_puzzle_fn: after affinity");
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
-    LOGI("worker_puzzle_fn: ctx created %s", ctx?"OK":"NULL");
+    LOGI("worker_puzzle_fn: ctx=%p", (void*)ctx);
+    if(!ctx){ LOGE("ctx null!"); return nullptr; }
     long local_done=0;
     XR128 rng; xr_init(&rng);
     JP *pts=(JP*)malloc(JAC_BATCH*sizeof(JP));
@@ -737,9 +738,15 @@ static void *worker_puzzle_fn(void *){
         {std::lock_guard<std::mutex> lk(g_last_key_mutex); memcpy(g_last_key,privkey,32);}
         /* ONE scalar mult for entire batch */
         secp256k1_pubkey pubkey;
-        if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)){continue;}
+        if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)){
+            memcpy(privkey,g_range_start,32); continue;
+        }
         uint8_t pub65[65]; size_t plen=65;
         secp256k1_ec_pubkey_serialize(ctx,pub65,&plen,&pubkey,SECP256K1_EC_UNCOMPRESSED);
+        /* Verify point is not at infinity (Z != 0) */
+        bool all_zero = true;
+        for(int z=0;z<64;z++) if(pub65[z+1]!=0){all_zero=false;break;}
+        if(all_zero){ memcpy(privkey,g_range_start,32); continue; }
         jp_from_affine(&pts[0],pub65);
         /* Fill batch: only Jacobian point additions, no inversions */
         uint8_t cur[32]; memcpy(cur,privkey,32);
