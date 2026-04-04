@@ -725,61 +725,75 @@ static void *worker_puzzle_fn(void *){
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
 
+    /* G as tweak: incrementar pubkey sumando G cada vez */
+    static const uint8_t G_bytes[32] = {
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01
+    };
+
     XR128 rng; xr_init(&rng);
-    uint8_t privkey[32];
 
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
         int batch = g_batch_size.load();
         if(batch < 1) batch = 1;
-        if(batch > 1000) batch = 1000; // cap seguro
+        if(batch > 4000) batch = 4000;
 
+        /* Generar clave base aleatoria en rango */
+        uint8_t privkey[32];
         gen_privkey_fast(privkey, &rng);
         if(!secp256k1_ec_seckey_verify(ctx, privkey))
             memcpy(privkey, g_range_start, 32);
 
-        // Guardar checkpoint
+        /* Guardar checkpoint */
         {std::lock_guard<std::mutex> lk(g_last_key_mutex);
          memcpy(g_last_key, privkey, 32);}
+
+        /* Crear pubkey base - solo 1 multiplicacion escalar */
+        secp256k1_pubkey pubkey;
+        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)){
+            memcpy(privkey, g_range_start, 32);
+            continue;
+        }
 
         uint8_t cur[32];
         memcpy(cur, privkey, 32);
         int actual = 0;
 
         for(int i = 0; i < batch && !g_stop.load(); i++){
-            // Incrementar clave
             if(i > 0){
+                /* Incrementar privkey */
                 for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
                 if(memcmp(cur, g_range_end, 32) > 0) break;
+
+                /* Sumar G al pubkey existente - mucho mas rapido que crear nuevo */
+                if(!secp256k1_ec_pubkey_tweak_add(ctx, &pubkey, G_bytes)){
+                    /* Si falla (punto en infinito), regenerar */
+                    if(!secp256k1_ec_pubkey_create(ctx, &pubkey, cur)) continue;
+                }
             }
 
-            // Verificar clave válida
-            if(!secp256k1_ec_seckey_verify(ctx, cur)) continue;
-
-            // Crear pubkey
-            secp256k1_pubkey pubkey;
-            if(!secp256k1_ec_pubkey_create(ctx, &pubkey, cur)) continue;
-
-            // Serializar comprimida
+            /* Serializar comprimida */
             uint8_t pub33[33]; size_t plen = 33;
             secp256k1_ec_pubkey_serialize(ctx, pub33, &plen, &pubkey,
                 SECP256K1_EC_COMPRESSED);
 
-            // Hash160
+            /* Hash160 */
             uint8_t sha[32], h160[HASH160_BYTES];
             SHA256(pub33, 33, sha);
             RIPEMD160(sha, 32, h160);
-
             actual++;
 
-            // Feed address feed (cada 500)
-            if(actual % 500 == 0){
+            /* Address feed */
+            if(actual % 1000 == 0){
                 char atmp[MAX_ADDR] = {0};
                 h160_to_addr(h160, atmp);
                 add_addr(std::string(atmp));
             }
 
-            // Check match
+            /* Check match */
             int match = 0;
             if(g_has_target){
                 if(memcmp(h160, g_target_h160, HASH160_BYTES) == 0) match = 1;
@@ -796,14 +810,14 @@ static void *worker_puzzle_fn(void *){
                 char extra[128];
                 snprintf(extra, sizeof(extra), "PRIV:%s", pkhex);
                 save_match(pkhex, addr, 0.0, wif, extra);
-                add_log(std::string("*** PUZZLE SOLVED *** ADDR:") + addr +
-                        " PRIV:" + pkhex);
+                add_log(std::string("*** PUZZLE SOLVED *** ADDR:") +
+                        addr + " PRIV:" + pkhex);
             }
         }
 
         g_count.fetch_add(actual);
 
-        // CPU throttle
+        /* CPU throttle */
         double work_ms = std::chrono::duration<double,std::milli>(
             std::chrono::high_resolution_clock::now() - t0).count();
         int cpu = g_cpu_limit.load();
