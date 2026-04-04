@@ -726,15 +726,18 @@ static void *worker_puzzle_fn(void *){
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
 
-    XR128 rng; xr_init(&rng);
-
-    /* Usar batch del slider, con limite seguro */
     const int MAX_SAFE = JAC_BATCH;
     JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
 
+    XR128 rng; xr_init(&rng);
+
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
+
+        int cur_batch = g_batch_size.load();
+        if(cur_batch < 1) cur_batch = 1;
+        if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
 
         /* Generar clave base */
         uint8_t privkey[32];
@@ -746,7 +749,6 @@ static void *worker_puzzle_fn(void *){
          memcpy(g_last_key, privkey, 32);}
 
         /* Crear pubkey base */
-        auto t_pub = std::chrono::high_resolution_clock::now();
         secp256k1_pubkey pubkey;
         if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)) continue;
 
@@ -754,9 +756,8 @@ static void *worker_puzzle_fn(void *){
         secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
             SECP256K1_EC_UNCOMPRESSED);
         jp_from_affine(&pts[0], pub65);
-        double ms_pub = std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t_pub).count();
 
-        /* Verificar que Z=1 fue seteado correctamente */
+        /* Verificar Z valido */
         bool z_ok = false;
         for(int j=0;j<4;j++) if(pts[0].z[j]){z_ok=true;break;}
         if(!z_ok) continue;
@@ -765,19 +766,16 @@ static void *worker_puzzle_fn(void *){
         memcpy(cur, privkey, 32);
         int actual = 1;
 
-        auto t_batch = std::chrono::high_resolution_clock::now();
-        int cur_batch = g_batch_size.load();
-        if(cur_batch < 1) cur_batch = 1;
-        if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
+        /* Batch de adiciones Jacobianas */
         for(int i = 1; i < cur_batch && !g_stop.load(); i++){
             for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
             if(memcmp(cur, g_range_end, 32) > 0) break;
             jp_add_G(&pts[i], &pts[i-1]);
 
-            /* Verificar Z del punto resultante */
+            /* Verificar Z */
             bool zi_ok = false;
             for(int j=0;j<4;j++) if(pts[i].z[j]){zi_ok=true;break;}
-            if(!zi_ok){ actual = i; break; } /* truncar batch aquí */
+            if(!zi_ok) break;
             actual++;
         }
 
@@ -788,10 +786,6 @@ static void *worker_puzzle_fn(void *){
         pctx.done = 0;
         jac_batch_hash160(pts, actual, puzzle_on_key, &pctx);
 
-        double ms_batch = std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t_batch).count();
-        static int log_cnt = 0;
-        if(++log_cnt % 50 == 0)
-            add_log("pub=" + std::to_string((int)(ms_pub*1000)) + "us batch=" + std::to_string((int)(ms_batch*1000)) + "us actual=" + std::to_string(actual));
         g_count.fetch_add(actual);
 
         double work_ms = std::chrono::duration<double,std::milli>(

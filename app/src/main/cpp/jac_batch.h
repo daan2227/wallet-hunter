@@ -53,24 +53,38 @@ static void fe_add(fe_t r,const fe_t a,const fe_t b){
         }
     }
 }
+/* fe_mul optimizado con umulh para ARM64 - evita __uint128_t */
 static void fe_mul(fe_t r,const fe_t a,const fe_t b){
     uint64_t t[8]={0};
+    /* Schoolbook 4x4 usando umulh para el high word */
     for(int i=0;i<4;i++){
         uint64_t c=0;
         for(int j=0;j<4;j++){
-            __uint128_t p=(__uint128_t)a[i]*b[j]+t[i+j]+c;
-            t[i+j]=(uint64_t)p;c=(uint64_t)(p>>64);
+            uint64_t lo,hi;
+            /* mul: lo = a[i]*b[j], hi = mulhi(a[i],b[j]) */
+            __asm__("mul %0, %2, %3\n"
+                    "umulh %1, %2, %3"
+                    : "=&r"(lo), "=&r"(hi)
+                    : "r"(a[i]), "r"(b[j]));
+            /* accumulate into t[i+j] with carry */
+            uint64_t old = t[i+j];
+            t[i+j] = old + lo + c;
+            c = hi + (t[i+j] < old ? 1 : 0) + (lo > t[i+j]-c ? 1 : 0);
+            /* simpler: just use carry from addition */
+            c = hi;
+            __asm__("adds %0, %0, %2\n"
+                    "adc %1, %1, xzr"
+                    : "+r"(t[i+j]), "+r"(c)
+                    : "r"(lo + (i+j>0 ? 0 : 0)));
         }
         t[i+4]+=c;
     }
-    /* Reduce: p=2^256-C, C=2^32+977=0x1000003D1 */
     const uint64_t C=0x1000003D1ULL;
     uint64_t carry=0;
     for(int i=0;i<4;i++){
         __uint128_t p=(__uint128_t)t[i+4]*C+t[i]+carry;
         t[i]=(uint64_t)p;carry=(uint64_t)(p>>64);
     }
-    /* Second reduction: carry*2^256 mod p = carry*C */
     if(carry){
         __uint128_t p2=(__uint128_t)carry*C+t[0];
         t[0]=(uint64_t)p2;uint64_t c2=(uint64_t)(p2>>64);

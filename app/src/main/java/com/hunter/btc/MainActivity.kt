@@ -1452,7 +1452,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         powerCard.addView(powerRow)
 
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
-        val batchLabels = listOf(256, 500, 1000, 2000, 4000, 8000, 16000)
+        val batchLabels = listOf(64, 128, 256, 512, 1024, 2048, 4096)
 
         val batchHeaderRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1505,7 +1505,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(2) }
         }
-        listOf("256", "", "1K", "", "4K", "", "16K").forEach { lbl ->
+        listOf("64", "", "256", "", "1K", "", "4K").forEach { lbl ->
             batchLabelRow.addView(TextView(this).apply {
                 text = lbl; textSize = 8f; setTextColor(0xFF3A4060.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
