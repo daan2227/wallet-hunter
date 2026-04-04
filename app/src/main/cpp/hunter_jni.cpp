@@ -717,12 +717,27 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 
 static void *worker_puzzle_fn(void *){
-    LOGI("worker_puzzle_fn: STUB - just loop");
+    LOGI("PUZ: A - start");
+    set_thread_affinity(0);
+    LOGI("PUZ: B - after affinity");
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+    LOGI("PUZ: C - ctx=%p", (void*)ctx);
+    if(!ctx){ LOGE("ctx null"); return nullptr; }
+    LOGI("PUZ: D - before malloc");
+    JP *pts=(JP*)malloc(JAC_BATCH*sizeof(JP));
+    LOGI("PUZ: E - pts=%p", (void*)pts);
+    if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
+    LOGI("PUZ: F - before loop");
+    int loop_count = 0;
     while(!g_stop.load()){
+        LOGI("PUZ: G - loop iteration %d", loop_count++);
+        if(loop_count > 3) break; // solo 3 iteraciones para debug
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         g_count.fetch_add(1);
     }
-    LOGI("worker_puzzle_fn: STUB done");
+    LOGI("PUZ: H - done");
+    free(pts);
+    secp256k1_context_destroy(ctx);
     return nullptr;
 }
 
