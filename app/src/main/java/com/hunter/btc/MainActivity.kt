@@ -2692,11 +2692,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 HunterEngine.startHunting(threads, cpu)
                 Toast.makeText(this, "2/3 startHunting OK", Toast.LENGTH_SHORT).show()
                 activeToggleBtn = callerBtn
-                Toast.makeText(this, "3a activeToggleBtn OK", Toast.LENGTH_SHORT).show()
-                val bg2 = callerBtn?.tag as? Array<*>
-                Toast.makeText(this, "3b tag OK bg=${bg2?.size}", Toast.LENGTH_SHORT).show()
+                @Suppress("UNCHECKED_CAST")
+                val bg2 = callerBtn?.tag as? Array<GradientDrawable>
                 callerBtn?.text = s.stop
-                callerBtn?.background = bg2?.get(1) as? GradientDrawable
+                if (bg2 != null && bg2.size > 1) callerBtn?.background = bg2[1]
                 Toast.makeText(this, "3c btn updated OK", Toast.LENGTH_SHORT).show()
                 try {
                     startForegroundService(Intent(this, HunterService::class.java))
