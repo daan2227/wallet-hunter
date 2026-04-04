@@ -727,9 +727,9 @@ static void *worker_puzzle_fn(void *){
 
     XR128 rng; xr_init(&rng);
 
-    /* Usar batch jacobiano pero con tamaño conservador */
-    const int SAFE_BATCH = 256;
-    JP *pts = (JP*)malloc(SAFE_BATCH * sizeof(JP));
+    /* Usar batch del slider, con limite seguro */
+    const int MAX_SAFE = JAC_BATCH;
+    JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
 
     while(!g_stop.load()){
@@ -763,7 +763,10 @@ static void *worker_puzzle_fn(void *){
         memcpy(cur, privkey, 32);
         int actual = 1;
 
-        for(int i = 1; i < SAFE_BATCH && !g_stop.load(); i++){
+        int cur_batch = g_batch_size.load();
+        if(cur_batch < 1) cur_batch = 1;
+        if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
+        for(int i = 1; i < cur_batch && !g_stop.load(); i++){
             for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
             if(memcmp(cur, g_range_end, 32) > 0) break;
             jp_add_G(&pts[i], &pts[i-1]);
