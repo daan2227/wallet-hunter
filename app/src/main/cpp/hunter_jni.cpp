@@ -67,7 +67,7 @@ static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
-static std::atomic<int>    g_batch_size(16000); // dinámico
+static std::atomic<int>    g_batch_size(512); // reducido para debug
 static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
