@@ -133,11 +133,16 @@ class DebugActivity : AppCompatActivity() {
             setOnClickListener { click() }
         }
 
-        logBtnRow.addView(actionBtn("▶ AUTO REFRESH", ACCENT) {
+        logBtnRow.addView(actionBtn("▶ REFRESH", ACCENT) {
             startLogRefresh()
         })
         logBtnRow.addView(actionBtn("⏹ PARAR", 0xFF5A607A.toInt()) {
             stopLogRefresh()
+        })
+        logBtnRow.addView(actionBtn("📋 COPIAR", ACCENT2) {
+            val cm = getSystemService(android.content.ClipboardManager::class.java)
+            cm.setPrimaryClip(android.content.ClipData.newPlainText("log", tvLive.text))
+            android.widget.Toast.makeText(this, "Log copiado", android.widget.Toast.LENGTH_SHORT).show()
         })
         logBtnRow.addView(actionBtn("🗑 LIMPIAR", RED) {
             clearLogs()
