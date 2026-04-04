@@ -2753,7 +2753,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else 0)
                 val debugRange = "start=${etRangeStart?.text} end=${etRangeEnd?.text} threads=$threads cpu=$cpu"
-                Toast.makeText(this, "1/3 setMode OK", Toast.LENGTH_SHORT).show()
+                val batchNow = HunterEngine.getBatchSize()
+                Toast.makeText(this, "threads=$threads cpu=$cpu batch=$batchNow", Toast.LENGTH_LONG).show()
                 HunterEngine.startHunting(threads, cpu)
                 Toast.makeText(this, "2/3 startHunting OK", Toast.LENGTH_SHORT).show()
                 activeToggleBtn = callerBtn
