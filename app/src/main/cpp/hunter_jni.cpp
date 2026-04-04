@@ -28,7 +28,6 @@
 #include "jac_batch.h"
 #include "bloom.h"
 #include "sha256_ripemd160.h"
-#include "sha256_arm.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
