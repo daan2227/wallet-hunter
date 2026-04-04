@@ -746,14 +746,15 @@ static void *worker_puzzle_fn(void *){
          memcpy(g_last_key, privkey, 32);}
 
         /* Crear pubkey base */
+        auto t_pub = std::chrono::high_resolution_clock::now();
         secp256k1_pubkey pubkey;
         if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)) continue;
 
         uint8_t pub65[65]; size_t plen = 65;
         secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
             SECP256K1_EC_UNCOMPRESSED);
-
         jp_from_affine(&pts[0], pub65);
+        double ms_pub = std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t_pub).count();
 
         /* Verificar que Z=1 fue seteado correctamente */
         bool z_ok = false;
@@ -764,6 +765,7 @@ static void *worker_puzzle_fn(void *){
         memcpy(cur, privkey, 32);
         int actual = 1;
 
+        auto t_batch = std::chrono::high_resolution_clock::now();
         int cur_batch = g_batch_size.load();
         if(cur_batch < 1) cur_batch = 1;
         if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
@@ -786,6 +788,10 @@ static void *worker_puzzle_fn(void *){
         pctx.done = 0;
         jac_batch_hash160(pts, actual, puzzle_on_key, &pctx);
 
+        double ms_batch = std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t_batch).count();
+        static int log_cnt = 0;
+        if(++log_cnt % 50 == 0)
+            add_log("pub=" + std::to_string((int)(ms_pub*1000)) + "us batch=" + std::to_string((int)(ms_batch*1000)) + "us actual=" + std::to_string(actual));
         g_count.fetch_add(actual);
 
         double work_ms = std::chrono::duration<double,std::milli>(
