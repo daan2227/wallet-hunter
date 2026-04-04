@@ -29,22 +29,18 @@
 #include "bloom.h"
 
 #define TAG "HunterJNI"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
+
 #include <signal.h>
-#include <unistd.h>
 
 static void crash_handler(int sig) {
-    LOGE("SIGNAL %d caught in native code!", sig);
-    char path[256];
-    snprintf(path, sizeof(path), "/data/data/com.hunter.btc/files/crash_log.txt");
-    FILE *f = fopen(path, "a");
-    if (f) {
-        fprintf(f, "\nNATIVE CRASH: signal %d\n", sig);
-        fclose(f);
-    }
+    LOGE("NATIVE CRASH: signal %d", sig);
+    FILE *f = fopen("/data/data/com.hunter.btc/files/crash_log.txt", "a");
+    if (f) { fprintf(f, "\nNATIVE CRASH: signal %d\n", sig); fclose(f); }
     signal(sig, SIG_DFL);
     raise(sig);
 }
-
 static void install_crash_handlers() {
     signal(SIGSEGV, crash_handler);
     signal(SIGBUS,  crash_handler);
@@ -52,8 +48,6 @@ static void install_crash_handlers() {
     signal(SIGFPE,  crash_handler);
     signal(SIGILL,  crash_handler);
 }
-#define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
-#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
 #define PBKDF2_ITERS_STD  2048
 #define PBKDF2_ITERS_FAST 1
