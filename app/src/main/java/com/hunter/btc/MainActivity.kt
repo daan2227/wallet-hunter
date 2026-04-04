@@ -1285,12 +1285,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── RANGE CONFIG ──────────────────────────────────────────────────
         val rangeCard = pCard()
-        rangeCard.addView(sectionLabel("RANGO HEX"))
+        // Header con botón ocultar
+        val rangeHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        rangeHeader.addView(TextView(this).apply {
+            text = "RANGO HEX"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val btnRangeToggle = TextView(this).apply {
+            text = "ocultar"; textSize = 9f; setTextColor(0xFF3A4060.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            isClickable = true; isFocusable = true
+        }
+        rangeHeader.addView(btnRangeToggle)
+        rangeCard.addView(rangeHeader)
+
+        val rangeBody = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+        }
         val rangeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
         }
         val colStart = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1307,11 +1326,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         etRangeEnd = styledInput("0x...")
         colEnd.addView(etRangeEnd)
         rangeRow.addView(colStart); rangeRow.addView(colEnd)
-        rangeCard.addView(rangeRow)
-        rangeCard.addView(TextView(this).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+        rangeBody.addView(rangeRow)
+        rangeBody.addView(TextView(this).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
         etTarget = styledInput("1A2B3C...", 0xFF00C896.toInt())
-        rangeCard.addView(etTarget)
+        rangeBody.addView(etTarget)
+        rangeCard.addView(rangeBody)
         page.addView(rangeCard)
+
+        btnRangeToggle.setOnClickListener {
+            if (rangeBody.visibility == android.view.View.VISIBLE) {
+                rangeBody.visibility = android.view.View.GONE
+                btnRangeToggle.text = "mostrar"
+            } else {
+                rangeBody.visibility = android.view.View.VISIBLE
+                btnRangeToggle.text = "ocultar"
+            }
+        }
 
         // ── CHECKPOINT ────────────────────────────────────────────────────
         tvCheckpointLive = TextView(this).apply {
@@ -1520,7 +1550,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
         val toolsCard = pCard()
-        toolsCard.addView(sectionLabel("HERRAMIENTAS"))
+        val toolsHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        toolsHeader.addView(TextView(this).apply {
+            text = "HERRAMIENTAS"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val btnToolsToggle = TextView(this).apply {
+            text = "ocultar"; textSize = 9f; setTextColor(0xFF3A4060.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            isClickable = true; isFocusable = true
+        }
+        toolsHeader.addView(btnToolsToggle)
+        toolsCard.addView(toolsHeader)
+
+        val toolsBody = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        }
         listOf(
             Triple("⏰", "Programar Puzzle", { showSchedulerDialog() }),
             Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
@@ -1535,13 +1585,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             row.addView(TextView(this).apply { text = icon; textSize = 16f; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) } })
             row.addView(TextView(this).apply { text = label; textSize = 12f; setTextColor(0xFFE8EAF0.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
             row.addView(TextView(this).apply { text = "›"; textSize = 16f; setTextColor(0xFF3A4060.toInt()) })
-            toolsCard.addView(row)
-            toolsCard.addView(android.view.View(this).apply { setBackgroundColor(0xFF1E2540.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
+            toolsBody.addView(row)
+            toolsBody.addView(android.view.View(this).apply { setBackgroundColor(0xFF1E2540.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
         }
+        toolsCard.addView(toolsBody)
         page.addView(toolsCard)
 
+        btnToolsToggle.setOnClickListener {
+            if (toolsBody.visibility == android.view.View.VISIBLE) {
+                toolsBody.visibility = android.view.View.GONE
+                btnToolsToggle.text = "mostrar"
+            } else {
+                toolsBody.visibility = android.view.View.VISIBLE
+                btnToolsToggle.text = "ocultar"
+            }
+        }
+
         // ── THERMAL & BALANCE ─────────────────────────────────────────────
-        val tvThermalPuzzle = TextView(this).apply { text = ""; textSize = 10f; setTextColor(ACCENT); typeface = Typeface.MONOSPACE; setPadding(dp(4), dp(6), dp(4), dp(4)) }
+        val tvThermalPuzzle = TextView(this).apply {
+            text = ""; textSize = 10f; setTextColor(ACCENT); typeface = Typeface.MONOSPACE
+            visibility = android.view.View.GONE
+        }
         tvThermal = tvThermalPuzzle
         page.addView(tvThermalPuzzle)
 
