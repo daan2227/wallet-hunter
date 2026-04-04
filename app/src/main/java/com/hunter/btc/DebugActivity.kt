@@ -312,8 +312,7 @@ $content")
         }
 
         if (sb.isNotEmpty()) tv.text = sb.toString()
-        else if (tv.text == "Sin logs aún...
-Inicia un scan o puzzle para ver actividad.") {
+        else if (tv.text.startsWith("Sin logs")) {
             // keep placeholder
         }
     }
