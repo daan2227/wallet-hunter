@@ -106,6 +106,7 @@ class DebugActivity : AppCompatActivity() {
             )
             setTextIsSelectable(true)
             isVerticalScrollBarEnabled = true
+            setHorizontallyScrolling(false)
             movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
         }
         tvLiveLog = tvLive
