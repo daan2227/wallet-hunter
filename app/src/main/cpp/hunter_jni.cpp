@@ -67,7 +67,7 @@ static std::atomic<bool>   g_running(false);
 static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
-static std::atomic<int>    g_batch_size(512); // reducido para debug
+static std::atomic<int>    g_batch_size(1); // minimo para debug
 static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
@@ -700,10 +700,11 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 
 static void *worker_puzzle_fn(void *){
-
-
+    LOGI("worker_puzzle_fn: starting");
     set_thread_affinity(0);
+    LOGI("worker_puzzle_fn: affinity set");
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+    LOGI("worker_puzzle_fn: ctx created %s", ctx?"OK":"NULL");
     long local_done=0;
     XR128 rng; xr_init(&rng);
     JP *pts=(JP*)malloc(JAC_BATCH*sizeof(JP));
