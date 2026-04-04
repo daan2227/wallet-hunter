@@ -2697,7 +2697,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val bg = callerBtn?.tag as? Array<*>
                 callerBtn?.text = s.stop
                 callerBtn?.background = bg?.get(1) as? GradientDrawable
-                startForegroundService(Intent(this, HunterService::class.java))
+                try {
+                    startForegroundService(Intent(this, HunterService::class.java))
+                } catch (ex: Exception) {
+                    // Android 12+ ForegroundServiceStartNotAllowedException
+                    // Intentar como servicio normal como fallback
+                    try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {}
+                }
             }
         } catch (e: Exception) {
             val errMsg = "${e.javaClass.simpleName}: ${e.message}"
