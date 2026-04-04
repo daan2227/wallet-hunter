@@ -2659,7 +2659,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
                         val rangeEnd = etRangeEnd?.text.toString() ?: ""
                         // Elegir bloque no escaneado
-                        val fullStart = etRangeStart?.text.toString() ?: ""
+                        val fullStart = etRangeStart?.text.toString()?.trim() ?: ""
+                        if (fullStart.isEmpty()) {
+                            Toast.makeText(this, "Error: rango no configurado", Toast.LENGTH_SHORT).show()
+                            return
+                        }
                         val block = getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
                         if (block != null) {
                             val (bStart, bEnd) = block
@@ -2691,7 +2695,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 startForegroundService(Intent(this, HunterService::class.java))
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "Error: \${e.message}", Toast.LENGTH_LONG).show()
+            val errMsg = "${e.javaClass.simpleName}: ${e.message}"
+            Toast.makeText(this, errMsg, Toast.LENGTH_LONG).show()
+            java.io.File(filesDir, "crash_log.txt").appendText("\ndoToggle: $errMsg\n${e.stackTraceToString()}\n")
         }
     }
 
