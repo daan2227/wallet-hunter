@@ -32,6 +32,9 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
+#define LOG_FILE "/data/data/com.hunter.btc/files/puz_debug.txt"
+#define FPLOG(fmt, ...) do {     FILE *_f = fopen(LOG_FILE, "a");     if(_f){ fprintf(_f, fmt "\n", ##__VA_ARGS__); fclose(_f); } } while(0)
+
 #include <signal.h>
 
 static void crash_handler(int sig) {
@@ -727,33 +730,33 @@ static void *worker_puzzle_fn(void *){
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
         uint8_t privkey[32];
-        LOGI("PUZ: gen_privkey");
+        FPLOG("PUZ: gen_privkey");
         gen_privkey_fast(privkey,&rng);
         if(!secp256k1_ec_seckey_verify(ctx,privkey))
             memcpy(privkey,g_range_start,32);
-        LOGI("PUZ: checkpoint saved");
+        FPLOG("PUZ: checkpoint saved");
         {std::lock_guard<std::mutex> lk(g_last_key_mutex); memcpy(g_last_key,privkey,32);}
-        LOGI("PUZ: pubkey create");
+        FPLOG("PUZ: pubkey create");
         secp256k1_pubkey pubkey;
         if(!secp256k1_ec_pubkey_create(ctx,&pubkey,privkey)){continue;}
         uint8_t pub65[65]; size_t plen=65;
         secp256k1_ec_pubkey_serialize(ctx,pub65,&plen,&pubkey,SECP256K1_EC_UNCOMPRESSED);
-        LOGI("PUZ: jp_from_affine");
+        FPLOG("PUZ: jp_from_affine");
         jp_from_affine(&pts[0],pub65);
         uint8_t cur[32]; memcpy(cur,privkey,32);
         int actual=1;
         int cur_batch=g_batch_size.load();
-        LOGI("PUZ: batch loop cur_batch=%d", cur_batch);
+        FPLOG("PUZ: batch loop cur_batch=%d", cur_batch);
         for(int i=1;i<cur_batch&&!g_stop.load();i++){
             for(int b=31;b>=0;b--){if(++cur[b])break;}
             if(memcmp(cur,g_range_end,32)>0) break;
             jp_add_G(&pts[i],&pts[i-1]);
             actual++;
         }
-        LOGI("PUZ: jac_batch_hash160 actual=%d", actual);
+        FPLOG("PUZ: jac_batch_hash160 actual=%d", actual);
         PuzzleBatchCtx pctx; memcpy(pctx.priv_base,privkey,32); pctx.done=0;
         jac_batch_hash160(pts,actual,puzzle_on_key,&pctx);
-        LOGI("PUZ: after hash160");
+        FPLOG("PUZ: after hash160");
         local_done+=actual;
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
