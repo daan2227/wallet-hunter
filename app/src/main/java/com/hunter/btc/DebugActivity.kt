@@ -92,8 +92,7 @@ class DebugActivity : AppCompatActivity() {
         liveCard.addView(label("ENGINE LOG (TIEMPO REAL)"))
 
         val tvLive = TextView(this).apply {
-            text = "Sin logs aún...
-Inicia un scan o puzzle para ver actividad."
+            text = "Sin logs aun... Inicia un scan o puzzle para ver actividad."
             textSize = 10f; setTextColor(ACCENT)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = GradientDrawable().apply {
