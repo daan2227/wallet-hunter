@@ -291,23 +291,20 @@ class DebugActivity : AppCompatActivity() {
                 if (l.isNotEmpty()) appendLine(l)
             }
         }
-        if (engineLogs.isNotEmpty()) sb.appendLine("=== ENGINE ===
-$engineLogs")
+        if (engineLogs.isNotEmpty()) sb.appendLine("=== ENGINE ===\n" + engineLogs)
 
         // puz_debug.txt
         val puzFile = File(filesDir, "puz_debug.txt")
         if (puzFile.exists()) {
             val content = puzFile.readText().takeLast(1500)
-            sb.appendLine("=== PUZ DEBUG ===
-$content")
+            sb.appendLine("=== PUZ DEBUG ===\n" + content)
         }
 
         // crash_log.txt
         val crashFile = File(filesDir, "crash_log.txt")
         if (crashFile.exists()) {
             val content = crashFile.readText().takeLast(1000)
-            sb.appendLine("=== CRASH LOG ===
-$content")
+            sb.appendLine("=== CRASH LOG ===\n" + content)
         }
 
         if (sb.isNotEmpty()) tv.text = sb.toString()
