@@ -27,6 +27,7 @@
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
 #include "bloom.h"
+#include "sha256_ripemd160.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
