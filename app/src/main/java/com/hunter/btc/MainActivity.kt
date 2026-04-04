@@ -236,7 +236,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             try {
                 val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-                java.io.File(crashLogPath).appendText("\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
+                val msg = "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n"
+                java.io.File(crashLogPath).appendText(msg)
+                // También guardar en internal storage como backup
+                java.io.File(filesDir, "crash_log.txt").appendText(msg)
             } catch (ex: Exception) {}
             android.os.Process.killProcess(android.os.Process.myPid())
         }
