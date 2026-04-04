@@ -2692,16 +2692,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 HunterEngine.startHunting(threads, cpu)
                 Toast.makeText(this, "2/3 startHunting OK", Toast.LENGTH_SHORT).show()
                 activeToggleBtn = callerBtn
-                val bg = callerBtn?.tag as? Array<*>
+                Toast.makeText(this, "3a activeToggleBtn OK", Toast.LENGTH_SHORT).show()
+                val bg2 = callerBtn?.tag as? Array<*>
+                Toast.makeText(this, "3b tag OK bg=${bg2?.size}", Toast.LENGTH_SHORT).show()
                 callerBtn?.text = s.stop
-                callerBtn?.background = bg?.get(1) as? GradientDrawable
+                callerBtn?.background = bg2?.get(1) as? GradientDrawable
+                Toast.makeText(this, "3c btn updated OK", Toast.LENGTH_SHORT).show()
                 try {
                     startForegroundService(Intent(this, HunterService::class.java))
                 } catch (ex: Exception) {
-                    // Android 12+ ForegroundServiceStartNotAllowedException
-                    // Intentar como servicio normal como fallback
                     try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {}
                 }
+                Toast.makeText(this, "3d service OK - DONE", Toast.LENGTH_SHORT).show()
+
             }
         } catch (e: Exception) {
             val errMsg = "${e.javaClass.simpleName}: ${e.message}"
