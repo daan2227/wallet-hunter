@@ -29,6 +29,29 @@
 #include "bloom.h"
 
 #define TAG "HunterJNI"
+#include <signal.h>
+#include <unistd.h>
+
+static void crash_handler(int sig) {
+    LOGE("SIGNAL %d caught in native code!", sig);
+    char path[256];
+    snprintf(path, sizeof(path), "/data/data/com.hunter.btc/files/crash_log.txt");
+    FILE *f = fopen(path, "a");
+    if (f) {
+        fprintf(f, "\nNATIVE CRASH: signal %d\n", sig);
+        fclose(f);
+    }
+    signal(sig, SIG_DFL);
+    raise(sig);
+}
+
+static void install_crash_handlers() {
+    signal(SIGSEGV, crash_handler);
+    signal(SIGBUS,  crash_handler);
+    signal(SIGABRT, crash_handler);
+    signal(SIGFPE,  crash_handler);
+    signal(SIGILL,  crash_handler);
+}
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
@@ -870,6 +893,7 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
+    install_crash_handlers();
     if(g_running.load())return;
     if(!g_csv_loaded.load()&&g_mode.load()!=1)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
