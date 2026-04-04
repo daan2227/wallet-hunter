@@ -158,8 +158,18 @@ static void jac_batch_hash160(
     /* Prefix products of Z: pfx[i] = Z[0]*Z[1]*...*Z[i] */
     fe_t *pfx = (fe_t*)malloc(n*sizeof(fe_t));
     if(!pfx) return;
+    /* Check for zero Z (point at infinity) - skip batch if found */
+    for(int i=0;i<n;i++){
+        bool zz=true;
+        for(int j=0;j<4;j++) if(pts[i].z[j]){zz=false;break;}
+        if(zz){ free(pfx); return; }
+    }
     memcpy(pfx[0],pts[0].z,32);
     for(int i=1;i<n;i++) fe_mul(pfx[i],pfx[i-1],pts[i].z);
+    /* Check final prefix is not zero before inverting */
+    bool pfx_zero=true;
+    for(int j=0;j<4;j++) if(pfx[n-1][j]){pfx_zero=false;break;}
+    if(pfx_zero){ free(pfx); return; }
     /* Invert the last prefix: inv = 1/(Z[0]*...*Z[n-1]) */
     fe_t inv;
     fe_inv(inv,pfx[n-1]);
