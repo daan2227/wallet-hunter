@@ -725,99 +725,65 @@ static void *worker_puzzle_fn(void *){
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
 
-    /* G as tweak: incrementar pubkey sumando G cada vez */
-    static const uint8_t G_bytes[32] = {
-        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-        0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x01
-    };
-
     XR128 rng; xr_init(&rng);
+
+    /* Usar batch jacobiano pero con tamaño conservador */
+    const int SAFE_BATCH = 256;
+    JP *pts = (JP*)malloc(SAFE_BATCH * sizeof(JP));
+    if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
 
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
-        int batch = g_batch_size.load();
-        if(batch < 1) batch = 1;
-        if(batch > 4000) batch = 4000;
 
-        /* Generar clave base aleatoria en rango */
+        /* Generar clave base */
         uint8_t privkey[32];
         gen_privkey_fast(privkey, &rng);
         if(!secp256k1_ec_seckey_verify(ctx, privkey))
             memcpy(privkey, g_range_start, 32);
 
-        /* Guardar checkpoint */
         {std::lock_guard<std::mutex> lk(g_last_key_mutex);
          memcpy(g_last_key, privkey, 32);}
 
-        /* Crear pubkey base - solo 1 multiplicacion escalar */
+        /* Crear pubkey base */
         secp256k1_pubkey pubkey;
-        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)){
-            memcpy(privkey, g_range_start, 32);
-            continue;
-        }
+        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)) continue;
+
+        uint8_t pub65[65]; size_t plen = 65;
+        secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
+            SECP256K1_EC_UNCOMPRESSED);
+
+        jp_from_affine(&pts[0], pub65);
+
+        /* Verificar que Z=1 fue seteado correctamente */
+        bool z_ok = false;
+        for(int j=0;j<4;j++) if(pts[0].z[j]){z_ok=true;break;}
+        if(!z_ok) continue;
 
         uint8_t cur[32];
         memcpy(cur, privkey, 32);
-        int actual = 0;
+        int actual = 1;
 
-        for(int i = 0; i < batch && !g_stop.load(); i++){
-            if(i > 0){
-                /* Incrementar privkey */
-                for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
-                if(memcmp(cur, g_range_end, 32) > 0) break;
+        for(int i = 1; i < SAFE_BATCH && !g_stop.load(); i++){
+            for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
+            if(memcmp(cur, g_range_end, 32) > 0) break;
+            jp_add_G(&pts[i], &pts[i-1]);
 
-                /* Sumar G al pubkey existente - mucho mas rapido que crear nuevo */
-                if(!secp256k1_ec_pubkey_tweak_add(ctx, &pubkey, G_bytes)){
-                    /* Si falla (punto en infinito), regenerar */
-                    if(!secp256k1_ec_pubkey_create(ctx, &pubkey, cur)) continue;
-                }
-            }
-
-            /* Serializar comprimida */
-            uint8_t pub33[33]; size_t plen = 33;
-            secp256k1_ec_pubkey_serialize(ctx, pub33, &plen, &pubkey,
-                SECP256K1_EC_COMPRESSED);
-
-            /* Hash160 */
-            uint8_t sha[32], h160[HASH160_BYTES];
-            SHA256(pub33, 33, sha);
-            RIPEMD160(sha, 32, h160);
+            /* Verificar Z del punto resultante */
+            bool zi_ok = false;
+            for(int j=0;j<4;j++) if(pts[i].z[j]){zi_ok=true;break;}
+            if(!zi_ok){ actual = i; break; } /* truncar batch aquí */
             actual++;
-
-            /* Address feed */
-            if(actual % 1000 == 0){
-                char atmp[MAX_ADDR] = {0};
-                h160_to_addr(h160, atmp);
-                add_addr(std::string(atmp));
-            }
-
-            /* Check match */
-            int match = 0;
-            if(g_has_target){
-                if(memcmp(h160, g_target_h160, HASH160_BYTES) == 0) match = 1;
-            } else if(g_csv_loaded.load()){
-                if(bsearch_h160(h160) >= 0) match = 1;
-            }
-
-            if(match){
-                g_found.fetch_add(1);
-                char addr[MAX_ADDR]={0}, wif[60]={0}, pkhex[65]={0};
-                h160_to_addr(h160, addr);
-                pk_to_wif(cur, wif);
-                for(int b = 0; b < 32; b++) sprintf(pkhex+b*2, "%02x", cur[b]);
-                char extra[128];
-                snprintf(extra, sizeof(extra), "PRIV:%s", pkhex);
-                save_match(pkhex, addr, 0.0, wif, extra);
-                add_log(std::string("*** PUZZLE SOLVED *** ADDR:") +
-                        addr + " PRIV:" + pkhex);
-            }
         }
+
+        if(actual < 1) continue;
+
+        PuzzleBatchCtx pctx;
+        memcpy(pctx.priv_base, privkey, 32);
+        pctx.done = 0;
+        jac_batch_hash160(pts, actual, puzzle_on_key, &pctx);
 
         g_count.fetch_add(actual);
 
-        /* CPU throttle */
         double work_ms = std::chrono::duration<double,std::milli>(
             std::chrono::high_resolution_clock::now() - t0).count();
         int cpu = g_cpu_limit.load();
@@ -829,6 +795,7 @@ static void *worker_puzzle_fn(void *){
         }
     }
 
+    free(pts);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
