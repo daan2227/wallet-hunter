@@ -1643,9 +1643,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         var activeGroupIdx = 0
         val groupChips = mutableListOf<TextView>()
 
-        fun applyPuzzleAndCheckBalance(p: PuzzleInfo) {
+        fun applyPuzzleAndCheckBalance(p: PuzzleInfo, chipView: TextView? = null) {
             applyPuzzle(p)
-            // Update checkpoint display
             val puzzlePrefs2 = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
             val savedKey = puzzlePrefs2.getString("last_key_${p.num}", null)
             val savedTime = puzzlePrefs2.getLong("last_time_${p.num}", 0)
@@ -1655,8 +1654,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } else {
                 tvCheckpointLive?.text = ""
             }
-            // Check balance
-            tvBalResult.text = "Verificando balance #${p.num}..."
+            tvBalResult.text = "Verificando #${p.num}..."
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
                     when {
@@ -1668,7 +1666,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             hiddenPuzzles.edit().putBoolean("hidden_${p.num}", true).apply()
                             tvBalResult.text = "Sin fondos — #${p.num} ocultado"
                             tvBalResult.setTextColor(0xFFFF6B35.toInt())
-                            autoSelectPuzzle()
+                            // Ocultar chip visualmente
+                            chipView?.visibility = android.view.View.GONE
+                            // Seleccionar el siguiente chip visible
+                            var nextSelected = false
+                            for (k in 0 until indivRow.childCount) {
+                                val c = indivRow.getChildAt(k) as? TextView ?: continue
+                                if (c.visibility == android.view.View.VISIBLE && c != chipView) {
+                                    c.performClick()
+                                    nextSelected = true
+                                    break
+                                }
+                            }
+                            if (!nextSelected) {
+                                tvPuzzleStatus?.text = "No hay puzzles disponibles en este grupo"
+                            }
                         }
                         else -> {
                             tvBalResult.text = "Sin conexión — reintenta"
@@ -1696,7 +1708,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     layoutParams = LinearLayout.LayoutParams(dp(64), dp(40)).apply { marginEnd = dp(8) }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
-                        // Deselect all
                         for (j in 0 until indivRow.childCount) {
                             val c = indivRow.getChildAt(j) as? TextView ?: continue
                             (c.background as android.graphics.drawable.GradientDrawable).apply {
@@ -1704,12 +1715,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             }
                             c.setTextColor(0xFF5A607A.toInt())
                         }
-                        // Select this
                         (background as android.graphics.drawable.GradientDrawable).apply {
                             setColor(0x1400C896.toInt()); setStroke(1, 0x3300C896.toInt())
                         }
                         setTextColor(ACCENT)
-                        applyPuzzleAndCheckBalance(p)
+                        applyPuzzleAndCheckBalance(p, this)
                     }
                 }
                 indivRow.addView(chip)
