@@ -2687,6 +2687,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     cpu     = (sbCpu?.progress ?: 70) + 10
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else 0)
+                // Log antes de iniciar para debug
+                val debugRange = "start=${etRangeStart?.text} end=${etRangeEnd?.text} threads=$threads cpu=$cpu puzzleMode=$puzzleMode"
+                android.util.Log.e("HUNTER_DEBUG", debugRange)
+                java.io.File(filesDir, "crash_log.txt").appendText("\nSTART: $debugRange\n")
+                Toast.makeText(this, "Iniciando: $debugRange", Toast.LENGTH_LONG).show()
                 HunterEngine.startHunting(threads, cpu)
                 activeToggleBtn = callerBtn
                 val bg = callerBtn?.tag as? Array<*>
