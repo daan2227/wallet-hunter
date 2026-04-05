@@ -1854,7 +1854,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) }
         })
-        heroCard.addView(TextView(this).apply {
+        val tvTotalBtc = TextView(this).apply {
             text = "0.00000000"
             textSize = 36f; setTextColor(ACCENT)
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
@@ -1863,9 +1863,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
-        })
-        heroCard.addView(TextView(this).apply {
-            text = "BTC  ≈  \$0.00 USD"
+        }
+        val tvTotalUsd = TextView(this).apply {
+            text = "BTC  ≈  $0.00 USD"
             textSize = 12f; setTextColor(0xFF5A607A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.CENTER
@@ -1873,8 +1873,43 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(4) }
-        })
+        }
+        heroCard.addView(tvTotalBtc)
+        heroCard.addView(tvTotalUsd)
         page.addView(heroCard)
+
+        // Leer coincidencias y calcular total
+        fun loadCoincidencias(): Pair<Double, List<Triple<String,Double,String>>> {
+            val f = getExternalFilesDir(null)?.let { java.io.File(it, "coincidencias.txt") }
+            if (f == null || !f.exists()) return Pair(0.0, emptyList())
+            var total = 0.0
+            val matches = mutableListOf<Triple<String,Double,String>>()
+            f.readLines().forEach { line ->
+                if (line.startsWith("MATCH|")) {
+                    val parts = line.split("|").associate {
+                        val kv = it.split(":", limit=2)
+                        if (kv.size == 2) kv[0] to kv[1] else it to ""
+                    }
+                    val addr = parts["ADDR"] ?: return@forEach
+                    val btc  = parts["BTC"]?.toDoubleOrNull() ?: 0.0
+                    val wif  = parts["WIF"] ?: ""
+                    total += btc
+                    matches.add(Triple(addr, btc, wif))
+                }
+            }
+            return Pair(total, matches)
+        }
+
+        fun refreshWallet() {
+            Thread {
+                val (total, matches) = loadCoincidencias()
+                runOnUiThread {
+                    tvTotalBtc.text = "%.8f".format(total)
+                    tvTotalUsd.text = "BTC  ·  ${matches.size} wallet(s) encontrada(s)"
+                }
+            }.start()
+        }
+        refreshWallet()
 
         // ── ACTION CARDS ──────────────────────────────────────────────────
         fun walletBtn(icon: String, label: String, sub: String, click: () -> Unit): LinearLayout {
@@ -1930,6 +1965,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
+        })
+        page.addView(walletBtn("↻", "Actualizar Balance", "Releer coincidencias.txt") {
+            refreshWallet()
+            android.widget.Toast.makeText(this, "Actualizando...", android.widget.Toast.LENGTH_SHORT).show()
         })
 
         scroll.addView(page)
