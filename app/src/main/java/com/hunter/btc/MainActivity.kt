@@ -1187,6 +1187,54 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 )
             }
 
+        fun collapsibleSection(icon: String, title: String, build: LinearLayout.() -> Unit): LinearLayout {
+            val container = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF111520.toInt()); cornerRadius = dp(14).toFloat()
+                    setStroke(1, 0xFF1E2540.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { setMargins(0, dp(10), 0, 0) }
+            }
+            val header = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(16), dp(14), dp(16), dp(14))
+                isClickable = true; isFocusable = true
+            }
+            val iconTv = TextView(this).apply {
+                text = icon; textSize = 17f
+                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(10) }
+                gravity = Gravity.CENTER
+            }
+            val titleTv = TextView(this).apply {
+                text = title; textSize = 13f; setTextColor(0xFFE8EAF0.toInt())
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val arrowTv = TextView(this).apply {
+                text = "›"; textSize = 18f; setTextColor(0xFF3A4060.toInt())
+            }
+            header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
+            container.addView(header)
+            val body = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = android.view.View.GONE
+                setPadding(dp(16), 0, dp(16), dp(14))
+            }
+            body.build()
+            container.addView(body)
+            header.setOnClickListener {
+                if (body.visibility == android.view.View.GONE) {
+                    body.visibility = android.view.View.VISIBLE; arrowTv.text = "∨"
+                } else {
+                    body.visibility = android.view.View.GONE; arrowTv.text = "›"
+                }
+            }
+            return container
+        }
+
         // ── HEADER ────────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
             text = "Puzzle Mode"
@@ -1284,64 +1332,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(tvBalResult)
 
         // ── RANGE CONFIG ──────────────────────────────────────────────────
-        val rangeCard = pCard()
-        // Header con botón ocultar
-        val rangeHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        rangeHeader.addView(TextView(this).apply {
-            text = "RANGO HEX"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        val btnRangeToggle = TextView(this).apply {
-            text = "ocultar"; textSize = 9f; setTextColor(0xFF3A4060.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            isClickable = true; isFocusable = true
-        }
-        rangeHeader.addView(btnRangeToggle)
-        rangeCard.addView(rangeHeader)
-
-        val rangeBody = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
-        }
-        val rangeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
-        }
-        val colStart = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
-        }
-        colStart.addView(TextView(this).apply { text = "Start"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
-        etRangeStart = styledInput("0x...")
-        colStart.addView(etRangeStart)
-        val colEnd = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        colEnd.addView(TextView(this).apply { text = "End"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
-        etRangeEnd = styledInput("0x...")
-        colEnd.addView(etRangeEnd)
-        rangeRow.addView(colStart); rangeRow.addView(colEnd)
-        rangeBody.addView(rangeRow)
-        rangeBody.addView(TextView(this).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
-        etTarget = styledInput("1A2B3C...", 0xFF00C896.toInt())
-        rangeBody.addView(etTarget)
-        rangeCard.addView(rangeBody)
-        page.addView(rangeCard)
-
-        btnRangeToggle.setOnClickListener {
-            if (rangeBody.visibility == android.view.View.VISIBLE) {
-                rangeBody.visibility = android.view.View.GONE
-                btnRangeToggle.text = "mostrar"
-            } else {
-                rangeBody.visibility = android.view.View.VISIBLE
-                btnRangeToggle.text = "ocultar"
+        page.addView(collapsibleSection("🎯", "Rango Hex") {
+            val rangeRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
             }
-        }
+            val colStart = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
+            }
+            colStart.addView(TextView(this@MainActivity).apply { text = "Start"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            etRangeStart = styledInput("0x...")
+            colStart.addView(etRangeStart)
+            val colEnd = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            colEnd.addView(TextView(this@MainActivity).apply { text = "End"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            etRangeEnd = styledInput("0x...")
+            colEnd.addView(etRangeEnd)
+            rangeRow.addView(colStart); rangeRow.addView(colEnd)
+            addView(rangeRow)
+            addView(TextView(this@MainActivity).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            etTarget = styledInput("1A2B3C...", 0xFF00C896.toInt())
+            addView(etTarget)
+        })
 
         // ── CHECKPOINT ────────────────────────────────────────────────────
         tvCheckpointLive = TextView(this).apply {
@@ -1549,57 +1564,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         updatePuzzleLabels()
 
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
-        val toolsCard = pCard()
-        val toolsHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        toolsHeader.addView(TextView(this).apply {
-            text = "HERRAMIENTAS"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        page.addView(collapsibleSection("🔧", "Herramientas") {
+            listOf(
+                Triple("⏰", "Programar Puzzle", { showSchedulerDialog() }),
+                Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
+                Triple("📤", "Exportar Config", { exportConfig() }),
+                Triple("📥", "Importar Config", { importConfig() })
+            ).forEach { (icon, label, action) ->
+                val row = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                    setPadding(0, dp(10), 0, dp(10)); isClickable = true; isFocusable = true
+                    setOnClickListener { action() }
+                }
+                row.addView(TextView(this@MainActivity).apply { text = icon; textSize = 16f; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) } })
+                row.addView(TextView(this@MainActivity).apply { text = label; textSize = 12f; setTextColor(0xFFE8EAF0.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
+                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF3A4060.toInt()) })
+                addView(row)
+                addView(android.view.View(this@MainActivity).apply { setBackgroundColor(0xFF1E2540.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
+            }
         })
-        val btnToolsToggle = TextView(this).apply {
-            text = "ocultar"; textSize = 9f; setTextColor(0xFF3A4060.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            isClickable = true; isFocusable = true
-        }
-        toolsHeader.addView(btnToolsToggle)
-        toolsCard.addView(toolsHeader)
-
-        val toolsBody = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
-        }
-        listOf(
-            Triple("⏰", "Programar Puzzle", { showSchedulerDialog() }),
-            Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
-            Triple("📤", "Exportar Config", { exportConfig() }),
-            Triple("📥", "Importar Config", { importConfig() })
-        ).forEach { (icon, label, action) ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(0, dp(10), 0, dp(10)); isClickable = true; isFocusable = true
-                setOnClickListener { action() }
-            }
-            row.addView(TextView(this).apply { text = icon; textSize = 16f; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) } })
-            row.addView(TextView(this).apply { text = label; textSize = 12f; setTextColor(0xFFE8EAF0.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
-            row.addView(TextView(this).apply { text = "›"; textSize = 16f; setTextColor(0xFF3A4060.toInt()) })
-            toolsBody.addView(row)
-            toolsBody.addView(android.view.View(this).apply { setBackgroundColor(0xFF1E2540.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
-        }
-        toolsCard.addView(toolsBody)
-        page.addView(toolsCard)
-
-        btnToolsToggle.setOnClickListener {
-            if (toolsBody.visibility == android.view.View.VISIBLE) {
-                toolsBody.visibility = android.view.View.GONE
-                btnToolsToggle.text = "mostrar"
-            } else {
-                toolsBody.visibility = android.view.View.VISIBLE
-                btnToolsToggle.text = "ocultar"
-            }
-        }
 
         // ── THERMAL & BALANCE ─────────────────────────────────────────────
         val tvThermalPuzzle = TextView(this).apply {
