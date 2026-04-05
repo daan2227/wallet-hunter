@@ -2908,10 +2908,44 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun exportLog() {
         val dir = getExternalFilesDir(null) ?: filesDir
-        val f = File(dir, "hunter_log_${java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())}.txt")
-        val log = StringBuilder("WALLET HUNTER LOG\n${java.util.Date()}\n\n")
-        f.writeText(log.toString())
-        Toast.makeText(this, "Log guardado: ${f.name}", Toast.LENGTH_SHORT).show()
+        val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+        val f = File(dir, "wallet_hunter_export_$ts.txt")
+        val sb = StringBuilder()
+        sb.appendLine("=== WALLET HUNTER EXPORT ===")
+        sb.appendLine("Fecha: ${java.util.Date()}")
+        sb.appendLine("Dispositivo: ${android.os.Build.MODEL}")
+        sb.appendLine()
+
+        // Incluir coincidencias
+        val coincidencias = File(dir, "coincidencias.txt")
+        if (coincidencias.exists()) {
+            sb.appendLine("=== MATCHES ENCONTRADOS ===")
+            sb.appendLine(coincidencias.readText())
+        } else {
+            sb.appendLine("=== SIN MATCHES AÚN ===")
+        }
+
+        // Incluir crash log si existe
+        val crashLog = File(filesDir, "crash_log.txt")
+        if (crashLog.exists()) {
+            sb.appendLine("=== CRASH LOG ===")
+            sb.appendLine(crashLog.readText().takeLast(2000))
+        }
+
+        f.writeText(sb.toString())
+
+        // Compartir el archivo
+        val uri = androidx.core.content.FileProvider.getUriForFile(
+            this, "${packageName}.provider", f
+        )
+        val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Export")
+            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        startActivity(android.content.Intent.createChooser(share, "Exportar log"))
+        Toast.makeText(this, "Log exportado: ${f.name}", Toast.LENGTH_SHORT).show()
     }
 
     private fun showWalletSelector() {
