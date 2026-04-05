@@ -1957,11 +1957,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return r
         }
 
-        page.addView(walletBtn("💰", "Ver Wallet", "Balances y direcciones") {
-            startActivity(Intent(this, WalletActivity::class.java))
+        page.addView(walletBtn("💰", "Ver Wallet", "Balances y direcciones guardadas") {
+            val hasSeed = WalletManager.hasPin(this) && WalletManager.loadSeed(this) != null
+            val hasWif  = WalletManager.listWifs(this).isNotEmpty()
+            if (hasSeed || hasWif) {
+                startActivity(Intent(this, WalletActivity::class.java).apply {
+                    putExtra("MODE", "seed")
+                })
+            } else {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Sin wallets guardadas")
+                    .setMessage("No tienes wallets guardadas aún. ¿Quieres agregar una?")
+                    .setPositiveButton("Agregar") { _, _ ->
+                        startActivity(Intent(this, WalletActivity::class.java).apply {
+                            putExtra("MODE", "setup")
+                        })
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            }
         })
-        page.addView(walletBtn("🔑", "Importar Seed", "Restaurar desde frase semilla") {
-            startActivity(Intent(this, WalletActivity::class.java))
+        page.addView(walletBtn("🔑", "Agregar Wallet", "Importar seed, WIF o dirección") {
+            startActivity(Intent(this, WalletActivity::class.java).apply {
+                putExtra("MODE", "setup")
+            })
         })
         page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
