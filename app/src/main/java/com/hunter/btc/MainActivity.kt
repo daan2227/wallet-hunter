@@ -1978,9 +1978,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         })
         page.addView(walletBtn("🔑", "Agregar Wallet", "Importar seed, WIF o dirección") {
-            startActivity(Intent(this, WalletActivity::class.java).apply {
-                putExtra("MODE", "setup")
-            })
+            // Mostrar opciones de importación
+            val opciones = arrayOf("📝 Seed Phrase (BIP39)", "🔑 Clave WIF", "👁 Watch-only (dirección)")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Tipo de wallet")
+                .setItems(opciones) { _, which ->
+                    val mode = when (which) {
+                        0 -> "setup"
+                        1 -> "wif_import"
+                        2 -> "watch_import"
+                        else -> "setup"
+                    }
+                    startActivity(Intent(this, WalletActivity::class.java).apply {
+                        putExtra("MODE", mode)
+                    })
+                }
+                .show()
         })
         page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
