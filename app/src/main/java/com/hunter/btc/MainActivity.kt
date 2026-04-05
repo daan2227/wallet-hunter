@@ -549,6 +549,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             NavItem("🧩", "Puzzle", 1),
             NavItem("◈", "Wallet", 2),
             NavItem("⚷", "Recovery", 3),
+            NavItem("📊", "Stats", -3, true),
             NavItem("🌐", "Network", -1, true),
             NavItem("🐛", "Debug", -2, true)
         )
@@ -572,6 +573,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tag = "nav_${item.idx}"
                 setOnClickListener {
                     when {
+                        item.idx == -3 -> {
+                            startActivity(android.content.Intent(this@MainActivity, StatsActivity::class.java))
+                            closeDrawer()
+                        }
                         item.idx == -1 -> {
                             startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java))
                             closeDrawer()
@@ -2821,6 +2826,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
+                // Guardar sesión en historial
+                val sessionKeys = HunterEngine.getCount() - sessionStartCount
+                val sessionDur = if (sessionStartTime > 0)
+                    (System.currentTimeMillis() - sessionStartTime) / 1000 else 0
+                val sessionKps = if (sessionDur > 0) sessionKeys / sessionDur.toDouble() else 0.0
+                val sessionMode = if (puzzleMode) "PUZZLE" else "BIP39"
+                StatsActivity.saveSession(this, sessionMode, sessionKeys,
+                    HunterEngine.getFound(), sessionDur, sessionKps / 1000.0)
                 // Marcar bloque como escaneado al detener
                 if (puzzleMode) {
                     val pNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
