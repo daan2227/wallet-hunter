@@ -11,6 +11,8 @@ class HunterService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private var lastFound: Long = 0
     private var currentTemp: Float = 0f
+    private var wakeLock: PowerManager.WakeLock? = null
+    private var batteryLevel: Int = 100
 
     companion object {
         const val CHANNEL_FG    = "wh_fg"
@@ -26,6 +28,21 @@ class HunterService : Service() {
             val raw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             currentTemp = raw / 10.0f
             tempCallback?.invoke(currentTemp)
+            // Nivel de batería
+            val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+            if (level >= 0 && scale > 0) {
+                batteryLevel = (level * 100 / scale)
+                // Auto-pausa si batería < 15%
+                if (batteryLevel < 15 && HunterEngine.isRunning()) {
+                    HunterEngine.stopHunting()
+                    getSystemService(NotificationManager::class.java)
+                        .notify(NOTIF_FG, buildFgNotif(
+                            "⚠ Scan pausado — batería baja",
+                            "Batería al ${batteryLevel}%. Recarga y reinicia."
+                        ))
+                }
+            }
         }
     }
 
@@ -35,6 +52,12 @@ class HunterService : Service() {
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         startForeground(NOTIF_FG, buildFgNotif("BTC Hunter activo", "Iniciando..."))
+        // WakeLock para mantener CPU activo con pantalla apagada
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "WalletHunter::ScanWakeLock"
+        ).also { it.acquire() }
         handler.post(statsUpdater)
     }
 
@@ -42,6 +65,9 @@ class HunterService : Service() {
         super.onDestroy()
         handler.removeCallbacks(statsUpdater)
         unregisterReceiver(battReceiver)
+        // Liberar WakeLock
+        wakeLock?.let { if (it.isHeld) it.release() }
+        wakeLock = null
         instance = null
     }
 
@@ -112,7 +138,7 @@ class HunterService : Service() {
 
             if (running) {
                 val title = "BTC Hunter  $wStr | Matches: $found"
-                val text = "$cStr | %02d:%02d:%02d | Temp: ${"%.0f".format(currentTemp)}C".format(h,m,s)
+                val text = "$cStr | %02d:%02d:%02d | 🌡${"%.0f".format(currentTemp)}°C | 🔋${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(title, text))
             } else if (loaded) {
