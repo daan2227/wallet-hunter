@@ -189,10 +189,17 @@ class NetworkActivity : AppCompatActivity() {
     }
 
     private fun startAsMaster() {
-        NetworkManager.startMaster(this, 71, "400000000000000000", "7fffffffffffffffff")
+        // Leer rango actual desde prefs
+        val prefs = getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+        val rangeStart = prefs.getString("current_range_start", "400000000000000000") ?: "400000000000000000"
+        val rangeEnd   = prefs.getString("current_range_end",   "7fffffffffffffffff") ?: "7fffffffffffffffff"
+        val puzzleNum  = prefs.getInt("current_puzzle_num", 71)
+        NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
-        Toast.makeText(this, "Master iniciado - IP: ${NetworkManager.getLocalIp(this)}", Toast.LENGTH_LONG).show()
+        val ip = NetworkManager.getLocalIp(this)
+        tvLog?.text = "✓ Master iniciado\nIP: $ip\nPuzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
+        Toast.makeText(this, "Master activo — IP: $ip", Toast.LENGTH_LONG).show()
     }
 
     private fun startAsWorker() {
@@ -203,13 +210,27 @@ class NetworkActivity : AppCompatActivity() {
         }
         NetworkManager.onBlock = { block ->
             runOnUiThread {
-                Toast.makeText(this, "Bloque: #${block.blockId} - ${block.rangeStart}", Toast.LENGTH_LONG).show()
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
+                HunterEngine.setMode(1) // puzzle mode
+                if (!HunterEngine.isRunning()) {
+                    val prefs = getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+                    val threads = prefs.getInt("puzzle_threads", 3) + 1
+                    val cpu = prefs.getInt("puzzle_cpu", 70) + 10
+                    HunterEngine.startHunting(threads, cpu)
+                    try {
+                        startForegroundService(android.content.Intent(this, com.hunter.btc.HunterService::class.java))
+                    } catch (e: Exception) {
+                        startService(android.content.Intent(this, com.hunter.btc.HunterService::class.java))
+                    }
+                }
+                val log = tvLog?.text?.toString() ?: ""
+                tvLog?.text = "$log\n▶ Bloque #${block.blockId}\n  ${block.rangeStart.take(16)}..."
             }
         }
         NetworkManager.startWorker(ip)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
+        tvLog?.text = "Conectando a master $ip..."
     }
 
     private fun discoverMasters() {

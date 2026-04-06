@@ -3014,6 +3014,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         currentRangeEnd = p.end
         etTarget?.setText(p.addr)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
+        // Guardar rango para modo distribuido
+        prefs.edit()
+            .putString("current_range_start", p.start)
+            .putString("current_range_end", p.end)
+            .putInt("current_puzzle_num", p.num)
+            .apply()
         // Resetear contadores al cambiar puzzle
         sessionStartTime = 0L
         sessionStartCount = 0L
