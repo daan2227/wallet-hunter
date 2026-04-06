@@ -1005,6 +1005,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             listOf(
                 Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
+                Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
                 Triple("📤", "Exportar Config", { exportConfig() }),
                 Triple("📥", "Importar Config", { importConfig() })
             ).forEach { (ic, lbl, action) ->
@@ -3017,6 +3018,137 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvCsvName?.setTextColor(0xFF00FF88.toInt())
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showAlertSettings() {
+        val ACCENT = 0xFF00C896.toInt()
+        val BG     = 0xFF111520.toInt()
+        val TXT    = 0xFFE8EAF0.toInt()
+        val MUTED  = 0xFF5A607A.toInt()
+        fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
+        val vibEnabled  = alertPrefs.getBoolean("vibration", true)
+        val soundEnabled = alertPrefs.getBoolean("sound", true)
+        val ledEnabled  = alertPrefs.getBoolean("led", true)
+        val notifEnabled = alertPrefs.getBoolean("notification", true)
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setBackgroundColor(BG)
+        }
+
+        fun toggleRow(label: String, subtitle: String, checked: Boolean, key: String): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, dp(12), 0, dp(12))
+                val left = LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
+                left.addView(android.widget.TextView(this@MainActivity).apply {
+                    text = label; textSize = 13f; setTextColor(TXT)
+                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+                })
+                left.addView(android.widget.TextView(this@MainActivity).apply {
+                    text = subtitle; textSize = 10f; setTextColor(MUTED)
+                    typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+                })
+                addView(left)
+                val sw = android.widget.Switch(this@MainActivity).apply {
+                    isChecked = checked
+                    setOnCheckedChangeListener { _, v ->
+                        alertPrefs.edit().putBoolean(key, v).apply()
+                        updateAlertChannel()
+                    }
+                }
+                addView(sw)
+            }
+        }
+
+        layout.addView(android.widget.TextView(this).apply {
+            text = "ALERTAS AL ENCONTRAR MATCH"
+            textSize = 9f; setTextColor(MUTED)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        })
+        layout.addView(toggleRow("Notificación", "Mostrar alerta en pantalla", notifEnabled, "notification"))
+        layout.addView(toggleRow("Vibración", "Vibrar al encontrar wallet", vibEnabled, "vibration"))
+        layout.addView(toggleRow("Sonido", "Alarma al encontrar wallet", soundEnabled, "sound"))
+        layout.addView(toggleRow("LED", "Parpadeo de LED", ledEnabled, "led"))
+
+        // Test button
+        layout.addView(android.widget.Button(this).apply {
+            text = "🔔  PROBAR ALERTA"
+            textSize = 12f; setTextColor(android.graphics.Color.BLACK)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                colors = intArrayOf(ACCENT, 0xFF0087FF.toInt())
+                orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+                cornerRadius = dp(10).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
+            ).apply { topMargin = dp(16) }
+            setOnClickListener {
+                HunterService.instance?.sendMatchNotif(1, "TEST: Wallet encontrada 0.001 BTC")
+                testVibration()
+            }
+        })
+
+        AlertDialog.Builder(this)
+            .setView(layout)
+            .setPositiveButton("OK", null)
+            .show()
+    }
+
+    private fun updateAlertChannel() {
+        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
+        val vibEnabled  = alertPrefs.getBoolean("vibration", true)
+        val soundEnabled = alertPrefs.getBoolean("sound", true)
+        val ledEnabled  = alertPrefs.getBoolean("led", true)
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            val nm = getSystemService(android.app.NotificationManager::class.java)
+            // Recrear canal con nuevas configuraciones
+            nm.deleteNotificationChannel(HunterService.CHANNEL_MATCH)
+            val alarmAttr = android.media.AudioAttributes.Builder()
+                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
+                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+            val ch = android.app.NotificationChannel(
+                HunterService.CHANNEL_MATCH,
+                "Match encontrado",
+                android.app.NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                enableLights(ledEnabled)
+                lightColor = android.graphics.Color.YELLOW
+                enableVibration(vibEnabled)
+                if (vibEnabled) vibrationPattern = longArrayOf(0,300,150,300,150,300)
+                if (soundEnabled)
+                    setSound(android.media.RingtoneManager.getDefaultUri(
+                        android.media.RingtoneManager.TYPE_ALARM), alarmAttr)
+                else setSound(null, null)
+            }
+            nm.createNotificationChannel(ch)
+        }
+    }
+
+    private fun testVibration() {
+        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
+        if (!alertPrefs.getBoolean("vibration", true)) return
+        val vib = getSystemService(android.os.Vibrator::class.java)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            vib.vibrate(android.os.VibrationEffect.createWaveform(
+                longArrayOf(0,300,150,300,150,300), -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vib.vibrate(longArrayOf(0,300,150,300,150,300), -1)
         }
     }
 
