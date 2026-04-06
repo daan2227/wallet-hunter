@@ -165,6 +165,23 @@ object WalletManager {
         return String(dec) == "wallet_ok"
     }
 
+    fun encryptData(data: ByteArray, pin: String): Pair<ByteArray, ByteArray> {
+        val prefs = null // pin directo
+        val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+        val key = pinToKey(pin, salt)
+        val (enc, iv) = aesEncrypt(key, data)
+        // Prepend salt to encrypted data
+        return Pair(salt + enc, iv)
+    }
+
+    fun decryptData(data: ByteArray, iv: ByteArray, pin: String): ByteArray? {
+        if (data.size < 16) return null
+        val salt = data.copyOfRange(0, 16)
+        val enc  = data.copyOfRange(16, data.size)
+        val key  = pinToKey(pin, salt)
+        return aesDecrypt(key, enc, iv)
+    }
+
     fun hasPin(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)
 
