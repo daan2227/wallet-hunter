@@ -29,5 +29,8 @@ object HunterEngine {
     external fun setBigCores(cores: IntArray, enable: Boolean)
     external fun setBatchSize(size: Int)
     external fun getBatchSize(): Int
+    external fun setSequential(seq: Boolean)
+    external fun isSequential(): Boolean
+    external fun getSeqProgress(): String
     external fun getLastKey(): String
 }

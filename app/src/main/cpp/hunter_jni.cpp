@@ -97,6 +97,9 @@ static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
 
 static uint8_t g_range_start[32] = {0};
 static uint8_t g_range_end[32]   = {0};
+static std::atomic<int> g_sequential(0);  /* 0=random, 1=sequential */
+static uint8_t g_seq_pos[32]     = {0};   /* posición actual en modo secuencial */
+static std::mutex g_seq_mutex;
 static uint8_t g_last_key[32]     = {0};
 static std::mutex g_last_key_mutex;
 static uint8_t g_target_h160[20]  = {0};
@@ -739,9 +742,26 @@ static void *worker_puzzle_fn(void *){
         if(cur_batch < 1) cur_batch = 1;
         if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
 
-        /* Generar clave base */
+        /* Generar clave base - aleatorio o secuencial */
         uint8_t privkey[32];
-        gen_privkey_fast(privkey, &rng);
+        if(g_sequential.load()) {
+            /* Modo secuencial: tomar posición actual y avanzar batch */
+            std::lock_guard<std::mutex> lk(g_seq_mutex);
+            memcpy(privkey, g_seq_pos, 32);
+            /* Verificar que no pasamos el fin */
+            if(memcmp(privkey, g_range_end, 32) > 0) {
+                /* Llegamos al fin, reiniciar desde inicio */
+                memcpy(g_seq_pos, g_range_start, 32);
+                memcpy(privkey, g_range_start, 32);
+            }
+            /* Avanzar posición para el próximo thread */
+            int cur_b = g_batch_size.load();
+            for(int step = 0; step < cur_b; step++) {
+                for(int b = 31; b >= 0; b--) { if(++g_seq_pos[b]) break; }
+            }
+        } else {
+            gen_privkey_fast(privkey, &rng);
+        }
         if(!secp256k1_ec_seckey_verify(ctx, privkey))
             memcpy(privkey, g_range_start, 32);
 
@@ -1390,6 +1410,34 @@ Java_com_hunter_btc_HunterEngine_setBigCores(JNIEnv *env, jobject, jintArray cor
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setBatchSize(JNIEnv *env, jobject, jint size){
     g_batch_size.store(size);
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean seq){
+    g_sequential.store(seq ? 1 : 0);
+    if(seq) {
+        std::lock_guard<std::mutex> lk(g_seq_mutex);
+        memcpy(g_seq_pos, g_range_start, 32);
+    }
+}
+
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_isSequential(JNIEnv *env, jobject){
+    return (jboolean)(g_sequential.load() != 0);
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
+    /* Retorna hex de posición actual */
+    char hex[65] = {0};
+    uint8_t pos[32];
+    {std::lock_guard<std::mutex> lk(g_seq_mutex);
+     memcpy(pos, g_seq_pos, 32);}
+    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",pos[i]);
+    /* Quitar ceros a la izquierda */
+    int start = 0;
+    while(start < 63 && hex[start] == '0') start++;
+    return env->NewStringUTF(hex+start);
 }
 
 JNIEXPORT jint JNICALL

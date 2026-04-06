@@ -1501,6 +1501,60 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sbCpuPuzzle?.progress = 50
         powerCard.addView(powerRow)
 
+        // ── MODO DE ESCANEO ───────────────────────────────────────────────
+        val scanModeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(12) }
+        }
+        scanModeRow.addView(TextView(this).apply {
+            text = "MODO"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+
+        val btnRandom = TextView(this).apply {
+            text = "ALEATORIO"; textSize = 11f; gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x1400C896.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0x3300C896.toInt())
+            }
+            setTextColor(ACCENT)
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { marginEnd = dp(6) }
+            isClickable = true; isFocusable = true
+        }
+        val btnSeq = TextView(this).apply {
+            text = "SECUENCIAL"; textSize = 11f; gravity = Gravity.CENTER
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            setTextColor(0xFF5A607A.toInt())
+            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f)
+            isClickable = true; isFocusable = true
+        }
+
+        fun updateScanMode(sequential: Boolean) {
+            HunterEngine.setSequential(sequential)
+            listOf(btnRandom to !sequential, btnSeq to sequential).forEach { (btn, active) ->
+                (btn.background as android.graphics.drawable.GradientDrawable).apply {
+                    setColor(if (active) 0x1400C896.toInt() else 0xFF171C2C.toInt())
+                    setStroke(1, if (active) 0x3300C896.toInt() else 0xFF1E2540.toInt())
+                }
+                btn.setTextColor(if (active) ACCENT else 0xFF5A607A.toInt())
+            }
+        }
+
+        btnRandom.setOnClickListener { updateScanMode(false) }
+        btnSeq.setOnClickListener { updateScanMode(true) }
+        scanModeRow.addView(btnRandom); scanModeRow.addView(btnSeq)
+        powerCard.addView(scanModeRow)
+
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
         val batchLabels = listOf(64, 128, 256, 512, 1024, 2048, 4096)
 
