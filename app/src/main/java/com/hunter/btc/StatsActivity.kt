@@ -249,8 +249,7 @@ class StatsActivity : Activity() {
 
         if (sessions.isEmpty()) {
             histCard.addView(TextView(this).apply {
-                text = "Sin sesiones aún.
-Inicia un scan para registrar actividad."
+                text = "Sin sesiones aun. Inicia un scan para registrar actividad."
                 textSize = 11f; setTextColor(MUTED)
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 layoutParams = LinearLayout.LayoutParams(
