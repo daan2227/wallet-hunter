@@ -1320,6 +1320,109 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         page.addView(tvPuzzleStatus)
 
+        // ── PROGRESO VISUAL ───────────────────────────────────────────────
+        val progressCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF111520.toInt()); cornerRadius = dp(14).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        val progressHeader = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        val tvProgressPct = TextView(this).apply {
+            text = "0.00%"; textSize = 11f; setTextColor(ACCENT)
+            typeface = Typeface.create("monospace", Typeface.BOLD)
+        }
+        progressHeader.addView(TextView(this).apply {
+            text = "COBERTURA DEL RANGO"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        progressHeader.addView(tvProgressPct)
+        progressCard.addView(progressHeader)
+
+        val progressTrack = android.widget.FrameLayout(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(8)
+            ).apply { bottomMargin = dp(8) }
+        }
+        val progressBarPuzzle = android.widget.ProgressBar(
+            this, null, android.R.attr.progressBarStyleHorizontal
+        ).apply {
+            max = 10000; progress = 0
+            progressDrawable = android.graphics.drawable.GradientDrawable(
+                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(ACCENT2, ACCENT)
+            ).apply { cornerRadius = dp(4).toFloat() }
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+        progressTrack.addView(progressBarPuzzle)
+        progressCard.addView(progressTrack)
+
+        val tvProgressDetail = TextView(this).apply {
+            text = "Bloques: —"; textSize = 10f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+        }
+        progressCard.addView(tvProgressDetail)
+
+        progressCard.addView(TextView(this).apply {
+            text = "↺ Reiniciar progreso"; textSize = 9f; setTextColor(0xFF3A4060.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.END; isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+            setOnClickListener {
+                val puzzleNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: return@setOnClickListener
+                AlertDialog.Builder(this@MainActivity)
+                    .setTitle("Reiniciar progreso")
+                    .setMessage("¿Borrar el progreso del puzzle #$puzzleNum?")
+                    .setPositiveButton("Reiniciar") { _, _ ->
+                        getBlockPrefs().edit().remove("scanned_$puzzleNum").apply()
+                        progressBarPuzzle.progress = 0
+                        tvProgressPct.text = "0.00%"
+                        tvProgressDetail.text = "Bloques: 0 / —"
+                        android.widget.Toast.makeText(this@MainActivity, "Progreso reiniciado", android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancelar", null).show()
+            }
+        })
+        page.addView(progressCard)
+
+        fun updatePuzzleProgress(puzzleNum: Int, rangeStart: String, rangeEnd: String) {
+            Thread {
+                try {
+                    val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+                    val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+                    val total = end.subtract(start).divide(BLOCK_SIZE).toLong().coerceAtLeast(1)
+                    val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size?.toLong() ?: 0L
+                    val pct = (scanned * 10000L / total).toInt().coerceIn(0, 10000)
+                    val pctStr = "%.4f%%".format(scanned * 100.0 / total)
+                    runOnUiThread {
+                        progressBarPuzzle.progress = pct
+                        tvProgressPct.text = pctStr
+                        tvProgressDetail.text = "Bloques: $scanned / $total"
+                    }
+                } catch (e: Exception) {}
+            }.start()
+        }
+
         // Balance indicator - debajo del puzzle seleccionado
         val tvBalResult = TextView(this).apply {
             text = "Verificando balance..."
