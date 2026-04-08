@@ -159,6 +159,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var currentRangeStart: String = ""
     private var currentRangeEnd: String = ""
     private val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
+    private val REQ_IMPORT_PROGRESS = 1003
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
     private var etTarget: EditText? = null
@@ -1731,6 +1732,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             listOf(
                 Triple("⏰", "Programar Puzzle", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
+                Triple("📤", "Exportar Progreso", { exportPuzzleProgress() }),
+                Triple("📥", "Importar Progreso", { importPuzzleProgress() }),
                 Triple("📤", "Exportar Config", { exportConfig() }),
                 Triple("📥", "Importar Config", { importConfig() })
             ).forEach { (icon, label, action) ->
@@ -3252,6 +3255,75 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } else {
             @Suppress("DEPRECATION")
             vib.vibrate(longArrayOf(0,300,150,300,150,300), -1)
+        }
+    }
+
+    private fun exportPuzzleProgress() {
+        try {
+            val prefs = getBlockPrefs()
+            val json = org.json.JSONObject()
+            json.put("version", 1)
+            json.put("exported", System.currentTimeMillis())
+            json.put("device", android.os.Build.MODEL)
+            val puzzlesJson = org.json.JSONObject()
+            puzzles.forEach { p ->
+                val scanned = prefs.getStringSet("scanned_${p.num}", emptySet()) ?: emptySet()
+                if (scanned.isNotEmpty()) {
+                    val arr = org.json.JSONArray()
+                    scanned.forEach { arr.put(it) }
+                    puzzlesJson.put("puzzle_${p.num}", arr)
+                }
+            }
+            json.put("puzzles", puzzlesJson)
+            val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+            val file = java.io.File(getExternalFilesDir(null), "wh_progress_$ts.json")
+            file.writeText(json.toString(2))
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.provider", file)
+            val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Progress")
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(android.content.Intent.createChooser(share, "Exportar progreso"))
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun importPuzzleProgress() {
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "application/json"
+        }
+        startActivityForResult(intent, REQ_IMPORT_PROGRESS)
+    }
+
+    private fun processImportedProgress(uri: android.net.Uri) {
+        try {
+            val text = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
+            val json = org.json.JSONObject(text)
+            val puzzlesJson = json.optJSONObject("puzzles") ?: run {
+                android.widget.Toast.makeText(this, "Formato inválido", android.widget.Toast.LENGTH_SHORT).show()
+                return
+            }
+            val prefs = getBlockPrefs()
+            val editor = prefs.edit()
+            var totalImported = 0
+            puzzles.forEach { p ->
+                val arr = puzzlesJson.optJSONArray("puzzle_${p.num}") ?: return@forEach
+                val existing = prefs.getStringSet("scanned_${p.num}", emptySet())?.toMutableSet() ?: mutableSetOf()
+                val before = existing.size
+                for (i in 0 until arr.length()) existing.add(arr.getString(i))
+                editor.putStringSet("scanned_${p.num}", existing)
+                totalImported += existing.size - before
+            }
+            editor.apply()
+            android.widget.Toast.makeText(this,
+                "✓ Progreso importado: +$totalImported bloques nuevos",
+                android.widget.Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Error importando: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
