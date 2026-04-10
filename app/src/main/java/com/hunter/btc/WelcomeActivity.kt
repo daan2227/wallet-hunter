@@ -30,10 +30,147 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         window.statusBarColor = BG
 
         if (WalletManager.hasPin(this)) {
-            showPinEntry()
+            showSplashThenPin()
         } else {
             showPinSetup()
         }
+    }
+
+    // ── SPLASH ───────────────────────────────────────────────────────────────
+    private fun showSplashThenPin() {
+        val ACCENT  = 0xFF00C896.toInt()
+        val ACCENT2 = 0xFF0087FF.toInt()
+        val SURFACE = 0xFF111520.toInt()
+        val BORDER  = 0xFF1E2540.toInt()
+        val TXT     = 0xFFE8EAF0.toInt()
+        val MUTED   = 0xFF5A607A.toInt()
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(BG)
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+            )
+            setPadding(dp(24), dp(60), dp(24), dp(60))
+        }
+
+        // Logo
+        val logoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        val logoIcon = android.widget.TextView(this).apply {
+            text = "₿"; textSize = 22f
+            setTextColor(android.graphics.Color.BLACK)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            gravity = android.view.Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                colors = intArrayOf(ACCENT, ACCENT2)
+                orientation = android.graphics.drawable.GradientDrawable.Orientation.TL_BR
+                cornerRadius = dp(12).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(52)).apply {
+                marginEnd = dp(14); gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+        }
+        val logoText = android.widget.TextView(this).apply {
+            text = android.text.SpannableString("WalletHunter").also { sp ->
+                sp.setSpan(android.text.style.ForegroundColorSpan(ACCENT), 6, 12,
+                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            textSize = 28f; setTextColor(TXT)
+            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+        }
+        logoRow.addView(logoIcon); logoRow.addView(logoText)
+        root.addView(logoRow)
+
+        root.addView(android.widget.TextView(this).apply {
+            text = "BITCOIN SEED SCANNER"
+            textSize = 9f; setTextColor(MUTED)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+            letterSpacing = 0.2f; gravity = android.view.Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(40) }
+        })
+
+        // Stats cards
+        val (totalKeys, totalMatches, totalTime) = StatsActivity.getTotals(this)
+        val sessions = StatsActivity.loadSessions(this)
+
+        fun statCard(icon: String, value: String, label: String, color: Int): LinearLayout {
+            return LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = android.view.Gravity.CENTER
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(SURFACE); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER)
+                }
+                layoutParams = LinearLayout.LayoutParams(0, dp(90), 1f).apply {
+                    setMargins(dp(4), 0, dp(4), 0)
+                }
+                addView(android.widget.TextView(this@WelcomeActivity).apply {
+                    text = icon; textSize = 20f; gravity = android.view.Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { bottomMargin = dp(4) }
+                })
+                addView(android.widget.TextView(this@WelcomeActivity).apply {
+                    text = value; textSize = 16f; setTextColor(color)
+                    typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+                    gravity = android.view.Gravity.CENTER; letterSpacing = -0.02f
+                })
+                addView(android.widget.TextView(this@WelcomeActivity).apply {
+                    text = label; textSize = 8f; setTextColor(MUTED)
+                    typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+                    gravity = android.view.Gravity.CENTER
+                })
+            }
+        }
+
+        fun formatKeys(k: Long): String = when {
+            k >= 1_000_000_000 -> "${"%.1f".format(k/1e9)}B"
+            k >= 1_000_000 -> "${"%.1f".format(k/1e6)}M"
+            k >= 1_000 -> "${"%.0f".format(k/1e3)}K"
+            else -> k.toString()
+        }
+
+        val statsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(40) }
+        }
+        statsRow.addView(statCard("⚡", formatKeys(totalKeys), "Keys totales", ACCENT))
+        statsRow.addView(statCard("🎯", totalMatches.toString(), "Matches", 
+            if (totalMatches > 0) ACCENT else MUTED))
+        statsRow.addView(statCard("📊", sessions.size.toString(), "Sesiones", ACCENT2))
+        root.addView(statsRow)
+
+        // Mensaje de bienvenida
+        root.addView(android.widget.TextView(this).apply {
+            text = "Verificando identidad..."
+            textSize = 12f; setTextColor(MUTED)
+            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+            gravity = android.view.Gravity.CENTER
+        })
+
+        setContentView(root)
+        root.alpha = 0f
+        root.animate().alpha(1f).setDuration(300).start()
+
+        // Mostrar PIN después de 1.5 segundos
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            showPinEntry()
+        }, 1500)
     }
 
     // ── PIN ENTRY ─────────────────────────────────────────────────────────────
