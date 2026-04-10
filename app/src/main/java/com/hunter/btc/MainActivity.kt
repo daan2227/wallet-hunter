@@ -3002,6 +3002,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
+                prefs.edit().putBoolean("scan_was_running", false).apply()
                 // Guardar sesión en historial
                 val sessionKeys = HunterEngine.getCount() - sessionStartCount
                 val sessionDur = if (sessionStartTime > 0)
@@ -3074,6 +3075,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Toast.makeText(this, "threads=$threads cpu=$cpu batch=$batchNow", Toast.LENGTH_LONG).show()
                 HunterEngine.startHunting(threads, cpu)
                 Toast.makeText(this, "2/3 startHunting OK", Toast.LENGTH_SHORT).show()
+                // Guardar estado para auto-reinicio
+                prefs.edit()
+                    .putBoolean("scan_was_running", true)
+                    .putBoolean("scan_was_puzzle", puzzleMode)
+                    .apply()
                 activeToggleBtn = callerBtn
                 @Suppress("UNCHECKED_CAST")
                 val bg2 = callerBtn?.tag as? Array<GradientDrawable>
@@ -3736,6 +3742,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (appPausedTime > 0 && elapsed > LOCK_TIMEOUT_MS && WalletManager.hasPin(this)) {
             PinAuthHelper.show(this) { ok -> if (!ok) finish() }
         }
+        // Auto-reinicio: si el engine estaba corriendo pero el servicio fue matado
+        checkAndRestartScan()
+    }
+
+    private fun checkAndRestartScan() {
+        val wasRunning = prefs.getBoolean("scan_was_running", false)
+        if (!wasRunning) return
+        if (HunterEngine.isRunning()) return // ya está corriendo
+
+        // El scan estaba activo pero fue matado — preguntar si reiniciar
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (HunterEngine.isRunning()) return@postDelayed // doble check
+            val mode = if (prefs.getBoolean("scan_was_puzzle", false)) "Puzzle" else "BIP39"
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Scan interrumpido")
+                .setMessage("El scan en modo $mode fue interrumpido. ¿Reiniciar?")
+                .setPositiveButton("Reiniciar") { _, _ ->
+                    if (prefs.getBoolean("scan_was_puzzle", false)) {
+                        puzzleMode = true
+                        HunterEngine.setMode(1)
+                    } else {
+                        puzzleMode = false
+                        HunterEngine.setMode(0)
+                    }
+                    doToggle(if (puzzleMode) btnPuzzleToggle else btnToggle)
+                }
+                .setNegativeButton("No") { _, _ ->
+                    prefs.edit().putBoolean("scan_was_running", false).apply()
+                }
+                .show()
+        }, 1000)
     }
 
     override fun onPause() {
