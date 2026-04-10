@@ -1009,8 +1009,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
                 Triple(if (AppTheme.isDark) "☀️" else "🌙",
                     if (AppTheme.isDark) "Tema Claro" else "Tema Oscuro", {
-                    AppTheme.toggle(this)
-                    // Reiniciar actividad para aplicar nuevo tema
+                    AppTheme.toggle(this@MainActivity)
                     recreate()
                 }),
                 Triple("📤", "Exportar Config", { exportConfig() }),
