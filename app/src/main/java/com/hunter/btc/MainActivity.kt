@@ -1007,11 +1007,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
                 Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
-                Triple(if (AppTheme.isDark) "☀️" else "🌙",
-                    if (AppTheme.isDark) "Tema Claro" else "Tema Oscuro", {
-                    AppTheme.toggle(this@MainActivity)
-                    recreate()
-                }),
+
                 Triple("📤", "Exportar Config", { exportConfig() }),
                 Triple("📥", "Importar Config", { importConfig() })
             ).forEach { (ic, lbl, action) ->
