@@ -2984,6 +2984,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvWpsPuzzle?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
+                    // Tiempo estimado para completar el rango
+                    if (wps > 0 && currentRangeStart.isNotEmpty() && currentRangeEnd.isNotEmpty()) {
+                        try {
+                            val start = java.math.BigInteger(currentRangeStart.trimStart('0').ifEmpty{"0"}, 16)
+                            val end   = java.math.BigInteger(currentRangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+                            val rangeSize = end.subtract(start)
+                            val keysPerSec = wps * 1000.0 // wps está en k/s
+                            val secsLeft = rangeSize.divide(java.math.BigInteger.valueOf(keysPerSec.toLong().coerceAtLeast(1))).toLong()
+                            val eta = when {
+                                secsLeft < 60 -> "${secsLeft}s"
+                                secsLeft < 3600 -> "${secsLeft/60}m ${secsLeft%60}s"
+                                secsLeft < 86400 -> "${secsLeft/3600}h ${(secsLeft%3600)/60}m"
+                                secsLeft < 86400*365 -> "${secsLeft/86400}d ${secsLeft%86400/3600}h"
+                                else -> "${secsLeft/86400/365}años"
+                            }
+                            tvPuzzleStatus?.text = "ETA: $eta · Puzzle ${puzzles.firstOrNull{it.start==currentRangeStart}?.num?.let{"#$it"} ?: ""}"
+                        } catch (e: Exception) {}
+                    }
                 } else {
                     tvWps?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvCount?.text = formatCount(HunterEngine.getCount())
