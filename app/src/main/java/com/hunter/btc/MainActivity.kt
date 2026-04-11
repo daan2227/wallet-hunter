@@ -1117,6 +1117,137 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             cornerRadius = dp(16).toFloat()
         }
 
+        // ── MODO SELECTOR ─────────────────────────────────────────────
+        val modeCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF111520.toInt()); cornerRadius = dp(14).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(12), dp(8), dp(12), 0) }
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
+        modeCard.addView(TextView(this).apply {
+            text = "MODO DE ESCANEO"; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        })
+
+        val modeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        var selectedScanMode = 0 // 0=BIP39, 2=RawKey
+        val modeBtns = mutableListOf<TextView>()
+
+        data class ScanMode(val label: String, val sub: String, val mode: Int)
+        val scanModes = listOf(
+            ScanMode("BIP39", "Seed phrases", 0),
+            ScanMode("RAW KEY", "Claves directas", 2)
+        )
+
+        scanModes.forEachIndexed { idx, sm ->
+            val btn = TextView(this).apply {
+                textSize = 12f; gravity = Gravity.CENTER
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                    if (idx == 0) marginEnd = dp(8)
+                }
+                setPadding(dp(8), dp(10), dp(8), dp(10))
+                isClickable = true; isFocusable = true
+            }
+            // Layout interno con label + sub
+            val inner = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                isClickable = false
+            }
+            inner.addView(TextView(this).apply {
+                text = sm.label; textSize = 12f
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                gravity = Gravity.CENTER
+                setTextColor(if (idx == 0) 0xFF00C896.toInt() else 0xFF5A607A.toInt())
+            })
+            inner.addView(TextView(this).apply {
+                text = sm.sub; textSize = 9f
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                gravity = Gravity.CENTER
+                setTextColor(0xFF3A4060.toInt())
+            })
+
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(if (idx == 0) 0x1400C896.toInt() else 0xFF171C2C.toInt())
+                    cornerRadius = dp(12).toFloat()
+                    setStroke(1, if (idx == 0) 0x3300C896.toInt() else 0xFF1E2540.toInt())
+                }
+                layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply {
+                    if (idx == 0) marginEnd = dp(8)
+                }
+                setPadding(dp(8), dp(8), dp(8), dp(8))
+                isClickable = true; isFocusable = true
+                addView(inner)
+                setOnClickListener {
+                    selectedScanMode = sm.mode
+                    modeBtns.forEachIndexed { i, b ->
+                        val active = i == idx
+                        (b.background as android.graphics.drawable.GradientDrawable).apply {
+                            setColor(if (active) 0x1400C896.toInt() else 0xFF171C2C.toInt())
+                            setStroke(1, if (active) 0x3300C896.toInt() else 0xFF1E2540.toInt())
+                        }
+                        val lbl = (b as LinearLayout).getChildAt(0) as? LinearLayout
+                        (lbl?.getChildAt(0) as? TextView)?.setTextColor(
+                            if (active) 0xFF00C896.toInt() else 0xFF5A607A.toInt())
+                    }
+                }
+            }
+            modeBtns.add(card)
+            modeRow.addView(card)
+        }
+        modeCard.addView(modeRow)
+
+        // Info del modo seleccionado
+        val tvModeInfo = TextView(this).apply {
+            text = "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
+            textSize = 10f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        modeBtns.forEachIndexed { idx, b ->
+            b.setOnClickListener {
+                selectedScanMode = scanModes[idx].mode
+                tvModeInfo.text = when (selectedScanMode) {
+                    0 -> "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
+                    2 -> "RAW KEY: Genera claves privadas aleatorias puras (~10x más rápido)"
+                    else -> ""
+                }
+                modeBtns.forEachIndexed { i, c ->
+                    val active = i == idx
+                    (c.background as android.graphics.drawable.GradientDrawable).apply {
+                        setColor(if (active) 0x1400C896.toInt() else 0xFF171C2C.toInt())
+                        setStroke(1, if (active) 0x3300C896.toInt() else 0xFF1E2540.toInt())
+                    }
+                    val lbl = (c as LinearLayout).getChildAt(0) as? LinearLayout
+                    (lbl?.getChildAt(0) as? TextView)?.setTextColor(
+                        if (active) 0xFF00C896.toInt() else 0xFF5A607A.toInt())
+                }
+            }
+        }
+        modeCard.addView(tvModeInfo)
+        page.addView(modeCard)
+
         btnToggle = Button(this).apply {
             text = s.start
             textSize = 16f; setTextColor(android.graphics.Color.BLACK)
@@ -1128,7 +1259,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { setMargins(dp(12), dp(16), dp(12), dp(8)) }
             setOnClickListener {
                 puzzleMode = false
-                HunterEngine.setMode(0)
+                HunterEngine.setMode(selectedScanMode)
                 doToggle(btnToggle)
             }
         }

@@ -93,7 +93,7 @@ static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
-static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE */
+static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE 2=RAWKEY */
 
 static uint8_t g_range_start[32] = {0};
 static uint8_t g_range_end[32]   = {0};
@@ -723,6 +723,105 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 
 
+/* =========================================================
+   RAW KEY WORKER - modo 2: claves privadas aleatorias puras
+   Sin BIP39, sin derivación, máxima velocidad
+   ========================================================= */
+static void *worker_rawkey_fn(void *){
+    set_thread_affinity(0);
+    secp256k1_context *ctx = secp256k1_context_create(
+        SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+    if(!ctx) return nullptr;
+
+    XR128 rng; xr_init(&rng);
+    uint8_t privkey[32];
+    uint8_t pub33[33];
+    uint8_t h160[HASH160_BYTES];
+
+    while(!g_stop.load()){
+        auto t0 = std::chrono::high_resolution_clock::now();
+        int batch = g_batch_size.load();
+        if(batch < 1) batch = 1;
+        if(batch > 4000) batch = 4000;
+        int actual = 0;
+
+        for(int i = 0; i < batch && !g_stop.load(); i++){
+            /* Generar clave privada aleatoria pura */
+            uint64_t r0 = xr_next(&rng);
+            uint64_t r1 = xr_next(&rng);
+            uint64_t r2 = xr_next(&rng);
+            uint64_t r3 = xr_next(&rng);
+            memcpy(privkey,    &r0, 8);
+            memcpy(privkey+8,  &r1, 8);
+            memcpy(privkey+16, &r2, 8);
+            memcpy(privkey+24, &r3, 8);
+
+            /* Verificar que sea válida */
+            if(!secp256k1_ec_seckey_verify(ctx, privkey)) continue;
+
+            /* Crear pubkey comprimida */
+            secp256k1_pubkey pubkey;
+            if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)) continue;
+            size_t plen = 33;
+            secp256k1_ec_pubkey_serialize(ctx, pub33, &plen, &pubkey,
+                SECP256K1_EC_COMPRESSED);
+
+            /* Hash160 optimizado */
+            hash160_inline(pub33, h160);
+            actual++;
+
+            /* Address feed cada 1000 */
+            if(actual % 1000 == 0){
+                char atmp[MAX_ADDR] = {0};
+                h160_to_addr(h160, atmp);
+                add_addr(std::string(atmp));
+            }
+
+            /* Guardar checkpoint */
+            if(actual % 5000 == 0){
+                std::lock_guard<std::mutex> lk(g_last_key_mutex);
+                memcpy(g_last_key, privkey, 32);
+            }
+
+            /* Check match contra CSV */
+            int match = 0;
+            if(g_has_target){
+                if(memcmp(h160, g_target_h160, HASH160_BYTES) == 0) match = 1;
+            } else if(g_csv_loaded.load()){
+                if(bsearch_h160(h160) >= 0) match = 1;
+            }
+
+            if(match){
+                g_found.fetch_add(1);
+                char addr[MAX_ADDR]={0}, wif[60]={0}, pkhex[65]={0};
+                h160_to_addr(h160, addr);
+                pk_to_wif(privkey, wif);
+                for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
+                char extra[128];
+                snprintf(extra, sizeof(extra), "RAW_PRIV:%s", pkhex);
+                save_match(pkhex, addr, 0.0, wif, extra);
+                add_log(std::string("*** RAW KEY MATCH *** ADDR:") +
+                        addr + " PRIV:" + pkhex);
+            }
+        }
+
+        g_count.fetch_add(actual);
+
+        double work_ms = std::chrono::duration<double,std::milli>(
+            std::chrono::high_resolution_clock::now() - t0).count();
+        int cpu = g_cpu_limit.load();
+        if(cpu < 100){
+            double sl = work_ms * (100.0 - cpu) / cpu;
+            if(sl > 0.5)
+                std::this_thread::sleep_for(
+                    std::chrono::milliseconds((int)sl));
+        }
+    }
+
+    secp256k1_context_destroy(ctx);
+    return nullptr;
+}
+
 static void *worker_puzzle_fn(void *){
     set_thread_affinity(0);
     secp256k1_context *ctx = secp256k1_context_create(
@@ -950,16 +1049,17 @@ JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     install_crash_handlers();
     if(g_running.load())return;
-    if(!g_csv_loaded.load()&&g_mode.load()!=1)return;
+    if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
     g_last_count=0;g_last_wps_t=time(nullptr);
     g_start_time=time(nullptr);g_running.store(true);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
-    void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn : worker_bip39_fn;
+    void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn :
+                          (g_mode.load()==2) ? worker_rawkey_fn : worker_bip39_fn;
     for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,nullptr);
     g_active=n;
-    const char *modeStr=(g_mode.load()==1)?"PUZZLE":"BIP39";
+    const char *modeStr=(g_mode.load()==1)?"PUZZLE":(g_mode.load()==2)?"RAWKEY":"BIP39";
     add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
 }
 
