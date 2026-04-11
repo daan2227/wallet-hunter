@@ -1147,7 +1147,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         var selectedScanMode = 0 // 0=BIP39, 2=RawKey
-        val modeBtns = mutableListOf<TextView>()
+        val modeBtns = mutableListOf<LinearLayout>()
 
         data class ScanMode(val label: String, val sub: String, val mode: Int)
         val scanModes = listOf(
