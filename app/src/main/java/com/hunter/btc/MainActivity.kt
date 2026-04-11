@@ -1429,6 +1429,34 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }.start()
         }
 
+        // Botón QR para dirección objetivo
+        val btnQR = TextView(this).apply {
+            text = "📷 Ver QR de dirección"
+            textSize = 11f; gravity = Gravity.CENTER
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            setTextColor(ACCENT2)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF111520.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF1E2540.toInt())
+            }
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                val addr = etTarget?.text?.toString()?.trim() ?: ""
+                if (addr.isEmpty()) {
+                    android.widget.Toast.makeText(this@MainActivity,
+                        "Selecciona un puzzle primero", android.widget.Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                showAddressQR(addr)
+            }
+        }
+        page.addView(btnQR)
+
         // Balance indicator - debajo del puzzle seleccionado
         val tvBalResult = TextView(this).apply {
             text = "Verificando balance..."
@@ -3749,6 +3777,88 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         // Auto-reinicio: si el engine estaba corriendo pero el servicio fue matado
         checkAndRestartScan()
+    }
+
+    private fun showAddressQR(address: String) {
+        try {
+            val size = (resources.displayMetrics.widthPixels * 0.7).toInt()
+            val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 2)
+            val bitMatrix = com.google.zxing.MultiFormatWriter().encode(
+                address, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints
+            )
+            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+            val ACCENT = 0xFF00C896.toInt()
+            for (x in 0 until size) {
+                for (y in 0 until size) {
+                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) ACCENT else 0xFF0B0E14.toInt())
+                }
+            }
+
+            val layout = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(0xFF0B0E14.toInt())
+                setPadding(dp(24), dp(24), dp(24), dp(24))
+            }
+
+            layout.addView(android.widget.TextView(this).apply {
+                text = "Dirección objetivo"; textSize = 14f
+                setTextColor(0xFFE8EAF0.toInt())
+                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(16) }
+            })
+
+            val imgView = android.widget.ImageView(this).apply {
+                setImageBitmap(bitmap)
+                layoutParams = LinearLayout.LayoutParams(size, size).apply {
+                    gravity = Gravity.CENTER
+                    bottomMargin = dp(16)
+                }
+            }
+            layout.addView(imgView)
+
+            layout.addView(android.widget.TextView(this).apply {
+                text = address
+                textSize = 10f; setTextColor(0xFF5A607A.toInt())
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                gravity = Gravity.CENTER
+                setTextIsSelectable(true)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(12) }
+            })
+
+            // Botón abrir en explorer
+            layout.addView(android.widget.Button(this).apply {
+                text = "🌐 Ver en Blockchain Explorer"
+                textSize = 12f; setTextColor(android.graphics.Color.BLACK)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF00C896.toInt()); cornerRadius = dp(10).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
+                )
+                setOnClickListener {
+                    val url = "https://mempool.space/address/$address"
+                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
+                        android.net.Uri.parse(url)))
+                }
+            })
+
+            AlertDialog.Builder(this)
+                .setView(layout)
+                .setPositiveButton("Cerrar", null)
+                .show()
+
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Error generando QR: ${e.message}",
+                android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun checkAndRestartScan() {
