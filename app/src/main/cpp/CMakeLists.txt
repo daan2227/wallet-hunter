@@ -31,9 +31,13 @@ add_library(hunter_jni SHARED hunter_jni.cpp
 )
 target_compile_options(hunter_jni PRIVATE
     -O3
-    -march=armv8-a+crypto
+    -march=armv8-a+crypto+sha2+aes
     -ffast-math
     -funroll-loops
+    -fvectorize
+    -fslp-vectorize
+    -finline-functions
+    -fomit-frame-pointer
 )
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
