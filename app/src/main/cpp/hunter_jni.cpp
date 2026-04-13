@@ -725,104 +725,79 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 /* =========================================================
    RAW KEY WORKER - modo 2
-   Logica del hunter_master.cpp:
+   Logica identica a hunter_master.cpp:
    - Inicio aleatorio por thread
-   - Incremento secuencial (+1) para aprovechar tweak_add
-   - unordered lookup via bloom+bsearch
-   - secp256k1_ec_pubkey_tweak_add para evitar mul escalar
+   - Incremento secuencial +1
+   - pubkey_create por cada key (igual que script Termux)
+   - Lookup via bloom+bsearch
    ========================================================= */
-
-/* Hash table para lookup O(1) - complementa bloom+bsearch */
-static const uint8_t G_SCALAR[32] = {
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
-    0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
-}; /* scalar = 1, representa sumar G */
-
 static void *worker_rawkey_fn(void *){
     set_thread_affinity(0);
-    secp256k1_context *ctx = secp256k1_context_create(
-        SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     if(!ctx) return nullptr;
 
     XR128 rng; xr_init(&rng);
+    unsigned char priv[32], pub[33], h160[HASH160_BYTES], sha_buf[32];
+    size_t plen = 33;
+    secp256k1_pubkey pobj;
 
-    /* Inicio aleatorio para este thread - igual que hunter_master */
-    uint8_t priv[32];
+    /* Inicio aleatorio - como hunter_master rand() */
     uint64_t r0=xr_next(&rng),r1=xr_next(&rng),
              r2=xr_next(&rng),r3=xr_next(&rng);
     memcpy(priv,    &r0, 8); memcpy(priv+8,  &r1, 8);
     memcpy(priv+16, &r2, 8); memcpy(priv+24, &r3, 8);
-    /* Asegurar clave válida */
-    while(!secp256k1_ec_seckey_verify(ctx, priv)){
-        for(int b=31;b>=0;b--){if(++priv[b])break;}
-    }
-
-    /* Crear pubkey inicial - 1 mul escalar */
-    secp256k1_pubkey pubkey;
-    secp256k1_ec_pubkey_create(ctx, &pubkey, priv);
-
-    uint8_t pub33[33];
-    uint8_t h160[HASH160_BYTES];
 
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
         int batch = g_batch_size.load();
         if(batch < 1) batch = 1;
-        if(batch > 16000) batch = 16000;
 
-        for(int i=0; i<batch && !g_stop.load(); i++){
-            /* Incremento secuencial - como hunter_master */
+        for(int i = 0; i < batch && !g_stop.load(); i++){
+            /* Incremento secuencial - identico a hunter_master */
             for(int b=31;b>=0;b--){if(++priv[b])break;}
 
-            /* Sumar G al pubkey - MUCHO mas rapido que mul escalar */
-            if(!secp256k1_ec_pubkey_tweak_add(ctx, &pubkey, G_SCALAR)){
-                /* Overflow muy raro - regenerar */
-                secp256k1_ec_pubkey_create(ctx, &pubkey, priv);
-            }
+            if(secp256k1_ec_pubkey_create(ctx, &pobj, priv)){
+                plen = 33;
+                secp256k1_ec_pubkey_serialize(ctx, pub, &plen, &pobj,
+                    SECP256K1_EC_COMPRESSED);
 
-            /* Serializar comprimida */
-            size_t plen = 33;
-            secp256k1_ec_pubkey_serialize(ctx, pub33, &plen, &pubkey,
-                SECP256K1_EC_COMPRESSED);
+                /* Hash160 */
+                hash160_inline(pub, h160);
 
-            /* Hash160 */
-            hash160_inline(pub33, h160);
+                /* Address feed cada 1024 */
+                if((i & 0x3FF) == 0){
+                    char atmp[MAX_ADDR]={0};
+                    h160_to_addr(h160, atmp);
+                    add_addr(std::string(atmp));
+                }
 
-            /* Address feed */
-            if((i & 0x3FF) == 0){ /* cada 1024 */
-                char atmp[MAX_ADDR]={0};
-                h160_to_addr(h160, atmp);
-                add_addr(std::string(atmp));
-            }
+                /* Lookup */
+                int match = 0;
+                if(g_has_target){
+                    if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
+                } else if(g_csv_loaded.load()){
+                    if(bsearch_h160(h160)>=0) match=1;
+                }
 
-            /* Checkpoint */
-            if((i & 0x1FFF) == 0){ /* cada 8192 */
-                std::lock_guard<std::mutex> lk(g_last_key_mutex);
-                memcpy(g_last_key, priv, 32);
-            }
-
-            /* Lookup */
-            int match = 0;
-            if(g_has_target){
-                if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
-            } else if(g_csv_loaded.load()){
-                if(bsearch_h160(h160)>=0) match=1;
-            }
-
-            if(match){
-                g_found.fetch_add(1);
-                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-                h160_to_addr(h160,addr);
-                pk_to_wif(priv,wif);
-                for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",priv[b]);
-                char extra[128];
-                snprintf(extra,sizeof(extra),"RAW_PRIV:%s",pkhex);
-                save_match(pkhex,addr,0.0,wif,extra);
-                add_log(std::string("*** RAW KEY MATCH *** ADDR:")+addr+" PRIV:"+pkhex);
+                if(match){
+                    g_found.fetch_add(1);
+                    char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
+                    h160_to_addr(h160,addr);
+                    pk_to_wif(priv,wif);
+                    for(int b2=0;b2<32;b2++) sprintf(pkhex+b2*2,"%02x",priv[b2]);
+                    char extra[128];
+                    snprintf(extra,sizeof(extra),"RAW_PRIV:%s",pkhex);
+                    save_match(pkhex,addr,0.0,wif,extra);
+                    add_log(std::string("*** RAW KEY MATCH *** ADDR:")+addr+" PRIV:"+pkhex);
+                }
             }
         }
 
         g_count.fetch_add(batch);
+
+        /* Checkpoint cada batch */
+        {std::lock_guard<std::mutex> lk(g_last_key_mutex);
+         memcpy(g_last_key, priv, 32);}
 
         double work_ms = std::chrono::duration<double,std::milli>(
             std::chrono::high_resolution_clock::now()-t0).count();

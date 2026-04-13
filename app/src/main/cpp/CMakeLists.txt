@@ -24,6 +24,15 @@ target_compile_definitions(secp256k1 PRIVATE
     ECMULT_GEN_PREC_BITS=4
 )
 
+target_compile_options(secp256k1 PRIVATE
+    -O3
+    -march=armv8.2-a+crypto+sha2+aes+dotprod
+    -mtune=cortex-a55
+    -ffast-math
+    -funroll-loops
+    -fomit-frame-pointer
+)
+
 add_library(hunter_jni SHARED hunter_jni.cpp
         mnemonic.cpp
         bip32.cpp
@@ -31,13 +40,16 @@ add_library(hunter_jni SHARED hunter_jni.cpp
 )
 target_compile_options(hunter_jni PRIVATE
     -O3
-    -march=armv8-a+crypto+sha2+aes
+    -march=armv8.2-a+crypto+sha2+aes+dotprod
+    -mtune=cortex-a55
     -ffast-math
     -funroll-loops
     -fvectorize
     -fslp-vectorize
     -finline-functions
     -fomit-frame-pointer
+    -falign-functions=64
+    -falign-loops=64
 )
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
