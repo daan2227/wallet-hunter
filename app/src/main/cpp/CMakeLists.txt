@@ -15,13 +15,14 @@ target_include_directories(secp256k1 PUBLIC
 )
 target_compile_definitions(secp256k1 PRIVATE
     SECP256K1_BUILD
-    USE_SCALAR_10X26
-    USE_FIELD_10X26
+    USE_SCALAR_4x64
+    USE_FIELD_5x52
     USE_NUM_NONE
-    USE_FIELD_INV_BUILTIN
-    USE_SCALAR_INV_BUILTIN
+    USE_FIELD_INV_NUM
+    USE_SCALAR_INV_NUM
     ECMULT_WINDOW_SIZE=15
     ECMULT_GEN_PREC_BITS=4
+    USE_ENDOMORPHISM
 )
 
 target_compile_options(secp256k1 PRIVATE
