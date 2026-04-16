@@ -18,17 +18,15 @@ target_compile_definitions(secp256k1 PRIVATE
     USE_SCALAR_4x64
     USE_FIELD_5x52
     USE_NUM_NONE
-    USE_FIELD_INV_NUM
-    USE_SCALAR_INV_NUM
+    USE_FIELD_INV_BUILTIN
+    USE_SCALAR_INV_BUILTIN
     ECMULT_WINDOW_SIZE=15
     ECMULT_GEN_PREC_BITS=4
-    USE_ENDOMORPHISM
 )
 
 target_compile_options(secp256k1 PRIVATE
     -O3
-    -march=armv8.2-a+crypto+sha2+aes+dotprod
-    -mtune=cortex-a55
+    -march=armv8-a+crypto
     -ffast-math
     -funroll-loops
     -fomit-frame-pointer
@@ -41,16 +39,12 @@ add_library(hunter_jni SHARED hunter_jni.cpp
 )
 target_compile_options(hunter_jni PRIVATE
     -O3
-    -march=armv8.2-a+crypto+sha2+aes+dotprod
-    -mtune=cortex-a55
+    -march=armv8-a+crypto
     -ffast-math
     -funroll-loops
     -fvectorize
-    -fslp-vectorize
     -finline-functions
     -fomit-frame-pointer
-    -falign-functions=64
-    -falign-loops=64
 )
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)

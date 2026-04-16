@@ -31,10 +31,10 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
-    - name: Build Debug APK
+    - name: Build Release APK
       run: |
         chmod +x gradlew
-        ./gradlew assembleDebug
+        ./gradlew assembleRelease
 
     - name: Delete old release
       env:
@@ -48,7 +48,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
         gh release create latest-build \
-          app/build/outputs/apk/debug/*.apk \
+          app/build/outputs/apk/release/*.apk \
           --title "Latest Build $(date +%Y-%m-%d)" \
           --notes "Auto-build from commit ${{ github.sha }}" \
           --prerelease
