@@ -31,6 +31,10 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
+    - name: Create keystore for signing
+      run: |
+        keytool -genkeypair -v           -keystore app/debug.keystore           -alias androiddebugkey -keyalg RSA -keysize 2048           -validity 10000 -storepass android -keypass android           -dname "CN=Android Debug,O=Android,C=US"
+
     - name: Build Release APK
       run: |
         chmod +x gradlew
