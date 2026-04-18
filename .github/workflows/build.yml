@@ -23,10 +23,21 @@ jobs:
         echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
           "ndk;25.1.8937393" "cmake;3.22.1"
 
-    - name: Clone secp256k1
+    - name: Clone and configure secp256k1
       run: |
         cd app/src/main/cpp
         git clone --depth=1 https://github.com/bitcoin-core/secp256k1.git
+        cd secp256k1
+        echo "=== Checking precomputed files ==="
+        ls src/precomputed_ecmult.c 2>/dev/null && echo "OK precomputed_ecmult.c" || echo "MISSING precomputed_ecmult.c"
+        ls src/precomputed_ecmult_gen.c 2>/dev/null && echo "OK precomputed_ecmult_gen.c" || echo "MISSING precomputed_ecmult_gen.c"
+        # Generar tablas si faltan
+        if [ ! -f "src/precomputed_ecmult.c" ]; then
+          echo "Generating precomputed tables..."
+          sudo apt-get install -y gcc make 2>/dev/null || true
+          gcc -o gen_precomputed_ecmult             src/gen_ecmult_static_pre_g.c             -I. -Isrc             -DSECP256K1_BUILD             -DUSE_FIELD_5x52             -DUSE_SCALAR_4x64 2>/dev/null || true
+          ./gen_precomputed_ecmult > src/precomputed_ecmult.c 2>/dev/null || true
+        fi
 
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
