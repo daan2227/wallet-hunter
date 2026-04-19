@@ -170,6 +170,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var csvPath: String = ""
     private var s = Strings.EN
     private var puzzleMode = false
+    private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -1149,7 +1150,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        var selectedScanMode = 0 // 0=BIP39, 2=RawKey
+        // selectedScanMode es variable de clase
         val modeBtns = mutableListOf<LinearLayout>()
 
         data class ScanMode(val label: String, val sub: String, val mode: Int)
