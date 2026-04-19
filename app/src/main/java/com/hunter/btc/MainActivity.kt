@@ -4043,13 +4043,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val threads = (sbThreads?.progress ?: 3) + 1
 
         NativeEngine.onLog = { line ->
-            runOnUiThread { addLog(line) }
+            runOnUiThread {
+                android.util.Log.d("NativeEngine", line)
+            }
         }
 
         NativeEngine.onMatch = { line ->
             runOnUiThread {
-                addLog("*** MATCH ENCONTRADO *** $line")
                 HunterService.instance?.sendMatchNotif(1, line)
+                android.widget.Toast.makeText(this@MainActivity,
+                    "MATCH: $line", android.widget.Toast.LENGTH_LONG).show()
             }
         }
 
