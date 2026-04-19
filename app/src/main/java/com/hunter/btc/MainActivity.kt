@@ -1052,7 +1052,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     "Auto-reinicio si el scan se detiene", {
                     watchdogEnabled = !watchdogEnabled
                     prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
-                    android.widget.Toast.makeText(this,
+                    android.widget.Toast.makeText(this@MainActivity,
                         if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }),
