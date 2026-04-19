@@ -1262,13 +1262,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { setMargins(dp(12), dp(16), dp(12), dp(8)) }
             setOnClickListener {
                 puzzleMode = false
-                if (selectedScanMode == 2 && NativeEngine.isAvailable(this@MainActivity)) {
-                    // Usar binario nativo para Raw Key
-                    doToggleNative()
-                } else {
-                    HunterEngine.setMode(selectedScanMode)
-                    doToggle(btnToggle)
+                HunterEngine.setMode(selectedScanMode)
+                // Cargar DB en unordered_set para modo Raw Key
+                if (selectedScanMode == 2 && csvPath.isNotEmpty()) {
+                    Thread {
+                        HunterEngine.loadRawKeyDb(csvPath)
+                    }.start()
                 }
+                doToggle(btnToggle)
             }
         }
         btnToggle?.tag = arrayOf(startBg, stopRed)
