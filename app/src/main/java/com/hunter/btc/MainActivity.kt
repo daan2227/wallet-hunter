@@ -1007,8 +1007,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(fastRow)
 
             // Actualizar visibilidad del fastRow cuando cambia el modo
-            // Guardamos referencia para actualizarla desde el selector de modo
-            val fastRowRef = fastRow
+
 
             listOf(
                 Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
@@ -1238,7 +1237,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             b.setOnClickListener {
                 selectedScanMode = scanModes[idx].mode
                         try {
-                            fastRowRef.visibility = if (selectedScanMode == 2)
+                            fastRow.visibility = if (selectedScanMode == 2)
                                 android.view.View.GONE else android.view.View.VISIBLE
                         } catch (e: Exception) {}
                         tvModeInfo.text = when (selectedScanMode) {
