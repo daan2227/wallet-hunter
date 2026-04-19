@@ -3252,7 +3252,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     threads = (sbThreads?.progress ?: 3) + 1
                     cpu     = (sbCpu?.progress ?: 70) + 10
                 }
-                HunterEngine.setMode(if (puzzleMode) 1 else 0)
+                HunterEngine.setMode(if (puzzleMode) 1 else selectedScanMode)
                 val debugRange = "start=${etRangeStart?.text} end=${etRangeEnd?.text} threads=$threads cpu=$cpu"
                 val batchNow = HunterEngine.getBatchSize()
                 Toast.makeText(this, "threads=$threads cpu=$cpu batch=$batchNow", Toast.LENGTH_LONG).show()
