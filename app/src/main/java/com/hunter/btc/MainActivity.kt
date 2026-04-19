@@ -1006,6 +1006,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
             listOf(
                 Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
+                Triple("🔍", "Debug Motor Nativo", { debugNativeSetup() }),
                 Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
                 Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
@@ -4045,6 +4046,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
                 android.widget.Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun debugNativeSetup() {
+        val sb = StringBuilder()
+        val bin1 = java.io.File(filesDir, "hunter_master")
+        val bin2 = java.io.File(getExternalFilesDir(null), "hunter_master")
+        sb.appendLine("filesDir: ${filesDir.absolutePath}")
+        sb.appendLine("bin1 existe: ${bin1.exists()} ejecutable: ${bin1.canExecute()} size: ${bin1.length()}")
+        sb.appendLine("bin2 existe: ${bin2.exists()} ejecutable: ${bin2.canExecute()} size: ${bin2.length()}")
+        sb.appendLine("filesDir contents:")
+        filesDir.listFiles()?.forEach { sb.appendLine("  ${it.name} ${it.length()}b exec:${it.canExecute()}") }
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Debug Setup")
+            .setMessage(sb.toString())
+            .setPositiveButton("OK", null)
+            .setNeutralButton("Fix permisos") { _, _ ->
+                bin1.setExecutable(true, false)
+                bin2.setExecutable(true, false)
+                android.widget.Toast.makeText(this, "Permisos aplicados", android.widget.Toast.LENGTH_SHORT).show()
+            }
+            .show()
     }
 
     private fun doToggleNative() {
