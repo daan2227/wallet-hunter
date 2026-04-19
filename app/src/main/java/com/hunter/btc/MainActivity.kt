@@ -4106,6 +4106,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         NativeEngine.onLog = { line ->
             runOnUiThread {
                 android.util.Log.d("NativeEngine", line)
+                if (line.isNotEmpty()) {
+                    android.widget.Toast.makeText(
+                        this@MainActivity, line, android.widget.Toast.LENGTH_SHORT).show()
+                }
             }
         }
 
