@@ -1004,6 +1004,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(fastRow)
 
             listOf(
+                Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
                 Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
                 Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
@@ -4007,6 +4008,39 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error generando QR: ${e.message}",
+                android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun installNativeBinary() {
+        // Buscar en Downloads
+        val locations = listOf(
+            android.os.Environment.getExternalStoragePublicDirectory(
+                android.os.Environment.DIRECTORY_DOWNLOADS).absolutePath + "/hunter_master",
+            "/sdcard/Download/hunter_master",
+            "/sdcard/hunter_master"
+        )
+        val found = locations.firstOrNull { java.io.File(it).exists() }
+        if (found == null) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Binario no encontrado")
+                .setMessage("Compila hunter_master en Termux y cópialo a Downloads:
+
+cp ~/hunter_master ~/storage/downloads/")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+        try {
+            val dest = java.io.File(filesDir, "hunter_master")
+            java.io.File(found).copyTo(dest, overwrite = true)
+            dest.setExecutable(true)
+            android.app.AlertDialog.Builder(this)
+                .setTitle("✅ Motor nativo instalado")
+                .setMessage("hunter_master instalado correctamente.
+Reinicia la app para activarlo.")
+                .setPositiveButton("OK", null).show()
+        } catch (e: Exception) {
+            android.widget.Toast.makeText(this, "Error: ${e.message}",
                 android.widget.Toast.LENGTH_LONG).show()
         }
     }
