@@ -28,6 +28,7 @@
 #include "jac_batch.h"
 #include "bloom.h"
 #include <unordered_set>
+#include <array>
 
 /* Hash160 unordered_set para Raw Key mode - O(1) lookup */
 struct H160Hash {
