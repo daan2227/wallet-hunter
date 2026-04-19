@@ -172,6 +172,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzleMode = false
     private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
     private var fastScanRow: android.view.View? = null
+    private var tvBinInfoRef: TextView? = null
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -956,6 +957,34 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvCsvName = tvCsvLocal
             dataRow.addView(btnCsv); dataRow.addView(tvCsvLocal)
             addView(dataRow)
+
+            // Indicador detallado del archivo .bin
+            val tvBinInfo = TextView(this@MainActivity).apply {
+                val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
+                text = if (f != null && f.exists()) {
+                    val mb = f.length() / 1024 / 1024
+                    val hashes = f.length() / 20
+                    val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+                    "📦 ${f.name}  ·  ${fmt.format(hashes)} hashes  ·  ${mb}MB"
+                } else {
+                    "📦 Sin dataset cargado"
+                }
+                textSize = 9f
+                setTextColor(if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
+                    0xFF00C896.toInt() else 0xFF3A4060.toInt())
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(0xFF0D1018.toInt()); cornerRadius = dp(8).toFloat()
+                    setStroke(1, 0xFF1E2540.toInt())
+                }
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            }
+            tvBinInfoRef = tvBinInfo
+            addView(tvBinInfo)
 
             addView(TextView(this@MainActivity).apply {
                 text = "Threads"; textSize = 10f; setTextColor(0xFF5A607A.toInt())
@@ -3330,6 +3359,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvCsvName?.text = dest.name
             tvCsvName?.setTextColor(0xFF00FF88.toInt())
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
+            val mb = dest.length() / 1024 / 1024
+            val hashes = dest.length() / 20
+            val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+            tvBinInfoRef?.text = "📦 ${dest.name}  ·  ${fmt.format(hashes)} hashes  ·  ${mb}MB"
+            tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
         }
     }
