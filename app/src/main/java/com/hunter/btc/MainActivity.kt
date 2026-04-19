@@ -171,6 +171,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var s = Strings.EN
     private var puzzleMode = false
     private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
+    private var fastScanRow: android.view.View? = null
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -990,6 +991,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setPadding(0, dp(10), 0, 0)
                 visibility = if (selectedScanMode == 2) android.view.View.GONE else android.view.View.VISIBLE
             }
+            fastScanRow = fastRow
             fastRow.addView(TextView(this@MainActivity).apply {
                 text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFE8EAF0.toInt())
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1237,7 +1239,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             b.setOnClickListener {
                 selectedScanMode = scanModes[idx].mode
                         try {
-                            fastRow.visibility = if (selectedScanMode == 2)
+                            fastScanRow?.visibility = if (selectedScanMode == 2)
                                 android.view.View.GONE else android.view.View.VISIBLE
                         } catch (e: Exception) {}
                         tvModeInfo.text = when (selectedScanMode) {
