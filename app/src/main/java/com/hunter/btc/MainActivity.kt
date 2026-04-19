@@ -173,6 +173,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
     private var fastScanRow: android.view.View? = null
     private var tvBinInfoRef: TextView? = null
+    private var tvDatasetStat: TextView? = null
     private var watchdogEnabled = false
     private var lastKnownRunning = false
     private var watchdogRestarts = 0
@@ -835,7 +836,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
                 letterSpacing = -0.02f
             }
-            tvBinInfoRef = tvBinStat
+            tvDatasetStat = tvBinStat
             addView(tvBinStat)
         })
         gridRow2.addView(statCard(0xFF1E2540.toInt()) {
@@ -3186,14 +3187,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvMatches?.text = "$found"
                     tvQuickMatches?.text = "$found"
                     // Stats adicionales para Raw Key
-                    if (selectedScanMode == 2 && wps > 0) {
+                    if (wps > 0) {
                         val keysPerSec = wps * 1000.0
-                        val elapsed = if (sessionStartTime > 0)
-                            (System.currentTimeMillis() - sessionStartTime) / 1000.0 else 1.0
                         val totalKeys = HunterEngine.getCount() - sessionStartCount
-                        // Probabilidad de encontrar una wallet activa (estimado)
-                        // Espacio: 2^256, wallets activas: ~50M
-                        // P = totalKeys * 50M / 2^256
                         val perDay = (keysPerSec * 86400).toLong()
                         val perDayStr = when {
                             perDay >= 1_000_000_000 -> "${"%.1f".format(perDay/1e9)}B/día"
@@ -3395,6 +3391,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
             tvBinInfoRef?.text = "📦 ${dest.name}  ·  ${fmt.format(hashes)} hashes  ·  ${mb}MB"
             tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
+            // Actualizar stat card con conteo de hashes
+            tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
         }
     }
