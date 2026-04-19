@@ -57,9 +57,9 @@ object NativeEngine {
                 process = pb.start()
 
                 val reader = BufferedReader(InputStreamReader(process!!.inputStream))
-                var line: String?
-                while (running.get() && reader.readLine().also { line = it } != null) {
-                    line?.let { parseLine(it) }
+                while (running.get()) {
+                    val line = reader.readLine() ?: break
+                    parseLine(line)
                 }
             } catch (e: Exception) {
                 onLog?.invoke("Error proceso nativo: ${e.message}")

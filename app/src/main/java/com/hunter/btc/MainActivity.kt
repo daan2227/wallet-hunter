@@ -4016,7 +4016,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             NativeEngine.stop()
             btnToggle?.text = "▶  START SCAN"
             btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(ACCENT, ACCENT2)
+                colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
                 orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
                 cornerRadius = dp(16).toFloat()
             }
@@ -4032,10 +4032,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         if (dbFile.isEmpty()) {
+            val extPath = getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath
             android.app.AlertDialog.Builder(this)
                 .setTitle("Archivo .bin requerido")
-                .setMessage("Copia utxos_legacy_segwit.bin a:
-${getExternalFilesDir(null)?.absolutePath}")
+                .setMessage("Copia utxos_legacy_segwit.bin a: $extPath")
                 .setPositiveButton("OK", null).show()
             return
         }
