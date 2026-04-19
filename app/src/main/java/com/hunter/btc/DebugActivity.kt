@@ -296,35 +296,53 @@ class DebugActivity : AppCompatActivity() {
         val tv = tvLiveLog ?: return
         val sb = StringBuilder()
 
-        // Engine popLog
+        // Sistema
+        val rt = Runtime.getRuntime()
+        val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
+        val maxMb = rt.maxMemory() / 1048576
+        val prefs = getSharedPreferences("hunt_prefs", MODE_PRIVATE)
+        sb.appendLine("=== SISTEMA ===")
+        sb.appendLine("RAM: ${usedMb}MB usado / ${maxMb}MB max")
+        sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
+        sb.appendLine("Scan activo: ${prefs.getBoolean("scan_was_running", false)}")
+        sb.appendLine("Modo: ${when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }}")
+        try {
+            val t = java.io.File("/sys/class/thermal/thermal_zone0/temp")
+            if (t.exists()) sb.appendLine("CPU Temp: ${(t.readText().trim().toIntOrNull() ?: 0)/1000}C")
+        } catch (e: Exception) {}
+        sb.appendLine()
+
+        // Engine log
         val engineLogs = buildString {
-            repeat(30) {
+            repeat(50) {
                 val l = HunterEngine.popLog()
                 if (l.isNotEmpty()) appendLine(l)
             }
         }
-        if (engineLogs.isNotEmpty()) sb.appendLine("=== ENGINE ===\n" + engineLogs)
+        if (engineLogs.isNotEmpty()) sb.appendLine("=== ENGINE ===
+$engineLogs")
 
-        // puz_debug.txt
-        val puzFile = File(filesDir, "puz_debug.txt")
-        if (puzFile.exists()) {
-            val content = puzFile.readText().takeLast(1500)
-            sb.appendLine("=== PUZ DEBUG ===\n" + content)
-        }
+        // Logcat errores
+        try {
+            val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "30", "AndroidRuntime:E", "*:S"))
+            val lines = java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).readLines()
+            if (lines.isNotEmpty()) sb.appendLine("=== ERRORES ===
+${lines.joinToString("
+")}
+")
+        } catch (e: Exception) {}
 
-        // crash_log.txt
-        val crashFile = File(filesDir, "crash_log.txt")
-        if (crashFile.exists()) {
-            val content = crashFile.readText().takeLast(1000)
-            sb.appendLine("=== CRASH LOG ===\n" + content)
+        // Archivos de log
+        listOf(filesDir to "puz_debug.txt", filesDir to "crash_log.txt").forEach { (dir, name) ->
+            val f = java.io.File(dir, name)
+            if (f.exists() && f.length() > 0) {
+                sb.appendLine("=== $name ===")
+                sb.appendLine(f.readText().takeLast(800))
+            }
         }
 
         if (sb.isNotEmpty()) tv.text = sb.toString()
-        else if (tv.text.startsWith("Sin logs")) {
-            // keep placeholder
-        }
     }
-
     private fun clearLogs() {
         File(filesDir, "puz_debug.txt").delete()
         File(filesDir, "crash_log.txt").delete()
