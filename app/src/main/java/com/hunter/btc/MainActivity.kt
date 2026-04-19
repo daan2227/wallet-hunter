@@ -4100,13 +4100,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (NativeEngine.isRunning()) {
                     val spd = NativeEngine.speed.get()
                     val tot = NativeEngine.total.get()
-                    tvWps?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-                        .format(spd * 1000)
+                    // spd ya viene en K/s del script, multiplicar por 1000 para k/s display
+                    tvWps?.text = if (spd >= 1000)
+                        "${"%.1f".format(spd/1000.0)}M"
+                    else
+                        "${spd}K"
                     tvCount?.text = formatCount(tot)
+                    tvTime?.text = formatElapsed(sessionStartTime)
                     handler.postDelayed(this, 800)
+                } else if (!HunterEngine.isRunning()) {
+                    // Proceso terminó — actualizar botón
+                    runOnUiThread {
+                        btnToggle?.text = "▶  START SCAN"
+                        btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
+                            colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
+                            orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+                            cornerRadius = dp(16).toFloat()
+                        }
+                    }
                 }
             }
         })
+        sessionStartTime = System.currentTimeMillis()
 
         btnToggle?.text = "⏹  STOP"
         btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
