@@ -744,73 +744,102 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
    ========================================================= */
 static void *worker_rawkey_fn(void *){
     set_thread_affinity(0);
-    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    secp256k1_context *ctx = secp256k1_context_create(
+        SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
 
-    XR128 rng; xr_init(&rng);
-    unsigned char priv[32], pub[33], h160[HASH160_BYTES], sha_buf[32];
-    size_t plen = 33;
-    secp256k1_pubkey pobj;
+    const int MAX_SAFE = 512;
+    JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
+    if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
 
-    /* Inicio aleatorio - como hunter_master rand() */
+    XR128 rng; xr_init(&rng);
+    uint8_t priv[32];
     uint64_t r0=xr_next(&rng),r1=xr_next(&rng),
              r2=xr_next(&rng),r3=xr_next(&rng);
     memcpy(priv,    &r0, 8); memcpy(priv+8,  &r1, 8);
     memcpy(priv+16, &r2, 8); memcpy(priv+24, &r3, 8);
+    while(!secp256k1_ec_seckey_verify(ctx, priv)){
+        for(int b=31;b>=0;b--){if(++priv[b])break;}
+    }
 
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
-        int batch = g_batch_size.load();
-        if(batch < 1) batch = 1;
 
-        for(int i = 0; i < batch && !g_stop.load(); i++){
-            /* Incremento secuencial - identico a hunter_master */
+        int cur_batch = g_batch_size.load();
+        if(cur_batch < 1) cur_batch = 1;
+        if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
+
+        /* 1 multiplicacion escalar para punto base */
+        secp256k1_pubkey pubkey;
+        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, priv)){
             for(int b=31;b>=0;b--){if(++priv[b])break;}
+            continue;
+        }
+        uint8_t pub65[65]; size_t plen=65;
+        secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
+            SECP256K1_EC_UNCOMPRESSED);
+        jp_from_affine(&pts[0], pub65);
 
-            if(secp256k1_ec_pubkey_create(ctx, &pobj, priv)){
-                plen = 33;
-                secp256k1_ec_pubkey_serialize(ctx, pub, &plen, &pobj,
-                    SECP256K1_EC_COMPRESSED);
+        bool z_ok=false;
+        for(int j=0;j<4;j++) if(pts[0].z[j]){z_ok=true;break;}
+        if(!z_ok){ for(int b=31;b>=0;b--){if(++priv[b])break;} continue; }
 
-                /* Hash160 */
-                hash160_inline(pub, h160);
+        uint8_t base[32]; memcpy(base, priv, 32);
+        int actual=1;
 
-                /* Address feed cada 1024 */
-                if((i & 0x3FF) == 0){
-                    char atmp[MAX_ADDR]={0};
-                    h160_to_addr(h160, atmp);
-                    add_addr(std::string(atmp));
-                }
-
-                /* Lookup O(1) con unordered_set */
-                int match = 0;
-                if(g_has_target){
-                    if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
-                } else if(g_rawkey_db_loaded.load()){
-                    std::array<uint8_t,20> hkey;
-                    memcpy(hkey.data(), h160, 20);
-                    if(g_rawkey_db.count(hkey)) match=1;
-                } else if(g_csv_loaded.load()){
-                    if(bsearch_h160(h160)>=0) match=1;
-                }
-
-                if(match){
-                    g_found.fetch_add(1);
-                    char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-                    h160_to_addr(h160,addr);
-                    pk_to_wif(priv,wif);
-                    for(int b2=0;b2<32;b2++) sprintf(pkhex+b2*2,"%02x",priv[b2]);
-                    char extra[128];
-                    snprintf(extra,sizeof(extra),"RAW_PRIV:%s",pkhex);
-                    save_match(pkhex,addr,0.0,wif,extra);
-                    add_log(std::string("*** RAW KEY MATCH *** ADDR:")+addr+" PRIV:"+pkhex);
-                }
-            }
+        /* Batch de adiciones - cur_batch-1 sumas en vez de multiplicaciones */
+        for(int i=1; i<cur_batch && !g_stop.load(); i++){
+            for(int b=31;b>=0;b--){if(++priv[b])break;}
+            jp_add_G(&pts[i], &pts[i-1]);
+            bool zi=false;
+            for(int j=0;j<4;j++) if(pts[i].z[j]){zi=true;break;}
+            if(!zi) break;
+            actual++;
         }
 
-        g_count.fetch_add(batch);
+        /* Batch normalize + hash + lookup */
+        struct RawCtx { 
+            uint8_t base[32]; 
+            int done;
+            bool use_set;
+        };
+        RawCtx rctx; 
+        memcpy(rctx.base, base, 32); 
+        rctx.done=0;
+        rctx.use_set = g_rawkey_db_loaded.load();
 
-        /* Checkpoint cada batch */
+        jac_batch_hash160(pts, actual, [](int idx, const uint8_t *pub33, void *raw){
+            RawCtx *c = (RawCtx*)raw;
+            uint8_t h160[HASH160_BYTES];
+            hash160_inline(pub33, h160);
+            c->done++;
+
+            int match=0;
+            if(g_has_target){
+                if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
+            } else if(c->use_set){
+                std::array<uint8_t,20> hkey;
+                memcpy(hkey.data(), h160, 20);
+                if(g_rawkey_db.count(hkey)) match=1;
+            } else if(g_csv_loaded.load()){
+                if(bsearch_h160(h160)>=0) match=1;
+            }
+
+            if(match){
+                g_found.fetch_add(1);
+                uint8_t pk[32]; memcpy(pk, c->base, 32);
+                for(int k=0;k<idx;k++){for(int b=31;b>=0;b--){if(++pk[b])break;}}
+                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
+                h160_to_addr(h160,addr); pk_to_wif(pk,wif);
+                for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",pk[b]);
+                char extra[128]; snprintf(extra,sizeof(extra),"RAW:%s",pkhex);
+                save_match(pkhex,addr,0.0,wif,extra);
+                add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
+            }
+        }, &rctx);
+
+        g_count.fetch_add(actual);
+
         {std::lock_guard<std::mutex> lk(g_last_key_mutex);
          memcpy(g_last_key, priv, 32);}
 
@@ -824,6 +853,7 @@ static void *worker_rawkey_fn(void *){
         }
     }
 
+    free(pts);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
