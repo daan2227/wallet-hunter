@@ -988,6 +988,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val fastRow = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(10), 0, 0)
+                visibility = if (selectedScanMode == 2) android.view.View.GONE else android.view.View.VISIBLE
             }
             fastRow.addView(TextView(this@MainActivity).apply {
                 text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFE8EAF0.toInt())
@@ -1004,6 +1005,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             fastModeEnabled = prefs.getBoolean("fastMode", false)
             fastRow.addView(fastSwitch)
             addView(fastRow)
+
+            // Actualizar visibilidad del fastRow cuando cambia el modo
+            // Guardamos referencia para actualizarla desde el selector de modo
+            val fastRowRef = fastRow
 
             listOf(
                 Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
@@ -1232,7 +1237,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         modeBtns.forEachIndexed { idx, b ->
             b.setOnClickListener {
                 selectedScanMode = scanModes[idx].mode
-                tvModeInfo.text = when (selectedScanMode) {
+                        try {
+                            fastRowRef.visibility = if (selectedScanMode == 2)
+                                android.view.View.GONE else android.view.View.VISIBLE
+                        } catch (e: Exception) {}
+                        tvModeInfo.text = when (selectedScanMode) {
                     0 -> "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
                     2 -> "RAW KEY: Genera claves privadas aleatorias puras (~10x más rápido)"
                     else -> ""
