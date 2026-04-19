@@ -1046,8 +1046,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
             listOf(
-                Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
-                Triple("🔍", "Debug Motor Nativo", { debugNativeSetup() }),
+
                 Triple(if (watchdogEnabled) "🐕 Watchdog ON" else "🐕 Watchdog OFF",
                     "Auto-reinicio si el scan se detiene", {
                     watchdogEnabled = !watchdogEnabled
@@ -1132,30 +1131,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(tvNetLog)
         })
 
-        // ── SECTION: Modo Scan ────────────────────────────────────────────
-        page.addView(collapsibleSection("🧩", "Modo Scan") {
-            addView(TextView(this@MainActivity).apply {
-                text = "Seed Phrase Scanner activo"; textSize = 11f
-                setTextColor(0xFF5A607A.toInt()); typeface = Typeface.MONOSPACE
-                setPadding(0, dp(4), 0, dp(4))
-            })
-        })
 
-        // ── SECTION: Recovery ─────────────────────────────────────────────
-        page.addView(collapsibleSection("🩹", "Recuperación de Semilla (Recovery)") {
-            addView(TextView(this@MainActivity).apply {
-                text = "Recupera seeds con palabras faltantes"; textSize = 11f
-                setTextColor(0xFF5A607A.toInt()); typeface = Typeface.MONOSPACE
-                setPadding(0, dp(4), 0, dp(4))
-            })
-            addView(Button(this@MainActivity).apply {
-                text = "Abrir Recovery"
-                textSize = 12f; setTextColor(android.graphics.Color.BLACK)
-                background = GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(10).toFloat() }
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
-                setOnClickListener { goTab(3) }
-            })
-        })
 
         // ── START / STOP BUTTON ───────────────────────────────────────────
         val startBg = GradientDrawable().apply {
