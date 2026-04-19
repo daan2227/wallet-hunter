@@ -27,17 +27,7 @@
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
 #include "bloom.h"
-#include <unordered_set>
-#include <array>
 
-/* Hash160 unordered_set para Raw Key mode - O(1) lookup */
-struct H160Hash {
-    size_t operator()(const std::array<uint8_t,20> &h) const {
-        size_t res; memcpy(&res, h.data(), sizeof(size_t)); return res;
-    }
-};
-static std::unordered_set<std::array<uint8_t,20>, H160Hash> g_rawkey_db;
-static std::atomic<bool> g_rawkey_db_loaded(false);
 #include "sha256_ripemd160.h"
 
 #define TAG "HunterJNI"
@@ -801,12 +791,10 @@ static void *worker_rawkey_fn(void *){
         struct RawCtx { 
             uint8_t base[32]; 
             int done;
-            bool use_set;
         };
         RawCtx rctx; 
         memcpy(rctx.base, base, 32); 
         rctx.done=0;
-        rctx.use_set = g_rawkey_db_loaded.load();
 
         jac_batch_hash160(pts, actual, [](int idx, const uint8_t *pub33, void *raw){
             RawCtx *c = (RawCtx*)raw;
@@ -817,10 +805,6 @@ static void *worker_rawkey_fn(void *){
             int match=0;
             if(g_has_target){
                 if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
-            } else if(c->use_set){
-                std::array<uint8_t,20> hkey;
-                memcpy(hkey.data(), h160, 20);
-                if(g_rawkey_db.count(hkey)) match=1;
             } else if(g_csv_loaded.load()){
                 if(bsearch_h160(h160)>=0) match=1;
             }
@@ -1071,24 +1055,7 @@ Java_com_hunter_btc_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
     g_mode.store(mode);
 }
 
-JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_loadRawKeyDb(JNIEnv *env, jobject, jstring path){
-    const char *p = env->GetStringUTFChars(path, nullptr);
-    FILE *f = fopen(p, "rb");
-    env->ReleaseStringUTFChars(path, p);
-    if(!f){ add_log("ERROR: no se pudo abrir .bin"); return; }
-    g_rawkey_db.clear();
-    g_rawkey_db.reserve(20000000);
-    std::array<uint8_t,20> h;
-    size_t loaded = 0;
-    while(fread(h.data(), 1, 20, f) == 20){
-        g_rawkey_db.insert(h);
-        loaded++;
-    }
-    fclose(f);
-    g_rawkey_db_loaded.store(true);
-    add_log("RawKey DB: " + std::to_string(loaded) + " hashes cargados");
-}
+
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstring end){

@@ -1263,12 +1263,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setOnClickListener {
                 puzzleMode = false
                 HunterEngine.setMode(selectedScanMode)
-                // Cargar DB en unordered_set para modo Raw Key
-                if (selectedScanMode == 2 && csvPath.isNotEmpty()) {
-                    Thread {
-                        HunterEngine.loadRawKeyDb(csvPath)
-                    }.start()
-                }
+
                 doToggle(btnToggle)
             }
         }
@@ -4135,16 +4130,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val finalDbPath = internalDb.absolutePath
 
-        // Cargar .bin en unordered_set para lookup O(1)
-        if (!HunterEngine.isRunning()) {
-            Thread {
-                runOnUiThread { android.widget.Toast.makeText(this,
-                    "Cargando DB en memoria...", android.widget.Toast.LENGTH_SHORT).show() }
-                HunterEngine.loadRawKeyDb(finalDbPath)
-                runOnUiThread { android.widget.Toast.makeText(this,
-                    "DB lista", android.widget.Toast.LENGTH_SHORT).show() }
-            }.start()
-        }
+
 
         NativeEngine.onLog = { line ->
             runOnUiThread {
