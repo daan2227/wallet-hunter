@@ -305,7 +305,8 @@ class DebugActivity : AppCompatActivity() {
         sb.appendLine("RAM: ${usedMb}MB usado / ${maxMb}MB max")
         sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
         sb.appendLine("Scan activo: ${prefs.getBoolean("scan_was_running", false)}")
-        sb.appendLine("Modo: ${when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }}")
+        val modeStr = when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }
+        sb.appendLine("Modo: $modeStr")
         try {
             val t = java.io.File("/sys/class/thermal/thermal_zone0/temp")
             if (t.exists()) sb.appendLine("CPU Temp: ${(t.readText().trim().toIntOrNull() ?: 0)/1000}C")
