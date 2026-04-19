@@ -4070,10 +4070,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             File(filesDir, "utxos_legacy_segwit.bin")
         ).firstOrNull { it.exists() }?.absolutePath ?: ""
 
-        android.widget.Toast.makeText(this,
-            "DB: ${dbFile.ifEmpty{"NO ENCONTRADO"}}",
-            android.widget.Toast.LENGTH_LONG).show()
-
         if (dbFile.isEmpty()) {
             val extPath = getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath
             android.app.AlertDialog.Builder(this)
@@ -4084,6 +4080,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         val threads = (sbThreads?.progress ?: 3) + 1
+
+        // Copiar .bin a filesDir para que el proceso nativo pueda accederlo
+        val internalDb = java.io.File(filesDir, "utxos.bin")
+        if (!internalDb.exists() || internalDb.length() != java.io.File(dbFile).length()) {
+            android.widget.Toast.makeText(this,
+                "Copiando base de datos...", android.widget.Toast.LENGTH_SHORT).show()
+            Thread {
+                try {
+                    java.io.File(dbFile).copyTo(internalDb, overwrite = true)
+                    runOnUiThread {
+                        NativeEngine.start(this, internalDb.absolutePath, threads)
+                    }
+                } catch (e: Exception) {
+                    runOnUiThread {
+                        android.widget.Toast.makeText(this,
+                            "Error copiando DB: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
+                    }
+                }
+            }.start()
+            return
+        }
+        val finalDbPath = internalDb.absolutePath
 
         NativeEngine.onLog = { line ->
             runOnUiThread {
@@ -4099,7 +4117,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
 
-        NativeEngine.start(this, dbFile, threads, "LEGACY")
+        NativeEngine.start(this, finalDbPath, threads, "LEGACY")
 
         // Actualizar UI con velocidad del proceso nativo
         handler.post(object : Runnable {
