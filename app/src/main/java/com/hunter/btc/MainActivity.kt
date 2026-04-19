@@ -4060,12 +4060,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         // Buscar el archivo .bin de base de datos
-        val dbFile = File(getExternalFilesDir(null), "utxos_legacy_segwit.bin").let {
-            if (it.exists()) it.absolutePath
-            else File(getExternalFilesDir(null), "addresses.bin").let { f ->
-                if (f.exists()) f.absolutePath else ""
-            }
-        }
+        // Buscar archivo .bin en múltiples ubicaciones
+        val dbFile = listOf(
+            File(getExternalFilesDir(null), "utxos.bin"),
+            File(getExternalFilesDir(null), "utxos_legacy_segwit.bin"),
+            File(getExternalFilesDir(null), "utxos_legacy.bin"),
+            File(getExternalFilesDir(null), "utxos_segwit.bin"),
+            File(filesDir, "utxos.bin"),
+            File(filesDir, "utxos_legacy_segwit.bin")
+        ).firstOrNull { it.exists() }?.absolutePath ?: ""
+
+        android.widget.Toast.makeText(this,
+            "DB: ${dbFile.ifEmpty{"NO ENCONTRADO"}}",
+            android.widget.Toast.LENGTH_LONG).show()
 
         if (dbFile.isEmpty()) {
             val extPath = getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath
