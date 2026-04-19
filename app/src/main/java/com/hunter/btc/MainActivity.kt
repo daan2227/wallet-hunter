@@ -821,8 +821,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(tvCount)
         })
         gridRow1.addView(statCard(0xFF1E2540.toInt()) {
-            addView(statLabel("BLOQUES"))
-            addView(tvBlocksStat)
+            addView(statLabel("SESIÓN"))
+            val tvSessionStat = TextView(this@MainActivity).apply {
+                text = "—"; textSize = 11f; setTextColor(0xFFE8EAF0.toInt())
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+            }
+            tvBinInfoRef = tvSessionStat
+            addView(tvSessionStat)
         })
         gridRow2.addView(statCard(ACCENT) {
             addView(statLabel("DATASET"))
