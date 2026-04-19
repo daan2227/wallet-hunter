@@ -1005,7 +1005,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { topMargin = dp(6) }
             }
-            tvBinInfoRef = tvBinInfo
+            tvDatasetStat = tvBinInfo
             addView(tvBinInfo)
 
             addView(TextView(this@MainActivity).apply {
