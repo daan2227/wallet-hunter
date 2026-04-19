@@ -173,6 +173,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
     private var fastScanRow: android.view.View? = null
     private var tvBinInfoRef: TextView? = null
+    private var watchdogEnabled = false
+    private var lastKnownRunning = false
+    private var watchdogRestarts = 0
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -334,6 +337,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             scheduledStart = prefs.getInt("sched_start", -1)
             scheduledStop  = prefs.getInt("sched_stop",  -1)
             if (scheduledStart >= 0) startScheduler()
+            selectedScanMode = prefs.getInt("scan_mode", 0)
+            watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
                 val profile = detectHardware()
@@ -1043,6 +1048,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             listOf(
                 Triple("⚙️", "Instalar Motor Nativo", { installNativeBinary() }),
                 Triple("🔍", "Debug Motor Nativo", { debugNativeSetup() }),
+                Triple(if (watchdogEnabled) "🐕 Watchdog ON" else "🐕 Watchdog OFF",
+                    "Auto-reinicio si el scan se detiene", {
+                    watchdogEnabled = !watchdogEnabled
+                    prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
+                    android.widget.Toast.makeText(this,
+                        if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                }),
                 Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
                 Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
@@ -3206,6 +3219,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
+
+        // ── WATCHDOG ─────────────────────────────────────────────────────
+        val wasRunning = prefs.getBoolean("scan_was_running", false)
+        val isNowRunning = HunterEngine.isRunning()
+        if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
+            watchdogRestarts++
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!HunterEngine.isRunning() && prefs.getBoolean("scan_was_running", false)) {
+                    doToggle(if (puzzleMode) btnPuzzleToggle else btnToggle)
+                }
+            }, 2000)
+        }
+        lastKnownRunning = isNowRunning
+
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
         if (puzzleMode && HunterEngine.isRunning()) {
             val cycleCount = (System.currentTimeMillis() / 800).toInt()
