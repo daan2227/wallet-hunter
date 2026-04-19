@@ -160,6 +160,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var currentRangeEnd: String = ""
     private val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
     private val REQ_IMPORT_PROGRESS = 1003
+    private val REQ_INSTALL_BINARY = 1004
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
     private var etTarget: EditText? = null
@@ -3295,6 +3296,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
+        if (req == REQ_INSTALL_BINARY && res == RESULT_OK) {
+            data?.data?.let { processInstallBinary(it) }
+            return
+        }
+        if (req == REQ_IMPORT_PROGRESS && res == RESULT_OK) {
+            data?.data?.let { processImportedProgress(it) }
+            return
+        }
         if (req == 1001 && res == RESULT_OK) {
             val uri = data?.data ?: return
             // Obtener nombre original para preservar extensión .bin o .csv
@@ -4013,28 +4022,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun installNativeBinary() {
-        // Buscar en Downloads
-        val locations = listOf(
-            android.os.Environment.getExternalStoragePublicDirectory(
-                android.os.Environment.DIRECTORY_DOWNLOADS).absolutePath + "/hunter_master",
-            "/sdcard/Download/hunter_master",
-            "/sdcard/hunter_master"
-        )
-        val found = locations.firstOrNull { java.io.File(it).exists() }
-        if (found == null) {
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Binario no encontrado")
-                .setMessage("Compila hunter_master en Termux y copialo a Downloads: cp ~/hunter_master ~/storage/downloads/")
-                .setPositiveButton("OK", null).show()
-            return
+        // Usar file picker para acceder al binario
+        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"
         }
+        startActivityForResult(intent, REQ_INSTALL_BINARY)
+    }
+
+    private fun processInstallBinary(uri: android.net.Uri) {
         try {
             val dest = java.io.File(filesDir, "hunter_master")
-            java.io.File(found).copyTo(dest, overwrite = true)
+            contentResolver.openInputStream(uri)?.use { input ->
+                dest.outputStream().use { output -> input.copyTo(output) }
+            }
             dest.setExecutable(true)
             android.app.AlertDialog.Builder(this)
-                .setTitle("✅ Motor nativo instalado")
-                .setMessage("hunter_master instalado. Reinicia la app para activarlo.")
+                .setTitle("Motor nativo instalado")
+                .setMessage("hunter_master listo. Usa modo RAW KEY para activarlo.")
                 .setPositiveButton("OK", null).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
