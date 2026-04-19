@@ -824,8 +824,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(tvBlocksStat)
         })
         gridRow2.addView(statCard(ACCENT) {
-            addView(statLabel("PROGRESO"))
-            addView(tvProgressStat)
+            addView(statLabel("DATASET"))
+            val tvBinStat = TextView(this@MainActivity).apply {
+                val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
+                text = if (f != null && f.exists()) {
+                    val h = f.length() / 20
+                    if (h >= 1_000_000) "${"%.1f".format(h/1e6)}M" else "${h/1000}K"
+                } else "—"
+                textSize = 20f; setTextColor(ACCENT)
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                letterSpacing = -0.02f
+            }
+            tvBinInfoRef = tvBinStat
+            addView(tvBinStat)
         })
         gridRow2.addView(statCard(0xFF1E2540.toInt()) {
             addView(statLabel("TIEMPO"))
