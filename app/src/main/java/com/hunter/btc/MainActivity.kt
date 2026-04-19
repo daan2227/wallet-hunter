@@ -4037,10 +4037,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             contentResolver.openInputStream(uri)?.use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
-            dest.setExecutable(true)
+            // Setear permisos de ejecución via chmod
+            dest.setExecutable(true, false)
+            try {
+                Runtime.getRuntime().exec(arrayOf("chmod", "755", dest.absolutePath)).waitFor()
+            } catch (e: Exception) {}
+
+            val exists = dest.exists()
+            val canExec = dest.canExecute()
+            val size = dest.length()
+
             android.app.AlertDialog.Builder(this)
-                .setTitle("Motor nativo instalado")
-                .setMessage("hunter_master listo. Usa modo RAW KEY para activarlo.")
+                .setTitle(if (exists) "Motor nativo instalado" else "Error")
+                .setMessage("Path: ${dest.absolutePath}
+Existe: $exists
+Ejecutable: $canExec
+Tamaño: $size bytes")
                 .setPositiveButton("OK", null).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
