@@ -1259,8 +1259,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { setMargins(dp(12), dp(16), dp(12), dp(8)) }
             setOnClickListener {
                 puzzleMode = false
-                HunterEngine.setMode(selectedScanMode)
-                doToggle(btnToggle)
+                if (selectedScanMode == 2 && NativeEngine.isAvailable(this@MainActivity)) {
+                    // Usar binario nativo para Raw Key
+                    doToggleNative()
+                } else {
+                    HunterEngine.setMode(selectedScanMode)
+                    doToggle(btnToggle)
+                }
             }
         }
         btnToggle?.tag = arrayOf(startBg, stopRed)
@@ -4003,6 +4008,78 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error generando QR: ${e.message}",
                 android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun doToggleNative() {
+        if (NativeEngine.isRunning()) {
+            NativeEngine.stop()
+            btnToggle?.text = "▶  START SCAN"
+            btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
+                colors = intArrayOf(ACCENT, ACCENT2)
+                orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+                cornerRadius = dp(16).toFloat()
+            }
+            return
+        }
+
+        // Buscar el archivo .bin de base de datos
+        val dbFile = File(getExternalFilesDir(null), "utxos_legacy_segwit.bin").let {
+            if (it.exists()) it.absolutePath
+            else File(getExternalFilesDir(null), "addresses.bin").let { f ->
+                if (f.exists()) f.absolutePath else ""
+            }
+        }
+
+        if (dbFile.isEmpty()) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Archivo .bin requerido")
+                .setMessage("Copia utxos_legacy_segwit.bin a:
+${getExternalFilesDir(null)?.absolutePath}")
+                .setPositiveButton("OK", null).show()
+            return
+        }
+
+        val threads = (sbThreads?.progress ?: 3) + 1
+
+        NativeEngine.onLog = { line ->
+            runOnUiThread { addLog(line) }
+        }
+
+        NativeEngine.onMatch = { line ->
+            runOnUiThread {
+                addLog("*** MATCH ENCONTRADO *** $line")
+                HunterService.instance?.sendMatchNotif(1, line)
+            }
+        }
+
+        NativeEngine.start(this, dbFile, threads, "LEGACY")
+
+        // Actualizar UI con velocidad del proceso nativo
+        handler.post(object : Runnable {
+            override fun run() {
+                if (NativeEngine.isRunning()) {
+                    val spd = NativeEngine.speed.get()
+                    val tot = NativeEngine.total.get()
+                    tvWps?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+                        .format(spd * 1000)
+                    tvCount?.text = formatCount(tot)
+                    handler.postDelayed(this, 800)
+                }
+            }
+        })
+
+        btnToggle?.text = "⏹  STOP"
+        btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
+            colors = intArrayOf(0xFFFF6B35.toInt(), 0xFFFF3B6B.toInt())
+            orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
+            cornerRadius = dp(16).toFloat()
+        }
+
+        try {
+            startForegroundService(Intent(this, HunterService::class.java))
+        } catch (e: Exception) {
+            startService(Intent(this, HunterService::class.java))
         }
     }
 
