@@ -4024,9 +4024,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (found == null) {
             android.app.AlertDialog.Builder(this)
                 .setTitle("Binario no encontrado")
-                .setMessage("Compila hunter_master en Termux y cópialo a Downloads:
-
-cp ~/hunter_master ~/storage/downloads/")
+                .setMessage("Compila hunter_master en Termux y copialo a Downloads: cp ~/hunter_master ~/storage/downloads/")
                 .setPositiveButton("OK", null).show()
             return
         }
@@ -4036,8 +4034,7 @@ cp ~/hunter_master ~/storage/downloads/")
             dest.setExecutable(true)
             android.app.AlertDialog.Builder(this)
                 .setTitle("✅ Motor nativo instalado")
-                .setMessage("hunter_master instalado correctamente.
-Reinicia la app para activarlo.")
+                .setMessage("hunter_master instalado. Reinicia la app para activarlo.")
                 .setPositiveButton("OK", null).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
