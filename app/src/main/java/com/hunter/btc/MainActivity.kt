@@ -4049,10 +4049,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
             android.app.AlertDialog.Builder(this)
                 .setTitle(if (exists) "Motor nativo instalado" else "Error")
-                .setMessage("Path: ${dest.absolutePath}
-Existe: $exists
-Ejecutable: $canExec
-Tamaño: $size bytes")
+                .setMessage("Path: ${dest.absolutePath} | Existe: $exists | Exec: $canExec | Size: $size")
                 .setPositiveButton("OK", null).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
