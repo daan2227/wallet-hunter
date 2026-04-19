@@ -320,17 +320,13 @@ class DebugActivity : AppCompatActivity() {
                 if (l.isNotEmpty()) appendLine(l)
             }
         }
-        if (engineLogs.isNotEmpty()) sb.appendLine("=== ENGINE ===
-$engineLogs")
+        if (engineLogs.isNotEmpty()) { sb.appendLine("=== ENGINE ==="); sb.appendLine(engineLogs) }
 
         // Logcat errores
         try {
             val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "30", "AndroidRuntime:E", "*:S"))
             val lines = java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).readLines()
-            if (lines.isNotEmpty()) sb.appendLine("=== ERRORES ===
-${lines.joinToString("
-")}
-")
+            if (lines.isNotEmpty()) { sb.appendLine("=== ERRORES ==="); sb.appendLine(lines.joinToString("\n")) }
         } catch (e: Exception) {}
 
         // Archivos de log
