@@ -3185,6 +3185,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val found = HunterEngine.getCount() - sessionStartCount
                     tvMatches?.text = "$found"
                     tvQuickMatches?.text = "$found"
+                    // Stats adicionales para Raw Key
+                    if (selectedScanMode == 2 && wps > 0) {
+                        val keysPerSec = wps * 1000.0
+                        val elapsed = if (sessionStartTime > 0)
+                            (System.currentTimeMillis() - sessionStartTime) / 1000.0 else 1.0
+                        val totalKeys = HunterEngine.getCount() - sessionStartCount
+                        // Probabilidad de encontrar una wallet activa (estimado)
+                        // Espacio: 2^256, wallets activas: ~50M
+                        // P = totalKeys * 50M / 2^256
+                        val perDay = (keysPerSec * 86400).toLong()
+                        val perDayStr = when {
+                            perDay >= 1_000_000_000 -> "${"%.1f".format(perDay/1e9)}B/día"
+                            perDay >= 1_000_000 -> "${"%.1f".format(perDay/1e6)}M/día"
+                            else -> "${"%.0f".format(perDay/1e3)}K/día"
+                        }
+                        tvBinInfoRef?.text = "⚡ $perDayStr  ·  ${formatCount(totalKeys)} esta sesión"
+                    }
                 }
             }
             val rt = Runtime.getRuntime()
