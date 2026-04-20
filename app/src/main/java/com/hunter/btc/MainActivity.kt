@@ -174,6 +174,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var fastScanRow: android.view.View? = null
     private var tvBinInfoRef: TextView? = null
     private var tvDatasetStat: TextView? = null
+    private var peakWps: Double = 0.0
+    private var tvPeakWps: TextView? = null
+    private var tvPeakWpsPuzzle: TextView? = null
     private var watchdogEnabled = false
     private var lastKnownRunning = false
     private var watchdogRestarts = 0
@@ -798,6 +801,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             letterSpacing = -0.02f
         }
 
+        // Peak speed indicator bajo el contador principal
+        tvPeakWps = TextView(this).apply {
+            text = ""; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = android.view.Gravity.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(4) }
+        }
+        heroCard.addView(tvPeakWps)
+
         tvCount = statValue("0", 0xFF0087FF.toInt())
         val tvBlocksStat = statValue("0", 0xFFE8EAF0.toInt())
         val tvProgressStat = statValue("0.00%", ACCENT)
@@ -854,34 +869,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         heroCard.addView(gridRow1)
         heroCard.addView(gridRow2)
 
-        // ── PROGRESS BAR ──────────────────────────────────────────────────
-        val progressBarContainer = FrameLayout(this).apply {
-            background = GradientDrawable().apply {
-                setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(6)
-            ).apply { setMargins(0, dp(16), 0, 0) }
-        }
-        chartView = SpeedChartView(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-        val progressFill = android.widget.ProgressBar(
-            this, null, android.R.attr.progressBarStyleHorizontal
-        ).apply {
-            max = 10000; progress = 0
-            progressDrawable = GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(ACCENT2, ACCENT)
-            ).apply { cornerRadius = dp(4).toFloat() }
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-        progressBarContainer.addView(progressFill)
-        heroCard.addView(progressBarContainer)
+        // progress bar removed
         page.addView(heroCard)
 
         // Invisible views para compatibilidad
@@ -1709,6 +1697,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         tvWpsPuzzle = tvWpsP
         speedRow.addView(tvWpsP)
+        // Peak speed en esquina
+        tvPeakWpsPuzzle = TextView(this).apply {
+            text = ""; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.BOTTOM or Gravity.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(4) }
+        }
+        speedRow.addView(tvPeakWpsPuzzle)
         val speedUnit = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
         speedUnit.addView(TextView(this).apply { text = "kKeys"; textSize = 11f; setTextColor(0xFF5A607A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
         speedUnit.addView(TextView(this).apply { text = "por seg"; textSize = 10f; setTextColor(0xFF3A4060.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
@@ -3163,6 +3162,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
+                // Actualizar peak speed
+                if (wps > peakWps) {
+                    peakWps = wps
+                    val peakFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
+                    tvPeakWps?.text = "peak $peakFmt"
+                    tvPeakWpsPuzzle?.text = "peak $peakFmt"
+                }
+
                 if (puzzleMode) {
                     tvWpsPuzzle?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
@@ -3260,6 +3267,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
                 prefs.edit().putBoolean("scan_was_running", false).apply()
+                peakWps = 0.0
+                tvPeakWps?.text = ""
+                tvPeakWpsPuzzle?.text = ""
                 // Guardar sesión en historial
                 val sessionKeys = HunterEngine.getCount() - sessionStartCount
                 val sessionDur = if (sessionStartTime > 0)
