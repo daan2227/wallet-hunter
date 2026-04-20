@@ -823,8 +823,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         gridRow1.addView(statCard(0xFF1E2540.toInt()) {
             addView(statLabel("SESIÓN"))
             val tvSessionStat = TextView(this@MainActivity).apply {
-                text = "—"; textSize = 11f; setTextColor(0xFFE8EAF0.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                text = "—"; textSize = 13f; setTextColor(0xFFE8EAF0.toInt())
+                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                letterSpacing = -0.02f
+                maxLines = 2
             }
             tvBinInfoRef = tvSessionStat
             addView(tvSessionStat)
@@ -3201,7 +3203,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             perDay >= 1_000_000 -> "${"%.1f".format(perDay/1e6)}M/día"
                             else -> "${"%.0f".format(perDay/1e3)}K/día"
                         }
-                        tvBinInfoRef?.text = "⚡ $perDayStr  ·  ${formatCount(totalKeys)} esta sesión"
+                        tvBinInfoRef?.text = "$perDayStr"
+                        tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
                     }
                 }
             }
