@@ -1105,6 +1105,11 @@ Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){
     g_pbkdf2_iters.store(fast==1 ? PBKDF2_ITERS_FAST : PBKDF2_ITERS_STD);
 }
 
+JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_getCsvCount(JNIEnv *,jobject){
+    return (jlong)g_total;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_isCsvLoaded(JNIEnv *,jobject){return (jboolean)g_csv_loaded.load();}
 

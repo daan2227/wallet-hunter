@@ -3255,6 +3255,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } else if (HunterEngine.isCsvLoaded() && csvPath.isNotEmpty()) {
             tvCsvName?.text = File(csvPath).name
             tvCsvName?.setTextColor(0xFF00FF88.toInt())
+            // Actualizar card DATASET con conteo real del engine
+            val total = HunterEngine.getCsvCount()
+            if (total > 0) {
+                val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
+                          else "${total/1000}K"
+                tvDatasetStat?.text = fmt
+                tvDatasetStat?.setTextColor(0xFF00C896.toInt())
+            }
         }
         } catch (e: Exception) {
             // vars no inicializadas aún
