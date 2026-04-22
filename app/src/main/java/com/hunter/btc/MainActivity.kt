@@ -754,6 +754,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
         heroCard.addView(tvWps)
+        tvPeakWps = TextView(this).apply {
+            text = ""; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.END
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(2) }
+        }
+        heroCard.addView(tvPeakWps)
 
         heroCard.addView(TextView(this).apply {
             text = "kKeys / segundo"
@@ -801,18 +811,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             letterSpacing = -0.02f
         }
 
-        // Peak speed indicator bajo el contador principal
-        tvPeakWps = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF5A607A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = android.view.Gravity.END
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(4) }
-        }
-        heroCard.addView(tvPeakWps)
-
         tvCount = statValue("0", 0xFF0087FF.toInt())
         val tvBlocksStat = statValue("0", 0xFFE8EAF0.toInt())
         val tvProgressStat = statValue("0.00%", ACCENT)
@@ -854,7 +852,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val h = f.length() / 20
                     if (h >= 1_000_000) "${"%.1f".format(h/1e6)}M" else "${h/1000}K"
                 } else "—"
-                textSize = 20f; setTextColor(ACCENT)
+                textSize = 28f; setTextColor(ACCENT)
                 typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
                 letterSpacing = -0.02f
             }
@@ -3206,9 +3204,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val totalKeys = HunterEngine.getCount() - sessionStartCount
                         val perDay = (keysPerSec * 86400).toLong()
                         val perDayStr = when {
-                            perDay >= 1_000_000_000 -> "${"%.1f".format(perDay/1e9)}B/día"
-                            perDay >= 1_000_000 -> "${"%.1f".format(perDay/1e6)}M/día"
-                            else -> "${"%.0f".format(perDay/1e3)}K/día"
+                            perDay >= 1_000_000_000 -> "${perDay/1_000_000_000}B/día"
+                            perDay >= 1_000_000 -> "${perDay/1_000_000}M/día"
+                            else -> "${perDay/1000}K/día"
                         }
                         tvBinInfoRef?.text = "$perDayStr"
                         tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
