@@ -298,7 +298,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             walletScroll = buildWalletTab()
             android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
             recoveryScroll = buildRecoveryTab()
-            android.widget.Toast.makeText(this, "All tabs built OK", android.widget.Toast.LENGTH_SHORT).show()
+
         } catch (e: Exception) {
             // Escribir error a archivo para diagnóstico
             try {
@@ -3359,13 +3359,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val bg2 = callerBtn?.tag as? Array<GradientDrawable>
                 callerBtn?.text = s.stop
                 if (bg2 != null && bg2.size > 1) callerBtn?.background = bg2[1]
-                Toast.makeText(this, "3c btn updated OK", Toast.LENGTH_SHORT).show()
+
                 try {
                     startForegroundService(Intent(this, HunterService::class.java))
                 } catch (ex: Exception) {
                     try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {}
                 }
-                Toast.makeText(this, "3d service OK - DONE", Toast.LENGTH_SHORT).show()
+
 
             }
         } catch (e: Exception) {
