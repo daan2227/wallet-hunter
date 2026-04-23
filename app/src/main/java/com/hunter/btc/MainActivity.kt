@@ -175,6 +175,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvBinInfoRef: TextView? = null
     private var tvDatasetStat: TextView? = null
     private var peakWps: Double = 0.0
+    private var avgWpsSum: Double = 0.0
+    private var avgWpsCount: Long = 0
+    private var tvAvgWps: TextView? = null
     private var tvPeakWps: TextView? = null
     private var tvPeakWpsPuzzle: TextView? = null
     private var watchdogEnabled = false
@@ -764,6 +767,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(2) }
         }
         heroCard.addView(tvPeakWps)
+
+        // Promedio de velocidad
+        tvAvgWps = TextView(this).apply {
+            text = ""; textSize = 9f; setTextColor(0xFF5A607A.toInt())
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        heroCard.addView(tvAvgWps)
 
         heroCard.addView(TextView(this).apply {
             text = "kKeys / segundo"
@@ -3160,12 +3175,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
-                // Actualizar peak speed
+                // Actualizar peak y promedio
                 if (wps > peakWps) {
                     peakWps = wps
                     val peakFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
                     tvPeakWps?.text = "peak $peakFmt"
                     tvPeakWpsPuzzle?.text = "peak $peakFmt"
+                }
+                if (wps > 0) {
+                    avgWpsSum += wps
+                    avgWpsCount++
+                    val avg = avgWpsSum / avgWpsCount
+                    val avgFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(avg.toLong())
+                    tvAvgWps?.text = "promedio $avgFmt"
                 }
 
                 if (puzzleMode) {
@@ -3275,8 +3297,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 stopService(Intent(this, HunterService::class.java))
                 prefs.edit().putBoolean("scan_was_running", false).apply()
                 peakWps = 0.0
+                avgWpsSum = 0.0
+                avgWpsCount = 0
                 tvPeakWps?.text = ""
                 tvPeakWpsPuzzle?.text = ""
+                tvAvgWps?.text = ""
                 // Guardar sesión en historial
                 val sessionKeys = HunterEngine.getCount() - sessionStartCount
                 val sessionDur = if (sessionStartTime > 0)
