@@ -3203,10 +3203,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val keysPerSec = wps * 1000.0
                         val totalKeys = HunterEngine.getCount() - sessionStartCount
                         val perDay = (keysPerSec * 86400).toLong()
+                        val nf = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
                         val perDayStr = when {
-                            perDay >= 1_000_000_000 -> "${perDay/1_000_000_000}B/día"
-                            perDay >= 1_000_000 -> "${perDay/1_000_000}M/día"
-                            else -> "${perDay/1000}K/día"
+                            perDay >= 1_000_000_000 -> "${nf.format(perDay/1_000_000_000)}B/día"
+                            perDay >= 1_000_000 -> "${nf.format(perDay/1_000_000)}M/día"
+                            else -> "${nf.format(perDay/1000)}K/día"
                         }
                         tvBinInfoRef?.text = "$perDayStr"
                         tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
@@ -3347,7 +3348,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val batchNow = HunterEngine.getBatchSize()
                 Toast.makeText(this, "threads=$threads cpu=$cpu batch=$batchNow", Toast.LENGTH_LONG).show()
                 HunterEngine.startHunting(threads, cpu)
-                Toast.makeText(this, "2/3 startHunting OK", Toast.LENGTH_SHORT).show()
+
                 // Guardar estado para auto-reinicio
                 prefs.edit()
                     .putBoolean("scan_was_running", true)
