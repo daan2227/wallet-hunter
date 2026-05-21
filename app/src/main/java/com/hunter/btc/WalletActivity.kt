@@ -519,7 +519,7 @@ class WalletActivity : FragmentActivity() {
                     if (addr.isEmpty()) { rows.add(Triple("Error", "empty address", -1L)); return@forEach }
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$addr" else "https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val js = conn.inputStream.bufferedReader().readText()
+                    val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
                     val funded = Regex("\"funded_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                     val spent  = Regex("\"spent_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
                     val bal = funded - spent; totalSat += bal
@@ -530,7 +530,7 @@ class WalletActivity : FragmentActivity() {
             try {
                 val conn = java.net.URL("https://mempool.space/api/v1/prices").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 3000; conn.readTimeout = 3000
-                val js = conn.inputStream.bufferedReader().readText()
+                val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
                 price = Regex("\"USD\":(\\d+)").find(js)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
@@ -578,7 +578,7 @@ class WalletActivity : FragmentActivity() {
             try {
                 val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/${queryAddrs[0]}/txs" else "https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 5000; conn.readTimeout = 5000
-                val arr = JSONArray(conn.inputStream.bufferedReader().readText())
+                val arr = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
                 runOnUiThread {
                     tvHead.text = "${arr.length()} txs  (${queryAddrs[0].take(14)}...)"
                     if (arr.length() == 0) { ll.addView(TextView(this).apply { text = "No transactions"; setTextColor(TXT_MUTED); textSize = 11f }); return@runOnUiThread }
@@ -683,7 +683,7 @@ class WalletActivity : FragmentActivity() {
                     val url = if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo"
                     val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val utxos = JSONArray(conn.inputStream.bufferedReader().readText())
+                    val utxos = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
                     if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs available"; tvStatus.setTextColor(RED) }; return@Thread }
                     runOnUiThread {
                         val items = Array(utxos.length()) { i ->
@@ -723,7 +723,7 @@ class WalletActivity : FragmentActivity() {
                 try {
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val utxos = JSONArray(conn.inputStream.bufferedReader().readText())
+                    val utxos = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
                     if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     val amtSat = (amtBtc * 1e8).toLong()
                     val feeSat = (feeRate * (148 * utxos.length() + 34 * 2 + 10)).toLong()
@@ -743,7 +743,9 @@ class WalletActivity : FragmentActivity() {
                     bc.requestMethod = "POST"; bc.doOutput = true; bc.setRequestProperty("Content-Type","text/plain")
                     bc.outputStream.write(rawTx.toByteArray())
                     val code = bc.responseCode
-                    val resp = if (code == 200) bc.inputStream.bufferedReader().readText() else bc.errorStream?.bufferedReader()?.readText() ?: "error"
+                    val resp = try {
+                        if (code == 200) bc.inputStream.bufferedReader().readText() else bc.errorStream?.bufferedReader()?.readText() ?: "error"
+                    } finally { bc.disconnect() }
                     runOnUiThread { tvStatus.text = if (code == 200) "Sent!\nTXID: $resp" else "Error $code:\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = "Error: ${e.message}"; tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()
