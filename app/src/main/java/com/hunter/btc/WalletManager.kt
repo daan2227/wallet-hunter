@@ -166,7 +166,6 @@ object WalletManager {
     }
 
     fun encryptData(data: ByteArray, pin: String): Pair<ByteArray, ByteArray> {
-        val prefs = null // pin directo
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
         val key = pinToKey(pin, salt)
         val (enc, iv) = aesEncrypt(key, data)

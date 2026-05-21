@@ -116,11 +116,13 @@ object ElectrumClient {
     private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {
         val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
         val raw = factory.createSocket()
-        raw.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-        raw.soTimeout = READ_TIMEOUT_MS
-        val reader = BufferedReader(InputStreamReader(raw.getInputStream()))
-        val writer = BufferedWriter(OutputStreamWriter(raw.getOutputStream()))
-        return block(reader, writer)
+        raw.use {
+            raw.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            raw.soTimeout = READ_TIMEOUT_MS
+            val reader = BufferedReader(InputStreamReader(raw.getInputStream()))
+            val writer = BufferedWriter(OutputStreamWriter(raw.getOutputStream()))
+            return block(reader, writer)
+        }
     }
 
     private fun List<Any>.toJsonArray(): String {

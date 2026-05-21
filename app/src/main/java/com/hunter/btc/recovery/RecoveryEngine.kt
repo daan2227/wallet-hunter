@@ -29,7 +29,7 @@ class RecoveryEngine(private val context: Context) {
             val words = context.assets
                 .open("bip39_english.txt")
                 .bufferedReader()
-                .readLines()
+                .use { it.readLines() }
                 .filter { it.isNotBlank() }
                 .toTypedArray()
             wordlist = words
@@ -41,6 +41,7 @@ class RecoveryEngine(private val context: Context) {
 
     // ── Iniciar recovery en background ────────────────────────────────────────
     fun startRecovery(parsed: ParsedPhrase, targetAddress: String) {
+        g_cancelled = false
         val wl = wordlist ?: return
 
         // Convertir slots a String[] para JNI (string vacío = faltante)
