@@ -10,6 +10,8 @@ import java.util.concurrent.atomic.AtomicLong
 
 object NativeEngine {
     private const val BINARY_NAME = "hunter_master"
+    private val SPEED_REGEX = Regex("Speed:\\s*([\\d.]+)\\s*K/s")
+    private val TOTAL_REGEX = Regex("Total:\\s*(\\d+)")
     private var process: Process? = null
     private val running = AtomicBoolean(false)
     val speed = AtomicLong(0)
@@ -56,19 +58,10 @@ object NativeEngine {
                 }
                 process = pb.start()
 
-                val stream = process!!.inputStream
-                val sb = StringBuilder()
+                val reader = BufferedReader(InputStreamReader(process!!.inputStream))
                 while (running.get()) {
-                    val c = stream.read()
-                    if (c == -1) break
-                    val ch = c.toChar()
-                    if (ch == '\r' || ch == '\n') {
-                        val line = sb.toString().trim()
-                        if (line.isNotEmpty()) parseLine(line)
-                        sb.clear()
-                    } else {
-                        sb.append(ch)
-                    }
+                    val line = reader.readLine() ?: break
+                    if (line.isNotEmpty()) parseLine(line)
                 }
             } catch (e: Exception) {
                 onLog?.invoke("Error proceso nativo: ${e.message}")
@@ -80,9 +73,8 @@ object NativeEngine {
 
     private fun parseLine(line: String) {
         onLog?.invoke(line)
-        // Parsear velocidad: "Speed: 161552 K/s | Total: 1292965"
-        val speedMatch = Regex("Speed:\\s*([\\d.]+)\\s*K/s").find(line)
-        val totalMatch = Regex("Total:\\s*(\\d+)").find(line)
+        val speedMatch = SPEED_REGEX.find(line)
+        val totalMatch = TOTAL_REGEX.find(line)
         speedMatch?.groupValues?.get(1)?.toDoubleOrNull()?.let {
             speed.set(it.toLong())
         }

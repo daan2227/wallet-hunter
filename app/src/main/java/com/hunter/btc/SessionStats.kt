@@ -39,8 +39,8 @@ object SessionStats {
     fun load(ctx: Context): List<Session> {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val arr = try { JSONArray(prefs.getString(KEY, "[]")) } catch(e: Exception) { return emptyList() }
-        val list = mutableListOf<Session>()
-        for (i in 0 until arr.length()) {
+        val list = ArrayList<Session>(arr.length())
+        for (i in arr.length() - 1 downTo 0) {
             val o = arr.getJSONObject(i)
             list.add(Session(
                 o.optString("date","?"), o.optString("mode","?"),
@@ -48,12 +48,27 @@ object SessionStats {
                 o.optLong("dur",0), o.optInt("matches",0)
             ))
         }
-        return list.reversed()
+        return list
     }
 
-    fun totalKeys(ctx: Context): Long = load(ctx).sumOf { it.keysScanned }
-    fun totalMatches(ctx: Context): Int = load(ctx).sumOf { it.matches }
-    fun bestKps(ctx: Context): Double = load(ctx).maxOfOrNull { it.avgKps } ?: 0.0
+    data class Aggregates(val totalKeys: Long, val totalMatches: Int, val bestKps: Double)
+
+    fun aggregate(ctx: Context): Aggregates {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val arr = try { JSONArray(prefs.getString(KEY, "[]")) } catch(e: Exception) { return Aggregates(0, 0, 0.0) }
+        var keys = 0L; var matches = 0; var best = 0.0
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            keys    += o.optLong("keys", 0)
+            matches += o.optInt("matches", 0)
+            val kps  = o.optDouble("kps", 0.0); if (kps > best) best = kps
+        }
+        return Aggregates(keys, matches, best)
+    }
+
+    fun totalKeys(ctx: Context): Long = aggregate(ctx).totalKeys
+    fun totalMatches(ctx: Context): Int = aggregate(ctx).totalMatches
+    fun bestKps(ctx: Context): Double = aggregate(ctx).bestKps
 
     fun nowStr(): String = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
 }
