@@ -177,6 +177,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var peakWps: Double = 0.0
     private var avgWpsSum: Double = 0.0
     private var avgWpsCount: Long = 0
+    private val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+    private var cachedPuzzleLabel: String = ""
+    private var cachedPuzzleLabelForStart: String = ""
     private var tvAvgWps: TextView? = null
     private var tvPeakWps: TextView? = null
     private var tvPeakWpsPuzzle: TextView? = null
@@ -989,8 +992,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 text = if (f != null && f.exists()) {
                     val mb = f.length() / 1024 / 1024
                     val hashes = f.length() / 20
-                    val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-                    "📦 ${f.name}  ·  ${fmt.format(hashes)} hashes  ·  ${mb}MB"
+                    "📦 ${f.name}  ·  ${numberFmt.format(hashes)} hashes  ·  ${mb}MB"
                 } else {
                     "📦 Sin dataset cargado"
                 }
@@ -3068,10 +3070,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .show()
     }
 
-    private fun formatCount(v: Long): String {
-        val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-        return fmt.format(v)
-    }
+    private fun formatCount(v: Long): String = numberFmt.format(v)
 
     // ── Registro local de bloques escaneados ─────────────────────────────────
     private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
@@ -3178,7 +3177,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // Actualizar peak y promedio
                 if (wps > peakWps) {
                     peakWps = wps
-                    val peakFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
+                    val peakFmt = numberFmt.format(wps.toLong())
                     tvPeakWps?.text = "peak $peakFmt"
                     tvPeakWpsPuzzle?.text = "peak $peakFmt"
                 }
@@ -3186,12 +3185,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     avgWpsSum += wps
                     avgWpsCount++
                     val avg = avgWpsSum / avgWpsCount
-                    val avgFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(avg.toLong())
-                    tvAvgWps?.text = "promedio $avgFmt"
+                    tvAvgWps?.text = "promedio ${numberFmt.format(avg.toLong())}"
                 }
 
                 if (puzzleMode) {
-                    tvWpsPuzzle?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
+                    tvWpsPuzzle?.text = numberFmt.format(wps.toLong())
                     tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
                     // Tiempo estimado para completar el rango
@@ -3209,11 +3207,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                 secsLeft < 86400*365 -> "${secsLeft/86400}d ${secsLeft%86400/3600}h"
                                 else -> "${secsLeft/86400/365}años"
                             }
-                            tvPuzzleStatus?.text = "ETA: $eta · Puzzle ${puzzles.firstOrNull{it.start==currentRangeStart}?.num?.let{"#$it"} ?: ""}"
+                            if (currentRangeStart != cachedPuzzleLabelForStart) {
+                                cachedPuzzleLabelForStart = currentRangeStart
+                                cachedPuzzleLabel = puzzles.firstOrNull { it.start == currentRangeStart }?.num?.let { "#$it" } ?: ""
+                            }
+                            tvPuzzleStatus?.text = "ETA: $eta · Puzzle $cachedPuzzleLabel"
                         } catch (e: Exception) {}
                     }
                 } else {
-                    tvWps?.text = java.text.NumberFormat.getNumberInstance(java.util.Locale.US).format(wps.toLong())
+                    tvWps?.text = numberFmt.format(wps.toLong())
                     tvCount?.text = formatCount(HunterEngine.getCount())
                     tvTime?.text = formatElapsed(sessionStartTime)
                     chartView?.addPoint(wps.toFloat())
@@ -3225,11 +3227,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val keysPerSec = wps * 1000.0
                         val totalKeys = HunterEngine.getCount() - sessionStartCount
                         val perDay = (keysPerSec * 86400).toLong()
-                        val nf = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
                         val perDayStr = when {
-                            perDay >= 1_000_000_000 -> "${nf.format(perDay/1_000_000_000)}B/día"
-                            perDay >= 1_000_000 -> "${nf.format(perDay/1_000_000)}M/día"
-                            else -> "${nf.format(perDay/1000)}K/día"
+                            perDay >= 1_000_000_000 -> "${numberFmt.format(perDay/1_000_000_000)}B/día"
+                            perDay >= 1_000_000 -> "${numberFmt.format(perDay/1_000_000)}M/día"
+                            else -> "${numberFmt.format(perDay/1000)}K/día"
                         }
                         tvBinInfoRef?.text = "$perDayStr"
                         tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
@@ -3438,8 +3439,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
             val mb = dest.length() / 1024 / 1024
             val hashes = dest.length() / 20
-            val fmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-            tvBinInfoRef?.text = "📦 ${dest.name}  ·  ${fmt.format(hashes)} hashes  ·  ${mb}MB"
+            tvBinInfoRef?.text = "📦 ${dest.name}  ·  ${numberFmt.format(hashes)} hashes  ·  ${mb}MB"
             tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
             // Actualizar stat card con conteo de hashes
             tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
