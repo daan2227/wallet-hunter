@@ -285,40 +285,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        var scanScroll: ScrollView? = null
-        var puzzleScroll: ScrollView? = null
-        var walletScroll: ScrollView? = null
         var recoveryScroll: ScrollView? = null
+        var walletScroll: ScrollView? = null
         try {
-            android.widget.Toast.makeText(this, "Building Scan...", android.widget.Toast.LENGTH_SHORT).show()
-            scanScroll = buildScanTab()
-            android.widget.Toast.makeText(this, "Building Puzzle...", android.widget.Toast.LENGTH_SHORT).show()
-            try {
-                puzzleScroll = buildPuzzleTab()
-            } catch (e: Exception) {
-                val msg = "PUZZLE_BUILD: ${e.javaClass.simpleName}: ${e.message}"
-                android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
-                java.io.File(filesDir, "crash_log.txt").appendText("\n$msg\n${e.stackTraceToString()}\n")
-            }
-            android.widget.Toast.makeText(this, "Building Wallet...", android.widget.Toast.LENGTH_SHORT).show()
-            walletScroll = buildWalletTab()
-            android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
             recoveryScroll = buildRecoveryTab()
-
+            walletScroll   = buildWalletTab()
         } catch (e: Exception) {
-            // Escribir error a archivo para diagnóstico
             try {
-                val errFile = java.io.File(filesDir, "crash_log.txt")
-                errFile.writeText("CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
+                java.io.File(filesDir, "crash_log.txt")
+                    .writeText("CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
             } catch (ex: Exception) {}
-            android.widget.Toast.makeText(this, "CRASH guardado en crash_log.txt", android.widget.Toast.LENGTH_LONG).show()
             finish(); return
         }
 
-        scanScroll?.let { cf.addView(it) }
-        puzzleScroll?.let { cf.addView(it) }
-        walletScroll?.let { cf.addView(it) }
         recoveryScroll?.let { cf.addView(it) }
+        walletScroll?.let   { cf.addView(it) }
         contentFrame = cf
 
         // ── Header + Drawer ───────────────────────────────────────────────────
@@ -332,22 +313,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         setContentView(root)
 
-        tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
+        tabPages = listOfNotNull(recoveryScroll, walletScroll)
         tabBtns  = listOf<TextView>()
         goTab(0)
 
         // Init
         try {
-            if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())
-                HunterEngine.loadCsv(csvPath)
             setupNotificationChannel()
-            registerBatteryReceiver()
-            // Auto-detectar hardware en primera ejecución
-            // Restaurar scheduler si estaba activo
-            scheduledStart = prefs.getInt("sched_start", -1)
-            scheduledStop  = prefs.getInt("sched_stop",  -1)
-            if (scheduledStart >= 0) startScheduler()
-            selectedScanMode = prefs.getInt("scan_mode", 0)
             watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
@@ -405,10 +377,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Logo text
         val logoText = TextView(this).apply {
-            text = "Wallet Hunter"
-            textSize = 15f
+            text = "BTC Seed Recovery"
+            textSize = 14f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            letterSpacing = 0.04f
+            letterSpacing = 0.02f
             setTextColor(0xFFEFEFEF.toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                 it.gravity = Gravity.CENTER_VERTICAL
@@ -517,19 +489,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
         val dTitle = TextView(this).apply {
-            text = android.text.SpannableString("WalletHunter").also { sp ->
-                sp.setSpan(
-                    android.text.style.ForegroundColorSpan(ACCENT),
-                    6, 12,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
+            text = "BTC Seed Recovery"
             textSize = 20f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             setTextColor(0xFFEFEFEF.toInt())
         }
         val dSub = TextView(this).apply {
-            text = "com.hunter.btc · ARM64"
+            text = "Recupera tu propia wallet"
             textSize = 10f
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             setTextColor(0xFF868686.toInt())
@@ -559,13 +525,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         data class NavItem(val icon: String, val label: String, val idx: Int, val special: Boolean = false)
         val items = listOf(
-            NavItem("⚡", "Scan", 0),
-            NavItem("🧩", "Puzzle", 1),
-            NavItem("◈", "Wallet", 2),
-            NavItem("⚷", "Recovery", 3),
-            NavItem("📊", "Stats", -3, true),
-            NavItem("🌐", "Network", -1, true),
-            NavItem("🐛", "Debug", -2, true)
+            NavItem("⚷", "Recovery", 0),
+            NavItem("◈", "Wallet", 1),
+            NavItem("📊", "Stats", -3, true)
         )
 
         items.forEach { item ->
@@ -591,17 +553,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             startActivity(android.content.Intent(this@MainActivity, StatsActivity::class.java))
                             closeDrawer()
                         }
-                        item.idx == -1 -> {
-                            startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java))
-                            closeDrawer()
-                        }
-                        item.idx == -2 -> {
-                            startActivity(android.content.Intent(this@MainActivity, DebugActivity::class.java))
-                            closeDrawer()
-                        }
-                        item.idx == 2 -> {
+                        item.idx == 1 -> {
                             if (WalletManager.hasPin(this@MainActivity) && !PinAuthHelper.isSessionValid()) {
-                                PinAuthHelper.show(this@MainActivity) { ok -> if (ok) { goTab(2); closeDrawer() } }
+                                PinAuthHelper.show(this@MainActivity) { ok -> if (ok) { goTab(1); closeDrawer() } }
                             } else { goTab(item.idx); closeDrawer() }
                         }
                         else -> { goTab(item.idx); closeDrawer() }
