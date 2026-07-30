@@ -6,4 +6,11 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">false</item>
     </style>
+
+    <!-- Dark window background prevents gray flash during activity transitions -->
+    <style name="AppThemeDark" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#090909</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:colorBackground">#090909</item>
+    </style>
 </resources>

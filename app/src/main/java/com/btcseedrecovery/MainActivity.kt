@@ -331,8 +331,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }, 1000)
             }
             updateLabels()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "Init error: ${e.message}", e)
+            prefs.edit().putBoolean("hw_detected", true).apply()
         }
 
         val uiSp = getSharedPreferences("ui_state", MODE_PRIVATE)
@@ -3127,6 +3128,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun updateUI() {
         try {
             if (HunterEngine.isRunning()) {
+
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
                 if (wps > peakWps) {
@@ -3240,8 +3242,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvDatasetStat?.setTextColor(0xFF00C896.toInt())
             }
         }
-        } catch (e: Exception) {
-            // vars no inicializadas aún
+        } catch (_: Throwable) {
+            // vars not yet initialised, or native library not loaded
         }
     }
 
