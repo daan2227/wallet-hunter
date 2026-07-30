@@ -1086,8 +1086,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
             }
-            row2.addView(netBtn("Mode: Worker") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
-            row2.addView(netBtn("Connect") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
+            row2.addView(netBtn("Mode: Worker") { })
+            row2.addView(netBtn("Connect") { })
             addView(row2)
             val tvNetLog = TextView(this@MainActivity).apply {
                 text = "Log:"
@@ -3249,7 +3249,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
-                stopService(Intent(this, HunterService::class.java))
+                // HunterService removed for Play Store build
                 prefs.edit().putBoolean("scan_was_running", false).apply()
                 peakWps = 0.0
                 avgWpsSum = 0.0
@@ -3340,11 +3340,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 callerBtn?.text = s.stop
                 if (bg2 != null && bg2.size > 1) callerBtn?.background = bg2[1]
 
-                try {
-                    startForegroundService(Intent(this, HunterService::class.java))
-                } catch (ex: Exception) {
-                    try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {}
-                }
+                // HunterService removed for Play Store build
 
 
             }
@@ -3477,7 +3473,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
             ).apply { topMargin = dp(16) }
             setOnClickListener {
-                HunterService.instance?.sendMatchNotif(1, "TEST: Wallet encontrada 0.001 BTC")
                 testVibration()
             }
         })
@@ -3497,12 +3492,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val nm = getSystemService(android.app.NotificationManager::class.java)
             // Recrear canal con nuevas configuraciones
-            nm.deleteNotificationChannel(HunterService.CHANNEL_MATCH)
+            nm.deleteNotificationChannel("wh_match")
             val alarmAttr = android.media.AudioAttributes.Builder()
                 .setUsage(android.media.AudioAttributes.USAGE_ALARM)
                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
             val ch = android.app.NotificationChannel(
-                HunterService.CHANNEL_MATCH,
+                "wh_match",
                 "Match encontrado",
                 android.app.NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -4221,7 +4216,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         NativeEngine.onMatch = { line ->
             runOnUiThread {
-                HunterService.instance?.sendMatchNotif(1, line)
                 android.widget.Toast.makeText(this@MainActivity,
                     "MATCH: $line", android.widget.Toast.LENGTH_LONG).show()
             }
@@ -4264,11 +4258,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setStroke(dp(1), 0xFFF04040.toInt())
         }
 
-        try {
-            startForegroundService(Intent(this, HunterService::class.java))
-        } catch (e: Exception) {
-            startService(Intent(this, HunterService::class.java))
-        }
+        // HunterService removed for Play Store build
     }
 
     private fun checkAndRestartScan() {
