@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }

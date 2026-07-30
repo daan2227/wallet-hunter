@@ -1,4 +1,4 @@
-package com.hunter.btc.recovery
+package com.btcseedrecovery.recovery
 
 import android.content.Context
 import android.content.res.AssetManager

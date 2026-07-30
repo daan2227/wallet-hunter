@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Outer ring -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#2A2A2A"
+        android:strokeWidth="2"
+        android:pathData="M54,18 A36,36 0 1,1 53.99,18 Z"/>
+
+    <!-- Bitcoin ₿ symbol -->
+    <path
+        android:fillColor="#EFEFEF"
+        android:pathData="
+M46,30 L46,78 L58,78
+C66,78 72,74 72,67
+C72,62 69,59 65,57.5
+C68,56 70,53 70,49
+C70,42 64,38 58,38 L58,30 Z
+
+M50,34 L58,34
+C62,34 66,36 66,41
+C66,46 62,48 58,48 L50,48 Z
+
+M50,52 L58,52
+C63,52 68,54 68,59.5
+C68,65 63,67 58,67 L50,67 Z
+
+M44,36 L48,36 L48,74 L44,74 Z
+M44,40 L43,40 L43,44 L44,44 Z
+M44,58 L43,58 L43,62 L44,62 Z"/>
+</vector>

@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 object Bech32 {
     private const val CHARSET = "qpzry9x8gf2tvdw0s3jn54khce6mua7l"

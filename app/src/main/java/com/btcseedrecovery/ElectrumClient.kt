@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 import android.util.Log
 import org.json.JSONObject

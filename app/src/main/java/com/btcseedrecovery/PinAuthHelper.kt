@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 import android.app.Activity
 import androidx.core.content.ContextCompat
@@ -11,13 +11,13 @@ import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
 import android.view.View
 import android.widget.*
-import com.hunter.btc.AppTheme.AMBER
-import com.hunter.btc.AppTheme.BG_CARD
-import com.hunter.btc.AppTheme.BG_PANEL
-import com.hunter.btc.AppTheme.BORDER_C
-import com.hunter.btc.AppTheme.TXT_MUTED
-import com.hunter.btc.AppTheme.TXT_PRI
-import com.hunter.btc.AppTheme.TXT_SEC
+import com.btcseedrecovery.AppTheme.AMBER
+import com.btcseedrecovery.AppTheme.BG_CARD
+import com.btcseedrecovery.AppTheme.BG_PANEL
+import com.btcseedrecovery.AppTheme.BORDER_C
+import com.btcseedrecovery.AppTheme.TXT_MUTED
+import com.btcseedrecovery.AppTheme.TXT_PRI
+import com.btcseedrecovery.AppTheme.TXT_SEC
 
 object PinAuthHelper {
 

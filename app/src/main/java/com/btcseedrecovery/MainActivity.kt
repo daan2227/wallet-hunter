@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 import android.app.*
 import android.content.BroadcastReceiver
@@ -18,9 +18,9 @@ import android.text.InputType
 import android.view.*
 import android.widget.*
 import java.io.*
-import com.hunter.btc.recovery.RecoveryEngine
-import com.hunter.btc.recovery.RecoveryParser
-import com.hunter.btc.recovery.ParseResult
+import com.btcseedrecovery.recovery.RecoveryEngine
+import com.btcseedrecovery.recovery.RecoveryParser
+import com.btcseedrecovery.recovery.ParseResult
 
 class SpeedChartView(context: android.content.Context) : android.view.View(context) {
     private val maxPoints = 60
@@ -2646,7 +2646,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryEngine = RecoveryEngine(this)
         val wordlistLoaded = recoveryEngine?.loadWordlist() ?: false
 
-        recoveryEngine?.listener = object : com.hunter.btc.recovery.RecoveryEngine.ProgressListener {
+        recoveryEngine?.listener = object : com.btcseedrecovery.recovery.RecoveryEngine.ProgressListener {
             override fun onProgress(attempts: Long, total: Long, currentWord: String) {
                 runOnUiThread {
                     val pct = ((attempts.toFloat() / total) * 1000).toInt()
@@ -2711,13 +2711,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 return@setOnClickListener
             }
             val wl = recoveryEngine?.getWordlistSet() ?: emptySet()
-            val parseResult = com.hunter.btc.recovery.RecoveryParser.parse(input, wl)
+            val parseResult = com.btcseedrecovery.recovery.RecoveryParser.parse(input, wl)
             when (parseResult) {
-                is com.hunter.btc.recovery.ParseResult.Error -> {
+                is com.btcseedrecovery.recovery.ParseResult.Error -> {
                     tvRecoveryStatus.text = parseResult.message
                     tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 }
-                is com.hunter.btc.recovery.ParseResult.Success -> {
+                is com.btcseedrecovery.recovery.ParseResult.Success -> {
                     tvRecoveryResult.visibility = android.view.View.GONE
                     pbRecovery.progress = 0
                     pbRecovery.visibility = android.view.View.VISIBLE

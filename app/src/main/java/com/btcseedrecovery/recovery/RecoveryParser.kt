@@ -1,4 +1,4 @@
-package com.hunter.btc.recovery
+package com.btcseedrecovery.recovery
 
 /**
  * Parsea una seed phrase ingresada por el usuario.
