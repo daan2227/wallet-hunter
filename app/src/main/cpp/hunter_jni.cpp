@@ -733,8 +733,13 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     uint8_t sha[32],h160[HASH160_BYTES];
     SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
     c->done++;
-    if(c->done%500==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-    int match=0; char sats_buf[24]="0"; char type_buf[12]="?";
+    /* Muestra de direcciones para la UI. Estaba cada 500 claves, lo que a
+       1M/s son 2000 codificaciones Base58 por segundo — cada una con doble
+       SHA-256 — más 2000 tomas de g_addr_mutex desde todos los hilos. La UI
+       sólo guarda las últimas 50 y se refresca cada 800 ms, así que una de
+       cada 50 000 basta de sobra. */
+    if(c->done%50000==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+    int match=0;
     if(g_has_target){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
     } else if(g_csv_loaded.load()){

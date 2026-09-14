@@ -450,8 +450,16 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
         LOGI("Objetivo tipo=%d purpose=m/%u'",(int)target_kind,purpose_for(target_kind));
     }
 
-    int n_threads=6;
+    /* Estaba fijo en 6, sin relación con el dispositivo: desaprovechaba los
+       móviles de 8 núcleos y sobresuscribía los de 4. Se deja uno libre para
+       la UI y el sistema. */
+    int hw=(int)std::thread::hardware_concurrency();
+    if(hw<1) hw=4;
+    int n_threads=hw-1;
+    if(n_threads<1) n_threads=1;
+    if(n_threads>16) n_threads=16;
     if(total<n_threads)n_threads=(int)total;
+    LOGI("Recovery: %d hilos (%d núcleos detectados)",n_threads,hw);
     long long chunk=total/n_threads;
 
     std::vector<std::thread> threads;
