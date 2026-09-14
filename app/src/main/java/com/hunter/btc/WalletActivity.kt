@@ -765,7 +765,25 @@ class WalletActivity : FragmentActivity() {
                             .put("amount", v))
                     }
                     if (totalIn < amtSat + feeSat) { runOnUiThread { tvStatus.text = "Insufficient: have ${totalIn}sat need ${amtSat+feeSat}sat"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
-                    val pathStr = when { fromKey.startsWith("p2pkh") -> "m/44'/0'/0'/0/${fromKey.last()}"; fromKey.startsWith("p2sh") -> "m/49'/0'/0'/0/0"; else -> "m/84'/0'/0'/0/${fromKey.last()}" }
+                    // deriveWallet emite p2pkh_N, p2sh_0, p2wpkh_N y p2tr_N. El
+                    // `else` anterior mandaba también las Taproot por m/84', así
+                    // que enviar desde una bc1p firmaba con la clave de OTRA
+                    // dirección. Además fromKey.last() tomaba un solo carácter:
+                    // con índices de dos cifras habría derivado el índice 0.
+                    val addrIdx = fromKey.substringAfterLast('_').toIntOrNull() ?: 0
+                    val pathStr = when {
+                        fromKey.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$addrIdx"
+                        fromKey.startsWith("p2sh")   -> "m/49'/0'/0'/0/$addrIdx"
+                        fromKey.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$addrIdx"
+                        fromKey.startsWith("p2tr")   -> "m/86'/0'/0'/0/$addrIdx"
+                        else -> {
+                            runOnUiThread {
+                                tvStatus.text = "Tipo de dirección no soportado: $fromKey"
+                                tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                            }
+                            return@Thread
+                        }
+                    }
                     // Se construía concatenando strings: la dirección venía del
                     // EditText sin escapar, así que unas comillas permitían alterar
                     // los campos amount/fee del JSON que firma el motor.
@@ -1224,8 +1242,16 @@ class WalletActivity : FragmentActivity() {
         dlg.show()
         btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnNext.setOnClickListener {
-            val mn = etSeed.text.toString().trim()
-            if (mn.split(" ").size < 12) { Toast.makeText(this, "Need 12+ words", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val mn = Bip39.normalize(etSeed.text.toString()).joinToString(" ")
+            // Sólo se contaban palabras: una seed mal tecleada se guardaba igual
+            // y la wallet derivaba direcciones ajenas, mostrando saldo cero.
+            when (val v = Bip39.validate(mn)) {
+                is Bip39.Result.Invalid -> {
+                    Toast.makeText(this, v.reason, Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                else -> {}
+            }
             dlg.dismiss()
             showPinDialog(isSetup = true) { ok ->
                 if (ok) { WalletManager.saveSeed(this, mn); mnemonic = mn; loadAddresses(); buildUI() }
