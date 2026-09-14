@@ -416,7 +416,27 @@ class WalletActivity : FragmentActivity() {
                     // caracteres, pero basta un campo nuevo con una coma para que
                     // el mapa de direcciones salga corrupto — y de ahí se firman
                     // transacciones.
-                    val obj = JSONObject(HunterEngine.deriveWallet(mnemonic))
+                    val raw = HunterEngine.deriveWallet(mnemonic)
+                    // Si el motor devuelve JSON mal formado, un JSONObject pelado
+                    // deja la wallet sin ninguna dirección. Se rescatan las
+                    // entradas bien formadas antes de rendirse: mejor una wallet
+                    // parcial que una vacía sin explicación.
+                    val obj = try {
+                        JSONObject(raw)
+                    } catch (e: Exception) {
+                        android.util.Log.e("WalletActivity", "deriveWallet devolvió JSON inválido: ${e.message}")
+                        val salvaged = JSONObject()
+                        Regex("\"([a-z0-9_]+)\"\\s*:\\s*\"?([a-zA-Z0-9]+)\"?")
+                            .findAll(raw)
+                            .forEach { m -> salvaged.put(m.groupValues[1], m.groupValues[2]) }
+                        if (salvaged.length() == 0) throw e
+                        runOnUiThread {
+                            Toast.makeText(this@WalletActivity,
+                                "Aviso: respuesta del motor mal formada, se recuperaron ${salvaged.length()} direcciones",
+                                Toast.LENGTH_LONG).show()
+                        }
+                        salvaged
+                    }
                     // JSONObject.keys() no garantiza orden. El desplegable "From
                     // address" se ordena por esta secuencia, así que un orden
                     // inestable podría llevar a enviar desde otra dirección.

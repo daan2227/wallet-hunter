@@ -533,7 +533,11 @@ static std::string derive_wallet_json(const char *mnemonic){
         if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
             char addr[MAX_ADDR]={0}; xonly_to_p2tr(tweaked,addr);
             char key[32]; snprintf(key,32,"\"p2tr_%d\"",i);
-            json+=key; json+=":""; json+=addr; json+="",";
+            // En C++ los literales adyacentes se concatenan: ":"" es ":" y
+            // "", es ",". Faltaban las comillas del valor, así que la entrada
+            // p2tr salía como  "p2tr_0":bc1p...,  y el objeto entero dejaba de
+            // ser JSON válido.
+            json+=key; json+=":\""; json+=addr; json+="\",";
         }
     }
     /* Remove trailing comma */
