@@ -701,9 +701,20 @@ class WalletActivity : FragmentActivity() {
                                 else selectedUtxos.remove(utxos.getJSONObject(idx))
                             }
                             .setPositiveButton("OK") { _, _ ->
-                                val total = selectedUtxos.sumOf { it.getLong("value") }
-                                btnCoinControl.text = "${selectedUtxos.size} UTXOs selected (%.8f BTC)".format(total/1e8)
-                                btnCoinControl.setTextColor(AMBER)
+                                if (selectedUtxos.isEmpty()) {
+                                    btnCoinControl.text = "Coin Control (auto)"
+                                    btnCoinControl.setTextColor(CYAN)
+                                } else {
+                                    val total = selectedUtxos.sumOf { it.getLong("value") }
+                                    btnCoinControl.text =
+                                        "${selectedUtxos.size} UTXOs seleccionados (%.8f BTC)".format(total/1e8)
+                                    btnCoinControl.setTextColor(AMBER)
+                                }
+                            }
+                            .setNeutralButton("Usar todos") { _, _ ->
+                                selectedUtxos.clear()
+                                btnCoinControl.text = "Coin Control (auto)"
+                                btnCoinControl.setTextColor(CYAN)
                             }
                             .setNegativeButton("Cancel", null)
                             .show()
@@ -751,13 +762,43 @@ class WalletActivity : FragmentActivity() {
                 try {
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val utxos = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
-                    if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    val fetched = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
+                    if (fetched.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+
+                    // Coin Control rellenaba selectedUtxos y el envío lo ignoraba,
+                    // gastando siempre todos los UTXOs: la función era decorativa.
+                    val chosen: List<org.json.JSONObject> =
+                        if (selectedUtxos.isNotEmpty())
+                            selectedUtxos.filter { sel ->
+                                (0 until fetched.length()).any {
+                                    val f = fetched.getJSONObject(it)
+                                    f.optString("txid") == sel.optString("txid") &&
+                                    f.optInt("vout") == sel.optInt("vout")
+                                }
+                            }
+                        else (0 until fetched.length()).map { fetched.getJSONObject(it) }
+                    if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "Ningún UTXO seleccionado sigue disponible"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+
                     val amtSat = (amtBtc * 1e8).toLong()
-                    val feeSat = (feeRate * (148 * utxos.length() + 34 * 2 + 10)).toLong()
+                    // El tamaño de un input depende del tipo: ~148 vB en P2PKH,
+                    // ~91 en P2SH-P2WPKH, ~68 en P2WPKH y ~58 en Taproot. Usar 148
+                    // para todos hacía pagar en SegWit más del doble de comisión.
+                    val inVBytes = when {
+                        fromKey.startsWith("p2pkh")  -> 148
+                        fromKey.startsWith("p2sh")   -> 91
+                        fromKey.startsWith("p2wpkh") -> 68
+                        else                         -> 58
+                    }
+                    val outVBytes = when {
+                        toAddr.startsWith("bc1p") || toAddr.startsWith("tb1p") -> 43
+                        toAddr.startsWith("bc1")  || toAddr.startsWith("tb1")  -> 31
+                        toAddr.startsWith("3")    || toAddr.startsWith("2")    -> 32
+                        else                                                   -> 34
+                    }
+                    val vsize = inVBytes * chosen.size + outVBytes + 31 + 11
+                    val feeSat = (feeRate.toLong() * vsize)
                     val utxoArr = JSONArray(); var totalIn = 0L
-                    for (i in 0 until utxos.length()) {
-                        val u = utxos.getJSONObject(i)
+                    for (u in chosen) {
                         val v = u.getLong("value"); totalIn += v
                         utxoArr.put(org.json.JSONObject()
                             .put("txid",   u.getString("txid"))
