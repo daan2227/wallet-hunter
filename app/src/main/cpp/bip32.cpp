@@ -132,3 +132,31 @@ bool bip44_derive_privkey(const uint8_t seed[64],
     memcpy(privkey_out, child.key, 32);
     return true;
 }
+
+bool bip_derive_privkey(const uint8_t seed[64],
+                        uint32_t purpose,
+                        uint32_t address_index,
+                        uint8_t privkey_out[32])
+{
+    Bip32Node node, child;
+
+    if (!bip32_master_key(seed, node)) return false;
+
+    // m/purpose'
+    if (!bip32_derive_child(node, purpose | 0x80000000u, child)) return false;
+    node = child;
+    // m/purpose'/0'   (coin: Bitcoin)
+    if (!bip32_derive_child(node, 0 | 0x80000000u, child)) return false;
+    node = child;
+    // m/purpose'/0'/0' (account 0)
+    if (!bip32_derive_child(node, 0 | 0x80000000u, child)) return false;
+    node = child;
+    // m/purpose'/0'/0'/0 (external chain)
+    if (!bip32_derive_child(node, 0, child)) return false;
+    node = child;
+    // m/purpose'/0'/0'/0/index
+    if (!bip32_derive_child(node, address_index, child)) return false;
+
+    memcpy(privkey_out, child.key, 32);
+    return true;
+}

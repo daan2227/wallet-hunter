@@ -60,4 +60,19 @@ bool bip44_derive_privkey(const uint8_t seed[64],
                           uint32_t address_index,
                           uint8_t privkey_out[32]);
 
+/**
+ * Derivación genérica m/purpose'/0'/0'/0/address_index.
+ *
+ * purpose 44 → P2PKH   ("1...")
+ * purpose 49 → P2SH-P2WPKH ("3...")
+ * purpose 84 → P2WPKH  ("bc1q...")
+ *
+ * bip44_derive_privkey sólo cubría purpose 44, así que la recuperación no
+ * podía encontrar wallets SegWit por muy correcta que fuese la seed.
+ */
+bool bip_derive_privkey(const uint8_t seed[64],
+                        uint32_t purpose,
+                        uint32_t address_index,
+                        uint8_t privkey_out[32]);
+
 #endif // WALLET_HUNTER_BIP32_H
