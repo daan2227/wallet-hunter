@@ -403,19 +403,26 @@ class WalletActivity : FragmentActivity() {
         if (mnemonic.isNotEmpty()) {
             Thread {
                 try {
-                    val json = HunterEngine.deriveWallet(mnemonic)
-                    val inner = json.trim().removePrefix("{").removeSuffix("}")
-                    val entries = mutableListOf<Pair<String,String>>()
-                    inner.split(",").forEach { part ->
-                        val kv = part.trim().split(":")
-                        if (kv.size >= 2) {
-                            val k = kv[0].trim().trim('"', ' ')
-                            val v = kv[1].trim().trim('"', ' ')
-                            if (k.isNotEmpty() && v.isNotEmpty()) entries.add(Pair(k, v))
+                    // Se troceaba el JSON a mano con removePrefix/split(",")/
+                    // split(":"). Funcionaba porque las direcciones no llevan esos
+                    // caracteres, pero basta un campo nuevo con una coma para que
+                    // el mapa de direcciones salga corrupto — y de ahí se firman
+                    // transacciones.
+                    val obj = JSONObject(HunterEngine.deriveWallet(mnemonic))
+                    // JSONObject.keys() no garantiza orden. El desplegable "From
+                    // address" se ordena por esta secuencia, así que un orden
+                    // inestable podría llevar a enviar desde otra dirección.
+                    val order = listOf("p2pkh", "p2sh", "p2wpkh", "p2tr")
+                    val map = LinkedHashMap<String, String>()
+                    obj.keys().asSequence().toList()
+                        .sortedWith(compareBy(
+                            { k -> order.indexOfFirst { k.startsWith(it) }.let { if (it < 0) order.size else it } },
+                            { k -> k.substringAfterLast('_').toIntOrNull() ?: 0 }
+                        ))
+                        .forEach { k ->
+                            val v = obj.optString(k)
+                            if (v.isNotEmpty()) map[k] = v
                         }
-                    }
-                    val map = mutableMapOf<String, String>()
-                    entries.forEach { (k, v) -> map[k] = v }
                     runOnUiThread { addresses = map; buildUI() }
                 } catch (e: Exception) {
                     runOnUiThread { buildUI() }
