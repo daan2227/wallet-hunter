@@ -331,10 +331,24 @@ object WalletManager {
     }
 
     // ── Backup cifrado de wallets ─────────────────────────────────────────────
+    /**
+     * Exporta TODO lo que el usuario tiene guardado.
+     *
+     * Antes sólo recorría listWallets(), y saveWallet() —lo único que rellena
+     * esa lista— se llama exclusivamente desde importBackup(). Es decir: la
+     * lista sólo tenía contenido si ya habías restaurado un backup antes, así
+     * que en la práctica exportBackup devolvía null y la app respondía "No hay
+     * wallets para exportar" por muchas wallets que tuvieras. La seed principal
+     * (saveSeed), los WIF y los watchers no se exportaban nunca.
+     */
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
         return try {
             val wallets = listWallets(ctx)
-            if (wallets.isEmpty()) return null
+            val mainSeed = loadSeed(ctx)
+            val wifs = listWifs(ctx)
+            val watchers = listWatchers(ctx)
+            if (wallets.isEmpty() && mainSeed == null && wifs.isEmpty() && watchers.isEmpty())
+                return null
 
             val backupData = org.json.JSONArray()
             for ((id, name) in wallets) {
@@ -345,12 +359,27 @@ object WalletManager {
                     put("seed", seed)
                 })
             }
+            val wifArr = org.json.JSONArray()
+            for ((id, wif, meta) in wifs) {
+                wifArr.put(org.json.JSONObject().apply {
+                    put("id", id); put("wif", wif); put("meta", meta)
+                })
+            }
+            val watchArr = org.json.JSONArray()
+            for ((id, addr, label) in watchers) {
+                watchArr.put(org.json.JSONObject().apply {
+                    put("id", id); put("addr", addr); put("label", label)
+                })
+            }
 
             val json = org.json.JSONObject().apply {
-                put("version",    1)
+                put("version",    2)
                 put("app",        "WalletHunter")
                 put("created_at", System.currentTimeMillis())
                 put("wallets",    backupData)
+                if (mainSeed != null) put("main_seed", mainSeed)
+                if (wifArr.length() > 0)   put("wifs",     wifArr)
+                if (watchArr.length() > 0) put("watchers", watchArr)
             }.toString()
 
             // Derivar clave del PIN con PBKDF2
@@ -396,14 +425,50 @@ object WalletManager {
                 javax.crypto.spec.GCMParameterSpec(128, iv))
             val json = String(cipher.doFinal(enc), Charsets.UTF_8)
 
-            val root    = org.json.JSONObject(json)
-            val wallets = root.getJSONArray("wallets")
-            var count   = 0
+            val root  = org.json.JSONObject(json)
+            var count = 0
+
+            // v1 sólo traía "wallets"; v2 añade la seed principal, los WIF y los
+            // watchers. Se leen con opt* para seguir aceptando backups antiguos.
+            val wallets = root.optJSONArray("wallets") ?: org.json.JSONArray()
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
                 saveWallet(ctx, w.getString("id"), w.getString("name"), w.getString("seed"))
                 count++
             }
+
+            root.optString("main_seed", "").takeIf { it.isNotEmpty() }?.let {
+                saveSeed(ctx, it); count++
+            }
+
+            root.optJSONArray("wifs")?.let { arr ->
+                val restored = (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Triple(o.optString("id"), o.optString("wif"), o.optString("meta"))
+                }.filter { it.second.isNotEmpty() }
+                if (restored.isNotEmpty()) {
+                    writeWifs(ctx, listWifs(ctx) + restored)
+                    count += restored.size
+                }
+            }
+
+            root.optJSONArray("watchers")?.let { arr ->
+                val restored = (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Triple(o.optString("id"), o.optString("addr"), o.optString("label"))
+                }.filter { it.second.isNotEmpty() }
+                if (restored.isNotEmpty()) {
+                    // Esta rama guarda los watchers con el formato posicional
+                    // ";;" / "~~~"; no existe aquí el escritor en JSON.
+                    val all = listWatchers(ctx) + restored
+                    ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
+                        .putString("watch_list",
+                            all.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" })
+                        .apply()
+                    count += restored.size
+                }
+            }
+
             count
         } catch (e: Exception) { -1 }
     }
