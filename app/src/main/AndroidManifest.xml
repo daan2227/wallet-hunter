@@ -19,11 +19,11 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="Wallet Hunter"
-        android:theme="@style/Theme.AppCompat.DayNight.NoActionBar"
+        android:theme="@style/AppThemeDark"
         android:requestLegacyExternalStorage="true">
         <activity android:name=".StatsActivity" android:screenOrientation="portrait" />
         <activity android:name=".WalletActivity"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog"
+            android:theme="@style/AppThemeWallet"
             android:screenOrientation="portrait" />
         <activity android:name=".WelcomeActivity"
             android:exported="true"
@@ -42,10 +42,10 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
         <activity android:name=".DebugActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:theme="@style/AppThemeDark" />
 
         <activity android:name=".NetworkActivity"
-            android:theme="@style/Theme.AppCompat.NoActionBar" />
+            android:theme="@style/AppThemeDark" />
 
         <!-- AdMob App ID (TEST) -->
         <meta-data

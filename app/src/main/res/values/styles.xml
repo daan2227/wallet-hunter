@@ -6,4 +6,19 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">false</item>
     </style>
+
+    <!-- Tema único de la app. Antes se usaba Theme.AppCompat.DayNight, que en
+         modo claro pinta un fondo blanco antes de que la actividad dibuje su
+         contenido: destello gris/blanco en cada transición sobre una interfaz
+         que siempre es oscura. -->
+    <style name="AppThemeDark" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">#090909</item>
+        <item name="android:colorBackground">#090909</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
+
+    <!-- WalletActivity se declaraba con Theme.DeviceDefault.Dialog, así que
+         Android la dibujaba como diálogo flotante: marco, márgenes y barra de
+         título. Además no es AppCompat, lo que hacía reventar sus diálogos. -->
+    <style name="AppThemeWallet" parent="AppThemeDark" />
 </resources>

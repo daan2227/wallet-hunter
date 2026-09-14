@@ -433,7 +433,15 @@ class WalletActivity : FragmentActivity() {
                         }
                     runOnUiThread { addresses = map; buildUI() }
                 } catch (e: Exception) {
-                    runOnUiThread { buildUI() }
+                    // Silencioso: la wallet quedaba sin direcciones y las
+                    // pestañas sin explicación.
+                    android.util.Log.e("WalletActivity", "deriveWallet: ${e.message}", e)
+                    runOnUiThread {
+                        Toast.makeText(this@WalletActivity,
+                            "No se pudieron derivar las direcciones: ${e.message}",
+                            Toast.LENGTH_LONG).show()
+                        buildUI()
+                    }
                 }
             }.start()
         }
@@ -635,7 +643,16 @@ class WalletActivity : FragmentActivity() {
         val tvHead = TextView(this).apply { text = "Loading..."; textSize = 11f; setTextColor(TXT_SEC); setPadding(0,dp(12),0,dp(8)) }
         ll.addView(tvHead); scroll.addView(ll); tabContent.addView(scroll)
 
-        val queryAddrs = addresses.values.toList().ifEmpty { return }
+        // ifEmpty { return } salía dejando el "Loading..." puesto para siempre,
+        // sin mensaje ni error. Ocurre si deriveWallet falló (su catch llama a
+        // buildUI con el mapa vacío) o si se abre la pestaña antes de que la
+        // derivación asíncrona haya terminado.
+        val queryAddrs = addresses.values.toList()
+        if (queryAddrs.isEmpty()) {
+            tvHead.text = "Sin direcciones que consultar todavía"
+            tvHead.setTextColor(AMBER)
+            return
+        }
         Thread {
             try {
                 val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/${queryAddrs[0]}/txs" else "https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
