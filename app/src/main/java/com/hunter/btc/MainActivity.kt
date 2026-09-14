@@ -190,6 +190,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
     private var tvSpeedUnitPuzzle: TextView? = null
+    /* Rango completo del puzzle. currentRangeStart/End apuntan al BLOQUE en
+       curso (BLOCK_SIZE claves), así que usarlos para el progreso global
+       comparaba la sesión entera contra un bloque y daba "1 de 0". */
+    private var puzzleProgressUpdater: ((Int, String, String) -> Unit)? = null
+    private var lastProgressTick = 0L
+    private var puzzleFullStart: String = ""
+    private var puzzleFullEnd: String = ""
 
     /** Velocidad escalada + unidad, para no volver a mentir con la etiqueta. */
     private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
@@ -241,6 +248,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val total = e.subtract(s)
             if (total.signum() <= 0) return "—"
             val ratio = total.divide(java.math.BigInteger.valueOf(scanned))
+            if (ratio.signum() <= 0) return "rango cubierto"
             val digits = ratio.toString().length
             if (digits <= 6) "1 de ${numberFmt.format(ratio.toLong())}"
             else "1 de 10^${digits - 1}"
@@ -1615,10 +1623,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             this, null, android.R.attr.progressBarStyleHorizontal
         ).apply {
             max = 10000; progress = 0
-            progressDrawable = android.graphics.drawable.GradientDrawable(
+            // Se asignaba un GradientDrawable pelado como progressDrawable, y
+            // ProgressBar lo pintaba entero sin recortarlo: la barra se veía
+            // siempre llena independientemente del valor. El drawable de
+            // progreso tiene que ir envuelto en ClipDrawable dentro de un
+            // LayerDrawable con los ids que ProgressBar espera.
+            val fill = android.graphics.drawable.GradientDrawable(
                 android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
                 intArrayOf(ACCENT2, ACCENT)
             ).apply { cornerRadius = dp(4).toFloat() }
+            val track = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+            }
+            progressDrawable = android.graphics.drawable.LayerDrawable(
+                arrayOf(
+                    track,
+                    android.graphics.drawable.ClipDrawable(
+                        fill, Gravity.START,
+                        android.graphics.drawable.ClipDrawable.HORIZONTAL)
+                )
+            ).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
                 android.widget.FrameLayout.LayoutParams.MATCH_PARENT
@@ -1657,7 +1684,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         page.addView(progressCard)
 
-        fun updatePuzzleProgress(puzzleNum: Int, rangeStart: String, rangeEnd: String) {
+        /* Estaba definida aquí dentro y no se llamaba desde ningún sitio, así
+           que la barra y el detalle se quedaban en sus valores iniciales
+           ("0.00%" y "Bloques: —"). Se expone como campo para poder
+           dispararla al seleccionar puzzle y desde updateUI. */
+        puzzleProgressUpdater = { puzzleNum: Int, rangeStart: String, rangeEnd: String ->
             Thread {
                 try {
                     val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
@@ -1673,6 +1704,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 } catch (e: Exception) {}
             }.start()
+            Unit
         }
 
         // Botón QR para dirección objetivo
@@ -3257,15 +3289,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // Actualizar peak y promedio
                 if (wps > peakWps) {
                     peakWps = wps
-                    val peakFmt = numberFmt.format(wps.toLong())
-                    tvPeakWps?.text = "peak $peakFmt"
-                    tvPeakWpsPuzzle?.text = "peak $peakFmt"
+                    // Se mostraba sin escalar junto a un valor ya escalado:
+                    // "1.76 MKeys" al lado de "peak 4,816,000" es ilegible.
+                    val (pv, pu) = scaleSpeed(wps)
+                    tvPeakWps?.text = "peak $pv $pu"
+                    tvPeakWpsPuzzle?.text = "peak $pv $pu"
                 }
                 if (wps > 0) {
                     avgWpsSum += wps
                     avgWpsCount++
                     val avg = avgWpsSum / avgWpsCount
-                    tvAvgWps?.text = "promedio ${numberFmt.format(avg.toLong())}"
+                    val (av, au) = scaleSpeed(avg)
+                    tvAvgWps?.text = "promedio $av $au"
                 }
 
                 if (puzzleMode) {
@@ -3277,7 +3312,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
                     // PROGRESO era un literal fijo que nunca se recalculaba.
                     tvPctPuzzle?.text = formatPuzzleProgress(
-                        scannedNow, currentRangeStart, currentRangeEnd)
+                        scannedNow, puzzleFullStart, puzzleFullEnd)
+                    // Refresca barra y recuento de bloques. Lee prefs y opera con
+                    // BigInteger, así que no en cada tick de 800ms.
+                    val nowMs = System.currentTimeMillis()
+                    if (nowMs - lastProgressTick > 5000 && puzzleFullStart.isNotEmpty()) {
+                        lastProgressTick = nowMs
+                        val pnum = puzzles.firstOrNull { it.start == puzzleFullStart }?.num
+                        if (pnum != null)
+                            puzzleProgressUpdater?.invoke(pnum, puzzleFullStart, puzzleFullEnd)
+                    }
                     // Tiempo estimado para completar el rango
                     if (wps > 0 && currentRangeStart.isNotEmpty() && currentRangeEnd.isNotEmpty()) {
                         try {
@@ -3858,6 +3902,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         etRangeEnd?.setText(p.end)
         currentRangeStart = p.start
         currentRangeEnd = p.end
+        puzzleFullStart = p.start
+        puzzleFullEnd = p.end
+        puzzleProgressUpdater?.invoke(p.num, p.start, p.end)
         etTarget?.setText(p.addr)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
         // Guardar rango para modo distribuido
