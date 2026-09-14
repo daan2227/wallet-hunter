@@ -36,12 +36,28 @@ android {
             version "3.22.1"
         }
     }
+    // Firma de release. El keystore real nunca se versiona: el workflow lo
+    // materializa desde el secret RELEASE_KEYSTORE_B64 en app/release.keystore.
+    // Si no está presente (build local, o secrets aún sin configurar) se cae al
+    // debug.keystore para no romper la compilación — pero un APK firmado así NO
+    // es publicable: Google Play rechaza la clave de debug y su contraseña es
+    // pública, así que cualquiera podría firmar una actualización falsa.
     signingConfigs {
         release {
-            storeFile file("debug.keystore")
-            storePassword "android"
-            keyAlias "androiddebugkey"
-            keyPassword "android"
+            def ksFile = file("release.keystore")
+            if (ksFile.exists()) {
+                storeFile     ksFile
+                storePassword System.getenv("RELEASE_STORE_PASSWORD")
+                keyAlias      System.getenv("RELEASE_KEY_ALIAS")
+                keyPassword   System.getenv("RELEASE_KEY_PASSWORD")
+            } else {
+                logger.warn("WARNING: release.keystore missing — signing with the " +
+                            "debug key. This APK is NOT publishable to Google Play.")
+                storeFile     file("debug.keystore")
+                storePassword "android"
+                keyAlias      "androiddebugkey"
+                keyPassword   "android"
+            }
         }
     }
     buildTypes {

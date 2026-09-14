@@ -131,10 +131,16 @@ object WalletManager {
                 parseTriples(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
             } catch (e: Exception) { emptyList() }
         }
-        // Migración desde el formato legacy en claro
+        // Migración desde el formato legacy en claro. Si falla, las claves
+        // privadas siguen sin cifrar en disco: hay que dejar rastro.
         val legacy = parseTriples(prefs.getString(PREF_WIF_PLAIN, "") ?: "")
         if (legacy.isNotEmpty()) {
-            try { writeWifs(ctx, legacy) } catch (e: Exception) {}
+            try {
+                writeWifs(ctx, legacy)
+            } catch (e: Exception) {
+                android.util.Log.e("WalletManager",
+                    "WIF migration failed — keys remain in cleartext: ${e.javaClass.simpleName}")
+            }
         }
         return legacy
     }
@@ -202,9 +208,17 @@ object WalletManager {
     fun hasSeed(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SEED)
 
-    /* PIN: guarda salt + texto de verificacion cifrado con clave derivada del PIN
-       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false
-       No hay hash almacenado -> no hay brute-force offline directo */
+    /* PIN: guarda salt + texto de verificación cifrado con clave derivada del PIN.
+       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES-GCM no
+       autentica -> checkPin devuelve false.
+
+       OJO: guardar enc("wallet_ok") bajo una clave derivada del PIN ES un
+       verificador, y a efectos de fuerza bruta offline equivale a un hash: quien
+       extraiga salt+verificador puede probar PINs sin pasar por la app. Con 6
+       dígitos (10^6) y PBKDF2 a 100k iteraciones, una GPU de consumo recorre el
+       espacio completo en segundos. Lo que nos protege es que los prefs no salgan
+       del dispositivo (allowBackup=false, dataExtractionRules), no la derivación.
+       El rate limiting de abajo solo frena los intentos hechos por pantalla. */
     fun savePin(ctx: Context, pin: String) {
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
         val key  = pinToKey(pin, salt)
