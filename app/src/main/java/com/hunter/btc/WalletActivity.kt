@@ -1395,4 +1395,18 @@ class WalletActivity : FragmentActivity() {
     }
 
 
+
+    /**
+     * Faltaba por completo: showRestoreDialog() lanzaba el selector de ficheros
+     * con REQ_IMPORT_BACKUP, pero esta clase no tenía onActivityResult, así que
+     * doRestore() nunca llegaba a ejecutarse. "Restaurar Backup" abría el
+     * selector y descartaba el fichero en silencio — sin forma de recuperar las
+     * wallets desde una copia de seguridad.
+     */
+    override fun onActivityResult(req: Int, res: Int, data: android.content.Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req == REQ_IMPORT_BACKUP && res == RESULT_OK) {
+            data?.data?.let { doRestore(it) }
+        }
+    }
 }
