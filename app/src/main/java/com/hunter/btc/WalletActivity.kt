@@ -718,6 +718,34 @@ class WalletActivity : FragmentActivity() {
             val fromKey = addresses.keys.toList().getOrNull(spinFrom.selectedItemPosition) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
             if (toAddr.isEmpty() || amtBtc <= 0) { tvStatus.text = "Fill all fields"; tvStatus.setTextColor(RED); return@setOnClickListener }
+
+            // Antes sólo se comprobaba que el campo no estuviera vacío. Un envío a
+            // una dirección con un carácter mal tecleado es irreversible.
+            val check = BtcAddress.validate(toAddr, isTestnet)
+            if (check is BtcAddress.Result.Invalid) {
+                tvStatus.text = "Dirección inválida: ${check.reason}"
+                tvStatus.setTextColor(RED)
+                return@setOnClickListener
+            }
+            val addrType = (check as BtcAddress.Result.Valid).info.type
+
+            // Confirmación explícita: no había ninguna entre pulsar y difundir.
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Confirmar envío")
+                .setMessage("Enviar %.8f BTC\n\nA: %s\n(%s)\n\nComisión: %d sat/vB\n\n%s"
+                    .format(amtBtc, toAddr, addrType, feeRate,
+                            "Las transacciones de Bitcoin NO se pueden deshacer."))
+                .setNegativeButton("Cancelar", null)
+                .setPositiveButton("Enviar") { _, _ ->
+                    doSend(toAddr, amtBtc, feeRate, fromKey, fromAddr, tvStatus, btnSend)
+                }
+                .show()
+        }
+    }
+
+    private fun doSend(toAddr: String, amtBtc: Double, feeRate: Int,
+                       fromKey: String, fromAddr: String,
+                       tvStatus: TextView, btnSend: Button) {
             tvStatus.text = "Fetching UTXOs..."; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
@@ -727,15 +755,28 @@ class WalletActivity : FragmentActivity() {
                     if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     val amtSat = (amtBtc * 1e8).toLong()
                     val feeSat = (feeRate * (148 * utxos.length() + 34 * 2 + 10)).toLong()
-                    var utxoArr = "["; var totalIn = 0L
+                    val utxoArr = JSONArray(); var totalIn = 0L
                     for (i in 0 until utxos.length()) {
-                        val u = utxos.getJSONObject(i); val txid = u.getString("txid"); val vout = u.getInt("vout"); val v = u.getLong("value")
-                        totalIn += v; if (i > 0) utxoArr += ","; utxoArr += "{\"txid\":\"$txid\",\"vout\":$vout,\"amount\":$v}"
+                        val u = utxos.getJSONObject(i)
+                        val v = u.getLong("value"); totalIn += v
+                        utxoArr.put(org.json.JSONObject()
+                            .put("txid",   u.getString("txid"))
+                            .put("vout",   u.getInt("vout"))
+                            .put("amount", v))
                     }
-                    utxoArr += "]"
                     if (totalIn < amtSat + feeSat) { runOnUiThread { tvStatus.text = "Insufficient: have ${totalIn}sat need ${amtSat+feeSat}sat"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     val pathStr = when { fromKey.startsWith("p2pkh") -> "m/44'/0'/0'/0/${fromKey.last()}"; fromKey.startsWith("p2sh") -> "m/49'/0'/0'/0/0"; else -> "m/84'/0'/0'/0/${fromKey.last()}" }
-                    val req = "{\"mnemonic\":\"$mnemonic\",\"path\":\"$pathStr\",\"utxos\":$utxoArr,\"to\":\"$toAddr\",\"amount\":$amtSat,\"fee\":$feeSat}"
+                    // Se construía concatenando strings: la dirección venía del
+                    // EditText sin escapar, así que unas comillas permitían alterar
+                    // los campos amount/fee del JSON que firma el motor.
+                    val req = org.json.JSONObject()
+                        .put("mnemonic", mnemonic)
+                        .put("path",     pathStr)
+                        .put("utxos",    utxoArr)
+                        .put("to",       toAddr)
+                        .put("amount",   amtSat)
+                        .put("fee",      feeSat)
+                        .toString()
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     runOnUiThread { tvStatus.text = "Broadcasting..."; tvStatus.setTextColor(TXT_SEC) }
@@ -749,7 +790,6 @@ class WalletActivity : FragmentActivity() {
                     runOnUiThread { tvStatus.text = if (code == 200) "Sent!\nTXID: $resp" else "Error $code:\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = "Error: ${e.message}"; tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()
-        }
     }
 
     /* -- RECEIVE -- */
