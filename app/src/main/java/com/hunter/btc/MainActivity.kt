@@ -157,7 +157,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var currentRangeEnd: String = ""
     private val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
     private val REQ_IMPORT_PROGRESS = 1003
-    private val REQ_INSTALL_BINARY = 1004
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
     private var etTarget: EditText? = null
@@ -3567,10 +3566,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
-        if (req == REQ_INSTALL_BINARY && res == RESULT_OK) {
-            data?.data?.let { processInstallBinary(it) }
-            return
-        }
         if (req == REQ_IMPORT_CONFIG && res == RESULT_OK) {
             data?.data?.let { applyImportedConfig(it) }
             return
@@ -4313,38 +4308,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
 
-    private fun processInstallBinary(uri: android.net.Uri) {
-        try {
-            val dest = java.io.File(filesDir, "hunter_master")
-            contentResolver.openInputStream(uri)?.use { input ->
-                dest.outputStream().use { output -> input.copyTo(output) }
-            }
-            // Ejecutable sólo para el propietario. Antes se usaba
-            // setExecutable(true, false) + chmod 755, que lo dejaba legible y
-            // ejecutable para cualquiera; el chmod externo además sobraba.
-            dest.setReadable(true, true)
-            dest.setExecutable(true, true)
-
-            val exists = dest.exists()
-            val hash = NativeEngine.binarySha256(this) ?: "no disponible"
-
-            // El binario se ejecutará con los permisos de esta app, que incluyen
-            // acceso a las seeds cifradas. Mostramos el hash para poder cotejarlo
-            // con el de la fuente antes de usarlo.
-            android.app.AlertDialog.Builder(this)
-                .setTitle(if (exists) "Motor nativo instalado" else "Error")
-                .setMessage(
-                    "Tamaño: ${dest.length()} bytes\nEjecutable: ${dest.canExecute()}\n\n" +
-                    "SHA-256:\n$hash\n\n" +
-                    "Este binario se ejecuta con los permisos de la app, " +
-                    "incluido el acceso a tus wallets. Verifica que el hash " +
-                    "coincide con el de la fuente de la que lo descargaste.")
-                .setPositiveButton("OK", null).show()
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "Error: ${e.message}",
-                android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
 
 
 
