@@ -114,13 +114,30 @@ object ElectrumClient {
     }
 
     private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {
-        val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        val raw = factory.createSocket()
-        raw.use {
-            raw.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-            raw.soTimeout = READ_TIMEOUT_MS
-            val reader = BufferedReader(InputStreamReader(raw.getInputStream()))
-            val writer = BufferedWriter(OutputStreamWriter(raw.getOutputStream()))
+        // Conectamos primero un socket plano para que aplique CONNECT_TIMEOUT_MS y
+        // luego montamos TLS encima. createSocket(socket, host, port, autoClose=true)
+        // hace que el SSLSocket sea dueño del plano, así cerrarlo cierra ambos.
+        val plain = java.net.Socket()
+        val ssl = try {
+            plain.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            factory.createSocket(plain, host, port, true) as javax.net.ssl.SSLSocket
+        } catch (e: Throwable) {
+            try { plain.close() } catch (_: Exception) {}
+            throw e
+        }
+        ssl.use {
+            // Un SSLSocket valida la cadena de certificados pero NO comprueba que
+            // el certificado corresponda a `host` salvo que se pida explícitamente.
+            // Sin esto, cualquier certificado de cualquier CA de confianza sirve
+            // para un ataque MITM.
+            ssl.sslParameters = ssl.sslParameters.apply {
+                endpointIdentificationAlgorithm = "HTTPS"
+            }
+            ssl.soTimeout = READ_TIMEOUT_MS
+            ssl.startHandshake()
+            val reader = BufferedReader(InputStreamReader(ssl.inputStream))
+            val writer = BufferedWriter(OutputStreamWriter(ssl.outputStream))
             return block(reader, writer)
         }
     }

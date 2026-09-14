@@ -51,19 +51,22 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleRelease
 
+    # Esta rama publica bajo su propio tag. El tag "latest-build" pertenece a
+    # playstore/seed-recovery; compartirlo hacía que cualquier build de esta
+    # rama borrase y reemplazase aquel APK bajo la misma etiqueta de descarga.
     - name: Delete old release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release delete latest-build --yes 2>/dev/null || true
-        git push --delete origin latest-build 2>/dev/null || true
+        gh release delete latest-build-full --yes 2>/dev/null || true
+        git push --delete origin latest-build-full 2>/dev/null || true
 
     - name: Create Release with APK
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create latest-build \
+        gh release create latest-build-full \
           app/build/outputs/apk/release/*.apk \
-          --title "Latest Build $(date +%Y-%m-%d)" \
-          --notes "Auto-build from commit ${{ github.sha }}" \
+          --title "Full build (hunting) $(date +%Y-%m-%d)" \
+          --notes "Auto-build from commit ${{ github.sha }}. Full app including hunting features — NOT the Play Store build." \
           --prerelease
