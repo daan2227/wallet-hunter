@@ -1954,7 +1954,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         powerCard.addView(scanModeRow)
 
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
-        val batchLabels = listOf(64, 128, 256, 512, 1024, 2048, 4096)
+        // JAC_BATCH en jac_batch.h permite hasta 16000 y el worker ya acota a
+        // ese máximo; el slider se quedaba en 4096, la cuarta parte. Lotes
+        // mayores amortizan mejor la única inversión modular por lote.
+        val batchLabels = listOf(64, 128, 256, 512, 1024, 2048, 4096, 8192, 16000)
 
         val batchHeaderRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2007,7 +2010,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(2) }
         }
-        listOf("64", "", "256", "", "1K", "", "4K").forEach { lbl ->
+        listOf("64", "", "256", "", "1K", "", "4K", "", "16K").forEach { lbl ->
             batchLabelRow.addView(TextView(this).apply {
                 text = lbl; textSize = 8f; setTextColor(0xFF555555.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
@@ -2887,7 +2890,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun updatePuzzleLabels() {
         val t = (sbThreadsPuzzle?.progress ?: 3) + 1
         val c = (sbCpuPuzzle?.progress ?: 70) + 10
-        tvThreadsPuzzle?.text = "Threads: $t"
+        // Mostrar también los núcleos disponibles: sin esa referencia no hay
+        // forma de saber si el número de hilos elegido tiene sentido.
+        tvThreadsPuzzle?.text = "Threads: $t / ${Runtime.getRuntime().availableProcessors()} cores"
         tvCpuPuzzle?.text = "CPU limit: $c%"
         prefs.edit().putInt("puzzle_threads", sbThreadsPuzzle?.progress ?: 3)
                     .putInt("puzzle_cpu",     sbCpuPuzzle?.progress ?: 70).apply()
@@ -3132,7 +3137,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     sbCpuPuzzle?.progress     = (c - 10).coerceIn(0, 90)
                     tvThreads?.text     = "Threads: $t"
                     tvCpu?.text         = "CPU limit: $c%"
-                    tvThreadsPuzzle?.text = "Threads: $t"
+                    // Mostrar también los núcleos disponibles: sin esa referencia no hay
+        // forma de saber si el número de hilos elegido tiene sentido.
+        tvThreadsPuzzle?.text = "Threads: $t / ${Runtime.getRuntime().availableProcessors()} cores"
                     tvCpuPuzzle?.text     = "CPU limit: $c%"
                 }
                 Toast.makeText(this,

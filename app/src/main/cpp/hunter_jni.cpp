@@ -923,10 +923,19 @@ static void *worker_puzzle_fn(void *arg){
                 memcpy(g_seq_pos, g_range_start, 32);
                 memcpy(privkey, g_range_start, 32);
             }
-            /* Avanzar posición para el próximo thread */
-            int cur_b = g_batch_size.load();
-            for(int step = 0; step < cur_b; step++) {
-                for(int b = 31; b >= 0; b--) { if(++g_seq_pos[b]) break; }
+            /* Avanzar la posición para el siguiente hilo.
+               Antes se releía g_batch_size aquí: si el usuario movía el slider
+               entre las dos lecturas, el avance no coincidía con lo que este
+               hilo iba a procesar y quedaban claves sin escanear o repetidas.
+               Se usa cur_batch, el mismo valor con el que se construye el lote.
+               Además el avance era un bucle de cur_batch incrementos de 32
+               bytes CON EL MUTEX TOMADO — con lotes de 16000 eso serializaba a
+               todos los hilos. Ahora es una suma con acarreo, O(32). */
+            uint64_t add = (uint64_t)cur_batch;
+            for(int b = 31; b >= 0 && add; b--){
+                uint64_t sum = (uint64_t)g_seq_pos[b] + (add & 0xFF);
+                g_seq_pos[b] = (uint8_t)(sum & 0xFF);
+                add = (add >> 8) + (sum >> 8);
             }
         } else {
             gen_privkey_fast(privkey, &rng);
