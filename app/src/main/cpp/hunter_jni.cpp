@@ -529,6 +529,7 @@ static std::string derive_wallet_json(const char *mnemonic){
 /* Calcula cuantos bytes/bits son el rango */
 static int       g_range_bits  = 0;   /* bits activos del rango */
 static uint8_t   g_range_mask  = 0;   /* mascara para el byte superior */
+static uint8_t   g_range_diff[32] = {0}; /* end - start, para acotar el offset */
 
 static void precompute_range(){
     /* Encontrar el bit mas alto del rango */
@@ -540,16 +541,20 @@ static void precompute_range(){
         if(d<0){d+=256;borrow=1;}else borrow=0;
         diff[i]=(uint8_t)d;
     }
-    /* Encontrar byte mas alto */
+    memcpy(g_range_diff,diff,32);
+    /* Longitud en bits de diff.
+       El cálculo anterior partía de (32-i)*8 y restaba un bit por cada
+       desplazamiento de diff[i], lo que sobrestimaba o subestimaba según el
+       byte: para diff[i]=0x01 daba 73 bits en vez de 65, y para 0xFF daba 66
+       en vez de 72. La máscara derivada de ahí limitaba el byte superior a
+       unos pocos bits, de modo que el generador sólo cubría una fracción del
+       rango (1,6% en varios puzzles). */
     g_range_bits=0;
     for(int i=0;i<32;i++){
         if(diff[i]){
-            g_range_bits=(32-i)*8;
+            g_range_bits=(31-i)*8;          /* bytes completos por debajo */
             uint8_t b=diff[i];
-            while(b>>=1) g_range_bits--;
-            g_range_bits++;
-            /* mascara para el byte superior del rango */
-            int top_byte=32-(g_range_bits+7)/8;
+            while(b){ g_range_bits++; b>>=1; }
             int bits_in_top=g_range_bits%8;
             g_range_mask=(bits_in_top==0)?0xFF:((1<<bits_in_top)-1);
             break;
@@ -574,30 +579,41 @@ static uint64_t xr_next(XR128 *x){
     x->s1=s1; return s0+s1;
 }
 
+/* Genera una clave uniforme dentro de [g_range_start, g_range_end].
+   Antes se copiaba g_range_start en `out` como base y luego se volvía a SUMAR
+   entero: los bytes por encima del offset aleatorio acababan valiendo el doble
+   del inicio del rango. Para muchos puzzles eso dejaba el 100% de las claves
+   fuera del rango, y como el fallback era memcpy(out, g_range_start, 32), el
+   worker probaba una y otra vez exactamente la misma clave. */
 static void gen_privkey_fast(uint8_t *out, XR128 *rng){
-    /* Copiar start como base */
-    memcpy(out, g_range_start, 32);
-    /* Generar bytes aleatorios para los bits del rango */
     int range_bytes = (g_range_bits+7)/8;
     int top_idx     = 32 - range_bytes;
-    /* Llenar con xorshift128+ */
-    uint64_t r;
-    for(int i=31; i>=top_idx; i-=8){
-        r=xr_next(rng);
-        for(int j=0;j<8&&(i-j)>=top_idx;j++)
-            out[i-j]=(uint8_t)(r>>(j*8));
+    if(top_idx < 0) top_idx = 0;
+
+    /* Offset aleatorio en [0, 2^range_bits). La máscara deja el offset por
+       encima de diff con probabilidad < 1/2, así que unos pocos reintentos
+       bastan para que quede uniforme dentro de [0, diff]. */
+    for(int attempt=0; attempt<8; attempt++){
+        memset(out, 0, 32);
+        for(int i=31; i>=top_idx; i-=8){
+            uint64_t r=xr_next(rng);
+            for(int j=0;j<8&&(i-j)>=top_idx;j++)
+                out[i-j]=(uint8_t)(r>>(j*8));
+        }
+        out[top_idx] &= g_range_mask;
+        if(memcmp(out, g_range_diff, 32) <= 0) break;   /* offset dentro de diff */
     }
-    /* Aplicar mascara al byte superior para no salir del rango */
-    out[top_idx] &= g_range_mask;
-    /* Sumar start con carry */
+
+    /* out = start + offset */
     int carry=0;
     for(int i=31;i>=0;i--){
         int s=(int)out[i]+(int)g_range_start[i]+carry;
         out[i]=(uint8_t)(s&0xFF); carry=s>>8;
     }
-    /* Si supera end, usar start (raro) */
+    /* Red de seguridad: acotar al final del rango, no al inicio, para no
+       reintroducir la clave repetida. */
     if(memcmp(out, g_range_end, 32)>0)
-        memcpy(out, g_range_start, 32);
+        memcpy(out, g_range_end, 32);
 }
 
 /* Guardar match */
