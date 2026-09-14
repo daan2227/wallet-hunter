@@ -188,9 +188,12 @@ class DebugActivity : AppCompatActivity() {
         val filesCard = card()
         filesCard.addView(label("ARCHIVOS DE LOG"))
 
+        // coincidencias.txt vive ahora en almacenamiento interno; el externo se
+        // deja listado sólo para poder borrar restos de versiones anteriores.
         val logFiles = listOf(
             File(filesDir, "crash_log.txt"),
             File(filesDir, "puz_debug.txt"),
+            File(filesDir, "coincidencias.txt"),
             File(getExternalFilesDir(null), "crash_log.txt"),
             File(getExternalFilesDir(null), "coincidencias.txt")
         )

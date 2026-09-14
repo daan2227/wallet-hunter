@@ -82,6 +82,10 @@ static uint8_t  *g_xonly  = nullptr;
 static uint64_t  g_total_tr = 0;
 static Bloom     g_bloom_tr = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
+/* Directorio donde se guardan los matches. Lo fija la app con
+   setMatchDir(filesDir) para que las claves privadas no acaben junto al CSV,
+   que normalmente está en almacenamiento externo. */
+static char      g_match_dir[1024] = "";
 
 static std::atomic<long>   g_count(0);
 static std::atomic<long>   g_found(0);
@@ -598,9 +602,20 @@ static void gen_privkey_fast(uint8_t *out, XR128 *rng){
 
 /* Guardar match */
 static void save_match(const char *privhex, const char *addr, double btc, const char *wif, const char *extra){
-    std::string outpath=std::string(g_csv_path);
-    size_t sl=outpath.rfind('/');
-    if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    /* El fichero lleva claves privadas en claro. Si la app ha fijado un
+       directorio interno lo usamos; sólo si no, caemos junto al CSV (que suele
+       estar en almacenamiento externo, legible por apps con
+       MANAGE_EXTERNAL_STORAGE y por USB). */
+    std::string outpath;
+    if(g_match_dir[0]!='\0'){
+        outpath=std::string(g_match_dir);
+        if(outpath.back()!='/') outpath+='/';
+        outpath+="coincidencias.txt";
+    }else{
+        outpath=std::string(g_csv_path);
+        size_t sl=outpath.rfind('/');
+        if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    }
     FILE *fo=fopen(outpath.c_str(),"a");
     if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
@@ -1048,6 +1063,16 @@ Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
     strncpy(g_csv_path,p,sizeof(g_csv_path)-1);
     env->ReleaseStringUTFChars(path,p);
     pthread_t t;pthread_create(&t,nullptr,load_fn,nullptr);pthread_detach(t);
+}
+
+/* Fija el directorio donde save_match() escribe coincidencias.txt. La app pasa
+   filesDir (almacenamiento interno) para que las claves privadas no se escriban
+   junto al CSV. */
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setMatchDir(JNIEnv *env,jobject,jstring dir){
+    const char *p=env->GetStringUTFChars(dir,nullptr);
+    if(p){ strncpy(g_match_dir,p,sizeof(g_match_dir)-1); g_match_dir[sizeof(g_match_dir)-1]='\0'; }
+    env->ReleaseStringUTFChars(dir,p);
 }
 
 JNIEXPORT void JNICALL

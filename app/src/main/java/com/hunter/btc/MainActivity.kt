@@ -336,6 +336,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tabBtns  = listOf<TextView>()
         goTab(0)
 
+        // El motor escribe coincidencias.txt con los WIF en claro. Sin esto los
+        // deja junto al CSV, normalmente en almacenamiento externo.
+        try {
+            HunterEngine.setMatchDir(filesDir.absolutePath)
+            migrateLegacyMatchFile()
+        } catch (e: Throwable) {
+            android.util.Log.e("MainActivity", "setMatchDir: ${e.message}", e)
+        }
+
         // Init
         try {
             if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())
@@ -2272,8 +2281,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Leer coincidencias y calcular total
         fun loadCoincidencias(): Pair<Double, List<Triple<String,Double,String>>> {
-            val f = getExternalFilesDir(null)?.let { java.io.File(it, "coincidencias.txt") }
-            if (f == null || !f.exists()) return Pair(0.0, emptyList())
+            val f = matchesFile()
+            if (!f.exists()) return Pair(0.0, emptyList())
             var total = 0.0
             val matches = mutableListOf<Triple<String,Double,String>>()
             f.readLines().forEach { line ->
@@ -2720,10 +2729,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvRecoveryResult.visibility = android.view.View.VISIBLE
                     btnSaveWallet.tag = mnemonic
                     btnSaveWallet.visibility = android.view.View.VISIBLE
-                    val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                    val f = java.io.File(getExternalFilesDir(null), "recovery_$ts.txt")
-                    f.writeText("RECOVERY MATCH\n$mnemonic\n")
-                    sendMatchNotification(mnemonic.take(30), "RECOVERY")
+                    // La seed NO se escribe en disco. Antes se volcaba en claro a
+                    // getExternalFilesDir()/recovery_<ts>.txt, legible por cualquier
+                    // app con MANAGE_EXTERNAL_STORAGE y visible por USB, lo que
+                    // anulaba el cifrado del resto de la app. Para conservarla, el
+                    // usuario pulsa "Guardar wallet", que la cifra con el Keystore.
+                    // Borramos también los ficheros que dejaron versiones anteriores.
+                    purgeLegacyRecoveryFiles()
+                    sendMatchNotification("Seed recuperada", "RECOVERY")
                 }
             }
             override fun onNotFound() {
@@ -3649,7 +3662,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun exportEncryptedBackup() {
         val dir = getExternalFilesDir(null) ?: filesDir
-        val coincidencias = java.io.File(dir, "coincidencias.txt")
+        val coincidencias = matchesFile()
         if (!coincidencias.exists()) {
             android.widget.Toast.makeText(this, "Sin matches para exportar", android.widget.Toast.LENGTH_SHORT).show()
             return
@@ -3716,11 +3729,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sb.appendLine("Dispositivo: ${android.os.Build.MODEL}")
         sb.appendLine()
 
-        // Incluir coincidencias
-        val coincidencias = File(dir, "coincidencias.txt")
+        // Incluir coincidencias SIN las claves privadas: este fichero se comparte
+        // por ACTION_SEND y podría acabar en mensajería o correo. Para exportar
+        // las claves está exportEncryptedBackup(), que cifra con PIN.
+        val coincidencias = matchesFile()
         if (coincidencias.exists()) {
             sb.appendLine("=== MATCHES ENCONTRADOS ===")
-            sb.appendLine(coincidencias.readText())
+            sb.appendLine("(claves privadas omitidas — usa el backup cifrado)")
+            coincidencias.readLines().forEach { line ->
+                sb.appendLine(line.replace(Regex("""WIF:\S+"""), "WIF:[oculto]")
+                                   .replace(Regex("""HEX:\S+"""), "HEX:[oculto]"))
+            }
         } else {
             sb.appendLine("=== SIN MATCHES AÚN ===")
         }
@@ -4357,6 +4376,42 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onDestroy()
         savePuzzleCheckpoint()
         batteryReceiver?.let { unregisterReceiver(it) }
+    }
+
+    /** Fichero de matches, ahora siempre en almacenamiento interno. */
+    private fun matchesFile() = java.io.File(filesDir, "coincidencias.txt")
+
+    /**
+     * Traslada el coincidencias.txt que las versiones anteriores dejaron en
+     * almacenamiento externo. Contiene claves privadas en claro, así que se
+     * concatena al interno y se borra el original.
+     */
+    private fun migrateLegacyMatchFile() {
+        try {
+            val ext = getExternalFilesDir(null) ?: return
+            val old = java.io.File(ext, "coincidencias.txt")
+            if (!old.exists()) return
+            matchesFile().appendText(old.readText())
+            old.delete()
+            android.util.Log.i("MainActivity", "coincidencias.txt migrado a interno")
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "migrate matches: ${e.message}")
+        }
+    }
+
+    /**
+     * Versiones anteriores volcaban la seed recuperada en claro a
+     * getExternalFilesDir()/recovery_<ts>.txt. Actualizar la app no borra esos
+     * ficheros, así que se eliminan aquí en cuanto se ejecuta un recovery.
+     */
+    private fun purgeLegacyRecoveryFiles() {
+        try {
+            getExternalFilesDir(null)
+                ?.listFiles { f -> f.name.startsWith("recovery_") && f.name.endsWith(".txt") }
+                ?.forEach { it.delete() }
+        } catch (e: Exception) {
+            android.util.Log.w("MainActivity", "purge recovery files: ${e.message}")
+        }
     }
 
     private fun savePuzzleCheckpoint() {
