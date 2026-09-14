@@ -19,19 +19,39 @@ object NativeEngine {
     var onMatch: ((String) -> Unit)? = null
     var onLog: ((String) -> Unit)? = null
 
+    /**
+     * Sólo se ejecuta el binario de almacenamiento interno, que llega ahí
+     * mediante el selector de ficheros (el usuario elige conscientemente qué
+     * instalar).
+     *
+     * Antes, si no existía el interno, se copiaba automáticamente cualquier
+     * fichero llamado "hunter_master" desde getExternalFilesDir(), se marcaba
+     * ejecutable y se lanzaba, sin hash ni firma. Cualquiera que pudiera
+     * escribir ahí —por USB, o una app con MANAGE_EXTERNAL_STORAGE— conseguía
+     * ejecución de código con los permisos de esta app, que incluyen acceso a
+     * filesDir, donde viven las seeds cifradas.
+     */
     fun getBinaryPath(ctx: Context): String {
-        // Primero buscar en filesDir (interno)
         val internal = File(ctx.filesDir, BINARY_NAME)
-        if (internal.exists() && internal.canExecute()) return internal.absolutePath
-        // Luego en externalFilesDir
-        val external = File(ctx.getExternalFilesDir(null), BINARY_NAME)
-        if (external.exists()) {
-            // Copiar a filesDir para tener permisos de ejecución
-            external.copyTo(internal, overwrite = true)
-            internal.setExecutable(true)
-            return internal.absolutePath
-        }
-        return ""
+        return if (internal.exists() && internal.canExecute()) internal.absolutePath else ""
+    }
+
+    /** SHA-256 del binario instalado, para que el usuario pueda verificarlo. */
+    fun binarySha256(ctx: Context): String? {
+        val f = File(ctx.filesDir, BINARY_NAME)
+        if (!f.exists()) return null
+        return try {
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            f.inputStream().use { ins ->
+                val buf = ByteArray(8192)
+                while (true) {
+                    val n = ins.read(buf)
+                    if (n <= 0) break
+                    md.update(buf, 0, n)
+                }
+            }
+            md.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) { null }
     }
 
     fun isAvailable(ctx: Context) = getBinaryPath(ctx).isNotEmpty()
@@ -52,10 +72,10 @@ object NativeEngine {
                 val cmd = listOf(binPath, mode, dbPath, threads.toString())
                 onLog?.invoke("Iniciando: ${cmd.joinToString(" ")}")
 
-                val pb = ProcessBuilder(cmd).apply {
-                    redirectErrorStream(true)
-                    environment()["LD_LIBRARY_PATH"] = "/data/data/com.termux/files/usr/lib"
-                }
+                // Sin LD_LIBRARY_PATH: apuntaba a /data/data/com.termux/files/usr/lib,
+                // es decir, cargaba librerías desde OTRA aplicación. Resto de
+                // desarrollo y un vector para inyectar código en el proceso hijo.
+                val pb = ProcessBuilder(cmd).apply { redirectErrorStream(true) }
                 process = pb.start()
 
                 val reader = BufferedReader(InputStreamReader(process!!.inputStream))

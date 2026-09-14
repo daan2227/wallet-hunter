@@ -4176,19 +4176,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             contentResolver.openInputStream(uri)?.use { input ->
                 dest.outputStream().use { output -> input.copyTo(output) }
             }
-            // Setear permisos de ejecución via chmod
-            dest.setExecutable(true, false)
-            try {
-                Runtime.getRuntime().exec(arrayOf("chmod", "755", dest.absolutePath)).waitFor()
-            } catch (e: Exception) {}
+            // Ejecutable sólo para el propietario. Antes se usaba
+            // setExecutable(true, false) + chmod 755, que lo dejaba legible y
+            // ejecutable para cualquiera; el chmod externo además sobraba.
+            dest.setReadable(true, true)
+            dest.setExecutable(true, true)
 
             val exists = dest.exists()
-            val canExec = dest.canExecute()
-            val size = dest.length()
+            val hash = NativeEngine.binarySha256(this) ?: "no disponible"
 
+            // El binario se ejecutará con los permisos de esta app, que incluyen
+            // acceso a las seeds cifradas. Mostramos el hash para poder cotejarlo
+            // con el de la fuente antes de usarlo.
             android.app.AlertDialog.Builder(this)
                 .setTitle(if (exists) "Motor nativo instalado" else "Error")
-                .setMessage("Path: ${dest.absolutePath} | Existe: $exists | Exec: $canExec | Size: $size")
+                .setMessage(
+                    "Tamaño: ${dest.length()} bytes\nEjecutable: ${dest.canExecute()}\n\n" +
+                    "SHA-256:\n$hash\n\n" +
+                    "Este binario se ejecuta con los permisos de la app, " +
+                    "incluido el acceso a tus wallets. Verifica que el hash " +
+                    "coincide con el de la fuente de la que lo descargaste.")
                 .setPositiveButton("OK", null).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error: ${e.message}",
@@ -4198,11 +4205,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun debugNativeSetup() {
         val sb = StringBuilder()
-        val bin1 = java.io.File(filesDir, "hunter_master")
-        val bin2 = java.io.File(getExternalFilesDir(null), "hunter_master")
+        // Sólo se inspecciona el binario interno: el externo ya no se ejecuta,
+        // así que darle permisos desde aquí sería reabrir el mismo agujero.
+        val bin = java.io.File(filesDir, "hunter_master")
         sb.appendLine("filesDir: ${filesDir.absolutePath}")
-        sb.appendLine("bin1 existe: ${bin1.exists()} ejecutable: ${bin1.canExecute()} size: ${bin1.length()}")
-        sb.appendLine("bin2 existe: ${bin2.exists()} ejecutable: ${bin2.canExecute()} size: ${bin2.length()}")
+        sb.appendLine("binario: existe=${bin.exists()} ejecutable=${bin.canExecute()} size=${bin.length()}")
+        NativeEngine.binarySha256(this)?.let { sb.appendLine("SHA-256: $it") }
         sb.appendLine("filesDir contents:")
         filesDir.listFiles()?.forEach { sb.appendLine("  ${it.name} ${it.length()}b exec:${it.canExecute()}") }
         android.app.AlertDialog.Builder(this)
@@ -4210,8 +4218,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .setMessage(sb.toString())
             .setPositiveButton("OK", null)
             .setNeutralButton("Fix permisos") { _, _ ->
-                bin1.setExecutable(true, false)
-                bin2.setExecutable(true, false)
+                bin.setReadable(true, true)
+                bin.setExecutable(true, true)
                 android.widget.Toast.makeText(this, "Permisos aplicados", android.widget.Toast.LENGTH_SHORT).show()
             }
             .show()
