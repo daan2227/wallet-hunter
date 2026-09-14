@@ -269,13 +269,14 @@ object WalletManager {
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 
-    /* Borra solo la seed principal — preserva PIN y otras wallets */
+    /* Borra solo la seed principal — preserva PIN y otras wallets.
+       Las claves del PIN viven bajo PREF_SALT/PREF_VER/PREF_VIV y no se tocan,
+       así que basta con eliminar la seed y su IV (PREF_IV, no "seed_iv"). */
     fun clearSeedOnly(ctx: Context) {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val pin_salt = prefs.getString(PREF_SALT, null)
-        val pin_ver  = prefs.getString(PREF_VER, null)
-        val pin_viv  = prefs.getString(PREF_VIV, null)
-        prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(PREF_SEED)
+            .remove(PREF_IV)
+            .apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 

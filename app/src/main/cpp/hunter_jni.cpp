@@ -200,13 +200,24 @@ static void gen_mnemonic(char *out,size_t sz){
 }
 typedef struct{uint8_t key[32];uint8_t chain[32];}HDKey;
 static void derive_master(const uint8_t *s,HDKey *o){uint8_t I[64];unsigned int l=64;HMAC(EVP_sha512(),"Bitcoin seed",12,s,64,I,&l);memcpy(o->key,I,32);memcpy(o->chain,I+32,32);}
-static void get_pub33(secp256k1_context *ctx,const uint8_t *pk,uint8_t *p33){secp256k1_pubkey pub;secp256k1_ec_pubkey_create(ctx,&pub,pk);size_t len=33;secp256k1_ec_pubkey_serialize(ctx,p33,&len,&pub,SECP256K1_EC_COMPRESSED);}
+// pubkey_create leaves `pub` untouched when the seckey is invalid (zero or >= n).
+// Serializing an uninitialised pubkey is UB and can trip secp256k1's illegal-arg
+// callback (abort). Zero the output instead: a zero key never matches a target.
+static void get_pub33(secp256k1_context *ctx,const uint8_t *pk,uint8_t *p33){
+    secp256k1_pubkey pub;memset(&pub,0,sizeof(pub));
+    if(!secp256k1_ec_pubkey_create(ctx,&pub,pk)){memset(p33,0,33);return;}
+    size_t len=33;secp256k1_ec_pubkey_serialize(ctx,p33,&len,&pub,SECP256K1_EC_COMPRESSED);
+}
 static void derive_child(secp256k1_context *ctx,const HDKey *par,uint32_t idx,HDKey *child){
     uint8_t data[37];unsigned int l=64;uint8_t I[64];
     if(idx>=0x80000000){data[0]=0;memcpy(data+1,par->key,32);}else get_pub33(ctx,par->key,data);
     data[33]=(uint8_t)(idx>>24);data[34]=(uint8_t)(idx>>16);data[35]=(uint8_t)(idx>>8);data[36]=(uint8_t)idx;
     HMAC(EVP_sha512(),par->chain,32,data,37,I,&l);
-    memcpy(child->key,par->key,32);secp256k1_ec_seckey_tweak_add(ctx,child->key,I);memcpy(child->chain,I+32,32);
+    // tweak_add fails (returns 0) when the resulting child key would be invalid;
+    // BIP32 says skip such an index. Zero the key so it can't be mistaken for valid.
+    memcpy(child->key,par->key,32);
+    if(!secp256k1_ec_seckey_tweak_add(ctx,child->key,I))memset(child->key,0,32);
+    memcpy(child->chain,I+32,32);
 }
 static void derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *path,HDKey *o){
     uint8_t seed[64];memcpy(seed,s64,64);derive_master(seed,o);

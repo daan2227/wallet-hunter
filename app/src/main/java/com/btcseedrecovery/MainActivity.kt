@@ -3494,12 +3494,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             val nm = getSystemService(android.app.NotificationManager::class.java)
             // Recrear canal con nuevas configuraciones
-            nm.deleteNotificationChannel("wh_match")
+            nm.deleteNotificationChannel(NOTIF_CHANNEL)
             val alarmAttr = android.media.AudioAttributes.Builder()
                 .setUsage(android.media.AudioAttributes.USAGE_ALARM)
                 .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
             val ch = android.app.NotificationChannel(
-                "wh_match",
+                NOTIF_CHANNEL,
                 "Match encontrado",
                 android.app.NotificationManager.IMPORTANCE_HIGH
             ).apply {
@@ -3937,7 +3937,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
             // Canal de match — alta prioridad con sonido
             val matchCh = android.app.NotificationChannel(
-                "hunter_match", "Match Found!",
+                NOTIF_CHANNEL, "Match Found!",
                 android.app.NotificationManager.IMPORTANCE_HIGH
             ).apply {
                 enableVibration(true)
@@ -3967,7 +3967,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Intent(this, MainActivity::class.java),
                 android.app.PendingIntent.FLAG_IMMUTABLE
             )
-            val notif = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
+            val notif = androidx.core.app.NotificationCompat.Builder(this, NOTIF_CHANNEL)
                 .setSmallIcon(android.R.drawable.star_on)
                 .setContentTitle("🎯 MATCH ENCONTRADO!")
                 .setContentText("Addr: ${addr.take(20)}...")
@@ -4018,13 +4018,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val bitMatrix = com.google.zxing.MultiFormatWriter().encode(
                 address, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints
             )
-            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
             val ACCENT = 0xFF00C896.toInt()
-            for (x in 0 until size) {
-                for (y in 0 until size) {
-                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) ACCENT else 0xFF090909.toInt())
+            val BG = 0xFF090909.toInt()
+            // Fill an IntArray and hand it over in one call: setPixel() per pixel
+            // is ~size^2 individual JNI crossings (≈500k on a typical screen).
+            val pixels = IntArray(size * size)
+            for (y in 0 until size) {
+                val row = y * size
+                for (x in 0 until size) {
+                    pixels[row + x] = if (bitMatrix[x, y]) ACCENT else BG
                 }
             }
+            val bitmap = android.graphics.Bitmap.createBitmap(
+                pixels, size, size, android.graphics.Bitmap.Config.ARGB_8888
+            )
 
             val layout = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL

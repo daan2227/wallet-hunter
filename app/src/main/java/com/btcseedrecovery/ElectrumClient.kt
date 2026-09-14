@@ -29,6 +29,12 @@ object ElectrumClient {
 
     private const val CONNECT_TIMEOUT_MS = 4000
     private const val READ_TIMEOUT_MS    = 6000
+    private const val GLOBAL_TIMEOUT_MS  = 12_000L
+
+    private val pool: java.util.concurrent.ExecutorService =
+        java.util.concurrent.Executors.newCachedThreadPool { r ->
+            Thread(r, "electrum").apply { isDaemon = true }
+        }
 
     fun addrToScripthash(addr: String): String? {
         return try {
@@ -69,63 +75,97 @@ object ElectrumClient {
         } catch (e: Exception) { emptyList() }
     }
 
-    private fun request(method: String, params: List<Any>, testnet: Boolean): JSONObject? {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
-        for ((host, port) in servers) {
-            try {
-                val result = connect(host, port) { reader, writer ->
-                    val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
-                    writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect null
-                    JSONObject(line).optJSONObject("result")
-                }
-                if (result != null) {
-                    Log.d("Electrum", "OK: $host")
-                    return result
-                }
-            } catch (e: Exception) {
-                Log.w("Electrum", "$host:$port failed: ${e.message}")
-            }
+    /**
+     * Queries every server concurrently and returns the first usable answer,
+     * bounded by GLOBAL_TIMEOUT_MS. Sequential fallback over 10 servers could
+     * otherwise block for CONNECT+READ (10s) x 10 = 100s.
+     */
+    private fun <T : Any> race(servers: List<Pair<String, Int>>, call: (String, Int) -> T?): T? {
+        val ecs = java.util.concurrent.ExecutorCompletionService<T?>(pool)
+        val futures = servers.map { (host, port) ->
+            ecs.submit(java.util.concurrent.Callable<T?> {
+                try { call(host, port) }
+                catch (e: Exception) { Log.w("Electrum", "$host:$port failed: ${e.message}"); null }
+            })
         }
-        Log.e("Electrum", "All ${servers.size} servers failed")
-        return null
+        val deadlineNs = System.nanoTime() + GLOBAL_TIMEOUT_MS * 1_000_000
+        try {
+            repeat(servers.size) {
+                val remaining = deadlineNs - System.nanoTime()
+                if (remaining <= 0) return null
+                val done = ecs.poll(remaining, java.util.concurrent.TimeUnit.NANOSECONDS) ?: return null
+                val result = try { done.get() } catch (e: Exception) { null }
+                if (result != null) return result
+            }
+            Log.e("Electrum", "All ${servers.size} servers failed")
+            return null
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            return null
+        } finally {
+            futures.forEach { it.cancel(true) }
+        }
     }
 
-    private fun requestArray(method: String, params: List<Any>, testnet: Boolean): List<JSONObject> {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
-        for ((host, port) in servers) {
-            try {
-                val result = connect(host, port) { reader, writer ->
-                    val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
-                    writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect emptyList<JSONObject>()
-                    val arr = JSONObject(line).optJSONArray("result") ?: return@connect emptyList<JSONObject>()
-                    (0 until arr.length()).map { arr.getJSONObject(it) }
-                }
-                if (!result.isNullOrEmpty()) {
-                    Log.d("Electrum", "OK: $host")
-                    return result
-                }
-            } catch (e: Exception) {
-                Log.w("Electrum", "$host:$port failed: ${e.message}")
+    private fun serversFor(testnet: Boolean) =
+        if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+
+    /** Builds the JSON-RPC frame with org.json so params are escaped properly. */
+    private fun buildRequest(method: String, params: List<Any>): String {
+        val arr = org.json.JSONArray()
+        params.forEach { arr.put(it) }
+        return JSONObject()
+            .put("id", 1)
+            .put("method", method)
+            .put("params", arr)
+            .toString() + "\n"
+    }
+
+    private fun request(method: String, params: List<Any>, testnet: Boolean): JSONObject? =
+        race(serversFor(testnet)) { host, port ->
+            connect(host, port) { reader, writer ->
+                writer.write(buildRequest(method, params)); writer.flush()
+                val line = reader.readLine() ?: return@connect null
+                JSONObject(line).optJSONObject("result")
             }
         }
-        return emptyList()
-    }
+
+    private fun requestArray(method: String, params: List<Any>, testnet: Boolean): List<JSONObject> =
+        race(serversFor(testnet)) { host, port ->
+            connect(host, port) { reader, writer ->
+                writer.write(buildRequest(method, params)); writer.flush()
+                val line = reader.readLine() ?: return@connect null
+                val arr = JSONObject(line).optJSONArray("result") ?: return@connect null
+                val out = (0 until arr.length()).map { arr.getJSONObject(it) }
+                out.ifEmpty { null }
+            }
+        } ?: emptyList()
 
     private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {
-        val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
-        val raw = factory.createSocket()
-        raw.use {
-            raw.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
-            raw.soTimeout = READ_TIMEOUT_MS
-            val reader = BufferedReader(InputStreamReader(raw.getInputStream()))
-            val writer = BufferedWriter(OutputStreamWriter(raw.getOutputStream()))
+        // Connect a plain socket first so CONNECT_TIMEOUT_MS applies, then layer
+        // TLS over it. createSocket(socket, host, port, autoClose=true) makes the
+        // SSLSocket own the plain socket, so closing it closes both.
+        val plain = java.net.Socket()
+        val ssl = try {
+            plain.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
+            factory.createSocket(plain, host, port, true) as javax.net.ssl.SSLSocket
+        } catch (e: Throwable) {
+            try { plain.close() } catch (_: Exception) {}
+            throw e
+        }
+        ssl.use {
+            // An SSLSocket validates the chain but does NOT check that the cert
+            // matches `host` unless endpoint identification is requested. Without
+            // this, any cert from any trusted CA would be accepted -> MITM.
+            ssl.sslParameters = ssl.sslParameters.apply {
+                endpointIdentificationAlgorithm = "HTTPS"
+            }
+            ssl.soTimeout = READ_TIMEOUT_MS
+            ssl.startHandshake()
+            val reader = BufferedReader(InputStreamReader(ssl.inputStream))
+            val writer = BufferedWriter(OutputStreamWriter(ssl.outputStream))
             return block(reader, writer)
         }
-    }
-
-    private fun List<Any>.toJsonArray(): String {
-        return "[" + joinToString(",") { if (it is String) "\"$it\"" else it.toString() } + "]"
     }
 }
