@@ -1,6 +1,7 @@
 #include <jni.h>
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <cstring>
 #include <thread>
 #include <mutex>
@@ -87,6 +88,47 @@ static bool quick_filter(const uint8_t seed[64], const uint8_t fingerprint[2]){
     return (I[0]==fingerprint[0] && I[1]==fingerprint[1]);
 }
 
+/**
+ * Verifica el checksum BIP39 a partir de los índices de las palabras.
+ *
+ * mnemonic_to_seed() sólo aplica PBKDF2 a la frase: nunca comprueba el
+ * checksum, así que cualquier combinación de palabras produce una seed. Sin
+ * dirección objetivo eso hacía que se devolviera la primerísima combinación
+ * probada como si fuese el resultado, y con objetivo obligaba a derivar
+ * candidatos que BIP39 ya invalida (sólo 1 de cada 16 es válido cuando falta
+ * una palabra de 12).
+ *
+ * Los últimos ENT/32 bits del mnemónico son los primeros bits de
+ * SHA256(entropía).
+ */
+static bool bip39_checksum_ok(const std::vector<int>& idx){
+    int nw = (int)idx.size();
+    int total_bits = nw * 11;
+    int cs_bits    = total_bits / 33;
+    int ent_bits   = total_bits - cs_bits;
+    if(cs_bits <= 0 || ent_bits % 8) return false;
+
+    uint8_t ent[32] = {0};
+    int bit = 0;
+    for(int w = 0; w < nw; w++){
+        for(int b = 10; b >= 0; b--){
+            if(bit < ent_bits && ((idx[w] >> b) & 1))
+                ent[bit / 8] |= (uint8_t)(1 << (7 - (bit % 8)));
+            bit++;
+        }
+    }
+
+    uint8_t h[32];
+    SHA256(ent, ent_bits / 8, h);
+
+    int got = 0;
+    for(int i = 0; i < cs_bits; i++){
+        int p = ent_bits + i;
+        got = (got << 1) | ((idx[p / 11] >> (10 - (p % 11))) & 1);
+    }
+    return got == (h[0] >> (8 - cs_bits));
+}
+
 static std::string jstr(JNIEnv* env,jstring js){
     if(!js)return"";
     const char* c=env->GetStringUTFChars(js,nullptr);
@@ -105,6 +147,7 @@ static std::atomic<long long> g_filtered(0); // cuántos pasaron el filtro
 struct WorkerArgs {
     std::vector<std::string> slots;
     std::vector<std::string> wordlist;
+    std::vector<int>         word_idx;   /* índice BIP39 de cada posición */
     std::vector<int>         missing_indices;
     std::string              target;
     bool                     has_target;
@@ -126,8 +169,26 @@ static void worker(WorkerArgs args){
 
     long long combo=args.start_combo;
     std::vector<std::string> slots=args.slots;
+    std::vector<int> widx=args.word_idx;
 
     while(combo<args.end_combo&&!g_found.load()&&!g_cancelled){
+        for(int i=0;i<n;i++)
+            widx[args.missing_indices[i]]=counters[i];
+
+        /* Descartar antes de derivar: el checksum cuesta un SHA256 de 16-32
+           bytes, frente a PBKDF2 con 2048 iteraciones más la derivación BIP32
+           y secp256k1 de cada candidato. */
+        if(!bip39_checksum_ok(widx)){
+            g_attempts.fetch_add(1);
+            int carry0=1;
+            for(int i=n-1;i>=0&&carry0;i--){
+                counters[i]+=carry0;
+                if(counters[i]>=wl){counters[i]=0;carry0=1;}else{carry0=0;}
+            }
+            combo++;
+            continue;
+        }
+
         for(int i=0;i<n;i++)
             slots[args.missing_indices[i]]=args.wordlist[counters[i]];
 
@@ -223,6 +284,17 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
     std::string target=jstr(env,target_j);
     bool has_target=!target.empty();
 
+    /* Índice BIP39 de cada posición conocida, resuelto una sola vez: en el
+       bucle los huecos se rellenan con el contador, que ya ES el índice. */
+    std::unordered_map<std::string,int> wpos;
+    wpos.reserve(wc*2);
+    for(int i=0;i<wc;i++) wpos[wordlist[i]]=i;
+    std::vector<int> word_idx(sc,0);
+    for(int i=0;i<sc;i++){
+        auto it=wpos.find(slots[i]);
+        word_idx[i]=(it==wpos.end())?0:it->second;
+    }
+
     long long total=1;for(int i=0;i<mc;i++)total*=wc;
 
     // Preparar fingerprint si hay target
@@ -246,6 +318,7 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
     for(int t=0;t<n_threads;t++){
         WorkerArgs args;
         args.slots=slots;args.wordlist=wordlist;
+        args.word_idx=word_idx;
         args.missing_indices=missing;
         args.target=target;args.has_target=has_target;
         memcpy(args.target_h160,target_h160,20);
