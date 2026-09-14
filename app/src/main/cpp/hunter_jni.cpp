@@ -34,14 +34,14 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#define LOG_FILE "/data/data/com.hunter.btc/files/puz_debug.txt"
+#define LOG_FILE "/data/data/com.btcseedrecovery/files/puz_debug.txt"
 #define FPLOG(fmt, ...) do {     FILE *_f = fopen(LOG_FILE, "a");     if(_f){ fprintf(_f, fmt "\n", ##__VA_ARGS__); fclose(_f); } } while(0)
 
 #include <signal.h>
 
 static void crash_handler(int sig) {
     LOGE("NATIVE CRASH: signal %d", sig);
-    FILE *f = fopen("/data/data/com.hunter.btc/files/crash_log.txt", "a");
+    FILE *f = fopen("/data/data/com.btcseedrecovery/files/crash_log.txt", "a");
     if (f) { fprintf(f, "\nNATIVE CRASH: signal %d\n", sig); fclose(f); }
     signal(sig, SIG_DFL);
     raise(sig);
@@ -82,6 +82,10 @@ static uint8_t  *g_xonly  = nullptr;
 static uint64_t  g_total_tr = 0;
 static Bloom     g_bloom_tr = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
+/* Directorio donde se guardan los matches. Lo fija la app con
+   setMatchDir(filesDir) para que las claves privadas no acaben junto al CSV,
+   que normalmente está en almacenamiento externo. */
+static char      g_match_dir[1024] = "";
 
 static std::atomic<long>   g_count(0);
 static std::atomic<long>   g_found(0);
@@ -609,9 +613,18 @@ static void gen_privkey_fast(uint8_t *out, XR128 *rng){
 
 /* Guardar match */
 static void save_match(const char *privhex, const char *addr, double btc, const char *wif, const char *extra){
-    std::string outpath=std::string(g_csv_path);
-    size_t sl=outpath.rfind('/');
-    if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    /* El fichero lleva claves privadas en claro. Si la app ha fijado un
+       directorio interno lo usamos; sólo si no, caemos junto al CSV. */
+    std::string outpath;
+    if(g_match_dir[0]!='\0'){
+        outpath=std::string(g_match_dir);
+        if(outpath.back()!='/') outpath+='/';
+        outpath+="coincidencias.txt";
+    }else{
+        outpath=std::string(g_csv_path);
+        size_t sl=outpath.rfind('/');
+        if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    }
     FILE *fo=fopen(outpath.c_str(),"a");
     if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
@@ -1054,22 +1067,30 @@ static void *load_fn(void *){
 extern "C" {
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
+Java_com_btcseedrecovery_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
     const char *p=env->GetStringUTFChars(path,nullptr);
     strncpy(g_csv_path,p,sizeof(g_csv_path)-1);
     env->ReleaseStringUTFChars(path,p);
     pthread_t t;pthread_create(&t,nullptr,load_fn,nullptr);pthread_detach(t);
 }
 
+/* Fija el directorio donde save_match() escribe coincidencias.txt. */
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
+Java_com_btcseedrecovery_HunterEngine_setMatchDir(JNIEnv *env,jobject,jstring dir){
+    const char *p=env->GetStringUTFChars(dir,nullptr);
+    if(p){ strncpy(g_match_dir,p,sizeof(g_match_dir)-1); g_match_dir[sizeof(g_match_dir)-1]='\0'; }
+    env->ReleaseStringUTFChars(dir,p);
+}
+
+JNIEXPORT void JNICALL
+Java_com_btcseedrecovery_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
     g_mode.store(mode);
 }
 
 
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstring end){
+Java_com_btcseedrecovery_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstring end){
     const char *s=env->GetStringUTFChars(start,nullptr);
     const char *e=env->GetStringUTFChars(end,nullptr);
     hex_to_bytes32(s,g_range_start);
@@ -1080,7 +1101,7 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
+Java_com_btcseedrecovery_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     install_crash_handlers();
     if(g_running.load())return;
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
@@ -1098,7 +1119,7 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
+Java_com_btcseedrecovery_HunterEngine_stopHunting(JNIEnv *,jobject){
     if(!g_running.load())return;
     g_stop.store(true);
     std::thread([]{
@@ -1109,32 +1130,32 @@ Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
+Java_com_btcseedrecovery_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){
+Java_com_btcseedrecovery_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){
     g_pbkdf2_iters.store(fast==1 ? PBKDF2_ITERS_FAST : PBKDF2_ITERS_STD);
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_hunter_btc_HunterEngine_getCsvCount(JNIEnv *,jobject){
+Java_com_btcseedrecovery_HunterEngine_getCsvCount(JNIEnv *,jobject){
     return (jlong)g_total;
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_isCsvLoaded(JNIEnv *,jobject){return (jboolean)g_csv_loaded.load();}
+Java_com_btcseedrecovery_HunterEngine_isCsvLoaded(JNIEnv *,jobject){return (jboolean)g_csv_loaded.load();}
 
 JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_isLoading(JNIEnv *,jobject){return (jboolean)g_loading.load();}
+Java_com_btcseedrecovery_HunterEngine_isLoading(JNIEnv *,jobject){return (jboolean)g_loading.load();}
 
 JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_isRunning(JNIEnv *,jobject){return (jboolean)g_running.load();}
+Java_com_btcseedrecovery_HunterEngine_isRunning(JNIEnv *,jobject){return (jboolean)g_running.load();}
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getLoadStatus(JNIEnv *env,jobject){return env->NewStringUTF(g_load_status);}
+Java_com_btcseedrecovery_HunterEngine_getLoadStatus(JNIEnv *env,jobject){return env->NewStringUTF(g_load_status);}
 
 JNIEXPORT jdouble JNICALL
-Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
+Java_com_btcseedrecovery_HunterEngine_getWps(JNIEnv *,jobject){
     time_t now=time(nullptr);
     if(now!=g_last_wps_t&&g_last_wps_t>0){
         long cur=g_count.load();double el=difftime(now,g_last_wps_t);
@@ -1145,19 +1166,19 @@ Java_com_hunter_btc_HunterEngine_getWps(JNIEnv *,jobject){
 }
 
 JNIEXPORT jlong JNICALL
-Java_com_hunter_btc_HunterEngine_getCount(JNIEnv *,jobject){return (jlong)g_count.load();}
+Java_com_btcseedrecovery_HunterEngine_getCount(JNIEnv *,jobject){return (jlong)g_count.load();}
 
 JNIEXPORT jlong JNICALL
-Java_com_hunter_btc_HunterEngine_getFound(JNIEnv *,jobject){return (jlong)g_found.load();}
+Java_com_btcseedrecovery_HunterEngine_getFound(JNIEnv *,jobject){return (jlong)g_found.load();}
 
 JNIEXPORT jlong JNICALL
-Java_com_hunter_btc_HunterEngine_getElapsed(JNIEnv *,jobject){
+Java_com_btcseedrecovery_HunterEngine_getElapsed(JNIEnv *,jobject){
     if(g_start_time==0)return 0;
     return (jlong)difftime(time(nullptr),g_start_time);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_popLog(JNIEnv *env,jobject){
+Java_com_btcseedrecovery_HunterEngine_popLog(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_log_mutex);
     if(g_log.empty())return env->NewStringUTF("");
     std::string s=g_log.front();g_log.pop_front();
@@ -1165,7 +1186,7 @@ Java_com_hunter_btc_HunterEngine_popLog(JNIEnv *env,jobject){
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
+Java_com_btcseedrecovery_HunterEngine_getMatches(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_match_mutex);
     std::string all;for(auto &m:g_matches)all+=m+"\n";
     return env->NewStringUTF(all.c_str());
@@ -1203,7 +1224,7 @@ static bool wif_decode(const char *wif, uint8_t *privkey) {
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
+Java_com_btcseedrecovery_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     const char *wif = env->GetStringUTFChars(jwif, nullptr);
     if (!wif || strlen(wif) < 50) { env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF(""); }
     uint8_t privkey[32] = {0};
@@ -1219,7 +1240,7 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
+Java_com_btcseedrecovery_HunterEngine_popMatch(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_match_mutex);
     if(g_matches.empty())return env->NewStringUTF("");
     std::string s=g_matches.front();g_matches.erase(g_matches.begin());
@@ -1227,7 +1248,7 @@ Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
+Java_com_btcseedrecovery_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_addr_mutex);
     if(g_recent_addrs.empty())return env->NewStringUTF("");
     std::string s=g_recent_addrs.front();g_recent_addrs.pop_front();
@@ -1235,7 +1256,7 @@ Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
+Java_com_btcseedrecovery_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     const char *a=env->GetStringUTFChars(addr,nullptr);
     if(a&&a[0]){
         uint8_t h160[20]={0};
@@ -1254,12 +1275,12 @@ Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_hasTarget(JNIEnv *,jobject){
+Java_com_btcseedrecovery_HunterEngine_hasTarget(JNIEnv *,jobject){
     return (jboolean)(g_has_target==1);
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn){
+Java_com_btcseedrecovery_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn){
     const char *mn=env->GetStringUTFChars(jmn,nullptr);
     std::string result=derive_wallet_json(mn);
     env->ReleaseStringUTFChars(jmn,mn);
@@ -1516,7 +1537,7 @@ static std::string build_and_sign_tx(const std::string &req){
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq){
+Java_com_btcseedrecovery_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq){
     const char *req=env->GetStringUTFChars(jreq,nullptr);
     std::string result=build_and_sign_tx(std::string(req));
     env->ReleaseStringUTFChars(jreq,req);
@@ -1524,7 +1545,7 @@ Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env,jobject){
+Java_com_btcseedrecovery_HunterEngine_getLastKey(JNIEnv *env,jobject){
     std::lock_guard<std::mutex> lk(g_last_key_mutex);
     char hex[65];
     for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",g_last_key[i]);
@@ -1533,7 +1554,7 @@ Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env,jobject){
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setBigCores(JNIEnv *env, jobject, jintArray cores, jboolean enable){
+Java_com_btcseedrecovery_HunterEngine_setBigCores(JNIEnv *env, jobject, jintArray cores, jboolean enable){
     g_use_affinity = enable;
     if (!enable) return;
     jint *c = env->GetIntArrayElements(cores, nullptr);
@@ -1547,12 +1568,12 @@ Java_com_hunter_btc_HunterEngine_setBigCores(JNIEnv *env, jobject, jintArray cor
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setBatchSize(JNIEnv *env, jobject, jint size){
+Java_com_btcseedrecovery_HunterEngine_setBatchSize(JNIEnv *env, jobject, jint size){
     g_batch_size.store(size);
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean seq){
+Java_com_btcseedrecovery_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean seq){
     g_sequential.store(seq ? 1 : 0);
     if(seq) {
         std::lock_guard<std::mutex> lk(g_seq_mutex);
@@ -1561,12 +1582,12 @@ Java_com_hunter_btc_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean se
 }
 
 JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_isSequential(JNIEnv *env, jobject){
+Java_com_btcseedrecovery_HunterEngine_isSequential(JNIEnv *env, jobject){
     return (jboolean)(g_sequential.load() != 0);
 }
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
+Java_com_btcseedrecovery_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
     /* Retorna hex de posición actual */
     char hex[65] = {0};
     uint8_t pos[32];
@@ -1580,7 +1601,7 @@ Java_com_hunter_btc_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
 }
 
 JNIEXPORT jint JNICALL
-Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
+Java_com_btcseedrecovery_HunterEngine_getBatchSize(JNIEnv *env, jobject){
     return g_batch_size.load();
 }
 

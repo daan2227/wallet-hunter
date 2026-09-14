@@ -201,7 +201,7 @@ static bool seed_passes_filter(const uint8_t seed[64], const uint8_t fp[2]){
 extern "C"{
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
+Java_com_btcseedrecovery_recovery_RecoveryEngine_bruteForceSeeds(
     JNIEnv* env,jobject thiz,
     jobjectArray slots_arr,jobjectArray wordlist_arr,
     jintArray missing_arr,jstring target_j)
@@ -288,7 +288,7 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_recovery_RecoveryEngine_cancelRecovery(JNIEnv* env,jobject thiz){
+Java_com_btcseedrecovery_recovery_RecoveryEngine_cancelRecovery(JNIEnv* env,jobject thiz){
     g_cancelled=true;
 }
 

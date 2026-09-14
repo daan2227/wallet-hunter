@@ -3,6 +3,8 @@ package com.btcseedrecovery
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }
     external fun loadCsv(path: String)
+    /** Directorio donde el motor escribe coincidencias.txt (contiene WIF en claro). */
+    external fun setMatchDir(dir: String)
     external fun setMode(mode: Int)
     external fun setRange(start: String, end: String)
     external fun setTarget(addr: String)
