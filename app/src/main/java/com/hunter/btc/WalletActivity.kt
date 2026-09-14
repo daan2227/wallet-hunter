@@ -527,9 +527,19 @@ class WalletActivity : FragmentActivity() {
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$addr" else "https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
-                    val funded = Regex("\"funded_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                    val spent  = Regex("\"spent_txo_sum\":(\\d+)").find(js)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
-                    val bal = funded - spent; totalSat += bal
+                    // Se leía con Regex().find(), que devuelve la PRIMERA
+                    // coincidencia. La respuesta trae esos mismos campos en
+                    // chain_stats y en mempool_stats, así que el resultado dependía
+                    // del orden en que la API los emita — y JSON no lo garantiza.
+                    // Además se ignoraba el mempool: un pago recién recibido no
+                    // aparecía y uno recién enviado seguía contando.
+                    val o = JSONObject(js)
+                    fun sumOf(block: String): Long {
+                        val b = o.optJSONObject(block) ?: return 0L
+                        return b.optLong("funded_txo_sum", 0L) - b.optLong("spent_txo_sum", 0L)
+                    }
+                    val bal = sumOf("chain_stats") + sumOf("mempool_stats")
+                    totalSat += bal
                     rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, bal))
                 } catch(e: Exception) { rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, -1L)) }
             }
@@ -538,7 +548,8 @@ class WalletActivity : FragmentActivity() {
                 val conn = java.net.URL("https://mempool.space/api/v1/prices").openConnection() as java.net.HttpURLConnection
                 conn.connectTimeout = 3000; conn.readTimeout = 3000
                 val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
-                price = Regex("\"USD\":(\\d+)").find(js)?.groupValues?.get(1)?.toDoubleOrNull() ?: 0.0
+                // "USD":(\d+) no captura decimales: con 67432.5 leía 67432.
+                price = JSONObject(js).optDouble("USD", 0.0)
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
             runOnUiThread {

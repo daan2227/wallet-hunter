@@ -168,9 +168,11 @@ class StatsActivity : Activity() {
         globalCard.addView(statRow("Tiempo total", formatTime(totalTime)))
         globalCard.addView(statRow("Sesiones totales", sessions.size.toString()))
 
-        val avgKps = if (sessions.isNotEmpty())
-            sessions.mapNotNull { it.optDouble("kps").takeIf { v -> v > 0 } }.average()
-        else 0.0
+        // El guard miraba `sessions`, pero el filtro descarta las de kps<=0:
+        // con sesiones registradas y todas a cero, .average() sobre la lista
+        // vacía devuelve NaN.
+        val kpsValues = sessions.mapNotNull { it.optDouble("kps").takeIf { v -> v > 0 } }
+        val avgKps = if (kpsValues.isNotEmpty()) kpsValues.average() else 0.0
         globalCard.addView(statRow("Velocidad promedio",
             if (avgKps > 0) "${"%.0f".format(avgKps)} k/s" else "—"))
 

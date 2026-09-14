@@ -2728,10 +2728,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             this, null, android.R.attr.progressBarStyleHorizontal
         ).apply {
             max = 1000; progress = 0
-            progressDrawable = android.graphics.drawable.GradientDrawable(
-                android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(ACCENT2, ACCENT)
-            ).apply { cornerRadius = dp(4).toFloat() }
+            // Mismo fallo que tenía la barra del puzzle: un GradientDrawable
+            // pelado como progressDrawable se pinta entero, sin recortarse,
+            // así que la barra aparecía llena desde el primer instante.
+            progressDrawable = android.graphics.drawable.LayerDrawable(
+                arrayOf(
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+                    },
+                    android.graphics.drawable.ClipDrawable(
+                        android.graphics.drawable.GradientDrawable(
+                            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+                            intArrayOf(ACCENT2, ACCENT)
+                        ).apply { cornerRadius = dp(4).toFloat() },
+                        Gravity.START,
+                        android.graphics.drawable.ClipDrawable.HORIZONTAL)
+                )
+            ).apply {
+                setId(0, android.R.id.background)
+                setId(1, android.R.id.progress)
+            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(6)
             ).apply { bottomMargin = dp(8) }
@@ -2869,7 +2885,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryEngine?.listener = object : com.hunter.btc.recovery.RecoveryEngine.ProgressListener {
             override fun onProgress(attempts: Long, total: Long, currentWord: String) {
                 runOnUiThread {
-                    val pct = ((attempts.toFloat() / total) * 1000).toInt()
+                    // attempts.toFloat() pierde precisión por encima de ~16.7M,
+                    // y con 3-4 palabras faltantes el total llega a 1e13.
+                    val pct = if (total > 0)
+                        ((attempts.toDouble() / total) * 1000).toInt().coerceIn(0, 1000)
+                    else 0
                     pbRecovery.progress = pct
                     tvRecoveryStatus.text = "Probando: $currentWord  ($attempts / $total)"
                 }
