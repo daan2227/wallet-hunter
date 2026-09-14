@@ -71,11 +71,30 @@ object WalletManager {
        anteriores la guardaban en claro; listWifs() detecta ese formato, lo migra
        y borra el original. Las firmas públicas no cambian. */
 
-    private fun serializeWifs(list: List<Triple<String,String,String>>) =
-        list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }
+    /* Serialización en JSON: los separadores posicionales (~~~ ;; | :) se
+       corrompen en cuanto un nombre o etiqueta contiene uno de ellos.
+       parseTriples acepta también el formato antiguo para no perder datos. */
 
-    private fun parseWifs(raw: String): List<Triple<String,String,String>> {
+    private fun serializeTriples(list: List<Triple<String,String,String>>): String {
+        val arr = org.json.JSONArray()
+        list.forEach { (a, b, c) ->
+            arr.put(org.json.JSONObject().put("a", a).put("b", b).put("c", c))
+        }
+        return arr.toString()
+    }
+
+    private fun parseTriples(raw: String): List<Triple<String,String,String>> {
         if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("[")) {
+            return try {
+                val arr = org.json.JSONArray(raw)
+                (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Triple(o.optString("a"), o.optString("b"), o.optString("c"))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+        // Legacy: "id~~~x~~~y" separado por ";;"
         return raw.split(";;").mapNotNull {
             val p = it.split("~~~")
             if (p.size == 3) Triple(p[0], p[1], p[2]) else null
@@ -87,7 +106,7 @@ object WalletManager {
         if (list.isEmpty()) { prefs.edit().clear().apply(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS))
-        val enc = cipher.doFinal(serializeWifs(list).toByteArray(Charsets.UTF_8))
+        val enc = cipher.doFinal(serializeTriples(list).toByteArray(Charsets.UTF_8))
         prefs.edit()
             .putString(PREF_WIF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
             .putString(PREF_WIF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
@@ -109,11 +128,11 @@ object WalletManager {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS),
                     GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
-                parseWifs(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
+                parseTriples(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
             } catch (e: Exception) { emptyList() }
         }
         // Migración desde el formato legacy en claro
-        val legacy = parseWifs(prefs.getString(PREF_WIF_PLAIN, "") ?: "")
+        val legacy = parseTriples(prefs.getString(PREF_WIF_PLAIN, "") ?: "")
         if (legacy.isNotEmpty()) {
             try { writeWifs(ctx, legacy) } catch (e: Exception) {}
         }
@@ -139,27 +158,24 @@ object WalletManager {
     }
     fun hasWif(ctx: Context) = listWifs(ctx).isNotEmpty()
 
-    // Watcher wallets: watch-only by address
+    // Watcher wallets: watch-only by address. La etiqueta la escribe el usuario,
+    // así que va en JSON — con ";;" un label que contenga el separador partía la lista.
+    private const val WATCH_PREFS = "wallet_watch"
+    private const val PREF_WATCH  = "watch_list"
+
+    private fun writeWatchers(ctx: Context, list: List<Triple<String,String,String>>) {
+        ctx.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE).edit()
+            .putString(PREF_WATCH, serializeTriples(list)).apply()
+    }
     fun saveWatcher(ctx: Context, addr: String, label: String) {
         val id = "watch_${System.currentTimeMillis()}"
-        val prefs = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE)
-        val raw = prefs.getString("watch_list", "") ?: ""
-        val list = if (raw.isEmpty()) mutableListOf() else raw.split(";;").toMutableList()
-        list.add("$id~~~$addr~~~$label")
-        prefs.edit().putString("watch_list", list.joinToString(";;")).apply()
+        writeWatchers(ctx, listWatchers(ctx) + Triple(id, addr, label))
     }
-    fun listWatchers(ctx: Context): List<Triple<String,String,String>> {
-        val raw = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).getString("watch_list", "") ?: ""
-        if (raw.isEmpty()) return emptyList()
-        return raw.split(";;").mapNotNull {
-            val p = it.split("~~~")
-            if (p.size == 3) Triple(p[0], p[1], p[2]) else null
-        }
-    }
+    fun listWatchers(ctx: Context): List<Triple<String,String,String>> =
+        parseTriples(ctx.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+            .getString(PREF_WATCH, "") ?: "")
     fun removeWatcher(ctx: Context, id: String) {
-        val list = listWatchers(ctx).filter { it.first != id }
-        ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
-            .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+        writeWatchers(ctx, listWatchers(ctx).filter { it.first != id })
     }
 
     fun saveSeed(ctx: Context, mnemonic: String) {
@@ -282,10 +298,30 @@ object WalletManager {
     private const val PREF_WALLET_LIST = "wallet_list"
     private const val PREF_ACTIVE_ID   = "active_wallet_id"
 
+    /* El nombre lo escribe el usuario: con el formato "id:name" unido por "|",
+       un nombre con ":" o "|" rompía el parseo. Se guarda en JSON y se sigue
+       aceptando el formato antiguo al leer. */
+    private fun serializeWallets(list: List<Pair<String,String>>): String {
+        val arr = org.json.JSONArray()
+        list.forEach { (id, name) ->
+            arr.put(org.json.JSONObject().put("id", id).put("name", name))
+        }
+        return arr.toString()
+    }
+
     fun listWallets(ctx: Context): List<Pair<String,String>> {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(PREF_WALLET_LIST, "") ?: ""
+        val raw = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_WALLET_LIST, "") ?: ""
         if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("[")) {
+            return try {
+                val arr = org.json.JSONArray(raw)
+                (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Pair(o.optString("id"), o.optString("name"))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
         return raw.split("|").mapNotNull {
             val parts = it.split(":")
             if (parts.size == 2) Pair(parts[0], parts[1]) else null
@@ -314,7 +350,7 @@ object WalletManager {
         // Add to list
         val list = listWallets(ctx).toMutableList()
         if (list.none { it.first == id }) list.add(Pair(id, name))
-        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.putString(PREF_WALLET_LIST, serializeWallets(list))
         prefs.apply()
     }
 
@@ -344,7 +380,7 @@ object WalletManager {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         prefs.remove("seed_enc_$id"); prefs.remove("seed_iv_$id")
         val list = listWallets(ctx).filter { it.first != id }
-        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.putString(PREF_WALLET_LIST, serializeWallets(list))
         prefs.apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
     }

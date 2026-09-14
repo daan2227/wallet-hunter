@@ -325,12 +325,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
-                val profile = detectHardware()
-                applyHardwareProfile(profile)
-                prefs.edit().putBoolean("hw_detected", true).apply()
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    showHardwareInfo()
-                }, 1000)
+                // detectHardware() lee /proc/cpuinfo y consulta ActivityManager;
+                // fuera del hilo principal para no retrasar el primer frame.
+                Thread {
+                    val profile = try { detectHardware() } catch (e: Throwable) { null }
+                    handler.post {
+                        if (isFinishing || isDestroyed) return@post
+                        try {
+                            if (profile != null) applyHardwareProfile(profile)
+                            prefs.edit().putBoolean("hw_detected", true).apply()
+                            handler.postDelayed({
+                                if (!isFinishing && !isDestroyed) showHardwareInfo()
+                            }, 1000)
+                        } catch (e: Throwable) {
+                            android.util.Log.e("MainActivity", "hw profile: ${e.message}", e)
+                            prefs.edit().putBoolean("hw_detected", true).apply()
+                        }
+                    }
+                }.apply { isDaemon = true }.start()
             }
             updateLabels()
         } catch (e: Throwable) {
@@ -3129,7 +3141,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun updateUI() {
         try {
-            if (HunterEngine.isRunning()) {
+            // isRunning() se consultaba tres veces por ciclo (cada 800ms) además
+            // del resto de llamadas JNI. Una sola lectura por ciclo.
+            val engineRunning = HunterEngine.isRunning()
+            if (engineRunning) {
 
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
@@ -3200,7 +3215,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── WATCHDOG ─────────────────────────────────────────────────────
         val wasRunning = prefs.getBoolean("scan_was_running", false)
-        val isNowRunning = HunterEngine.isRunning()
+        val isNowRunning = engineRunning
         if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
             watchdogRestarts++
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
@@ -3212,7 +3227,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         lastKnownRunning = isNowRunning
 
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
-        if (puzzleMode && HunterEngine.isRunning()) {
+        if (puzzleMode && engineRunning) {
             val cycleCount = (System.currentTimeMillis() / 800).toInt()
             if (cycleCount % 37 == 0) {
                 try {
