@@ -189,6 +189,63 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
+    private var tvSpeedUnitPuzzle: TextView? = null
+
+    /** Velocidad escalada + unidad, para no volver a mentir con la etiqueta. */
+    private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
+        keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
+        keysPerSec >= 1e6 -> "%.2f".format(keysPerSec / 1e6) to "MKeys"
+        keysPerSec >= 1e3 -> "%.1f".format(keysPerSec / 1e3) to "kKeys"
+        else              -> numberFmt.format(keysPerSec.toLong()) to "Keys"
+    }
+
+    /**
+     * Progreso sobre el rango del puzzle. Son fracciones del orden de 1e-11, así
+     * que un porcentaje con decimales sólo muestra ceros — antes era además un
+     * literal fijo que no se calculaba nunca. Se expresa como "1 de cada N".
+     */
+    /**
+     * ETA legible. Antes se hacía BigInteger.toLong() sobre el número de
+     * segundos, que para puzzles grandes (2.8e29 s en el 120) no cabe en Long y
+     * devolvía los 64 bits bajos, es decir, un valor arbitrario.
+     */
+    private fun formatEta(secs: java.math.BigInteger): String {
+        if (secs.signum() <= 0) return "—"
+        val min  = java.math.BigInteger.valueOf(60)
+        val hour = java.math.BigInteger.valueOf(3600)
+        val day  = java.math.BigInteger.valueOf(86400)
+        val year = java.math.BigInteger.valueOf(86400L * 365)
+        return when {
+            secs < min  -> "${secs}s"
+            secs < hour -> "${secs.divide(min)}m"
+            secs < day  -> "${secs.divide(hour)}h"
+            secs < year -> "${secs.divide(day)}d"
+            else -> {
+                val years = secs.divide(year)
+                val d = years.toString().length
+                when {
+                    d <= 3 -> "$years años"
+                    d <= 6 -> "${years.divide(java.math.BigInteger.valueOf(1000))}k años"
+                    d <= 9 -> "${years.divide(java.math.BigInteger.valueOf(1_000_000))}M años"
+                    else   -> "10^${d - 1} años"
+                }
+            }
+        }
+    }
+
+    private fun formatPuzzleProgress(scanned: Long, start: String, end: String): String {
+        return try {
+            if (start.isEmpty() || end.isEmpty() || scanned <= 0) return "—"
+            val s = java.math.BigInteger(start.trimStart('0').ifEmpty { "0" }, 16)
+            val e = java.math.BigInteger(end.trimStart('0').ifEmpty { "0" }, 16)
+            val total = e.subtract(s)
+            if (total.signum() <= 0) return "—"
+            val ratio = total.divide(java.math.BigInteger.valueOf(scanned))
+            val digits = ratio.toString().length
+            if (digits <= 6) "1 de ${numberFmt.format(ratio.toLong())}"
+            else "1 de 10^${digits - 1}"
+        } catch (e: Exception) { "—" }
+    }
     private var tvCheckpointLive: TextView? = null
     private var tvCountPuzzle: TextView? = null
     private var tvTimePuzzle: TextView? = null
@@ -1731,7 +1788,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         speedRow.addView(tvPeakWpsPuzzle)
         val speedUnit = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        speedUnit.addView(TextView(this).apply { text = "kKeys"; textSize = 11f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+        // getWps() devuelve claves/s directas; la etiqueta decía "kKeys", lo que
+        // multiplicaba por mil la lectura. La unidad ahora la fija el escalado.
+        tvSpeedUnitPuzzle = TextView(this).apply { text = "Keys"; textSize = 11f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) }
+        speedUnit.addView(tvSpeedUnitPuzzle)
         speedUnit.addView(TextView(this).apply { text = "por seg"; textSize = 10f; setTextColor(0xFF555555.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
         speedRow.addView(speedUnit)
         statsCard.addView(speedRow)
@@ -1750,8 +1810,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tvCntP = TextView(this).apply { text = "0"; textSize = 16f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
         val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 16f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
         tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
-        tvPctPuzzle = TextView(this).apply { text = "0.000%"; textSize = 13f; setTextColor(ACCENT2); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        tvBlockProgress = TextView(this).apply { text = "0/—"; textSize = 13f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.MONOSPACE }
+        tvPctPuzzle = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(ACCENT2); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        tvBlockProgress = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.MONOSPACE }
 
         val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
         val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
@@ -1760,7 +1820,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val pctLocal = tvPctPuzzle!!
         val blkLocal = tvBlockProgress!!
         miniRow2.addView(miniStat("PROGRESO", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-        miniRow2.addView(miniStat("BLOQUES", blkLocal))
+        miniRow2.addView(miniStat("RESTANTE", blkLocal))
         statsCard.addView(miniRow1); statsCard.addView(miniRow2)
         page.addView(statsCard)
 
@@ -3202,29 +3262,33 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
 
                 if (puzzleMode) {
-                    tvWpsPuzzle?.text = numberFmt.format(wps.toLong())
-                    tvCountPuzzle?.text = formatCount(HunterEngine.getCount())
+                    val (spdTxt, spdUnit) = scaleSpeed(wps)
+                    tvWpsPuzzle?.text = spdTxt
+                    tvSpeedUnitPuzzle?.text = spdUnit
+                    val scannedNow = HunterEngine.getCount()
+                    tvCountPuzzle?.text = formatCount(scannedNow)
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
+                    // PROGRESO era un literal fijo que nunca se recalculaba.
+                    tvPctPuzzle?.text = formatPuzzleProgress(
+                        scannedNow, currentRangeStart, currentRangeEnd)
                     // Tiempo estimado para completar el rango
                     if (wps > 0 && currentRangeStart.isNotEmpty() && currentRangeEnd.isNotEmpty()) {
                         try {
                             val start = java.math.BigInteger(currentRangeStart.trimStart('0').ifEmpty{"0"}, 16)
                             val end   = java.math.BigInteger(currentRangeEnd.trimStart('0').ifEmpty{"0"}, 16)
                             val rangeSize = end.subtract(start)
-                            val keysPerSec = wps * 1000.0 // wps está en k/s
-                            val secsLeft = rangeSize.divide(java.math.BigInteger.valueOf(keysPerSec.toLong().coerceAtLeast(1))).toLong()
-                            val eta = when {
-                                secsLeft < 60 -> "${secsLeft}s"
-                                secsLeft < 3600 -> "${secsLeft/60}m ${secsLeft%60}s"
-                                secsLeft < 86400 -> "${secsLeft/3600}h ${(secsLeft%3600)/60}m"
-                                secsLeft < 86400*365 -> "${secsLeft/86400}d ${secsLeft%86400/3600}h"
-                                else -> "${secsLeft/86400/365}años"
-                            }
+                            // getWps() ya devuelve claves/s: el *1000 hacía que
+                            // el ETA mostrado fuese mil veces más optimista.
+                            val keysPerSec = wps
+                            val secsBig = rangeSize.divide(
+                                java.math.BigInteger.valueOf(keysPerSec.toLong().coerceAtLeast(1)))
+                            val eta = formatEta(secsBig)
                             if (currentRangeStart != cachedPuzzleLabelForStart) {
                                 cachedPuzzleLabelForStart = currentRangeStart
                                 cachedPuzzleLabel = puzzles.firstOrNull { it.start == currentRangeStart }?.num?.let { "#$it" } ?: ""
                             }
                             tvPuzzleStatus?.text = "ETA: $eta · Puzzle $cachedPuzzleLabel"
+                            tvBlockProgress?.text = eta
                         } catch (e: Exception) {}
                     }
                 } else {
@@ -3237,8 +3301,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvQuickMatches?.text = "$found"
                     // Stats adicionales para Raw Key
                     if (wps > 0) {
-                        val keysPerSec = wps * 1000.0
-                        val totalKeys = HunterEngine.getCount() - sessionStartCount
+                        // Mismo error que en el ETA: wps ya viene en claves/s, así
+                        // que el *1000 inflaba las claves/día por mil.
+                        val keysPerSec = wps
                         val perDay = (keysPerSec * 86400).toLong()
                         val perDayStr = when {
                             perDay >= 1_000_000_000 -> "${numberFmt.format(perDay/1_000_000_000)}B/día"
@@ -3799,8 +3864,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sessionStartCount = 0L
         tvCountPuzzle?.text = "0"
         tvTimePuzzle?.text  = "00:00:00"
-        tvPctPuzzle?.text   = "0.000000000000000000%"
-        tvBlockProgress?.text = "Bloques: 0/—"
+        tvPctPuzzle?.text   = "—"
+        tvBlockProgress?.text = "—"
         // No llamar setRange durante construcción — solo cuando engine está corriendo
     }
 
