@@ -212,11 +212,19 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
                         tvHint.setTextColor(RED)
                     }
                 } else {
-                    if (WalletManager.checkPin(activity, pin.toString())) {
+                    val locked = WalletManager.pinLockRemainingMs(activity)
+                    if (locked > 0) {
+                        shakeAndClear()
+                        tvHint.text = "Too many attempts. Wait ${(locked + 999) / 1000}s."
+                        tvHint.setTextColor(RED)
+                    } else if (WalletManager.checkPin(activity, pin.toString())) {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Incorrect passcode. Try again."
+                        val wait = WalletManager.pinLockRemainingMs(activity)
+                        tvHint.text = if (wait > 0)
+                            "Incorrect. Locked for ${(wait + 999) / 1000}s."
+                        else "Incorrect passcode. Try again."
                         tvHint.setTextColor(RED)
                     }
                 }

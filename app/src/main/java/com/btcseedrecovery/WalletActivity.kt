@@ -1267,26 +1267,34 @@ class WalletActivity : FragmentActivity() {
             setPadding(64, 32, 64, 16)
         }
         val etPin = android.widget.EditText(this).apply {
-            hint = "Ingresa tu PIN"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Mínimo ${WalletManager.BACKUP_MIN_PASSPHRASE} caracteres"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             setTextColor(0xFFE6EAD8.toInt())
             setHintTextColor(0xFF556050.toInt())
         }
         root.addView(android.widget.TextView(this).apply {
-            text = "PIN para cifrar el backup:"
+            text = "Contraseña para cifrar el backup:"
             setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
             setPadding(0, 0, 0, 8)
         })
         root.addView(etPin)
+        root.addView(android.widget.TextView(this).apply {
+            text = "El backup contiene TODAS tus seeds. Un PIN numérico corto " +
+                   "se rompe en segundos — usa letras, números y símbolos."
+            setTextColor(0xFFFFAA33.toInt()); textSize = 11f
+            setPadding(0, 8, 0, 0)
+        })
 
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("📦 Exportar Backup")
             .setView(root)
             .setPositiveButton("Exportar") { _, _ ->
                 val pin = etPin.text.toString()
-                if (pin.length < 4) {
-                    android.widget.Toast.makeText(this, "PIN muy corto", android.widget.Toast.LENGTH_SHORT).show()
+                if (pin.length < WalletManager.BACKUP_MIN_PASSPHRASE) {
+                    android.widget.Toast.makeText(this,
+                        "Mínimo ${WalletManager.BACKUP_MIN_PASSPHRASE} caracteres",
+                        android.widget.Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 val file = WalletManager.exportBackup(this, pin)
@@ -1322,13 +1330,13 @@ class WalletActivity : FragmentActivity() {
             setPadding(64, 32, 64, 16)
         }
         val etPin = android.widget.EditText(this).apply {
-            hint = "PIN del backup"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            hint = "Contraseña del backup"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
             setTextColor(0xFFE6EAD8.toInt())
         }
         root.addView(android.widget.TextView(this).apply {
-            text = "PIN usado al crear el backup:"
+            text = "Contraseña usada al crear el backup:"
             setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
             setPadding(0, 0, 0, 8)
         })

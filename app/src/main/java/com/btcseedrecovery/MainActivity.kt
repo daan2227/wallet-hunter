@@ -249,15 +249,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
-        // Capturar crashes globales
-        val crashLogPath = (getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath) + "/crash_log.txt"
+        // Capturar crashes globales. Las trazas pueden arrastrar estado sensible,
+        // así que se quedan en almacenamiento interno (sandbox) y nunca en el
+        // externo, que es legible por otras apps con permiso de lectura.
+        val crashLog = java.io.File(filesDir, "crash_log.txt")
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             try {
                 val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-                val msg = "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n"
-                java.io.File(crashLogPath).appendText(msg)
-                // También guardar en internal storage como backup
-                java.io.File(filesDir, "crash_log.txt").appendText(msg)
+                if (crashLog.length() > 256 * 1024) crashLog.delete()   // evitar crecimiento sin límite
+                crashLog.appendText("\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
+                // Limpiar restos de versiones que escribían en almacenamiento externo
+                getExternalFilesDir(null)?.let { java.io.File(it, "crash_log.txt").delete() }
             } catch (ex: Exception) {}
             android.os.Process.killProcess(android.os.Process.myPid())
         }
