@@ -96,6 +96,11 @@ static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
 static std::atomic<int>    g_batch_size(1); // minimo para debug
 static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
+/* Rutas a derivar por mnemónico: bit0 = BIP44 (m/44'), bit1 = BIP84 (m/84').
+   Derivar ambas duplica las derivaciones y los hash160 por candidato. PBKDF2
+   domina el coste, así que el ahorro de usar sólo una es del 2-5%, pero si el
+   dataset sólo contiene un tipo de dirección la otra mitad no sirve de nada. */
+static std::atomic<int>    g_bip39_paths(3);
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
 static std::atomic<bool>   g_loading(false);
@@ -690,27 +695,30 @@ static void *worker_bip39_fn(void *arg){
             gen_mnemonic(mn,sizeof(mn));
             PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,g_pbkdf2_iters.load(),EVP_sha512(),64,seed);
             HDKey master; derive_master(seed,&master);
-            /* --- Shared subtree m/44'/0'/0' --- */
-            HDKey h44,h44_0,h44_0_0;
-            derive_child(ctx,&master,0x80000000u+44,&h44);
-            derive_child(ctx,&h44,0x80000000u+0,&h44_0);
-            derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
-            /* m/44'/0'/0'/0/0 only */
-            HDKey h44_ch0,h44_leaf;
-            derive_child(ctx,&h44_0_0,0,&h44_ch0);
-            derive_child(ctx,&h44_ch0,0,&h44_leaf);
-            pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
+            const int paths=g_bip39_paths.load();
+            /* --- m/44'/0'/0'/0/0 --- */
+            if(paths&1){
+                HDKey h44,h44_0,h44_0_0,h44_ch0,h44_leaf;
+                derive_child(ctx,&master,0x80000000u+44,&h44);
+                derive_child(ctx,&h44,0x80000000u+0,&h44_0);
+                derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
+                derive_child(ctx,&h44_0_0,0,&h44_ch0);
+                derive_child(ctx,&h44_ch0,0,&h44_leaf);
+                pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
+                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
+            }
             /* BIP49 skipped — p2sh not in dataset */
             /* --- m/84'/0'/0'/0/0 --- */
-            HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
-            derive_child(ctx,&master,0x80000000u+84,&h84);
-            derive_child(ctx,&h84,0x80000000u+0,&h84_0);
-            derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
-            derive_child(ctx,&h84_00,0,&h84_000);
-            derive_child(ctx,&h84_000,0,&h84_leaf);
-            pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            if(paths&2){
+                HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
+                derive_child(ctx,&master,0x80000000u+84,&h84);
+                derive_child(ctx,&h84,0x80000000u+0,&h84_0);
+                derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
+                derive_child(ctx,&h84_00,0,&h84_000);
+                derive_child(ctx,&h84_000,0,&h84_leaf);
+                pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
+                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            }
             /* Feed visual: solo 1 vez por batch */
             if(bi==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
             /* BIP86 removed */
@@ -1184,6 +1192,12 @@ Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
+
+/* Máscara de rutas BIP39: bit0 = BIP44, bit1 = BIP84. Al menos una. */
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setBip39Paths(JNIEnv *,jobject,jint mask){
+    g_bip39_paths.store((mask&3)==0 ? 3 : (mask&3));
+}
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){

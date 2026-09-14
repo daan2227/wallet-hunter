@@ -13,6 +13,8 @@ object HunterEngine {
     external fun stopHunting()
     external fun setCpuLimit(v: Int)
     external fun setPbkdf2Mode(fast: Int)
+    /** Rutas a derivar en modo BIP39: bit0=BIP44 (1...), bit1=BIP84 (bc1q...). */
+    external fun setBip39Paths(mask: Int)
     external fun isCsvLoaded(): Boolean
     external fun isLoading(): Boolean
     external fun isRunning(): Boolean

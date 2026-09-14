@@ -1156,6 +1156,50 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             fastRow.addView(fastSwitch)
             addView(fastRow)
 
+            // Selector de rutas de derivación. Derivar ambas duplica las
+            // derivaciones y los hash160 por candidato; PBKDF2 domina, así que
+            // el ahorro es del 2-5%, pero si el dataset sólo tiene un tipo de
+            // dirección la mitad del trabajo no sirve para nada.
+            addView(TextView(this@MainActivity).apply {
+                text = "RUTAS DE DERIVACIÓN"; textSize = 9f
+                setTextColor(0xFF868686.toInt())
+                typeface = Typeface.create("monospace", Typeface.BOLD)
+                letterSpacing = 0.1f
+                setPadding(0, dp(12), 0, dp(4))
+            })
+            val pathRow = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+            }
+            var pathMask = prefs.getInt("bip39_paths", 3)
+            val cb44 = android.widget.CheckBox(this@MainActivity).apply {
+                text = "BIP44 (1...)"; textSize = 11f
+                setTextColor(0xFFEFEFEF.toInt())
+                isChecked = (pathMask and 1) != 0
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            val cb84 = android.widget.CheckBox(this@MainActivity).apply {
+                text = "BIP84 (bc1q...)"; textSize = 11f
+                setTextColor(0xFFEFEFEF.toInt())
+                isChecked = (pathMask and 2) != 0
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            fun applyPaths(from: android.widget.CheckBox) {
+                var m = (if (cb44.isChecked) 1 else 0) or (if (cb84.isChecked) 2 else 0)
+                if (m == 0) {           // no dejar desmarcar las dos
+                    from.isChecked = true
+                    m = if (from === cb44) 1 else 2
+                }
+                pathMask = m
+                HunterEngine.setBip39Paths(m)
+                prefs.edit().putInt("bip39_paths", m).apply()
+            }
+            cb44.setOnCheckedChangeListener { _, _ -> applyPaths(cb44) }
+            cb84.setOnCheckedChangeListener { _, _ -> applyPaths(cb84) }
+            pathRow.addView(cb44); pathRow.addView(cb84)
+            addView(pathRow)
+            try { HunterEngine.setBip39Paths(pathMask) } catch (e: Throwable) {}
+
             // Actualizar visibilidad del fastRow cuando cambia el modo
 
 
