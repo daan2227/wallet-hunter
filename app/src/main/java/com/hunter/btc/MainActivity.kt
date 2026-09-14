@@ -1120,16 +1120,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 visibility = if (selectedScanMode == 2) android.view.View.GONE else android.view.View.VISIBLE
             }
             fastScanRow = fastRow
-            fastRow.addView(TextView(this@MainActivity).apply {
-                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
+            val fastLabels = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            fastLabels.addView(TextView(this@MainActivity).apply {
+                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
             })
+            // Este modo baja PBKDF2 de 2048 iteraciones a 1. El contador sube
+            // muchísimo, pero las seeds resultantes no son las de ningún
+            // mnemónico BIP39: es velocidad sin ninguna posibilidad de acierto.
+            val tvFastWarn = TextView(this@MainActivity).apply {
+                text = "Sólo benchmark: con 1 iteración las seeds NO son BIP39 y no puede encontrar nada"
+                textSize = 9f; setTextColor(0xFFFFAA33.toInt())
+                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                visibility = if (prefs.getBoolean("fastMode", false))
+                    android.view.View.VISIBLE else android.view.View.GONE
+            }
+            fastLabels.addView(tvFastWarn)
+            fastRow.addView(fastLabels)
             val fastSwitch = android.widget.Switch(this@MainActivity).apply {
                 isChecked = prefs.getBoolean("fastMode", false)
                 setOnCheckedChangeListener { _, c ->
                     fastModeEnabled = c
                     HunterEngine.setPbkdf2Mode(if (c) 1 else 0)
                     prefs.edit().putBoolean("fastMode", c).apply()
+                    tvFastWarn.visibility = if (c) android.view.View.VISIBLE
+                                            else android.view.View.GONE
+                    if (c) Toast.makeText(this@MainActivity,
+                        "Fast Scan: sólo para medir velocidad, no encuentra wallets",
+                        Toast.LENGTH_LONG).show()
                 }
             }
             fastModeEnabled = prefs.getBoolean("fastMode", false)

@@ -194,13 +194,28 @@ static int split_line(char *line,char **f,int mx){
 static const char *BIP39[]={
 #include "bip39_words.h"
 };
+/* /dev/urandom se abría y cerraba en cada mnemónico: tres syscalls por
+   candidato, en todos los hilos. Se mantiene abierto por hilo, con destructor
+   para que arrancar y parar el scanner no acumule descriptores. */
+struct UrandomHandle {
+    FILE *f = nullptr;
+    ~UrandomHandle(){ if(f) fclose(f); }
+};
+static thread_local UrandomHandle tl_ur;
+
 static void gen_mnemonic(char *out,size_t sz){
     uint8_t ent[16],h[32];
-    FILE *r=fopen("/dev/urandom","rb");
-    if(r){fread(ent,1,16,r);fclose(r);}
-    SHA256(ent,16,h);uint8_t cs=h[0]>>4;uint32_t bits[132];int bi=0;
+    if(!tl_ur.f) tl_ur.f=fopen("/dev/urandom","rb");
+    if(tl_ur.f){ if(fread(ent,1,16,tl_ur.f)!=16) memset(ent,0,16); }
+    else memset(ent,0,16);
+    SHA256(ent,16,h);uint32_t bits[132];int bi=0;
     for(int i=0;i<16;i++)for(int b=7;b>=0;b--)bits[bi++]=(ent[i]>>b)&1;
-    for(int b=7;b>=4;b--)bits[bi++]=(cs>>b)&1;
+    /* Checksum BIP39: los 4 bits ALTOS de SHA256(entropía)[0].
+       Antes se hacía cs=h[0]>>4 y luego se leían los bits 7..4 de cs, es decir
+       se desplazaba dos veces: los cuatro bits escritos eran siempre 0000. Sólo
+       1 de cada 16 mnemónicos generados era válido en BIP39, así que el 93,6%
+       del PBKDF2 se gastaba en frases que ninguna wallet pudo producir. */
+    for(int b=7;b>=4;b--)bits[bi++]=(h[0]>>b)&1;
     out[0]='\0';for(int w=0;w<12;w++){uint32_t idx=0;for(int b=0;b<11;b++)idx=(idx<<1)|bits[w*11+b];if(w>0)strncat(out," ",sz-strlen(out)-1);strncat(out,BIP39[idx%2048],sz-strlen(out)-1);}
 }
 typedef struct{uint8_t key[32];uint8_t chain[32];}HDKey;
