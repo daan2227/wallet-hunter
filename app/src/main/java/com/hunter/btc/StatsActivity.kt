@@ -233,7 +233,7 @@ class StatsActivity : Activity() {
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             isClickable = true; isFocusable = true
             setOnClickListener {
-                androidx.appcompat.app.AlertDialog.Builder(this@StatsActivity)
+                android.app.AlertDialog.Builder(this@StatsActivity)
                     .setTitle("Limpiar historial")
                     .setMessage("¿Borrar todas las sesiones guardadas?")
                     .setPositiveButton("Borrar") { _, _ ->

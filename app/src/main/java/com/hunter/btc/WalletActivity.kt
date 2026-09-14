@@ -803,7 +803,7 @@ class WalletActivity : FragmentActivity() {
             val addrType = (check as BtcAddress.Result.Valid).info.type
 
             // Confirmación explícita: no había ninguna entre pulsar y difundir.
-            androidx.appcompat.app.AlertDialog.Builder(this)
+            AlertDialog.Builder(this)
                 .setTitle("Confirmar envío")
                 .setMessage("Enviar %.8f BTC\n\nA: %s\n(%s)\n\nComisión: %d sat/vB\n\n%s"
                     .format(amtBtc, toAddr, addrType, feeRate,
@@ -1449,7 +1449,7 @@ class WalletActivity : FragmentActivity() {
         })
         root.addView(etPin)
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("📦 Exportar Backup")
             .setView(root)
             .setPositiveButton("Exportar") { _, _ ->
@@ -1503,7 +1503,7 @@ class WalletActivity : FragmentActivity() {
         })
         root.addView(etPin)
 
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        AlertDialog.Builder(this)
             .setTitle("📥 Restaurar Backup")
             .setView(root)
             .setPositiveButton("Restaurar") { _, _ ->
