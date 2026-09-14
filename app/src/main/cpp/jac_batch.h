@@ -164,26 +164,27 @@ static void jp_add_G(JP *R,const JP *P){
 
 /* Batch normalize: given pts[0..n-1] in Jacobian, write compressed pub33[i] for each.
    Uses Montgomery batch inversion: 1 inv + 3n mults instead of n invs. */
+/* `pfx` lo aporta el llamante: reservar y liberar n*sizeof(fe_t) (512 KB con
+   JAC_BATCH=16000) en cada lote castigaba al asignador desde varios hilos a la
+   vez. Debe tener sitio para al menos n elementos. */
 static void jac_batch_hash160(
-    JP *pts, int n,
+    JP *pts, int n, fe_t *pfx,
     void (*on_key)(int idx, const uint8_t *pub33, void *ctx),
     void *ctx)
 {
-    /* Prefix products of Z: pfx[i] = Z[0]*Z[1]*...*Z[i] */
-    fe_t *pfx = (fe_t*)malloc(n*sizeof(fe_t));
-    if(!pfx) return;
+    if(!pfx || n<1) return;
     /* Check for zero Z (point at infinity) - skip batch if found */
     for(int i=0;i<n;i++){
         bool zz=true;
         for(int j=0;j<4;j++) if(pts[i].z[j]){zz=false;break;}
-        if(zz){ free(pfx); return; }
+        if(zz){ return; }
     }
     memcpy(pfx[0],pts[0].z,32);
     for(int i=1;i<n;i++) fe_mul(pfx[i],pfx[i-1],pts[i].z);
     /* Check final prefix is not zero before inverting */
     bool pfx_zero=true;
     for(int j=0;j<4;j++) if(pfx[n-1][j]){pfx_zero=false;break;}
-    if(pfx_zero){ free(pfx); return; }
+    if(pfx_zero){ return; }
     /* Invert the last prefix: inv = 1/(Z[0]*...*Z[n-1]) */
     fe_t inv;
     fe_inv(inv,pfx[n-1]);
@@ -216,5 +217,4 @@ static void jac_batch_hash160(
             pub33[1+(3-w)*8+(7-b)]=(uint8_t)(xaff[w]>>(b*8));
         on_key(0,pub33,ctx);
     }
-    free(pfx);
 }

@@ -75,4 +75,20 @@ bool bip_derive_privkey(const uint8_t seed[64],
                         uint32_t address_index,
                         uint8_t privkey_out[32]);
 
+/**
+ * Derivación en dos fases, para cuando se prueban varios índices sobre la
+ * misma seed. m/purpose'/0'/0'/0 es común a todos, así que rederivarla por
+ * índice desperdicia cuatro HMAC-SHA512 de cinco.
+ *
+ * bip_derive_chain: m/purpose'/0'/0'/0  (una vez por seed)
+ * bip_derive_from_chain: .../address_index  (una por índice)
+ */
+bool bip_derive_chain(const uint8_t seed[64],
+                      uint32_t purpose,
+                      Bip32Node& chain_out);
+
+bool bip_derive_from_chain(const Bip32Node& chain,
+                           uint32_t address_index,
+                           uint8_t privkey_out[32]);
+
 #endif // WALLET_HUNTER_BIP32_H

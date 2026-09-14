@@ -160,3 +160,30 @@ bool bip_derive_privkey(const uint8_t seed[64],
     memcpy(privkey_out, child.key, 32);
     return true;
 }
+
+bool bip_derive_chain(const uint8_t seed[64],
+                      uint32_t purpose,
+                      Bip32Node& chain_out)
+{
+    Bip32Node node, child;
+    if (!bip32_master_key(seed, node)) return false;
+    if (!bip32_derive_child(node, purpose | 0x80000000u, child)) return false;
+    node = child;
+    if (!bip32_derive_child(node, 0 | 0x80000000u, child)) return false;
+    node = child;
+    if (!bip32_derive_child(node, 0 | 0x80000000u, child)) return false;
+    node = child;
+    if (!bip32_derive_child(node, 0, child)) return false;
+    chain_out = child;
+    return true;
+}
+
+bool bip_derive_from_chain(const Bip32Node& chain,
+                           uint32_t address_index,
+                           uint8_t privkey_out[32])
+{
+    Bip32Node child;
+    if (!bip32_derive_child(chain, address_index, child)) return false;
+    memcpy(privkey_out, child.key, 32);
+    return true;
+}

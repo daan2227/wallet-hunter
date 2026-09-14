@@ -15,6 +15,7 @@
 #include <chrono>
 #include <sstream>
 #include <cstring>
+#include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
@@ -660,8 +661,10 @@ static void set_thread_affinity(int thread_idx) {
     sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
 }
 
-static void *worker_bip39_fn(void *){
-    set_thread_affinity(0);
+static void *worker_bip39_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     char mn[256]; uint8_t seed[64],h160[HASH160_BYTES];
     Hit hits[LOCAL_BATCH*N_PATHS]; int nhits=0; long local_done=0;
@@ -763,8 +766,10 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
    - pubkey_create por cada key (igual que script Termux)
    - Lookup via bloom+bsearch
    ========================================================= */
-static void *worker_rawkey_fn(void *){
-    set_thread_affinity(0);
+static void *worker_rawkey_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx = secp256k1_context_create(
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
@@ -772,6 +777,9 @@ static void *worker_rawkey_fn(void *){
     const int MAX_SAFE = 512;
     JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
+    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
+    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
+    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
 
     XR128 rng; xr_init(&rng);
     uint8_t priv[32];
@@ -827,7 +835,7 @@ static void *worker_rawkey_fn(void *){
         memcpy(rctx.base, base, 32); 
         rctx.done=0;
 
-        jac_batch_hash160(pts, actual, [](int idx, const uint8_t *pub33, void *raw){
+        jac_batch_hash160(pts, actual, pfx, [](int idx, const uint8_t *pub33, void *raw){
             RawCtx *c = (RawCtx*)raw;
             uint8_t h160[HASH160_BYTES];
             hash160_inline(pub33, h160);
@@ -868,14 +876,16 @@ static void *worker_rawkey_fn(void *){
         }
     }
 
-    free(pts);
+    free(pts); free(pfx);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
 
 
-static void *worker_puzzle_fn(void *){
-    set_thread_affinity(0);
+static void *worker_puzzle_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx = secp256k1_context_create(
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
@@ -883,6 +893,9 @@ static void *worker_puzzle_fn(void *){
     const int MAX_SAFE = JAC_BATCH;
     JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
+    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
+    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
+    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
 
     XR128 rng; xr_init(&rng);
 
@@ -955,7 +968,7 @@ static void *worker_puzzle_fn(void *){
         PuzzleBatchCtx pctx;
         memcpy(pctx.priv_base, privkey, 32);
         pctx.done = 0;
-        jac_batch_hash160(pts, actual, puzzle_on_key, &pctx);
+        jac_batch_hash160(pts, actual, pfx, puzzle_on_key, &pctx);
 
         g_count.fetch_add(actual);
 
@@ -970,7 +983,7 @@ static void *worker_puzzle_fn(void *){
         }
     }
 
-    free(pts);
+    free(pts); free(pfx);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
@@ -1121,7 +1134,9 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
     void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn :
                           (g_mode.load()==2) ? worker_rawkey_fn : worker_bip39_fn;
-    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,nullptr);
+    /* Se pasaba nullptr, así que ningún worker conocía su índice y todos
+       acababan compitiendo por un único núcleo. */
+    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,(void*)(intptr_t)i);
     g_active=n;
     const char *modeStr=(g_mode.load()==1)?"PUZZLE":(g_mode.load()==2)?"RAWKEY":"BIP39";
     add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");

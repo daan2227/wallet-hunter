@@ -334,8 +334,13 @@ static void worker(WorkerArgs args){
                        hash160: evita reconstruir la cadena Base58 por candidato. */
                     AddrKind kind=(AddrKind)args.target_kind;
                     uint32_t purpose=purpose_for(kind);
+                    /* m/purpose'/0'/0'/0 se deriva una vez por seed en lugar de
+                       una vez por índice: eran 25 niveles HMAC-SHA512 por
+                       candidato en lugar de los 9 necesarios. */
+                    Bip32Node chain;
+                    if(bip_derive_chain(seed,purpose,chain))
                     for(int ai=0; ai<=args.max_index; ai++){
-                        if(!bip_derive_privkey(seed,purpose,(uint32_t)ai,privkey)) continue;
+                        if(!bip_derive_from_chain(chain,(uint32_t)ai,privkey)) continue;
                         uint8_t h[20];
                         candidate_h160(ctx,privkey,kind,h);
                         if(memcmp(h,args.target_h160,20)==0){
