@@ -73,9 +73,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val YELLOW    get() = AppTheme.YELLOW
     private val ORANGE    get() = AppTheme.ORANGE
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun cardBg() = GradientDrawable().apply {
-        setColor(BG_CARD); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER_C)
-    }
 
     // ── Tab system ────────────────────────────────────────────────────────────
     private var tabPages:    List<android.view.View>          = emptyList()
@@ -1725,7 +1722,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(tvProgressDetail)
 
         progressCard.addView(TextView(this).apply {
-            text = "↺ Reiniciar progreso"; textSize = 9f; setTextColor(0xFF555555.toInt())
+            // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
+            // pequeño para acertar con el dedo, siendo además destructivo.
+            text = "↺ Reiniciar progreso"; textSize = 12f; setTextColor(0xFF9A9A9A.toInt())
+            setPadding(dp(12), dp(10), dp(12), dp(10))
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.END; isClickable = true; isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
@@ -1852,6 +1852,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setStroke(1, 0x1500C896.toInt())
             }
             setPadding(dp(14), dp(10), dp(14), dp(10))
+            // Sin checkpoint el texto queda vacío, pero el fondo, el borde y el
+            // padding seguían dibujándose: un rectángulo hueco de ~40dp bajo
+            // "Rango Hex". Se oculta mientras no tenga contenido.
+            visibility = android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(10) }
@@ -1966,7 +1970,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     setStroke(1, if (idx == 1) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
                 }
                 setTextColor(if (idx == 1) ACCENT else 0xFF868686.toInt())
-                layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     if (idx < 2) marginEnd = dp(8)
                 }
                 isClickable = true; isFocusable = true
@@ -2018,7 +2022,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setStroke(1, 0x28FFFFFF.toInt())
             }
             setTextColor(ACCENT)
-            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { marginEnd = dp(6) }
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) }
             isClickable = true; isFocusable = true
         }
         val btnSeq = TextView(this).apply {
@@ -2029,7 +2033,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setStroke(1, 0xFF242424.toInt())
             }
             setTextColor(0xFF868686.toInt())
-            layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f)
+            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
             isClickable = true; isFocusable = true
         }
 
@@ -2194,8 +2198,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (savedKey != null && savedTime > 0) {
                 val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
                 tvCheckpointLive?.text = "✓ Checkpoint #${p.num}: $ts  ${savedKey.take(12)}...${savedKey.takeLast(6)}"
+                tvCheckpointLive?.visibility = android.view.View.VISIBLE
             } else {
                 tvCheckpointLive?.text = ""
+                tvCheckpointLive?.visibility = android.view.View.GONE
             }
             tvBalResult.text = "Verificando #${p.num}..."
             checkPuzzleBalance(p.addr) { bal ->
@@ -2329,6 +2335,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (savedKeyInit != null && savedTimeInit > 0) {
             val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTimeInit))
             tvCheckpointLive?.text = "✓ Checkpoint #${defaultPuzzle.num}: $ts  ${savedKeyInit.take(12)}...${savedKeyInit.takeLast(6)}"
+            tvCheckpointLive?.visibility = android.view.View.VISIBLE
         }
 
         Thread {
@@ -2955,11 +2962,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     // ── FUNCIONES AUXILIARES ──────────────────────────────────────────────────
-    private fun secLbl(t: String) = TextView(this).apply {
-        text = t.uppercase(); textSize = 9f; setTextColor(TXT_MUTED)
-        typeface = Typeface.create("monospace", Typeface.BOLD)
-        letterSpacing = 0.16f; setPadding(0, 0, 0, dp(10))
-    }
 
     private fun mkSbl(cb: () -> Unit) = object : SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { cb() }
@@ -2967,11 +2969,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         override fun onStopTrackingTouch(s: SeekBar?) {}
     }
 
-    private fun themedAdapter(items: List<String>): ArrayAdapter<String> {
-        val a = ArrayAdapter(this, android.R.layout.simple_spinner_item, items)
-        a.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        return a
-    }
 
     private fun updateLabels() {
                 val t = (sbThreads?.progress ?: 3) + 1
@@ -2995,35 +2992,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
 
-    private fun checkThermalThrottle() {
-        if (!thermalThrottleEnabled) return
-        val now = System.currentTimeMillis()
-        if (now - lastThermalCheck < 10000) return  // cada 10 seg
-        lastThermalCheck = now
-
-        try {
-            val batTemp = getBatteryTemp()
-            val cpuTemp = if ((now / 10000) % 2 == 0L) getCpuTemp() else 0f  // CPU temp cada 20s
-            val maxTemp = maxOf(batTemp, cpuTemp)
-
-            val (targetCpu, status, color) = when {
-                maxTemp >= 48f -> Triple(20,  "🔥 ${maxTemp.toInt()}°C CRITICO — CPU 20%",  0xFFFF4444.toInt())
-                maxTemp >= 44f -> Triple(35,  "🌡 ${maxTemp.toInt()}°C MUY ALTO — CPU 35%", 0xFFFF8800.toInt())
-                maxTemp >= 40f -> Triple(50,  "⚠ ${maxTemp.toInt()}°C ALTO — CPU 50%",      AppTheme.AMBER)
-                maxTemp >= 30f -> Triple(originalCpuLimit, "✓ ${maxTemp.toInt()}°C OK",     AppTheme.GREEN)
-                else           -> Triple(originalCpuLimit, "🌡 Bat:${batTemp.toInt()}° CPU:${cpuTemp.toInt()}°", AppTheme.TXT_MUTED)
-            }
-
-            if (HunterEngine.isRunning()) HunterEngine.setCpuLimit(targetCpu)
-            isThrottled = maxTemp >= 40f
-            runOnUiThread {
-                tvThermal?.text = status
-                tvThermal?.setTextColor(color)
-            }
-        } catch (e: Exception) {
-            runOnUiThread { tvThermal?.text = "Temp: error lectura" }
-        }
-    }
 
     private fun getBatteryTemp(): Float {
         return try {
@@ -3316,22 +3284,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) { "" }
     }
 
-    private fun calcPuzzleProgress(lastKeyHex: String, startHex: String, endHex: String): String {
-        return try {
-            val last  = java.math.BigInteger(lastKeyHex.trimStart('0').ifEmpty { "0" }, 16)
-            val start = java.math.BigInteger(startHex.trimStart('0').ifEmpty { "0" }, 16)
-            val end   = java.math.BigInteger(endHex.trimStart('0').ifEmpty { "0" }, 16)
-            val range = end.subtract(start)
-            if (range <= java.math.BigInteger.ZERO) return "0.000000%"
-            val done  = last.subtract(start).max(java.math.BigInteger.ZERO)
-            // BigDecimal para precisión completa sin pérdida
-            val bdDone  = java.math.BigDecimal(done)
-            val bdRange = java.math.BigDecimal(range)
-            val pct = bdDone.multiply(java.math.BigDecimal("100"))
-                            .divide(bdRange, 18, java.math.RoundingMode.HALF_UP)
-            "${pct.toPlainString()}%"
-        } catch (e: Exception) { "—" }
-    }
 
 
     private fun formatElapsed(startTimeMs: Long): String {
@@ -3617,6 +3569,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onActivityResult(req, res, data)
         if (req == REQ_INSTALL_BINARY && res == RESULT_OK) {
             data?.data?.let { processInstallBinary(it) }
+            return
+        }
+        if (req == REQ_IMPORT_CONFIG && res == RESULT_OK) {
+            data?.data?.let { applyImportedConfig(it) }
             return
         }
         if (req == REQ_IMPORT_PROGRESS && res == RESULT_OK) {
@@ -3958,9 +3914,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         Toast.makeText(this, "Log exportado: ${f.name}", Toast.LENGTH_SHORT).show()
     }
 
-    private fun showWalletSelector() {
-        startActivity(Intent(this, WalletActivity::class.java))
-    }
 
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
@@ -4046,14 +3999,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun importConfig() {
-        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "application/json"
-            addCategory(Intent.CATEGORY_OPENABLE)
-        }
-        startActivityForResult(intent, REQ_IMPORT_CONFIG)
-    }
-
+    /* Se llamaba desde ningún sitio porque onActivityResult no trataba
+       REQ_IMPORT_CONFIG: "Importar Config" abría el selector y descartaba
+       el fichero en silencio. Restaurada y conectada. */
     private fun applyImportedConfig(uri: android.net.Uri) {
         try {
             val json = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
@@ -4094,6 +4042,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Toast.makeText(this, "Error importando: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+
+    private fun importConfig() {
+        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
+            type = "application/json"
+            addCategory(Intent.CATEGORY_OPENABLE)
+        }
+        startActivityForResult(intent, REQ_IMPORT_CONFIG)
+    }
+
 
     // ── Modo Scheduled ────────────────────────────────────────────────────────
     private var scheduledStart: Int = -1  // hora de inicio (-1 = deshabilitado)
@@ -4355,14 +4312,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun installNativeBinary() {
-        // Usar file picker para acceder al binario
-        val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
-            addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            type = "*/*"
-        }
-        startActivityForResult(intent, REQ_INSTALL_BINARY)
-    }
 
     private fun processInstallBinary(uri: android.net.Uri) {
         try {
@@ -4397,146 +4346,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun debugNativeSetup() {
-        val sb = StringBuilder()
-        // Sólo se inspecciona el binario interno: el externo ya no se ejecuta,
-        // así que darle permisos desde aquí sería reabrir el mismo agujero.
-        val bin = java.io.File(filesDir, "hunter_master")
-        sb.appendLine("filesDir: ${filesDir.absolutePath}")
-        sb.appendLine("binario: existe=${bin.exists()} ejecutable=${bin.canExecute()} size=${bin.length()}")
-        NativeEngine.binarySha256(this)?.let { sb.appendLine("SHA-256: $it") }
-        sb.appendLine("filesDir contents:")
-        filesDir.listFiles()?.forEach { sb.appendLine("  ${it.name} ${it.length()}b exec:${it.canExecute()}") }
-        android.app.AlertDialog.Builder(this)
-            .setTitle("Debug Setup")
-            .setMessage(sb.toString())
-            .setPositiveButton("OK", null)
-            .setNeutralButton("Fix permisos") { _, _ ->
-                bin.setReadable(true, true)
-                bin.setExecutable(true, true)
-                android.widget.Toast.makeText(this, "Permisos aplicados", android.widget.Toast.LENGTH_SHORT).show()
-            }
-            .show()
-    }
 
-    private fun doToggleNative() {
-        if (NativeEngine.isRunning()) {
-            NativeEngine.stop()
-            btnToggle?.text = "▶  START SCAN"
-            btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF1A1A1A.toInt()); cornerRadius = dp(16).toFloat()
-                setStroke(dp(1), 0xFFEFEFEF.toInt())
-            }
-            return
-        }
-
-        // Buscar el archivo .bin de base de datos
-        // Buscar archivo .bin en múltiples ubicaciones
-        val dbFile = listOf(
-            File(getExternalFilesDir(null), "utxos.bin"),
-            File(getExternalFilesDir(null), "utxos_legacy_segwit.bin"),
-            File(getExternalFilesDir(null), "utxos_legacy.bin"),
-            File(getExternalFilesDir(null), "utxos_segwit.bin"),
-            File(filesDir, "utxos.bin"),
-            File(filesDir, "utxos_legacy_segwit.bin")
-        ).firstOrNull { it.exists() }?.absolutePath ?: ""
-
-        if (dbFile.isEmpty()) {
-            val extPath = getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Archivo .bin requerido")
-                .setMessage("Copia utxos_legacy_segwit.bin a: $extPath")
-                .setPositiveButton("OK", null).show()
-            return
-        }
-
-        val threads = (sbThreads?.progress ?: 3) + 1
-
-        // Copiar .bin a filesDir para que el proceso nativo pueda accederlo
-        val internalDb = java.io.File(filesDir, "utxos.bin")
-        if (!internalDb.exists() || internalDb.length() != java.io.File(dbFile).length()) {
-            android.widget.Toast.makeText(this,
-                "Copiando base de datos...", android.widget.Toast.LENGTH_SHORT).show()
-            Thread {
-                try {
-                    java.io.File(dbFile).copyTo(internalDb, overwrite = true)
-                    runOnUiThread {
-                        NativeEngine.start(this, internalDb.absolutePath, threads)
-                    }
-                } catch (e: Exception) {
-                    runOnUiThread {
-                        android.widget.Toast.makeText(this,
-                            "Error copiando DB: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                    }
-                }
-            }.start()
-            return
-        }
-        val finalDbPath = internalDb.absolutePath
-
-
-
-        NativeEngine.onLog = { line ->
-            runOnUiThread {
-                android.util.Log.d("NativeEngine", line)
-                if (line.isNotEmpty()) {
-                    android.widget.Toast.makeText(
-                        this@MainActivity, line, android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-
-        NativeEngine.onMatch = { line ->
-            runOnUiThread {
-                HunterService.instance?.sendMatchNotif(1, line)
-                android.widget.Toast.makeText(this@MainActivity,
-                    "MATCH: $line", android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
-
-        NativeEngine.start(this, finalDbPath, threads, "LEGACY")
-
-        // Actualizar UI con velocidad del proceso nativo
-        handler.post(object : Runnable {
-            override fun run() {
-                if (NativeEngine.isRunning()) {
-                    val spd = NativeEngine.speed.get()
-                    val tot = NativeEngine.total.get()
-                    // spd ya viene en K/s del script, multiplicar por 1000 para k/s display
-                    tvWps?.text = if (spd >= 1000)
-                        "${"%.1f".format(spd/1000.0)}M"
-                    else
-                        "${spd}K"
-                    tvCount?.text = formatCount(tot)
-                    tvTime?.text = formatElapsed(sessionStartTime)
-                    handler.postDelayed(this, 800)
-                } else if (!HunterEngine.isRunning()) {
-                    // Proceso terminó — actualizar botón
-                    runOnUiThread {
-                        btnToggle?.text = "▶  START SCAN"
-                        btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
-                            colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
-                            orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
-                            cornerRadius = dp(16).toFloat()
-                        }
-                    }
-                }
-            }
-        })
-        sessionStartTime = System.currentTimeMillis()
-
-        btnToggle?.text = "⏹  STOP"
-        btnToggle?.background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF1A0808.toInt()); cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFF04040.toInt())
-        }
-
-        try {
-            startForegroundService(Intent(this, HunterService::class.java))
-        } catch (e: Exception) {
-            startService(Intent(this, HunterService::class.java))
-        }
-    }
 
     private fun checkAndRestartScan() {
         val wasRunning = prefs.getBoolean("scan_was_running", false)
