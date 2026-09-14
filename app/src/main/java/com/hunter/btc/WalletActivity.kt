@@ -15,6 +15,14 @@ import androidx.fragment.app.FragmentActivity
 import org.json.JSONArray
 import org.json.JSONObject
 
+/** Fila de saldo: el Triple anterior no tenía sitio para la fuente del dato. */
+private data class BalanceRow(
+    val label: String,
+    val addr: String,
+    val sat: Long,
+    val source: String
+)
+
 class WalletActivity : FragmentActivity() {
     private val REQ_IMPORT_BACKUP = 1002
 
@@ -520,28 +528,55 @@ class WalletActivity : FragmentActivity() {
 
         Thread {
             var totalSat = 0L
-            val rows = mutableListOf<Triple<String,String,Long>>()
+            // label, dirección, saldo, fuente ("" = mempool.space, "electrum" = respaldo)
+            val rows = mutableListOf<BalanceRow>()
+            var usedFallback = false
+
+            /** Saldo vía mempool.space. Lanza si la consulta o el JSON fallan. */
+            fun fetchFromMempool(addr: String): Long {
+                val conn = java.net.URL(
+                    if (isTestnet) "https://mempool.space/testnet/api/address/$addr"
+                    else "https://mempool.space/api/address/$addr"
+                ).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 5000; conn.readTimeout = 5000
+                val js = try {
+                    if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
+                    conn.inputStream.bufferedReader().readText()
+                } finally { conn.disconnect() }
+                // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia.
+                // La respuesta trae esos campos en chain_stats y en mempool_stats,
+                // así que el resultado dependía del orden que emitiera la API.
+                val o = JSONObject(js)
+                fun sumOf(block: String): Long {
+                    val b = o.optJSONObject(block) ?: return 0L
+                    return b.optLong("funded_txo_sum", 0L) - b.optLong("spent_txo_sum", 0L)
+                }
+                return sumOf("chain_stats") + sumOf("mempool_stats")
+            }
+
             addresses.forEach { (k, addr) ->
+                val label = if (k == "wif_0") currentWalletName else (labelMap[k] ?: k)
+                if (addr.isEmpty()) { rows.add(BalanceRow("Error", "empty address", -1L, "")); return@forEach }
+
+                var bal: Long? = null
+                var src = ""
                 try {
-                    if (addr.isEmpty()) { rows.add(Triple("Error", "empty address", -1L)); return@forEach }
-                    val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$addr" else "https://mempool.space/api/address/$addr").openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
-                    // Se leía con Regex().find(), que devuelve la PRIMERA
-                    // coincidencia. La respuesta trae esos mismos campos en
-                    // chain_stats y en mempool_stats, así que el resultado dependía
-                    // del orden en que la API los emita — y JSON no lo garantiza.
-                    // Además se ignoraba el mempool: un pago recién recibido no
-                    // aparecía y uno recién enviado seguía contando.
-                    val o = JSONObject(js)
-                    fun sumOf(block: String): Long {
-                        val b = o.optJSONObject(block) ?: return 0L
-                        return b.optLong("funded_txo_sum", 0L) - b.optLong("spent_txo_sum", 0L)
+                    bal = fetchFromMempool(addr)
+                } catch (e: Exception) {
+                    // mempool.space era la única fuente: si caía o devolvía un
+                    // error, el saldo aparecía como "error" sin más. Electrum ya
+                    // estaba implementado y sólo se usaba para el puzzle.
+                    android.util.Log.w("WalletActivity", "mempool falló en $addr: ${e.message}")
+                    try {
+                        val eb = ElectrumClient.getBalance(addr, isTestnet)
+                        if (eb != null) { bal = eb.confirmed + eb.unconfirmed; src = "electrum"; usedFallback = true }
+                    } catch (e2: Exception) {
+                        android.util.Log.w("WalletActivity", "electrum falló en $addr: ${e2.message}")
                     }
-                    val bal = sumOf("chain_stats") + sumOf("mempool_stats")
-                    totalSat += bal
-                    rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, bal))
-                } catch(e: Exception) { rows.add(Triple(if (k == "wif_0") currentWalletName else (labelMap[k] ?: k), addr, -1L)) }
+                }
+                if (bal == null) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
+                totalSat += bal
+                rows.add(BalanceRow(label, addr, bal, src))
             }
             var price = 0.0
             try {
@@ -563,7 +598,15 @@ class WalletActivity : FragmentActivity() {
                     tvTotal.text = if (balanceVisible) btcText else "********"
                     tvFiat.text  = if (balanceVisible) fiatText else "******"
                 }
-                rows.forEach { (lbl, addr, bal) ->
+                if (usedFallback) {
+                    ll.addView(TextView(this).apply {
+                        text = "⚠ mempool.space no respondió; saldo obtenido vía Electrum"
+                        textSize = 9f; setTextColor(AMBER)
+                        typeface = Typeface.create("monospace", Typeface.NORMAL)
+                        setPadding(0, dp(6), 0, 0)
+                    })
+                }
+                rows.forEach { (lbl, addr, bal, src) ->
                     val card = LinearLayout(this).apply {
                         orientation = LinearLayout.VERTICAL; background = cardBg()
                         setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -572,7 +615,8 @@ class WalletActivity : FragmentActivity() {
                     card.addView(TextView(this).apply { text = lbl; textSize = 9f; setTextColor(TXT_SEC) })
                     card.addView(TextView(this).apply { text = addr; textSize = 9f; setTextColor(TXT_PRI); typeface = Typeface.MONOSPACE })
                     card.addView(TextView(this).apply {
-                        text = if (bal < 0) "error" else "%.8f BTC".format(bal / 1e8)
+                        text = (if (bal < 0) "error" else "%.8f BTC".format(bal / 1e8)) +
+                               (if (src == "electrum") "  · electrum" else "")
                         textSize = 12f
                         setTextColor(when { bal > 0 -> GREEN; bal == 0L -> TXT_MUTED; else -> RED })
                         typeface = Typeface.create("monospace", Typeface.BOLD)
