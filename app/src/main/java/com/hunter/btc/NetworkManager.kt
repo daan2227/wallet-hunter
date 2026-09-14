@@ -156,8 +156,7 @@ object NetworkManager {
                     notifyWorkers()
 
                     // Asignar bloque
-                    val block = nextBlock(puzzleNum, rangeStart, rangeEnd)
-                    assignedBlocks[workerId] = block
+                    val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
                     worker.block = block.blockId
                     writer.println(JSONObject().apply {
                         put("type",  "BLOCK")
@@ -183,8 +182,7 @@ object NetworkManager {
                     onBlockScanned?.invoke(blockId, puzzleNum)
 
                     // Asignar nuevo bloque
-                    val block = nextBlock(puzzleNum, rangeStart, rangeEnd)
-                    assignedBlocks[workerId] = block
+                    val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
                     workers[workerId]?.block = block.blockId
                     writer.println(JSONObject().apply {
                         put("type",     "BLOCK")
@@ -221,33 +219,40 @@ object NetworkManager {
         }
     }
 
-    private var blockCounter = 0L
-    private fun nextBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): NetBlock {
+    /**
+     * Elige y reserva un bloque. Va sincronizado: antes se comprobaba si el
+     * bloque estaba libre y se asignaba después, sin atomicidad, así que dos
+     * workers que registraran a la vez podían recibir el mismo rango.
+     */
+    @Synchronized
+    private fun nextBlock(workerId: String, puzzleNum: Int,
+                          rangeStart: String, rangeEnd: String): NetBlock {
         val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
         val size  = java.math.BigInteger(BLOCK_SIZE_HEX, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
 
-        // Bloque aleatorio no asignado
-        val range = end.subtract(start)
-        val totalBlocks = range.divide(size).toLong().coerceAtMost(1_000_000)
-        var blockIdx: Long
+        val totalBlocks = end.subtract(start).divide(size).toLong().coerceAtLeast(1).coerceAtMost(1_000_000)
+        val taken = assignedBlocks.values.mapTo(HashSet()) { it.blockId }
+        val rnd = java.security.SecureRandom()
+        var blockIdx = 0L
         var attempts = 0
         do {
-            blockIdx = (Math.random() * totalBlocks).toLong()
+            blockIdx = (rnd.nextDouble() * totalBlocks).toLong()
             attempts++
-        } while ((assignedBlocks.values.any { it.blockId == blockIdx.toString() } ||
+        } while ((taken.contains(blockIdx.toString()) ||
                   globalScannedBlocks.contains(blockIdx.toString())) && attempts < 200)
 
         val bStart = start.add(size.multiply(java.math.BigInteger.valueOf(blockIdx)))
         val bEnd   = bStart.add(size).min(end)
-        blockCounter++
 
-        return NetBlock(
+        val block = NetBlock(
             blockId    = blockIdx.toString(),
             rangeStart = bStart.toString(16).padStart(18, '0'),
             rangeEnd   = bEnd.toString(16).padStart(18, '0'),
             puzzleNum  = puzzleNum
         )
+        assignedBlocks[workerId] = block   // reservado dentro del bloque sincronizado
+        return block
     }
 
     // ── Worker ────────────────────────────────────────────────────────────────
@@ -420,12 +425,25 @@ object NetworkManager {
     }
 
     // ── Utils ─────────────────────────────────────────────────────────────────
+    /**
+     * IP local IPv4. Se enumeran las interfaces en vez de usar
+     * WifiManager.connectionInfo, que está deprecado desde API 31 y devuelve
+     * datos inválidos cuando la app no está en primer plano.
+     */
     fun getLocalIp(ctx: Context): String {
-        return try {
-            val wifi = ctx.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val ip = wifi.connectionInfo.ipAddress
-            "${ip and 0xff}.${ip shr 8 and 0xff}.${ip shr 16 and 0xff}.${ip shr 24 and 0xff}"
-        } catch (e: Exception) { "0.0.0.0" }
+        try {
+            for (iface in java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (iface.isLoopback || !iface.isUp) continue
+                for (addr in java.util.Collections.list(iface.inetAddresses)) {
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress ?: continue
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("getLocalIp: ${e.message}")
+        }
+        return "0.0.0.0"
     }
 
 
