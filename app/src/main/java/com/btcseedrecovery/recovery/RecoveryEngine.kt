@@ -1,4 +1,4 @@
-package com.hunter.btc.recovery
+package com.btcseedrecovery.recovery
 
 import android.content.Context
 import android.content.res.AssetManager
@@ -97,6 +97,10 @@ class RecoveryEngine(private val context: Context) {
     private external fun cancelRecovery()
 
     companion object {
-        @Volatile private var g_cancelled = false
+        @Volatile var g_cancelled = false
+
+        init {
+            try { System.loadLibrary("hunter_jni") } catch (_: Throwable) {}
+        }
     }
 }

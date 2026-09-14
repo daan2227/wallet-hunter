@@ -1,3 +1,9 @@
 XLARig/
 *.py
 *.txt
+
+# Firma de release — el keystore nunca se versiona.
+# En CI se materializa desde el secret RELEASE_KEYSTORE_B64.
+*.keystore
+*.jks
+keystore.properties

@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 object Strings {
     data class Lang(

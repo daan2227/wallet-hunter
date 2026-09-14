@@ -37,8 +37,10 @@ static void b58enc_local(const uint8_t* data,size_t len,char* out,size_t out_sz)
 }
 
 static void privkey_to_addr(secp256k1_context* ctx,const uint8_t* pk,char* addr_out){
-    secp256k1_pubkey pubkey;
-    secp256k1_ec_pubkey_create(ctx,&pubkey,pk);
+    secp256k1_pubkey pubkey;memset(&pubkey,0,sizeof(pubkey));
+    // On an invalid seckey pubkey_create returns 0 and leaves `pubkey` untouched;
+    // serializing it would be UB. Emit an empty address so no match is reported.
+    if(!secp256k1_ec_pubkey_create(ctx,&pubkey,pk)){addr_out[0]='\0';return;}
     uint8_t pub[33];size_t pub_len=33;
     secp256k1_ec_pubkey_serialize(ctx,pub,&pub_len,&pubkey,SECP256K1_EC_COMPRESSED);
     uint8_t sha[32],h160[20];
@@ -199,7 +201,7 @@ static bool seed_passes_filter(const uint8_t seed[64], const uint8_t fp[2]){
 extern "C"{
 
 JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
+Java_com_btcseedrecovery_recovery_RecoveryEngine_bruteForceSeeds(
     JNIEnv* env,jobject thiz,
     jobjectArray slots_arr,jobjectArray wordlist_arr,
     jintArray missing_arr,jstring target_j)
@@ -286,7 +288,7 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
 }
 
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_recovery_RecoveryEngine_cancelRecovery(JNIEnv* env,jobject thiz){
+Java_com_btcseedrecovery_recovery_RecoveryEngine_cancelRecovery(JNIEnv* env,jobject thiz){
     g_cancelled=true;
 }
 

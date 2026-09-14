@@ -1,7 +1,7 @@
 name: Build APK
 on:
   push:
-    branches: [ main ]
+    branches: [ main, claude/**, playstore/** ]
   workflow_dispatch:
 
 permissions:
@@ -42,11 +42,28 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
-    - name: Create keystore for signing
+    # Restaura el keystore real si el secret existe. Si no, genera el de debug
+    # para que la compilación siga funcionando (APK no publicable).
+    - name: Restore signing keystore
+      env:
+        KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
       run: |
-        keytool -genkeypair -v           -keystore app/debug.keystore           -alias androiddebugkey -keyalg RSA -keysize 2048           -validity 10000 -storepass android -keypass android           -dname "CN=Android Debug,O=Android,C=US"
+        if [ -n "$KEYSTORE_B64" ]; then
+          echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
+          echo "Using release keystore from secrets."
+        else
+          echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the debug key. This APK cannot be published to Google Play."
+          keytool -genkeypair -v -keystore app/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+        fi
 
     - name: Build Release APK
+      env:
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease

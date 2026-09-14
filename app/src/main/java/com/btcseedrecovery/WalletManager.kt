@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
@@ -15,6 +15,13 @@ import javax.crypto.spec.SecretKeySpec
 
 object WalletManager {
     private const val KEY_ALIAS  = "hunter_wallet_key"
+    /* Alias propio para los WIF: clearSeed()/clearSeedOnly() borran KEY_ALIAS,
+       y compartirlo dejaría los WIF cifrados irrecuperables. */
+    private const val WIF_KEY_ALIAS = "hunter_wif_key"
+    private const val WIF_PREFS      = "wallet_wif"
+    private const val PREF_WIF_PLAIN = "wif_list"      // legacy, en claro
+    private const val PREF_WIF_ENC   = "wif_list_enc"
+    private const val PREF_WIF_IV    = "wif_list_iv"
     private const val PREFS_NAME = "wallet_prefs"
     private const val PREF_SEED  = "enc_seed"
     private const val PREF_IV    = "enc_iv"
@@ -24,13 +31,13 @@ object WalletManager {
     private const val PREF_ADDRS = "wallet_addrs"
     private const val PBKDF2_ITER = 100000
 
-    /* Keystore key solo para seed (hardware-backed) */
-    private fun getOrCreateKey(): SecretKey {
+    /* Keystore key hardware-backed */
+    private fun getOrCreateKey(alias: String = KEY_ALIAS): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        if (ks.containsAlias(KEY_ALIAS))
-            return (ks.getEntry(KEY_ALIAS, null) as KeyStore.SecretKeyEntry).secretKey
+        if (ks.containsAlias(alias))
+            return (ks.getEntry(alias, null) as KeyStore.SecretKeyEntry).secretKey
         val kg = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
-        kg.init(KeyGenParameterSpec.Builder(KEY_ALIAS,
+        kg.init(KeyGenParameterSpec.Builder(alias,
             KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
             .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
             .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
@@ -59,27 +66,87 @@ object WalletManager {
         } catch(e: Exception) { null }
     }
 
-    /* Guarda seed cifrada con Keystore (hardware) */
-    // WIF wallet: id -> "wif|addr|name"
-    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet") {
-        val id = "wif_${System.currentTimeMillis()}"
-        val prefs = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE)
-        val list = listWifs(ctx).toMutableList()
-        list.add(Triple(id, wif, "$addr|$name"))
-        prefs.edit().putString("wif_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+    /* ── WIF wallets: id -> "wif|addr|name" ───────────────────────────────────
+       La lista se cifra con AES-GCM bajo una clave del Keystore. Las versiones
+       anteriores la guardaban en claro; listWifs() detecta ese formato, lo migra
+       y borra el original. Las firmas públicas no cambian. */
+
+    /* Serialización en JSON: los separadores posicionales (~~~ ;; | :) se
+       corrompen en cuanto un nombre o etiqueta contiene uno de ellos.
+       parseTriples acepta también el formato antiguo para no perder datos. */
+
+    private fun serializeTriples(list: List<Triple<String,String,String>>): String {
+        val arr = org.json.JSONArray()
+        list.forEach { (a, b, c) ->
+            arr.put(org.json.JSONObject().put("a", a).put("b", b).put("c", c))
+        }
+        return arr.toString()
     }
-    fun listWifs(ctx: Context): List<Triple<String,String,String>> {
-        val raw = ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).getString("wif_list", "") ?: ""
+
+    private fun parseTriples(raw: String): List<Triple<String,String,String>> {
         if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("[")) {
+            return try {
+                val arr = org.json.JSONArray(raw)
+                (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Triple(o.optString("a"), o.optString("b"), o.optString("c"))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
+        // Legacy: "id~~~x~~~y" separado por ";;"
         return raw.split(";;").mapNotNull {
             val p = it.split("~~~")
             if (p.size == 3) Triple(p[0], p[1], p[2]) else null
         }
     }
+
+    private fun writeWifs(ctx: Context, list: List<Triple<String,String,String>>) {
+        val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        if (list.isEmpty()) { prefs.edit().clear().apply(); return }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS))
+        val enc = cipher.doFinal(serializeTriples(list).toByteArray(Charsets.UTF_8))
+        prefs.edit()
+            .putString(PREF_WIF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
+            .putString(PREF_WIF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .remove(PREF_WIF_PLAIN)
+            .apply()
+    }
+
+    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet") {
+        val id = "wif_${System.currentTimeMillis()}"
+        writeWifs(ctx, listWifs(ctx) + Triple(id, wif, "$addr|$name"))
+    }
+
+    fun listWifs(ctx: Context): List<Triple<String,String,String>> {
+        val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        val encB64 = prefs.getString(PREF_WIF_ENC, null)
+        if (encB64 != null) {
+            val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return emptyList()
+            return try {
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS),
+                    GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
+                parseTriples(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
+            } catch (e: Exception) { emptyList() }
+        }
+        // Migración desde el formato legacy en claro. Si falla, las claves
+        // privadas siguen sin cifrar en disco: hay que dejar rastro.
+        val legacy = parseTriples(prefs.getString(PREF_WIF_PLAIN, "") ?: "")
+        if (legacy.isNotEmpty()) {
+            try {
+                writeWifs(ctx, legacy)
+            } catch (e: Exception) {
+                android.util.Log.e("WalletManager",
+                    "WIF migration failed — keys remain in cleartext: ${e.javaClass.simpleName}")
+            }
+        }
+        return legacy
+    }
+
     fun removeWif(ctx: Context, id: String) {
-        val list = listWifs(ctx).filter { it.first != id }
-        ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).edit()
-            .putString("wif_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+        writeWifs(ctx, listWifs(ctx).filter { it.first != id })
     }
     // Legacy single WIF support
     fun loadWif(ctx: Context): Pair<String,String>? {
@@ -90,31 +157,31 @@ object WalletManager {
         return Pair(last.second, addr)
     }
     fun clearWif(ctx: Context) {
-        ctx.getSharedPreferences("wallet_wif", Context.MODE_PRIVATE).edit().clear().apply()
+        ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        try {
+            KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }.deleteEntry(WIF_KEY_ALIAS)
+        } catch (e: Exception) {}
     }
     fun hasWif(ctx: Context) = listWifs(ctx).isNotEmpty()
 
-    // Watcher wallets: watch-only by address
+    // Watcher wallets: watch-only by address. La etiqueta la escribe el usuario,
+    // así que va en JSON — con ";;" un label que contenga el separador partía la lista.
+    private const val WATCH_PREFS = "wallet_watch"
+    private const val PREF_WATCH  = "watch_list"
+
+    private fun writeWatchers(ctx: Context, list: List<Triple<String,String,String>>) {
+        ctx.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE).edit()
+            .putString(PREF_WATCH, serializeTriples(list)).apply()
+    }
     fun saveWatcher(ctx: Context, addr: String, label: String) {
         val id = "watch_${System.currentTimeMillis()}"
-        val prefs = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE)
-        val raw = prefs.getString("watch_list", "") ?: ""
-        val list = if (raw.isEmpty()) mutableListOf() else raw.split(";;").toMutableList()
-        list.add("$id~~~$addr~~~$label")
-        prefs.edit().putString("watch_list", list.joinToString(";;")).apply()
+        writeWatchers(ctx, listWatchers(ctx) + Triple(id, addr, label))
     }
-    fun listWatchers(ctx: Context): List<Triple<String,String,String>> {
-        val raw = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).getString("watch_list", "") ?: ""
-        if (raw.isEmpty()) return emptyList()
-        return raw.split(";;").mapNotNull {
-            val p = it.split("~~~")
-            if (p.size == 3) Triple(p[0], p[1], p[2]) else null
-        }
-    }
+    fun listWatchers(ctx: Context): List<Triple<String,String,String>> =
+        parseTriples(ctx.getSharedPreferences(WATCH_PREFS, Context.MODE_PRIVATE)
+            .getString(PREF_WATCH, "") ?: "")
     fun removeWatcher(ctx: Context, id: String) {
-        val list = listWatchers(ctx).filter { it.first != id }
-        ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
-            .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
+        writeWatchers(ctx, listWatchers(ctx).filter { it.first != id })
     }
 
     fun saveSeed(ctx: Context, mnemonic: String) {
@@ -141,9 +208,17 @@ object WalletManager {
     fun hasSeed(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SEED)
 
-    /* PIN: guarda salt + texto de verificacion cifrado con clave derivada del PIN
-       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false
-       No hay hash almacenado -> no hay brute-force offline directo */
+    /* PIN: guarda salt + texto de verificación cifrado con clave derivada del PIN.
+       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES-GCM no
+       autentica -> checkPin devuelve false.
+
+       OJO: guardar enc("wallet_ok") bajo una clave derivada del PIN ES un
+       verificador, y a efectos de fuerza bruta offline equivale a un hash: quien
+       extraiga salt+verificador puede probar PINs sin pasar por la app. Con 6
+       dígitos (10^6) y PBKDF2 a 100k iteraciones, una GPU de consumo recorre el
+       espacio completo en segundos. Lo que nos protege es que los prefs no salgan
+       del dispositivo (allowBackup=false, dataExtractionRules), no la derivación.
+       El rate limiting de abajo solo frena los intentos hechos por pantalla. */
     fun savePin(ctx: Context, pin: String) {
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
         val key  = pinToKey(pin, salt)
@@ -152,17 +227,57 @@ object WalletManager {
             .putString(PREF_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
             .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
+            .remove(PREF_FAILS).remove(PREF_LOCK_TILL)
             .apply()
     }
 
+    /* ── Rate limiting del PIN ────────────────────────────────────────────────
+       El verificador cifrado permite fuerza bruta offline si alguien extrae los
+       prefs, pero en el dispositivo sí podemos frenar los intentos por pantalla.
+       Backoff: libre hasta 5 fallos, luego 30s, 1m, 2m, 4m… hasta 30 min. */
+    private const val PREF_FAILS     = "pin_fails"
+    private const val PREF_LOCK_TILL = "pin_lock_until"
+    private const val FREE_ATTEMPTS  = 5
+    private const val MAX_LOCK_MS    = 30 * 60 * 1000L
+
+    /** Milisegundos que faltan para poder reintentar; 0 si se puede ya. */
+    fun pinLockRemainingMs(ctx: Context): Long {
+        val until = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(PREF_LOCK_TILL, 0L)
+        return (until - System.currentTimeMillis()).coerceAtLeast(0L)
+    }
+
+    private fun registerPinFailure(ctx: Context) {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val fails = prefs.getInt(PREF_FAILS, 0) + 1
+        val e = prefs.edit().putInt(PREF_FAILS, fails)
+        if (fails > FREE_ATTEMPTS) {
+            val step = (fails - FREE_ATTEMPTS - 1).coerceAtMost(10)
+            val delay = (30_000L shl step).coerceAtMost(MAX_LOCK_MS)
+            e.putLong(PREF_LOCK_TILL, System.currentTimeMillis() + delay)
+        }
+        e.apply()
+    }
+
+    private fun clearPinFailures(ctx: Context) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(PREF_FAILS).remove(PREF_LOCK_TILL).apply()
+    }
+
     fun checkPin(ctx: Context, pin: String): Boolean {
+        if (pinLockRemainingMs(ctx) > 0) return false
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val salt = Base64.decode(prefs.getString(PREF_SALT, null) ?: return false, Base64.NO_WRAP)
         val enc  = Base64.decode(prefs.getString(PREF_VER,  null) ?: return false, Base64.NO_WRAP)
         val iv   = Base64.decode(prefs.getString(PREF_VIV,  null) ?: return false, Base64.NO_WRAP)
         val key  = pinToKey(pin, salt)
-        val dec  = aesDecrypt(key, enc, iv) ?: return false
-        return String(dec) == "wallet_ok"
+        val dec  = aesDecrypt(key, enc, iv)
+        if (dec == null || String(dec) != "wallet_ok") {
+            registerPinFailure(ctx)
+            return false
+        }
+        clearPinFailures(ctx)
+        return true
     }
 
     fun encryptData(data: ByteArray, pin: String): Pair<ByteArray, ByteArray> {
@@ -197,10 +312,30 @@ object WalletManager {
     private const val PREF_WALLET_LIST = "wallet_list"
     private const val PREF_ACTIVE_ID   = "active_wallet_id"
 
+    /* El nombre lo escribe el usuario: con el formato "id:name" unido por "|",
+       un nombre con ":" o "|" rompía el parseo. Se guarda en JSON y se sigue
+       aceptando el formato antiguo al leer. */
+    private fun serializeWallets(list: List<Pair<String,String>>): String {
+        val arr = org.json.JSONArray()
+        list.forEach { (id, name) ->
+            arr.put(org.json.JSONObject().put("id", id).put("name", name))
+        }
+        return arr.toString()
+    }
+
     fun listWallets(ctx: Context): List<Pair<String,String>> {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(PREF_WALLET_LIST, "") ?: ""
+        val raw = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_WALLET_LIST, "") ?: ""
         if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("[")) {
+            return try {
+                val arr = org.json.JSONArray(raw)
+                (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    Pair(o.optString("id"), o.optString("name"))
+                }
+            } catch (e: Exception) { emptyList() }
+        }
         return raw.split("|").mapNotNull {
             val parts = it.split(":")
             if (parts.size == 2) Pair(parts[0], parts[1]) else null
@@ -229,7 +364,7 @@ object WalletManager {
         // Add to list
         val list = listWallets(ctx).toMutableList()
         if (list.none { it.first == id }) list.add(Pair(id, name))
-        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.putString(PREF_WALLET_LIST, serializeWallets(list))
         prefs.apply()
     }
 
@@ -259,7 +394,7 @@ object WalletManager {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         prefs.remove("seed_enc_$id"); prefs.remove("seed_iv_$id")
         val list = listWallets(ctx).filter { it.first != id }
-        prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+        prefs.putString(PREF_WALLET_LIST, serializeWallets(list))
         prefs.apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
     }
@@ -269,13 +404,14 @@ object WalletManager {
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 
-    /* Borra solo la seed principal — preserva PIN y otras wallets */
+    /* Borra solo la seed principal — preserva PIN y otras wallets.
+       Las claves del PIN viven bajo PREF_SALT/PREF_VER/PREF_VIV y no se tocan,
+       así que basta con eliminar la seed y su IV (PREF_IV, no "seed_iv"). */
     fun clearSeedOnly(ctx: Context) {
-        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val pin_salt = prefs.getString(PREF_SALT, null)
-        val pin_ver  = prefs.getString(PREF_VER, null)
-        val pin_viv  = prefs.getString(PREF_VIV, null)
-        prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(PREF_SEED)
+            .remove(PREF_IV)
+            .apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 
@@ -302,9 +438,9 @@ object WalletManager {
                 put("wallets",    backupData)
             }.toString()
 
-            // Derivar clave del PIN con PBKDF2
+            // Derivar clave de la passphrase con PBKDF2
             val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-            val key  = deriveKeyFromPin(pin, salt)
+            val key  = deriveBackupKey(pin, salt)
 
             // Cifrar con AES/GCM
             val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
@@ -319,8 +455,12 @@ object WalletManager {
             dos.write(encrypted)
             dos.flush()
 
-            val file = java.io.File(ctx.getExternalFilesDir(null),
-                "wh_backup_${System.currentTimeMillis()}.whbak")
+            // Almacenamiento interno, no externo: el fichero lleva todas las
+            // seeds y solo lo protege la passphrase. Se comparte vía FileProvider,
+            // que ya cubre files-path en res/xml/file_paths.xml.
+            val dir = java.io.File(ctx.filesDir, "backups").also { it.mkdirs() }
+            dir.listFiles()?.forEach { it.delete() }   // no acumular exports viejos
+            val file = java.io.File(dir, "wh_backup_${System.currentTimeMillis()}.whbak")
             file.writeBytes(out.toByteArray())
             file
         } catch (e: Exception) { null }
@@ -335,11 +475,11 @@ object WalletManager {
             val iv      = ByteArray(ivLen).also { dis.readFully(it) }
             val enc     = dis.readBytes()
 
-            val key = deriveKeyFromPin(pin, salt)
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key,
-                javax.crypto.spec.GCMParameterSpec(128, iv))
-            val json = String(cipher.doFinal(enc), Charsets.UTF_8)
+            // El formato no lleva el número de iteraciones, así que probamos el
+            // actual y, si el GCM no autentica, el legacy de 100k.
+            val json = decryptBackup(pin, salt, iv, enc, BACKUP_PBKDF2_ITER)
+                ?: decryptBackup(pin, salt, iv, enc, LEGACY_BACKUP_ITER)
+                ?: return -1
 
             val root    = org.json.JSONObject(json)
             val wallets = root.getJSONArray("wallets")
@@ -353,12 +493,33 @@ object WalletManager {
         } catch (e: Exception) { -1 }
     }
 
-    private fun deriveKeyFromPin(pin: String, salt: ByteArray): javax.crypto.SecretKey {
+    /* El backup sale del dispositivo y su única protección es la passphrase,
+       así que usa un factor de trabajo mayor que el PIN local (OWASP 2023
+       recomienda >=310k para PBKDF2-HMAC-SHA256). */
+    const val BACKUP_PBKDF2_ITER = 310_000
+    const val BACKUP_MIN_PASSPHRASE = 8
+    /* Backups creados antes de subir el factor de trabajo. */
+    private const val LEGACY_BACKUP_ITER = 100_000
+
+    private fun deriveBackupKey(
+        passphrase: String, salt: ByteArray, iter: Int = BACKUP_PBKDF2_ITER
+    ): javax.crypto.SecretKey {
         val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
+        val spec = javax.crypto.spec.PBEKeySpec(passphrase.toCharArray(), salt, iter, 256)
         val tmp  = factory.generateSecret(spec)
         return javax.crypto.spec.SecretKeySpec(tmp.encoded, "AES")
     }
+
+    /** Devuelve el JSON descifrado, o null si GCM no autentica con esas iteraciones. */
+    private fun decryptBackup(
+        passphrase: String, salt: ByteArray, iv: ByteArray, enc: ByteArray, iter: Int
+    ): String? = try {
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE,
+            deriveBackupKey(passphrase, salt, iter),
+            javax.crypto.spec.GCMParameterSpec(128, iv))
+        String(cipher.doFinal(enc), Charsets.UTF_8)
+    } catch (e: Exception) { null }
 
 
 }

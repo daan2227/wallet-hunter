@@ -1,4 +1,4 @@
-package com.hunter.btc
+package com.btcseedrecovery
 
 object Base58Check {
     private const val ALPHA = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"

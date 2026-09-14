@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Privacy Policy – BTC Seed Recovery</title>
+<style>
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+         max-width: 720px; margin: 40px auto; padding: 0 24px;
+         color: #1a1a1a; line-height: 1.7; }
+  h1 { font-size: 1.8rem; border-bottom: 2px solid #eee; padding-bottom: 12px; }
+  h2 { font-size: 1.2rem; margin-top: 32px; color: #333; }
+  p, li { color: #444; }
+  a { color: #0070f3; }
+  .updated { color: #888; font-size: 0.9rem; }
+</style>
+</head>
+<body>
+
+<h1>Privacy Policy</h1>
+<p class="updated">Last updated: July 2026</p>
+
+<p><strong>BTC Seed Recovery</strong> ("the App") is developed and maintained by the developer
+("we", "us", "our"). This Privacy Policy explains how we handle your information when you
+use the App.</p>
+
+<h2>1. Information We Do NOT Collect</h2>
+<p>BTC Seed Recovery is a <strong>fully offline</strong> tool for recovering your own Bitcoin
+seed phrases and managing your own wallets. We do <strong>not</strong>:</p>
+<ul>
+  <li>Collect, store, or transmit your seed phrases, private keys, or wallet data to any server.</li>
+  <li>Create user accounts or require any registration.</li>
+  <li>Use analytics, tracking SDKs, or advertising identifiers.</li>
+  <li>Share any data with third parties.</li>
+</ul>
+
+<h2>2. Data Stored Locally on Your Device</h2>
+<p>All data the App stores remains exclusively on your device:</p>
+<ul>
+  <li><strong>Encrypted wallet keys</strong> – your seed phrase or private key, encrypted with
+  AES-256 using a PIN you choose, stored in Android's encrypted SharedPreferences. We never
+  see this data.</li>
+  <li><strong>App preferences</strong> – theme, language, and UI settings stored locally.</li>
+  <li><strong>Session statistics</strong> – recovery attempt counts stored locally for your
+  reference.</li>
+</ul>
+
+<h2>3. Internet Access</h2>
+<p>The App connects to the Internet only when you explicitly request it, for the following
+read-only operations:</p>
+<ul>
+  <li>Querying the public <a href="https://mempool.space">mempool.space</a> API to display
+  the balance of your Bitcoin addresses.</li>
+  <li>Querying the same API to display your transaction history.</li>
+  <li>Broadcasting a signed transaction you choose to send.</li>
+</ul>
+<p>Your private keys and seed phrases are <strong>never sent over the network</strong>. Only
+Bitcoin addresses (public information recorded on the blockchain) are transmitted to check
+balances.</p>
+
+<h2>4. Biometric Authentication</h2>
+<p>The App optionally uses Android's Biometric API (fingerprint or face recognition) to
+protect access to your wallet. Biometric data is processed entirely by the Android operating
+system and is never accessible to or stored by the App.</p>
+
+<h2>5. Children's Privacy</h2>
+<p>The App is not directed at children under 13 years of age. We do not knowingly collect
+personal information from children.</p>
+
+<h2>6. Changes to This Policy</h2>
+<p>If we make material changes to this Privacy Policy, we will update the "Last updated" date
+above and publish the updated policy at this URL.</p>
+
+<h2>7. Contact</h2>
+<p>If you have questions about this Privacy Policy, please open an issue on our
+<a href="https://github.com/daan2227/wallet-hunter">GitHub repository</a>.</p>
+
+</body>
+</html>
