@@ -1852,7 +1852,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val pctLocal = tvPctPuzzle!!
         val blkLocal = tvBlockProgress!!
         miniRow2.addView(miniStat("PROGRESO", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-        miniRow2.addView(miniStat("RESTANTE", blkLocal))
+        miniRow2.addView(miniStat("PUZZLE RESTANTE", blkLocal))
         statsCard.addView(miniRow1); statsCard.addView(miniRow2)
         page.addView(statsCard)
 
@@ -3325,21 +3325,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // Tiempo estimado para completar el rango
                     if (wps > 0 && currentRangeStart.isNotEmpty() && currentRangeEnd.isNotEmpty()) {
                         try {
-                            val start = java.math.BigInteger(currentRangeStart.trimStart('0').ifEmpty{"0"}, 16)
-                            val end   = java.math.BigInteger(currentRangeEnd.trimStart('0').ifEmpty{"0"}, 16)
-                            val rangeSize = end.subtract(start)
                             // getWps() ya devuelve claves/s: el *1000 hacía que
                             // el ETA mostrado fuese mil veces más optimista.
-                            val keysPerSec = wps
-                            val secsBig = rangeSize.divide(
-                                java.math.BigInteger.valueOf(keysPerSec.toLong().coerceAtLeast(1)))
-                            val eta = formatEta(secsBig)
+                            val kps = java.math.BigInteger.valueOf(
+                                wps.toLong().coerceAtLeast(1))
+                            fun etaOf(a: String, b: String): String {
+                                if (a.isEmpty() || b.isEmpty()) return "—"
+                                val s0 = java.math.BigInteger(a.trimStart('0').ifEmpty{"0"}, 16)
+                                val e0 = java.math.BigInteger(b.trimStart('0').ifEmpty{"0"}, 16)
+                                val size = e0.subtract(s0)
+                                if (size.signum() <= 0) return "—"
+                                return formatEta(size.divide(kps))
+                            }
+                            // Los dos ETA medían lo mismo — el bloque — porque
+                            // ambos usaban currentRangeStart/End. Ahora la línea
+                            // de estado informa del bloque en curso y la
+                            // mini-stat del puzzle completo, que es lo que de
+                            // verdad interesa para dimensionar el intento.
+                            val etaBlock  = etaOf(currentRangeStart, currentRangeEnd)
+                            val etaPuzzle = etaOf(puzzleFullStart, puzzleFullEnd)
                             if (currentRangeStart != cachedPuzzleLabelForStart) {
                                 cachedPuzzleLabelForStart = currentRangeStart
-                                cachedPuzzleLabel = puzzles.firstOrNull { it.start == currentRangeStart }?.num?.let { "#$it" } ?: ""
+                                cachedPuzzleLabel = puzzles.firstOrNull { it.start == puzzleFullStart }?.num?.let { "#$it" } ?: ""
                             }
-                            tvPuzzleStatus?.text = "ETA: $eta · Puzzle $cachedPuzzleLabel"
-                            tvBlockProgress?.text = eta
+                            tvPuzzleStatus?.text =
+                                "Bloque: $etaBlock · Puzzle $cachedPuzzleLabel: $etaPuzzle"
+                            tvBlockProgress?.text = etaPuzzle
                         } catch (e: Exception) {}
                     }
                 } else {
