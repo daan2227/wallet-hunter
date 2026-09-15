@@ -68,22 +68,37 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleRelease
 
-    # Esta rama publica bajo su propio tag. El tag "latest-build" pertenece a
-    # playstore/seed-recovery; compartirlo hacía que cualquier build de esta
-    # rama borrase y reemplazase aquel APK bajo la misma etiqueta de descarga.
-    - name: Delete old release
+    # Cada rama publica bajo su propio tag.
+    #
+    # "latest-build" pertenece a playstore/seed-recovery. Y desde que main
+    # recibió el merge de la rama full, ambas construían y publicaban bajo
+    # "latest-build-full": dos ejecuciones borrando y recreando el mismo release
+    # a la vez, que es como se perdió el APK de f4b2be0 —"a release with the same
+    # tag name already exists"— aunque el build fuese correcto.
+    - name: Publish APK
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release delete latest-build-full --yes 2>/dev/null || true
-        git push --delete origin latest-build-full 2>/dev/null || true
+        if [ "${{ github.ref_name }}" = "main" ]; then
+          TAG=latest-build-main
+          TITLE="Full build · main"
+        else
+          TAG=latest-build-full
+          TITLE="Full build (hunting)"
+        fi
 
-    - name: Create Release with APK
-      env:
-        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      run: |
-        gh release create latest-build-full \
-          app/build/outputs/apk/release/*.apk \
-          --title "Full build (hunting) $(date +%Y-%m-%d)" \
-          --notes "Auto-build from commit ${{ github.sha }}. Full app including hunting features — NOT the Play Store build." \
-          --prerelease
+        # Crear-o-actualizar en vez de borrar-y-crear: sin borrar el tag no hay
+        # ventana en la que otra ejecución lo encuentre a medias, y reintentar
+        # es inofensivo.
+        gh release view "$TAG" >/dev/null 2>&1 || \
+          gh release create "$TAG" \
+            --title "$TITLE $(date +%Y-%m-%d)" \
+            --notes "Auto-build from commit ${{ github.sha }} (${{ github.ref_name }}). Full app including hunting features — NOT the Play Store build." \
+            --prerelease
+
+        gh release edit "$TAG" \
+          --title "$TITLE $(date +%Y-%m-%d)" \
+          --notes "Auto-build from commit ${{ github.sha }} (${{ github.ref_name }}). Full app including hunting features — NOT the Play Store build."
+
+        # --clobber reemplaza el APK anterior conservando el release y el tag.
+        gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
