@@ -95,7 +95,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var batteryReceiver: android.content.BroadcastReceiver? = null
     private var lastFoundCount = 0L
     private val NOTIF_CHANNEL = "hunter_match"
-    private val REQ_IMPORT_CONFIG = 2002
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private var tvStatus: TextView? = null
@@ -439,10 +438,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setupNotificationChannel()
             registerBatteryReceiver()
             // Auto-detectar hardware en primera ejecución
-            // Restaurar scheduler si estaba activo
-            scheduledStart = prefs.getInt("sched_start", -1)
-            scheduledStop  = prefs.getInt("sched_stop",  -1)
-            if (scheduledStart >= 0) startScheduler()
             selectedScanMode = prefs.getInt("scan_mode", 0)
 
             if (!prefs.getBoolean("hw_detected", false)) {
@@ -3641,10 +3636,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
-        if (req == REQ_IMPORT_CONFIG && res == RESULT_OK) {
-            data?.data?.let { applyImportedConfig(it) }
-            return
-        }
         if (req == REQ_IMPORT_PROGRESS && res == RESULT_OK) {
             data?.data?.let { processImportedProgress(it) }
             return
@@ -4075,79 +4066,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
     // ── Export / Import Configuración ────────────────────────────────────────
-    private fun applyImportedConfig(uri: android.net.Uri) {
-        try {
-            val json = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
-            val cfg = org.json.JSONObject(json)
-
-            val edit = prefs.edit()
-            if (cfg.has("threads"))        edit.putInt("threads",        cfg.getInt("threads"))
-            if (cfg.has("cpu"))            edit.putInt("cpu",            cfg.getInt("cpu"))
-            if (cfg.has("puzzle_threads")) edit.putInt("puzzle_threads", cfg.getInt("puzzle_threads"))
-            if (cfg.has("puzzle_cpu"))     edit.putInt("puzzle_cpu",     cfg.getInt("puzzle_cpu"))
-            if (cfg.has("fastMode"))       edit.putBoolean("fastMode",   cfg.getBoolean("fastMode"))
-            if (cfg.has("sched_start"))    edit.putInt("sched_start",    cfg.getInt("sched_start"))
-            if (cfg.has("sched_stop"))     edit.putInt("sched_stop",     cfg.getInt("sched_stop"))
-            if (cfg.has("batch_size"))     edit.putInt("batch_size",     cfg.getInt("batch_size"))
-            if (cfg.has("big_cores"))      edit.putString("big_cores",   cfg.getString("big_cores"))
-            edit.apply()
-
-            // Aplicar inmediatamente
-            sbThreads?.progress     = prefs.getInt("threads", 3)
-            sbCpu?.progress         = prefs.getInt("cpu", 70)
-            sbThreadsPuzzle?.progress = prefs.getInt("puzzle_threads", 3)
-            sbCpuPuzzle?.progress   = prefs.getInt("puzzle_cpu", 70)
-            updateLabels(); updatePuzzleLabels()
-
-            // Restaurar scheduler
-            scheduledStart = prefs.getInt("sched_start", -1)
-            scheduledStop  = prefs.getInt("sched_stop", -1)
-            if (scheduledStart >= 0) startScheduler()
-
-            val device = cfg.optString("device", "desconocido")
-            val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.US)
-                .format(java.util.Date(cfg.optLong("exported_at", 0)))
-            Toast.makeText(this,
-                "✓ Config importada\nDispositivo: $device\nFecha: $date",
-                Toast.LENGTH_LONG).show()
-
-        } catch (e: Exception) {
-            Toast.makeText(this, "Error importando: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun startScheduler() {
-        if (schedulerRunning) return
-        schedulerRunning = true
-        Thread {
-            while (schedulerRunning) {
-                try {
-                    val cal = java.util.Calendar.getInstance()
-                    val hour = cal.get(java.util.Calendar.HOUR_OF_DAY)
-                    if (scheduledStart >= 0 && scheduledStop >= 0) {
-                        val shouldRun = if (scheduledStart <= scheduledStop) {
-                            hour in scheduledStart until scheduledStop
-                        } else {
-                            hour >= scheduledStart || hour < scheduledStop
-                        }
-                        if (shouldRun && !HunterEngine.isRunning()) {
-                            runOnUiThread {
-                                puzzleMode = false
-                                HunterEngine.setMode(0)
-                                doToggle(btnToggle)
-                            }
-                        } else if (!shouldRun && HunterEngine.isRunning()) {
-                            runOnUiThread {
-                                doToggle(activeToggleBtn)
-                            }
-                        }
-                    }
-                } catch (e: Exception) {}
-                Thread.sleep(60_000) // revisar cada minuto
-            }
-        }.start()
-    }
-
     private fun setupNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Canal normal
