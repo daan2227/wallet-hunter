@@ -331,15 +331,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     override fun onCreate(savedState: Bundle?) {
         super.onCreate(savedState)
-        // Capturar crashes globales
-        val crashLogPath = (getExternalFilesDir(null)?.absolutePath ?: filesDir.absolutePath) + "/crash_log.txt"
+        // Capturar crashes globales.
+        //
+        // Se escribía además una copia en getExternalFilesDir(). Con minSdk 26 y
+        // requestLegacyExternalStorage, en Android 8 y 9 cualquier app con
+        // READ_EXTERNAL_STORAGE puede leer ese directorio, y un stack trace
+        // arrastra el mensaje de la excepción, que suele llevar el dato que la
+        // provocó. Ahora sólo va a almacenamiento interno, que es privado de la
+        // app, y se acota para que no crezca sin fin.
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             try {
                 val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
                 val msg = "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n"
-                java.io.File(crashLogPath).appendText(msg)
-                // También guardar en internal storage como backup
-                java.io.File(filesDir, "crash_log.txt").appendText(msg)
+                val f = java.io.File(filesDir, "crash_log.txt")
+                if (f.length() > 256 * 1024) f.writeText("")   // no crecer sin límite
+                f.appendText(msg)
+                // Arrastra el que dejaron las versiones anteriores fuera.
+                getExternalFilesDir(null)?.let { java.io.File(it, "crash_log.txt").delete() }
             } catch (ex: Exception) {}
             android.os.Process.killProcess(android.os.Process.myPid())
         }
@@ -422,9 +430,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.setMatchDir(filesDir.absolutePath)
             migrateLegacyMatchFile()
             // Lo que quedara en claro de la sesión anterior pasa al baúl cifrado.
+            // Sólo se mueve el fichero: aquí NO se consulta ningún saldo. Hacerlo
+            // en cada arranque mandaba todas las direcciones encontradas a
+            // mempool.space sin que nadie lo pidiera. La consulta está en
+            // "Actualizar Balance" y en el botón del baúl.
             MatchVault.ingestPlaintextFile(this)
-            // El saldo sí hace red, así que va fuera del hilo principal.
-            Thread { try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) {} }.start()
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "setMatchDir: ${e.message}", e)
         }
@@ -2498,22 +2508,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // fichero —lo usa sólo para la lista en memoria—: las líneas empiezan
         // por SEED:, PRIV: o RAW:. Así que el total salía siempre en 0 aunque
         // hubiera aciertos guardados.
-        // Corre siempre en segundo plano (refreshWallet la llama desde un Thread):
-        // resolvePendingBalances hace red.
-        fun loadCoincidencias(): Pair<Double, List<Triple<String,Double,String>>> {
+        // Corre siempre en segundo plano (refreshWallet la llama desde un Thread).
+        //
+        // consultarRed sólo va a true cuando el usuario pulsa "Actualizar
+        // Balance". Al construir la pestaña iba a true sin más, así que abrir
+        // Wallet mandaba todas las direcciones encontradas a mempool.space sin
+        // que nadie lo hubiera pedido: preguntar por una dirección se la revela
+        // a quien responde, y eso delata que este dispositivo tiene la clave.
+        fun loadCoincidencias(consultarRed: Boolean): Pair<Double, List<Triple<String,Double,String>>> {
             MatchVault.ingestPlaintextFile(this@MainActivity)
-            try { MatchVault.resolvePendingBalances(this@MainActivity) } catch (e: Exception) {}
+            if (consultarRed) {
+                try { MatchVault.resolvePendingBalances(this@MainActivity) } catch (e: Exception) {}
+            }
             val entries = MatchVault.list(this@MainActivity)
             return Pair(entries.sumOf { it.btc },
                         entries.map { Triple(it.addr, it.btc, it.wif) })
         }
 
-        fun refreshWallet() {
+        fun refreshWallet(consultarRed: Boolean = false) {
             Thread {
-                val (total, matches) = loadCoincidencias()
+                val (total, matches) = loadCoincidencias(consultarRed)
+                val pendientes = MatchVault.pendingBalance(this@MainActivity)
                 runOnUiThread {
                     tvTotalBtc.text = "%.8f".format(total)
-                    tvTotalUsd.text = "BTC  ·  ${matches.size} wallet(s) encontrada(s)"
+                    tvTotalUsd.text = when {
+                        matches.isEmpty()  -> "BTC  ·  sin hallazgos todavía"
+                        // Un total que suma ceros sin consultar no es un saldo:
+                        // decir "0.00000000" a secas afirma que están vacías.
+                        pendientes > 0     -> "BTC  ·  ${matches.size} hallazgo(s) · $pendientes sin consultar"
+                        else               -> "BTC  ·  ${matches.size} hallazgo(s)"
+                    }
                 }
             }.start()
         }
@@ -2614,9 +2638,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
         })
-        page.addView(walletBtn("↻", "Actualizar Balance", "Releer el baúl de hallazgos") {
-            refreshWallet()
-            android.widget.Toast.makeText(this, "Actualizando...", android.widget.Toast.LENGTH_SHORT).show()
+        page.addView(walletBtn("↻", "Actualizar Balance", "Consulta los saldos en la cadena") {
+            refreshWallet(consultarRed = true)
+            android.widget.Toast.makeText(this, "Consultando la cadena…",
+                android.widget.Toast.LENGTH_SHORT).show()
         })
         page.addView(walletBtn("🗄", "Baúl de Hallazgos", "Claves de puzzle y escáner, cifradas") {
             if (!PinAuthHelper.isSessionValid()) {
@@ -3472,6 +3497,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 lastFoundSeen = foundNow
                 Thread {
                     try {
+                        // Aquí sí se consulta, y sólo aquí de forma automática:
+                        // acaba de aparecer un acierto y lo primero que se
+                        // quiere saber es si esa dirección tiene fondos. Es una
+                        // dirección, no el baúl entero.
                         if (MatchVault.ingestPlaintextFile(this@MainActivity) > 0)
                             MatchVault.resolvePendingBalances(this@MainActivity)
                     } catch (e: Exception) {}
@@ -4038,8 +4067,56 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
     }
 
+    /**
+     * Exporta un resumen de los hallazgos para compartir.
+     *
+     * Iba sin PIN, al contrario que los dos botones de debajo, y metía dentro
+     * los últimos 2 KB de crash_log.txt: el handler guarda e.message y el stack
+     * trace tal cual, y el mensaje de una excepción suele arrastrar el dato que
+     * la provocó. Ese fichero sale por ACTION_SEND hacia mensajería o correo.
+     *
+     * Ahora pide PIN, el registro de fallos es opt-in explícito y lo que se
+     * incluye va con las cadenas que parecen clave tapadas.
+     */
     private fun exportLog() {
+        if (!PinAuthHelper.isSessionValid()) {
+            PinAuthHelper.show(this) { ok -> if (ok) askExportLogOptions() }
+        } else {
+            askExportLogOptions()
+        }
+    }
+
+    private fun askExportLogOptions() {
+        val crashLog = File(filesDir, "crash_log.txt")
+        if (!crashLog.exists() || crashLog.length() == 0L) { writeAndShareLog(false); return }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("¿Incluir el registro de fallos?")
+            .setMessage("Hay un registro de fallos guardado. Ayuda a diagnosticar " +
+                        "problemas, pero un error puede llevar dentro el dato que lo " +
+                        "causó. El fichero se comparte por mensajería o correo.")
+            .setPositiveButton("Sin el registro") { _, _ -> writeAndShareLog(false) }
+            .setNeutralButton("Incluirlo") { _, _ -> writeAndShareLog(true) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /**
+     * Tapa lo que tenga forma de clave privada: 64 hex seguidos, WIF
+     * (5/K/L + Base58) y claves extendidas. Es una red de seguridad sobre el
+     * registro de fallos, no una garantía — por eso incluirlo se pregunta.
+     */
+    private fun redactSecrets(text: String): String =
+        text.replace(Regex("""\b[0-9a-fA-F]{64}\b"""), "[hex-oculto]")
+            .replace(Regex("""\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b"""), "[wif-oculto]")
+            .replace(Regex("""\b(xprv|yprv|zprv|tprv)[1-9A-HJ-NP-Za-km-z]{50,}"""), "[xprv-oculto]")
+
+    private fun writeAndShareLog(includeCrashLog: Boolean) {
         val dir = getExternalFilesDir(null) ?: filesDir
+        // Los exports anteriores se quedaban ahí para siempre. En Android 8 y 9
+        // este directorio lo lee cualquier app con READ_EXTERNAL_STORAGE.
+        dir.listFiles()?.filter { it.name.startsWith("wallet_hunter_export_") }
+            ?.forEach { it.delete() }
+
         val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
         val f = File(dir, "wallet_hunter_export_$ts.txt")
         val sb = StringBuilder()
@@ -4048,14 +4125,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sb.appendLine("Dispositivo: ${android.os.Build.MODEL}")
         sb.appendLine()
 
-        // Incluir coincidencias SIN las claves privadas: este fichero se comparte
-        // por ACTION_SEND y podría acabar en mensajería o correo. Para exportar
-        // las claves está la copia de seguridad, que cifra con el PIN.
+        // Los hallazgos van SIN claves privadas: para llevarse las claves está la
+        // copia de seguridad, que cifra con el PIN.
         MatchVault.ingestPlaintextFile(this)
         val hallazgos = MatchVault.list(this)
         if (hallazgos.isNotEmpty()) {
             sb.appendLine("=== MATCHES ENCONTRADOS ===")
-            sb.appendLine("(claves privadas omitidas — usa el backup cifrado)")
+            sb.appendLine("(claves privadas omitidas — usa la copia de seguridad)")
             val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
             hallazgos.forEach { e ->
                 sb.appendLine("[${fmt.format(java.util.Date(e.ts))}] ${e.source}  " +
@@ -4065,16 +4141,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             sb.appendLine("=== SIN MATCHES AÚN ===")
         }
 
-        // Incluir crash log si existe
-        val crashLog = File(filesDir, "crash_log.txt")
-        if (crashLog.exists()) {
-            sb.appendLine("=== CRASH LOG ===")
-            sb.appendLine(crashLog.readText().takeLast(2000))
+        if (includeCrashLog) {
+            val crashLog = File(filesDir, "crash_log.txt")
+            if (crashLog.exists()) {
+                sb.appendLine()
+                sb.appendLine("=== CRASH LOG ===")
+                sb.appendLine(redactSecrets(crashLog.readText().takeLast(4000)))
+            }
         }
 
         f.writeText(sb.toString())
 
-        // Compartir el archivo
         val uri = androidx.core.content.FileProvider.getUriForFile(
             this, "${packageName}.provider", f
         )
