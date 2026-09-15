@@ -13,11 +13,12 @@ Publicado en https://claude.ai/artifact/AHccMLXW8p73hNmfenK1QU
 | `Puzzle.dc.html` | Puzzle |
 | `Cartera.dc.html` | Cartera (hub) |
 | `VerCartera.dc.html` | Ver cartera · pestaña Saldo |
+| `Enviar.dc.html` | Enviar |
 | `Recovery.dc.html` | Recuperar seed |
 | `Historial.dc.html` | Historial de sesiones |
 | `Clave.dc.html` | Clave de acceso |
 
-Enviar y Recibir no están dibujadas.
+Recibir no está dibujada: es el QR, la dirección y poco más.
 
 ## El sistema
 
@@ -36,7 +37,7 @@ El resto de valores vienen de `AppTheme.kt` y de los colores literales de las
 activities: `#FF6B35` aviso, `#F04040` rojo, `#6EA8FE` azul.
 
 Iconos de trazo a 19-20px, ningún emoji. Blancos de toque de 50-62px.
-Las siete pantallas caben en 390×844 sin scroll.
+Las ocho pantallas caben en 390×844 sin scroll.
 
 ## Historial
 
@@ -56,7 +57,8 @@ node <skill>/seed-canvas.mjs \
   --out wallet-hunter-rediseno.html \
   --title "Wallet Hunter · Rediseño" \
   --artboard Main.dc.html --artboard Puzzle.dc.html --artboard Cartera.dc.html \
-  --artboard VerCartera.dc.html --artboard Recovery.dc.html \
+  --artboard VerCartera.dc.html --artboard Enviar.dc.html \
+  --artboard Recovery.dc.html \
   --artboard Historial.dc.html --artboard Clave.dc.html \
   --canvas canvas.json
 ```

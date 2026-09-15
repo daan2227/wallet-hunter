@@ -1,23 +1,94 @@
 {
   "artboards": [
-    { "file": "Main.dc.html",       "title": "Escáner",         "x": 0,    "y": 0,   "w": 390, "h": 844 },
-    { "file": "Puzzle.dc.html",     "title": "Puzzle",          "x": 470,  "y": 0,   "w": 390, "h": 844 },
-    { "file": "Cartera.dc.html",    "title": "Cartera",         "x": 940,  "y": 0,   "w": 390, "h": 844 },
-    { "file": "VerCartera.dc.html", "title": "Ver cartera",     "x": 1410, "y": 0,   "w": 390, "h": 844 },
-
-    { "file": "Recovery.dc.html",   "title": "Recuperar seed",  "x": 0,    "y": 964, "w": 390, "h": 844 },
-    { "file": "Historial.dc.html",  "title": "Historial",       "x": 470,  "y": 964, "w": 390, "h": 844 },
-    { "file": "Clave.dc.html",      "title": "Clave",           "x": 940,  "y": 964, "w": 390, "h": 844 }
+    {
+      "file": "Main.dc.html",
+      "title": "Escáner",
+      "x": 0,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Puzzle.dc.html",
+      "title": "Puzzle",
+      "x": 470,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Cartera.dc.html",
+      "title": "Cartera",
+      "x": 940,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "VerCartera.dc.html",
+      "title": "Ver cartera",
+      "x": 1410,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Recovery.dc.html",
+      "title": "Recuperar seed",
+      "x": 0,
+      "y": 964,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Historial.dc.html",
+      "title": "Historial",
+      "x": 470,
+      "y": 964,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Clave.dc.html",
+      "title": "Clave",
+      "x": 940,
+      "y": 964,
+      "w": 390,
+      "h": 844
+    },
+    {
+      "file": "Enviar.dc.html",
+      "title": "Enviar",
+      "x": 1880,
+      "y": 0,
+      "w": 390,
+      "h": 844
+    }
   ],
   "annotations": [
-    { "id": "sistema", "x": -320, "y": 0, "w": 280,
-      "text": "BÓVEDA\n\nEl sistema, aplicado a las siete pantallas.\n\nTipografía: Sora para cifras y títulos, Public Sans para el resto. Dos familias, nada más.\n\nEscala: 44 / 22 / 17 / 14 / 12. Una cifra domina por pantalla; lo demás baja a 14 o a 12.\n\nSuperficies: fondo #0E0E0E, tarjeta #161616, separador #222. Sin bordes: la elevación la hace el tono.\n\nAcento #00C896 sólo en tres sitios: acción principal, saldo positivo y estado \"buscando\". En ningún otro." },
-
-    { "id": "cambios", "x": -320, "y": 964, "w": 280,
-      "text": "QUÉ CAMBIA DE FONDO\n\nFuera los emoji: iconos de trazo a 19-20px.\n\nMenos tarjetas. La pantalla de cartera pasa de seis a dos acciones primarias y un grupo.\n\nVer cartera deja de listar ocho ceros: enseña las que tienen saldo y pliega el resto.\n\nBlancos de toque de 50-62px en todo el teclado y los botones." },
-
-    { "id": "pendiente", "x": 1880, "y": 0, "w": 300,
-      "text": "NO ESTÁ AQUÍ\n\nEnviar y Recibir aparecen como pestañas pero no las he dibujado — no estaban en el encargo.\n\nEnviar es la que más ganaría: ahora tiene que decir de qué dirección sale, a cuál va el cambio y que la transacción es reemplazable. Dime si la quieres." }
+    {
+      "id": "sistema",
+      "x": -320,
+      "y": 0,
+      "w": 280,
+      "text": "BÓVEDA\n\nEl sistema, aplicado a las siete pantallas.\n\nTipografía: Sora para cifras y títulos, Public Sans para el resto. Dos familias, nada más.\n\nEscala: 44 / 22 / 17 / 14 / 12. Una cifra domina por pantalla; lo demás baja a 14 o a 12.\n\nSuperficies: fondo #0E0E0E, tarjeta #161616, separador #222. Sin bordes: la elevación la hace el tono.\n\nAcento #00C896 sólo en tres sitios: acción principal, saldo positivo y estado \"buscando\". En ningún otro."
+    },
+    {
+      "id": "cambios",
+      "x": -320,
+      "y": 964,
+      "w": 280,
+      "text": "QUÉ CAMBIA DE FONDO\n\nFuera los emoji: iconos de trazo a 19-20px.\n\nMenos tarjetas. La pantalla de cartera pasa de seis a dos acciones primarias y un grupo.\n\nVer cartera deja de listar ocho ceros: enseña las que tienen saldo y pliega el resto.\n\nBlancos de toque de 50-62px en todo el teclado y los botones."
+    },
+    {
+      "id": "recibir",
+      "x": 1880,
+      "y": 964,
+      "w": 390,
+      "text": "PENDIENTE\n\nRecibir sigue sin dibujar: es el QR, la dirección y poco más, y no cambia con lo que hemos tocado por dentro.\n\nDime si la quieres y la hago."
+    }
   ],
-  "launch": { "view": "canvas" }
+  "launch": {
+    "view": "canvas"
+  }
 }
