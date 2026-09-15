@@ -1507,7 +1507,9 @@ class WalletActivity : FragmentActivity() {
                     }
                     startActivity(android.content.Intent.createChooser(intent, "Compartir backup"))
                 } else {
-                    android.widget.Toast.makeText(this, "No hay wallets para exportar", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this,
+                        "No hay nada que exportar: ni wallets, ni WIF, ni hallazgos",
+                        android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton("Cancelar", null)
@@ -1548,8 +1550,11 @@ class WalletActivity : FragmentActivity() {
                 val data = contentResolver.openInputStream(uri)?.readBytes() ?: return@setPositiveButton
                 val count = WalletManager.importBackup(this, pin, data)
                 if (count >= 0) {
+                    // Cuenta wallets, seed principal, WIF, watchers y hallazgos:
+                    // decir "wallet(s)" a secas confundía cuando el backup
+                    // traía sobre todo claves sueltas.
                     android.widget.Toast.makeText(this,
-                        "✓ $count wallet(s) restauradas", android.widget.Toast.LENGTH_SHORT).show()
+                        "✓ $count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
                     buildUI()
                 } else {
                     android.widget.Toast.makeText(this,

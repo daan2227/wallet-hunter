@@ -191,6 +191,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
        comparaba la sesión entera contra un bloque y daba "1 de 0". */
     private var puzzleProgressUpdater: ((Int, String, String) -> Unit)? = null
     private var lastProgressTick = 0L
+    /** Último getFound() visto, para saber cuándo hay aciertos nuevos que guardar. */
+    private var lastFoundSeen = -1L
     private var puzzleFullStart: String = ""
     private var puzzleFullEnd: String = ""
 
@@ -402,6 +404,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             HunterEngine.setMatchDir(filesDir.absolutePath)
             migrateLegacyMatchFile()
+            // Lo que quedara en claro de la sesión anterior pasa al baúl cifrado.
+            MatchVault.ingestPlaintextFile(this)
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "setMatchDir: ${e.message}", e)
         }
@@ -2444,26 +2448,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         heroCard.addView(tvTotalUsd)
         page.addView(heroCard)
 
-        // Leer coincidencias y calcular total
+        // Leer los hallazgos del baúl y calcular total.
+        //
+        // Antes esto leía coincidencias.txt filtrando por líneas que empezaran
+        // con "MATCH|", pero save_match() nunca escribe ese prefijo en el
+        // fichero —lo usa sólo para la lista en memoria—: las líneas empiezan
+        // por SEED:, PRIV: o RAW:. Así que el total salía siempre en 0 aunque
+        // hubiera aciertos guardados.
         fun loadCoincidencias(): Pair<Double, List<Triple<String,Double,String>>> {
-            val f = matchesFile()
-            if (!f.exists()) return Pair(0.0, emptyList())
-            var total = 0.0
-            val matches = mutableListOf<Triple<String,Double,String>>()
-            f.readLines().forEach { line ->
-                if (line.startsWith("MATCH|")) {
-                    val parts = line.split("|").associate {
-                        val kv = it.split(":", limit=2)
-                        if (kv.size == 2) kv[0] to kv[1] else it to ""
-                    }
-                    val addr = parts["ADDR"] ?: return@forEach
-                    val btc  = parts["BTC"]?.toDoubleOrNull() ?: 0.0
-                    val wif  = parts["WIF"] ?: ""
-                    total += btc
-                    matches.add(Triple(addr, btc, wif))
-                }
-            }
-            return Pair(total, matches)
+            MatchVault.ingestPlaintextFile(this@MainActivity)
+            val entries = MatchVault.list(this@MainActivity)
+            return Pair(entries.sumOf { it.btc },
+                        entries.map { Triple(it.addr, it.btc, it.wif) })
         }
 
         fun refreshWallet() {
@@ -2572,9 +2568,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
             exportLog()
         })
-        page.addView(walletBtn("↻", "Actualizar Balance", "Releer coincidencias.txt") {
+        page.addView(walletBtn("↻", "Actualizar Balance", "Releer el baúl de hallazgos") {
             refreshWallet()
             android.widget.Toast.makeText(this, "Actualizando...", android.widget.Toast.LENGTH_SHORT).show()
+        })
+        page.addView(walletBtn("🗄", "Baúl de Hallazgos", "Claves de puzzle y escáner, cifradas") {
+            if (!PinAuthHelper.isSessionValid()) {
+                PinAuthHelper.show(this) { ok -> if (ok) showVault() }
+            } else {
+                showVault()
+            }
         })
         page.addView(walletBtn("🔒", "Backup Cifrado", "Exportar matches con PIN") {
             if (!PinAuthHelper.isSessionValid()) {
@@ -3412,6 +3415,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 }
             }
+            // El motor sigue escribiendo los aciertos en claro —el Keystore es de
+            // la capa Java y C++ no llega a él—, así que se recogen en cuanto
+            // aparecen. Sólo cuando el contador sube: leer el fichero en cada
+            // tick de 800 ms sería I/O para nada.
+            val foundNow = HunterEngine.getFound()
+            if (foundNow != lastFoundSeen) {
+                lastFoundSeen = foundNow
+                Thread { try { MatchVault.ingestPlaintextFile(this@MainActivity) } catch (e: Exception) {} }.start()
+            }
+
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
 
@@ -3822,10 +3835,99 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /**
+     * Baúl de hallazgos: lo que han encontrado el puzzle y el escáner.
+     *
+     * Llega aquí tras PIN. Las claves se muestran tapadas y sólo se revelan al
+     * pulsar una entrada: la pantalla puede quedar a la vista de cualquiera, y
+     * quien vea un WIF se lleva el saldo.
+     */
+    private fun showVault() {
+        MatchVault.ingestPlaintextFile(this)
+        val entries = MatchVault.list(this)
+        if (entries.isEmpty()) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Baúl vacío")
+                .setMessage("Todavía no hay hallazgos. Cuando el puzzle o el escáner " +
+                            "encuentren una clave se guardará aquí cifrada, y entrará " +
+                            "en el backup.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val fmt = java.text.SimpleDateFormat("dd/MM/yy HH:mm", java.util.Locale.US)
+        val items = entries.map { e ->
+            val etiqueta = when (e.source) {
+                "puzzle"   -> "🧩 Puzzle"
+                "scanner"  -> "🔍 Escáner"
+                "recovery" -> "♻ Recovery"
+                else       -> e.source
+            }
+            "$etiqueta · ${fmt.format(java.util.Date(e.ts))}\n${e.addr}\n" +
+            "${"%.8f".format(e.btc)} BTC"
+        }.toTypedArray()
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Baúl · ${entries.size} hallazgo(s)")
+            .setItems(items) { _, which -> showVaultEntry(entries[which]) }
+            .setNeutralButton("Exportar cifrado") { _, _ -> exportEncryptedBackup() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    private fun showVaultEntry(e: MatchVault.Entry) {
+        val detalle = buildString {
+            appendLine("Origen: ${e.source}")
+            appendLine("Fecha: ${java.util.Date(e.ts)}")
+            appendLine()
+            appendLine("Dirección:")
+            appendLine(e.addr)
+            appendLine()
+            appendLine("Saldo registrado: ${"%.8f".format(e.btc)} BTC")
+            if (e.extra.contains("SEED:")) {
+                appendLine()
+                appendLine("Seed: " + (Regex("""SEED:(.+?)\s+PATH:""")
+                    .find(e.extra)?.groupValues?.get(1) ?: "—"))
+                appendLine("Ruta: " + (Regex("""PATH:(\S+)""")
+                    .find(e.extra)?.groupValues?.get(1) ?: "—"))
+            }
+        }
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Hallazgo")
+            .setMessage(detalle)
+            .setPositiveButton("Copiar WIF") { _, _ ->
+                if (e.wif.isEmpty()) {
+                    android.widget.Toast.makeText(this, "Esta entrada no tiene WIF",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("wif", e.wif))
+                    android.widget.Toast.makeText(this,
+                        "WIF copiado — pégalo y borra el portapapeles",
+                        android.widget.Toast.LENGTH_LONG).show()
+                }
+            }
+            .setNeutralButton("Copiar HEX") { _, _ ->
+                if (e.privHex.isEmpty()) {
+                    android.widget.Toast.makeText(this, "Esta entrada no tiene clave hex",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                        .setPrimaryClip(android.content.ClipData.newPlainText("hex", e.privHex))
+                    android.widget.Toast.makeText(this, "Clave hex copiada",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
     private fun exportEncryptedBackup() {
         val dir = getExternalFilesDir(null) ?: filesDir
-        val coincidencias = matchesFile()
-        if (!coincidencias.exists()) {
+        MatchVault.ingestPlaintextFile(this)
+        val hallazgos = MatchVault.list(this)
+        if (hallazgos.isEmpty()) {
             android.widget.Toast.makeText(this, "Sin matches para exportar", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
@@ -3850,7 +3952,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             return@setPositiveButton
                         }
                         try {
-                    val data = coincidencias.readBytes()
+                    val data = MatchVault.toJson(hallazgos).toString().toByteArray(Charsets.UTF_8)
                     val (encrypted, iv) = WalletManager.encryptData(data, pin)
                     val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
                     val backupFile = java.io.File(dir, "wh_backup_$ts.enc")
@@ -3894,13 +3996,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Incluir coincidencias SIN las claves privadas: este fichero se comparte
         // por ACTION_SEND y podría acabar en mensajería o correo. Para exportar
         // las claves está exportEncryptedBackup(), que cifra con PIN.
-        val coincidencias = matchesFile()
-        if (coincidencias.exists()) {
+        MatchVault.ingestPlaintextFile(this)
+        val hallazgos = MatchVault.list(this)
+        if (hallazgos.isNotEmpty()) {
             sb.appendLine("=== MATCHES ENCONTRADOS ===")
             sb.appendLine("(claves privadas omitidas — usa el backup cifrado)")
-            coincidencias.readLines().forEach { line ->
-                sb.appendLine(line.replace(Regex("""WIF:\S+"""), "WIF:[oculto]")
-                                   .replace(Regex("""HEX:\S+"""), "HEX:[oculto]"))
+            val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+            hallazgos.forEach { e ->
+                sb.appendLine("[${fmt.format(java.util.Date(e.ts))}] ${e.source}  " +
+                              "ADDR:${e.addr}  BTC:${"%.8f".format(e.btc)}")
             }
         } else {
             sb.appendLine("=== SIN MATCHES AÚN ===")

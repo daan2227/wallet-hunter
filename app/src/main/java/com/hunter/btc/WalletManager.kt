@@ -340,14 +340,25 @@ object WalletManager {
      * que en la práctica exportBackup devolvía null y la app respondía "No hay
      * wallets para exportar" por muchas wallets que tuvieras. La seed principal
      * (saveSeed), los WIF y los watchers no se exportaban nunca.
+     *
+     * Incluye también el baúl de hallazgos (MatchVault): las claves que
+     * encuentran el puzzle y el escáner vivían sólo en coincidencias.txt, un
+     * fichero en claro que no entraba en ningún backup, así que un acierto se
+     * perdía al desinstalar.
      */
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
         return try {
+            // Recoge lo que el motor nativo haya dejado en claro desde el último
+            // arranque, para que un acierto reciente no se quede fuera del backup.
+            try { MatchVault.ingestPlaintextFile(ctx) } catch (e: Exception) {}
+
             val wallets = listWallets(ctx)
             val mainSeed = loadSeed(ctx)
             val wifs = listWifs(ctx)
             val watchers = listWatchers(ctx)
-            if (wallets.isEmpty() && mainSeed == null && wifs.isEmpty() && watchers.isEmpty())
+            val matches = MatchVault.list(ctx)
+            if (wallets.isEmpty() && mainSeed == null && wifs.isEmpty() &&
+                watchers.isEmpty() && matches.isEmpty())
                 return null
 
             val backupData = org.json.JSONArray()
@@ -380,6 +391,7 @@ object WalletManager {
                 if (mainSeed != null) put("main_seed", mainSeed)
                 if (wifArr.length() > 0)   put("wifs",     wifArr)
                 if (watchArr.length() > 0) put("watchers", watchArr)
+                if (matches.isNotEmpty())  put("matches",  MatchVault.toJson(matches))
             }.toString()
 
             // Derivar clave del PIN con PBKDF2
@@ -428,8 +440,9 @@ object WalletManager {
             val root  = org.json.JSONObject(json)
             var count = 0
 
-            // v1 sólo traía "wallets"; v2 añade la seed principal, los WIF y los
-            // watchers. Se leen con opt* para seguir aceptando backups antiguos.
+            // v1 sólo traía "wallets"; v2 añade la seed principal, los WIF, los
+            // watchers y los hallazgos del baúl. Se leen con opt* para seguir
+            // aceptando backups antiguos.
             val wallets = root.optJSONArray("wallets") ?: org.json.JSONArray()
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
@@ -467,6 +480,10 @@ object WalletManager {
                         .apply()
                     count += restored.size
                 }
+            }
+
+            root.optJSONArray("matches")?.let { arr ->
+                count += MatchVault.add(ctx, MatchVault.fromJson(arr))
             }
 
             count
