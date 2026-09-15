@@ -1511,19 +1511,41 @@ static std::string build_and_sign_tx(const std::string &req){
     std::string to_addr=json_str(req,"to");
     int64_t send_sat=json_int(req,"amount");
     int64_t fee_sat=json_int(req,"fee");
-    // tx type from path
-    bool is_segwit = (path.find("84'")==std::string::npos)?false:true;
-    bool is_p2sh   = (path.find("49'")==std::string::npos)?false:true;
+    /* Tres formas de gastar. Antes sólo existía is_segwit —"la ruta contiene
+       84'"— y un is_p2sh que no se usaba en ningún sitio, así que m/49' caía en
+       la rama heredada y se firmaba como P2PKH. La firma no satisface el script
+       P2SH real, así que la red rechazaba la transacción sin más explicación.
+
+       P2SH-P2WPKH (BIP49) firma con el MISMO sighash BIP143 que P2WPKH —el
+       scriptCode es el mismo 76a914<h160>88ac—; lo único que cambia es el
+       scriptPubKey del cambio y que el input lleva el redeemScript en su
+       scriptSig. Verificado contra el vector P2SH-P2WPKH de BIP143. */
+    enum SpendType { SP_LEGACY, SP_P2SH_P2WPKH, SP_P2WPKH };
+    SpendType stype = (path.find("84'")!=std::string::npos) ? SP_P2WPKH
+                    : (path.find("49'")!=std::string::npos) ? SP_P2SH_P2WPKH
+                    : SP_LEGACY;
+    bool is_segwit = (stype != SP_LEGACY);
     // Derive key
     uint8_t seed[64];
     PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
     HDKey hd; derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
     uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
-    // my scriptPubKey
+    /* redeemScript de BIP49: OP_0 <h160>, 22 bytes. La dirección 3... es
+       base58(0x05 | hash160(redeemScript)). */
+    std::string redeem;
+    redeem+='\x00'; redeem+='\x14'; redeem+=std::string((char*)h160,20);
+    uint8_t redeem_h160[20];
+    { uint8_t sh[32]; SHA256((const uint8_t*)redeem.data(),redeem.size(),sh);
+      RIPEMD160(sh,32,redeem_h160); }
+
+    // scriptPubKey propio: adonde va el cambio.
     std::string spk_me;
-    if(is_segwit){
+    if(stype==SP_P2WPKH){
         spk_me+='\x00'; spk_me+='\x14'; spk_me+=std::string((char*)h160,20);
+    } else if(stype==SP_P2SH_P2WPKH){
+        spk_me+='\xa9'; spk_me+='\x14';
+        spk_me+=std::string((char*)redeem_h160,20); spk_me+='\x87';
     } else {
         spk_me+='\x76'; spk_me+='\xa9'; spk_me+='\x14';
         spk_me+=std::string((char*)h160,20); spk_me+='\x88'; spk_me+='\xac';
@@ -1602,10 +1624,16 @@ static std::string build_and_sign_tx(const std::string &req){
         tx+=uint32_le(1);
         tx+='\x00'; tx+='\x01'; // marker + flag
         tx+=varint(utxos.size());
+        /* P2WPKH nativo va con scriptSig vacío. P2SH-P2WPKH lleva ahí un único
+           empujón del redeemScript (0x16 seguido de sus 22 bytes): eso es lo que
+           satisface el script P2SH y hace que el nodo trate el input como
+           SegWit. Sin esto la transacción no es gastable. */
+        std::string ssig;
+        if(stype==SP_P2SH_P2WPKH){ ssig+=(char)redeem.size(); ssig+=redeem; }
         for(auto &u:utxos){
             tx+=reverse_bytes(hex_decode(u.txid));
             tx+=uint32_le(u.vout);
-            tx+='\x00'; // empty scriptSig for segwit
+            tx+=varint(ssig.size()); tx+=ssig;
             tx+=uint32_le(0xFFFFFFFF);
         }
         tx+=varint(has_change?2:1);

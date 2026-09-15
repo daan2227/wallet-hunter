@@ -883,37 +883,26 @@ class WalletActivity : FragmentActivity() {
                     // con índices de dos cifras habría derivado el índice 0.
                     val addrIdx = fromKey.substringAfterLast('_').toIntOrNull() ?: 0
 
-                    // El motor sólo sabe firmar dos cosas: P2PKH heredado y
-                    // P2WPKH por BIP143. build_and_sign_tx() decide con
-                    // `is_segwit = path contiene "84'"` y todo lo demás lo trata
-                    // como P2PKH — incluso calcula un `is_p2sh` que no usa en
-                    // ninguna parte.
-                    //
-                    // Así que al enviar desde una 3... (m/49', P2SH-P2WPKH) o
-                    // una bc1p... (m/86', Taproot) se construía un scriptPubKey
-                    // P2PKH y se firmaba con el sighash heredado. La firma no
-                    // satisface el script real, la red rechaza la transacción y
-                    // desde la app parecía que el envío "no hace nada". El
-                    // dinero no se pierde, pero no hay manera de saber qué pasa.
-                    //
-                    // Se bloquea diciéndolo, en vez de firmar algo inválido.
+                    // El motor firma P2PKH heredado, P2WPKH nativo y ahora
+                    // P2SH-P2WPKH (BIP49, las 3...). Taproot sigue fuera: pide
+                    // firmas Schnorr y otro sighash entero, no es una variante
+                    // del camino BIP143 como sí lo es P2SH-P2WPKH.
                     val pathStr = when {
                         fromKey.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$addrIdx"
+                        fromKey.startsWith("p2sh")   -> "m/49'/0'/0'/0/$addrIdx"
                         fromKey.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$addrIdx"
-                        fromKey.startsWith("p2sh") || fromKey.startsWith("p2tr") -> {
-                            val tipo = if (fromKey.startsWith("p2sh")) "P2SH-P2WPKH (3...)"
-                                       else "Taproot (bc1p...)"
+                        fromKey.startsWith("p2tr") -> {
                             runOnUiThread {
                                 androidx.appcompat.app.AlertDialog.Builder(this)
-                                    .setTitle("Envío no soportado desde $tipo")
-                                    .setMessage("El motor de firma sólo implementa P2PKH " +
-                                        "(1...) y P2WPKH (bc1q...). Firmar desde esta " +
-                                        "dirección produciría una transacción que la red " +
-                                        "rechaza.\n\nPara mover estos fondos, usa una " +
-                                        "cartera que soporte $tipo importando la misma seed.")
+                                    .setTitle("Envío no soportado desde Taproot")
+                                    .setMessage("El motor de firma implementa P2PKH (1...), " +
+                                        "P2SH-P2WPKH (3...) y P2WPKH (bc1q...). Taproot " +
+                                        "necesita firmas Schnorr, que aún no están.\n\n" +
+                                        "Para mover estos fondos, importa la misma seed en " +
+                                        "una cartera con soporte Taproot.")
                                     .setPositiveButton("Entendido", null)
                                     .show()
-                                tvStatus.text = "Envío no soportado desde $tipo"
+                                tvStatus.text = "Envío no soportado desde Taproot (bc1p...)"
                                 tvStatus.setTextColor(RED); btnSend.isEnabled = true
                             }
                             return@Thread
