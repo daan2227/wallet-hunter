@@ -3572,8 +3572,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (bg.size > 1) btn.background = if (running) bg[1] else bg[0]
     }
 
+    /** Dirección objetivo del puzzle, tal y como está en el campo. */
+    private fun puzzleTargetAddr(): String = etTarget?.text?.toString()?.trim() ?: ""
+
     private fun engineHasSomethingToMatch(): Boolean =
-        HunterEngine.isCsvLoaded() || HunterEngine.hasTarget()
+        // El puzzle busca UNA dirección y no necesita dataset ninguno; el
+        // escáner compara contra la lista. Antes esto era
+        // `isCsvLoaded() || hasTarget()`, y como nadie llamaba nunca a
+        // setTarget(), hasTarget() era siempre false: el puzzle acababa pidiendo
+        // el dataset igual que el escáner.
+        if (puzzleMode) puzzleTargetAddr().isNotEmpty()
+        else            HunterEngine.isCsvLoaded()
 
     private fun doToggle(callerBtn: Button? = null) {
         try {
@@ -3595,12 +3604,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             if (!HunterEngine.isRunning() && !engineHasSomethingToMatch()) {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Sin dataset cargado")
-                    .setMessage("No hay ninguna lista de direcciones cargada ni " +
-                                "dirección objetivo, así que el motor no tendría con " +
-                                "qué comparar: escanearía a toda velocidad sin poder " +
-                                "encontrar nada.\n\nCarga el .bin con LOAD CSV, o usa " +
-                                "el modo Puzzle, que trae su propia dirección.")
+                    .setTitle(if (puzzleMode) "Sin dirección objetivo" else "Sin dataset cargado")
+                    .setMessage(
+                        if (puzzleMode)
+                            "El campo Target Address está vacío, así que no hay nada " +
+                            "que buscar.\n\nSelecciona un puzzle en la lista de arriba " +
+                            "o escribe una dirección."
+                        else
+                            "No hay ninguna lista de direcciones cargada, así que el " +
+                            "motor no tendría con qué comparar: escanearía a toda " +
+                            "velocidad sin poder encontrar nada.\n\nCarga el .bin con " +
+                            "LOAD CSV.")
                     .setPositiveButton("Entendido", null)
                     .show()
                 prefs.edit().putBoolean("scan_was_running", false).apply()
@@ -3685,6 +3699,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 } else {
                     threads = (sbThreads?.progress ?: 3) + 1
                     cpu     = (sbCpu?.progress ?: 70) + 10
+                }
+                // Fija la dirección objetivo antes de arrancar.
+                //
+                // setTarget() existía en el JNI y funcionaba, pero NADIE lo
+                // llamaba: g_has_target era siempre 0. En puzzle_on_key el C++
+                // hace `if(g_has_target) memcmp contra la dirección; else if
+                // (g_csv_loaded) búsqueda en el dataset`, así que el modo puzzle
+                // nunca comparaba contra su dirección — caía al dataset. O sea:
+                // sólo encontraba algo si el .bin resultaba contener la
+                // dirección del puzzle, y haciendo bloom+bsearch sobre 10.3M
+                // entradas por clave en vez de un memcmp de 20 bytes.
+                if (puzzleMode) {
+                    val target = puzzleTargetAddr()
+                    HunterEngine.setTarget(target)
+                    if (!HunterEngine.hasTarget()) {
+                        Toast.makeText(this,
+                            "Dirección objetivo no válida: $target",
+                            Toast.LENGTH_LONG).show()
+                        return
+                    }
+                } else {
+                    // Sin esto, tras haber tocado un puzzle el escáner heredaba
+                    // su dirección y comparaba contra ella en lugar del dataset.
+                    HunterEngine.setTarget("")
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else selectedScanMode)
                 HunterEngine.startHunting(threads, cpu)
