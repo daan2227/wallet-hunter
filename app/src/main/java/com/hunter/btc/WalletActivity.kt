@@ -220,24 +220,6 @@ class WalletActivity : FragmentActivity() {
 
     /* -- PIN DIALOG -- */
 
-    private fun themedAdapter(items: List<String>): ArrayAdapter<String> {
-        val adapter = object : ArrayAdapter<String>(this, android.R.layout.simple_spinner_item, items) {
-            override fun getView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
-                val v = super.getView(pos, cv, parent)
-                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
-                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
-                return v
-            }
-            override fun getDropDownView(pos: Int, cv: android.view.View?, parent: android.view.ViewGroup): android.view.View {
-                val v = super.getDropDownView(pos, cv, parent)
-                (v as? TextView)?.setTextColor(AppTheme.TXT_PRI)
-                (v as? TextView)?.setBackgroundColor(AppTheme.BG_CARD)
-                (v as? TextView)?.setPadding(32, 20, 32, 20)
-                return v
-            }
-        }
-        return adapter
-    }
     private fun showPinDialog(isSetup: Boolean, onResult: (Boolean) -> Unit) {
         // Sheet container
         val sheet = LinearLayout(this).apply {
@@ -1693,50 +1675,189 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- RECEIVE -- */
+    //
+    // Era un desplegable con "p2pkh_1  19WiY3ZLfNaLGa…", un QR, la dirección en
+    // una línea y "Copy Address". Lo que le faltaba no era estilo:
+    //
+    //  - El desplegable obligaba a saberse los nombres internos de las claves
+    //    para elegir tipo de dirección. Ahora son cuatro pastillas con el
+    //    prefijo que vas a ver: bc1q, bc1p, 3…, 1….
+    //  - La dirección iba de corrido a 10sp. Va troceada en grupos de cuatro,
+    //    alternando tono, que es lo que permite compararla de un vistazo con la
+    //    que tienes en la otra pantalla, o leerla en voz alta sin perderte.
+    //  - No se podía compartir, sólo copiar.
+    //  - Y no decía en ningún sitio que reutilizar una dirección deja tu
+    //    historial a la vista de cualquiera, que es la única razón por la que
+    //    una cartera va cambiándolas.
     private fun loadReceiveTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
-        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(16),dp(16),dp(16)); gravity = Gravity.CENTER_HORIZONTAL }
-        val spin = Spinner(this).apply {
-            adapter = themedAdapter(addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." })
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(52))
+        val ll = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(2), 0, dp(26))
         }
-        ll.addView(spin)
-        // El QR iba sobre blanco puro a hueso, sin margen: un QR necesita zona
-        // de silencio alrededor para que las cámaras lo lean con holgura.
-        val ivQr = android.widget.ImageView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(236), dp(236)).apply {
-                topMargin = dp(28); bottomMargin = dp(20)
+        fun side(v: View, top: Int = 0, bottom: Int = 0) = v.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(top), dp(AppTheme.PAD_SIDE), dp(bottom))
             }
+        }
+
+        val keys = addresses.keys.toList()
+        if (keys.isEmpty()) {
+            ll.addView(side(TextView(this).apply {
+                text = "Todavía no hay direcciones que enseñar."
+                textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+                typeface = AppTheme.body(context)
+            }, top = 24))
+            scroll.addView(ll); tabContent.addView(scroll); return
+        }
+
+        /* ── TIPO DE DIRECCIÓN ─────────────────────────────────────────── */
+        // Se agrupan por prefijo, que es lo que el otro va a ver pegado en su
+        // cartera. Si la cartera no tiene un tipo, su pastilla no sale.
+        data class Grupo(val etiqueta: String, val clave: String)
+        val grupos = listOf(
+            Grupo("bc1q", "p2wpkh"), Grupo("bc1p", "p2tr"),
+            Grupo("3…",   "p2sh"),   Grupo("1…",   "p2pkh")
+        ).mapNotNull { g -> keys.firstOrNull { it.startsWith(g.clave) }?.let { g to it } }
+        // Una cartera de sólo observación o de WIF puede no encajar en ninguno:
+        // en ese caso se enseña lo que haya, sin selector.
+        val efectivos = grupos.ifEmpty { listOf(Grupo(labelMap[keys[0]] ?: "Dirección", keys[0]) to keys[0]) }
+        var tipoSel = 0
+
+        val tipoRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        val tipoPills = mutableListOf<TextView>()
+
+        /* ── QR ────────────────────────────────────────────────────────── */
+        val qrWrap = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                setColor(Color.WHITE); cornerRadius = dp(AppTheme.R_CARD).toFloat()
+                setColor(AppTheme.TXT_PRI)   // el QR necesita claro, sea cual sea el tema
+                cornerRadius = dp(18).toFloat()
             }
             setPadding(dp(16), dp(16), dp(16), dp(16))
         }
-        ll.addView(ivQr)
-        val tvAddr = TextView(this).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
-            typeface = Typeface.MONOSPACE   // es una dirección
+        val ivQr = android.widget.ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(216), dp(216))
+        }
+        qrWrap.addView(ivQr)
+        val qrCenter = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(8), 0, dp(8), dp(24))
-            setLineSpacing(0f, 1.3f)
+            addView(qrWrap)
         }
-        ll.addView(tvAddr)
-        val btnCopy = Button(this).apply {
-            text = "Copiar la dirección"
-            textSize = AppTheme.SP_TITLE; setTextColor(BG_DEEP)
-            typeface = AppTheme.bold(context)
-            isAllCaps = false
-            stateListAnimator = null
-            background = GradientDrawable().apply {
-                setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_KEY).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(56))
-        }
-        ll.addView(btnCopy)
 
+        /* ── LA DIRECCIÓN ──────────────────────────────────────────────── */
+        val addrCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBg()
+            setPadding(dp(19), dp(17), dp(19), dp(17))
+        }
+        val addrHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        addrHead.addView(TextView(this).apply {
+            text = "Tu dirección"
+            textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        val tvEstreno = TextView(this).apply {
+            text = "comprobando…"
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.bold(context)
+        }
+        addrHead.addView(tvEstreno)
+        addrCard.addView(addrHead)
+
+        val tvAddr = TextView(this).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            typeface = AppTheme.display(context)
+            letterSpacing = 0.02f
+            setLineSpacing(0f, 1.75f)
+            setPadding(0, dp(10), 0, 0)
+        }
+        addrCard.addView(tvAddr)
+
+        /* ── COPIAR Y COMPARTIR ────────────────────────────────────────── */
+        fun accion(label: String, iconRes: Int, primary: Boolean, last: Boolean) =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(if (primary) AppTheme.ACCENT else AppTheme.BG_KEY)
+                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
+                }
+                isClickable = true; isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+                    if (!last) marginEnd = dp(AppTheme.GAP)
+                }
+                addView(android.widget.ImageView(context).apply {
+                    setImageResource(iconRes)
+                    setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(9) }
+                })
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    typeface = if (primary) AppTheme.bold(context) else AppTheme.medium(context)
+                })
+            }
+        val btnCopiar    = accion("Copiar", R.drawable.ic_copy, primary = true, last = false)
+        val btnCompartir = accion("Compartir", R.drawable.ic_send, primary = false, last = true)
+        val accionesRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(btnCopiar); addView(btnCompartir)
+        }
+
+        /* ── POR QUÉ CAMBIA ────────────────────────────────────────────── */
+        val notaCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = cardBg()
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        notaCard.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_refresh)
+            setColorFilter(TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(12) }
+        })
+        val notaCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        notaCol.addView(TextView(this).apply {
+            text = "Conviene usar una dirección nueva en cada cobro"
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            typeface = AppTheme.body(context)
+        })
+        notaCol.addView(TextView(this).apply {
+            text = "Las anteriores siguen siendo tuyas y se ven en Saldo. " +
+                   "Reutilizar una deja tu historial a la vista de cualquiera."
+            textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context)
+            setLineSpacing(0f, 1.55f)
+            setPadding(0, dp(3), 0, 0)
+        })
+        notaCard.addView(notaCol)
+
+        if (efectivos.size > 1) ll.addView(side(tipoRow, bottom = 18))
+        ll.addView(side(qrCenter, bottom = 18))
+        ll.addView(side(addrCard, bottom = 14))
+        ll.addView(side(accionesRow, bottom = 22))
+        ll.addView(side(notaCard))
+        scroll.addView(ll); tabContent.addView(scroll)
+
+        /* ── LÓGICA ────────────────────────────────────────────────────── */
         fun qrBitmap(content: String, size: Int): Bitmap {
             val m = com.google.zxing.qrcode.QRCodeWriter()
                 .encode(content, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
@@ -1749,34 +1870,101 @@ class WalletActivity : FragmentActivity() {
             return Bitmap.createBitmap(px, w, h, Bitmap.Config.RGB_565)
         }
 
-        fun updateQr(addr: String) {
-            tvAddr.text = addr
-            btnCopy.setOnClickListener {
-                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText("btc", addr))
-                Toast.makeText(this, "Copied!", Toast.LENGTH_SHORT).show()
+        /**
+         * La dirección en grupos de cuatro, alternando tono.
+         *
+         * De corrido, una bech32 de 62 caracteres es imposible de comparar con
+         * otra sin ir carácter a carácter. En grupos se compara por bloques, y
+         * se puede leer en voz alta sin perder el sitio.
+         */
+        fun troceada(addr: String): CharSequence {
+            val sb = android.text.SpannableStringBuilder()
+            var i = 0
+            var bloque = 0
+            while (i < addr.length) {
+                val fin = minOf(i + 4, addr.length)
+                val desde = sb.length
+                sb.append(addr, i, fin)
+                if (bloque % 2 == 1) sb.setSpan(
+                    android.text.style.ForegroundColorSpan(TXT_SEC),
+                    desde, sb.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                if (fin < addr.length) sb.append(' ')
+                i = fin; bloque++
             }
+            return sb
+        }
+
+        var addrActual = ""
+
+        fun mostrar(addr: String) {
+            addrActual = addr
+            tvAddr.text = troceada(addr)
             Thread {
-                try {
-                    // La única cosa que se usaba de zxing-android-embedded era
-                    // BarcodeEncoder.createBitmap(), que es este bucle. Esa
-                    // dependencia trae además toda la interfaz de escaneo por
-                    // cámara, que la app no usa: se cambia por el bucle y se
-                    // queda sólo zxing core, que es quien genera la matriz.
-                    runOnUiThread { ivQr.setImageBitmap(qrBitmap("bitcoin:$addr", 512)) }
-                } catch(e: Exception) {}
+                try { val bm = qrBitmap("bitcoin:$addr", 512); runOnUiThread { ivQr.setImageBitmap(bm) } }
+                catch (e: Exception) { android.util.Log.w("WalletActivity", "QR: ${e.message}") }
+            }.start()
+            // "Sin estrenar" no es decorativo: si ya ha recibido algo, decirlo
+            // aquí es lo único que evita reutilizarla sin querer.
+            tvEstreno.text = "comprobando…"
+            tvEstreno.setTextColor(AppTheme.TXT_MUTED)
+            Thread {
+                val r = BalanceLookup.query(addr, isTestnet)
+                runOnUiThread {
+                    if (addrActual != addr) return@runOnUiThread
+                    when {
+                        r == null     -> { tvEstreno.text = ""; }
+                        r.sat > 0L    -> { tvEstreno.text = "ya tiene fondos"; tvEstreno.setTextColor(AppTheme.WARN) }
+                        else          -> { tvEstreno.text = "sin estrenar";    tvEstreno.setTextColor(AppTheme.ACCENT) }
+                    }
+                }
             }.start()
         }
-        spin.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(a: AdapterView<*>, v: View?, pos: Int, id: Long) { updateQr(addresses.values.toList().getOrNull(pos) ?: return) }
-            override fun onNothingSelected(a: AdapterView<*>) {}
+
+        fun pintarTipos() {
+            tipoPills.forEachIndexed { i, p ->
+                val on = i == tipoSel
+                p.background = GradientDrawable().apply {
+                    setColor(if (on) AppTheme.ACCENT else AppTheme.BG_KEY)
+                    cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                }
+                p.setTextColor(if (on) AppTheme.BG_DEEP else TXT_SEC)
+                p.typeface = if (on) AppTheme.bold(p.context) else AppTheme.medium(p.context)
+            }
         }
-        if (addresses.isNotEmpty()) updateQr(addresses.values.first())
-        scroll.addView(ll); tabContent.addView(scroll)
+        efectivos.forEachIndexed { i, (g, k) ->
+            val pill = TextView(this).apply {
+                text = g.etiqueta
+                textSize = AppTheme.SP_CAPTION
+                gravity = Gravity.CENTER
+                setPadding(0, dp(9), 0, dp(9))
+                isClickable = true; isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { if (i < efectivos.size - 1) marginEnd = dp(7) }
+                setOnClickListener {
+                    tipoSel = i; pintarTipos(); mostrar(addresses[k] ?: return@setOnClickListener)
+                }
+            }
+            tipoPills.add(pill); tipoRow.addView(pill)
+        }
+        pintarTipos()
+        mostrar(addresses[efectivos[0].second] ?: addresses.values.first())
+
+        btnCopiar.setOnClickListener {
+            (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                .setPrimaryClip(android.content.ClipData.newPlainText("Dirección Bitcoin", addrActual))
+            Toast.makeText(this, "Dirección copiada", Toast.LENGTH_SHORT).show()
+        }
+        btnCompartir.setOnClickListener {
+            // Sólo la dirección: nada de claves. Va como texto plano para que
+            // valga en cualquier aplicación.
+            startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                type = "text/plain"
+                putExtra(Intent.EXTRA_TEXT, addrActual)
+            }, "Compartir la dirección"))
+        }
     }
 
     /* -- MENU -- */
-
     /* -- WALLET SELECTOR -- */
 
     private fun switchToWallet(onReady: () -> Unit) {
