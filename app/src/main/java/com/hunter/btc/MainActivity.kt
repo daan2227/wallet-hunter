@@ -2757,58 +2757,62 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val recoveryPage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0E0E0E.toInt())
-            setPadding(dp(12), dp(16), dp(12), dp(80))
+            setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(80))
         }
 
         // ── HELPER ────────────────────────────────────────────────────────
         fun rCard(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
-                setStroke(1, 0xFF222222.toInt())
+                setColor(AppTheme.BG_CARD)
+                cornerRadius = dp(AppTheme.R_CARD).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-            setPadding(dp(16), dp(16), dp(16), dp(16))
+            ).apply { bottomMargin = dp(AppTheme.GAP) }
+            setPadding(dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD),
+                       dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD))
         }
 
         fun fieldLabel(text: String) = TextView(this).apply {
             this.text = text
-            textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.1f
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(6) }
+            ).apply { bottomMargin = dp(8) }
         }
 
-        // ── HEADER ────────────────────────────────────────────────────────
+        // ── CABECERA ──────────────────────────────────────────────────────
         recoveryPage.addView(TextView(this).apply {
-            text = "Recovery"
-            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
+            text = "Recuperar seed"
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(4) }
+            ).apply { bottomMargin = dp(8) }
         })
+        // El subtítulo repetía el título en otras palabras. En su lugar, lo que
+        // de verdad hay que saber para usar la pantalla.
         recoveryPage.addView(TextView(this).apply {
-            text = "Recuperación de seed phrase"
-            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            text = "Escribe las palabras que recuerdes y marca los huecos con ?"
+            textSize = AppTheme.SP_BODY; setTextColor(0xFFC4C4C4.toInt())
+            typeface = AppTheme.body(context)
+            setLineSpacing(dp(4).toFloat(), 1f)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(16) }
+            ).apply { bottomMargin = dp(20) }
         })
 
         // ── SEED INPUT CARD ───────────────────────────────────────────────
         val seedCard = rCard()
-        seedCard.addView(fieldLabel("SEED PHRASE"))
+        seedCard.addView(fieldLabel("Frase semilla"))
         seedCard.addView(TextView(this).apply {
             text = "Usa ??? para las palabras que no recuerdas"
             textSize = 10f; setTextColor(0xFF4A4A4A.toInt())
@@ -2857,7 +2861,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── TARGET ADDRESS CARD ───────────────────────────────────────────
         val targetCard = rCard()
-        targetCard.addView(fieldLabel("DIRECCIÓN BTC OBJETIVO (opcional)"))
+        targetCard.addView(fieldLabel("Dirección conocida · opcional"))
         val etTarget = android.widget.EditText(this).apply {
             hint = "1A2B3C... o bc1q..."
             setHintTextColor(0xFF4A4A4A.toInt()); setTextColor(ACCENT)

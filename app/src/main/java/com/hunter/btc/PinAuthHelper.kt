@@ -61,13 +61,15 @@ object PinAuthHelper {
         autoBiometric: Boolean = true,
         onResult: (Boolean) -> Unit
     ) {
-        val GOLD  = AppTheme.AMBER          // #a8ff00
-        val BG    = 0xFF0E0E0E.toInt()      // #0e0f0e
-        val BG2   = 0xFF1A1A1A.toInt()      // #1a1c19
-        val BGKP  = 0xFF0E0E0E.toInt()      // #0d1018 keypad bg
-        val TXT   = 0xFFF2F2F2.toInt()      // #e6ead8
-        val MUTED = 0xFF8A8A8A.toInt()       // #556050
-        val SUBL  = 0xFF8A8A8A.toInt()       // #7a8a70 sub-letters
+        // Esta pantalla tenía su propia paleta verdosa (#0e0f0e, #1a1c19,
+        // #7a8a70…), heredada de otro diseño. Ahora sale del tema, como todo.
+        val GOLD  = AppTheme.ACCENT
+        val BG    = AppTheme.BG_DEEP
+        val BG2   = AppTheme.BG_KEY
+        val BGKP  = AppTheme.BG_DEEP
+        val TXT   = AppTheme.TXT_PRI
+        val MUTED = AppTheme.TXT_SEC
+        val SUBL  = AppTheme.TXT_SEC
         val RED   = 0xFFF04040.toInt()
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
@@ -131,21 +133,24 @@ object PinAuthHelper {
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(32) }
         }
-        val dotSz = dp(52)
+        // Eran cuadrados redondeados de 52dp: del tamaño de una tecla y con su
+        // misma forma, así que la fila de progreso parecía otra fila de
+        // botones. Un punto tiene que parecer un punto.
+        val dotSz = dp(14)
         fun makeDotBg(filled: Boolean, error: Boolean = false) =
             android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(12).toFloat()
+                shape = android.graphics.drawable.GradientDrawable.OVAL
                 when {
-                    error  -> { setColor(0x22FF4D4D); setStroke(dp(2), RED) }
-                    filled -> { setColor(0x22A8FF00); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF2E2E2E.toInt()) }
+                    error  -> { setColor(RED);  setStroke(dp(2), RED) }
+                    filled -> { setColor(GOLD); setStroke(dp(2), GOLD) }
+                    else   -> { setColor(0x00000000); setStroke(dp(2), 0xFF2E2E2E.toInt()) }
                 }
             }
         val dots = Array(6) { i ->
             android.view.View(activity).apply {
                 background = makeDotBg(false)
                 layoutParams = android.widget.LinearLayout.LayoutParams(dotSz, dotSz).apply {
-                    if (i < 5) marginEnd = dp(10)
+                    if (i < 5) marginEnd = dp(14)
                 }
             }
         }
@@ -268,7 +273,7 @@ object PinAuthHelper {
         )
 
         keys.forEach { key ->
-            val sz = dp(76)
+            val sz = dp(72)
             val cell = android.widget.LinearLayout(activity).apply {
                 orientation = android.widget.LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
@@ -278,8 +283,7 @@ object PinAuthHelper {
                 }
                 if (key.type != "empty") {
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(BG2); cornerRadius = dp(12).toFloat()
-                        setStroke(1, 0x0EFFFFFF)
+                        setColor(BG2); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                     }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
@@ -290,10 +294,10 @@ object PinAuthHelper {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF222222.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
+                            setColor(0xFF2A2A2A.toInt()); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
+                            setColor(BG2); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                         }
                         background = pressedBg
                         handler.postDelayed({ background = normalBg }, 120)
@@ -304,30 +308,29 @@ object PinAuthHelper {
             when (key.type) {
                 "num" -> {
                     cell.addView(android.widget.TextView(activity).apply {
-                        text = key.digit; textSize = 28f; setTextColor(TXT)
-                        typeface = android.graphics.Typeface.DEFAULT
+                        text = key.digit; textSize = 23f; setTextColor(TXT)
+                        typeface = AppTheme.body(context)
                         gravity = android.view.Gravity.CENTER
                     })
-                    if (key.sub.isNotEmpty()) {
-                        cell.addView(android.widget.TextView(activity).apply {
-                            text = key.sub; textSize = 9f; setTextColor(SUBL)
-                            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-                            letterSpacing = 0.12f; gravity = android.view.Gravity.CENTER
-                        })
-                    }
+                    // Las subletras ABC/DEF son de un teclado telefónico: aquí
+                    // no se marca ningún número, se teclea una clave. Fuera.
                 }
                 "bio" -> {
-                    // Ícono de huella usando texto unicode
-                    cell.addView(android.widget.TextView(activity).apply {
-                        text = "◉"; textSize = 30f
-                        setTextColor(GOLD)
-                        gravity = android.view.Gravity.CENTER
+                    // Era el carácter ◉, que cada fuente dibuja a su manera y en
+                    // algunas ni existe. Ahora es el icono de huella.
+                    cell.addView(android.widget.ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_finger)
+                        setColorFilter(GOLD)
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            dp(26), dp(26))
                     })
                 }
                 "del" -> {
-                    cell.addView(android.widget.TextView(activity).apply {
-                        text = "⌫"; textSize = 24f; setTextColor(SUBL)
-                        gravity = android.view.Gravity.CENTER
+                    cell.addView(android.widget.ImageView(activity).apply {
+                        setImageResource(R.drawable.ic_back)
+                        setColorFilter(SUBL)
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            dp(24), dp(24))
                     })
                 }
             }
