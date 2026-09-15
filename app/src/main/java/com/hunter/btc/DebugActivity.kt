@@ -20,14 +20,13 @@ class DebugActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
-        val BG      = 0xFF0E0E0E.toInt()
-        val SURFACE = 0xFF161616.toInt()
-        val BORDER  = 0xFF1D1D1D.toInt()
-        val TXT     = 0xFFF2F2F2.toInt()
-        val MUTED   = 0xFF8A8A8A.toInt()
-        val RED     = 0xFFFF6B35.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val ACCENT2 = AppTheme.BLUE
+        val BG      = AppTheme.BG_DEEP
+        val SURFACE = AppTheme.BG_CARD
+        val TXT     = AppTheme.TXT_PRI
+        val MUTED   = AppTheme.TXT_SEC
+        val RED     = AppTheme.WARN
 
         fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -35,7 +34,6 @@ class DebugActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(SURFACE); cornerRadius = dp(14).toFloat()
-                setStroke(1, BORDER)
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -45,8 +43,8 @@ class DebugActivity : AppCompatActivity() {
         }
 
         fun label(text: String) = TextView(this).apply {
-            this.text = text; textSize = 9f; setTextColor(MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+            this.text = text; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.medium(context)
             letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -92,11 +90,10 @@ class DebugActivity : AppCompatActivity() {
 
         val tvLive = TextView(this).apply {
             text = "Sin logs aun... Inicia un scan o puzzle para ver actividad."
-            textSize = 10f; setTextColor(ACCENT)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE   // son datos del sistema
             background = GradientDrawable().apply {
-                setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat()
-                setStroke(1, BORDER)
+                setColor(AppTheme.BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(
@@ -121,7 +118,9 @@ class DebugActivity : AppCompatActivity() {
         }
 
         fun actionBtn(text: String, color: Int, click: () -> Unit) = TextView(this).apply {
-            this.text = text; textSize = 11f; gravity = Gravity.CENTER
+            this.text = text; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+            typeface = AppTheme.medium(context)
+            isAllCaps = false
             setTextColor(0xFF000000.toInt())
             background = GradientDrawable().apply {
                 setColor(color); cornerRadius = dp(8).toFloat()
@@ -163,13 +162,13 @@ class DebugActivity : AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(6) }
                 addView(TextView(this@DebugActivity).apply {
-                    text = lbl; textSize = 10f; setTextColor(MUTED)
-                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    text = lbl; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+                    typeface = AppTheme.body(context)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 addView(TextView(this@DebugActivity).apply {
-                    text = value; textSize = 10f; setTextColor(color)
-                    typeface = Typeface.create("monospace", Typeface.BOLD)
+                    text = value; textSize = AppTheme.SP_CAPTION; setTextColor(color)
+                    typeface = Typeface.MONOSPACE
                 })
             }
         }
@@ -205,7 +204,6 @@ class DebugActivity : AppCompatActivity() {
                 setPadding(0, dp(6), 0, dp(6))
                 background = GradientDrawable().apply {
                     setColor(0xFF161616.toInt()); cornerRadius = dp(8).toFloat()
-                    setStroke(1, BORDER)
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -214,15 +212,15 @@ class DebugActivity : AppCompatActivity() {
                 setPadding(dp(10), dp(8), dp(10), dp(8))
             }
             row.addView(TextView(this).apply {
-                text = f.name; textSize = 11f
+                text = f.name; textSize = AppTheme.SP_BODY
                 setTextColor(if (exists) TXT else MUTED)
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             if (exists) {
                 row.addView(TextView(this).apply {
-                    text = "${f.length()/1024}KB"; textSize = 10f; setTextColor(MUTED)
-                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    text = "${f.length()/1024} KB"; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+                    typeface = AppTheme.body(context)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
@@ -235,8 +233,8 @@ class DebugActivity : AppCompatActivity() {
                 }
             } else {
                 row.addView(TextView(this).apply {
-                    text = "no existe"; textSize = 10f; setTextColor(MUTED)
-                    typeface = Typeface.create("monospace", Typeface.ITALIC)
+                    text = "no existe"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+                    typeface = AppTheme.body(context)
                 })
             }
             filesCard.addView(row)
@@ -248,10 +246,10 @@ class DebugActivity : AppCompatActivity() {
         engLogCard.addView(label("LOG BUFFER DEL ENGINE"))
         val tvEngLog = TextView(this).apply {
             text = HunterEngine.popLog().ifEmpty { "Sin logs en buffer" }
-            textSize = 10f; setTextColor(ACCENT2)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE   // es un registro
             background = GradientDrawable().apply {
-                setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER)
+                setColor(AppTheme.BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))

@@ -23,10 +23,8 @@ class NetworkActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val BG    = AppTheme.BG_DEEP
-        val AMBER = AppTheme.AMBER
         val TXT   = AppTheme.TXT_PRI
-        val MUTED = AppTheme.TXT_MUTED
-        val CARD  = AppTheme.BG_CARD
+        val MUTED = AppTheme.TXT_SEC
 
         val scroll = ScrollView(this).apply { setBackgroundColor(BG) }
         val root = LinearLayout(this).apply {
@@ -41,40 +39,34 @@ class NetworkActivity : AppCompatActivity() {
             gravity = android.view.Gravity.CENTER_VERTICAL
             setPadding(0, 0, 0, dp(4))
         }
-        headerRow.addView(Button(this).apply {
-            text = "<"
-            textSize = 14f; setTextColor(AMBER)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                setStroke(1, AppTheme.BORDER_C); cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(10), dp(2), dp(10), dp(2))
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(36)).apply { marginEnd = dp(12) }
+        headerRow.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(AppTheme.TXT_PRI)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
             setOnClickListener { finish() }
         })
         headerRow.addView(TextView(this).apply {
-            text = "Red Multi-Dispositivo"
-            textSize = 18f; setTextColor(AMBER)
-            typeface = AppTheme.display(context)
+            text = "Red multi-dispositivo"
+            textSize = 20f; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(headerRow)
         root.addView(TextView(this).apply {
-            text = "Coordina dispositivos en red local WiFi"
-            textSize = 11f; setTextColor(MUTED)
-            typeface = Typeface.MONOSPACE
-            setPadding(0, 0, 0, dp(16))
+            text = "Reparte el trabajo entre varios móviles de la misma red."
+            textSize = AppTheme.SP_BODY; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            setPadding(0, dp(2), 0, dp(20))
         })
 
         tvIp = TextView(this).apply {
             text = "IP: ${NetworkManager.getLocalIp(this@NetworkActivity)}"
-            textSize = 12f; setTextColor(AppTheme.CYAN)
-            typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setColor(0x1100C8D4.toInt()); setStroke(1, AppTheme.CYAN)
-                cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(12), dp(8), dp(12), dp(8))
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+            typeface = Typeface.MONOSPACE   // es una dirección
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -82,32 +74,31 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvIp)
 
-        root.addView(sectionLabel("MODO MASTER"))
+        root.addView(sectionLabel("Como maestro"))
         root.addView(TextView(this).apply {
-            text = "Este dispositivo asigna bloques a los workers"
-            textSize = 10f; setTextColor(MUTED); typeface = Typeface.MONOSPACE
-            setPadding(0, 0, 0, dp(8))
+            text = "Este móvil reparte los bloques y recoge los resultados."
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            setPadding(0, 0, 0, dp(10))
         })
-        btnMaster = actionButton("Iniciar como Master", AMBER, android.graphics.Color.BLACK).also {
+        btnMaster = actionButton("Iniciar como maestro", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
             it.setOnClickListener { startAsMaster() }
             root.addView(it)
         }
 
-        root.addView(sectionLabel("MODO WORKER"))
+        root.addView(sectionLabel("Como trabajador"))
         root.addView(TextView(this).apply {
-            text = "IP del Master:"
-            textSize = 11f; setTextColor(TXT)
-            setPadding(0, dp(8), 0, dp(4))
+            text = "IP del maestro"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, dp(10), 0, dp(6))
         })
         etMasterIp = EditText(this).apply {
             hint = "192.168.1.100"
             setTextColor(TXT); setHintTextColor(MUTED)
-            textSize = 13f; typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply {
-                setColor(CARD); setStroke(1, 0xFF1D1D1D.toInt())
-                cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -117,21 +108,19 @@ class NetworkActivity : AppCompatActivity() {
         root.addView(etMasterIp)
 
         root.addView(TextView(this).apply {
-            text = "Código de acceso (lo muestra el Master):"
-            textSize = 11f; setTextColor(TXT)
-            setPadding(0, dp(8), 0, dp(4))
+            text = "Código de acceso (lo enseña el maestro)"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, dp(10), 0, dp(6))
         })
         etCode = EditText(this).apply {
             hint = "Ej. K7M2PQRT"
             setTextColor(TXT); setHintTextColor(MUTED)
-            textSize = 13f; typeface = Typeface.MONOSPACE
+            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
             filters = arrayOf(android.text.InputFilter.AllCaps(),
                               android.text.InputFilter.LengthFilter(8))
-            background = GradientDrawable().apply {
-                setColor(CARD); setStroke(1, 0xFF1D1D1D.toInt())
-                cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             inputType = android.text.InputType.TYPE_CLASS_TEXT
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -140,28 +129,29 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(etCode)
 
-        actionButton("Buscar Masters en red", AppTheme.CYAN, android.graphics.Color.BLACK).also {
+        actionButton("Buscar maestros en la red", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
             it.setOnClickListener { discoverMasters() }
             root.addView(it)
         }
 
-        btnWorker = actionButton("Conectar como Worker", 0xFF6EA8FE.toInt(), android.graphics.Color.WHITE).also {
+        btnWorker = actionButton("Conectar como trabajador", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
             it.setOnClickListener { startAsWorker() }
             root.addView(it)
         }
 
-        btnStop = actionButton("Detener Red", AppTheme.RED, android.graphics.Color.WHITE).also {
+        btnStop = actionButton("Detener la red", AppTheme.BG_ELEV, AppTheme.RED).also {
             it.visibility = android.view.View.GONE
             it.setOnClickListener { stopNetwork() }
             root.addView(it)
         }
 
-        root.addView(sectionLabel("WORKERS CONECTADOS"))
+        root.addView(sectionLabel("Trabajadores conectados"))
         tvWorkers = TextView(this).apply {
-            text = "Sin workers"
-            textSize = 11f; setTextColor(MUTED); typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            text = "Ninguno todavía"
+            textSize = AppTheme.SP_BODY; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -169,12 +159,13 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvWorkers)
 
-        root.addView(sectionLabel("LOG"))
+        root.addView(sectionLabel("Registro"))
         tvLog = TextView(this).apply {
-            text = "---"
-            textSize = 10f; setTextColor(TXT); typeface = Typeface.MONOSPACE
-            background = GradientDrawable().apply { setColor(CARD); cornerRadius = dp(6).toFloat() }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            text = ""
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE   // es un registro
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -289,24 +280,26 @@ class NetworkActivity : AppCompatActivity() {
         btnMaster?.isEnabled = true
         btnWorker?.isEnabled = true
         btnStop?.visibility = android.view.View.GONE
-        tvWorkers?.text = "Sin workers"
+        tvWorkers?.text = "Ninguno todavía"
     }
 
     private fun sectionLabel(text: String) = TextView(this).apply {
         this.text = text
-        textSize = 9f; setTextColor(AppTheme.TXT_MUTED)
-        typeface = Typeface.create("monospace", Typeface.BOLD)
-        letterSpacing = 0.16f
-        setPadding(0, dp(12), 0, dp(4))
+        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.medium(context)
+        setPadding(0, dp(22), 0, dp(6))
     }
 
     private fun actionButton(label: String, color: Int, textColor: Int) = Button(this).apply {
-        text = label; textSize = 12f
+        text = label; textSize = AppTheme.SP_BODY
         setTextColor(textColor)
-        background = GradientDrawable().apply { setColor(color); cornerRadius = dp(8).toFloat() }
+        typeface = AppTheme.bold(context)
+        isAllCaps = false
+        stateListAnimator = null
+        background = Ui.cardBg(AppTheme.R_INNER, color, context)
         layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-        ).apply { bottomMargin = dp(8) }
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+        ).apply { topMargin = dp(4); bottomMargin = dp(8) }
     }
 
     override fun onDestroy() {

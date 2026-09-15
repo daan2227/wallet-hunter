@@ -1011,30 +1011,35 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── SECTION: Config Hardware ──────────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_gear, "Motor y hardware") {
             addView(TextView(this@MainActivity).apply {
-                text = "Dataset"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                setPadding(0, dp(4), 0, dp(4))
+                text = "Dataset"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+                setPadding(0, dp(4), 0, dp(10))
             })
             val dataRow = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             }
             btnCsv = Button(this@MainActivity).apply {
-                text = "Load CSV"; textSize = 10f
-                setTextColor(0xFFF2F2F2.toInt())
-                background = GradientDrawable().apply {
-                    setColor(0xFF1A1A1A.toInt()); cornerRadius = dp(8).toFloat()
-                    setStroke(1, 0xFF4A4A4A.toInt())
-                }
-                setPadding(dp(12), 0, dp(12), 0)
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
+                text = "Cargar"
+                textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.medium(context)
+                isAllCaps = false
+                stateListAnimator = null
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+                setPadding(dp(18), 0, dp(18), 0)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT, dp(44))
                 setOnClickListener { pickCsv() }
             }
             val tvCsvLocal = TextView(this@MainActivity).apply {
                 text = if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
                     java.io.File(csvPath).name else "Sin archivo"
-                setTextColor(0xFF8A8A8A.toInt()); textSize = 10f; typeface = Typeface.MONOSPACE
+                setTextColor(AppTheme.TXT_SEC)
+                textSize = AppTheme.SP_CAPTION
+                typeface = Typeface.MONOSPACE   // es un nombre de fichero
                 maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
-                setPadding(dp(10), 0, 0, 0)
+                setPadding(dp(12), 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             tvCsvName = tvCsvLocal
@@ -1049,11 +1054,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // el "—" que se veía arriba con el dataset cargado—.
 
             addView(TextView(this@MainActivity).apply {
-                text = "Threads"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                setPadding(0, dp(10), 0, dp(2))
+                text = "Hilos"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+                setPadding(0, dp(18), 0, dp(4))
             })
-            tvThreads = TextView(this@MainActivity).apply { setTextColor(0xFFF2F2F2.toInt()); textSize = 11f }
+            tvThreads = TextView(this@MainActivity).apply {
+                setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
+                typeface = AppTheme.medium(context)
+            }
             addView(tvThreads)
             sbThreads = SeekBar(this@MainActivity).apply {
                 max = 7; progress = prefs.getInt("threads", 3)
@@ -1062,11 +1071,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(sbThreads)
 
             addView(TextView(this@MainActivity).apply {
-                text = "CPU Limit"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                setPadding(0, dp(8), 0, dp(2))
+                text = "Límite de CPU"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+                setPadding(0, dp(18), 0, dp(4))
             })
-            tvCpu = TextView(this@MainActivity).apply { setTextColor(0xFFF2F2F2.toInt()); textSize = 11f }
+            tvCpu = TextView(this@MainActivity).apply {
+                setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
+                typeface = AppTheme.medium(context)
+            }
             addView(tvCpu)
             sbCpu = SeekBar(this@MainActivity).apply {
                 max = 90; progress = prefs.getInt("cpu", 70)
@@ -1088,15 +1101,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             fastLabels.addView(TextView(this@MainActivity).apply {
-                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFF2F2F2.toInt())
+                text = "Escaneo rápido"
+                textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
             })
             // Este modo baja PBKDF2 de 2048 iteraciones a 1. El contador sube
             // muchísimo, pero las seeds resultantes no son las de ningún
             // mnemónico BIP39: es velocidad sin ninguna posibilidad de acierto.
             val tvFastWarn = TextView(this@MainActivity).apply {
-                text = "Sólo benchmark: con 1 iteración las seeds NO son BIP39 y no puede encontrar nada"
-                textSize = 9f; setTextColor(0xFFFF6B35.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                text = "Sólo para medir velocidad: con una iteración las seeds no son BIP39, así que no puede encontrar nada."
+                textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.WARN)
+                typeface = AppTheme.body(context)
                 visibility = if (prefs.getBoolean("fastMode", false))
                     android.view.View.VISIBLE else android.view.View.GONE
             }
@@ -1111,7 +1128,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvFastWarn.visibility = if (c) android.view.View.VISIBLE
                                             else android.view.View.GONE
                     if (c) Toast.makeText(this@MainActivity,
-                        "Fast Scan: sólo para medir velocidad, no encuentra wallets",
+                        "Escaneo rápido: sólo mide velocidad, no encuentra carteras",
                         Toast.LENGTH_LONG).show()
                 }
             }
@@ -1124,11 +1141,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // el ahorro es del 2-5%, pero si el dataset sólo tiene un tipo de
             // dirección la mitad del trabajo no sirve para nada.
             addView(TextView(this@MainActivity).apply {
-                text = "RUTAS DE DERIVACIÓN"; textSize = 9f
-                setTextColor(0xFF8A8A8A.toInt())
-                typeface = Typeface.create("monospace", Typeface.BOLD)
-                letterSpacing = 0.1f
-                setPadding(0, dp(12), 0, dp(4))
+                text = "Rutas de derivación"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+                setPadding(0, dp(20), 0, dp(4))
             })
             val pathRow = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -1136,14 +1152,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             var pathMask = prefs.getInt("bip39_paths", 3)
             val cb44 = android.widget.CheckBox(this@MainActivity).apply {
-                text = "BIP44 (1...)"; textSize = 11f
-                setTextColor(0xFFF2F2F2.toInt())
+                text = "BIP44 (1…)"; textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
                 isChecked = (pathMask and 1) != 0
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val cb84 = android.widget.CheckBox(this@MainActivity).apply {
-                text = "BIP84 (bc1q...)"; textSize = 11f
-                setTextColor(0xFFF2F2F2.toInt())
+                text = "BIP84 (bc1q…)"; textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
                 isChecked = (pathMask and 2) != 0
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
@@ -1204,28 +1222,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── SECTION: Red Multi-Dispositivo ────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_network, "Red multi-dispositivo") {
             addView(TextView(this@MainActivity).apply {
-                text = "MASTER_IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
-                textSize = 11f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.MONOSPACE
-                setPadding(0, dp(4), 0, dp(10))
+                text = "Esta IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
+                textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = Typeface.MONOSPACE   // es una dirección
+                setPadding(0, dp(4), 0, dp(14))
             })
             val row1 = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             }
             val netBtn = { txt: String, action: () -> Unit ->
                 Button(this@MainActivity).apply {
-                    text = txt; textSize = 11f; setTextColor(0xFFF2F2F2.toInt())
-                    background = GradientDrawable().apply {
-                        setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
-                        cornerRadius = dp(10).toFloat()
-                    }
-                    layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
+                    text = txt
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(AppTheme.TXT_PRI)
+                    typeface = AppTheme.medium(context)
+                    isAllCaps = false
+                    stateListAnimator = null
+                    background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+                    layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
                     setOnClickListener { action() }
                 }
             }
-            row1.addView(netBtn("Mode: Master") { startClusterMaster() })
-            row1.addView(netBtn("Search Masters") {
+            row1.addView(netBtn("Ser maestro") { startClusterMaster() })
+            row1.addView(netBtn("Buscar maestro") {
                 NetworkManager.discoverMasters(this@MainActivity) { ip, _ ->
-                    runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Master: $ip", android.widget.Toast.LENGTH_SHORT).show() }
+                    runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Maestro encontrado: $ip", android.widget.Toast.LENGTH_SHORT).show() }
                 }
             })
             addView(row1)
@@ -1233,15 +1255,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
             }
-            row2.addView(netBtn("Mode: Worker") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
-            row2.addView(netBtn("Connect") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
+            row2.addView(netBtn("Ser trabajador") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
+            row2.addView(netBtn("Conectar") { startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java)) })
             addView(row2)
             val tvNetLog = TextView(this@MainActivity).apply {
-                text = "Log:"
-                textSize = 10f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.MONOSPACE
-                background = GradientDrawable().apply { setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat() }
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(80)).apply { topMargin = dp(8) }
+                text = ""
+                textSize = AppTheme.SP_MICRO
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = Typeface.MONOSPACE   // es un registro
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_DEEP, context)
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(84)
+                ).apply { topMargin = dp(12) }
             }
             NetworkManager.onLog = { msg ->
                 runOnUiThread {

@@ -13,14 +13,14 @@ import java.util.*
 
 class StatsActivity : Activity() {
 
-    private val ACCENT  = 0xFF00C896.toInt()
-    private val ACCENT2 = 0xFF6EA8FE.toInt()
-    private val BG      = 0xFF0E0E0E.toInt()
-    private val SURFACE = 0xFF161616.toInt()
-    private val BORDER  = 0xFF1D1D1D.toInt()
-    private val TXT     = 0xFFF2F2F2.toInt()
-    private val MUTED   = 0xFF8A8A8A.toInt()
-    private val RED     = 0xFFFF6B35.toInt()
+    private val ACCENT  get() = AppTheme.ACCENT
+    private val ACCENT2 get() = AppTheme.BLUE
+    private val BG      get() = AppTheme.BG_DEEP
+    private val SURFACE get() = AppTheme.BG_CARD
+    private val BORDER  get() = AppTheme.BORDER_C
+    private val TXT     get() = AppTheme.TXT_PRI
+    private val MUTED   get() = AppTheme.TXT_SEC
+    private val RED     get() = AppTheme.WARN
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -86,7 +86,7 @@ class StatsActivity : Activity() {
         fun card(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(SURFACE); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER)
+                setColor(SURFACE); cornerRadius = dp(AppTheme.R_CARD).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -96,8 +96,8 @@ class StatsActivity : Activity() {
         }
 
         fun label(text: String) = TextView(this).apply {
-            this.text = text; textSize = 9f; setTextColor(MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            this.text = text; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -118,7 +118,7 @@ class StatsActivity : Activity() {
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "Estadísticas"; textSize = 20f; setTextColor(TXT)
+            text = "Historial"; textSize = 20f; setTextColor(TXT)
             typeface = AppTheme.title(context)
         })
         root.addView(header)
@@ -138,13 +138,13 @@ class StatsActivity : Activity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
                 addView(TextView(this@StatsActivity).apply {
-                    text = lbl; textSize = 11f; setTextColor(MUTED)
-                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    text = lbl; textSize = AppTheme.SP_BODY; setTextColor(MUTED)
+                    typeface = AppTheme.body(context)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 addView(TextView(this@StatsActivity).apply {
-                    text = value; textSize = 13f; setTextColor(color)
-                    typeface = Typeface.create("monospace", Typeface.BOLD)
+                    text = value; textSize = AppTheme.SP_BODY; setTextColor(color)
+                    typeface = AppTheme.bold(context)
                 })
             }
         }
@@ -223,13 +223,13 @@ class StatsActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         }
         histHeader.addView(TextView(this).apply {
-            text = "HISTORIAL DE SESIONES"; textSize = 9f; setTextColor(MUTED)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            text = "Sesiones"; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         histHeader.addView(TextView(this).apply {
-            text = "limpiar"; textSize = 9f; setTextColor(RED)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            text = "Limpiar"; textSize = AppTheme.SP_CAPTION; setTextColor(RED)
+            typeface = AppTheme.medium(context)
             isClickable = true; isFocusable = true
             setOnClickListener {
                 android.app.AlertDialog.Builder(this@StatsActivity)
@@ -251,8 +251,8 @@ class StatsActivity : Activity() {
         if (sessions.isEmpty()) {
             histCard.addView(TextView(this).apply {
                 text = "Sin sesiones aun. Inicia un scan para registrar actividad."
-                textSize = 11f; setTextColor(MUTED)
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                textSize = AppTheme.SP_BODY; setTextColor(MUTED)
+                typeface = AppTheme.body(context)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
@@ -271,8 +271,7 @@ class StatsActivity : Activity() {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
                         setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
-                        setStroke(1, BORDER)
-                        if (matches > 0) setStroke(1, 0xFF00C896.toInt())
+
                     }
                     setPadding(dp(12), dp(10), dp(12), dp(10))
                     layoutParams = LinearLayout.LayoutParams(
@@ -289,12 +288,12 @@ class StatsActivity : Activity() {
                 left.addView(TextView(this).apply {
                     text = "$modeName · ${df.format(Date(ts))} · ${formatTime(duration)}"
                     textSize = AppTheme.SP_BODY; setTextColor(TXT)
-                    typeface = Typeface.create("monospace", Typeface.BOLD)
+                    typeface = AppTheme.medium(context)
                 })
                 left.addView(TextView(this).apply {
                     text = "${formatKeys(keys)} keys  ·  ${"%.0f".format(kps)} k/s"
-                    textSize = 10f; setTextColor(MUTED)
-                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+                    typeface = AppTheme.body(context)
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.MATCH_PARENT,
                         LinearLayout.LayoutParams.WRAP_CONTENT
@@ -305,8 +304,8 @@ class StatsActivity : Activity() {
                 if (matches > 0) {
                     row.addView(TextView(this).apply {
                         text = "$matches"
-                        textSize = 13f; setTextColor(ACCENT)
-                        typeface = Typeface.create("monospace", Typeface.BOLD)
+                        textSize = AppTheme.SP_FIGURE; setTextColor(ACCENT)
+                        typeface = AppTheme.title(context)
                     })
                 }
                 histCard.addView(row)
