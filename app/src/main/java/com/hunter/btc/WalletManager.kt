@@ -216,21 +216,11 @@ object WalletManager {
         return String(dec) == "wallet_ok"
     }
 
-    fun encryptData(data: ByteArray, pin: String): Pair<ByteArray, ByteArray> {
-        val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-        val key = pinToKey(pin, salt)
-        val (enc, iv) = aesEncrypt(key, data)
-        // Prepend salt to encrypted data
-        return Pair(salt + enc, iv)
-    }
-
-    fun decryptData(data: ByteArray, iv: ByteArray, pin: String): ByteArray? {
-        if (data.size < 16) return null
-        val salt = data.copyOfRange(0, 16)
-        val enc  = data.copyOfRange(16, data.size)
-        val key  = pinToKey(pin, salt)
-        return aesDecrypt(key, enc, iv)
-    }
+    /* encryptData()/decryptData() vivían aquí para el exportador de matches de
+       MainActivity, que escribía wh_backup_<fecha>.enc y lo compartía. Nunca
+       hubo importador —decryptData() no lo llamaba nadie— así que el formato
+       era de ida: se podía guardar y no recuperar. Los hallazgos viajan ahora
+       en la copia normal, que sí se restaura, y ese exportador ya no existe. */
 
     fun hasPin(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)
@@ -414,10 +404,13 @@ object WalletManager {
             // Almacenamiento interno, no externo: el fichero lleva todas las
             // seeds y solo lo protege la contraseña. Se comparte vía FileProvider,
             // que ya cubre files-path en res/xml/file_paths.xml.
-            val dir = java.io.File(ctx.filesDir, "backups").also { it.mkdirs() }
-            dir.listFiles()?.forEach { it.delete() }   // no acumular exports viejos
-            val file = java.io.File(dir, "wh_backup_${System.currentTimeMillis()}.whbak")
+            // Antes se borraba todo lo anterior antes de escribir, así que sólo
+            // existía la última copia y no había manera de volver a una previa.
+            // Ahora las gestiona BackupStore, que conserva las más recientes.
+            val dir = BackupStore.dir(ctx)
+            val file = java.io.File(dir, "wh_backup_${System.currentTimeMillis()}${BackupStore.EXT}")
             file.writeBytes(out.toByteArray())
+            BackupStore.prune(ctx)
             file
         } catch (e: Exception) { null }
     }
@@ -488,6 +481,51 @@ object WalletManager {
 
             count
         } catch (e: Exception) { -1 }
+    }
+
+    /** Qué lleva dentro una copia, sin revelar ningún secreto. */
+    data class BackupSummary(
+        val version:   Int,
+        val createdAt: Long,
+        val wallets:   Int,
+        val hasMainSeed: Boolean,
+        val wifs:      Int,
+        val watchers:  Int,
+        val matches:   Int
+    )
+
+    /**
+     * Descifra una copia y cuenta lo que trae, sin devolver seeds ni claves.
+     *
+     * Es lo que hace falta para poder mirar una copia antes de restaurarla:
+     * saber si es la que buscas sin tener que sobrescribir lo que ya tienes, y
+     * de paso comprobar que el PIN es el correcto. Las copias antiguas se abren
+     * con el PIN que tuvieras al crearlas, no con el actual.
+     *
+     * @return null si el PIN no es válido o el fichero no lo es.
+     */
+    fun inspectBackup(pin: String, data: ByteArray): BackupSummary? {
+        return try {
+            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
+            val salt = ByteArray(dis.readInt()).also { dis.readFully(it) }
+            val iv   = ByteArray(dis.readInt()).also { dis.readFully(it) }
+            val enc  = dis.readBytes()
+
+            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, deriveKeyFromPin(pin, salt),
+                javax.crypto.spec.GCMParameterSpec(128, iv))
+            val root = org.json.JSONObject(String(cipher.doFinal(enc), Charsets.UTF_8))
+
+            BackupSummary(
+                version     = root.optInt("version", 1),
+                createdAt   = root.optLong("created_at", 0L),
+                wallets     = root.optJSONArray("wallets")?.length() ?: 0,
+                hasMainSeed = root.optString("main_seed", "").isNotEmpty(),
+                wifs        = root.optJSONArray("wifs")?.length() ?: 0,
+                watchers    = root.optJSONArray("watchers")?.length() ?: 0,
+                matches     = root.optJSONArray("matches")?.length() ?: 0
+            )
+        } catch (e: Exception) { null }
     }
 
     private fun deriveKeyFromPin(pin: String, salt: ByteArray): javax.crypto.SecretKey {

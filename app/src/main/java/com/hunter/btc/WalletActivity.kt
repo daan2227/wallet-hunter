@@ -81,6 +81,9 @@ class WalletActivity : FragmentActivity() {
                                else WalletManager.loadWalletSeed(this, walletId) ?: ""
                     currentWalletId = walletId
                     loadAddresses(); buildUI()
+                    // Entrada directa al baúl desde la pestaña Wallet del hunter,
+                    // para no obligar a buscarlo dentro del menú "...".
+                    if (intent.getBooleanExtra("OPEN_BACKUP_VAULT", false)) showBackupVault()
                 }
             }
             "wif" -> {
@@ -1197,7 +1200,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Backup Wallets","Restaurar Backup","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","🗄 Baúl de copias","Restaurar desde archivo","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
                     0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
@@ -1206,7 +1209,7 @@ class WalletActivity : FragmentActivity() {
                     }
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Testnet ON" else "Mainnet", Toast.LENGTH_SHORT).show() }
-                    4 -> showBackupDialog()
+                    4 -> showBackupVault()
                     5 -> showRestoreDialog()
                     6 -> AlertDialog.Builder(this).setTitle("Delete wallet?").setMessage("Make sure you have your key backed up.")
                             .setPositiveButton("Delete") { _, _ ->
@@ -1455,30 +1458,198 @@ class WalletActivity : FragmentActivity() {
         root.addView(etPin)
 
         AlertDialog.Builder(this)
-            .setTitle("📦 Exportar Backup")
+            .setTitle("📦 Nueva copia de seguridad")
             .setView(root)
-            .setPositiveButton("Exportar") { _, _ ->
+            .setPositiveButton("Crear") { _, _ ->
                 val pin = etPin.text.toString()
                 if (pin.length < 4) {
                     android.widget.Toast.makeText(this, "PIN muy corto", android.widget.Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
+                // Antes se lanzaba el selector de compartir aquí mismo: si lo
+                // cerrabas, la copia quedaba en un directorio interno del que
+                // nada volvía a hablar. Ahora se guarda en el baúl y desde ahí
+                // se comparte, se mira o se restaura.
                 val file = WalletManager.exportBackup(this, pin)
                 if (file != null) {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        this, "$packageName.provider", file)
-                    val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "application/octet-stream"
-                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                        putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Backup")
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    startActivity(android.content.Intent.createChooser(intent, "Compartir backup"))
+                    android.widget.Toast.makeText(this,
+                        "✓ Copia guardada en el baúl", android.widget.Toast.LENGTH_SHORT).show()
+                    showBackupVault()
                 } else {
                     android.widget.Toast.makeText(this,
                         "No hay nada que exportar: ni wallets, ni WIF, ni hallazgos",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    // ── Baúl de copias ────────────────────────────────────────────────────────
+
+    /** Lista las copias guardadas. Cada una se comparte, se mira o se restaura. */
+    private fun showBackupVault() {
+        val copias = BackupStore.list(this)
+        val b = AlertDialog.Builder(this)
+            .setTitle("🗄 Baúl de copias (${copias.size}/${BackupStore.MAX_KEPT})")
+
+        if (copias.isEmpty()) {
+            b.setMessage("Todavía no hay ninguna copia.\n\nUna copia lleva las seeds, " +
+                         "los WIF, los watchers y los hallazgos del baúl, cifrados con " +
+                         "tu PIN. Se conservan las ${BackupStore.MAX_KEPT} más recientes.")
+        } else {
+            val items = copias.map {
+                "${BackupStore.humanDate(it.createdAt)}  ·  ${BackupStore.humanSize(it.bytes)}"
+            }.toTypedArray()
+            b.setItems(items) { _, i -> showBackupActions(copias[i]) }
+        }
+
+        b.setPositiveButton("Crear copia") { _, _ -> showBackupDialog() }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Qué hacer con una copia concreta. */
+    private fun showBackupActions(info: BackupStore.Info) {
+        val acciones = arrayOf(
+            "📤 Compartir",
+            "🔍 Ver contenido",
+            "📥 Restaurar esta copia",
+            "🗑 Borrar")
+        AlertDialog.Builder(this)
+            .setTitle(BackupStore.humanDate(info.createdAt))
+            .setItems(acciones) { _, which ->
+                when (which) {
+                    0 -> try {
+                        startActivity(BackupStore.shareIntent(this, info.file))
+                    } catch (e: Exception) {
+                        android.widget.Toast.makeText(this, "No se pudo compartir: ${e.message}",
+                            android.widget.Toast.LENGTH_LONG).show()
+                    }
+                    1 -> askPinFor("Ver contenido") { pin -> inspectBackupFile(info, pin) }
+                    2 -> askPinFor("Restaurar copia") { pin -> restoreFromVault(info, pin) }
+                    3 -> confirmDeleteBackup(info)
+                }
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Pide el PIN con el que se cifró la copia. */
+    private fun askPinFor(titulo: String, onPin: (String) -> Unit) {
+        val root = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(64, 32, 64, 16)
+        }
+        val etPin = android.widget.EditText(this).apply {
+            hint = "PIN de la copia"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+            setTextColor(0xFFE6EAD8.toInt())
+            setHintTextColor(0xFF556050.toInt())
+        }
+        root.addView(android.widget.TextView(this).apply {
+            // Una copia vieja se abre con el PIN que tuvieras entonces: la clave
+            // se deriva del PIN en el momento de crearla, no del PIN actual.
+            text = "PIN con el que se creó esta copia:"
+            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setPadding(0, 0, 0, 8)
+        })
+        root.addView(etPin)
+        AlertDialog.Builder(this)
+            .setTitle(titulo)
+            .setView(root)
+            .setPositiveButton("OK") { _, _ -> onPin(etPin.text.toString()) }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    /** Descifra y enseña qué trae la copia, sin mostrar ningún secreto. */
+    private fun inspectBackupFile(info: BackupStore.Info, pin: String) {
+        val resumen = try {
+            WalletManager.inspectBackup(pin, info.file.readBytes())
+        } catch (e: Exception) { null }
+
+        if (resumen == null) {
+            AlertDialog.Builder(this)
+                .setTitle("No se pudo abrir")
+                .setMessage("PIN incorrecto, o el fichero no es una copia válida.\n\n" +
+                            "Recuerda que una copia se abre con el PIN que tenías cuando " +
+                            "la creaste.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+
+        val detalle = buildString {
+            appendLine("Creada: ${BackupStore.humanDate(resumen.createdAt)}")
+            appendLine("Formato: v${resumen.version}")
+            appendLine("Tamaño: ${BackupStore.humanSize(info.bytes)}")
+            appendLine()
+            appendLine("Seed principal: ${if (resumen.hasMainSeed) "sí" else "no"}")
+            appendLine("Wallets: ${resumen.wallets}")
+            appendLine("Claves WIF: ${resumen.wifs}")
+            appendLine("Watch-only: ${resumen.watchers}")
+            appendLine("Hallazgos: ${resumen.matches}")
+            if (resumen.version < 2) {
+                appendLine()
+                appendLine("Copia antigua: sólo trae wallets. La seed principal, " +
+                           "los WIF, los watchers y los hallazgos no se guardaban.")
+            }
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Contenido de la copia")
+            .setMessage(detalle)
+            .setPositiveButton("Restaurar") { _, _ -> restoreFromVault(info, pin) }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
+    /** Restaura sin pasar por el selector de ficheros. Añade, no reemplaza. */
+    private fun restoreFromVault(info: BackupStore.Info, pin: String) {
+        val resumen = try {
+            WalletManager.inspectBackup(pin, info.file.readBytes())
+        } catch (e: Exception) { null }
+        if (resumen == null) {
+            android.widget.Toast.makeText(this, "PIN incorrecto o copia inválida",
+                android.widget.Toast.LENGTH_SHORT).show()
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("¿Restaurar esta copia?")
+            .setMessage("Se añadirá a lo que ya tienes: ${resumen.wallets} wallet(s), " +
+                        "${resumen.wifs} WIF, ${resumen.watchers} watch-only y " +
+                        "${resumen.matches} hallazgo(s).\n\n" +
+                        (if (resumen.hasMainSeed)
+                            "La seed principal de la copia SUSTITUYE a la actual. "
+                         else "") +
+                        "Si la actual no está en ninguna copia, guárdala antes.")
+            .setPositiveButton("Restaurar") { _, _ ->
+                val count = WalletManager.importBackup(this, pin, info.file.readBytes())
+                if (count >= 0) {
+                    android.widget.Toast.makeText(this,
+                        "✓ $count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
+                    buildUI()
+                } else {
+                    android.widget.Toast.makeText(this,
+                        "Error al restaurar", android.widget.Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun confirmDeleteBackup(info: BackupStore.Info) {
+        AlertDialog.Builder(this)
+            .setTitle("¿Borrar esta copia?")
+            .setMessage("${BackupStore.humanDate(info.createdAt)}\n\n" +
+                        "No se puede deshacer. Si es la única que tiene tus seeds, " +
+                        "se van con ella.")
+            .setPositiveButton("Borrar") { _, _ ->
+                BackupStore.delete(this, info.file)
+                android.widget.Toast.makeText(this, "Copia borrada",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                showBackupVault()
             }
             .setNegativeButton("Cancelar", null)
             .show()

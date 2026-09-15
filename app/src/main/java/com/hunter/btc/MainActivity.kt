@@ -2625,7 +2625,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 showVault()
             }
         })
-        page.addView(walletBtn("🔒", "Backup Cifrado", "Exportar matches con PIN") {
+        page.addView(walletBtn("🔒", "Copias de Seguridad", "Crear, ver, compartir o restaurar") {
             if (!PinAuthHelper.isSessionValid()) {
                 PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
             } else {
@@ -3941,7 +3941,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .setPositiveButton(
                 if (pendientes > 0) "Consultar saldos ($pendientes)" else "Refrescar saldos"
             ) { _, _ -> resolveVaultBalances() }
-            .setNeutralButton("Exportar cifrado") { _, _ -> exportEncryptedBackup() }
+            .setNeutralButton("Copia de seguridad") { _, _ -> exportEncryptedBackup() }
             .setNegativeButton("Cerrar", null)
             .show()
     }
@@ -4020,64 +4020,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .show()
     }
 
+    /**
+     * Crea una copia de seguridad. Lleva al baúl de copias de WalletActivity.
+     *
+     * Antes esto era un exportador aparte: cifraba sólo los hallazgos con
+     * encryptData(), escribía wh_backup_<fecha>.enc en almacenamiento externo y
+     * lo lanzaba al selector de compartir. Ese fichero no se podía restaurar —
+     * decryptData() existe pero no lo llamaba nadie, así que el formato era de
+     * ida—. Los hallazgos van ahora dentro de la copia normal (campo "matches"),
+     * que sí tiene importador, así que no hacen falta dos mecanismos.
+     */
     private fun exportEncryptedBackup() {
-        val dir = getExternalFilesDir(null) ?: filesDir
         MatchVault.ingestPlaintextFile(this)
-        val hallazgos = MatchVault.list(this)
-        if (hallazgos.isEmpty()) {
-            android.widget.Toast.makeText(this, "Sin matches para exportar", android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        // Pedir PIN para cifrar
-        android.app.AlertDialog.Builder(this)
-            .setTitle("PIN de cifrado")
-            .setMessage("Ingresa tu PIN para cifrar el backup")
-            .setPositiveButton("Cifrar con PIN") { _, _ ->
-                // Pedir PIN al usuario
-                val pinInput = android.widget.EditText(this).apply {
-                    hint = "Ingresa tu PIN"
-                    inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-                }
-                android.app.AlertDialog.Builder(this)
-                    .setTitle("PIN de cifrado")
-                    .setView(pinInput)
-                    .setPositiveButton("OK") { _, _ ->
-                        val pin = pinInput.text.toString()
-                        if (!WalletManager.checkPin(this, pin)) {
-                            android.widget.Toast.makeText(this, "PIN incorrecto", android.widget.Toast.LENGTH_SHORT).show()
-                            return@setPositiveButton
-                        }
-                        try {
-                    val data = MatchVault.toJson(hallazgos).toString().toByteArray(Charsets.UTF_8)
-                    val (encrypted, iv) = WalletManager.encryptData(data, pin)
-                    val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-                    val backupFile = java.io.File(dir, "wh_backup_$ts.enc")
-                    // Guardar IV + datos cifrados
-                    val out = java.io.ByteArrayOutputStream()
-                    out.write(iv.size)
-                    out.write(iv)
-                    out.write(encrypted)
-                    backupFile.writeBytes(out.toByteArray())
-                    // Compartir
-                    val uri = androidx.core.content.FileProvider.getUriForFile(
-                        this, "${packageName}.provider", backupFile)
-                    val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                        type = "application/octet-stream"
-                        putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                        putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Encrypted Backup")
-                        addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    }
-                    startActivity(android.content.Intent.createChooser(share, "Guardar backup cifrado"))
-                    android.widget.Toast.makeText(this, "Backup cifrado: ${backupFile.name}", android.widget.Toast.LENGTH_SHORT).show()
-                        } catch (e: Exception) {
-                            android.widget.Toast.makeText(this, "Error: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    .setNegativeButton("Cancelar", null).show()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
+        startActivity(Intent(this, WalletActivity::class.java).apply {
+            putExtra("MODE", "seed")
+            putExtra("OPEN_BACKUP_VAULT", true)
+        })
     }
 
     private fun exportLog() {
@@ -4092,7 +4050,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Incluir coincidencias SIN las claves privadas: este fichero se comparte
         // por ACTION_SEND y podría acabar en mensajería o correo. Para exportar
-        // las claves está exportEncryptedBackup(), que cifra con PIN.
+        // las claves está la copia de seguridad, que cifra con el PIN.
         MatchVault.ingestPlaintextFile(this)
         val hallazgos = MatchVault.list(this)
         if (hallazgos.isNotEmpty()) {
