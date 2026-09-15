@@ -85,22 +85,7 @@ object PinAuthHelper {
             )
         }
 
-        // ── Top bar ────────────────────────────────────────────────────────
-        val topBar = android.widget.FrameLayout(activity).apply {
-            setPadding(dp(20), dp(20), dp(20), dp(12))
-        }
-        topBar.addView(android.widget.TextView(activity).apply {
-            text = "Código"
-            textSize = AppTheme.SP_TITLE; setTextColor(TXT)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.01f
-            layoutParams = android.widget.FrameLayout.LayoutParams(
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                android.view.Gravity.CENTER_HORIZONTAL
-            )
-        })
-        root.addView(topBar)
+
 
         // ── Body ──────────────────────────────────────────────────────────
         val body = android.widget.LinearLayout(activity).apply {
@@ -112,17 +97,37 @@ object PinAuthHelper {
             setPadding(dp(24), 0, dp(24), dp(16))
         }
 
+        body.addView(android.widget.ImageView(activity).apply {
+            setImageResource(R.drawable.ic_lock)
+            setColorFilter(GOLD)
+            setPadding(dp(15), dp(15), dp(15), dp(15))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(17).toFloat()
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(56), dp(56))
+        })
+
         val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Elige tu código" else "Introduce el código"
-            textSize = 22f; setTextColor(TXT)
-            typeface = AppTheme.display(context)
+            text = if (isSetup) "Elige tu clave" else "Introduce tu clave"
+            textSize = 21f; setTextColor(TXT)
+            typeface = AppTheme.title(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(32) }
+            ).apply { topMargin = dp(26) }
         }
         body.addView(tvLabel)
+        body.addView(android.widget.TextView(activity).apply {
+            text = "Seis dígitos"
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        })
 
         // Dots row
         val dotsRow = android.widget.LinearLayout(activity).apply {
@@ -131,7 +136,7 @@ object PinAuthHelper {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(32) }
+            ).apply { topMargin = dp(38); bottomMargin = dp(38) }
         }
         // Eran cuadrados redondeados de 52dp: del tamaño de una tecla y con su
         // misma forma, así que la fila de progreso parecía otra fila de
@@ -341,6 +346,16 @@ object PinAuthHelper {
 
         keypadContainer.addView(keypad)
         keypadWrap.addView(keypadContainer)
+        keypadWrap.addView(android.widget.TextView(activity).apply {
+            text = "La clave no sale de este dispositivo"
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            gravity = android.view.Gravity.CENTER
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(24) }
+        })
         root.addView(keypadWrap)
 
         // Dialog fullscreen
