@@ -46,6 +46,37 @@ object BalanceLookup {
         return sumOf("chain_stats") + sumOf("mempool_stats")
     }
 
+    /**
+     * ¿Se ha usado alguna vez esta dirección?
+     *
+     * No vale mirar el saldo: una dirección que recibió y se vació tiene saldo
+     * 0 pero está usada, y reutilizarla es justo lo que se quiere evitar. Lo que
+     * cuenta es el número de transacciones.
+     *
+     * @return null si no se pudo averiguar — quien llame debe tratarlo como
+     *   "no lo sé" y no como "sin usar", o acabaría reutilizando direcciones.
+     */
+    fun isUsed(addr: String, testnet: Boolean = false): Boolean? {
+        if (addr.isEmpty()) return null
+        return try {
+            val conn = java.net.URL(
+                if (testnet) "https://mempool.space/testnet/api/address/$addr"
+                else "https://mempool.space/api/address/$addr"
+            ).openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = TIMEOUT_MS; conn.readTimeout = TIMEOUT_MS
+            val js = try {
+                if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
+                conn.inputStream.bufferedReader().readText()
+            } finally { conn.disconnect() }
+            val o = JSONObject(js)
+            fun txs(b: String) = o.optJSONObject(b)?.optInt("tx_count", 0) ?: 0
+            txs("chain_stats") + txs("mempool_stats") > 0
+        } catch (e: Exception) {
+            android.util.Log.w("BalanceLookup", "isUsed falló en $addr: ${e.message}")
+            null
+        }
+    }
+
     /** Saldo con respaldo. null si ninguna fuente respondió. */
     fun query(addr: String, testnet: Boolean = false): Result? {
         if (addr.isEmpty()) return null

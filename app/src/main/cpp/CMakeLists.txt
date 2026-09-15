@@ -22,6 +22,12 @@ target_compile_definitions(secp256k1 PRIVATE
     USE_SCALAR_INV_BUILTIN
     ECMULT_WINDOW_SIZE=15
     ECMULT_GEN_PREC_BITS=4
+    # Taproot: firmas Schnorr (BIP340) y el API x-only para tocar el par de
+    # claves. secp256k1.c incluye estos módulos sólo si están definidos, así que
+    # sin ellos el enlazado falla al llamar a schnorrsig_sign32. schnorrsig
+    # depende de extrakeys.
+    ENABLE_MODULE_EXTRAKEYS
+    ENABLE_MODULE_SCHNORRSIG
 )
 
 target_compile_options(secp256k1 PRIVATE
