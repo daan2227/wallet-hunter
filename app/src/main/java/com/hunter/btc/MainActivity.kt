@@ -3480,6 +3480,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         lastKnownRunning = isNowRunning
 
+        // El botón seguía el estado que dábamos por supuesto al pulsarlo, no el
+        // del motor. Si éste paraba por su cuenta —Android matando el proceso de
+        // trabajo, o un arranque que no prosperó— el botón se quedaba en STOP con
+        // nada corriendo, y la siguiente pulsación parecía no hacer nada porque
+        // en realidad estaba arrancando. Cada ciclo se reconcilia con la verdad.
+        // Durante la parada isRunning() sigue true; contarlo como "corriendo"
+        // devolvería el botón a STOP justo después de que el usuario lo pulsara.
+        val uiRunning = isNowRunning && !HunterEngine.isStopping()
+        syncToggleButton(btnToggle, uiRunning && !puzzleMode, s.start)
+        syncToggleButton(btnPuzzleToggle, uiRunning && puzzleMode, "▶  START PUZZLE")
+        if (!uiRunning) activeToggleBtn = null
+
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
         if (puzzleMode && HunterEngine.isRunning()) {
             val cycleCount = (System.currentTimeMillis() / 800).toInt()
@@ -3544,11 +3556,43 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * después de reinstalar, porque el .bin vive en getExternalFilesDir() y se
      * borra con la app, dejando csvPath apuntando a un fichero que ya no está.
      */
+    /**
+     * Pone el botón en el estado que corresponde al motor.
+     *
+     * El tag lleva [fondoStart, fondoStop]; se comprueba el texto antes de
+     * tocar nada para no reasignar el drawable en cada ciclo de 800 ms.
+     */
+    private fun syncToggleButton(btn: Button?, running: Boolean, textoStart: String) {
+        if (btn == null) return
+        val deseado = if (running) s.stop else textoStart
+        if (btn.text.toString() == deseado) return
+        btn.text = deseado
+        @Suppress("UNCHECKED_CAST")
+        val bg = btn.tag as? Array<GradientDrawable> ?: return
+        if (bg.size > 1) btn.background = if (running) bg[1] else bg[0]
+    }
+
     private fun engineHasSomethingToMatch(): Boolean =
         HunterEngine.isCsvLoaded() || HunterEngine.hasTarget()
 
     private fun doToggle(callerBtn: Button? = null) {
         try {
+            // Entre pulsar STOP y que los workers mueran hay una ventana en la
+            // que isRunning() sigue devolviendo true. Pulsar ahí hacía que el
+            // botón de START ejecutase la rama de STOP: parecía que "a veces no
+            // funciona". Mejor decirlo que fingir.
+            if (HunterEngine.isStopping()) {
+                Toast.makeText(this, "Deteniendo el escaneo anterior… espera un momento",
+                    Toast.LENGTH_SHORT).show()
+                return
+            }
+            // El dataset se carga en segundo plano: durante ese rato
+            // isCsvLoaded() es false, y decir "sin dataset" sería mentira.
+            if (!HunterEngine.isRunning() && HunterEngine.isLoading()) {
+                Toast.makeText(this, "Cargando el dataset… ${HunterEngine.getLoadStatus()}",
+                    Toast.LENGTH_SHORT).show()
+                return
+            }
             if (!HunterEngine.isRunning() && !engineHasSomethingToMatch()) {
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("Sin dataset cargado")
@@ -3643,10 +3687,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     cpu     = (sbCpu?.progress ?: 70) + 10
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else selectedScanMode)
-                val debugRange = "start=${etRangeStart?.text} end=${etRangeEnd?.text} threads=$threads cpu=$cpu"
-                val batchNow = HunterEngine.getBatchSize()
-                Toast.makeText(this, "threads=$threads cpu=$cpu batch=$batchNow", Toast.LENGTH_LONG).show()
                 HunterEngine.startHunting(threads, cpu)
+
+                // startHunting() en C++ vuelve sin hacer nada en varios casos
+                // —ya corriendo, parada a medias, sin dataset en modo BIP39— y
+                // no devuelve nada. Aquí se daba por hecho que había arrancado:
+                // se guardaba scan_was_running, el botón pasaba a STOP y se
+                // lanzaba el servicio. Resultado: el botón decía STOP con el
+                // motor parado, y la siguiente pulsación volvía a intentar
+                // arrancar. Se comprueba antes de tocar nada.
+                if (!HunterEngine.isRunning()) {
+                    Toast.makeText(this, "El motor no arrancó. Revisa el dataset y el modo.",
+                        Toast.LENGTH_LONG).show()
+                    prefs.edit().putBoolean("scan_was_running", false).apply()
+                    return
+                }
+
+                val batchNow = HunterEngine.getBatchSize()
+                Toast.makeText(this, "threads=$threads · cpu=$cpu% · batch=$batchNow",
+                    Toast.LENGTH_SHORT).show()
 
                 // Guardar estado para auto-reinicio
                 prefs.edit()

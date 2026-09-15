@@ -103,6 +103,14 @@ static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 static std::atomic<int>    g_bip39_paths(3);
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
+/* Parada en curso. stopHunting() no espera a los workers —hacerlo bloquearía el
+   hilo de UI—, así que entre pulsar STOP y que g_running pase a false hay una
+   ventana. Sin marcarla, una segunda pulsación en esa ventana volvía a entrar y
+   lanzaba un segundo joiner sobre unos pthread_t que el primero ya estaba
+   uniendo: pthread_join dos veces sobre el mismo hilo es comportamiento
+   indefinido. Y desde Kotlin la ventana se veía como "isRunning() sigue true",
+   así que el botón de START ejecutaba la rama de STOP y no arrancaba nada. */
+static std::atomic<bool>   g_stopping(false);
 static std::atomic<bool>   g_loading(false);
 static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE 2=RAWKEY */
 
@@ -1167,6 +1175,7 @@ JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     install_crash_handlers();
     if(g_running.load())return;
+    if(g_stopping.load())return;   /* workers de la sesión anterior aún vivos */
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
@@ -1186,13 +1195,22 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
     if(!g_running.load())return;
+    /* Idempotente: si ya se está parando, no montar otro joiner. */
+    bool expected=false;
+    if(!g_stopping.compare_exchange_strong(expected,true))return;
     g_stop.store(true);
     std::thread([]{
         for(int i=0;i<g_active;i++) pthread_join(g_workers[i],nullptr);
         g_running.store(false);g_active=0;
+        g_stopping.store(false);
         add_log("Stopped | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
     }).detach();
 }
+
+/* ¿Hay una parada en curso? La UI lo usa para no aceptar pulsaciones mientras
+   los workers todavía no han terminado. */
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_isStopping(JNIEnv *,jobject){return (jboolean)g_stopping.load();}
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}

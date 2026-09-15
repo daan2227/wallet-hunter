@@ -18,6 +18,8 @@ object HunterEngine {
     external fun isCsvLoaded(): Boolean
     external fun isLoading(): Boolean
     external fun isRunning(): Boolean
+    /** Parada en curso: los workers aún no han terminado. */
+    external fun isStopping(): Boolean
     external fun getLoadStatus(): String
     external fun getWps(): Double
     external fun getCount(): Long
