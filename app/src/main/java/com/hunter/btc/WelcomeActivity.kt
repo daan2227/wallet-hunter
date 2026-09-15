@@ -91,10 +91,10 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(logoRow)
 
         root.addView(android.widget.TextView(this).apply {
-            text = "BITCOIN SEED SCANNER"
-            textSize = 9f; setTextColor(MUTED)
-            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
-            letterSpacing = 0.2f; gravity = android.view.Gravity.CENTER
+            text = "Escáner de seeds de Bitcoin"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            gravity = android.view.Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -105,32 +105,31 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         val (totalKeys, totalMatches, totalTime) = StatsActivity.getTotals(this)
         val sessions = StatsActivity.loadSessions(this)
 
-        fun statCard(icon: String, value: String, label: String, color: Int): LinearLayout {
+        fun statCard(icon: Int, value: String, label: String, color: Int): LinearLayout {
             return LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = android.view.Gravity.CENTER
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(SURFACE); cornerRadius = dp(14).toFloat(); setStroke(1, BORDER)
-                }
-                layoutParams = LinearLayout.LayoutParams(0, dp(90), 1f).apply {
+                background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
+                layoutParams = LinearLayout.LayoutParams(0, dp(96), 1f).apply {
                     setMargins(dp(4), 0, dp(4), 0)
                 }
-                addView(android.widget.TextView(this@WelcomeActivity).apply {
-                    text = icon; textSize = 20f; gravity = android.view.Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = dp(4) }
+                addView(Ui.icon(this@WelcomeActivity, icon, 20, AppTheme.TXT_SEC).apply {
+                    (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(8)
                 })
                 addView(android.widget.TextView(this@WelcomeActivity).apply {
-                    text = value; textSize = 16f; setTextColor(color)
-                    typeface = AppTheme.display(context)
+                    text = value; textSize = AppTheme.SP_FIGURE; setTextColor(color)
+                    typeface = AppTheme.title(context)
                     gravity = android.view.Gravity.CENTER; letterSpacing = -0.02f
                 })
+                // 8sp: la mitad del mínimo legible que da Android.
                 addView(android.widget.TextView(this@WelcomeActivity).apply {
-                    text = label; textSize = 8f; setTextColor(MUTED)
-                    typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+                    text = label; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                    typeface = AppTheme.body(context)
                     gravity = android.view.Gravity.CENTER
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply { topMargin = dp(3) }
                 })
             }
         }
@@ -149,17 +148,17 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(40) }
         }
-        statsRow.addView(statCard("⚡", formatKeys(totalKeys), "Keys totales", ACCENT))
-        statsRow.addView(statCard("🎯", totalMatches.toString(), "Matches", 
-            if (totalMatches > 0) ACCENT else MUTED))
-        statsRow.addView(statCard("📊", sessions.size.toString(), "Sesiones", ACCENT2))
+        statsRow.addView(statCard(R.drawable.ic_play, formatKeys(totalKeys), "Claves", AppTheme.TXT_PRI))
+        statsRow.addView(statCard(R.drawable.ic_target, totalMatches.toString(), "Coincidencias",
+            if (totalMatches > 0) AppTheme.ACCENT else AppTheme.TXT_PRI))
+        statsRow.addView(statCard(R.drawable.ic_stats, sessions.size.toString(), "Sesiones", AppTheme.TXT_PRI))
         root.addView(statsRow)
 
         // Mensaje de bienvenida
         root.addView(android.widget.TextView(this).apply {
-            text = "Verificando identidad..."
-            textSize = 12f; setTextColor(MUTED)
-            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
+            text = "Verificando identidad…"
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER
         })
 
@@ -253,7 +252,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Botón crear PIN
         root.addView(Button(this).apply {
-            text = "▶  CREAR PIN DE SEGURIDAD"
+            text = "Crear el PIN de seguridad"
             textSize = 13f; setTextColor(Color.BLACK)
             typeface = AppTheme.title(context)
             letterSpacing = 0.04f
@@ -299,7 +298,6 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         val BGKP  = 0xFF0E0E0E.toInt()      // #0b0e14 keypad bg
         val TXT   = 0xFFF2F2F2.toInt()      // #e8eaf0
         val MUTED = 0xFF8A8A8A.toInt()       // #5a607a muted
-        val SUBL  = 0xFF222222.toInt()       // #3a4060 sub-letters
         val RED   = 0xFFFF6B35.toInt()
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
@@ -386,9 +384,9 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
-                "Enter your passcode. Be sure to remember it\nso you can unlock your wallet."
-            else "Use your passcode or fingerprint to unlock"
-            textSize = 13f; setTextColor(MUTED)
+                "Elige tu código. Apúntalo donde no se te pierda:\nsin él no puedes abrir la cartera."
+            else "Introduce el código o usa la huella"
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             gravity = android.view.Gravity.CENTER
         }
         body.addView(tvHint)
@@ -535,32 +533,15 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             when (key.type) {
                 "num" -> {
                     cell.addView(android.widget.TextView(activity).apply {
-                        text = key.digit; textSize = 28f; setTextColor(TXT)
-                        typeface = android.graphics.Typeface.DEFAULT
-                        gravity = android.view.Gravity.CENTER
-                    })
-                    if (key.sub.isNotEmpty()) {
-                        cell.addView(android.widget.TextView(activity).apply {
-                            text = key.sub; textSize = 9f; setTextColor(SUBL)
-                            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-                            letterSpacing = 0.12f; gravity = android.view.Gravity.CENTER
-                        })
-                    }
-                }
-                "bio" -> {
-                    // Ícono de huella usando texto unicode
-                    cell.addView(android.widget.TextView(activity).apply {
-                        text = "◉"; textSize = 30f
-                        setTextColor(GOLD)
+                        text = key.digit; textSize = 26f; setTextColor(TXT)
+                        typeface = AppTheme.medium(activity)
                         gravity = android.view.Gravity.CENTER
                     })
                 }
-                "del" -> {
-                    cell.addView(android.widget.TextView(activity).apply {
-                        text = "⌫"; textSize = 24f; setTextColor(SUBL)
-                        gravity = android.view.Gravity.CENTER
-                    })
-                }
+                "bio" -> cell.addView(
+                    Ui.icon(activity, R.drawable.ic_finger, 26, AppTheme.TXT_SEC))
+                "del" -> cell.addView(
+                    Ui.icon(activity, R.drawable.ic_back, 24, AppTheme.TXT_SEC))
             }
             keypad.addView(cell)
         }

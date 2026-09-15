@@ -38,7 +38,7 @@ class HunterService : Service() {
                     HunterEngine.stopHunting()
                     getSystemService(NotificationManager::class.java)
                         .notify(NOTIF_FG, buildFgNotif(
-                            "⚠ Scan pausado — batería baja",
+                            "Escaneo en pausa: batería baja",
                             "Batería al ${batteryLevel}%. Recarga y reinicia."
                         ))
                 }
@@ -137,8 +137,8 @@ class HunterService : Service() {
             val cStr = if(count>=1_000_000) "${"%.2f".format(count/1e6)}M seeds" else "$count seeds"
 
             if (running) {
-                val title = "BTC Hunter  $wStr | Matches: $found"
-                val text = "$cStr | %02d:%02d:%02d | 🌡${"%.0f".format(currentTemp)}°C | 🔋${batteryLevel}%%".format(h,m,s)
+                val title = "BTC Hunter · $wStr · $found coincidencias"
+                val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(title, text))
             } else if (loaded) {

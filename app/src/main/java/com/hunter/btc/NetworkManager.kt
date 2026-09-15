@@ -206,8 +206,8 @@ object NetworkManager {
                     // Sólo se notifica la dirección. La clave privada NUNCA viaja
                     // por la red: se queda en el dispositivo que la encontró.
                     val addr = msg.optString("addr")
-                    log("🎯 MATCH de ${workers[workerId]?.device}: $addr")
-                    onLog?.invoke("🎯 MATCH en ${workers[workerId]?.device ?: workerId}: $addr")
+                    log("Coincidencia de ${workers[workerId]?.device}: $addr")
+                    onLog?.invoke("Coincidencia en ${workers[workerId]?.device ?: workerId}: $addr")
                 }
             }
         } catch (e: Exception) {

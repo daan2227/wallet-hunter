@@ -481,7 +481,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── HEADER ───────────────────────────────────────────────────────────────────
     private fun buildHeader(): LinearLayout {
-        val ACCENT = 0xFF00C896.toInt()
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(0xFF0E0E0E.toInt())
@@ -582,7 +581,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val drawerWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
         val drawer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF161616.toInt())
+            setBackgroundColor(AppTheme.BG_PANEL)
             translationX = -drawerWidth.toFloat()
             elevation = dp(16).toFloat()
         }
@@ -592,11 +591,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Drawer header
         val drawerHeader = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(20))
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt())
-                setStroke(0, 0)
-            }
+            setPadding(dp(20), dp(28), dp(20), dp(20))
         }
         val dTitle = TextView(this).apply {
             text = android.text.SpannableString("WalletHunter").also { sp ->
@@ -608,21 +603,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             textSize = 20f
             typeface = AppTheme.title(context)
-            setTextColor(0xFFF2F2F2.toInt())
+            setTextColor(AppTheme.TXT_PRI)
         }
         val dSub = TextView(this).apply {
             text = "com.hunter.btc · ARM64"
-            textSize = 10f
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            setTextColor(0xFF8A8A8A.toInt())
-            setPadding(0, dp(4), 0, 0)
+            textSize = AppTheme.SP_MICRO
+            typeface = Typeface.MONOSPACE   // es un identificador, va monoespaciado
+            setTextColor(AppTheme.TXT_MUTED)
+            setPadding(0, dp(5), 0, 0)
         }
         drawerHeader.addView(dTitle)
         drawerHeader.addView(dSub)
 
         // Divider
         val divider = android.view.View(this).apply {
-            setBackgroundColor(0xFF222222.toInt())
+            setBackgroundColor(AppTheme.BORDER_C)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
             )
@@ -665,9 +660,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 isClickable = true
                 isFocusable = true
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(12).toFloat()
-                    setColor(if (item.idx == 0) 0x14FFFFFF.toInt() else 0x00000000.toInt())
-                    if (item.idx == 0) setStroke(1, 0x28FFFFFF.toInt())
+                    cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                    setColor(if (item.idx == 0) AppTheme.BG_ELEV else android.graphics.Color.TRANSPARENT)
                 }
                 tag = "nav_${item.idx}"
                 setOnClickListener {
@@ -698,16 +692,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setImageResource(item.icon)
                 // Se tiñe para poder marcar la pestaña activa, que con el emoji
                 // era imposible.
-                setColorFilter(AppTheme.TXT_SEC)
+                setColorFilter(if (item.idx == 0) AppTheme.ACCENT else AppTheme.TXT_SEC)
                 layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).also {
                     it.gravity = Gravity.CENTER_VERTICAL
                 }
             }
             val labelTv = TextView(this).apply {
                 text = item.label
-                textSize = 14f
-                typeface = AppTheme.title(context)
-                setTextColor(if (item.idx == 0) ACCENT else 0xFF8A8A8A.toInt())
+                textSize = AppTheme.SP_BODY
+                typeface = if (item.idx == 0) AppTheme.bold(context) else AppTheme.medium(context)
+                setTextColor(if (item.idx == 0) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                     it.gravity = Gravity.CENTER_VERTICAL
                     it.marginStart = dp(14)
@@ -722,14 +716,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Drawer footer
         val footerDiv = android.view.View(this).apply {
-            setBackgroundColor(0xFF222222.toInt())
+            setBackgroundColor(AppTheme.BORDER_C)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
         }
         val footer = TextView(this).apply {
             text = "v2.4 · Wallet Hunter"
-            textSize = 10f
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            setTextColor(0xFF4A4A4A.toInt())
+            textSize = AppTheme.SP_MICRO
+            typeface = AppTheme.body(context)
+            setTextColor(AppTheme.TXT_MUTED)
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, dp(24))
         }
@@ -767,7 +761,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun updateDrawerSelection(idx: Int) {
-        val ACCENT = 0xFF00C896.toInt()
         val drawer = drawerView as? LinearLayout ?: return
         // Find navContainer (3rd child: header, divider, navContainer)
         val navContainer = drawer.getChildAt(2) as? LinearLayout ?: return
@@ -777,14 +770,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val rowIdx = tag.removePrefix("nav_").toIntOrNull() ?: continue
             val isActive = rowIdx == idx
             val bg = row.background as? android.graphics.drawable.GradientDrawable
-            bg?.setColor(if (isActive) 0x14FFFFFF.toInt() else 0x00000000.toInt())
-            bg?.setStroke(if (isActive) 1 else 0, if (isActive) 0x28FFFFFF.toInt() else 0x00000000.toInt())
+            bg?.setColor(if (isActive) AppTheme.BG_ELEV else android.graphics.Color.TRANSPARENT)
             val label = row.getChildAt(1) as? TextView
-            label?.setTextColor(if (isActive) ACCENT else 0xFF8A8A8A.toInt())
+            label?.setTextColor(if (isActive) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+            label?.typeface =
+                if (isActive) AppTheme.bold(this) else AppTheme.medium(this)
             // El icono acompaña al rótulo. Con el emoji no se podía: lo pintaba
             // la fuente del sistema con sus propios colores.
             (row.getChildAt(0) as? android.widget.ImageView)
-                ?.setColorFilter(if (isActive) ACCENT else 0xFF8A8A8A.toInt())
+                ?.setColorFilter(if (isActive) AppTheme.ACCENT else AppTheme.TXT_SEC)
         }
     }
 
@@ -1176,7 +1170,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // El icono va a un TextView de 26dp: el texto entero se recortaba
                 // a "🐕/Wat". El estado va en la etiqueta, que se reescribe al
                 // pulsar en vez de esperar a que se reconstruya la pestaña.
-                Triple("🐕", watchdogLabel(), { lbl: TextView ->
+                Triple(R.drawable.ic_clock, watchdogLabel(), { lbl: TextView ->
                     watchdogEnabled = !watchdogEnabled
                     prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
                     lbl.text = watchdogLabel()
@@ -1184,20 +1178,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }),
-                Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() })
+                Triple(R.drawable.ic_gear, "Configurar según el hardware", { _: TextView -> showHardwareInfo() })
             ).forEach { (ic, lbl, action) ->
                 val tvLabel = TextView(this@MainActivity).apply {
-                    text = lbl; textSize = 12f; setTextColor(0xFFF2F2F2.toInt())
+                    text = lbl
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(AppTheme.TXT_PRI)
+                    typeface = AppTheme.body(context)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(10), 0, 0); isClickable = true; isFocusable = true
+                    setPadding(0, dp(14), 0, dp(14)); isClickable = true; isFocusable = true
                     setOnClickListener { action(tvLabel) }
                 }
-                row.addView(TextView(this@MainActivity).apply {
-                    text = ic; textSize = 15f; gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(10) }
+                row.addView(Ui.icon(this@MainActivity, ic).apply {
+                    (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14)
                 })
                 row.addView(tvLabel)
                 row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF4A4A4A.toInt()) })
@@ -1536,7 +1532,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Salto aleatorio dentro del rango del puzzle.
         tvRandomJump = TextView(this).apply {
-            text = "🎲 Saltar a un punto aleatorio del rango"
+            text = "Saltar a un punto aleatorio del rango"
             textSize = 12f; setTextColor(ACCENT2)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = android.graphics.drawable.GradientDrawable().apply {
@@ -1570,7 +1566,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(TextView(this).apply {
             // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
             // pequeño para acertar con el dedo, siendo además destructivo.
-            text = "↺ Reiniciar progreso"; textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
+            text = "Reiniciar progreso"; textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             setPadding(dp(12), dp(10), dp(12), dp(10))
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.END; isClickable = true; isFocusable = true
@@ -2135,7 +2131,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // la etiqueta del puzzle que sí había elegido.
                     if (puzzleFullStart != defaultPuzzle.start) return@runOnUiThread
                     if (bal > 0) {
-                        tvBalResult.text = "✓ ${bal / 100_000_000.0} BTC disponibles"
+                        tvBalResult.text = "${bal / 100_000_000.0} BTC disponibles"
                         tvBalResult.setTextColor(ACCENT)
                     } else {
                         // Antes ponía "Buscando puzzle con fondos..." y llamaba a
@@ -2289,8 +2285,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(16), dp(16), dp(16))
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
-                    setStroke(1, 0xFF222222.toInt())
+                    setColor(AppTheme.BG_CARD)
+                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
                 }
                 isClickable = true; isFocusable = true
                 setOnClickListener { click() }
@@ -2314,11 +2310,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             lc.addView(TextView(this).apply {
-                text = label; textSize = 14f; setTextColor(0xFFF2F2F2.toInt())
+                text = label; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
                 typeface = AppTheme.title(context)
             })
             lc.addView(TextView(this).apply {
-                text = sub; textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
+                text = sub; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2366,7 +2362,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         page.addView(walletBtn(R.drawable.ic_add, "Añadir cartera", "Seed, WIF o dirección") {
             // Mostrar opciones de importación
-            val opciones = arrayOf("📝 Seed Phrase (BIP39)", "🔑 Clave WIF", "👁 Watch-only (dirección)")
+            val opciones = arrayOf("Frase semilla (BIP39)", "Clave WIF", "Sólo observación (dirección)")
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Tipo de wallet")
                 .setItems(opciones) { _, which ->
@@ -2439,7 +2435,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(TextView(this@MainActivity).apply {
                 text = "Preguntar por un saldo revela esa dirección al servidor " +
                        "que responde. Por eso se hace sólo cuando lo pides tú."
-                textSize = AppTheme.SP_CAPTION; setTextColor(0xFFB0A098.toInt())
+                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context)
                 setLineSpacing(dp(4).toFloat(), 1f)
                 layoutParams = LinearLayout.LayoutParams(0,
@@ -2654,7 +2650,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val btnStartRecovery = Button(this).apply {
-            text = "▶  INICIAR RECOVERY"; textSize = 13f
+            text = "Iniciar recuperación"; textSize = 13f
             setTextColor(0xFF000000.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 colors = intArrayOf(ACCENT, ACCENT2)
@@ -2665,7 +2661,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancelRecovery = Button(this).apply {
-            text = "■ CANCELAR"; textSize = 12f
+            text = "Cancelar"; textSize = 12f
             setTextColor(0xFFFF6B35.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xFF161616.toInt()); setStroke(1, 0xFF1E1414.toInt())
@@ -2679,7 +2675,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(btnRow)
 
         val btnSaveWallet = Button(this).apply {
-            text = "⬇  GUARDAR EN WALLET"; textSize = 13f
+            text = "Guardar en la cartera"; textSize = 13f
             setTextColor(0xFF000000.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(ACCENT); cornerRadius = dp(14).toFloat()
@@ -2729,14 +2725,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     if (PinAuthHelper.isSessionValid()) {
                         WalletManager.saveSeed(this, foundMnemonic)
                         btnSaveWallet.visibility = android.view.View.GONE
-                        tvRecoveryStatus.text = "✓ Seed guardada en wallet principal"
+                        tvRecoveryStatus.text = "Seed guardada en la cartera principal"
                         tvRecoveryStatus.visibility = android.view.View.VISIBLE
                     } else {
                         PinAuthHelper.show(this) { ok ->
                             if (ok) {
                                 WalletManager.saveSeed(this, foundMnemonic)
                                 btnSaveWallet.visibility = android.view.View.GONE
-                                tvRecoveryStatus.text = "✓ Seed guardada en wallet principal"
+                                tvRecoveryStatus.text = "Seed guardada en la cartera principal"
                                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                             }
                         }
@@ -3203,7 +3199,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val idx   = randomBelow(total)
             pendingBlockIdx = idx
             val pct = blockPercent(idx, total)
-            tvRandomJump?.text = "🎲 Otro punto al azar"
+            tvRandomJump?.text = "Otro punto al azar"
             setCurrentBlockLabel("Arrancará en el bloque", idx)
             val (bStart, _) = blockRange(rs, re, idx)
             if (HunterEngine.isRunning()) {
@@ -3628,7 +3624,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
                         }
                         pendingBlockIdx = null
-                        tvRandomJump?.text = "🎲 Saltar a un punto aleatorio del rango"
+                        tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
                         if (block != null) {
                             val (bStart, bEnd) = block
                             HunterEngine.setRange(bStart, bEnd)
@@ -3829,7 +3825,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             editor.apply()
             android.widget.Toast.makeText(this,
-                "✓ Progreso importado: +$totalImported bloques nuevos",
+                "Progreso importado: $totalImported bloques nuevos",
                 android.widget.Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             android.widget.Toast.makeText(this, "Error importando: ${e.message}", android.widget.Toast.LENGTH_LONG).show()
@@ -3860,9 +3856,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val fmt = java.text.SimpleDateFormat("dd/MM/yy HH:mm", java.util.Locale.US)
         val items = entries.map { e ->
             val etiqueta = when (e.source) {
-                "puzzle"   -> "🧩 Puzzle"
-                "scanner"  -> "🔍 Escáner"
-                "recovery" -> "♻ Recovery"
+                "puzzle"   -> "Puzzle"
+                "scanner"  -> "Escáner"
+                "recovery" -> "Recovery"
                 else       -> e.source
             }
             // Un "0.00000000 BTC" a secas se lee como "vacía", cuando puede ser
@@ -3898,7 +3894,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val n = try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) { 0 }
             runOnUiThread {
                 android.widget.Toast.makeText(this,
-                    if (n > 0) "✓ $n saldo(s) actualizados"
+                    if (n > 0) "$n saldo(s) actualizados"
                     else "Ninguna fuente respondió — inténtalo más tarde",
                     android.widget.Toast.LENGTH_SHORT).show()
                 if (n > 0) showVault()
@@ -4146,7 +4142,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         pendingBlockIdx = null
         currentBlockId = ""
         tvCurrentBlock?.text = "Bloque actual: —"
-        tvRandomJump?.text = "🎲 Saltar a un punto aleatorio del rango"
+        tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
         // Guardar rango para modo distribuido
         prefs.edit()
             .putString("current_range_start", p.start)
@@ -4207,7 +4203,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
             val notif = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
                 .setSmallIcon(android.R.drawable.star_on)
-                .setContentTitle("🎯 MATCH ENCONTRADO!")
+                .setContentTitle("Coincidencia encontrada")
                 .setContentText("Addr: ${addr.take(20)}...")
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle()
                     .bigText("Dirección: $addr\nWIF: $wif"))

@@ -71,13 +71,12 @@ class DebugActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        header.addView(Button(this).apply {
-            text = "←"; textSize = 16f; setTextColor(ACCENT)
-            background = GradientDrawable().apply {
-                setColor(SURFACE); setStroke(1, BORDER); cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) }
+        header.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(AppTheme.TXT_PRI)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
@@ -133,18 +132,18 @@ class DebugActivity : AppCompatActivity() {
             setOnClickListener { click() }
         }
 
-        logBtnRow.addView(actionBtn("▶ REFRESH", ACCENT) {
+        logBtnRow.addView(actionBtn("Refrescar", ACCENT) {
             startLogRefresh()
         })
-        logBtnRow.addView(actionBtn("⏹ PARAR", 0xFF8A8A8A.toInt()) {
+        logBtnRow.addView(actionBtn("Parar", 0xFF8A8A8A.toInt()) {
             stopLogRefresh()
         })
-        logBtnRow.addView(actionBtn("📋 COPIAR", ACCENT2) {
+        logBtnRow.addView(actionBtn("Copiar", ACCENT2) {
             val cm = getSystemService(android.content.ClipboardManager::class.java)
             cm.setPrimaryClip(android.content.ClipData.newPlainText("log", tvLive.text))
             android.widget.Toast.makeText(this, "Log copiado", android.widget.Toast.LENGTH_SHORT).show()
         })
-        logBtnRow.addView(actionBtn("🗑 LIMPIAR", RED) {
+        logBtnRow.addView(actionBtn("Limpiar", RED) {
             clearLogs()
             tvLive.text = "Logs limpiados."
         })
@@ -261,7 +260,7 @@ class DebugActivity : AppCompatActivity() {
             movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
         }
         engLogCard.addView(tvEngLog)
-        engLogCard.addView(actionBtn("↻ REFRESCAR LOG", ACCENT2) {
+        engLogCard.addView(actionBtn("Refrescar registro", ACCENT2) {
             val logs = buildString {
                 repeat(20) {
                     val l = HunterEngine.popLog()

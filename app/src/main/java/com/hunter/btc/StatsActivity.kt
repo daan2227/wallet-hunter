@@ -109,13 +109,12 @@ class StatsActivity : Activity() {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(4), dp(16), dp(4), dp(16))
         }
-        header.addView(Button(this).apply {
-            text = "←"; textSize = 16f; setTextColor(ACCENT)
-            background = GradientDrawable().apply {
-                setColor(SURFACE); setStroke(1, BORDER); cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(12) }
+        header.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(AppTheme.TXT_PRI)
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
@@ -282,14 +281,14 @@ class StatsActivity : Activity() {
                     ).apply { topMargin = dp(6) }
                 }
 
-                val modeIcon = when (mode) { "PUZZLE" -> "🧩"; else -> "⚡" }
+                val modeName = if (mode == "PUZZLE") "Puzzle" else "Escáner"
                 val left = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 left.addView(TextView(this).apply {
-                    text = "$modeIcon  ${df.format(Date(ts))}  ·  ${formatTime(duration)}"
-                    textSize = 11f; setTextColor(TXT)
+                    text = "$modeName · ${df.format(Date(ts))} · ${formatTime(duration)}"
+                    textSize = AppTheme.SP_BODY; setTextColor(TXT)
                     typeface = Typeface.create("monospace", Typeface.BOLD)
                 })
                 left.addView(TextView(this).apply {
@@ -305,7 +304,7 @@ class StatsActivity : Activity() {
 
                 if (matches > 0) {
                     row.addView(TextView(this).apply {
-                        text = "✓ $matches"
+                        text = "$matches"
                         textSize = 13f; setTextColor(ACCENT)
                         typeface = Typeface.create("monospace", Typeface.BOLD)
                     })

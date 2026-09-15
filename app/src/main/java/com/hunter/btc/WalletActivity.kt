@@ -687,7 +687,7 @@ class WalletActivity : FragmentActivity() {
                 }
                 if (usedFallback) {
                     ll.addView(TextView(this).apply {
-                        text = "⚠ mempool.space no respondió; saldo obtenido vía Electrum"
+                        text = "mempool.space no respondió; saldo obtenido vía Electrum"
                         textSize = 9f; setTextColor(AMBER)
                         typeface = Typeface.create("monospace", Typeface.NORMAL)
                         setPadding(0, dp(6), 0, 0)
@@ -1433,7 +1433,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","🗄 Baúl de copias","Restaurar desde archivo","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Baúl de copias","Restaurar desde archivo","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
                     0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
@@ -1691,7 +1691,7 @@ class WalletActivity : FragmentActivity() {
         root.addView(etPin)
 
         AlertDialog.Builder(this)
-            .setTitle("📦 Nueva copia de seguridad")
+            .setTitle("Nueva copia de seguridad")
             .setView(root)
             .setPositiveButton("Crear") { _, _ ->
                 val pin = etPin.text.toString()
@@ -1706,7 +1706,7 @@ class WalletActivity : FragmentActivity() {
                 val file = WalletManager.exportBackup(this, pin)
                 if (file != null) {
                     android.widget.Toast.makeText(this,
-                        "✓ Copia guardada en el baúl", android.widget.Toast.LENGTH_SHORT).show()
+                        "Copia guardada en el baúl", android.widget.Toast.LENGTH_SHORT).show()
                     showBackupVault()
                 } else {
                     android.widget.Toast.makeText(this,
@@ -1724,7 +1724,7 @@ class WalletActivity : FragmentActivity() {
     private fun showBackupVault() {
         val copias = BackupStore.list(this)
         val b = AlertDialog.Builder(this)
-            .setTitle("🗄 Baúl de copias (${copias.size}/${BackupStore.MAX_KEPT})")
+            .setTitle("Baúl de copias (${copias.size}/${BackupStore.MAX_KEPT})")
 
         if (copias.isEmpty()) {
             b.setMessage("Todavía no hay ninguna copia.\n\nUna copia lleva las seeds, " +
@@ -1745,10 +1745,10 @@ class WalletActivity : FragmentActivity() {
     /** Qué hacer con una copia concreta. */
     private fun showBackupActions(info: BackupStore.Info) {
         val acciones = arrayOf(
-            "📤 Compartir",
-            "🔍 Ver contenido",
-            "📥 Restaurar esta copia",
-            "🗑 Borrar")
+            "Compartir",
+            "Ver contenido",
+            "Restaurar esta copia",
+            "Borrar")
         AlertDialog.Builder(this)
             .setTitle(BackupStore.humanDate(info.createdAt))
             .setItems(acciones) { _, which ->
@@ -1861,7 +1861,7 @@ class WalletActivity : FragmentActivity() {
                 val count = WalletManager.importBackup(this, pin, info.file.readBytes())
                 if (count >= 0) {
                     android.widget.Toast.makeText(this,
-                        "✓ $count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
+                        "$count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
                     buildUI()
                 } else {
                     android.widget.Toast.makeText(this,
@@ -1915,7 +1915,7 @@ class WalletActivity : FragmentActivity() {
         root.addView(etPin)
 
         AlertDialog.Builder(this)
-            .setTitle("📥 Restaurar Backup")
+            .setTitle("Restaurar copia")
             .setView(root)
             .setPositiveButton("Restaurar") { _, _ ->
                 val pin = etPin.text.toString()
@@ -1926,7 +1926,7 @@ class WalletActivity : FragmentActivity() {
                     // decir "wallet(s)" a secas confundía cuando el backup
                     // traía sobre todo claves sueltas.
                     android.widget.Toast.makeText(this,
-                        "✓ $count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
+                        "$count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
                     buildUI()
                 } else {
                     android.widget.Toast.makeText(this,
