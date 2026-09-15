@@ -1360,97 +1360,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0E0E0E.toInt())
-            setPadding(dp(12), dp(16), dp(12), dp(80))
+            setBackgroundColor(AppTheme.BG_DEEP)
+            // El margen lateral lo ponen ahora las tarjetas, no la página: así
+            // una tarjeta mide lo mismo aquí que en la pestaña de escaneo.
+            setPadding(0, dp(8), 0, dp(80))
         }
 
         // ── HELPERS ───────────────────────────────────────────────────────
-        fun pCard(marginTop: Int = 10): LinearLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(0, dp(marginTop), 0, 0) }
-            setPadding(dp(16), dp(14), dp(16), dp(14))
-        }
+        fun pCard(marginTop: Int = AppTheme.GAP): LinearLayout = Ui.card(this, marginTop)
 
-        // Mayúscula monoespaciada a 9sp con letter-spacing: rótulo de
-        // instrumento. En frase y a 12sp se lee de un vistazo.
-        fun sectionLabel(text: String) = TextView(this).apply {
-            this.text = text; textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        }
+        fun sectionLabel(text: String) = Ui.sectionLabel(this, text)
 
-        fun styledInput(hint: String, color: Int = 0xFFF2F2F2.toInt()): EditText =
-            EditText(this).apply {
-                this.hint = hint; setTextColor(color); setHintTextColor(0xFF4A4A4A.toInt())
-                textSize = 11f; typeface = Typeface.MONOSPACE
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
-                    cornerRadius = dp(10).toFloat()
-                }
-                setPadding(dp(12), dp(10), dp(12), dp(10))
+        fun styledInput(hint: String, color: Int = AppTheme.TXT_PRI): EditText =
+            Ui.input(this, hint, mono = true).apply {
+                setTextColor(color)
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                )
             }
 
-        fun collapsibleSection(icon: String, title: String, build: LinearLayout.() -> Unit): LinearLayout {
-            val container = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
-                    setStroke(1, 0xFF222222.toInt())
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(0, dp(10), 0, 0) }
-            }
-            val header = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                isClickable = true; isFocusable = true
-            }
-            val iconTv = TextView(this).apply {
-                text = icon; textSize = 17f
-                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(10) }
-                gravity = Gravity.CENTER
-            }
-            val titleTv = TextView(this).apply {
-                text = title; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
-                typeface = AppTheme.title(context)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val arrowTv = TextView(this).apply {
-                text = "›"; textSize = 18f; setTextColor(0xFF4A4A4A.toInt())
-            }
-            header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
-            container.addView(header)
-            val body = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                visibility = android.view.View.GONE
-                setPadding(dp(16), 0, dp(16), dp(14))
-            }
-            body.build()
-            container.addView(body)
-            header.setOnClickListener {
-                if (body.visibility == android.view.View.GONE) {
-                    body.visibility = android.view.View.VISIBLE; arrowTv.text = "∨"
-                } else {
-                    body.visibility = android.view.View.GONE; arrowTv.text = "›"
-                }
-            }
-            return container
-        }
+        fun collapsibleSection(icon: Int, title: String, build: LinearLayout.() -> Unit) =
+            Ui.section(this, icon, title, build)
 
         // ── CABECERA ──────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
@@ -1460,7 +1388,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(20) }
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), dp(16))
+            }
         })
         // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
         // lista de puzzles lo que hace la lista de puzzles.
@@ -1512,33 +1442,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(chipSection)
 
         // ── STATUS ────────────────────────────────────────────────────────
+        // Era texto verde a 11sp en monoespaciada dentro de un recuadro
+        // translúcido con filo verde. El acento estaba diciendo "hay un puzzle
+        // seleccionado", que no es ni una acción, ni un saldo, ni que algo esté
+        // corriendo: es sólo información.
         tvPuzzleStatus = TextView(this).apply {
             text = "Selecciona un puzzle"
-            textSize = 11f; typeface = Typeface.MONOSPACE; setTextColor(ACCENT)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x14FFFFFF.toInt()); setStroke(1, 0x2A00C896.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            textSize = AppTheme.SP_BODY
+            typeface = AppTheme.medium(context)
+            setTextColor(AppTheme.TXT_SEC)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(AppTheme.GAP), dp(AppTheme.PAD_SIDE), 0)
+            }
         }
         page.addView(tvPuzzleStatus)
 
         // ── PROGRESO VISUAL ───────────────────────────────────────────────
-        val progressCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
+        val progressCard = pCard()
         val progressHeader = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -1546,12 +1470,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val tvProgressPct = TextView(this).apply {
-            text = "0.00%"; textSize = 11f; setTextColor(ACCENT)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+            text = "0,00 %"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.bold(context)
         }
         progressHeader.addView(TextView(this).apply {
-            text = "Cobertura del rango"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            text = "Cobertura del rango"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         progressHeader.addView(tvProgressPct)
@@ -1700,23 +1628,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Balance indicator - debajo del puzzle seleccionado
         val tvBalResult = TextView(this).apply {
-            text = "Verificando balance..."
-            textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            text = "Verificando saldo…"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), 0)
+            }
         }
         page.addView(tvBalResult)
 
         // ── RANGE CONFIG ──────────────────────────────────────────────────
-        page.addView(collapsibleSection("🎯", "Rango Hex") {
+        page.addView(collapsibleSection(R.drawable.ic_target, "Rango hexadecimal") {
             val rangeRow = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
@@ -1725,39 +1653,40 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
             }
-            colStart.addView(TextView(this@MainActivity).apply { text = "Start"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            colStart.addView(TextView(this@MainActivity).apply { text = "Desde"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
             etRangeStart = styledInput("0x...")
             colStart.addView(etRangeStart)
             val colEnd = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            colEnd.addView(TextView(this@MainActivity).apply { text = "End"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            colEnd.addView(TextView(this@MainActivity).apply { text = "Hasta"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
             etRangeEnd = styledInput("0x...")
             colEnd.addView(etRangeEnd)
             rangeRow.addView(colStart); rangeRow.addView(colEnd)
             addView(rangeRow)
-            addView(TextView(this@MainActivity).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
-            etTarget = styledInput("1A2B3C...", 0xFF00C896.toInt())
+            addView(TextView(this@MainActivity).apply { text = "Dirección objetivo"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
+            etTarget = styledInput("1A2B3C…")
             addView(etTarget)
         })
 
         // ── CHECKPOINT ────────────────────────────────────────────────────
         tvCheckpointLive = TextView(this).apply {
             text = ""
-            textSize = 10f; setTextColor(0xFF00C896.toInt()); typeface = Typeface.MONOSPACE
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x0A00C896.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0x1500C896.toInt())
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(12), dp(16), dp(12))
             // Sin checkpoint el texto queda vacío, pero el fondo, el borde y el
             // padding seguían dibujándose: un rectángulo hueco de ~40dp bajo
             // "Rango Hex". Se oculta mientras no tenga contenido.
             visibility = android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(AppTheme.GAP), dp(AppTheme.PAD_SIDE), 0)
+            }
         }
         page.addView(tvCheckpointLive)
 
@@ -1809,7 +1738,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(AppTheme.BG_CARD); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
             setPadding(dp(14), dp(14), dp(14), dp(14))
             addView(TextView(this@MainActivity).apply {
@@ -1840,12 +1769,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
         val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
-        miniRow1.addView(miniStat("SCANNED", tvCntP).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-        miniRow1.addView(miniStat("ELAPSED", tvTmP))
+        miniRow1.addView(miniStat("Escaneadas", tvCntP).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        miniRow1.addView(miniStat("Tiempo", tvTmP))
         val pctLocal = tvPctPuzzle!!
         val blkLocal = tvBlockProgress!!
-        miniRow2.addView(miniStat("PROGRESO", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-        miniRow2.addView(miniStat("PUZZLE RESTANTE", blkLocal))
+        miniRow2.addView(miniStat("Progreso", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        miniRow2.addView(miniStat("Bloques restantes", blkLocal))
         statsCard.addView(miniRow1); statsCard.addView(miniRow2)
         page.addView(statsCard)
 
@@ -1876,107 +1805,35 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         data class PowerLevel(val label: String, val threads: Int, val cpu: Int)
         val levels = listOf(
-            PowerLevel("LOW",    1, 30),
-            PowerLevel("MEDIUM", 3, 60),
-            PowerLevel("HIGH",   7, 90)
+            PowerLevel("Baja",  1, 30),
+            PowerLevel("Media", 3, 60),
+            PowerLevel("Alta",  7, 90)
         )
 
-        var selectedPower = 1 // MEDIUM default
-        val powerBtns = mutableListOf<TextView>()
-
-        levels.forEachIndexed { idx, level ->
-            val btn = TextView(this).apply {
-                text = level.label
-                textSize = 13f; gravity = Gravity.CENTER
-                typeface = AppTheme.title(context)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (idx == 1) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(1, if (idx == 1) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                }
-                setTextColor(if (idx == 1) ACCENT else 0xFF8A8A8A.toInt())
-                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                    if (idx < 2) marginEnd = dp(8)
-                }
-                isClickable = true; isFocusable = true
-                setOnClickListener {
-                    selectedPower = idx
-                    powerBtns.forEachIndexed { i, b ->
-                        val active = i == idx
-                        (b.background as android.graphics.drawable.GradientDrawable).apply {
-                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                        }
-                        b.setTextColor(if (active) ACCENT else 0xFF8A8A8A.toInt())
-                    }
-                    // Apply to seekbars
-                    sbThreadsPuzzle?.progress = level.threads - 1
-                    sbCpuPuzzle?.progress = level.cpu - 10
-                    prefs.edit().putInt("puzzle_threads", level.threads - 1).putInt("puzzle_cpu", level.cpu - 10).apply()
-                    updatePuzzleLabels()
-                }
-            }
-            powerBtns.add(btn)
-            powerRow.addView(btn)
-        }
-        // Apply medium by default
+        // Eran tres TextViews con su borde, repintados a mano en un
+        // forEachIndexed: el mismo patrón que el selector de modo del escáner y
+        // el de aleatorio/secuencial de aquí abajo, escrito tres veces.
+        powerRow.addView(Ui.segmented(
+            this, levels.map { it.label to null }, initial = 1
+        ) { idx ->
+            val level = levels[idx]
+            sbThreadsPuzzle?.progress = level.threads - 1
+            sbCpuPuzzle?.progress = level.cpu - 10
+            prefs.edit()
+                .putInt("puzzle_threads", level.threads - 1)
+                .putInt("puzzle_cpu", level.cpu - 10)
+                .apply()
+            updatePuzzleLabels()
+        })
         sbThreadsPuzzle?.progress = 3
         sbCpuPuzzle?.progress = 50
         powerCard.addView(powerRow)
 
-        // ── MODO DE ESCANEO ───────────────────────────────────────────────
-        val scanModeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) }
-        }
-        scanModeRow.addView(TextView(this).apply {
-            text = "Modo"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-
-        val btnRandom = TextView(this).apply {
-            text = "ALEATORIO"; textSize = 11f; gravity = Gravity.CENTER
-            typeface = AppTheme.title(context)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x14FFFFFF.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0x28FFFFFF.toInt())
-            }
-            setTextColor(ACCENT)
-            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(6) }
-            isClickable = true; isFocusable = true
-        }
-        val btnSeq = TextView(this).apply {
-            text = "SECUENCIAL"; textSize = 11f; gravity = Gravity.CENTER
-            typeface = AppTheme.title(context)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
-            setTextColor(0xFF8A8A8A.toInt())
-            layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
-            isClickable = true; isFocusable = true
-        }
-
-        fun updateScanMode(sequential: Boolean) {
-            HunterEngine.setSequential(sequential)
-            listOf(btnRandom to !sequential, btnSeq to sequential).forEach { (btn, active) ->
-                (btn.background as android.graphics.drawable.GradientDrawable).apply {
-                    setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                    setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                }
-                btn.setTextColor(if (active) ACCENT else 0xFF8A8A8A.toInt())
-            }
-        }
-
-        btnRandom.setOnClickListener { updateScanMode(false) }
-        btnSeq.setOnClickListener { updateScanMode(true) }
-        scanModeRow.addView(btnRandom); scanModeRow.addView(btnSeq)
-        powerCard.addView(scanModeRow)
+        // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
+        powerCard.addView(Ui.sectionLabel(this, "Recorrido del rango", topGap = 18))
+        powerCard.addView(Ui.segmented(
+            this, listOf("Aleatorio" to null, "Secuencial" to null), initial = 0
+        ) { idx -> HunterEngine.setSequential(idx == 1) })
 
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
         // JAC_BATCH en jac_batch.h permite hasta 16000 y el worker ya acota a
@@ -1993,13 +1850,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(14) }
         }
         batchHeaderRow.addView(TextView(this).apply {
-            text = "Tamaño de lote"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
+            text = "Tamaño de lote"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        // El valor iba en azul: un número de ajuste no es información de otro
+        // tipo que el resto, sólo es el valor de la fila.
         val tvBatchVal = TextView(this).apply {
-            text = "1000 keys"; textSize = 11f; setTextColor(ACCENT2)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+            text = "256 claves"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.bold(context)
         }
         batchHeaderRow.addView(tvBatchVal)
         powerCard.addView(batchHeaderRow)
@@ -2014,7 +1877,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
                 override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) {
                     val size = batchLabels[p]
-                    tvBatchVal.text = "$size keys"
+                    tvBatchVal.text = "$size claves"
                     HunterEngine.setBatchSize(size)
                     prefs.edit().putInt("puzzle_batch", p).apply()
                 }
@@ -2037,8 +1900,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         listOf("64", "", "256", "", "1K", "", "4K", "", "16K").forEach { lbl ->
             batchLabelRow.addView(TextView(this).apply {
-                text = lbl; textSize = 8f; setTextColor(0xFF4A4A4A.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                // 8sp: por debajo del mínimo legible de Android, que son 12.
+                text = lbl; textSize = AppTheme.SP_MICRO
+                setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.body(context)
                 gravity = android.view.Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
@@ -2049,22 +1914,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         updatePuzzleLabels()
 
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
-        page.addView(collapsibleSection("🔧", "Herramientas") {
+        page.addView(collapsibleSection(R.drawable.ic_gear, "Herramientas") {
             listOf(
-                Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
-                Triple("📤", "Exportar Progreso", { exportPuzzleProgress() }),
-                Triple("📥", "Importar Progreso", { importPuzzleProgress() })
+                Triple(R.drawable.ic_gear,   "Configurar según el hardware", { showHardwareInfo() }),
+                Triple(R.drawable.ic_export, "Exportar progreso",            { exportPuzzleProgress() }),
+                Triple(R.drawable.ic_import, "Importar progreso",            { importPuzzleProgress() })
             ).forEach { (icon, label, action) ->
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(0, dp(10), 0, dp(10)); isClickable = true; isFocusable = true
+                    setPadding(0, dp(14), 0, dp(14)); isClickable = true; isFocusable = true
                     setOnClickListener { action() }
                 }
-                row.addView(TextView(this@MainActivity).apply { text = icon; textSize = 16f; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) } })
-                row.addView(TextView(this@MainActivity).apply { text = label; textSize = 12f; setTextColor(0xFFF2F2F2.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
-                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF4A4A4A.toInt()) })
+                row.addView(Ui.icon(this@MainActivity, icon).apply {
+                    (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14)
+                })
+                row.addView(TextView(this@MainActivity).apply {
+                    text = label
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(AppTheme.TXT_PRI)
+                    typeface = AppTheme.body(context)
+                    layoutParams = LinearLayout.LayoutParams(
+                        0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                row.addView(Ui.icon(this@MainActivity, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED))
                 addView(row)
-                addView(android.view.View(this@MainActivity).apply { setBackgroundColor(0xFF222222.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
             }
         })
 
@@ -2078,18 +1951,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── START BUTTON ──────────────────────────────────────────────────
         val startBg = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF1A1A1A.toInt()); cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFF2F2F2.toInt())
+            setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_KEY).toFloat()
         }
         val stopRed = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF1E1414.toInt()); cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFF04040.toInt())
+            setColor(AppTheme.RED); cornerRadius = dp(AppTheme.R_KEY).toFloat()
         }
         btnPuzzleToggle = Button(this).apply {
-            text = "▶  START PUZZLE"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = AppTheme.display(context); letterSpacing = 0.1f; isAllCaps = true
+            text = "Iniciar puzzle"
+            textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.BG_DEEP)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null
             background = startBg
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)).apply { setMargins(0, dp(12), 0, dp(8)) }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(58)
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(20), dp(AppTheme.PAD_SIDE), dp(8))
+            }
             setOnClickListener {
                 try {
                     puzzleMode = true
@@ -2119,24 +1998,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val savedTime = puzzlePrefs2.getLong("last_time_${p.num}", 0)
             if (savedKey != null && savedTime > 0) {
                 val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTime))
-                tvCheckpointLive?.text = "✓ Checkpoint #${p.num}: $ts  ${savedKey.take(12)}...${savedKey.takeLast(6)}"
+                tvCheckpointLive?.text = "Checkpoint #${p.num} · $ts · ${savedKey.take(12)}…${savedKey.takeLast(6)}"
                 tvCheckpointLive?.visibility = android.view.View.VISIBLE
             } else {
                 tvCheckpointLive?.text = ""
                 tvCheckpointLive?.visibility = android.view.View.GONE
             }
-            tvBalResult.text = "Verificando #${p.num}..."
+            tvBalResult.text = "Consultando el saldo de #${p.num}…"
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
                     when {
                         bal > 0L -> {
-                            tvBalResult.text = "✓ ${bal / 100_000_000.0} BTC disponibles"
-                            tvBalResult.setTextColor(ACCENT)
+                            tvBalResult.text = "${bal / 100_000_000.0} BTC disponibles"
+                            tvBalResult.setTextColor(AppTheme.ACCENT)
                         }
                         bal == 0L -> {
                             hiddenPuzzles.edit().putBoolean("hidden_${p.num}", true).apply()
                             tvBalResult.text = "Sin fondos — #${p.num} ocultado"
-                            tvBalResult.setTextColor(0xFFFF6B35.toInt())
+                            tvBalResult.setTextColor(AppTheme.WARN)
                             // Ocultar chip visualmente
                             chipView?.visibility = android.view.View.GONE
                             // Seleccionar el siguiente chip visible
@@ -2168,28 +2047,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             group.forEachIndexed { i, p ->
                 val chip = TextView(this).apply {
                     text = "#${p.num}"
-                    textSize = 12f; gravity = Gravity.CENTER
-                    typeface = Typeface.create("monospace", Typeface.BOLD)
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (i == 0) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                        cornerRadius = dp(12).toFloat()
-                        setStroke(1, if (i == 0) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                    }
-                    setTextColor(if (i == 0) ACCENT else 0xFF8A8A8A.toInt())
-                    layoutParams = LinearLayout.LayoutParams(dp(64), dp(40)).apply { marginEnd = dp(8) }
+                    textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+                    typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
+                    background = Ui.cardBg(AppTheme.R_CHIP,
+                        if (i == 0) AppTheme.TXT_PRI else AppTheme.BG_CARD, context)
+                    setTextColor(if (i == 0) AppTheme.BG_DEEP else AppTheme.TXT_SEC)
+                    layoutParams = LinearLayout.LayoutParams(dp(68), dp(44)).apply { marginEnd = dp(8) }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
                         for (j in 0 until indivRow.childCount) {
                             val c = indivRow.getChildAt(j) as? TextView ?: continue
-                            (c.background as android.graphics.drawable.GradientDrawable).apply {
-                                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
-                            }
-                            c.setTextColor(0xFF8A8A8A.toInt())
+                            c.background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_CARD, context)
+                            c.setTextColor(AppTheme.TXT_SEC)
+                            c.typeface = AppTheme.medium(context)
                         }
-                        (background as android.graphics.drawable.GradientDrawable).apply {
-                            setColor(0x14FFFFFF.toInt()); setStroke(1, 0x28FFFFFF.toInt())
-                        }
-                        setTextColor(ACCENT)
+                        background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.TXT_PRI, context)
+                        setTextColor(AppTheme.BG_DEEP)
+                        typeface = AppTheme.bold(context)
                         applyPuzzleAndCheckBalance(p, this)
                     }
                 }
@@ -2206,29 +2080,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val first = group.first().num
                 val last  = group.last().num
                 val chip = TextView(this).apply {
-                    text = "#$first–$last"
-                    textSize = 12f; gravity = Gravity.CENTER
-                    typeface = Typeface.create("monospace", Typeface.BOLD)
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (idx == 0) 0x140087FF.toInt() else 0xFF161616.toInt())
-                        cornerRadius = dp(12).toFloat()
-                        setStroke(1, if (idx == 0) 0x330087FF.toInt() else 0xFF222222.toInt())
-                    }
-                    setTextColor(if (idx == 0) ACCENT2 else 0xFF8A8A8A.toInt())
-                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply {
-                        marginEnd = dp(8); setPadding(dp(14), 0, dp(14), 0)
-                    }
+                    text = "$first–$last"
+                    textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
+                    typeface = if (idx == 0) AppTheme.bold(context) else AppTheme.medium(context)
+                    background = Ui.cardBg(AppTheme.R_CHIP,
+                        if (idx == 0) AppTheme.BG_ELEV else AppTheme.BG_CARD, context)
+                    setTextColor(if (idx == 0) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)
+                    ).apply { marginEnd = dp(8) }
                     setPadding(dp(14), 0, dp(14), 0)
                     isClickable = true; isFocusable = true
                     setOnClickListener {
                         activeGroupIdx = idx
                         groupChips.forEachIndexed { i, c ->
                             val active = i == idx
-                            (c.background as android.graphics.drawable.GradientDrawable).apply {
-                                setColor(if (active) 0x140087FF.toInt() else 0xFF161616.toInt())
-                                setStroke(1, if (active) 0x330087FF.toInt() else 0xFF222222.toInt())
-                            }
-                            c.setTextColor(if (active) ACCENT2 else 0xFF8A8A8A.toInt())
+                            c.background = Ui.cardBg(AppTheme.R_CHIP,
+                                if (active) AppTheme.BG_ELEV else AppTheme.BG_CARD, context)
+                            c.setTextColor(if (active) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+                            c.typeface = if (active) AppTheme.bold(context) else AppTheme.medium(context)
                         }
                         buildIndivChips(idx)
                     }
@@ -2253,7 +2123,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val savedTimeInit = puzzlePrefsInit.getLong("last_time_${defaultPuzzle.num}", 0)
         if (savedKeyInit != null && savedTimeInit > 0) {
             val ts = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US).format(java.util.Date(savedTimeInit))
-            tvCheckpointLive?.text = "✓ Checkpoint #${defaultPuzzle.num}: $ts  ${savedKeyInit.take(12)}...${savedKeyInit.takeLast(6)}"
+            tvCheckpointLive?.text = "Checkpoint #${defaultPuzzle.num} · $ts · ${savedKeyInit.take(12)}…${savedKeyInit.takeLast(6)}"
             tvCheckpointLive?.visibility = android.view.View.VISIBLE
         }
 
@@ -3556,7 +3426,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // devolvería el botón a STOP justo después de que el usuario lo pulsara.
         val uiRunning = isNowRunning && !HunterEngine.isStopping()
         syncToggleButton(btnToggle, uiRunning && !puzzleMode, s.start)
-        syncToggleButton(btnPuzzleToggle, uiRunning && puzzleMode, "▶  START PUZZLE")
+        syncToggleButton(btnPuzzleToggle, uiRunning && puzzleMode, "Iniciar puzzle")
         if (!uiRunning) activeToggleBtn = null
 
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
@@ -3720,7 +3590,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val btn = activeToggleBtn
                 if (btn != null) {
                     val bg = btn.tag as? Array<*>
-                    btn.text = if (puzzleMode) "▶  START PUZZLE" else s.start
+                    btn.text = if (puzzleMode) "Iniciar puzzle" else s.start
                     btn.background = bg?.get(0) as? GradientDrawable
                 }
                 activeToggleBtn = null
