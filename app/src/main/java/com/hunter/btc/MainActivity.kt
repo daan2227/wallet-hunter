@@ -492,38 +492,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             elevation = dp(4).toFloat()
         }
 
-        // Logo icon
-        val logoIcon = TextView(this).apply {
-            text = "₿"
-            textSize = 15f
-            setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+        // El símbolo iba dentro de una cajita con borde, en monoespaciada, al
+        // lado de un rótulo del mismo tamaño: dos elementos compitiendo por ser
+        // el título. La caja sobra — el glifo en el acento ya identifica.
+        header.addView(TextView(this).apply {
+            text = "\u20BF"
+            textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = dp(8).toFloat()
-                setColor(0xFF1D1D1D.toInt())
-                setStroke(1, 0xFF222222.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).also {
+            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).also {
                 it.gravity = Gravity.CENTER_VERTICAL
             }
-        }
-        header.addView(logoIcon)
+        })
 
-        // Logo text
-        val logoText = TextView(this).apply {
+        header.addView(TextView(this).apply {
             text = "Wallet Hunter"
-            textSize = 15f
+            textSize = AppTheme.SP_TITLE
             typeface = AppTheme.title(context)
-            letterSpacing = 0.04f
-            setTextColor(0xFFF2F2F2.toInt())
+            setTextColor(AppTheme.TXT_PRI)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                 it.gravity = Gravity.CENTER_VERTICAL
-                it.marginStart = dp(10)
+                it.marginStart = dp(8)
             }
-        }
-        header.addView(logoText)
+        })
 
         // Status dot
         val dot = android.view.View(this).apply {
@@ -540,41 +532,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         header.addView(dot)
 
-        // Menu button
+        // Las tres barras se dibujaban con tres Views de 16x2dp dentro de un
+        // botón con borde. Es un icono: ic_menu lo dibuja con el mismo trazo
+        // que los demás, y sin caja alrededor.
         val menu = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                cornerRadius = dp(10).toFloat()
-                setColor(0xFF161616.toInt())
-                setStroke(1, 0xFF222222.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).also {
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).also {
                 it.gravity = Gravity.CENTER_VERTICAL
+                it.marginEnd = -dp(8)   // el icono ya trae aire; alinea el trazo
             }
-            setPadding(dp(8), dp(8), dp(8), dp(8))
             isClickable = true
             isFocusable = true
             setOnClickListener { toggleDrawer() }
-        }
-        repeat(3) {
-            val bar = android.view.View(this).apply {
-                setBackgroundColor(0xFFF2F2F2.toInt())
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(2)).also {
-                    it.setMargins(0, dp(2), 0, dp(2))
-                }
-            }
-            menu.addView(bar)
+            addView(Ui.icon(this@MainActivity, R.drawable.ic_menu, 22, AppTheme.TXT_PRI))
         }
         menuBtn = menu
         header.addView(menu)
-
-        // Bottom border
-        val border = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF222222.toInt())
-        }
 
         return header
     }
@@ -818,7 +792,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun buildScanTab(): ScrollView {
         val ACCENT  = 0xFF00C896.toInt()
         val ACCENT2 = 0xFF6EA8FE.toInt()
-        val LIME    = 0xFF00C896.toInt()  // kept for engine compat
 
         val scroll = ScrollView(this).apply {
             setBackgroundColor(0xFF0E0E0E.toInt())
@@ -861,7 +834,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Cifra y unidad en la misma línea, alineadas por la base.
         val speedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            isBaselineAligned = true
             isBaselineAligned = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1037,63 +1009,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(tvRam); page.addView(tvBattery); page.addView(tvFooter); page.addView(tvStatus)
 
         // ── HELPER: Collapsible Section ───────────────────────────────────
-        fun collapsibleSection(icon: String, title: String, build: LinearLayout.() -> Unit): LinearLayout {
-            val container = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
-                    setStroke(1, 0xFF222222.toInt())
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { setMargins(dp(12), dp(10), dp(12), 0) }
-            }
-            val header = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(14), dp(16), dp(14))
-                isClickable = true; isFocusable = true
-            }
-            val iconTv = TextView(this).apply {
-                text = icon; textSize = 17f
-                layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).apply { marginEnd = dp(10) }
-                gravity = Gravity.CENTER
-            }
-            val titleTv = TextView(this).apply {
-                text = title; textSize = 13f
-                setTextColor(0xFFF2F2F2.toInt())
-                typeface = AppTheme.title(context)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            val arrowTv = TextView(this).apply {
-                text = "›"; textSize = 18f; setTextColor(0xFF4A4A4A.toInt())
-            }
-            header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
-            container.addView(header)
-
-            val body = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                visibility = android.view.View.GONE
-                setPadding(dp(16), 0, dp(16), dp(14))
-            }
-            body.build()
-            container.addView(body)
-
-            header.setOnClickListener {
-                if (body.visibility == android.view.View.GONE) {
-                    body.visibility = android.view.View.VISIBLE
-                    arrowTv.text = "∨"
-                } else {
-                    body.visibility = android.view.View.GONE
-                    arrowTv.text = "›"
-                }
-            }
-            return container
-        }
+        // Ahora en Ui.section: icono vectorial en vez de emoji, sin borde y con
+        // el chevron girando en lugar de dos glifos distintos.
+        fun collapsibleSection(icon: Int, title: String, build: LinearLayout.() -> Unit) =
+            Ui.section(this, icon, title, build)
 
         // ── SECTION: Config Hardware ──────────────────────────────────────
-        page.addView(collapsibleSection("⚙", "Configuración del Motor (Hardware)") {
+        page.addView(collapsibleSection(R.drawable.ic_gear, "Motor y hardware") {
             addView(TextView(this@MainActivity).apply {
                 text = "Dataset"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
@@ -1284,7 +1206,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
 
         // ── SECTION: Red Multi-Dispositivo ────────────────────────────────
-        page.addView(collapsibleSection("🌐", "Red Multi-Dispositivo (Cluster)") {
+        page.addView(collapsibleSection(R.drawable.ic_network, "Red multi-dispositivo") {
             addView(TextView(this@MainActivity).apply {
                 text = "MASTER_IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
                 textSize = 11f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.MONOSPACE
@@ -1336,166 +1258,83 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
 
-        // ── START / STOP BUTTON ───────────────────────────────────────────
-        val startBg = GradientDrawable().apply {
-            setColor(0xFF1A1A1A.toInt())
-            cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFF2F2F2.toInt())
-        }
-        val stopRed = GradientDrawable().apply {
-            setColor(0xFF1E1414.toInt())
-            cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFF04040.toInt())
-        }
+        // ── MODO DE ESCANEO ───────────────────────────────────────────────
+        //
+        // Eran dos tarjetas sueltas, cada una con su borde, y el selector
+        // repartía tres colores de acento entre ellas. Ahora es un segmented
+        // control: un carril, y dentro la opción activa como una pastilla más
+        // clara. Se entiende que son excluyentes sin tener que leerlas.
+        //
+        // Además tenía los listeners DUPLICADOS — se asignaban dentro del
+        // bucle que construye las pastillas y otra vez en un segundo bucle
+        // justo después. El segundo pisaba al primero, así que el código de
+        // arriba no llegaba a ejecutarse nunca.
+        val modeCard = Ui.card(this, topGap = AppTheme.GAP)
+        modeCard.addView(Ui.sectionLabel(this, "Modo de escaneo"))
 
-        // ── MODO SELECTOR ─────────────────────────────────────────────
-        val modeCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(dp(12), dp(8), dp(12), 0) }
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-        }
-        modeCard.addView(TextView(this).apply {
-            text = "MODO DE ESCANEO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        })
-
-        val modeRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        // selectedScanMode es variable de clase
-        val modeBtns = mutableListOf<LinearLayout>()
-
-        data class ScanMode(val label: String, val sub: String, val mode: Int)
-        val scanModes = listOf(
-            ScanMode("BIP39", "Seed phrases", 0),
-            ScanMode("RAW KEY", "Claves directas", 2)
-        )
-
-        scanModes.forEachIndexed { idx, sm ->
-            val btn = TextView(this).apply {
-                textSize = 12f; gravity = Gravity.CENTER
-                typeface = AppTheme.title(context)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    if (idx == 0) marginEnd = dp(8)
-                }
-                setPadding(dp(8), dp(10), dp(8), dp(10))
-                isClickable = true; isFocusable = true
-            }
-            // Layout interno con label + sub
-            val inner = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                isClickable = false
-            }
-            inner.addView(TextView(this).apply {
-                text = sm.label; textSize = 12f
-                typeface = AppTheme.title(context)
-                gravity = Gravity.CENTER
-                setTextColor(if (idx == 0) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
-            })
-            inner.addView(TextView(this).apply {
-                text = sm.sub; textSize = 9f
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                gravity = Gravity.CENTER
-                setTextColor(0xFF4A4A4A.toInt())
-            })
-
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (idx == 0) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                    cornerRadius = dp(12).toFloat()
-                    setStroke(1, if (idx == 0) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                }
-                layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply {
-                    if (idx == 0) marginEnd = dp(8)
-                }
-                setPadding(dp(8), dp(8), dp(8), dp(8))
-                isClickable = true; isFocusable = true
-                addView(inner)
-                setOnClickListener {
-                    selectedScanMode = sm.mode
-                    modeBtns.forEachIndexed { i, b ->
-                        val active = i == idx
-                        (b.background as android.graphics.drawable.GradientDrawable).apply {
-                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                        }
-                        val lbl = (b as LinearLayout).getChildAt(0) as? LinearLayout
-                        (lbl?.getChildAt(0) as? TextView)?.setTextColor(
-                            if (active) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
-                    }
-                }
-            }
-            modeBtns.add(card)
-            modeRow.addView(card)
-        }
-        modeCard.addView(modeRow)
-
-        // Info del modo seleccionado
         val tvModeInfo = TextView(this).apply {
-            text = "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
-            textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            text = "Genera seeds de 12 y 24 palabras y deriva carteras HD."
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
+            ).apply { topMargin = dp(12) }
         }
-        modeBtns.forEachIndexed { idx, b ->
-            b.setOnClickListener {
-                selectedScanMode = scanModes[idx].mode
-                        try {
-                            fastScanRow?.visibility = if (selectedScanMode == 2)
-                                android.view.View.GONE else android.view.View.VISIBLE
-                        } catch (e: Exception) {}
-                        tvModeInfo.text = when (selectedScanMode) {
-                    0 -> "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
-                    2 -> "RAW KEY: Genera claves privadas aleatorias puras (~10x más rápido)"
-                    else -> ""
-                }
-                modeBtns.forEachIndexed { i, c ->
-                    val active = i == idx
-                    (c.background as android.graphics.drawable.GradientDrawable).apply {
-                        setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
-                        setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
-                    }
-                    val lbl = (c as LinearLayout).getChildAt(0) as? LinearLayout
-                    (lbl?.getChildAt(0) as? TextView)?.setTextColor(
-                        if (active) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
-                }
+
+        val scanModeValues = listOf(0, 2)
+        modeCard.addView(Ui.segmented(
+            this,
+            listOf("BIP39" to "Frases semilla", "Clave directa" to "Sin derivación"),
+            initial = scanModeValues.indexOf(selectedScanMode).coerceAtLeast(0)
+        ) { idx ->
+            selectedScanMode = scanModeValues[idx]
+            // El ajuste de escaneo rápido sólo aplica a BIP39: en clave directa
+            // no hay derivación que saltarse.
+            try {
+                fastScanRow?.visibility =
+                    if (selectedScanMode == 2) android.view.View.GONE
+                    else android.view.View.VISIBLE
+            } catch (e: Exception) {}
+            tvModeInfo.text = when (selectedScanMode) {
+                0 -> "Genera seeds de 12 y 24 palabras y deriva carteras HD."
+                else -> "Genera claves privadas aleatorias. Unas 10 veces más rápido."
             }
-        }
+        })
         modeCard.addView(tvModeInfo)
         page.addView(modeCard)
 
+        // ── INICIAR / DETENER ─────────────────────────────────────────────
+        //
+        // Era un rectángulo de #1A1A1A con un filo blanco: exactamente el mismo
+        // peso visual que las tarjetas que tiene encima. El único botón que
+        // pone la app en marcha tiene que ser lo más sólido de la pantalla.
+        val startBg = GradientDrawable().apply {
+            setColor(AppTheme.ACCENT)
+            cornerRadius = dp(AppTheme.R_KEY).toFloat()
+        }
+        val stopRed = GradientDrawable().apply {
+            setColor(AppTheme.RED)
+            cornerRadius = dp(AppTheme.R_KEY).toFloat()
+        }
+
         btnToggle = Button(this).apply {
             text = s.start
-            textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = AppTheme.display(context)
-            letterSpacing = 0.1f; isAllCaps = true
+            textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.BG_DEEP)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null   // sin la sombra de Material sobre el plano
             background = startBg
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(60)
-            ).apply { setMargins(dp(12), dp(16), dp(12), dp(8)) }
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(58)
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(20), dp(AppTheme.PAD_SIDE), dp(8))
+            }
             setOnClickListener {
                 puzzleMode = false
                 HunterEngine.setMode(selectedScanMode)
-
                 doToggle(btnToggle)
             }
         }
@@ -3798,6 +3637,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         @Suppress("UNCHECKED_CAST")
         val bg = btn.tag as? Array<GradientDrawable> ?: return
         if (bg.size > 1) btn.background = if (running) bg[1] else bg[0]
+        // Los dos fondos son sólidos, así que el texto tiene que cambiar con
+        // ellos: antes se quedaba en gris claro y sobre el verde no se leía.
+        btn.setTextColor(if (running) AppTheme.TXT_PRI else AppTheme.BG_DEEP)
     }
 
     /** Dirección objetivo del puzzle, tal y como está en el campo. */
