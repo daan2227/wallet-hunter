@@ -51,9 +51,11 @@ target_include_directories(hunter_jni PRIVATE secp256k1/include)
 
 find_library(log-lib log)
 
+# openssl::ssl se enlazaba sin usarse: el C++ sólo incluye sha.h, ripemd.h,
+# hmac.h, evp.h y bn.h — ni una línea de TLS; lo de red va en Kotlin sobre JSSE.
+# Enlazarlo metía libssl.so (0,48 MB) en el APK para nada.
 target_link_libraries(hunter_jni
     secp256k1
-    openssl::ssl
     openssl::crypto
     ${log-lib}
 )

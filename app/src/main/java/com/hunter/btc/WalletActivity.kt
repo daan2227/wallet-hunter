@@ -941,6 +941,18 @@ class WalletActivity : FragmentActivity() {
         val btnCopy = Button(this).apply { text = "Copy Address"; textSize = 11f; setTextColor(Color.BLACK); background = GradientDrawable().apply { setColor(AMBER) }; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)) }
         ll.addView(btnCopy)
 
+        fun qrBitmap(content: String, size: Int): Bitmap {
+            val m = com.google.zxing.qrcode.QRCodeWriter()
+                .encode(content, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+            val w = m.width; val h = m.height
+            val px = IntArray(w * h)
+            for (y in 0 until h) {
+                val row = y * w
+                for (x in 0 until w) px[row + x] = if (m.get(x, y)) Color.BLACK else Color.WHITE
+            }
+            return Bitmap.createBitmap(px, w, h, Bitmap.Config.RGB_565)
+        }
+
         fun updateQr(addr: String) {
             tvAddr.text = addr
             btnCopy.setOnClickListener {
@@ -950,9 +962,12 @@ class WalletActivity : FragmentActivity() {
             }
             Thread {
                 try {
-                    val bm = com.journeyapps.barcodescanner.BarcodeEncoder().createBitmap(
-                        com.google.zxing.qrcode.QRCodeWriter().encode("bitcoin:$addr", com.google.zxing.BarcodeFormat.QR_CODE, 512, 512))
-                    runOnUiThread { ivQr.setImageBitmap(bm) }
+                    // La única cosa que se usaba de zxing-android-embedded era
+                    // BarcodeEncoder.createBitmap(), que es este bucle. Esa
+                    // dependencia trae además toda la interfaz de escaneo por
+                    // cámara, que la app no usa: se cambia por el bucle y se
+                    // queda sólo zxing core, que es quien genera la matriz.
+                    runOnUiThread { ivQr.setImageBitmap(qrBitmap("bitcoin:$addr", 512)) }
                 } catch(e: Exception) {}
             }.start()
         }

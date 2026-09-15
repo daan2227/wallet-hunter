@@ -68,6 +68,35 @@ jobs:
         chmod +x gradlew
         ./gradlew assembleRelease
 
+    # Deja el desglose en el log del build, para no tener que descargar el APK
+    # y abrirlo a mano cada vez que se quiera saber qué ocupa qué.
+    - name: APK size breakdown
+      run: |
+        APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+        echo "APK: $(du -h "$APK" | cut -f1)"
+        python3 - "$APK" <<'EOF'
+        import zipfile, sys, collections
+        z = zipfile.ZipFile(sys.argv[1])
+        infos = z.infolist()
+        total = sum(i.compress_size for i in infos)
+        print("comprimido: %.2f MB en %d entradas\n" % (total/1048576, len(infos)))
+        print("-- 10 mayores --")
+        for i in sorted(infos, key=lambda x: -x.compress_size)[:10]:
+            print("  %7.2f MB  %s" % (i.compress_size/1048576, i.filename))
+        cat = collections.Counter()
+        for i in infos:
+            n = i.filename
+            k = ('lib/ nativo' if n.startswith('lib/') else
+                 'dex' if n.endswith('.dex') else
+                 'resources.arsc' if n == 'resources.arsc' else
+                 'res/' if n.startswith('res/') else
+                 'assets/' if n.startswith('assets/') else 'otros')
+            cat[k] += i.compress_size
+        print("\n-- por categoria --")
+        for k, v in cat.most_common():
+            print("  %7.2f MB  %5.1f%%  %s" % (v/1048576, v*100/total, k))
+        EOF
+
     # Cada rama publica bajo su propio tag.
     #
     # "latest-build" pertenece a playstore/seed-recovery. Y desde que main
