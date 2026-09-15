@@ -476,60 +476,86 @@ class WalletActivity : FragmentActivity() {
         setContentView(android.widget.FrameLayout(this)) // clear before rebuild
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(BG_DEEP) }
 
+        // La cabecera era una barra de otro color con tres botones de texto:
+        // "<" con borde, "BTC WALLET" en mayúscula monoespaciada verde, y
+        // ">> Hunter" con su propio recuadro. Tres estilos de botón en una
+        // franja de 60dp, y el título gritando en el color del acento.
         val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_PANEL)
-            setPadding(dp(16), dp(12), dp(16), dp(12)); gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL; setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(14))
+            gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(Button(this).apply {
-            text = "<"; textSize = 14f; setTextColor(AMBER)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C) }
-            setPadding(dp(10), dp(4), dp(10), dp(4))
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(36))
+        header.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_back)
+            setColorFilter(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(14) }
+            isClickable = true; isFocusable = true
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "BTC WALLET"; textSize = 16f; setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+            text = currentWalletName.ifEmpty { "Cartera" }
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            setPadding(dp(12), 0, 0, 0)
         })
-        header.addView(Button(this).apply {
-            text = ">> Hunter"; textSize = 9f; setTextColor(AMBER)
-            background = GradientDrawable().apply {
-                setColor(Color.TRANSPARENT)
-                setStroke(1, AppTheme.BORDER_C)
-                cornerRadius = dp(6).toFloat()
-            }
-            setPadding(dp(10), dp(2), dp(10), dp(2))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(4) }
+        header.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_scan)
+            setColorFilter(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(18) }
+            isClickable = true; isFocusable = true
             setOnClickListener {
                 startActivity(Intent(this@WalletActivity, MainActivity::class.java))
                 finish()
             }
         })
-        header.addView(Button(this).apply {
-            text = "..."; textSize = 14f; setTextColor(TXT_SEC)
-            background = GradientDrawable().apply { setColor(Color.TRANSPARENT) }
+        header.addView(TextView(this).apply {
+            text = "···"; textSize = 18f; setTextColor(AppTheme.TXT_SEC)
+            isClickable = true; isFocusable = true
             setOnClickListener { showMenu() }
         })
         root.addView(header)
 
-        val tabs = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setBackgroundColor(BG_CARD) }
+        // Las pestañas eran botones a ras, distinguidos sólo por un cambio de
+        // fondo casi invisible entre #161616 y #1D1D1D. Ahora la activa se
+        // rellena con el acento, que es lo que hace el sistema en el resto.
+        val tabs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(18))
+        }
         val tabBtns = mutableListOf<Button>()
-        listOf("Balance","History","Send","Receive").forEachIndexed { i, name ->
+        listOf("Saldo","Historial","Enviar","Recibir").forEachIndexed { i, name ->
             val btn = Button(this).apply {
-                text = name; textSize = 10f
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                setTextColor(if (i == 0) AMBER else TXT_SEC)
-                background = GradientDrawable().apply { setColor(if (i == 0) BG_ELEV else BG_CARD) }
-                layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f)
+                text = name; textSize = AppTheme.SP_CAPTION + 1f
+                typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
+                setTextColor(if (i == 0) AppTheme.BG_DEEP else AppTheme.TXT_SEC)
+                background = GradientDrawable().apply {
+                    setColor(if (i == 0) AppTheme.ACCENT else AppTheme.BG_KEY)
+                    cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                }
+                stateListAnimator = null
+                setPadding(0, 0, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
+                    if (i < 3) marginEnd = dp(6)
+                }
             }
             tabBtns.add(btn); tabs.addView(btn)
         }
         tabBtns.forEachIndexed { i, btn ->
             btn.setOnClickListener {
-                tabBtns.forEach { b -> b.setTextColor(TXT_SEC); b.background = GradientDrawable().apply { setColor(BG_CARD) } }
-                btn.setTextColor(AMBER); btn.background = GradientDrawable().apply { setColor(BG_ELEV) }
+                tabBtns.forEach { b ->
+                    b.setTextColor(AppTheme.TXT_SEC)
+                    b.typeface = AppTheme.medium(b.context)
+                    b.background = GradientDrawable().apply {
+                        setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                    }
+                }
+                btn.setTextColor(AppTheme.BG_DEEP)
+                btn.typeface = AppTheme.bold(btn.context)
+                btn.background = GradientDrawable().apply {
+                    setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                }
                 currentTab = i; tabContent.removeAllViews()
                 when (i) { 0 -> loadBalanceTab(); 1 -> loadHistoryTab(); 2 -> loadSendTab(); 3 -> loadReceiveTab() }
             }
@@ -548,12 +574,19 @@ class WalletActivity : FragmentActivity() {
     private fun loadBalanceTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
+        // Centrado y en verde fijo, igual que el saldo de la pestaña Cartera
+        // antes del rediseño: el acento pintaba también un cero.
         val tvTotal = TextView(this).apply {
-            text = "Loading..."; textSize = 28f; setTextColor(AMBER)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            gravity = Gravity.CENTER; setPadding(0, dp(20), 0, dp(4))
+            text = "—"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.display(context)
+            letterSpacing = -0.04f
+            setPadding(0, dp(12), 0, dp(6))
         }
-        val tvFiat = TextView(this).apply { text = ""; textSize = 12f; setTextColor(TXT_SEC); gravity = Gravity.CENTER; setPadding(0,0,0,dp(16)) }
+        val tvFiat = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, 0, 0, dp(20))
+        }
         ll.addView(tvTotal); ll.addView(tvFiat)
         scroll.addView(ll); tabContent.addView(scroll)
 
@@ -642,10 +675,10 @@ class WalletActivity : FragmentActivity() {
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
             runOnUiThread {
-                val btcText = "%.8f BTC".format(tot / 1e8)
-                val fiatText = if (pr > 0) "~ ${"%.2f".format(tot / 1e8 * pr)} USD" else ""
-                tvTotal.text = if (balanceVisible) btcText else "********"
-                tvTotal.setTextColor(if (tot > 0) GREEN else AMBER)
+                val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
+                val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} USD" else "BTC"
+                tvTotal.text = if (balanceVisible) btcText else "••••••••"
+                tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) tvFiat.text = if (balanceVisible) fiatText else "******"
                 tvTotal.setOnClickListener {
                     balanceVisible = !balanceVisible
@@ -768,8 +801,23 @@ class WalletActivity : FragmentActivity() {
     private fun loadSendTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
-        fun lbl(t: String) = TextView(this).apply { text = t; textSize = 9f; setTextColor(TXT_SEC); setPadding(0,dp(10),0,dp(3)) }
-        fun fld() = EditText(this).apply { setTextColor(TXT_PRI); textSize = 11f; typeface = Typeface.MONOSPACE; background = GradientDrawable().apply { setColor(BG_ELEV); setStroke(1,BORDER_C) }; setPadding(dp(10),dp(8),dp(10),dp(8)) }
+        // 9sp para una etiqueta de formulario es ilegible, y el campo a 11sp con
+        // 8dp de alto interior no llega ni de lejos al blanco de toque mínimo.
+        fun lbl(t: String) = TextView(this).apply {
+            text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, dp(16), 0, dp(7))
+        }
+        fun fld() = EditText(this).apply {
+            setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
+            typeface = Typeface.MONOSPACE          // es dato: dirección, importe, hex
+            setHintTextColor(AppTheme.TXT_MUTED)
+            background = GradientDrawable().apply {
+                setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+            }
+            minHeight = dp(48)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+        }
 
         ll.addView(lbl("From address"))
         val spinFrom = Spinner(this).apply {
