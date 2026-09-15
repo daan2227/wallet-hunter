@@ -779,7 +779,11 @@ class WalletActivity : FragmentActivity() {
         ll.addView(spinFrom)
         ll.addView(lbl("To address")); val etTo = fld(); ll.addView(etTo)
         ll.addView(lbl("Amount (BTC)")); val etAmt = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }; ll.addView(etAmt)
-        ll.addView(lbl("Fee rate (sat/vB)")); val etFee = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("5") }; ll.addView(etFee)
+        // Venía con "5" escrito, así que todo el mundo enviaba a 5 sat/vB pasara
+        // lo que pasara en la mempool. Vacío significa "la que recomiende la red".
+        ll.addView(lbl("Comisión (sat/vB) — vacío = automática"))
+        val etFee = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER; hint = "automática" }
+        ll.addView(etFee)
 
 
         val btnCoinControl = Button(this).apply {
@@ -850,7 +854,8 @@ class WalletActivity : FragmentActivity() {
         btnSend.setOnClickListener {
             val toAddr = etTo.text.toString().trim()
             val amtBtc = etAmt.text.toString().toDoubleOrNull() ?: 0.0
-            val feeRate = etFee.text.toString().toIntOrNull() ?: 5
+            // -1 = el usuario no ha puesto nada: que decida la red.
+            val feeRate = etFee.text.toString().trim().toIntOrNull()?.takeIf { it > 0 } ?: -1
             val fromKey = addresses.keys.toList().getOrNull(spinFrom.selectedItemPosition) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
             if (toAddr.isEmpty() || amtBtc <= 0) { tvStatus.text = "Fill all fields"; tvStatus.setTextColor(RED); return@setOnClickListener }
@@ -865,24 +870,18 @@ class WalletActivity : FragmentActivity() {
             }
             val addrType = (check as BtcAddress.Result.Valid).info.type
 
-            // Confirmación explícita: no había ninguna entre pulsar y difundir.
-            AlertDialog.Builder(this)
-                .setTitle("Confirmar envío")
-                .setMessage("Enviar %.8f BTC\n\nA: %s\n(%s)\n\nComisión: %d sat/vB\n\n%s"
-                    .format(amtBtc, toAddr, addrType, feeRate,
-                            "Las transacciones de Bitcoin NO se pueden deshacer."))
-                .setNegativeButton("Cancelar", null)
-                .setPositiveButton("Enviar") { _, _ ->
-                    doSend(toAddr, amtBtc, feeRate, fromKey, fromAddr, tvStatus, btnSend)
-                }
-                .show()
+            // La confirmación mostraba el importe y "%d sat/vB", que es la tarifa
+            // pero no lo que se va a pagar: la comisión real depende de cuántas
+            // entradas acabe usando, y eso no se sabía hasta después de aceptar.
+            // Ahora se consulta y se calcula TODO antes de preguntar.
+            doSend(toAddr, amtBtc, feeRate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString())
         }
     }
 
-    private fun doSend(toAddr: String, amtBtc: Double, feeRate: Int,
+    private fun doSend(toAddr: String, amtBtc: Double, feeRateManual: Int,
                        fromKey: String, fromAddr: String,
-                       tvStatus: TextView, btnSend: Button) {
-            tvStatus.text = "Fetching UTXOs..."; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
+                       tvStatus: TextView, btnSend: Button, addrType: String = "") {
+            tvStatus.text = "Preparando el envío…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
@@ -905,32 +904,64 @@ class WalletActivity : FragmentActivity() {
                     if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "Ningún UTXO seleccionado sigue disponible"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
 
                     val amtSat = (amtBtc * 1e8).toLong()
+
+                    // La tarifa era un campo con 5 sat/vB por defecto: un número
+                    // fijo que no sabe cómo está la mempool. Se pregunta, y el
+                    // campo manda sólo si el usuario escribió algo distinto.
+                    val red = if (feeRateManual > 0) null else ChainInfo.fees(isTestnet)
+                    val feeRate = when {
+                        feeRateManual > 0 -> feeRateManual.toLong()
+                        red != null       -> red.halfHour.toLong()
+                        // Sin red y sin valor escrito: 5 sat/vB era el antiguo
+                        // valor por defecto y sigue siendo un respaldo razonable.
+                        else              -> 5L
+                    }
+                    val fuenteTarifa = when {
+                        feeRateManual > 0 -> "la que pusiste"
+                        red != null       -> "recomendada, ~30 min"
+                        else              -> "respaldo: no se pudo consultar"
+                    }
+
                     // El tamaño de un input depende del tipo: ~148 vB en P2PKH,
-                    // ~91 en P2SH-P2WPKH, ~68 en P2WPKH y ~58 en Taproot. Usar 148
-                    // para todos hacía pagar en SegWit más del doble de comisión.
-                    val inVBytes = when {
-                        fromKey.startsWith("p2pkh")  -> 148
-                        fromKey.startsWith("p2sh")   -> 91
-                        fromKey.startsWith("p2wpkh") -> 68
-                        else                         -> 58
+                    // ~91 en P2SH-P2WPKH, ~68 en P2WPKH y ~58 en Taproot.
+                    val inVBytes  = CoinSelector.inputVBytes(fromKey)
+                    val outVBytes = CoinSelector.outputVBytes(toAddr)
+                    val chgVBytes = CoinSelector.outputVBytes(fromAddr)
+
+                    // Sin Coin Control manual se gastaban TODOS los UTXOs, con lo
+                    // que la comisión crecía con cada entrada innecesaria.
+                    val plan = if (selectedUtxos.isNotEmpty()) {
+                        val vs = inVBytes * chosen.size + outVBytes + chgVBytes + 11
+                        val f  = feeRate * vs
+                        val tin = chosen.sumOf { it.getLong("value") }
+                        CoinSelector.Plan(chosen, f, (tin - amtSat - f).coerceAtLeast(0L), vs, "elegidas a mano")
+                    } else {
+                        CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes)
                     }
-                    val outVBytes = when {
-                        toAddr.startsWith("bc1p") || toAddr.startsWith("tb1p") -> 43
-                        toAddr.startsWith("bc1")  || toAddr.startsWith("tb1")  -> 31
-                        toAddr.startsWith("3")    || toAddr.startsWith("2")    -> 32
-                        else                                                   -> 34
+                    if (plan == null || plan.chosen.isEmpty()) {
+                        runOnUiThread {
+                            tvStatus.text = "Saldo insuficiente para el importe más la comisión"
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }
+                        return@Thread
                     }
-                    val vsize = inVBytes * chosen.size + outVBytes + 31 + 11
-                    val feeSat = (feeRate.toLong() * vsize)
+                    val feeSat = plan.feeSat
+                    val vsize  = plan.vsize
                     val utxoArr = JSONArray(); var totalIn = 0L
-                    for (u in chosen) {
+                    for (u in plan.chosen) {
                         val v = u.getLong("value"); totalIn += v
                         utxoArr.put(org.json.JSONObject()
                             .put("txid",   u.getString("txid"))
                             .put("vout",   u.getInt("vout"))
                             .put("amount", v))
                     }
-                    if (totalIn < amtSat + feeSat) { runOnUiThread { tvStatus.text = "Insufficient: have ${totalIn}sat need ${amtSat+feeSat}sat"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    if (totalIn < amtSat + feeSat) {
+                        runOnUiThread {
+                            tvStatus.text = "Saldo insuficiente: hay $totalIn sat, hacen falta ${amtSat + feeSat}"
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }
+                        return@Thread
+                    }
                     // deriveWallet emite p2pkh_N, p2sh_0, p2wpkh_N y p2tr_N. El
                     // `else` anterior mandaba también las Taproot por m/84', así
                     // que enviar desde una bc1p firmaba con la clave de OTRA
@@ -981,6 +1012,12 @@ class WalletActivity : FragmentActivity() {
                     // Se construía concatenando strings: la dirección venía del
                     // EditText sin escapar, así que unas comillas permitían alterar
                     // los campos amount/fee del JSON que firma el motor.
+                    // nLockTime a la altura actual: con 0 cualquiera puede
+                    // reminar el último bloque e incluir esta transacción. Sólo
+                    // surte efecto porque las entradas van con nSequence por
+                    // debajo de 0xFFFFFFFF, cosa que ya hacen por RBF.
+                    val tip = ChainInfo.tipHeight(isTestnet)
+
                     val req = org.json.JSONObject()
                         .put("mnemonic", mnemonic)
                         .put("path",     pathStr)
@@ -988,11 +1025,60 @@ class WalletActivity : FragmentActivity() {
                         .put("to",       toAddr)
                         .put("amount",   amtSat)
                         .put("fee",      feeSat)
-                        .apply { if (changePath != null) put("change_path", changePath) }
+                        .apply {
+                            if (changePath != null) put("change_path", changePath)
+                            if (tip != null) put("locktime", tip)
+                        }
                         .toString()
+
+                    // ── Confirmación, ya con las cifras de verdad ──────────
+                    //
+                    // Antes se preguntaba antes de consultar nada, así que sólo
+                    // podía enseñar el importe y la tarifa en sat/vB. Lo que le
+                    // importa a quien pulsa es cuánto se le descuenta en total,
+                    // y eso depende de cuántas entradas hagan falta.
+                    val totalSat = amtSat + feeSat
+                    val resumen = buildString {
+                        appendLine("Enviar %.8f BTC".format(amtBtc))
+                        appendLine("a $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
+                        appendLine()
+                        appendLine("Comisión   %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
+                        appendLine("Tamaño     ~%d vB con %d entrada(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
+                        appendLine("TOTAL      %.8f BTC".format(totalSat / 1e8))
+                        appendLine()
+                        appendLine(if (plan.changeSat == 0L)
+                            "Sin salida de cambio: el sobrante va a la comisión."
+                        else if (changePath != null)
+                            "Cambio %.8f BTC a una dirección nueva (%s).".format(plan.changeSat / 1e8, changePath.substringAfterLast('/'))
+                        else
+                            "Cambio %.8f BTC a la dirección de origen: no se pudo consultar la rama.".format(plan.changeSat / 1e8))
+                        appendLine()
+                        appendLine("Se envía como reemplazable: podrás subir la comisión si se atasca.")
+                        appendLine()
+                        append("Una transacción de Bitcoin NO se puede deshacer.")
+                    }
+                    val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
+                    runOnUiThread {
+                        AlertDialog.Builder(this)
+                            .setTitle("Revisar envío")
+                            .setMessage(resumen)
+                            .setCancelable(false)
+                            .setNegativeButton("Cancelar") { _, _ -> seguir.offer(false) }
+                            .setPositiveButton("Enviar")   { _, _ -> seguir.offer(true) }
+                            .show()
+                    }
+                    if (!seguir.take()) {
+                        runOnUiThread {
+                            tvStatus.text = "Envío cancelado"; tvStatus.setTextColor(TXT_SEC)
+                            btnSend.isEnabled = true
+                        }
+                        return@Thread
+                    }
+
+                    runOnUiThread { tvStatus.text = "Firmando…"; tvStatus.setTextColor(TXT_SEC) }
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
-                    runOnUiThread { tvStatus.text = "Broadcasting..."; tvStatus.setTextColor(TXT_SEC) }
+                    runOnUiThread { tvStatus.text = "Difundiendo…"; tvStatus.setTextColor(TXT_SEC) }
                     val bc = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/tx" else "https://mempool.space/api/tx").openConnection() as java.net.HttpURLConnection
                     bc.requestMethod = "POST"; bc.doOutput = true; bc.setRequestProperty("Content-Type","text/plain")
                     bc.outputStream.write(rawTx.toByteArray())

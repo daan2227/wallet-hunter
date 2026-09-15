@@ -1625,6 +1625,15 @@ static std::string build_and_sign_tx(const std::string &req){
     std::string to_addr=json_str(req,"to");
     int64_t send_sat=json_int(req,"amount");
     int64_t fee_sat=json_int(req,"fee");
+    /* nLockTime. Iba fijo a 0 en los seis sitios donde aparece —tres preimágenes
+       de firma y tres serializaciones—, lo que permite reminar el último bloque
+       e incluir esta transacción (fee sniping). Con la altura actual sólo vale a
+       partir del siguiente. Tiene que ser IDÉNTICO en la firma y en la
+       transacción; por eso es una sola variable.
+       Si Kotlin no pudo consultar la altura manda 0 y se mantiene lo de antes:
+       inventar un número dejaría la transacción sin validez hasta alcanzarlo. */
+    int64_t lt=json_int(req,"locktime");
+    uint32_t locktime=(lt>0&&lt<500000000)?(uint32_t)lt:0u;
     /* Tres formas de gastar. Antes sólo existía is_segwit —"la ruta contiene
        84'"— y un is_p2sh que no se usaba en ningún sitio, así que m/49' caía en
        la rama heredada y se firmaba como P2PKH. La firma no satisface el script
@@ -1794,7 +1803,7 @@ static std::string build_and_sign_tx(const std::string &req){
             m+='\x00';                 /* epoch */
             m+='\x00';                 /* hash_type = SIGHASH_DEFAULT */
             m+=uint32_le(1);           /* nVersion */
-            m+=uint32_le(0);           /* nLockTime */
+            m+=uint32_le(locktime);           /* nLockTime */
             m+=sha_prevouts; m+=sha_amounts; m+=sha_spks; m+=sha_seqs;
             m+=sha_outs;
             m+='\x00';                 /* spend_type: clave, sin annex */
@@ -1828,7 +1837,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+='\x01';                /* un solo elemento de testigo */
             tx+=varint(sigs[i].size()); tx+=sigs[i];
         }
-        tx+=uint32_le(0);
+        tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     }
@@ -1860,7 +1869,7 @@ static std::string build_and_sign_tx(const std::string &req){
             pre+=uint64_le(utxos[ii].amount);
             pre+=uint32_le(TX_SEQUENCE);
             pre+=hOutputs;
-            pre+=uint32_le(0); // locktime
+            pre+=uint32_le(locktime); // locktime
             pre+=uint32_le(1); // SIGHASH_ALL
             std::string hash=sha256d(pre);
             secp256k1_ecdsa_signature sig;
@@ -1896,7 +1905,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=varint(sigs[i].size()); tx+=sigs[i];
             tx+=(char)33; tx+=std::string((char*)pub33,33);
         }
-        tx+=uint32_le(0);
+        tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     } else {
@@ -1914,7 +1923,7 @@ static std::string build_and_sign_tx(const std::string &req){
             }
             pre+=varint(has_change?2:1);
             pre+=outs_bytes;
-            pre+=uint32_le(0);
+            pre+=uint32_le(locktime);
             pre+=uint32_le(1);
             std::string hash=sha256d(pre);
             secp256k1_ecdsa_signature sig;
@@ -1938,7 +1947,7 @@ static std::string build_and_sign_tx(const std::string &req){
         }
         tx+=varint(has_change?2:1);
         tx+=outs_bytes;
-        tx+=uint32_le(0);
+        tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     }
