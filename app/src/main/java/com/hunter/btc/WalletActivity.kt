@@ -560,49 +560,17 @@ class WalletActivity : FragmentActivity() {
             val rows = mutableListOf<BalanceRow>()
             var usedFallback = false
 
-            /** Saldo vía mempool.space. Lanza si la consulta o el JSON fallan. */
-            fun fetchFromMempool(addr: String): Long {
-                val conn = java.net.URL(
-                    if (isTestnet) "https://mempool.space/testnet/api/address/$addr"
-                    else "https://mempool.space/api/address/$addr"
-                ).openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 5000; conn.readTimeout = 5000
-                val js = try {
-                    if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
-                    conn.inputStream.bufferedReader().readText()
-                } finally { conn.disconnect() }
-                // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia.
-                // La respuesta trae esos campos en chain_stats y en mempool_stats,
-                // así que el resultado dependía del orden que emitiera la API.
-                val o = JSONObject(js)
-                fun sumOf(block: String): Long {
-                    val b = o.optJSONObject(block) ?: return 0L
-                    return b.optLong("funded_txo_sum", 0L) - b.optLong("spent_txo_sum", 0L)
-                }
-                return sumOf("chain_stats") + sumOf("mempool_stats")
-            }
-
+            // mempool.space con respaldo Electrum. La consulta vive en
+            // BalanceLookup porque el baúl de hallazgos necesita la misma.
             addresses.forEach { (k, addr) ->
                 val label = if (k == "wif_0") currentWalletName else (labelMap[k] ?: k)
                 if (addr.isEmpty()) { rows.add(BalanceRow("Error", "empty address", -1L, "")); return@forEach }
 
-                var bal: Long? = null
-                var src = ""
-                try {
-                    bal = fetchFromMempool(addr)
-                } catch (e: Exception) {
-                    // mempool.space era la única fuente: si caía o devolvía un
-                    // error, el saldo aparecía como "error" sin más. Electrum ya
-                    // estaba implementado y sólo se usaba para el puzzle.
-                    android.util.Log.w("WalletActivity", "mempool falló en $addr: ${e.message}")
-                    try {
-                        val eb = ElectrumClient.getBalance(addr, isTestnet)
-                        if (eb != null) { bal = eb.confirmed + eb.unconfirmed; src = "electrum"; usedFallback = true }
-                    } catch (e2: Exception) {
-                        android.util.Log.w("WalletActivity", "electrum falló en $addr: ${e2.message}")
-                    }
-                }
-                if (bal == null) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
+                val res = BalanceLookup.query(addr, isTestnet)
+                if (res == null) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
+                val bal = res.sat
+                val src = res.source
+                if (src == "electrum") usedFallback = true
                 totalSat += bal
                 rows.add(BalanceRow(label, addr, bal, src))
             }

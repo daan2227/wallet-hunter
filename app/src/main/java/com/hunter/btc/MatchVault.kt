@@ -39,7 +39,9 @@ object MatchVault {
         val wif: String,
         val privHex: String,
         val btc: Double,
-        val extra: String
+        val extra: String,
+        /** Cuándo se consultó el saldo en la cadena. 0 = nunca. */
+        val checkedTs: Long = 0L
     )
 
     private fun key(): SecretKey {
@@ -108,6 +110,45 @@ object MatchVault {
 
     fun count(ctx: Context): Int = list(ctx).size
 
+    /** Hallazgos cuyo saldo aún no se ha consultado en la cadena. */
+    fun pendingBalance(ctx: Context): Int = list(ctx).count { it.checkedTs == 0L }
+
+    /**
+     * Consulta en la cadena el saldo de los hallazgos que aún no se han
+     * comprobado y lo guarda en el baúl.
+     *
+     * save_match() en C++ escribe siempre BTC:0.00000000 —el formato .bin sólo
+     * lleva hash160, no saldos—, así que hasta ahora todo acierto se guardaba
+     * como 0 aunque la dirección tuviera fondos.
+     *
+     * HACE RED: llamar sólo desde un hilo secundario. La red se hace fuera del
+     * cerrojo para no bloquear a add() mientras se espera al servidor.
+     *
+     * @return número de entradas actualizadas.
+     */
+    fun resolvePendingBalances(ctx: Context, max: Int = 25): Int {
+        val pendientes = list(ctx).filter { it.checkedTs == 0L && it.addr.isNotEmpty() }.take(max)
+        if (pendientes.isEmpty()) return 0
+
+        val saldos = HashMap<String, Long>()
+        for (e in pendientes) {
+            val r = BalanceLookup.query(e.addr) ?: continue   // sin respuesta: se reintenta luego
+            saldos[e.addr] = r.sat
+        }
+        if (saldos.isEmpty()) return 0
+
+        val now = System.currentTimeMillis()
+        synchronized(this) {
+            // Se relee dentro del cerrojo: mientras se consultaba la red pudo
+            // entrar un hallazgo nuevo, y escribir la lista vieja lo perdería.
+            write(ctx, list(ctx).map { e ->
+                val sat = saldos[e.addr]
+                if (sat == null) e else e.copy(btc = sat / 1e8, checkedTs = now)
+            })
+        }
+        return saldos.size
+    }
+
     // ── Serialización, compartida con el backup ───────────────────────────────
 
     fun toJson(entries: List<Entry>): JSONArray {
@@ -116,7 +157,7 @@ object MatchVault {
             arr.put(JSONObject().apply {
                 put("ts", it.ts); put("source", it.source); put("addr", it.addr)
                 put("wif", it.wif); put("hex", it.privHex); put("btc", it.btc)
-                put("extra", it.extra)
+                put("extra", it.extra); put("checked", it.checkedTs)
             })
         }
         return arr
@@ -131,8 +172,9 @@ object MatchVault {
                 addr    = o.optString("addr", ""),
                 wif     = o.optString("wif", ""),
                 privHex = o.optString("hex", ""),
-                btc     = o.optDouble("btc", 0.0),
-                extra   = o.optString("extra", "")
+                btc       = o.optDouble("btc", 0.0),
+                extra     = o.optString("extra", ""),
+                checkedTs = o.optLong("checked", 0L)
             )
         }.filter { it.addr.isNotEmpty() }
 

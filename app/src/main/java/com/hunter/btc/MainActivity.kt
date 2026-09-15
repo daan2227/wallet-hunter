@@ -406,6 +406,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             migrateLegacyMatchFile()
             // Lo que quedara en claro de la sesión anterior pasa al baúl cifrado.
             MatchVault.ingestPlaintextFile(this)
+            // El saldo sí hace red, así que va fuera del hilo principal.
+            Thread { try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) {} }.start()
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "setMatchDir: ${e.message}", e)
         }
@@ -2455,8 +2457,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // fichero —lo usa sólo para la lista en memoria—: las líneas empiezan
         // por SEED:, PRIV: o RAW:. Así que el total salía siempre en 0 aunque
         // hubiera aciertos guardados.
+        // Corre siempre en segundo plano (refreshWallet la llama desde un Thread):
+        // resolvePendingBalances hace red.
         fun loadCoincidencias(): Pair<Double, List<Triple<String,Double,String>>> {
             MatchVault.ingestPlaintextFile(this@MainActivity)
+            try { MatchVault.resolvePendingBalances(this@MainActivity) } catch (e: Exception) {}
             val entries = MatchVault.list(this@MainActivity)
             return Pair(entries.sumOf { it.btc },
                         entries.map { Triple(it.addr, it.btc, it.wif) })
@@ -3422,7 +3427,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val foundNow = HunterEngine.getFound()
             if (foundNow != lastFoundSeen) {
                 lastFoundSeen = foundNow
-                Thread { try { MatchVault.ingestPlaintextFile(this@MainActivity) } catch (e: Exception) {} }.start()
+                Thread {
+                    try {
+                        if (MatchVault.ingestPlaintextFile(this@MainActivity) > 0)
+                            MatchVault.resolvePendingBalances(this@MainActivity)
+                    } catch (e: Exception) {}
+                }.start()
             }
 
             val rt = Runtime.getRuntime()
@@ -3864,16 +3874,45 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 "recovery" -> "♻ Recovery"
                 else       -> e.source
             }
-            "$etiqueta · ${fmt.format(java.util.Date(e.ts))}\n${e.addr}\n" +
-            "${"%.8f".format(e.btc)} BTC"
+            // Un "0.00000000 BTC" a secas se lee como "vacía", cuando puede ser
+            // sólo que aún no se ha preguntado a la cadena.
+            val saldo = if (e.checkedTs == 0L) "saldo sin consultar"
+                        else "${"%.8f".format(e.btc)} BTC"
+            "$etiqueta · ${fmt.format(java.util.Date(e.ts))}\n${e.addr}\n$saldo"
         }.toTypedArray()
 
+        val pendientes = entries.count { it.checkedTs == 0L }
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Baúl · ${entries.size} hallazgo(s)")
             .setItems(items) { _, which -> showVaultEntry(entries[which]) }
+            .setPositiveButton(
+                if (pendientes > 0) "Consultar saldos ($pendientes)" else "Refrescar saldos"
+            ) { _, _ -> resolveVaultBalances() }
             .setNeutralButton("Exportar cifrado") { _, _ -> exportEncryptedBackup() }
             .setNegativeButton("Cerrar", null)
             .show()
+    }
+
+    /**
+     * Pregunta a la cadena por el saldo de los hallazgos sin comprobar.
+     *
+     * Consultar una dirección se la revela al servidor: para las del puzzle da
+     * casi igual —están vigiladas por medio mundo—, pero es una acción del
+     * usuario, no algo que la app deba hacer a sus espaldas.
+     */
+    private fun resolveVaultBalances() {
+        android.widget.Toast.makeText(this, "Consultando saldos…",
+            android.widget.Toast.LENGTH_SHORT).show()
+        Thread {
+            val n = try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) { 0 }
+            runOnUiThread {
+                android.widget.Toast.makeText(this,
+                    if (n > 0) "✓ $n saldo(s) actualizados"
+                    else "Ninguna fuente respondió — inténtalo más tarde",
+                    android.widget.Toast.LENGTH_SHORT).show()
+                if (n > 0) showVault()
+            }
+        }.start()
     }
 
     private fun showVaultEntry(e: MatchVault.Entry) {
@@ -3884,7 +3923,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             appendLine("Dirección:")
             appendLine(e.addr)
             appendLine()
-            appendLine("Saldo registrado: ${"%.8f".format(e.btc)} BTC")
+            if (e.checkedTs == 0L) {
+                appendLine("Saldo: sin consultar todavía")
+            } else {
+                appendLine("Saldo: ${"%.8f".format(e.btc)} BTC")
+                appendLine("Consultado: ${java.util.Date(e.checkedTs)}")
+            }
             if (e.extra.contains("SEED:")) {
                 appendLine()
                 appendLine("Seed: " + (Regex("""SEED:(.+?)\s+PATH:""")
