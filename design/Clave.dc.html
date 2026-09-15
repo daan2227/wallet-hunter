@@ -1,0 +1,82 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="flex-grow:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:0 34px">
+    <div style="width:56px; height:56px; border-radius:17px; background:rgba(0,200,150,.10); display:flex; align-items:center; justify-content:center">
+      <svg width="25" height="25" viewBox="0 0 24 24" fill="none" stroke="#00C896" stroke-width="1.9" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2.5"/><path d="M8 10V7a4 4 0 018 0v3"/></svg>
+    </div>
+
+    <div style="font-family:'Sora'; font-size:21px; font-weight:600; margin-top:26px; letter-spacing:-.02em">Introduce tu clave</div>
+    <div class="cap" style="margin-top:8px">Seis dígitos</div>
+
+    <div style="display:flex; gap:14px; margin-top:38px">
+      <sc-for list="{{dots}}" as="d" hint-placeholder-count="6">
+        <div style="width:14px; height:14px; border-radius:50%; background:{{d.bg}}; border:1.5px solid {{d.bd}}"></div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- teclado -->
+  <div style="padding:0 22px 26px">
+    <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:10px">
+      <sc-for list="{{keys}}" as="k" hint-placeholder-count="12">
+        <div style="height:62px; border-radius:16px; background:{{k.bg}}; display:flex; align-items:center; justify-content:center">
+          <sc-if value="{{k.num}}" hint-placeholder-val="{{true}}">
+            <span class="disp" style="font-size:23px; font-weight:400; color:#F2F2F2">{{k.n}}</span>
+          </sc-if>
+          <sc-if value="{{k.bio}}" hint-placeholder-val="{{false}}">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#00C896" stroke-width="1.6" stroke-linecap="round"><path d="M12 4a8 8 0 00-8 8v3"/><path d="M12 4a8 8 0 018 8v6"/><path d="M8 12a4 4 0 018 0v6"/><path d="M12 12v8"/></svg>
+          </sc-if>
+          <sc-if value="{{k.del}}" hint-placeholder-val="{{false}}">
+            <svg width="23" height="23" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h11a2 2 0 012 2v10a2 2 0 01-2 2H9l-6-7z"/><path d="M13 9l5 5M18 9l-5 5"/></svg>
+          </sc-if>
+        </div>
+      </sc-for>
+    </div>
+
+    <div style="text-align:center; margin-top:24px">
+      <span class="cap" style="font-size:12px">La clave no sale de este dispositivo</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const filled = { bg:'#00C896', bd:'#00C896' };
+    const empty  = { bg:'transparent', bd:'#2E2E2E' };
+    const k = (n) => ({ n, num:true, bio:false, del:false, bg:'#1A1A1A' });
+    return {
+      dots: [filled, filled, filled, empty, empty, empty],
+      keys: [
+        k('1'), k('2'), k('3'),
+        k('4'), k('5'), k('6'),
+        k('7'), k('8'), k('9'),
+        { n:'', num:false, bio:true,  del:false, bg:'rgba(0,200,150,.10)' },
+        k('0'),
+        { n:'', num:false, bio:false, del:true,  bg:'transparent' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

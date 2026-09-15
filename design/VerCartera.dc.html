@@ -1,0 +1,121 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+    .card { background:#161616; border-radius:14px; }
+    .addr { font-family:'Sora', system-ui, sans-serif; font-size:11px; color:#6A6A6A; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:14px; padding:18px 22px 14px">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+    <div style="flex-grow:1; font-family:'Sora'; font-size:17px; font-weight:600; letter-spacing:-.01em">Cartera principal</div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1.4" fill="#8A8A8A"/><circle cx="12" cy="12" r="1.4" fill="#8A8A8A"/><circle cx="19" cy="12" r="1.4" fill="#8A8A8A"/></svg>
+  </div>
+
+  <!-- pestañas -->
+  <div style="display:flex; gap:6px; padding:4px 22px 18px">
+    <sc-for list="{{tabs}}" as="t" hint-placeholder-count="4">
+      <div style="flex-grow:1; text-align:center; padding:9px 0; font-size:13px; font-weight:{{t.w}}; border-radius:10px; background:{{t.bg}}; color:{{t.fg}}">{{t.n}}</div>
+    </sc-for>
+  </div>
+
+  <!-- saldo -->
+  <div style="padding:4px 22px 24px">
+    <div class="cap">Saldo total</div>
+    <div class="disp" style="font-size:42px; font-weight:700; letter-spacing:-.04em; margin-top:8px">0,04128<span style="font-size:19px; color:#8A8A8A; font-weight:400"> BTC</span></div>
+    <div class="cap" style="margin-top:8px">≈ 2 741,60 USD</div>
+  </div>
+
+  <!-- hallazgo del escaneo HD, arriba porque cambia lo que ves -->
+  <div style="margin:0 22px 18px; padding:15px 17px; border-radius:14px; background:rgba(0,200,150,.08)">
+    <div style="display:flex; gap:11px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#00C896" stroke-width="1.9" stroke-linecap="round" style="flex-shrink:0"><circle cx="11" cy="11" r="7"/><path d="M16 16l5 5"/></svg>
+      <div style="font-size:12px; color:#8FBFAE; line-height:1.55">Encontradas 2 direcciones con fondos más allá del índice 0. Ya se pueden gastar desde Enviar.</div>
+    </div>
+  </div>
+
+  <!-- direcciones: solo las que tienen algo, el resto plegado -->
+  <div style="display:flex; align-items:baseline; padding:0 22px 10px">
+    <div class="cap" style="flex-grow:1">Con saldo</div>
+    <div class="cap" style="font-size:11px">2 de 10</div>
+  </div>
+
+  <div class="card" style="margin:0 22px 14px">
+    <sc-for list="{{funded}}" as="a" hint-placeholder-count="2">
+      <div>
+        <div style="display:flex; align-items:center; gap:13px; padding:15px 17px">
+          <div style="width:38px; height:38px; border-radius:11px; background:rgba(0,200,150,.12); display:flex; align-items:center; justify-content:center; flex-shrink:0">
+            <span class="disp" style="font-size:10px; font-weight:600; color:#00C896">{{a.t}}</span>
+          </div>
+          <div style="flex-grow:1; min-width:0">
+            <div class="disp" style="font-size:14px; font-weight:600; letter-spacing:-.01em">{{a.bal}}</div>
+            <div class="addr" style="margin-top:3px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap">{{a.addr}}</div>
+          </div>
+        </div>
+        <div style="height:1px; background:{{a.sep}}; margin:0 17px"></div>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- el resto, colapsado: la lista de 8 ceros no aporta nada -->
+  <div class="card" style="margin:0 22px 16px">
+    <div style="display:flex; align-items:center; gap:13px; padding:15px 17px">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h10"/></svg>
+      <div style="flex-grow:1">
+        <div style="font-size:14px">Otras 8 direcciones</div>
+        <div class="cap" style="font-size:11px; margin-top:2px">Todas a cero</div>
+      </div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2.2" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <!-- acciones -->
+  <div style="display:flex; gap:12px; padding:18px 22px 26px">
+    <div style="flex-grow:1; height:54px; border-radius:14px; background:#1A1A1A; display:flex; align-items:center; justify-content:center; gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#E8E8E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+      <span style="font-size:15px; font-weight:500">Enviar</span>
+    </div>
+    <div style="flex-grow:1; height:54px; border-radius:14px; background:#00C896; display:flex; align-items:center; justify-content:center; gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0E0E0E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M6 13l6 6 6-6"/></svg>
+      <span style="font-size:15px; font-weight:600; color:#0E0E0E">Recibir</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const off = { bg:'#1A1A1A', fg:'#8A8A8A', w:'500' };
+    const on  = { bg:'#00C896', fg:'#0E0E0E', w:'600' };
+    return {
+      tabs: [
+        { n:'Saldo', ...on }, { n:'Historial', ...off },
+        { n:'Enviar', ...off }, { n:'Recibir', ...off }
+      ],
+      funded: [
+        { t:'P2PKH', bal:'0,03900 BTC', addr:'17fXz5FcwgsckAqWdhLxFcaJziME78Hw6b', sep:'#222' },
+        { t:'P2PKH', bal:'0,00228 BTC', addr:'1Ktr9nMqUBCagEsGnv2W3yYbcvdcjLYBcx', sep:'transparent' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
