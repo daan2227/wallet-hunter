@@ -862,6 +862,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val speedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             isBaselineAligned = true
+            isBaselineAligned = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1538,9 +1539,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(16), dp(14), dp(16), dp(14))
         }
 
+        // Mayúscula monoespaciada a 9sp con letter-spacing: rótulo de
+        // instrumento. En frase y a 12sp se lee de un vistazo.
         fun sectionLabel(text: String) = TextView(this).apply {
-            this.text = text; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
+            this.text = text; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(10) }
@@ -1609,23 +1613,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return container
         }
 
-        // ── HEADER ────────────────────────────────────────────────────────
+        // ── CABECERA ──────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
-            text = "Puzzle Mode"
-            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
+            text = "Puzzle"
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(4) }
+            ).apply { bottomMargin = dp(20) }
         })
-        page.addView(TextView(this).apply {
-            text = "Selecciona el puzzle objetivo"
-            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(16) }
-        })
+        // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
+        // lista de puzzles lo que hace la lista de puzzles.
 
         // ── PUZZLE CHIP SELECTOR ──────────────────────────────────────────
         val hiddenPuzzles = getSharedPreferences("hidden_puzzles", MODE_PRIVATE)
@@ -1638,7 +1637,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Container for chip rows
         val chipSection = pCard(0)
-        chipSection.addView(sectionLabel("SELECCIONAR PUZZLE"))
+        chipSection.addView(sectionLabel("Seleccionar puzzle"))
 
         // Horizontal scroll for group chips
         val groupScroll = android.widget.HorizontalScrollView(this).apply {
@@ -1712,7 +1711,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = Typeface.create("monospace", Typeface.BOLD)
         }
         progressHeader.addView(TextView(this).apply {
-            text = "COBERTURA DEL RANGO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
+            text = "Cobertura del rango"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -1925,54 +1924,80 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── STATS ─────────────────────────────────────────────────────────
         val statsCard = pCard()
-        statsCard.addView(sectionLabel("RENDIMIENTO EN VIVO"))
+        statsCard.addView(sectionLabel("Rendimiento"))
         val speedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(14) }
         }
+        // Misma corrección que en el escáner: la unidad iba apilada en dos
+        // líneas ("Keys" sobre "por seg") a un lado de la cifra, y el pico
+        // flotaba abajo a la derecha a 9sp. Ahora la unidad va junto a la
+        // cifra y el pico baja a su propia línea.
         val tvWpsP = TextView(this).apply {
-            text = "0"; textSize = 40f; setTextColor(ACCENT)
+            text = "0"; textSize = AppTheme.SP_DISPLAY
+            setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            letterSpacing = -0.04f
         }
         tvWpsPuzzle = tvWpsP
         speedRow.addView(tvWpsP)
-        // Peak speed en esquina
-        tvPeakWpsPuzzle = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.BOTTOM or Gravity.END
+        // getWps() devuelve claves/s directas; la etiqueta decía "kKeys", lo que
+        // multiplicaba por mil la lectura. La unidad la fija el escalado.
+        tvSpeedUnitPuzzle = TextView(this).apply {
+            text = "Keys/s"; textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = dp(4) }
+            ).apply { marginStart = dp(8) }
         }
-        speedRow.addView(tvPeakWpsPuzzle)
-        val speedUnit = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
-        // getWps() devuelve claves/s directas; la etiqueta decía "kKeys", lo que
-        // multiplicaba por mil la lectura. La unidad ahora la fija el escalado.
-        tvSpeedUnitPuzzle = TextView(this).apply { text = "Keys"; textSize = 11f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) }
-        speedUnit.addView(tvSpeedUnitPuzzle)
-        speedUnit.addView(TextView(this).apply { text = "por seg"; textSize = 10f; setTextColor(0xFF4A4A4A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
-        speedRow.addView(speedUnit)
+        speedRow.addView(tvSpeedUnitPuzzle)
         statsCard.addView(speedRow)
+
+        tvPeakWpsPuzzle = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        statsCard.addView(tvPeakWpsPuzzle)
 
         fun miniStat(label: String, tv: TextView): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat(); setStroke(1, 0xFF222222.toInt())
+                setColor(AppTheme.BG_CARD); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            addView(TextView(this@MainActivity).apply { text = label; textSize = 8f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f })
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            addView(TextView(this@MainActivity).apply {
+                text = label; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+            })
             addView(tv)
         }
 
-        val tvCntP = TextView(this).apply { text = "0"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        // Eran 16sp blanco, 16sp blanco, 13sp azul y 13sp blanco: cuatro datos
+        // del mismo rango con tres tratamientos. Uno solo.
+        fun miniValue(initial: String) = TextView(this).apply {
+            text = initial; textSize = AppTheme.SP_FIGURE
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
+            letterSpacing = -0.02f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        }
+        val tvCntP = miniValue("0")
+        val tvTmP  = miniValue("00:00:00")
         tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
-        tvPctPuzzle = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(ACCENT2); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        tvBlockProgress = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.MONOSPACE }
+        tvPctPuzzle = miniValue("—")
+        tvBlockProgress = miniValue("—")
 
         val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
         val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
@@ -1987,7 +2012,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── POTENCIA: LOW / MEDIUM / HIGH ─────────────────────────────────
         val powerCard = pCard()
-        powerCard.addView(sectionLabel("POTENCIA"))
+        powerCard.addView(sectionLabel("Potencia"))
 
         val powerRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2070,7 +2095,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(12) }
         }
         scanModeRow.addView(TextView(this).apply {
-            text = "MODO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
+            text = "Modo"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -2129,7 +2154,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(14) }
         }
         batchHeaderRow.addView(TextView(this).apply {
-            text = "BATCH SIZE"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
+            text = "Tamaño de lote"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -3540,7 +3565,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // "1.76 MKeys" al lado de "peak 4,816,000" es ilegible.
                     val (pv, pu) = scaleSpeed(wps)
                     tvPeakWps?.text = "Pico $pv $pu"
-                    tvPeakWpsPuzzle?.text = "pico $pv $pu"
+                    tvPeakWpsPuzzle?.text = "Pico $pv $pu"
                 }
                 if (wps > 0) {
                     avgWpsSum += wps
@@ -3552,8 +3577,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
                 if (puzzleMode) {
                     val (spdTxt, spdUnit) = scaleSpeed(wps)
-                    tvWpsPuzzle?.text = spdTxt
-                    tvSpeedUnitPuzzle?.text = spdUnit
+                    tvWpsPuzzle?.text = spdTxt.replace('.', ',')
+                    tvSpeedUnitPuzzle?.text = "$spdUnit/s"
                     val scannedNow = HunterEngine.getCount()
                     tvCountPuzzle?.text = formatCount(scannedNow)
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
