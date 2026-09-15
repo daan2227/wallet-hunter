@@ -15,6 +15,7 @@
 #include <chrono>
 #include <sstream>
 #include <cstring>
+#include <cstdint>
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
@@ -82,6 +83,10 @@ static uint8_t  *g_xonly  = nullptr;
 static uint64_t  g_total_tr = 0;
 static Bloom     g_bloom_tr = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
+/* Directorio donde se guardan los matches. Lo fija la app con
+   setMatchDir(filesDir) para que las claves privadas no acaben junto al CSV,
+   que normalmente está en almacenamiento externo. */
+static char      g_match_dir[1024] = "";
 
 static std::atomic<long>   g_count(0);
 static std::atomic<long>   g_found(0);
@@ -91,8 +96,21 @@ static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
 static std::atomic<int>    g_batch_size(1); // minimo para debug
 static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
+/* Rutas a derivar por mnemónico: bit0 = BIP44 (m/44'), bit1 = BIP84 (m/84').
+   Derivar ambas duplica las derivaciones y los hash160 por candidato. PBKDF2
+   domina el coste, así que el ahorro de usar sólo una es del 2-5%, pero si el
+   dataset sólo contiene un tipo de dirección la otra mitad no sirve de nada. */
+static std::atomic<int>    g_bip39_paths(3);
 static std::atomic<int>    g_nthreads(6);
 static std::atomic<bool>   g_csv_loaded(false);
+/* Parada en curso. stopHunting() no espera a los workers —hacerlo bloquearía el
+   hilo de UI—, así que entre pulsar STOP y que g_running pase a false hay una
+   ventana. Sin marcarla, una segunda pulsación en esa ventana volvía a entrar y
+   lanzaba un segundo joiner sobre unos pthread_t que el primero ya estaba
+   uniendo: pthread_join dos veces sobre el mismo hilo es comportamiento
+   indefinido. Y desde Kotlin la ventana se veía como "isRunning() sigue true",
+   así que el botón de START ejecutaba la rama de STOP y no arrancaba nada. */
+static std::atomic<bool>   g_stopping(false);
 static std::atomic<bool>   g_loading(false);
 static std::atomic<int>    g_mode(0); /* 0=BIP39 1=PUZZLE 2=RAWKEY */
 
@@ -189,13 +207,28 @@ static int split_line(char *line,char **f,int mx){
 static const char *BIP39[]={
 #include "bip39_words.h"
 };
+/* /dev/urandom se abría y cerraba en cada mnemónico: tres syscalls por
+   candidato, en todos los hilos. Se mantiene abierto por hilo, con destructor
+   para que arrancar y parar el scanner no acumule descriptores. */
+struct UrandomHandle {
+    FILE *f = nullptr;
+    ~UrandomHandle(){ if(f) fclose(f); }
+};
+static thread_local UrandomHandle tl_ur;
+
 static void gen_mnemonic(char *out,size_t sz){
     uint8_t ent[16],h[32];
-    FILE *r=fopen("/dev/urandom","rb");
-    if(r){fread(ent,1,16,r);fclose(r);}
-    SHA256(ent,16,h);uint8_t cs=h[0]>>4;uint32_t bits[132];int bi=0;
+    if(!tl_ur.f) tl_ur.f=fopen("/dev/urandom","rb");
+    if(tl_ur.f){ if(fread(ent,1,16,tl_ur.f)!=16) memset(ent,0,16); }
+    else memset(ent,0,16);
+    SHA256(ent,16,h);uint32_t bits[132];int bi=0;
     for(int i=0;i<16;i++)for(int b=7;b>=0;b--)bits[bi++]=(ent[i]>>b)&1;
-    for(int b=7;b>=4;b--)bits[bi++]=(cs>>b)&1;
+    /* Checksum BIP39: los 4 bits ALTOS de SHA256(entropía)[0].
+       Antes se hacía cs=h[0]>>4 y luego se leían los bits 7..4 de cs, es decir
+       se desplazaba dos veces: los cuatro bits escritos eran siempre 0000. Sólo
+       1 de cada 16 mnemónicos generados era válido en BIP39, así que el 93,6%
+       del PBKDF2 se gastaba en frases que ninguna wallet pudo producir. */
+    for(int b=7;b>=4;b--)bits[bi++]=(h[0]>>b)&1;
     out[0]='\0';for(int w=0;w<12;w++){uint32_t idx=0;for(int b=0;b<11;b++)idx=(idx<<1)|bits[w*11+b];if(w>0)strncat(out," ",sz-strlen(out)-1);strncat(out,BIP39[idx%2048],sz-strlen(out)-1);}
 }
 typedef struct{uint8_t key[32];uint8_t chain[32];}HDKey;
@@ -508,7 +541,11 @@ static std::string derive_wallet_json(const char *mnemonic){
         if(taproot_tweak_pubkey(ctx,xonly,tweaked)){
             char addr[MAX_ADDR]={0}; xonly_to_p2tr(tweaked,addr);
             char key[32]; snprintf(key,32,"\"p2tr_%d\"",i);
-            json+=key; json+=":""; json+=addr; json+="",";
+            // En C++ los literales adyacentes se concatenan: ":"" es ":" y
+            // "", es ",". Faltaban las comillas del valor, así que la entrada
+            // p2tr salía como  "p2tr_0":bc1p...,  y el objeto entero dejaba de
+            // ser JSON válido.
+            json+=key; json+=":\""; json+=addr; json+="\",";
         }
     }
     /* Remove trailing comma */
@@ -525,6 +562,7 @@ static std::string derive_wallet_json(const char *mnemonic){
 /* Calcula cuantos bytes/bits son el rango */
 static int       g_range_bits  = 0;   /* bits activos del rango */
 static uint8_t   g_range_mask  = 0;   /* mascara para el byte superior */
+static uint8_t   g_range_diff[32] = {0}; /* end - start, para acotar el offset */
 
 static void precompute_range(){
     /* Encontrar el bit mas alto del rango */
@@ -536,16 +574,20 @@ static void precompute_range(){
         if(d<0){d+=256;borrow=1;}else borrow=0;
         diff[i]=(uint8_t)d;
     }
-    /* Encontrar byte mas alto */
+    memcpy(g_range_diff,diff,32);
+    /* Longitud en bits de diff.
+       El cálculo anterior partía de (32-i)*8 y restaba un bit por cada
+       desplazamiento de diff[i], lo que sobrestimaba o subestimaba según el
+       byte: para diff[i]=0x01 daba 73 bits en vez de 65, y para 0xFF daba 66
+       en vez de 72. La máscara derivada de ahí limitaba el byte superior a
+       unos pocos bits, de modo que el generador sólo cubría una fracción del
+       rango (1,6% en varios puzzles). */
     g_range_bits=0;
     for(int i=0;i<32;i++){
         if(diff[i]){
-            g_range_bits=(32-i)*8;
+            g_range_bits=(31-i)*8;          /* bytes completos por debajo */
             uint8_t b=diff[i];
-            while(b>>=1) g_range_bits--;
-            g_range_bits++;
-            /* mascara para el byte superior del rango */
-            int top_byte=32-(g_range_bits+7)/8;
+            while(b){ g_range_bits++; b>>=1; }
             int bits_in_top=g_range_bits%8;
             g_range_mask=(bits_in_top==0)?0xFF:((1<<bits_in_top)-1);
             break;
@@ -570,37 +612,59 @@ static uint64_t xr_next(XR128 *x){
     x->s1=s1; return s0+s1;
 }
 
+/* Genera una clave uniforme dentro de [g_range_start, g_range_end].
+   Antes se copiaba g_range_start en `out` como base y luego se volvía a SUMAR
+   entero: los bytes por encima del offset aleatorio acababan valiendo el doble
+   del inicio del rango. Para muchos puzzles eso dejaba el 100% de las claves
+   fuera del rango, y como el fallback era memcpy(out, g_range_start, 32), el
+   worker probaba una y otra vez exactamente la misma clave. */
 static void gen_privkey_fast(uint8_t *out, XR128 *rng){
-    /* Copiar start como base */
-    memcpy(out, g_range_start, 32);
-    /* Generar bytes aleatorios para los bits del rango */
     int range_bytes = (g_range_bits+7)/8;
     int top_idx     = 32 - range_bytes;
-    /* Llenar con xorshift128+ */
-    uint64_t r;
-    for(int i=31; i>=top_idx; i-=8){
-        r=xr_next(rng);
-        for(int j=0;j<8&&(i-j)>=top_idx;j++)
-            out[i-j]=(uint8_t)(r>>(j*8));
+    if(top_idx < 0) top_idx = 0;
+
+    /* Offset aleatorio en [0, 2^range_bits). La máscara deja el offset por
+       encima de diff con probabilidad < 1/2, así que unos pocos reintentos
+       bastan para que quede uniforme dentro de [0, diff]. */
+    for(int attempt=0; attempt<8; attempt++){
+        memset(out, 0, 32);
+        for(int i=31; i>=top_idx; i-=8){
+            uint64_t r=xr_next(rng);
+            for(int j=0;j<8&&(i-j)>=top_idx;j++)
+                out[i-j]=(uint8_t)(r>>(j*8));
+        }
+        out[top_idx] &= g_range_mask;
+        if(memcmp(out, g_range_diff, 32) <= 0) break;   /* offset dentro de diff */
     }
-    /* Aplicar mascara al byte superior para no salir del rango */
-    out[top_idx] &= g_range_mask;
-    /* Sumar start con carry */
+
+    /* out = start + offset */
     int carry=0;
     for(int i=31;i>=0;i--){
         int s=(int)out[i]+(int)g_range_start[i]+carry;
         out[i]=(uint8_t)(s&0xFF); carry=s>>8;
     }
-    /* Si supera end, usar start (raro) */
+    /* Red de seguridad: acotar al final del rango, no al inicio, para no
+       reintroducir la clave repetida. */
     if(memcmp(out, g_range_end, 32)>0)
-        memcpy(out, g_range_start, 32);
+        memcpy(out, g_range_end, 32);
 }
 
 /* Guardar match */
 static void save_match(const char *privhex, const char *addr, double btc, const char *wif, const char *extra){
-    std::string outpath=std::string(g_csv_path);
-    size_t sl=outpath.rfind('/');
-    if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    /* El fichero lleva claves privadas en claro. Si la app ha fijado un
+       directorio interno lo usamos; sólo si no, caemos junto al CSV (que suele
+       estar en almacenamiento externo, legible por apps con
+       MANAGE_EXTERNAL_STORAGE y por USB). */
+    std::string outpath;
+    if(g_match_dir[0]!='\0'){
+        outpath=std::string(g_match_dir);
+        if(outpath.back()!='/') outpath+='/';
+        outpath+="coincidencias.txt";
+    }else{
+        outpath=std::string(g_csv_path);
+        size_t sl=outpath.rfind('/');
+        if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
+    }
     FILE *fo=fopen(outpath.c_str(),"a");
     if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
@@ -629,8 +693,10 @@ static void set_thread_affinity(int thread_idx) {
     sched_setaffinity(0, sizeof(cpu_set_t), &cpuset);
 }
 
-static void *worker_bip39_fn(void *){
-    set_thread_affinity(0);
+static void *worker_bip39_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     char mn[256]; uint8_t seed[64],h160[HASH160_BYTES];
     Hit hits[LOCAL_BATCH*N_PATHS]; int nhits=0; long local_done=0;
@@ -641,27 +707,30 @@ static void *worker_bip39_fn(void *){
             gen_mnemonic(mn,sizeof(mn));
             PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,g_pbkdf2_iters.load(),EVP_sha512(),64,seed);
             HDKey master; derive_master(seed,&master);
-            /* --- Shared subtree m/44'/0'/0' --- */
-            HDKey h44,h44_0,h44_0_0;
-            derive_child(ctx,&master,0x80000000u+44,&h44);
-            derive_child(ctx,&h44,0x80000000u+0,&h44_0);
-            derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
-            /* m/44'/0'/0'/0/0 only */
-            HDKey h44_ch0,h44_leaf;
-            derive_child(ctx,&h44_0_0,0,&h44_ch0);
-            derive_child(ctx,&h44_ch0,0,&h44_leaf);
-            pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
+            const int paths=g_bip39_paths.load();
+            /* --- m/44'/0'/0'/0/0 --- */
+            if(paths&1){
+                HDKey h44,h44_0,h44_0_0,h44_ch0,h44_leaf;
+                derive_child(ctx,&master,0x80000000u+44,&h44);
+                derive_child(ctx,&h44,0x80000000u+0,&h44_0);
+                derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
+                derive_child(ctx,&h44_0_0,0,&h44_ch0);
+                derive_child(ctx,&h44_ch0,0,&h44_leaf);
+                pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
+                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
+            }
             /* BIP49 skipped — p2sh not in dataset */
             /* --- m/84'/0'/0'/0/0 --- */
-            HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
-            derive_child(ctx,&master,0x80000000u+84,&h84);
-            derive_child(ctx,&h84,0x80000000u+0,&h84_0);
-            derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
-            derive_child(ctx,&h84_00,0,&h84_000);
-            derive_child(ctx,&h84_000,0,&h84_leaf);
-            pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
-            {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            if(paths&2){
+                HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
+                derive_child(ctx,&master,0x80000000u+84,&h84);
+                derive_child(ctx,&h84,0x80000000u+0,&h84_0);
+                derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
+                derive_child(ctx,&h84_00,0,&h84_000);
+                derive_child(ctx,&h84_000,0,&h84_leaf);
+                pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
+                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            }
             /* Feed visual: solo 1 vez por batch */
             if(bi==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
             /* BIP86 removed */
@@ -699,8 +768,13 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     uint8_t sha[32],h160[HASH160_BYTES];
     SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
     c->done++;
-    if(c->done%500==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
-    int match=0; char sats_buf[24]="0"; char type_buf[12]="?";
+    /* Muestra de direcciones para la UI. Estaba cada 500 claves, lo que a
+       1M/s son 2000 codificaciones Base58 por segundo — cada una con doble
+       SHA-256 — más 2000 tomas de g_addr_mutex desde todos los hilos. La UI
+       sólo guarda las últimas 50 y se refresca cada 800 ms, así que una de
+       cada 50 000 basta de sobra. */
+    if(c->done%50000==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
+    int match=0;
     if(g_has_target){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
     } else if(g_csv_loaded.load()){
@@ -732,8 +806,10 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
    - pubkey_create por cada key (igual que script Termux)
    - Lookup via bloom+bsearch
    ========================================================= */
-static void *worker_rawkey_fn(void *){
-    set_thread_affinity(0);
+static void *worker_rawkey_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx = secp256k1_context_create(
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
@@ -741,6 +817,9 @@ static void *worker_rawkey_fn(void *){
     const int MAX_SAFE = 512;
     JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
+    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
+    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
+    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
 
     XR128 rng; xr_init(&rng);
     uint8_t priv[32];
@@ -796,7 +875,7 @@ static void *worker_rawkey_fn(void *){
         memcpy(rctx.base, base, 32); 
         rctx.done=0;
 
-        jac_batch_hash160(pts, actual, [](int idx, const uint8_t *pub33, void *raw){
+        jac_batch_hash160(pts, actual, pfx, [](int idx, const uint8_t *pub33, void *raw){
             RawCtx *c = (RawCtx*)raw;
             uint8_t h160[HASH160_BYTES];
             hash160_inline(pub33, h160);
@@ -837,14 +916,16 @@ static void *worker_rawkey_fn(void *){
         }
     }
 
-    free(pts);
+    free(pts); free(pfx);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
 
 
-static void *worker_puzzle_fn(void *){
-    set_thread_affinity(0);
+static void *worker_puzzle_fn(void *arg){
+    /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
+       set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
+    set_thread_affinity((int)(intptr_t)arg);
     secp256k1_context *ctx = secp256k1_context_create(
         SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
     if(!ctx) return nullptr;
@@ -852,6 +933,9 @@ static void *worker_puzzle_fn(void *){
     const int MAX_SAFE = JAC_BATCH;
     JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
     if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
+    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
+    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
+    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
 
     XR128 rng; xr_init(&rng);
 
@@ -874,10 +958,19 @@ static void *worker_puzzle_fn(void *){
                 memcpy(g_seq_pos, g_range_start, 32);
                 memcpy(privkey, g_range_start, 32);
             }
-            /* Avanzar posición para el próximo thread */
-            int cur_b = g_batch_size.load();
-            for(int step = 0; step < cur_b; step++) {
-                for(int b = 31; b >= 0; b--) { if(++g_seq_pos[b]) break; }
+            /* Avanzar la posición para el siguiente hilo.
+               Antes se releía g_batch_size aquí: si el usuario movía el slider
+               entre las dos lecturas, el avance no coincidía con lo que este
+               hilo iba a procesar y quedaban claves sin escanear o repetidas.
+               Se usa cur_batch, el mismo valor con el que se construye el lote.
+               Además el avance era un bucle de cur_batch incrementos de 32
+               bytes CON EL MUTEX TOMADO — con lotes de 16000 eso serializaba a
+               todos los hilos. Ahora es una suma con acarreo, O(32). */
+            uint64_t add = (uint64_t)cur_batch;
+            for(int b = 31; b >= 0 && add; b--){
+                uint64_t sum = (uint64_t)g_seq_pos[b] + (add & 0xFF);
+                g_seq_pos[b] = (uint8_t)(sum & 0xFF);
+                add = (add >> 8) + (sum >> 8);
             }
         } else {
             gen_privkey_fast(privkey, &rng);
@@ -924,7 +1017,7 @@ static void *worker_puzzle_fn(void *){
         PuzzleBatchCtx pctx;
         memcpy(pctx.priv_base, privkey, 32);
         pctx.done = 0;
-        jac_batch_hash160(pts, actual, puzzle_on_key, &pctx);
+        jac_batch_hash160(pts, actual, pfx, puzzle_on_key, &pctx);
 
         g_count.fetch_add(actual);
 
@@ -939,7 +1032,7 @@ static void *worker_puzzle_fn(void *){
         }
     }
 
-    free(pts);
+    free(pts); free(pfx);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
@@ -1050,6 +1143,16 @@ Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
     pthread_t t;pthread_create(&t,nullptr,load_fn,nullptr);pthread_detach(t);
 }
 
+/* Fija el directorio donde save_match() escribe coincidencias.txt. La app pasa
+   filesDir (almacenamiento interno) para que las claves privadas no se escriban
+   junto al CSV. */
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setMatchDir(JNIEnv *env,jobject,jstring dir){
+    const char *p=env->GetStringUTFChars(dir,nullptr);
+    if(p){ strncpy(g_match_dir,p,sizeof(g_match_dir)-1); g_match_dir[sizeof(g_match_dir)-1]='\0'; }
+    env->ReleaseStringUTFChars(dir,p);
+}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
     g_mode.store(mode);
@@ -1072,6 +1175,7 @@ JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     install_crash_handlers();
     if(g_running.load())return;
+    if(g_stopping.load())return;   /* workers de la sesión anterior aún vivos */
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
@@ -1080,7 +1184,9 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
     void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn :
                           (g_mode.load()==2) ? worker_rawkey_fn : worker_bip39_fn;
-    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,nullptr);
+    /* Se pasaba nullptr, así que ningún worker conocía su índice y todos
+       acababan compitiendo por un único núcleo. */
+    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,(void*)(intptr_t)i);
     g_active=n;
     const char *modeStr=(g_mode.load()==1)?"PUZZLE":(g_mode.load()==2)?"RAWKEY":"BIP39";
     add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
@@ -1089,16 +1195,31 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
     if(!g_running.load())return;
+    /* Idempotente: si ya se está parando, no montar otro joiner. */
+    bool expected=false;
+    if(!g_stopping.compare_exchange_strong(expected,true))return;
     g_stop.store(true);
     std::thread([]{
         for(int i=0;i<g_active;i++) pthread_join(g_workers[i],nullptr);
         g_running.store(false);g_active=0;
+        g_stopping.store(false);
         add_log("Stopped | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
     }).detach();
 }
 
+/* ¿Hay una parada en curso? La UI lo usa para no aceptar pulsaciones mientras
+   los workers todavía no han terminado. */
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_isStopping(JNIEnv *,jobject){return (jboolean)g_stopping.load();}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
+
+/* Máscara de rutas BIP39: bit0 = BIP44, bit1 = BIP84. Al menos una. */
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setBip39Paths(JNIEnv *,jobject,jint mask){
+    g_bip39_paths.store((mask&3)==0 ? 3 : (mask&3));
+}
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){

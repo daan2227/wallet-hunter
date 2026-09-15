@@ -17,8 +17,48 @@ object NetworkManager {
 
     const val TCP_PORT  = 7771
     const val UDP_PORT  = 7772
-    const val APP_ID    = "WALLET_HUNTER_V1"
+    const val APP_ID    = "WALLET_HUNTER_V2"   // V1 no tenía autenticación
     const val BLOCK_SIZE_HEX = "100000000" // 4B keys por bloque de red
+
+    /* ── Límites defensivos ───────────────────────────────────────────────────
+       El servidor escucha en 0.0.0.0 y acepta conexiones de cualquiera en la
+       red, así que todo lo que venga de fuera va acotado. */
+    private const val MAX_LINE_BYTES  = 8 * 1024
+    private const val MAX_WORKERS     = 64
+    private const val MAX_NET_THREADS = 16
+    private const val SOCKET_TIMEOUT_MS = 15_000
+
+    /** Secreto compartido: el master lo genera y lo muestra, el worker lo teclea. */
+    @Volatile var authToken: String = ""
+        private set
+
+    private fun generateToken(): String {
+        val alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   // sin caracteres ambiguos
+        val rnd = java.security.SecureRandom()
+        return (1..8).map { alphabet[rnd.nextInt(alphabet.length)] }.joinToString("")
+    }
+
+    /** Comparación en tiempo constante para no filtrar el token carácter a carácter. */
+    private fun tokenMatches(received: String?): Boolean {
+        val expected = authToken
+        if (expected.isEmpty() || received == null) return false
+        return java.security.MessageDigest.isEqual(
+            received.toByteArray(Charsets.UTF_8), expected.toByteArray(Charsets.UTF_8))
+    }
+
+    /** readLine() sin cota permite que un peer agote la memoria con una línea infinita. */
+    private fun readLineLimited(reader: BufferedReader): String? {
+        val sb = StringBuilder()
+        while (true) {
+            val c = reader.read()
+            if (c < 0) return if (sb.isEmpty()) null else sb.toString()
+            if (c == '\n'.code) return sb.toString()
+            if (c != '\r'.code) {
+                sb.append(c.toChar())
+                if (sb.length > MAX_LINE_BYTES) throw IOException("line too long")
+            }
+        }
+    }
 
     data class NetBlock(
         val blockId:    String,
@@ -49,7 +89,12 @@ object NetworkManager {
 
     private val workers     = ConcurrentHashMap<String, NetWorker>()
     private val assignedBlocks = ConcurrentHashMap<String, NetBlock>()
-    private val executor    = Executors.newCachedThreadPool()
+    // Acotado: newCachedThreadPool() creaba un hilo por conexión entrante, así que
+    // abrir muchas conexiones agotaba hilos y memoria.
+    private val executor: ExecutorService =
+        Executors.newFixedThreadPool(MAX_NET_THREADS) { r ->
+            Thread(r, "net").apply { isDaemon = true }
+        }
     private var serverSocket: ServerSocket? = null
     private var udpSocket:    DatagramSocket? = null
 
@@ -58,7 +103,9 @@ object NetworkManager {
         isMaster = true; isWorker = false
         isRunning.set(true)
         deviceId = android.os.Build.MODEL.replace(" ", "_")
+        authToken = generateToken()
         log("Master iniciado — Puzzle #$puzzleNum")
+        log("Código de acceso: $authToken")
         log("Rango: $rangeStart → $rangeEnd")
 
         // Servidor TCP
@@ -83,10 +130,23 @@ object NetworkManager {
                                         rangeStart: String, rangeEnd: String) {
         val workerId = socket.inetAddress.hostAddress ?: return
         try {
+            socket.soTimeout = SOCKET_TIMEOUT_MS
             val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
             val writer = PrintWriter(socket.getOutputStream(), true)
 
-            val msg = JSONObject(reader.readLine() ?: return)
+            val msg = JSONObject(readLineLimited(reader) ?: return)
+
+            // Sin esto cualquiera en la red local podía operar el protocolo.
+            if (!tokenMatches(msg.optString("auth", null))) {
+                log("Conexión rechazada de $workerId (código inválido)")
+                writer.println(JSONObject().put("type", "AUTH_FAIL").toString())
+                return
+            }
+            if (workers.size >= MAX_WORKERS && !workers.containsKey(workerId)) {
+                log("Worker $workerId rechazado: límite de $MAX_WORKERS alcanzado")
+                return
+            }
+
             when (msg.optString("type")) {
                 "REGISTER" -> {
                     val device = msg.optString("device", workerId)
@@ -96,8 +156,7 @@ object NetworkManager {
                     notifyWorkers()
 
                     // Asignar bloque
-                    val block = nextBlock(puzzleNum, rangeStart, rangeEnd)
-                    assignedBlocks[workerId] = block
+                    val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
                     worker.block = block.blockId
                     writer.println(JSONObject().apply {
                         put("type",  "BLOCK")
@@ -123,8 +182,7 @@ object NetworkManager {
                     onBlockScanned?.invoke(blockId, puzzleNum)
 
                     // Asignar nuevo bloque
-                    val block = nextBlock(puzzleNum, rangeStart, rangeEnd)
-                    assignedBlocks[workerId] = block
+                    val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
                     workers[workerId]?.block = block.blockId
                     writer.println(JSONObject().apply {
                         put("type",     "BLOCK")
@@ -145,10 +203,11 @@ object NetworkManager {
                     log("Sync enviado a $workerId: ${globalScannedBlocks.size} bloques")
                 }
                 "MATCH" -> {
+                    // Sólo se notifica la dirección. La clave privada NUNCA viaja
+                    // por la red: se queda en el dispositivo que la encontró.
                     val addr = msg.optString("addr")
-                    val wif  = msg.optString("wif")
                     log("🎯 MATCH de ${workers[workerId]?.device}: $addr")
-                    onLog?.invoke("🎯 MATCH ENCONTRADO: $addr | WIF: $wif")
+                    onLog?.invoke("🎯 MATCH en ${workers[workerId]?.device ?: workerId}: $addr")
                 }
             }
         } catch (e: Exception) {
@@ -160,45 +219,54 @@ object NetworkManager {
         }
     }
 
-    private var blockCounter = 0L
-    private fun nextBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): NetBlock {
+    /**
+     * Elige y reserva un bloque. Va sincronizado: antes se comprobaba si el
+     * bloque estaba libre y se asignaba después, sin atomicidad, así que dos
+     * workers que registraran a la vez podían recibir el mismo rango.
+     */
+    @Synchronized
+    private fun nextBlock(workerId: String, puzzleNum: Int,
+                          rangeStart: String, rangeEnd: String): NetBlock {
         val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
         val size  = java.math.BigInteger(BLOCK_SIZE_HEX, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
 
-        // Bloque aleatorio no asignado
-        val range = end.subtract(start)
-        val totalBlocks = range.divide(size).toLong().coerceAtMost(1_000_000)
-        var blockIdx: Long
+        val totalBlocks = end.subtract(start).divide(size).toLong().coerceAtLeast(1).coerceAtMost(1_000_000)
+        val taken = assignedBlocks.values.mapTo(HashSet()) { it.blockId }
+        val rnd = java.security.SecureRandom()
+        var blockIdx = 0L
         var attempts = 0
         do {
-            blockIdx = (Math.random() * totalBlocks).toLong()
+            blockIdx = (rnd.nextDouble() * totalBlocks).toLong()
             attempts++
-        } while ((assignedBlocks.values.any { it.blockId == blockIdx.toString() } ||
+        } while ((taken.contains(blockIdx.toString()) ||
                   globalScannedBlocks.contains(blockIdx.toString())) && attempts < 200)
 
         val bStart = start.add(size.multiply(java.math.BigInteger.valueOf(blockIdx)))
         val bEnd   = bStart.add(size).min(end)
-        blockCounter++
 
-        return NetBlock(
+        val block = NetBlock(
             blockId    = blockIdx.toString(),
             rangeStart = bStart.toString(16).padStart(18, '0'),
             rangeEnd   = bEnd.toString(16).padStart(18, '0'),
             puzzleNum  = puzzleNum
         )
+        assignedBlocks[workerId] = block   // reservado dentro del bloque sincronizado
+        return block
     }
 
     // ── Worker ────────────────────────────────────────────────────────────────
-    fun startWorker(masterIp: String) {
+    fun startWorker(masterIp: String, token: String) {
         isWorker = true; isMaster = false
         isRunning.set(true)
         deviceId = android.os.Build.MODEL.replace(" ", "_")
+        authToken = token.trim().uppercase()
         log("Worker iniciando → Master: $masterIp")
 
         executor.submit {
             try {
                 val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
+                socket.soTimeout = SOCKET_TIMEOUT_MS
                 val writer = PrintWriter(socket.getOutputStream(), true)
                 val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
 
@@ -207,10 +275,16 @@ object NetworkManager {
                     put("type",   "REGISTER")
                     put("device", android.os.Build.MODEL)
                     put("id",     deviceId)
+                    put("auth",   authToken)
                 }.toString())
 
                 // Recibir bloque
-                val response = JSONObject(reader.readLine() ?: return@submit)
+                val response = JSONObject(readLineLimited(reader) ?: return@submit)
+                if (response.optString("type") == "AUTH_FAIL") {
+                    log("Código de acceso incorrecto")
+                    isRunning.set(false); isWorker = false
+                    return@submit
+                }
                 if (response.optString("type") == "BLOCK") {
                     val block = NetBlock(
                         blockId    = response.getString("block_id"),
@@ -239,6 +313,7 @@ object NetworkManager {
                     put("type",  "PROGRESS")
                     put("speed", speed)
                     put("id",    deviceId)
+                    put("auth",  authToken)
                 }.toString())
                 socket.close()
             } catch (e: Exception) {}
@@ -255,9 +330,10 @@ object NetworkManager {
                     put("type",     "DONE")
                     put("block_id", blockId)
                     put("id",       deviceId)
+                    put("auth",     authToken)
                 }.toString())
                 // Recibir nuevo bloque
-                val resp = JSONObject(reader.readLine() ?: return@submit)
+                val resp = JSONObject(readLineLimited(reader) ?: return@submit)
                 if (resp.optString("type") == "BLOCK") {
                     onBlock?.invoke(NetBlock(
                         blockId    = resp.getString("block_id"),
@@ -271,18 +347,25 @@ object NetworkManager {
         }
     }
 
-    fun reportMatch(masterIp: String, addr: String, wif: String) {
+    /**
+     * Avisa al master de un hallazgo. Deliberadamente NO transmite la clave
+     * privada: la versión anterior enviaba el WIF en texto plano por TCP, de modo
+     * que cualquiera que se hiciera pasar por master (el descubrimiento UDP no
+     * autenticaba) se la llevaba. La clave permanece en este dispositivo.
+     */
+    fun reportMatch(masterIp: String, addr: String) {
         executor.submit {
             try {
-                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                writer.println(JSONObject().apply {
-                    put("type", "MATCH")
-                    put("addr", addr)
-                    put("wif",  wif)
-                    put("id",   deviceId)
-                }.toString())
-                socket.close()
+                Socket().use { socket ->
+                    socket.connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000)
+                    socket.soTimeout = SOCKET_TIMEOUT_MS
+                    PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+                        put("type", "MATCH")
+                        put("addr", addr)
+                        put("id",   deviceId)
+                        put("auth", authToken)
+                    }.toString())
+                }
             } catch (e: Exception) {}
         }
     }
@@ -314,31 +397,53 @@ object NetworkManager {
     }
 
     private fun broadcastBeacon(ctx: Context) {
+        // El lock y el socket se liberaban al final del try: si el bucle lanzaba,
+        // el MulticastLock quedaba retenido para siempre consumiendo batería.
+        var lock: WifiManager.MulticastLock? = null
+        var udp: DatagramSocket? = null
         try {
             val wifi = ctx.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val lock = wifi.createMulticastLock("hunter_beacon")
-            lock.acquire()
-            val udp = DatagramSocket()
-            udp.broadcast = true
+            lock = wifi.createMulticastLock("hunter_beacon").also { it.acquire() }
+            udp = DatagramSocket().apply { broadcast = true }
+            udpSocket = udp
+            // El beacon sólo anuncia presencia; el código de acceso nunca se emite.
             val msg = "$APP_ID|${android.os.Build.MODEL}|master".toByteArray()
             val broadcast = InetAddress.getByName("255.255.255.255")
             while (isRunning.get()) {
-                val packet = DatagramPacket(msg, msg.size, broadcast, UDP_PORT)
-                try { udp.send(packet) } catch (e: Exception) {}
+                try { udp.send(DatagramPacket(msg, msg.size, broadcast, UDP_PORT)) } catch (e: Exception) {}
                 Thread.sleep(2000)
             }
-            udp.close()
-            lock.release()
-        } catch (e: Exception) { log("Beacon error: ${e.message}") }
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } catch (e: Exception) {
+            log("Beacon error: ${e.message}")
+        } finally {
+            try { udp?.close() } catch (e: Exception) {}
+            udpSocket = null
+            try { if (lock?.isHeld == true) lock.release() } catch (e: Exception) {}
+        }
     }
 
     // ── Utils ─────────────────────────────────────────────────────────────────
+    /**
+     * IP local IPv4. Se enumeran las interfaces en vez de usar
+     * WifiManager.connectionInfo, que está deprecado desde API 31 y devuelve
+     * datos inválidos cuando la app no está en primer plano.
+     */
     fun getLocalIp(ctx: Context): String {
-        return try {
-            val wifi = ctx.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val ip = wifi.connectionInfo.ipAddress
-            "${ip and 0xff}.${ip shr 8 and 0xff}.${ip shr 16 and 0xff}.${ip shr 24 and 0xff}"
-        } catch (e: Exception) { "0.0.0.0" }
+        try {
+            for (iface in java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (iface.isLoopback || !iface.isUp) continue
+                for (addr in java.util.Collections.list(iface.inetAddresses)) {
+                    if (!addr.isLoopbackAddress && addr is Inet4Address) {
+                        return addr.hostAddress ?: continue
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            log("getLocalIp: ${e.message}")
+        }
+        return "0.0.0.0"
     }
 
 
@@ -353,9 +458,10 @@ object NetworkManager {
                 writer.println(JSONObject().apply {
                     put("type", "SYNC_REQUEST")
                     put("id",   deviceId)
+                    put("auth", authToken)
                 }.toString())
 
-                val resp = JSONObject(reader.readLine() ?: return@submit)
+                val resp = JSONObject(readLineLimited(reader) ?: return@submit)
                 if (resp.optString("type") == "SYNC_RESPONSE") {
                     val blocks = resp.getJSONArray("blocks")
                     var count = 0
@@ -390,9 +496,12 @@ object NetworkManager {
     fun stop() {
         isRunning.set(false)
         isMaster = false; isWorker = false
+        authToken = ""                       // invalida el código al parar
         try { serverSocket?.close() } catch (e: Exception) {}
         try { udpSocket?.close()    } catch (e: Exception) {}
+        serverSocket = null
         workers.clear()
+        assignedBlocks.clear()
         log("Red detenida")
     }
 

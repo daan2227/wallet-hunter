@@ -3,6 +3,8 @@ package com.hunter.btc
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }
     external fun loadCsv(path: String)
+    /** Directorio donde el motor escribe coincidencias.txt (contiene WIF en claro). */
+    external fun setMatchDir(dir: String)
     external fun setMode(mode: Int)
     external fun setRange(start: String, end: String)
     external fun setTarget(addr: String)
@@ -11,9 +13,13 @@ object HunterEngine {
     external fun stopHunting()
     external fun setCpuLimit(v: Int)
     external fun setPbkdf2Mode(fast: Int)
+    /** Rutas a derivar en modo BIP39: bit0=BIP44 (1...), bit1=BIP84 (bc1q...). */
+    external fun setBip39Paths(mask: Int)
     external fun isCsvLoaded(): Boolean
     external fun isLoading(): Boolean
     external fun isRunning(): Boolean
+    /** Parada en curso: los workers aún no han terminado. */
+    external fun isStopping(): Boolean
     external fun getLoadStatus(): String
     external fun getWps(): Double
     external fun getCount(): Long

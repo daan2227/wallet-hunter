@@ -1,7 +1,7 @@
 name: Build APK
 on:
   push:
-    branches: [ main ]
+    branches: [ main, claude/** ]
   workflow_dispatch:
 
 permissions:
@@ -42,28 +42,48 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
-    - name: Create keystore for signing
+    # Restaura el keystore real si el secret existe; si no, genera el de debug
+    # para que la compilación siga funcionando (APK no publicable).
+    - name: Restore signing keystore
+      env:
+        KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
       run: |
-        keytool -genkeypair -v           -keystore app/debug.keystore           -alias androiddebugkey -keyalg RSA -keysize 2048           -validity 10000 -storepass android -keypass android           -dname "CN=Android Debug,O=Android,C=US"
+        if [ -n "$KEYSTORE_B64" ]; then
+          echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
+          echo "Using release keystore from secrets."
+        else
+          echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the debug key."
+          keytool -genkeypair -v -keystore app/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 \
+            -validity 10000 -storepass android -keypass android \
+            -dname "CN=Android Debug,O=Android,C=US"
+        fi
 
     - name: Build Release APK
+      env:
+        RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}
+        RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+        RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease
 
+    # Esta rama publica bajo su propio tag. El tag "latest-build" pertenece a
+    # playstore/seed-recovery; compartirlo hacía que cualquier build de esta
+    # rama borrase y reemplazase aquel APK bajo la misma etiqueta de descarga.
     - name: Delete old release
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release delete latest-build --yes 2>/dev/null || true
-        git push --delete origin latest-build 2>/dev/null || true
+        gh release delete latest-build-full --yes 2>/dev/null || true
+        git push --delete origin latest-build-full 2>/dev/null || true
 
     - name: Create Release with APK
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        gh release create latest-build \
+        gh release create latest-build-full \
           app/build/outputs/apk/release/*.apk \
-          --title "Latest Build $(date +%Y-%m-%d)" \
-          --notes "Auto-build from commit ${{ github.sha }}" \
+          --title "Full build (hunting) $(date +%Y-%m-%d)" \
+          --notes "Auto-build from commit ${{ github.sha }}. Full app including hunting features — NOT the Play Store build." \
           --prerelease

@@ -188,9 +188,12 @@ class DebugActivity : AppCompatActivity() {
         val filesCard = card()
         filesCard.addView(label("ARCHIVOS DE LOG"))
 
+        // coincidencias.txt vive ahora en almacenamiento interno; el externo se
+        // deja listado sólo para poder borrar restos de versiones anteriores.
         val logFiles = listOf(
             File(filesDir, "crash_log.txt"),
             File(filesDir, "puz_debug.txt"),
+            File(filesDir, "coincidencias.txt"),
             File(getExternalFilesDir(null), "crash_log.txt"),
             File(getExternalFilesDir(null), "coincidencias.txt")
         )
@@ -303,8 +306,8 @@ class DebugActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("hunt_prefs", MODE_PRIVATE)
         sb.appendLine("=== SISTEMA ===")
         sb.appendLine("RAM: ${usedMb}MB usado / ${maxMb}MB max")
-        sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
         sb.appendLine("Scan activo: ${prefs.getBoolean("scan_was_running", false)}")
+        sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
         val modeStr = when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }
         sb.appendLine("Modo: $modeStr")
         try {

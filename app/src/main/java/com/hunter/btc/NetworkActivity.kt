@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.widget.*
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 
 class NetworkActivity : AppCompatActivity() {
@@ -12,6 +13,7 @@ class NetworkActivity : AppCompatActivity() {
     private var tvWorkers: TextView? = null
     private var tvIp: TextView? = null
     private var etMasterIp: EditText? = null
+    private var etCode: EditText? = null
     private var btnMaster: Button? = null
     private var btnWorker: Button? = null
     private var btnStop: Button? = null
@@ -114,6 +116,30 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(etMasterIp)
 
+        root.addView(TextView(this).apply {
+            text = "Código de acceso (lo muestra el Master):"
+            textSize = 11f; setTextColor(TXT)
+            setPadding(0, dp(8), 0, dp(4))
+        })
+        etCode = EditText(this).apply {
+            hint = "Ej. K7M2PQRT"
+            setTextColor(TXT); setHintTextColor(MUTED)
+            textSize = 13f; typeface = Typeface.MONOSPACE
+            filters = arrayOf(android.text.InputFilter.AllCaps(),
+                              android.text.InputFilter.LengthFilter(8))
+            background = GradientDrawable().apply {
+                setColor(CARD); setStroke(1, 0xFF2A3028.toInt())
+                cornerRadius = dp(6).toFloat()
+            }
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            inputType = android.text.InputType.TYPE_CLASS_TEXT
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        root.addView(etCode)
+
         actionButton("Buscar Masters en red", AppTheme.CYAN, android.graphics.Color.BLACK).also {
             it.setOnClickListener { discoverMasters() }
             root.addView(it)
@@ -198,14 +224,28 @@ class NetworkActivity : AppCompatActivity() {
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         val ip = NetworkManager.getLocalIp(this)
-        tvLog?.text = "✓ Master iniciado\nIP: $ip\nPuzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
-        Toast.makeText(this, "Master activo — IP: $ip", Toast.LENGTH_LONG).show()
+        val code = NetworkManager.authToken
+        tvLog?.text = "✓ Master iniciado\nIP: $ip\nCódigo: $code\n" +
+                      "Puzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
+        // El código hay que teclearlo en cada worker; sin él no se aceptan.
+        AlertDialog.Builder(this)
+            .setTitle("Master activo")
+            .setMessage("IP: $ip\n\nCódigo de acceso:\n\n        $code\n\n" +
+                        "Introduce este código en cada worker. Sin él, ningún " +
+                        "dispositivo de la red puede conectarse.")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun startAsWorker() {
         val ip = etMasterIp?.text?.toString()?.trim() ?: ""
         if (ip.isEmpty()) {
             Toast.makeText(this, "Ingresa la IP del Master", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val code = etCode?.text?.toString()?.trim() ?: ""
+        if (code.isEmpty()) {
+            Toast.makeText(this, "Ingresa el código que muestra el Master", Toast.LENGTH_SHORT).show()
             return
         }
         NetworkManager.onBlock = { block ->
@@ -227,7 +267,7 @@ class NetworkActivity : AppCompatActivity() {
                 tvLog?.text = "$log\n▶ Bloque #${block.blockId}\n  ${block.rangeStart.take(16)}..."
             }
         }
-        NetworkManager.startWorker(ip)
+        NetworkManager.startWorker(ip, code)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         tvLog?.text = "Conectando a master $ip..."
@@ -271,11 +311,27 @@ class NetworkActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        // No limpiar callbacks — la red sigue activa en background
-        // Solo quitar referencias a la UI destruida
+        // La red sigue activa en background, pero ningún callback puede seguir
+        // apuntando a esta Activity destruida. onBlock capturaba `this` y la
+        // mantenía viva indefinidamente; se reinstala con el contexto de
+        // aplicación para que el worker siga recibiendo bloques.
         NetworkManager.onLog     = null
         NetworkManager.onWorkers = null
-        // onBlock se mantiene para workers activos
+        val app = applicationContext
+        NetworkManager.onBlock = { block ->
+            try {
+                HunterEngine.setRange(block.rangeStart, block.rangeEnd)
+                HunterEngine.setMode(1)
+                if (!HunterEngine.isRunning()) {
+                    val prefs = app.getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+                    HunterEngine.startHunting(
+                        prefs.getInt("puzzle_threads", 3) + 1,
+                        prefs.getInt("puzzle_cpu", 70) + 10)
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("NetworkActivity", "onBlock: ${e.message}", e)
+            }
+        }
     }
 
     override fun onBackPressed() {
