@@ -1283,10 +1283,25 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
 
 
 static const char B58_ALPHA[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+/*
+ * Decodifica un WIF validándolo entero.
+ *
+ * La versión anterior no comprobaba el checksum ni la longitud: buscaba el
+ * primer byte 0x80 dentro del buffer y copiaba los 32 siguientes. Con eso,
+ * cambiar un carácter en medio de la clave devolvía OTRA clave privada
+ * distinta, sin decir nada —comprobado: un typo en el carácter 26 de un WIF
+ * válido daba ...10311c1df79751f535b39874e818fb en lugar de la original—. Y si
+ * no encontraba ningún 0x80 dejaba start=0 y devolvía true igualmente, así que
+ * cualquier cadena Base58 "decodificaba" bien: "1"*52 daba una clave de ceros.
+ *
+ * Formato: 0x80 | privkey(32) | [0x01 si comprimida] | checksum(4)
+ * El checksum son los 4 primeros bytes de SHA256(SHA256(resto)).
+ */
 static bool wif_decode(const char *wif, uint8_t *privkey) {
-    // Base58 decode into fixed 256-byte buffer (big-endian result)
-    uint8_t buf[64] = {0};
     size_t wlen = strlen(wif);
+    if (wlen < 50 || wlen > 53) return false;
+
+    uint8_t buf[64] = {0};
     for (size_t i = 0; i < wlen; i++) {
         const char *p = strchr(B58_ALPHA, wif[i]);
         if (!p) return false;
@@ -1296,19 +1311,31 @@ static bool wif_decode(const char *wif, uint8_t *privkey) {
             buf[j] = (uint8_t)(carry & 0xff);
             carry >>= 8;
         }
+        if (carry) return false;          /* no cabe en 64 bytes: no es un WIF */
     }
-    // The decoded payload is right-aligned in buf
-    // WIF structure: 0x80 + privkey(32) + [0x01 if compressed] + checksum(4)
-    // Total payload: 37 (uncompressed) or 38 (compressed)
-    // privkey starts at byte index 1 from start of payload
-    // Find start of payload in buf (skip leading zero bytes but keep version)
-    int start = 0;
-    for (int i = 0; i < 64 - 33; i++) {
-        if (buf[i] == 0x80) { start = i; break; }
-    }
-    // privkey is right after version byte
-    if (start + 33 > 64) return false;
-    memcpy(privkey, buf + start + 1, 32);
+
+    /* En Base58 cada '1' inicial es un byte 0x00 por delante del número. */
+    size_t zeros = 0;
+    while (zeros < wlen && wif[zeros] == '1') zeros++;
+    size_t first = 0;
+    while (first < 64 && buf[first] == 0) first++;
+
+    size_t plen = zeros + (64 - first);
+    if (plen != 37 && plen != 38) return false;
+
+    uint8_t payload[38] = {0};
+    memcpy(payload + zeros, buf + first, 64 - first);
+
+    if (payload[0] != 0x80) return false;                 /* mainnet */
+    if (plen == 38 && payload[33] != 0x01) return false;  /* marca de comprimida */
+
+    uint8_t ck[32];
+    SHA256_CTX sc;
+    SHA256_Init(&sc); SHA256_Update(&sc, payload, plen - 4); SHA256_Final(ck, &sc);
+    SHA256_Init(&sc); SHA256_Update(&sc, ck, 32);           SHA256_Final(ck, &sc);
+    if (memcmp(ck, payload + plen - 4, 4) != 0) return false;
+
+    memcpy(privkey, payload + 1, 32);
     return true;
 }
 
@@ -1321,6 +1348,13 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     env->ReleaseStringUTFChars(jwif, wif);
     if (!ok) return env->NewStringUTF("");
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    /* Un WIF puede tener checksum correcto y aun así llevar un escalar fuera de
+       rango (0, o >= n). get_pub33() ignora el fallo de pubkey_create y deja la
+       clave pública a ceros, de donde saldría una dirección inventada. */
+    if (!secp256k1_ec_seckey_verify(ctx, privkey)) {
+        secp256k1_context_destroy(ctx);
+        return env->NewStringUTF("");
+    }
     uint8_t h160[20]; char addr[64] = {0};
     pk_to_h160(ctx, privkey, h160);
     h160_to_addr(h160, addr);
@@ -1513,6 +1547,11 @@ static std::string build_and_sign_tx(const std::string &req){
     if(to_spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
     int64_t total_in=0; for(auto &u:utxos)total_in+=u.amount;
     int64_t change=total_in-send_sat-fee_sat;
+    /* Sin esto, si las entradas no cubren importe+comisión, has_change quedaba
+       en false y se firmaba una transacción que gasta más de lo que entra: la
+       red la rechaza y no hay forma de saber por qué. Kotlin ya lo comprueba,
+       pero esto firma dinero y no debe fiarse de quien le llame. */
+    if(change<0){secp256k1_context_destroy(ctx);return "ERROR:insufficient_funds";}
     bool has_change=(change>546);
     // Build outputs bytes (shared for sighash)
     std::string outs_bytes;
