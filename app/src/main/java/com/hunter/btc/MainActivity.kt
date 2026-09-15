@@ -833,117 +833,130 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(0, 0, 0, dp(80))
         }
 
-        // ── HERO SPEED CARD ───────────────────────────────────────────────
+        // ── VELOCIDAD ─────────────────────────────────────────────────────
+        //
+        // Estaba todo centrado dentro de una tarjeta con borde, y con la
+        // unidad en su propia línea DEBAJO de la cifra. Entre medias, el pico
+        // alineado a la derecha y la media al centro, ambos a 9sp: tres
+        // alineaciones distintas en cuatro líneas.
+        //
+        // Ahora: una cifra a la izquierda con su unidad al lado, y debajo una
+        // sola línea con pico y media. La tarjeta sobra — no separa nada.
         val heroCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(0xFF161616.toInt())
-                setStroke(1, 0xFF222222.toInt())
-            }
-            setPadding(dp(24), dp(24), dp(24), dp(16))
+            setPadding(dp(AppTheme.PAD_SIDE), dp(20), dp(AppTheme.PAD_SIDE), dp(4))
         }
 
-        // Label
         heroCard.addView(TextView(this).apply {
-            text = "VELOCIDAD"
-            textSize = 9f
-            setTextColor(0xFF4A4A4A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.2f
-            gravity = Gravity.CENTER
+            text = "Velocidad"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(4) }
+            ).apply { bottomMargin = dp(8) }
         })
 
-        // Big speed number
+        // Cifra y unidad en la misma línea, alineadas por la base.
+        val speedRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            baselineAligned = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         tvWps = TextView(this).apply {
-            text = "0.0"
-            textSize = 56f
-            setTextColor(0xFFF2F2F2.toInt())
+            text = "0,0"
+            textSize = AppTheme.SP_DISPLAY
+            setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            letterSpacing = -0.04f
         }
-        heroCard.addView(tvWps)
-        tvPeakWps = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.END
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(2) }
-        }
-        heroCard.addView(tvPeakWps)
-
-        // Promedio de velocidad
-        tvAvgWps = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        heroCard.addView(tvAvgWps)
-
         // La unidad era el literal fijo "K KEYS / SEG" sobre una cifra que
         // getWps() da en claves por segundo sin escalar: 1,843,200 se leía como
-        // 1.8 G/s, mil veces la velocidad real. Ahora la escala el mismo
-        // scaleSpeed() que ya usaba la pestaña de puzzle, donde "peak 4.34
-        // MKeys" convivía con ese "K KEYS" contradiciéndolo.
+        // 1.8 G/s, mil veces la velocidad real. La escala scaleSpeed().
         tvSpeedUnitScan = TextView(this).apply {
-            text = "KEYS / SEG"
-            textSize = 10f
-            setTextColor(0xFF4A4A4A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.15f
-            gravity = Gravity.CENTER
+            text = "Keys/s"
+            textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(8) }
+        }
+        speedRow.addView(tvWps); speedRow.addView(tvSpeedUnitScan)
+        heroCard.addView(speedRow)
+
+        // Pico y media: una sola línea, mismo tamaño, misma alineación.
+        val subRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(20) }
+            ).apply { topMargin = dp(12); bottomMargin = dp(22) }
         }
-        heroCard.addView(tvSpeedUnitScan)
+        tvPeakWps = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+        }
+        tvAvgWps = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(6) }
+        }
+        subRow.addView(tvPeakWps); subRow.addView(tvAvgWps)
+        heroCard.addView(subRow)
 
         // ── STAT GRID 2x2 ─────────────────────────────────────────────────
+        // El borde sobraba: sobre #0E0E0E, una tarjeta de #161616 ya se ve.
+        // Un borde MÁS un cambio de tono es decir dos veces lo mismo.
         fun statCard(accentColor: Int, build: LinearLayout.() -> Unit): LinearLayout {
             return LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(0xFF161616.toInt())
-                    cornerRadius = dp(16).toFloat()
-                    setStroke(1, 0xFF222222.toInt())
+                    setColor(AppTheme.BG_CARD)
+                    cornerRadius = dp(AppTheme.R_CARD.toInt()).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    setMargins(dp(4), dp(4), dp(4), dp(4))
+                    setMargins(dp(AppTheme.GAP / 2), dp(AppTheme.GAP / 2),
+                               dp(AppTheme.GAP / 2), dp(AppTheme.GAP / 2))
                 }
-                setPadding(dp(14), dp(14), dp(14), dp(14))
-                // top accent line via foreground would need API23+, use inner view
+                setPadding(dp(16), dp(16), dp(16), dp(16))
                 build()
             }
         }
 
+        // Era mayúscula monoespaciada a 9sp con letter-spacing, que es un
+        // rótulo de instrumento, no de app. A 12sp en frase se lee sin esfuerzo.
         fun statLabel(text: String) = TextView(this).apply {
             this.text = text
-            textSize = 9f
-            setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.1f
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
         }
 
+        // Las cuatro tarjetas usaban cuatro tratamientos: azul a 22sp, verde a
+        // 13sp, verde a 28sp y blanco a 22sp. Nada de eso significaba nada — el
+        // color no distinguía tipos de dato, sólo hacía ruido. Un tratamiento
+        // para todas, y el acento reservado para lo que de verdad lo pide.
         fun statValue(initial: String, color: Int) = TextView(this).apply {
             text = initial
-            textSize = 22f
-            setTextColor(color)
-            typeface = AppTheme.display(context)
+            textSize = AppTheme.SP_FIGURE
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
             letterSpacing = -0.02f
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(7) }
         }
 
         tvCount = statValue("0", 0xFF6EA8FE.toInt())
@@ -974,10 +987,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // propia tarjeta y las claves de la sesión en TOTAL KEYS.
             addView(statLabel("RITMO"))
             val tvSessionStat = TextView(this@MainActivity).apply {
-                text = "—"; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
-                typeface = AppTheme.display(context)
+                text = "—"; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.title(context)
                 letterSpacing = -0.02f
-                maxLines = 2
+                maxLines = 1
             }
             tvBinInfoRef = tvSessionStat
             addView(tvSessionStat)
@@ -990,8 +1003,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val h = f.length() / 20
                     if (h >= 1_000_000) "${"%.1f".format(h/1e6)}M" else "${h/1000}K"
                 } else "—"
-                textSize = 28f; setTextColor(ACCENT)
-                typeface = AppTheme.display(context)
+                // El dataset no es ni una acción, ni un saldo, ni "está
+                // corriendo": no le toca el acento.
+                textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.title(context)
                 letterSpacing = -0.02f
             }
             tvDatasetStat = tvBinStat
@@ -3524,15 +3539,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // Se mostraba sin escalar junto a un valor ya escalado:
                     // "1.76 MKeys" al lado de "peak 4,816,000" es ilegible.
                     val (pv, pu) = scaleSpeed(wps)
-                    tvPeakWps?.text = "peak $pv $pu"
-                    tvPeakWpsPuzzle?.text = "peak $pv $pu"
+                    tvPeakWps?.text = "Pico $pv $pu"
+                    tvPeakWpsPuzzle?.text = "pico $pv $pu"
                 }
                 if (wps > 0) {
                     avgWpsSum += wps
                     avgWpsCount++
                     val avg = avgWpsSum / avgWpsCount
                     val (av, au) = scaleSpeed(avg)
-                    tvAvgWps?.text = "promedio $av $au"
+                    tvAvgWps?.text = "· media $av $au"
                 }
 
                 if (puzzleMode) {
@@ -3592,8 +3607,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 } else {
                     val (sv, su) = scaleSpeed(wps)
-                    tvWps?.text = sv
-                    tvSpeedUnitScan?.text = "${su.uppercase()} / SEG"
+                    tvWps?.text = sv.replace('.', ',')
+                    // "MKeys/s" y no "MKEYS / SEG": la unidad va junto a la
+                    // cifra, no de rótulo debajo, así que se lee como una frase.
+                    tvSpeedUnitScan?.text = "$su/s"
                     tvCount?.text = formatCount(HunterEngine.getCount())
                     tvTime?.text = formatElapsed(sessionStartTime)
                     chartView?.addPoint(wps.toFloat())
@@ -3709,15 +3726,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
                           else "${total/1000}K"
                 tvDatasetStat?.text = fmt
-                tvDatasetStat?.textSize = 28f   // vuelve del tamaño de "sin cargar"
-                tvDatasetStat?.setTextColor(0xFF00C896.toInt())
+                tvDatasetStat?.textSize = AppTheme.SP_FIGURE  // vuelve de "sin cargar"
+                tvDatasetStat?.setTextColor(AppTheme.TXT_PRI)
             }
         } else {
             // Un "—" verde no dice nada, y aquí decía algo importante: sin
             // dataset, los modos BIP39 y RAW KEY no tienen contra qué comparar.
             tvDatasetStat?.text = "sin cargar"
-            tvDatasetStat?.textSize = 15f
-            tvDatasetStat?.setTextColor(0xFFFF6B35.toInt())
+            tvDatasetStat?.textSize = AppTheme.SP_BODY
+            tvDatasetStat?.setTextColor(AppTheme.WARN)
         }
         } catch (e: Exception) {
             // vars no inicializadas aún
@@ -4003,8 +4020,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // scan. El nombre ya está en tvCsvName y el recuento en DATASET.
             // Actualizar stat card con conteo de hashes
             tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
-            tvDatasetStat?.textSize = 28f
-            tvDatasetStat?.setTextColor(0xFF00C896.toInt())
+            tvDatasetStat?.textSize = AppTheme.SP_FIGURE
+            tvDatasetStat?.setTextColor(AppTheme.TXT_PRI)
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
         }
     }
