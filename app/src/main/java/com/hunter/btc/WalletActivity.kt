@@ -577,6 +577,61 @@ class WalletActivity : FragmentActivity() {
                 totalSat += bal
                 rows.add(BalanceRow(label, addr, bal, src))
             }
+
+            /* Descubrimiento HD.
+             *
+             * Hasta aquí sólo se miran las direcciones fijas que emite
+             * deriveWallet: índices 0..2 de recepción y poco más. Una seed usada
+             * en otra cartera puede tener los fondos en el índice 3 o el 7, y
+             * entonces esta pantalla decía 0,00000000 sobre una wallet que no
+             * está vacía — el peor error posible aquí.
+             *
+             * Se recorren las cuatro ramas hasta 20 direcciones seguidas sin
+             * estrenar (BIP44) y se añade lo que aparezca por encima de lo ya
+             * listado. Va después del primer repaso para que el total salga
+             * rápido y esto lo complete.
+             */
+            if (!isWifMode && mnemonic.isNotEmpty()) {
+                val yaListadas = addresses.values.toHashSet()
+                // Las de recepción se suman al mapa con la clave canónica
+                // (p2pkh_3, p2wpkh_5...). Así la pestaña Enviar las ofrece y
+                // pathStr les calcula su ruta sola: encontrarlas y no poder
+                // gastarlas sería peor que no encontrarlas.
+                val nuevasGastables = linkedMapOf<String, String>()
+                val clavePorProposito = mapOf(44 to "p2pkh", 49 to "p2sh",
+                                              84 to "p2wpkh", 86 to "p2tr")
+                for (purpose in HdScanner.PURPOSES) {
+                    val (usadas, _) = HdScanner.scanBranch(mnemonic, purpose, change = 0, testnet = isTestnet)
+                    for (f in usadas) {
+                        if (f.addr in yaListadas) continue
+                        yaListadas.add(f.addr)
+                        val r = BalanceLookup.query(f.addr, isTestnet) ?: continue
+                        if (r.source == "electrum") usedFallback = true
+                        totalSat += r.sat
+                        rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} [${f.index}]",
+                                            f.addr, r.sat, r.source))
+                        clavePorProposito[purpose]?.let { nuevasGastables["${it}_${f.index}"] = f.addr }
+                    }
+                    // El cambio también guarda fondos entre envíos.
+                    val (camb, _) = HdScanner.scanBranch(mnemonic, purpose, change = 1, testnet = isTestnet)
+                    for (f in camb) {
+                        if (f.addr in yaListadas) continue
+                        yaListadas.add(f.addr)
+                        val r = BalanceLookup.query(f.addr, isTestnet) ?: continue
+                        if (r.sat <= 0L) continue   // cambio ya gastado: no ensuciar la lista
+                        if (r.source == "electrum") usedFallback = true
+                        totalSat += r.sat
+                        rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} cambio [${f.index}]",
+                                            f.addr, r.sat, r.source))
+                    }
+                }
+                if (nuevasGastables.isNotEmpty()) {
+                    // Las pestañas se reconstruyen al cambiar de pestaña, así
+                    // que basta con dejarlas en el mapa: Enviar las verá.
+                    runOnUiThread { addresses.putAll(nuevasGastables) }
+                }
+            }
+
             var price = 0.0
             try {
                 val conn = java.net.URL("https://mempool.space/api/v1/prices").openConnection() as java.net.HttpURLConnection
@@ -899,6 +954,30 @@ class WalletActivity : FragmentActivity() {
                             return@Thread
                         }
                     }
+                    // El cambio volvía a la misma dirección de la que se
+                    // gastaba, dejando claro en la cadena cuál de las dos
+                    // salidas era el cambio y encadenando el historial. Se busca
+                    // la primera dirección sin estrenar de la rama .../1/k.
+                    //
+                    // Si la red no deja averiguarlo se manda sin change_path y
+                    // el motor usa la dirección de origen: peor para la
+                    // privacidad, pero el dinero vuelve a una dirección propia,
+                    // que es lo que no puede fallar.
+                    val purpose = when {
+                        fromKey.startsWith("p2pkh")  -> 44
+                        fromKey.startsWith("p2sh")   -> 49
+                        fromKey.startsWith("p2wpkh") -> 84
+                        else                         -> 86
+                    }
+                    val changePath = if (isWifMode) null
+                                     else HdScanner.nextChangePath(mnemonic, purpose, isTestnet)
+                    runOnUiThread {
+                        tvStatus.text = if (changePath != null)
+                            "Cambio a dirección nueva (${changePath.substringAfterLast('/')})"
+                        else "Cambio a la dirección de origen (no se pudo consultar la rama)"
+                        tvStatus.setTextColor(TXT_SEC)
+                    }
+
                     // Se construía concatenando strings: la dirección venía del
                     // EditText sin escapar, así que unas comillas permitían alterar
                     // los campos amount/fee del JSON que firma el motor.
@@ -909,6 +988,7 @@ class WalletActivity : FragmentActivity() {
                         .put("to",       toAddr)
                         .put("amount",   amtSat)
                         .put("fee",      feeSat)
+                        .apply { if (changePath != null) put("change_path", changePath) }
                         .toString()
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }

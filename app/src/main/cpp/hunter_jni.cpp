@@ -1427,6 +1427,66 @@ Java_com_hunter_btc_HunterEngine_hasTarget(JNIEnv *,jobject){
     return (jboolean)(g_has_target==1);
 }
 
+/*
+ * Deriva un tramo de direcciones de una rama cualquiera.
+ *
+ * derive_wallet_json() sólo emitía los índices 0..2 de la rama de recepción, así
+ * que la app no podía ni buscar fondos más allá del índice 0 al restaurar una
+ * seed, ni elegir una dirección de cambio sin estrenar. Esto expone la
+ * derivación completa: propósito (44/49/84/86), rama (0 recepción, 1 cambio),
+ * índice inicial y cuántas.
+ *
+ * Devuelve [{"i":n,"addr":"..."},...]; "[]" si los parámetros no valen.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring jmn,
+                                                 jint purpose, jint change,
+                                                 jint from, jint count){
+    if(count<=0||count>200||from<0||change<0||change>1) return env->NewStringUTF("[]");
+    if(purpose!=44&&purpose!=49&&purpose!=84&&purpose!=86) return env->NewStringUTF("[]");
+    const char *mn=env->GetStringUTFChars(jmn,nullptr);
+    if(!mn||!mn[0]){ if(mn)env->ReleaseStringUTFChars(jmn,mn); return env->NewStringUTF("[]"); }
+
+    uint8_t seed[64];
+    PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+    env->ReleaseStringUTFChars(jmn,mn);
+
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    HDKey master; { uint8_t s2[64]; memcpy(s2,seed,64); derive_master(s2,&master); }
+    HDKey a,b,c,branch;
+    derive_child(ctx,&master,0x80000000u+(uint32_t)purpose,&a);
+    derive_child(ctx,&a,0x80000000u+0,&b);
+    derive_child(ctx,&b,0x80000000u+0,&c);
+    derive_child(ctx,&c,(uint32_t)change,&branch);
+
+    std::string json="[";
+    for(int i=0;i<count;i++){
+        HDKey leaf; derive_child(ctx,&branch,(uint32_t)(from+i),&leaf);
+        char addr[MAX_ADDR]={0};
+        if(purpose==86){
+            secp256k1_keypair kp; secp256k1_xonly_pubkey xo; int par=0;
+            uint8_t internal[32], tweaked[32];
+            if(!secp256k1_keypair_create(ctx,&kp,leaf.key) ||
+               !secp256k1_keypair_xonly_pub(ctx,&xo,&par,&kp)) continue;
+            secp256k1_xonly_pubkey_serialize(ctx,internal,&xo);
+            if(!taproot_tweak_pubkey(ctx,internal,tweaked)) continue;
+            xonly_to_p2tr(tweaked,addr);
+        } else {
+            uint8_t h160[20]; pk_to_h160(ctx,leaf.key,h160);
+            if(purpose==44)      h160_to_addr(h160,addr);
+            else if(purpose==49) h160_to_p2sh(h160,addr);
+            else                 h160_to_bech32(h160,addr);
+        }
+        if(!addr[0]) continue;
+        if(json.size()>1) json+=",";
+        json+="{\"i\":"; json+=std::to_string(from+i);
+        json+=",\"addr\":\""; json+=addr; json+="\"}";
+    }
+    json+="]";
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(json.c_str());
+}
+
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn){
     const char *mn=env->GetStringUTFChars(jmn,nullptr);
@@ -1545,6 +1605,19 @@ static std::string addr_to_spk(const char *addr) {
     return spk;
 }
 
+/* nSequence de las entradas.
+ *
+ * Iba a 0xFFFFFFFF, que es el valor "final" y desactiva Replace-By-Fee: si
+ * mandabas con una comisión baja y la transacción se quedaba atascada, no había
+ * forma de subirla, sólo esperar. Con 0xFFFFFFFD la transacción se señala como
+ * reemplazable (BIP125) y además deja activo nLockTime, que 0xFFFFFFFE sí
+ * permitiría pero 0xFFFFFFFF no.
+ *
+ * Tiene que ser el MISMO valor en el preimagen de firma y en la transacción
+ * serializada; si divergen, la firma no vale.
+ */
+static const uint32_t TX_SEQUENCE = 0xFFFFFFFD;
+
 static std::string build_and_sign_tx(const std::string &req){
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     std::string mnemonic=json_str(req,"mnemonic");
@@ -1605,7 +1678,9 @@ static std::string build_and_sign_tx(const std::string &req){
         if(!tr_ok){secp256k1_context_destroy(ctx);return "ERROR:taproot_key";}
     }
 
-    // scriptPubKey propio: adonde va el cambio.
+    /* scriptPubKey de la ENTRADA que se gasta. Ojo: en la firma heredada esto
+       hace también de scriptCode del input, así que no puede ser la dirección
+       de cambio — por eso spk_change va aparte. */
     std::string spk_me;
     if(stype==SP_P2TR){
         spk_me+='\x51'; spk_me+='\x20'; spk_me+=std::string((char*)tr_xonly,32);
@@ -1643,10 +1718,59 @@ static std::string build_and_sign_tx(const std::string &req){
        pero esto firma dinero y no debe fiarse de quien le llame. */
     if(change<0){secp256k1_context_destroy(ctx);return "ERROR:insufficient_funds";}
     bool has_change=(change>546);
+
+    /* Dirección de cambio.
+     *
+     * El cambio volvía a la MISMA dirección de la que se gastaba. Eso deja en la
+     * cadena la constancia de que esas monedas siguen siendo tuyas y va
+     * encadenando tu historial: cualquiera que mire una transacción sabe cuál de
+     * las dos salidas es el cambio. Las carteras usan la rama .../1/k para esto.
+     *
+     * Si la petición trae "change_path" se deriva esa clave y el cambio va allí.
+     * Sin ella se mantiene el comportamiento anterior, para no romper a quien
+     * llame sin el campo. */
+    std::string spk_change = spk_me;
+    std::string change_path = json_str(req,"change_path");
+    if(has_change && !change_path.empty()){
+        HDKey ch; derive_path(ctx,seed,change_path.c_str(),&ch);
+        if(stype==SP_P2TR){
+            secp256k1_keypair kp; secp256k1_xonly_pubkey xo; int par=0;
+            uint8_t internal[32], tw[32];
+            if(secp256k1_keypair_create(ctx,&kp,ch.key) &&
+               secp256k1_keypair_xonly_pub(ctx,&xo,&par,&kp)){
+                secp256k1_xonly_pubkey_serialize(ctx,internal,&xo);
+                if(taproot_tweak_pubkey(ctx,internal,tw)){
+                    spk_change.clear();
+                    spk_change+='\x51'; spk_change+='\x20';
+                    spk_change+=std::string((char*)tw,32);
+                }
+            }
+        } else {
+            uint8_t ch160[20]; pk_to_h160(ctx,ch.key,ch160);
+            spk_change.clear();
+            if(stype==SP_P2WPKH){
+                spk_change+='\x00'; spk_change+='\x14';
+                spk_change+=std::string((char*)ch160,20);
+            } else if(stype==SP_P2SH_P2WPKH){
+                std::string rd; rd+='\x00'; rd+='\x14'; rd+=std::string((char*)ch160,20);
+                uint8_t sh[32], rh[20];
+                SHA256((const uint8_t*)rd.data(),rd.size(),sh); RIPEMD160(sh,32,rh);
+                spk_change+='\xa9'; spk_change+='\x14';
+                spk_change+=std::string((char*)rh,20); spk_change+='\x87';
+            } else {
+                spk_change+='\x76'; spk_change+='\xa9'; spk_change+='\x14';
+                spk_change+=std::string((char*)ch160,20);
+                spk_change+='\x88'; spk_change+='\xac';
+            }
+        }
+        /* Si algo falló arriba, spk_change sigue siendo spk_me: se pierde
+           privacidad pero el dinero vuelve a una dirección propia. */
+    }
+
     // Build outputs bytes (shared for sighash)
     std::string outs_bytes;
     outs_bytes+=uint64_le(send_sat); outs_bytes+=varint(to_spk.size()); outs_bytes+=to_spk;
-    if(has_change){outs_bytes+=uint64_le(change);outs_bytes+=varint(spk_me.size());outs_bytes+=spk_me;}
+    if(has_change){outs_bytes+=uint64_le(change);outs_bytes+=varint(spk_change.size());outs_bytes+=spk_change;}
     std::vector<std::string> sigs;
     if(stype==SP_P2TR){
         /* BIP341, gasto por clave con SIGHASH_DEFAULT (0x00) y sin annex.
@@ -1659,7 +1783,7 @@ static std::string build_and_sign_tx(const std::string &req){
             prevouts+=uint32_le(u.vout);
             amounts+=uint64_le(u.amount);
             spks+=varint(spk_me.size()); spks+=spk_me;
-            seqs+=uint32_le(0xFFFFFFFF);
+            seqs+=uint32_le(TX_SEQUENCE);
         }
         std::string sha_prevouts=sha256(prevouts), sha_amounts=sha256(amounts);
         std::string sha_spks=sha256(spks), sha_seqs=sha256(seqs);
@@ -1696,7 +1820,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=reverse_bytes(hex_decode(u.txid));
             tx+=uint32_le(u.vout);
             tx+='\x00';                /* scriptSig vacío */
-            tx+=uint32_le(0xFFFFFFFF);
+            tx+=uint32_le(TX_SEQUENCE);
         }
         tx+=varint(has_change?2:1);
         tx+=outs_bytes;
@@ -1716,7 +1840,7 @@ static std::string build_and_sign_tx(const std::string &req){
         std::string hPrevouts=sha256d(all_prevouts);
         // hashSequence
         std::string all_seq;
-        for(size_t i=0;i<utxos.size();i++) all_seq+=uint32_le(0xFFFFFFFF);
+        for(size_t i=0;i<utxos.size();i++) all_seq+=uint32_le(TX_SEQUENCE);
         std::string hSequence=sha256d(all_seq);
         // hashOutputs
         std::string hOutputs=sha256d(outs_bytes);
@@ -1734,7 +1858,7 @@ static std::string build_and_sign_tx(const std::string &req){
             pre+=uint32_le(utxos[ii].vout);
             pre+=varint(scriptCode.size()); pre+=scriptCode;
             pre+=uint64_le(utxos[ii].amount);
-            pre+=uint32_le(0xFFFFFFFF);
+            pre+=uint32_le(TX_SEQUENCE);
             pre+=hOutputs;
             pre+=uint32_le(0); // locktime
             pre+=uint32_le(1); // SIGHASH_ALL
@@ -1762,7 +1886,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=reverse_bytes(hex_decode(u.txid));
             tx+=uint32_le(u.vout);
             tx+=varint(ssig.size()); tx+=ssig;
-            tx+=uint32_le(0xFFFFFFFF);
+            tx+=uint32_le(TX_SEQUENCE);
         }
         tx+=varint(has_change?2:1);
         tx+=outs_bytes;
@@ -1786,7 +1910,7 @@ static std::string build_and_sign_tx(const std::string &req){
                 pre+=uint32_le(utxos[j].vout);
                 if(j==ii){pre+=varint(spk_me.size());pre+=spk_me;}
                 else{pre+='\x00';}
-                pre+=uint32_le(0xFFFFFFFF);
+                pre+=uint32_le(TX_SEQUENCE);
             }
             pre+=varint(has_change?2:1);
             pre+=outs_bytes;
@@ -1810,7 +1934,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=reverse_bytes(hex_decode(utxos[i].txid));
             tx+=uint32_le(utxos[i].vout);
             tx+=varint(sigs[i].size()); tx+=sigs[i];
-            tx+=uint32_le(0xFFFFFFFF);
+            tx+=uint32_le(TX_SEQUENCE);
         }
         tx+=varint(has_change?2:1);
         tx+=outs_bytes;

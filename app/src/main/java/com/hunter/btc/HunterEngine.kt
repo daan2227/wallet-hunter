@@ -31,6 +31,14 @@ object HunterEngine {
     external fun popMatch(): String
     external fun popRecentAddr(): String
     external fun deriveWallet(mnemonic: String): String
+    /**
+     * Direcciones de una rama BIP32 concreta.
+     * @param purpose 44, 49, 84 u 86
+     * @param change 0 recepción, 1 cambio
+     * @return JSON [{"i":n,"addr":"..."},...]
+     */
+    external fun deriveAddresses(mnemonic: String, purpose: Int, change: Int,
+                                 from: Int, count: Int): String
     external fun buildAndSignTx(requestJson: String): String
     external fun setBigCores(cores: IntArray, enable: Boolean)
     external fun setBatchSize(size: Int)
