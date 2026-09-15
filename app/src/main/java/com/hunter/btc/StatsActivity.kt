@@ -120,7 +120,7 @@ class StatsActivity : Activity() {
         })
         header.addView(TextView(this).apply {
             text = "Estadísticas"; textSize = 20f; setTextColor(TXT)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
         })
         root.addView(header)
 

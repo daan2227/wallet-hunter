@@ -515,7 +515,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val logoText = TextView(this).apply {
             text = "Wallet Hunter"
             textSize = 15f
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             letterSpacing = 0.04f
             setTextColor(0xFFF2F2F2.toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
@@ -633,7 +633,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 )
             }
             textSize = 20f
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             setTextColor(0xFFF2F2F2.toInt())
         }
         val dSub = TextView(this).apply {
@@ -728,7 +728,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val labelTv = TextView(this).apply {
                 text = item.label
                 textSize = 14f
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 setTextColor(if (item.idx == 0) ACCENT else 0xFF8A8A8A.toInt())
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                     it.gravity = Gravity.CENTER_VERTICAL
@@ -854,7 +854,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = "0.0"
             textSize = 56f
             setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -934,7 +934,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = initial
             textSize = 22f
             setTextColor(color)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = -0.02f
         }
 
@@ -967,7 +967,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(statLabel("RITMO"))
             val tvSessionStat = TextView(this@MainActivity).apply {
                 text = "—"; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
-                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                typeface = AppTheme.display(context)
                 letterSpacing = -0.02f
                 maxLines = 2
             }
@@ -983,7 +983,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     if (h >= 1_000_000) "${"%.1f".format(h/1e6)}M" else "${h/1000}K"
                 } else "—"
                 textSize = 28f; setTextColor(ACCENT)
-                typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                typeface = AppTheme.display(context)
                 letterSpacing = -0.02f
             }
             tvDatasetStat = tvBinStat
@@ -1039,7 +1039,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val titleTv = TextView(this).apply {
                 text = title; textSize = 13f
                 setTextColor(0xFFF2F2F2.toInt())
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val arrowTv = TextView(this).apply {
@@ -1365,7 +1365,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         scanModes.forEachIndexed { idx, sm ->
             val btn = TextView(this).apply {
                 textSize = 12f; gravity = Gravity.CENTER
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     if (idx == 0) marginEnd = dp(8)
                 }
@@ -1379,7 +1379,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             inner.addView(TextView(this).apply {
                 text = sm.label; textSize = 12f
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 gravity = Gravity.CENTER
                 setTextColor(if (idx == 0) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
             })
@@ -1462,7 +1462,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnToggle = Button(this).apply {
             text = s.start
             textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = 0.1f; isAllCaps = true
             background = startBg
             layoutParams = LinearLayout.LayoutParams(
@@ -1561,7 +1561,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val titleTv = TextView(this).apply {
                 text = title; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val arrowTv = TextView(this).apply {
@@ -1590,7 +1590,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(TextView(this).apply {
             text = "Puzzle Mode"
             textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(4) }
@@ -1909,7 +1909,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val tvWpsP = TextView(this).apply {
             text = "0"; textSize = 40f; setTextColor(ACCENT)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         tvWpsPuzzle = tvWpsP
@@ -2001,7 +2001,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val btn = TextView(this).apply {
                 text = level.label
                 textSize = 13f; gravity = Gravity.CENTER
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
                 background = android.graphics.drawable.GradientDrawable().apply {
                     setColor(if (idx == 1) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
                     cornerRadius = dp(12).toFloat()
@@ -2054,7 +2054,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val btnRandom = TextView(this).apply {
             text = "ALEATORIO"; textSize = 11f; gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x14FFFFFF.toInt()); cornerRadius = dp(10).toFloat()
                 setStroke(1, 0x28FFFFFF.toInt())
@@ -2065,7 +2065,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val btnSeq = TextView(this).apply {
             text = "SECUENCIAL"; textSize = 11f; gravity = Gravity.CENTER
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
                 setStroke(1, 0xFF222222.toInt())
@@ -2200,7 +2200,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         btnPuzzleToggle = Button(this).apply {
             text = "▶  START PUZZLE"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.1f; isAllCaps = true
+            typeface = AppTheme.display(context); letterSpacing = 0.1f; isAllCaps = true
             background = startBg
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)).apply { setMargins(0, dp(12), 0, dp(8)) }
             setOnClickListener {
@@ -2419,7 +2419,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(TextView(this).apply {
             text = "Wallet"
             textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2464,7 +2464,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tvTotalBtc = TextView(this).apply {
             text = "0.00000000"
             textSize = 36f; setTextColor(ACCENT)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER; letterSpacing = -0.02f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2556,7 +2556,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             lc.addView(TextView(this).apply {
                 text = label; textSize = 14f; setTextColor(0xFFF2F2F2.toInt())
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = AppTheme.title(context)
             })
             lc.addView(TextView(this).apply {
                 text = sub; textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
@@ -2694,7 +2694,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(TextView(this).apply {
             text = "Recovery"
             textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2852,7 +2852,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
                 cornerRadius = dp(14).toFloat()
             }
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancelRecovery = Button(this).apply {
@@ -2862,7 +2862,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 setColor(0xFF161616.toInt()); setStroke(1, 0xFF1E1414.toInt())
                 cornerRadius = dp(14).toFloat()
             }
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f)
             visibility = android.view.View.GONE
         }
@@ -2875,7 +2875,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(ACCENT); cornerRadius = dp(14).toFloat()
             }
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             visibility = android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(52)

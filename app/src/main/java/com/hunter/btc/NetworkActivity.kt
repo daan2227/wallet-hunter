@@ -55,7 +55,7 @@ class NetworkActivity : AppCompatActivity() {
         headerRow.addView(TextView(this).apply {
             text = "Red Multi-Dispositivo"
             textSize = 18f; setTextColor(AMBER)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(headerRow)

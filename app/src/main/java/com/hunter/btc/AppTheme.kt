@@ -85,4 +85,59 @@ object AppTheme {
     const val PAD_SIDE = 22   // margen lateral de pantalla
     const val PAD_CARD = 18   // interior de tarjeta
     const val GAP      = 12   // entre tarjetas hermanas
+
+    /* ── Tipografías ──────────────────────────────────────────────────────
+       Dos familias y nada más. La app usaba las del sistema:
+       "sans-serif-black" para las cifras grandes, "sans-serif" para los
+       títulos y "monospace" para todo lo demás, incluidas etiquetas que no
+       son datos.
+
+       Sora lleva numerales de ancho tabular, que es lo que impide que una
+       columna de cantidades baile al cambiar de valor — con la fuente del
+       sistema, "1.11" y "8.88" no ocupan lo mismo y la cifra tiembla mientras
+       el escáner corre.
+
+       Se cachean: getFont() lee y parsea el TTF, y esto se llama desde el
+       bucle de construcción de cada pantalla. */
+    @Volatile private var fDisplay: android.graphics.Typeface? = null
+    @Volatile private var fTitle:   android.graphics.Typeface? = null
+    @Volatile private var fBody:    android.graphics.Typeface? = null
+    @Volatile private var fMedium:  android.graphics.Typeface? = null
+    @Volatile private var fBold:    android.graphics.Typeface? = null
+
+    private fun load(ctx: Context, res: Int, fallback: String, weight: Int):
+            android.graphics.Typeface =
+        try {
+            androidx.core.content.res.ResourcesCompat.getFont(ctx, res)
+                ?: android.graphics.Typeface.create(fallback, weight)
+        } catch (e: Exception) {
+            // Un APK al que le falte el recurso no debe dejar la pantalla en
+            // blanco: se cae a la del sistema.
+            android.graphics.Typeface.create(fallback, weight)
+        }
+
+    /** Sora Bold — la cifra protagonista. */
+    fun display(ctx: Context) = fDisplay
+        ?: load(ctx, R.font.sora_bold, "sans-serif-black", android.graphics.Typeface.BOLD)
+            .also { fDisplay = it }
+
+    /** Sora SemiBold — títulos de pantalla y cifras de apoyo. */
+    fun title(ctx: Context) = fTitle
+        ?: load(ctx, R.font.sora_semibold, "sans-serif", android.graphics.Typeface.BOLD)
+            .also { fTitle = it }
+
+    /** Public Sans Regular — texto normal. */
+    fun body(ctx: Context) = fBody
+        ?: load(ctx, R.font.public_sans_regular, "sans-serif", android.graphics.Typeface.NORMAL)
+            .also { fBody = it }
+
+    /** Public Sans Medium — etiquetas y secundarios. */
+    fun medium(ctx: Context) = fMedium
+        ?: load(ctx, R.font.public_sans_medium, "sans-serif-medium", android.graphics.Typeface.NORMAL)
+            .also { fMedium = it }
+
+    /** Public Sans SemiBold — botones y valores destacados. */
+    fun bold(ctx: Context) = fBold
+        ?: load(ctx, R.font.public_sans_semibold, "sans-serif", android.graphics.Typeface.BOLD)
+            .also { fBold = it }
 }

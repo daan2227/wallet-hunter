@@ -90,7 +90,7 @@ object PinAuthHelper {
         topBar.addView(android.widget.TextView(activity).apply {
             text = "Passcode"
             textSize = 17f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            typeface = AppTheme.title(context)
             letterSpacing = -0.01f
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -113,7 +113,7 @@ object PinAuthHelper {
         val tvLabel = android.widget.TextView(activity).apply {
             text = if (isSetup) "Create passcode" else "Enter passcode"
             textSize = 22f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,

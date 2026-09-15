@@ -82,7 +82,7 @@ class DebugActivity : AppCompatActivity() {
         })
         header.addView(TextView(this).apply {
             text = "Debug"; textSize = 20f; setTextColor(TXT)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(header)
@@ -127,7 +127,7 @@ class DebugActivity : AppCompatActivity() {
             background = GradientDrawable().apply {
                 setColor(color); cornerRadius = dp(8).toFloat()
             }
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, dp(36), 1f).apply { marginEnd = dp(6) }
             isClickable = true; isFocusable = true
             setOnClickListener { click() }

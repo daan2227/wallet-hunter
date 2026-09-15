@@ -85,7 +85,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                     android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             textSize = 28f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            typeface = AppTheme.title(context)
         }
         logoRow.addView(logoIcon); logoRow.addView(logoText)
         root.addView(logoRow)
@@ -124,7 +124,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 })
                 addView(android.widget.TextView(this@WelcomeActivity).apply {
                     text = value; textSize = 16f; setTextColor(color)
-                    typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+                    typeface = AppTheme.display(context)
                     gravity = android.view.Gravity.CENTER; letterSpacing = -0.02f
                 })
                 addView(android.widget.TextView(this@WelcomeActivity).apply {
@@ -229,7 +229,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 )
             }
             textSize = 28f; setTextColor(0xFFF2F2F2.toInt())
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
         }
         logoRow.addView(logoIcon); logoRow.addView(logoText)
         root.addView(logoRow)
@@ -255,7 +255,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(Button(this).apply {
             text = "▶  CREAR PIN DE SEGURIDAD"
             textSize = 13f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            typeface = AppTheme.title(context)
             letterSpacing = 0.04f
             background = GradientDrawable().apply {
                 colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
@@ -322,7 +322,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         topBar.addView(android.widget.TextView(activity).apply {
             text = "Passcode"
             textSize = 17f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
+            typeface = AppTheme.title(context)
             letterSpacing = -0.01f
             layoutParams = android.widget.FrameLayout.LayoutParams(
                 android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -345,7 +345,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         val tvLabel = android.widget.TextView(activity).apply {
             text = if (isSetup) "Create passcode" else "Enter passcode"
             textSize = 22f; setTextColor(TXT)
-            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,

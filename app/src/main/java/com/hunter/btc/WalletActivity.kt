@@ -247,7 +247,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(TextView(this).apply {
             text = if (isSetup) "Create PIN" else "Enter PIN"
             textSize = 16f; setTextColor(TXT_PRI)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = 0.04f
             gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(22))
         })
@@ -335,7 +335,7 @@ class WalletActivity : FragmentActivity() {
                     letterSpacing = 0.05f
                 } else {
                     textSize = 22f; setTextColor(TXT_PRI)
-                    typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+                    typeface = AppTheme.display(context)
                 }
                 background = GradientDrawable().apply {
                     setColor(if (k.isEmpty()) Color.TRANSPARENT else AppTheme.BG_CARD)
@@ -358,7 +358,7 @@ class WalletActivity : FragmentActivity() {
         val btnCancel = Button(this).apply {
             text = "Cancel"
             textSize = 12f; setTextColor(TXT_SEC)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             letterSpacing = 0.1f; isAllCaps = true
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
@@ -732,7 +732,7 @@ class WalletActivity : FragmentActivity() {
                         card.isClickable = true
                         card.setOnClickListener {
                             val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(16).toFloat();setStroke(1,BORDER_C)}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
-                            sheet.addView(TextView(this).apply{text="Transaction";textSize=14f;setTextColor(AMBER);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);gravity=Gravity.CENTER;setPadding(0,0,0,dp(14))})
+                            sheet.addView(TextView(this).apply{text="Transaction";textSize=14f;setTextColor(AMBER);typeface=AppTheme.display(context);gravity=Gravity.CENTER;setPadding(0,0,0,dp(14))})
                             fun row(k:String,v:String,vc:Int=TXT_PRI){
                                 val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
                                 r.addView(TextView(this).apply{text=k;textSize=9f;setTextColor(TXT_MUTED);typeface=Typeface.create("monospace",Typeface.BOLD);letterSpacing=0.1f})
@@ -748,8 +748,8 @@ class WalletActivity : FragmentActivity() {
                             var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
                             row("TOTAL OUT","%.8f BTC".format(totalOut/1e8))
                             val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
-                            val btnExplorer=android.widget.Button(this).apply{text="View on Explorer";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)}}
-                            val btnClose=android.widget.Button(this).apply{text="Close";textSize=11f;setTextColor(TXT_SEC);typeface=Typeface.create("sans-serif-black",Typeface.BOLD);background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f)}
+                            val btnExplorer=android.widget.Button(this).apply{text="View on Explorer";textSize=11f;setTextColor(android.graphics.Color.BLACK);typeface=AppTheme.display(context);background=GradientDrawable().apply{setColor(AMBER);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f).apply{marginEnd=dp(8)}}
+                            val btnClose=android.widget.Button(this).apply{text="Close";textSize=11f;setTextColor(TXT_SEC);typeface=AppTheme.display(context);background=GradientDrawable().apply{setColor(BG_CARD);setStroke(1,BORDER_C);cornerRadius=dp(8).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(44),1f)}
                             btnRow.addView(btnExplorer);btnRow.addView(btnClose);sheet.addView(btnRow)
                             val txDlg=AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
                             txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
@@ -1193,7 +1193,7 @@ class WalletActivity : FragmentActivity() {
 
         sheet.addView(TextView(this).apply {
             text = "Select Wallet"; textSize = 17f; setTextColor(AMBER)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(16))
         })
 
@@ -1206,7 +1206,7 @@ class WalletActivity : FragmentActivity() {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
                 setOnClickListener { onClick() }
             }
-            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(resolvedColor); typeface = Typeface.create("sans-serif-black", Typeface.BOLD) })
+            card.addView(TextView(this).apply { text = name; textSize = 13f; setTextColor(resolvedColor); typeface = AppTheme.display(context) })
             card.addView(TextView(this).apply { text = subtitle; textSize = 9f; setTextColor(TXT_MUTED); typeface = Typeface.create("monospace", Typeface.NORMAL) })
             sheet.addView(card)
         }
@@ -1278,19 +1278,19 @@ class WalletActivity : FragmentActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
         val btnNew = Button(this).apply {
             text = "+ Seed"; textSize = 11f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(7).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
         }
         val btnWatch = Button(this).apply {
             text = "+ Watch"; textSize = 11f; setTextColor(CYAN)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, CYAN); cornerRadius = dp(7).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
         }
         val btnWif = Button(this).apply {
             text = "+ WIF"; textSize = 11f; setTextColor(TXT_PRI)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(BG_CARD); setStroke(1, BORDER_C); cornerRadius = dp(7).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f)
         }
@@ -1325,7 +1325,7 @@ class WalletActivity : FragmentActivity() {
         }
         sheet.addView(TextView(this).apply {
             text = "Import WIF Key"; textSize = 16f; setTextColor(AMBER)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
         })
         sheet.addView(TextView(this).apply {
@@ -1345,13 +1345,13 @@ class WalletActivity : FragmentActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnImport = Button(this).apply {
             text = "Import"; textSize = 12f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
             text = "Cancel"; textSize = 12f; setTextColor(TXT_SEC)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
         }
@@ -1432,7 +1432,7 @@ class WalletActivity : FragmentActivity() {
         scroll.addView(layout)
         layout.addView(TextView(this).apply {
             text = "Import Wallet"; textSize = 18f; setTextColor(AMBER)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(6))
         })
         layout.addView(TextView(this).apply {
@@ -1514,13 +1514,13 @@ class WalletActivity : FragmentActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
         val btnNext = Button(this).apply {
             text = "Import"; textSize = 13f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
             text = "Cancel"; textSize = 13f; setTextColor(TXT_SEC)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
         }
@@ -1564,7 +1564,7 @@ class WalletActivity : FragmentActivity() {
         }
         sheet.addView(TextView(this).apply {
             text = "Watch Address"; textSize = 16f; setTextColor(AMBER)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER; setPadding(0,0,0,dp(6))
         })
         sheet.addView(TextView(this).apply {
@@ -1589,13 +1589,13 @@ class WalletActivity : FragmentActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnAdd = Button(this).apply {
             text = "Watch"; textSize = 12f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
             text = "Cancel"; textSize = 12f; setTextColor(TXT_SEC)
-            typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
+            typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(Color.TRANSPARENT); setStroke(1, BORDER_C); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
         }
