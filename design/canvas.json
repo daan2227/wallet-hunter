@@ -1,43 +1,23 @@
 {
-  "pages": [
-    { "id": "page-1", "name": "Direcciones" },
-    { "id": "page-2", "name": "Resto de pantallas" }
-  ],
   "artboards": [
-    { "file": "Main.dc.html",    "title": "A · Escáner",  "page": "page-1", "x": 0,    "y": 0,    "w": 390, "h": 844 },
-    { "file": "ScanB.dc.html",   "title": "B · Escáner",  "page": "page-1", "x": 470,  "y": 0,    "w": 390, "h": 844 },
-    { "file": "ScanC.dc.html",   "title": "C · Escáner",  "page": "page-1", "x": 940,  "y": 0,    "w": 390, "h": 844 },
+    { "file": "Main.dc.html",       "title": "Escáner",         "x": 0,    "y": 0,   "w": 390, "h": 844 },
+    { "file": "Puzzle.dc.html",     "title": "Puzzle",          "x": 470,  "y": 0,   "w": 390, "h": 844 },
+    { "file": "Cartera.dc.html",    "title": "Cartera",         "x": 940,  "y": 0,   "w": 390, "h": 844 },
+    { "file": "VerCartera.dc.html", "title": "Ver cartera",     "x": 1410, "y": 0,   "w": 390, "h": 844 },
 
-    { "file": "PuzzleA.dc.html", "title": "A · Puzzle",   "page": "page-1", "x": 0,    "y": 964,  "w": 390, "h": 844 },
-    { "file": "PuzzleB.dc.html", "title": "B · Puzzle",   "page": "page-1", "x": 470,  "y": 964,  "w": 390, "h": 844 },
-    { "file": "PuzzleC.dc.html", "title": "C · Puzzle",   "page": "page-1", "x": 940,  "y": 964,  "w": 390, "h": 844 },
-
-    { "file": "WalletA.dc.html", "title": "A · Cartera",  "page": "page-1", "x": 0,    "y": 1928, "w": 390, "h": 844 },
-    { "file": "WalletB.dc.html", "title": "B · Cartera",  "page": "page-1", "x": 470,  "y": 1928, "w": 390, "h": 844 },
-    { "file": "WalletC.dc.html", "title": "C · Cartera",  "page": "page-1", "x": 940,  "y": 1928, "w": 390, "h": 844 },
-
-    { "file": "BtcWalletA.dc.html", "title": "Ver cartera", "page": "page-2", "x": 0,    "y": 0, "w": 390, "h": 844 },
-    { "file": "RecoveryA.dc.html",  "title": "Recovery",    "page": "page-2", "x": 470,  "y": 0, "w": 390, "h": 844 },
-    { "file": "StatsA.dc.html",     "title": "Historial",   "page": "page-2", "x": 940,  "y": 0, "w": 390, "h": 844 },
-    { "file": "PasscodeA.dc.html",  "title": "Clave",       "page": "page-2", "x": 1410, "y": 0, "w": 390, "h": 844 }
+    { "file": "Recovery.dc.html",   "title": "Recuperar seed",  "x": 0,    "y": 964, "w": 390, "h": 844 },
+    { "file": "Historial.dc.html",  "title": "Historial",       "x": 470,  "y": 964, "w": 390, "h": 844 },
+    { "file": "Clave.dc.html",      "title": "Clave",           "x": 940,  "y": 964, "w": 390, "h": 844 }
   ],
   "annotations": [
-    { "id": "dir-a", "page": "page-1", "x": 0,    "y": -210, "w": 390,
-      "text": "A · INSTRUMENTO\n\nSin tarjetas. Los datos viven sobre filas y reglas de 1px, alineados en columna. La cifra grande manda y el verde queda reservado para \"está corriendo\", no para decorar.\n\nEs la lectura más densa y la que menos se parece a una app de consumo. Contra: pide leer con atención, perdona menos un dato mal alineado." },
-    { "id": "dir-b", "page": "page-1", "x": 470,  "y": -210, "w": 390,
-      "text": "B · BÓVEDA\n\nMenos elementos, más aire, escala tipográfica real. Las tarjetas se quedan pero bajan de seis a dos o tres, y el acento pinta solo la acción principal.\n\nLa más fácil de usar con una mano y la que mejor envejece. Contra: cabe menos por pantalla, hay que hacer scroll donde antes no." },
-    { "id": "dir-c", "page": "page-1", "x": 940,  "y": -210, "w": 390,
-      "text": "C · CONSOLA\n\nRejilla dura y visible, esquinas rectas, contraste alto. La interfaz admite que es una máquina: celdas, conmutadores, barras de acción a sangre.\n\nLa más característica y la que mejor aguanta pantallas llenas de números. Contra: puede resultar áspera, y el negro sólido con bordes marca mucho el aliasing." },
+    { "id": "sistema", "x": -320, "y": 0, "w": 280,
+      "text": "BÓVEDA\n\nEl sistema, aplicado a las siete pantallas.\n\nTipografía: Sora para cifras y títulos, Public Sans para el resto. Dos familias, nada más.\n\nEscala: 44 / 22 / 17 / 14 / 12. Una cifra domina por pantalla; lo demás baja a 14 o a 12.\n\nSuperficies: fondo #0E0E0E, tarjeta #161616, separador #222. Sin bordes: la elevación la hace el tono.\n\nAcento #00C896 sólo en tres sitios: acción principal, saldo positivo y estado \"buscando\". En ningún otro." },
 
-    { "id": "fila-1", "page": "page-1", "x": -290, "y": 60,   "w": 250,
-      "text": "ESCÁNER\n\nEl arreglo común: una sola cifra dominante con su unidad al lado, y el pico y la media como apoyo — no tres tamaños compitiendo." },
-    { "id": "fila-2", "page": "page-1", "x": -290, "y": 1024, "w": 250,
-      "text": "PUZZLE\n\nLas tres suben al principio qué se busca y cuánto hay en juego, y enseñan la posición en el rango, que hoy no se ve por ningún lado." },
-    { "id": "fila-3", "page": "page-1", "x": -290, "y": 1988, "w": 250,
-      "text": "CARTERA\n\nFuera los seis emoji. Iconos de trazo, dos acciones primarias y el resto agrupado bajo \"Resguardo\"." },
+    { "id": "cambios", "x": -320, "y": 964, "w": 280,
+      "text": "QUÉ CAMBIA DE FONDO\n\nFuera los emoji: iconos de trazo a 19-20px.\n\nMenos tarjetas. La pantalla de cartera pasa de seis a dos acciones primarias y un grupo.\n\nVer cartera deja de listar ocho ceros: enseña las que tienen saldo y pliega el resto.\n\nBlancos de toque de 50-62px en todo el teclado y los botones." },
 
-    { "id": "nota-p2", "page": "page-2", "x": 0, "y": -180, "w": 860,
-      "text": "Las cuatro pantallas restantes en la dirección A, para ver que el sistema aguanta más allá de las tres de portada. Si eliges B o C, las rehago en esa.\n\nVer cartera incorpora el descubrimiento HD que acabamos de meter: avisa de las direcciones con fondos encontradas más allá del índice 0." }
+    { "id": "pendiente", "x": 1880, "y": 0, "w": 300,
+      "text": "NO ESTÁ AQUÍ\n\nEnviar y Recibir aparecen como pestañas pero no las he dibujado — no estaban en el encargo.\n\nEnviar es la que más ganaría: ahora tiene que decir de qué dirección sale, a cuál va el cambio y que la transacción es reemplazable. Dime si la quieres." }
   ],
-  "launch": { "view": "canvas", "page": "page-1" }
+  "launch": { "view": "canvas" }
 }

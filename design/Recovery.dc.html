@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+    .card { background:#161616; border-radius:14px; }
+    .word { border-radius:10px; padding:11px 8px; text-align:center; font-size:13px; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:12px; padding:18px 22px 14px">
+    <div style="flex-grow:1; font-family:'Sora'; font-size:17px; font-weight:600; letter-spacing:-.01em">Recuperar seed</div>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </div>
+
+  <div style="padding:4px 22px 20px">
+    <div style="font-size:14px; color:#C4C4C4; line-height:1.55">Escribe las palabras que recuerdes. Toca un hueco para marcar la que falta.</div>
+  </div>
+
+  <!-- las 12 palabras -->
+  <div style="padding:0 22px 20px">
+    <div style="display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:8px">
+      <sc-for list="{{words}}" as="w" hint-placeholder-count="12">
+        <div class="word" style="background:{{w.bg}}; color:{{w.fg}}; font-weight:{{w.weight}}; outline:{{w.ring}}">
+          <span style="color:#4A4A4A; font-size:11px; margin-right:5px">{{w.i}}</span>{{w.t}}
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- lo que cuesta el intento, antes de empezar -->
+  <div class="card" style="margin:0 22px 16px; padding:18px 20px">
+    <div style="display:flex; align-items:baseline">
+      <div style="flex-grow:1; font-size:14px; font-weight:500">3 palabras por adivinar</div>
+      <div class="disp" style="font-size:17px; font-weight:600; color:#00C896">~ 11 min</div>
+    </div>
+    <div class="cap" style="font-size:11px; margin-top:6px">4 096 000 combinaciones a 6,3 M/s</div>
+    <div style="height:6px; border-radius:3px; background:#232323; margin-top:16px; overflow:hidden">
+      <div style="width:18.4%; height:6px; background:linear-gradient(90deg,rgba(0,200,150,.3),#00C896); border-radius:3px"></div>
+    </div>
+    <div class="cap" style="font-size:11px; margin-top:10px">753 104 probadas · 18,4 %</div>
+  </div>
+
+  <!-- dirección conocida -->
+  <div class="card" style="margin:0 22px 16px; padding:16px 18px">
+    <div style="display:flex; align-items:center; gap:10px">
+      <div class="cap" style="flex-grow:1">Dirección conocida</div>
+      <div style="font-size:11px; color:#5A5A5A">Opcional</div>
+    </div>
+    <div style="font-family:'Sora'; font-size:12px; color:#C4C4C4; margin-top:9px; word-break:break-all; line-height:1.5">1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2</div>
+    <div class="cap" style="font-size:11px; margin-top:10px; line-height:1.5">Con ella la búsqueda para al encontrarla. Sin ella hay que probarlas todas.</div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <!-- aviso -->
+  <div style="margin:0 22px 16px; padding:15px 17px; border-radius:14px; background:rgba(255,107,53,.07)">
+    <div style="display:flex; gap:11px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#FF6B35" stroke-width="1.9" stroke-linecap="round" style="flex-shrink:0"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16.5v.01"/></svg>
+      <div style="font-size:12px; color:#B0A098; line-height:1.55">Con cuatro huecos o más esto puede durar días. Deja el móvil enchufado.</div>
+    </div>
+  </div>
+
+  <div style="padding:0 22px 26px">
+    <div style="height:54px; border-radius:14px; background:#00C896; display:flex; align-items:center; justify-content:center; gap:10px">
+      <svg width="15" height="15" viewBox="0 0 12 12" fill="#0E0E0E"><path d="M2 1l8 5-8 5z"/></svg>
+      <span style="font-size:15px; font-weight:600; color:#0E0E0E">Empezar a probar</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const set  = (i,t) => ({ i, t, bg:'#1A1A1A', fg:'#E2E2E2', weight:'400', ring:'none' });
+    const hole = (i)   => ({ i, t:'falta',      bg:'rgba(0,200,150,.10)', fg:'#00C896', weight:'600', ring:'1.5px solid #00C896' });
+    return { words: [
+      set(1,'legal'), set(2,'winner'), hole(3),
+      set(4,'hurry'), hole(5),         set(6,'plastic'),
+      set(7,'lens'),  set(8,'quiz'),   hole(9),
+      set(10,'lake'), set(11,'auto'),  set(12,'echo')
+    ]};
+  }
+}
+</script>
+</body>
+</html>
