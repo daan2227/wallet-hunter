@@ -2467,7 +2467,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(22) }
         }
         fun guardRow(icon: Int, label: String, sub: String, primero: Boolean,
-                     click: () -> Unit): TextView {
+                     click: () -> Unit): Pair<TextView, TextView> {
             if (!primero) guardCard.addView(android.view.View(this).apply {
                 setBackgroundColor(AppTheme.BORDER_C)
                 layoutParams = LinearLayout.LayoutParams(
@@ -2492,11 +2492,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 text = label; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
                 typeface = AppTheme.body(context)
             })
-            col.addView(TextView(this).apply {
+            val subTv = TextView(this).apply {
                 text = sub; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context)
                 setPadding(0, dp(2), 0, 0)
-            })
+            }
+            col.addView(subTv)
             r.addView(col)
             // El estado a la derecha: cuántos hay, de cuándo es la última. Sin
             // esto hay que entrar en cada uno para saber si tienes algo.
@@ -2510,15 +2511,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 (layoutParams as LinearLayout.LayoutParams).marginStart = dp(10)
             })
             guardCard.addView(r)
-            return estado
+            return estado to subTv
         }
 
-        val estVault = guardRow(R.drawable.ic_vault, "Baúl de hallazgos",
+        val (estVault, _) = guardRow(R.drawable.ic_vault, "Baúl de hallazgos",
                                 "Cifrado, aparte de tus carteras", primero = true) {
             if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) showVault() }
             else showVault()
         }
-        val estBackup = guardRow(R.drawable.ic_lock, "Copias de seguridad",
+        val (estBackup, subBackup) = guardRow(R.drawable.ic_lock, "Copias de seguridad",
                                  "Crear, ver, compartir o restaurar", primero = false) {
             if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
             else exportEncryptedBackup()
@@ -2538,13 +2539,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 estBackup.text = if (copias.isEmpty()) "Ninguna" else "${copias.size}"
                 if (ultima > 0) {
                     val dias = ((System.currentTimeMillis() - ultima) / 86_400_000L).toInt()
-                    (((guardCard.getChildAt(3) as? LinearLayout)
-                        ?.getChildAt(1) as? LinearLayout)
-                        ?.getChildAt(1) as? TextView)?.text = when (dias) {
-                            0    -> "Última hoy"
-                            1    -> "Última ayer"
-                            else -> "Última hace $dias días"
-                        }
+                    subBackup.text = when (dias) {
+                        0    -> "Última hoy"
+                        1    -> "Última ayer"
+                        else -> "Última hace $dias días"
+                    }
                 }
             }
         }.start()
@@ -3834,7 +3833,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (bg.size > 1) btn.background = if (running) bg[1] else bg[0]
         // Los dos fondos son sólidos, así que el texto tiene que cambiar con
         // ellos: antes se quedaba en gris claro y sobre el verde no se leía.
-        btn.setTextColor(if (running) AppTheme.TXT_PRI else AppTheme.BG_DEEP)
+        btn.setTextColor(if (running) AppTheme.RED else AppTheme.BG_DEEP)
     }
 
     /** Dirección objetivo del puzzle, tal y como está en el campo. */
