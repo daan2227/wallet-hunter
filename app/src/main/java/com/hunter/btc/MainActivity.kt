@@ -1822,33 +1822,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Unit
         }
 
-        // Botón QR para dirección objetivo
-        val btnQR = TextView(this).apply {
-            text = "📷 Ver QR de dirección"
-            textSize = 11f; gravity = Gravity.CENTER
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            setTextColor(ACCENT2)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF242424.toInt())
-            }
-            setPadding(dp(14), dp(10), dp(14), dp(10))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                val addr = etTarget?.text?.toString()?.trim() ?: ""
-                if (addr.isEmpty()) {
-                    android.widget.Toast.makeText(this@MainActivity,
-                        "Selecciona un puzzle primero", android.widget.Toast.LENGTH_SHORT).show()
-                    return@setOnClickListener
-                }
-                showAddressQR(addr)
-            }
-        }
-        page.addView(btnQR)
+        // El botón "Ver QR de dirección" mostraba un QR de la dirección del
+        // puzzle. Nada lo escanea: la dirección es pública y conocida, y no hay
+        // ningún flujo que la reciba por cámara. Retirado.
 
         // Balance indicator - debajo del puzzle seleccionado
         val tvBalResult = TextView(this).apply {
@@ -3560,14 +3536,52 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvDatasetStat?.text = fmt
                 tvDatasetStat?.setTextColor(0xFF00C896.toInt())
             }
+        } else {
+            // Un "—" verde no dice nada, y aquí decía algo importante: sin
+            // dataset, los modos BIP39 y RAW KEY no tienen contra qué comparar.
+            tvDatasetStat?.text = "sin cargar"
+            tvDatasetStat?.textSize = 15f
+            tvDatasetStat?.setTextColor(0xFFFF6B35.toInt())
         }
         } catch (e: Exception) {
             // vars no inicializadas aún
         }
     }
 
+    /**
+     * ¿Tiene el motor contra qué comparar?
+     *
+     * En C++, tanto worker_rawkey_fn como worker_bip39_fn deciden el acierto
+     * con `if(g_has_target) ... else if(g_csv_loaded) ...`. Sin dirección
+     * objetivo y sin dataset, esa condición no se cumple nunca: el escaneo
+     * genera claves a toda velocidad y no puede encontrar nada jamás.
+     *
+     * startHunting() sólo bloquea el arranque en modo BIP39; los modos puzzle y
+     * raw arrancan igual. El puzzle siempre lleva dirección objetivo, así que
+     * el caso que quedaba suelto era RAW KEY sin dataset —justo lo que pasa
+     * después de reinstalar, porque el .bin vive en getExternalFilesDir() y se
+     * borra con la app, dejando csvPath apuntando a un fichero que ya no está.
+     */
+    private fun engineHasSomethingToMatch(): Boolean =
+        HunterEngine.isCsvLoaded() || HunterEngine.hasTarget()
+
     private fun doToggle(callerBtn: Button? = null) {
         try {
+            if (!HunterEngine.isRunning() && !engineHasSomethingToMatch()) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Sin dataset cargado")
+                    .setMessage("No hay ninguna lista de direcciones cargada ni " +
+                                "dirección objetivo, así que el motor no tendría con " +
+                                "qué comparar: escanearía a toda velocidad sin poder " +
+                                "encontrar nada.\n\nCarga el .bin con LOAD CSV, o usa " +
+                                "el modo Puzzle, que trae su propia dirección.")
+                    .setPositiveButton("Entendido", null)
+                    .show()
+                // Si no se limpia, el watchdog ve "estaba corriendo y ya no" y
+                // vuelve a llamar aquí cada ciclo, apilando diálogos.
+                prefs.edit().putBoolean("scan_was_running", false).apply()
+                return
+            }
             if (HunterEngine.isRunning()) {
                 HunterEngine.stopHunting()
                 stopService(Intent(this, HunterService::class.java))
@@ -4080,7 +4094,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     private fun exportLog() {
         if (!PinAuthHelper.isSessionValid()) {
-            PinAuthHelper.show(this) { ok -> if (ok) askExportLogOptions() }
+            // Sin huella automática: esto exporta un resumen sin claves privadas,
+            // no vale interrumpir con el lector. El teclado sale directo y la
+            // tecla ◉ sigue ahí para quien prefiera la huella.
+            PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) askExportLogOptions() }
         } else {
             askExportLogOptions()
         }
@@ -4517,92 +4534,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Auto-reinicio: si el engine estaba corriendo pero el servicio fue matado
         checkAndRestartScan()
     }
-
-    private fun showAddressQR(address: String) {
-        try {
-            val size = (resources.displayMetrics.widthPixels * 0.7).toInt()
-            val hints = mapOf(com.google.zxing.EncodeHintType.MARGIN to 2)
-            val bitMatrix = com.google.zxing.MultiFormatWriter().encode(
-                address, com.google.zxing.BarcodeFormat.QR_CODE, size, size, hints
-            )
-            val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-            val ACCENT = 0xFF00C896.toInt()
-            for (x in 0 until size) {
-                for (y in 0 until size) {
-                    bitmap.setPixel(x, y, if (bitMatrix[x, y]) ACCENT else 0xFF090909.toInt())
-                }
-            }
-
-            val layout = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setBackgroundColor(0xFF090909.toInt())
-                setPadding(dp(24), dp(24), dp(24), dp(24))
-            }
-
-            layout.addView(android.widget.TextView(this).apply {
-                text = "Dirección objetivo"; textSize = 14f
-                setTextColor(0xFFEFEFEF.toInt())
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(16) }
-            })
-
-            val imgView = android.widget.ImageView(this).apply {
-                setImageBitmap(bitmap)
-                layoutParams = LinearLayout.LayoutParams(size, size).apply {
-                    gravity = Gravity.CENTER
-                    bottomMargin = dp(16)
-                }
-            }
-            layout.addView(imgView)
-
-            layout.addView(android.widget.TextView(this).apply {
-                text = address
-                textSize = 10f; setTextColor(0xFF868686.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                gravity = Gravity.CENTER
-                setTextIsSelectable(true)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(12) }
-            })
-
-            // Botón abrir en explorer
-            layout.addView(android.widget.Button(this).apply {
-                text = "🌐 Ver en Blockchain Explorer"
-                textSize = 12f; setTextColor(android.graphics.Color.BLACK)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF00C896.toInt()); cornerRadius = dp(10).toFloat()
-                }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-                )
-                setOnClickListener {
-                    val url = "https://mempool.space/address/$address"
-                    startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(url)))
-                }
-            })
-
-            AlertDialog.Builder(this)
-                .setView(layout)
-                .setPositiveButton("Cerrar", null)
-                .show()
-
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "Error generando QR: ${e.message}",
-                android.widget.Toast.LENGTH_LONG).show()
-        }
-    }
-
-
-
-
 
     private fun checkAndRestartScan() {
         val wasRunning = prefs.getBoolean("scan_was_running", false)

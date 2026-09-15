@@ -38,9 +38,16 @@ object PinAuthHelper {
 
     private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
+/**
+     * @param autoBiometric lanza la huella nada más abrir. Para desbloquear la
+     *   wallet tiene sentido; para acciones menores —exportar un resumen sin
+     *   claves— es desproporcionado, así que el teclado sale directo y la huella
+     *   queda disponible en la tecla ◉ para quien la prefiera.
+     */
+    fun show(activity: android.app.Activity, autoBiometric: Boolean = true,
+             onResult: (Boolean) -> Unit) {
         if (!WalletManager.hasPin(activity)) { onResult(true); return }
-        showPinScreen(activity, isSetup = false) { ok ->
+        showPinScreen(activity, isSetup = false, autoBiometric = autoBiometric) { ok ->
             if (ok) markAuthenticated()
             onResult(ok)
         }
@@ -51,6 +58,7 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
     private fun showPinScreen(
         activity: android.app.Activity,
         isSetup: Boolean,
+        autoBiometric: Boolean = true,
         onResult: (Boolean) -> Unit
     ) {
         val GOLD  = AppTheme.AMBER          // #a8ff00
@@ -147,7 +155,8 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
                 "Enter your passcode. Be sure to remember it\nso you can unlock your wallet."
-            else "Use your passcode or fingerprint to unlock"
+            else if (autoBiometric) "Use your passcode or fingerprint to unlock"
+            else "Enter your passcode"
             textSize = 13f; setTextColor(MUTED)
             gravity = android.view.Gravity.CENTER
         }
@@ -336,8 +345,8 @@ fun show(activity: android.app.Activity, onResult: (Boolean) -> Unit) {
         if (!isSetup) dlg!!.setOnCancelListener { onResult(false) }
         dlg!!.show()
 
-        // Auto-lanzar biométrico al abrir si no es setup
-        if (!isSetup) handler.postDelayed({ launchBiometric() }, 300)
+        // Auto-lanzar biométrico al abrir si no es setup y quien llama lo quiere
+        if (!isSetup && autoBiometric) handler.postDelayed({ launchBiometric() }, 300)
     }
 
 }
