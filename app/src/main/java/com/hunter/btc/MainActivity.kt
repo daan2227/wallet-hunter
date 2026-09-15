@@ -176,6 +176,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvAvgWps: TextView? = null
     private var tvPeakWps: TextView? = null
     private var tvPeakWpsPuzzle: TextView? = null
+    private var watchdogEnabled = false
+    private var lastKnownRunning = false
+    /** Reinicios hechos por el watchdog en esta sesión; se muestra en su etiqueta. */
+    private var watchdogRestarts = 0
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -207,6 +211,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun currentPuzzleNum(): Int =
         puzzles.firstOrNull { it.start == puzzleFullStart }?.num
             ?: prefs.getInt("current_puzzle_num", 0)
+
+    private fun watchdogLabel() = when {
+        // watchdogRestarts sólo se incrementaba y no se leía en ningún sitio.
+        // Puesto aquí sirve para saber si de verdad está haciendo algo.
+        watchdogEnabled && watchdogRestarts > 0 ->
+            "Watchdog ON — $watchdogRestarts reinicio(s) esta sesión"
+        watchdogEnabled -> "Watchdog ON — reinicia el scan si se detiene"
+        else            -> "Watchdog OFF — no reinicia el scan"
+    }
 
     private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
         keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
@@ -439,6 +452,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             registerBatteryReceiver()
             // Auto-detectar hardware en primera ejecución
             selectedScanMode = prefs.getInt("scan_mode", 0)
+            watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
                 val profile = detectHardware()
@@ -1209,6 +1223,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
             listOf(
+                // El icono va a un TextView de 26dp: el texto entero se recortaba
+                // a "🐕/Wat". El estado va en la etiqueta, que se reescribe al
+                // pulsar en vez de esperar a que se reconstruya la pestaña.
+                Triple("🐕", watchdogLabel(), { lbl: TextView ->
+                    watchdogEnabled = !watchdogEnabled
+                    prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
+                    lbl.text = watchdogLabel()
+                    android.widget.Toast.makeText(this@MainActivity,
+                        if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                }),
                 Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() })
             ).forEach { (ic, lbl, action) ->
                 val tvLabel = TextView(this@MainActivity).apply {
@@ -3431,6 +3456,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
 
+        // ── WATCHDOG ─────────────────────────────────────────────────────
+        // Si Android se lleva por delante el escaneo en segundo plano, lo
+        // relanza. Sólo cuenta como caída si antes estaba corriendo de verdad
+        // (lastKnownRunning), para no reaccionar a una parada del usuario.
+        val wasRunning = prefs.getBoolean("scan_was_running", false)
+        val isNowRunning = HunterEngine.isRunning()
+        if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
+            // Sin esto, tras perder el dataset —se va con la app al
+            // desinstalar— el reintento entraría en el guardia de doToggle() y
+            // sacaría un diálogo cada dos segundos sin que nadie lo hubiera
+            // pedido. Si no hay con qué comparar, no hay nada que reanudar.
+            if (!engineHasSomethingToMatch()) {
+                prefs.edit().putBoolean("scan_was_running", false).apply()
+            } else {
+                watchdogRestarts++
+                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                    if (!HunterEngine.isRunning() && prefs.getBoolean("scan_was_running", false)) {
+                        doToggle(if (puzzleMode) btnPuzzleToggle else btnToggle)
+                    }
+                }, 2000)
+            }
+        }
+        lastKnownRunning = isNowRunning
 
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
         if (puzzleMode && HunterEngine.isRunning()) {
