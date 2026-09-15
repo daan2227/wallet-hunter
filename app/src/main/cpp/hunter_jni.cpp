@@ -19,8 +19,11 @@
 #include <cstdlib>
 #include <cstdio>
 #include <cmath>
+#include <cctype>
 #include <pthread.h>
 #include <secp256k1.h>
+#include <secp256k1_extrakeys.h>
+#include <secp256k1_schnorrsig.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -426,29 +429,51 @@ static void xonly_to_p2tr(const uint8_t *xonly32, char *out) {
     *o=0;
 }
 
-/* Decode bech32m bc1p address to x-only pubkey (32 bytes) */
+/*
+ * Decodifica una dirección bc1p (bech32m, witness v1) a su clave x-only.
+ *
+ * La versión anterior no comprobaba el checksum: troceaba los caracteres y
+ * convertía de 5 a 8 bits sin más. Una dirección con una errata decodificaba
+ * igual, a una clave DISTINTA, y mandar ahí es mandar a un sitio del que nadie
+ * tiene la clave. El checksum de bech32m existe justo para eso, y además el
+ * padding sobrante debe ser cero o la codificación no es canónica.
+ */
 static int p2tr_addr_to_xonly(const char *addr, uint8_t *xonly32) {
-    if(addr[0]!='b'||addr[1]!='c'||addr[2]!='1'||addr[3]!='p') return 0;
+    if(!addr) return 0;
+    size_t alen=strlen(addr);
+    if(alen!=62) return 0;                         /* bc1 + 59 datos = 62 */
+    if(tolower(addr[0])!='b'||tolower(addr[1])!='c'||addr[2]!='1') return 0;
+    if(tolower(addr[3])!='p') return 0;            /* witness v1 -> 'p' */
+
+    /* Mayúsculas y minúsculas no se pueden mezclar (BIP173). */
+    int hasU=0,hasL=0;
+    for(size_t i=0;i<alen;i++){ if(isupper((unsigned char)addr[i]))hasU=1; if(islower((unsigned char)addr[i]))hasL=1; }
+    if(hasU&&hasL) return 0;
+
     const char *CHARSET="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    /* Find separator */
-    const char *p=addr+4; /* skip bc1p */
-    int nch=0; while(p[nch] && nch<100) nch++;
-    nch-=6; /* remove checksum */
-    if(nch<52) return 0;
-    /* Decode 5-bit values (skip witness version in bc1p prefix) */
-    std::vector<int> d5;
-    for(int i=0;i<nch;i++){
-        const char *c=strchr(CHARSET,tolower(p[i]));
+    /* hrp "bc" expandido + datos, tal y como manda bech32. */
+    uint8_t v[128]; int n=0;
+    v[n++]='b'>>5; v[n++]='c'>>5; v[n++]=0; v[n++]='b'&31; v[n++]='c'&31;
+    int dstart=n;
+    for(size_t i=3;i<alen;i++){
+        const char *c=strchr(CHARSET,tolower((unsigned char)addr[i]));
         if(!c) return 0;
-        d5.push_back((int)(c-CHARSET));
+        v[n++]=(uint8_t)(c-CHARSET);
     }
-    /* Convert 5-bit to 8-bit */
-    int acc=0,bits=0; int idx=0;
-    for(int v:d5){
-        acc=(acc<<5)|v; bits+=5;
-        while(bits>=8){bits-=8;if(idx<32)xonly32[idx++]=(acc>>bits)&0xff;}
+    if(bech32_polymod(v,n)!=0x2bc830a3) return 0;  /* constante de bech32m */
+
+    /* Datos sin la versión de testigo ni los 6 del checksum. */
+    const uint8_t *d=v+dstart+1; int nd=n-dstart-1-6;
+    if(nd!=52) return 0;                            /* 32 bytes en grupos de 5 bits */
+    uint32_t acc=0; int bits=0, idx=0;
+    for(int i=0;i<nd;i++){
+        acc=(acc<<5)|d[i]; bits+=5;
+        if(bits>=8){ bits-=8; xonly32[idx++]=(uint8_t)((acc>>bits)&0xff); }
     }
-    return (idx==32)?1:0;
+    if(idx!=32) return 0;
+    if(bits>=5) return 0;                           /* relleno de más */
+    if(acc&((1u<<bits)-1)) return 0;                /* relleno distinto de cero */
+    return 1;
 }
 
 static void h160_to_bech32(const uint8_t *h160, char *out){
@@ -1453,6 +1478,13 @@ static std::string to_hex(const uint8_t *d,int n){
 static std::string reverse_bytes(const std::string &s){
     std::string r(s.rbegin(),s.rend()); return r;
 }
+/* BIP341 usa SHA256 SIMPLE para sha_prevouts/amounts/scriptpubkeys/sequences
+   y sha_outputs, al contrario que BIP143, que lo hace doble. */
+static std::string sha256(const std::string &data){
+    uint8_t h[32];
+    SHA256((const uint8_t*)data.data(),data.size(),h);
+    return std::string((char*)h,32);
+}
 static std::string sha256d(const std::string &data){
     uint8_t h1[32],h2[32];
     SHA256((const uint8_t*)data.data(),data.size(),h1);
@@ -1480,6 +1512,15 @@ static std::string addr_to_spk(const char *addr) {
         if (bech32_to_h160(addr, h) != 1) return "";
         spk += '\x00'; spk += '\x14';
         spk += std::string((char*)h, 20);
+        return spk;
+    }
+    /* bech32m p2tr: bc1p... -> OP_1 <32 bytes>. Antes caía en el return ""
+       de abajo, así que enviar a una Taproot daba "bad_to_address". */
+    if (addr[0]=='b'&&addr[1]=='c'&&addr[2]=='1'&&tolower(addr[3])=='p') {
+        uint8_t x[32];
+        if (!p2tr_addr_to_xonly(addr, x)) return "";
+        spk += '\x51'; spk += '\x20';
+        spk += std::string((char*)x, 32);
         return spk;
     }
     // base58 decode
@@ -1520,11 +1561,12 @@ static std::string build_and_sign_tx(const std::string &req){
        scriptCode es el mismo 76a914<h160>88ac—; lo único que cambia es el
        scriptPubKey del cambio y que el input lleva el redeemScript en su
        scriptSig. Verificado contra el vector P2SH-P2WPKH de BIP143. */
-    enum SpendType { SP_LEGACY, SP_P2SH_P2WPKH, SP_P2WPKH };
-    SpendType stype = (path.find("84'")!=std::string::npos) ? SP_P2WPKH
+    enum SpendType { SP_LEGACY, SP_P2SH_P2WPKH, SP_P2WPKH, SP_P2TR };
+    SpendType stype = (path.find("86'")!=std::string::npos) ? SP_P2TR
+                    : (path.find("84'")!=std::string::npos) ? SP_P2WPKH
                     : (path.find("49'")!=std::string::npos) ? SP_P2SH_P2WPKH
                     : SP_LEGACY;
-    bool is_segwit = (stype != SP_LEGACY);
+    bool is_segwit = (stype==SP_P2SH_P2WPKH || stype==SP_P2WPKH);
     // Derive key
     uint8_t seed[64];
     PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
@@ -1539,9 +1581,35 @@ static std::string build_and_sign_tx(const std::string &req){
     { uint8_t sh[32]; SHA256((const uint8_t*)redeem.data(),redeem.size(),sh);
       RIPEMD160(sh,32,redeem_h160); }
 
+    /* Taproot BIP86: la clave que va en el script es la INTERNA ajustada con
+       t = tagged_hash("TapTweak", xonly(P)), sin árbol de scripts. El par de
+       claves se ajusta con la misma t, así que keypair_xonly_tweak_add resuelve
+       de paso la paridad —que es donde es fácil equivocarse—. */
+    secp256k1_keypair tr_kp;
+    uint8_t tr_xonly[32] = {0};
+    bool tr_ok = false;
+    if(stype==SP_P2TR){
+        secp256k1_xonly_pubkey xo; int par=0;
+        if(secp256k1_keypair_create(ctx,&tr_kp,hd.key) &&
+           secp256k1_keypair_xonly_pub(ctx,&xo,&par,&tr_kp)){
+            uint8_t internal[32];
+            secp256k1_xonly_pubkey_serialize(ctx,internal,&xo);
+            uint8_t tweak[32];
+            tagged_hash("TapTweak",internal,32,tweak);
+            if(secp256k1_keypair_xonly_tweak_add(ctx,&tr_kp,tweak) &&
+               secp256k1_keypair_xonly_pub(ctx,&xo,&par,&tr_kp)){
+                secp256k1_xonly_pubkey_serialize(ctx,tr_xonly,&xo);
+                tr_ok = true;
+            }
+        }
+        if(!tr_ok){secp256k1_context_destroy(ctx);return "ERROR:taproot_key";}
+    }
+
     // scriptPubKey propio: adonde va el cambio.
     std::string spk_me;
-    if(stype==SP_P2WPKH){
+    if(stype==SP_P2TR){
+        spk_me+='\x51'; spk_me+='\x20'; spk_me+=std::string((char*)tr_xonly,32);
+    } else if(stype==SP_P2WPKH){
         spk_me+='\x00'; spk_me+='\x14'; spk_me+=std::string((char*)h160,20);
     } else if(stype==SP_P2SH_P2WPKH){
         spk_me+='\xa9'; spk_me+='\x14';
@@ -1580,6 +1648,66 @@ static std::string build_and_sign_tx(const std::string &req){
     outs_bytes+=uint64_le(send_sat); outs_bytes+=varint(to_spk.size()); outs_bytes+=to_spk;
     if(has_change){outs_bytes+=uint64_le(change);outs_bytes+=varint(spk_me.size());outs_bytes+=spk_me;}
     std::vector<std::string> sigs;
+    if(stype==SP_P2TR){
+        /* BIP341, gasto por clave con SIGHASH_DEFAULT (0x00) y sin annex.
+           Todas las entradas son de la misma dirección, así que comparten
+           scriptPubKey. Verificado contra los vectores de BIP341: los cinco
+           hashes intermedios y los siete sigHash de keyPathSpending. */
+        std::string prevouts, amounts, spks, seqs;
+        for(auto &u:utxos){
+            prevouts+=reverse_bytes(hex_decode(u.txid));
+            prevouts+=uint32_le(u.vout);
+            amounts+=uint64_le(u.amount);
+            spks+=varint(spk_me.size()); spks+=spk_me;
+            seqs+=uint32_le(0xFFFFFFFF);
+        }
+        std::string sha_prevouts=sha256(prevouts), sha_amounts=sha256(amounts);
+        std::string sha_spks=sha256(spks), sha_seqs=sha256(seqs);
+        std::string sha_outs=sha256(outs_bytes);
+
+        for(size_t ii=0;ii<utxos.size();ii++){
+            std::string m;
+            m+='\x00';                 /* epoch */
+            m+='\x00';                 /* hash_type = SIGHASH_DEFAULT */
+            m+=uint32_le(1);           /* nVersion */
+            m+=uint32_le(0);           /* nLockTime */
+            m+=sha_prevouts; m+=sha_amounts; m+=sha_spks; m+=sha_seqs;
+            m+=sha_outs;
+            m+='\x00';                 /* spend_type: clave, sin annex */
+            m+=uint32_le((uint32_t)ii);/* input_index */
+
+            uint8_t sighash[32];
+            tagged_hash("TapSighash",(const uint8_t*)m.data(),m.size(),sighash);
+
+            uint8_t sig64[64];
+            if(!secp256k1_schnorrsig_sign32(ctx,sig64,sighash,&tr_kp,nullptr)){
+                secp256k1_context_destroy(ctx);return "ERROR:schnorr_sign";
+            }
+            /* Con SIGHASH_DEFAULT la firma son 64 bytes pelados: NO se le añade
+               el byte de tipo, al revés que en ECDSA. */
+            sigs.push_back(std::string((char*)sig64,64));
+        }
+
+        std::string tx;
+        tx+=uint32_le(1);
+        tx+='\x00'; tx+='\x01';        /* marker + flag */
+        tx+=varint(utxos.size());
+        for(auto &u:utxos){
+            tx+=reverse_bytes(hex_decode(u.txid));
+            tx+=uint32_le(u.vout);
+            tx+='\x00';                /* scriptSig vacío */
+            tx+=uint32_le(0xFFFFFFFF);
+        }
+        tx+=varint(has_change?2:1);
+        tx+=outs_bytes;
+        for(size_t i=0;i<utxos.size();i++){
+            tx+='\x01';                /* un solo elemento de testigo */
+            tx+=varint(sigs[i].size()); tx+=sigs[i];
+        }
+        tx+=uint32_le(0);
+        secp256k1_context_destroy(ctx);
+        return to_hex((const uint8_t*)tx.data(),(int)tx.size());
+    }
     if(is_segwit){
         // BIP143
         // hashPrevouts
