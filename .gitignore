@@ -6,3 +6,7 @@ XLARig/
 *.keystore
 *.jks
 keystore.properties
+
+# Lienzo de diseño: generado a partir de design/*.dc.html + canvas.json
+design/*.html
+!design/*.dc.html

@@ -1,0 +1,120 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+    .card { background:#161616; border-radius:14px; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:12px; padding:18px 22px 14px">
+    <div style="flex-grow:1; font-family:'Sora'; font-size:17px; font-weight:600; letter-spacing:-.01em">Puzzle</div>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </div>
+
+  <!-- tarjeta del objetivo: el premio manda -->
+  <div class="card" style="margin:0 22px 16px; padding:20px; background:linear-gradient(160deg,#16211E 0%,#161616 62%)">
+    <div style="display:flex; align-items:center; gap:10px">
+      <div class="cap" style="color:#00C896">Puzzle 70</div>
+      <div style="flex-grow:1"></div>
+      <div style="display:flex; align-items:center; gap:6px">
+        <span style="width:6px; height:6px; border-radius:50%; background:#00C896"></span>
+        <span class="cap" style="font-size:11px; color:#00C896">Con fondos</span>
+      </div>
+    </div>
+    <div class="disp" style="font-size:38px; font-weight:700; letter-spacing:-.035em; margin-top:10px">7.1018<span style="color:#8A8A8A">5796</span></div>
+    <div class="cap" style="margin-top:2px">BTC esperando en una sola dirección</div>
+    <div style="height:1px; background:#242424; margin:16px 0 14px"></div>
+    <div style="font-family:'Sora'; font-size:11px; color:#6A6A6A; word-break:break-all; line-height:1.5">1L2GM8eE7mJWLdo3HZS6su1832NX2txaac</div>
+  </div>
+
+  <!-- selector -->
+  <div style="padding:0 22px 18px">
+    <div class="cap" style="margin-bottom:10px">Elegir puzzle</div>
+    <div style="display:flex; gap:8px">
+      <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+        <div style="flex-grow:1; text-align:center; padding:11px 0; font-size:13px; font-weight:{{c.w}}; border-radius:10px; background:{{c.bg}}; color:{{c.fg}}">{{c.n}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- dónde estoy -->
+  <div class="card" style="margin:0 22px 16px; padding:18px 20px">
+    <div style="display:flex; align-items:baseline">
+      <div style="flex-grow:1; font-size:14px; font-weight:500">Dónde está buscando</div>
+      <div class="disp" style="font-size:17px; font-weight:600; color:#00C896">45,4 %</div>
+    </div>
+    <div style="height:6px; border-radius:3px; background:#232323; margin-top:14px; position:relative; overflow:hidden">
+      <div style="position:absolute; left:0; top:0; bottom:0; width:45.4%; background:linear-gradient(90deg,rgba(0,200,150,.25),#00C896); border-radius:3px"></div>
+    </div>
+    <div class="cap" style="font-size:11px; margin-top:10px">Del rango completo del puzzle, no del bloque</div>
+    <div style="display:flex; gap:10px; margin-top:16px">
+      <div style="flex-grow:1; display:flex; align-items:center; justify-content:center; gap:8px; height:40px; border-radius:10px; background:rgba(0,200,150,.10)">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#00C896" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1.4" fill="#00C896"/><circle cx="15.5" cy="15.5" r="1.4" fill="#00C896"/><circle cx="15.5" cy="8.5" r="1.4" fill="#00C896"/><circle cx="8.5" cy="15.5" r="1.4" fill="#00C896"/></svg>
+        <span style="font-size:13px; font-weight:500; color:#00C896">Otro punto</span>
+      </div>
+      <div style="width:110px; display:flex; align-items:center; justify-content:center; gap:8px; height:40px; border-radius:10px; background:#1D1D1D">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.8" stroke-linecap="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        <span style="font-size:13px; color:#8A8A8A">Reiniciar</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- rendimiento -->
+  <div style="display:flex; gap:12px; padding:0 22px 16px">
+    <div class="card" style="flex-grow:1; padding:15px 17px">
+      <div class="cap" style="font-size:11px">Velocidad</div>
+      <div class="disp" style="font-size:22px; font-weight:600; margin-top:6px; letter-spacing:-.02em">6.34<span style="font-size:13px; color:#8A8A8A; font-weight:400"> M/s</span></div>
+    </div>
+    <div class="card" style="flex-grow:1; padding:15px 17px">
+      <div class="cap" style="font-size:11px">Sesión</div>
+      <div class="disp" style="font-size:22px; font-weight:600; margin-top:6px; letter-spacing:-.02em">00:23</div>
+    </div>
+  </div>
+
+  <div class="card" style="margin:0 22px">
+    <div style="display:flex; align-items:center; gap:14px; padding:15px 18px">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/></svg>
+      <div style="flex-grow:1; font-size:14px">Potencia</div>
+      <div class="cap" style="font-size:12px">Media</div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <div style="padding:18px 22px 26px">
+    <div style="height:54px; border-radius:14px; background:#00C896; display:flex; align-items:center; justify-content:center; gap:10px">
+      <svg width="14" height="14" viewBox="0 0 12 12" fill="#0E0E0E"><path d="M2 1l8 5-8 5z"/></svg>
+      <span style="font-size:15px; font-weight:600; color:#0E0E0E">Empezar a buscar</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const off = { bg:'#1A1A1A', fg:'#8A8A8A', w:'500' };
+    const on  = { bg:'#00C896', fg:'#0E0E0E', w:'600' };
+    return { chips: [
+      { n:'70', ...on }, { n:'71', ...off }, { n:'72', ...off },
+      { n:'73', ...off }, { n:'74', ...off }
+    ]};
+  }
+}
+</script>
+</body>
+</html>

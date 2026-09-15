@@ -1,0 +1,100 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin:0; background:#0A0A0A; font-family:'IBM Plex Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .lbl { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:#6E6E6E; font-weight:500; }
+    .mono { font-family:'JetBrains Mono', ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+    .rule { height:1px; background:#1C1C1C; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0A0A0A; color:#EDEDED; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:14px; padding:16px 20px 14px">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A7A" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+    <div class="mono" style="flex-grow:1; font-size:13px; font-weight:500">HISTORIAL</div>
+  </div>
+  <div class="rule"></div>
+
+  <!-- acumulado -->
+  <div style="padding:24px 20px 18px">
+    <div class="lbl">Claves revisadas en total</div>
+    <div class="mono" style="font-size:40px; font-weight:700; line-height:1; letter-spacing:-.035em; margin-top:10px">4.21<span style="font-size:18px; color:#7A7A7A; font-weight:400"> mil M</span></div>
+    <div style="display:flex; gap:24px; margin-top:14px">
+      <div><span class="lbl">Sesiones</span> <span class="mono" style="font-size:12px; color:#A8A8A8; margin-left:5px">37</span></div>
+      <div><span class="lbl">Hallazgos</span> <span class="mono" style="font-size:12px; color:#A8A8A8; margin-left:5px">0</span></div>
+    </div>
+  </div>
+
+  <!-- actividad por día -->
+  <div style="padding:0 20px 20px">
+    <div class="lbl" style="margin-bottom:12px">Últimos 14 días</div>
+    <div style="display:flex; align-items:flex-end; gap:4px; height:62px">
+      <sc-for list="{{bars}}" as="b" hint-placeholder-count="14">
+        <div style="flex-grow:1; height:{{b.h}}; background:{{b.c}}"></div>
+      </sc-for>
+    </div>
+  </div>
+  <div class="rule"></div>
+
+  <div class="lbl" style="padding:18px 20px 12px">Sesiones</div>
+  <div class="rule"></div>
+
+  <sc-for list="{{sessions}}" as="s" hint-placeholder-count="6">
+    <div>
+      <div style="display:flex; align-items:center; gap:12px; padding:13px 20px">
+        <div class="mono" style="width:54px; font-size:10px; color:{{s.mc}}">{{s.mode}}</div>
+        <div style="flex-grow:1; min-width:0">
+          <div class="mono" style="font-size:12px; color:#D8D8D8">{{s.keys}}</div>
+          <div class="mono" style="font-size:10px; color:#5A5A5A; margin-top:3px">{{s.when}} · {{s.dur}}</div>
+        </div>
+        <div class="mono" style="font-size:12px; color:#7A7A7A; text-align:right">{{s.rate}}</div>
+      </div>
+      <div class="rule"></div>
+    </div>
+  </sc-for>
+
+  <div style="flex-grow:1"></div>
+
+  <div style="display:flex; gap:12px; padding:16px 20px 24px">
+    <div style="flex-grow:1; display:flex; align-items:center; justify-content:center; gap:9px; height:48px; border:1px solid #1C1C1C">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#C8C8C8" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M8 7l4-4 4 4"/><path d="M4 15v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg>
+      <span style="font-size:13px; color:#C8C8C8">Exportar</span>
+    </div>
+    <div style="width:120px; display:flex; align-items:center; justify-content:center; gap:9px; height:48px; border:1px solid #1C1C1C">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#7A7A7A" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></svg>
+      <span style="font-size:13px; color:#7A7A7A">Vaciar</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const hs = [22, 48, 31, 64, 12, 0, 0, 55, 73, 41, 88, 60, 34, 96];
+    return {
+      bars: hs.map(h => ({ h: Math.max(h, 3) + '%', c: h === 0 ? '#1C1C1C' : (h > 70 ? '#00C896' : '#1E4A3C') })),
+      sessions: [
+        { mode:'PUZZLE', mc:'#00C896', keys:'100,304,000 claves', when:'Hoy 09:12',  dur:'00:23',    rate:'6.34 M/s' },
+        { mode:'RAW',    mc:'#6EA8FE', keys:'166,442,496 claves', when:'Hoy 08:40',  dur:'00:51',    rate:'2.57 M/s' },
+        { mode:'BIP39',  mc:'#7A7A7A', keys:'39,299,584 claves',  when:'Ayer 22:05', dur:'04:12',    rate:'1.84 M/s' },
+        { mode:'PUZZLE', mc:'#00C896', keys:'1.204 M claves',     when:'Ayer 18:30', dur:'02:47:10', rate:'5.12 M/s' },
+        { mode:'RAW',    mc:'#6EA8FE', keys:'812,004,000 claves', when:'13 sep',     dur:'01:04:22', rate:'3.40 M/s' },
+        { mode:'BIP39',  mc:'#7A7A7A', keys:'18,168,320 claves',  when:'12 sep',     dur:'00:09',    rate:'2.01 M/s' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>
