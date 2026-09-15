@@ -131,8 +131,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvTemp: TextView? = null
     private var tvBattery: TextView? = null
     private var tvLog: TextView? = null
-    private var puzzleSpinner: Spinner? = null
-    private var suppressPuzzleListener = false
     private var puzzleTabReady = false
     private var tvFooter: TextView? = null
     private var btnToggle: Button? = null
@@ -186,6 +184,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
     private var tvSpeedUnitPuzzle: TextView? = null
+    private var tvSpeedUnitScan: TextView? = null
     /* Rango completo del puzzle. currentRangeStart/End apuntan al BLOQUE en
        curso (BLOCK_SIZE claves), así que usarlos para el progreso global
        comparaba la sesión entera contra un bloque y daba "1 de 0". */
@@ -197,6 +196,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzleFullEnd: String = ""
 
     /** Velocidad escalada + unidad, para no volver a mentir con la etiqueta. */
+    /**
+     * Número del puzzle seleccionado.
+     *
+     * Se resolvía con `puzzles.firstOrNull { it.start == currentRangeStart }`,
+     * pero en cuanto se pulsa START currentRangeStart pasa a ser el inicio del
+     * BLOQUE en curso, que no coincide con el start de ningún puzzle. A partir
+     * de ahí esa búsqueda devolvía null siempre y cada sitio hacía algo distinto
+     * con el fallo — ver los tres sitios que la usaban.
+     *
+     * puzzleFullStart sí guarda el rango del puzzle y no lo pisa la lógica de
+     * bloques; prefs es el respaldo, que applyPuzzle() ya deja escrito.
+     */
+    private fun currentPuzzleNum(): Int =
+        puzzles.firstOrNull { it.start == puzzleFullStart }?.num
+            ?: prefs.getInt("current_puzzle_num", 0)
+
+    private fun watchdogLabel() =
+        if (watchdogEnabled) "Watchdog ON — reinicia el scan si se detiene"
+        else                 "Watchdog OFF — no reinicia el scan"
+
     private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
         keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
         keysPerSec >= 1e6 -> "%.2f".format(keysPerSec / 1e6) to "MKeys"
@@ -325,8 +344,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
         }
         AppTheme.init(this)
-        AdManager.init(this)
-        AdManager.loadInterstitial(this)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = BG_DEEP
         s = Strings.EN
@@ -853,8 +870,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         heroCard.addView(tvAvgWps)
 
-        heroCard.addView(TextView(this).apply {
-            text = "K KEYS / SEG"
+        // La unidad era el literal fijo "K KEYS / SEG" sobre una cifra que
+        // getWps() da en claves por segundo sin escalar: 1,843,200 se leía como
+        // 1.8 G/s, mil veces la velocidad real. Ahora la escala el mismo
+        // scaleSpeed() que ya usaba la pestaña de puzzle, donde "peak 4.34
+        // MKeys" convivía con ese "K KEYS" contradiciéndolo.
+        tvSpeedUnitScan = TextView(this).apply {
+            text = "KEYS / SEG"
             textSize = 10f
             setTextColor(0xFF505050.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
@@ -864,7 +886,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(20) }
-        })
+        }
+        heroCard.addView(tvSpeedUnitScan)
 
         // ── STAT GRID 2x2 ─────────────────────────────────────────────────
         fun statCard(accentColor: Int, build: LinearLayout.() -> Unit): LinearLayout {
@@ -923,7 +946,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(tvCount)
         })
         gridRow1.addView(statCard(0xFF242424.toInt()) {
-            addView(statLabel("SESIÓN"))
+            // Decía "SESIÓN" sobre un valor que es el ritmo extrapolado a un día
+            // ("159B/día"), no nada de la sesión: el tiempo de sesión está en su
+            // propia tarjeta y las claves de la sesión en TOTAL KEYS.
+            addView(statLabel("RITMO"))
             val tvSessionStat = TextView(this@MainActivity).apply {
                 text = "—"; textSize = 13f; setTextColor(0xFFEFEFEF.toInt())
                 typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
@@ -1207,34 +1233,40 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
             listOf(
 
-                Triple(if (watchdogEnabled) "🐕 Watchdog ON" else "🐕 Watchdog OFF",
-                    "Auto-reinicio si el scan se detiene", {
+                // El icono va a un TextView de 26dp: aquí llegaba
+                // "🐕 Watchdog ON" entero y se recortaba a "🐕/Wat" partido en
+                // dos líneas. El estado va ahora en la etiqueta, que es donde
+                // cabe, y se reescribe al pulsar: antes sólo cambiaba al volver
+                // a construir la pestaña, así que el rótulo se quedaba mintiendo.
+                Triple("🐕", watchdogLabel(), { lbl: TextView ->
                     watchdogEnabled = !watchdogEnabled
                     prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
+                    lbl.text = watchdogLabel()
                     android.widget.Toast.makeText(this@MainActivity,
                         if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }),
-                Triple("⏰", "Programar Scan", { showSchedulerDialog() }),
-                Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
-                Triple("🔔", "Configurar Alertas", { showAlertSettings() }),
+                Triple("⏰", "Programar Scan", { _: TextView -> showSchedulerDialog() }),
+                Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() }),
+                Triple("🔔", "Configurar Alertas", { _: TextView -> showAlertSettings() }),
 
-                Triple("📤", "Exportar Config", { exportConfig() }),
-                Triple("📥", "Importar Config", { importConfig() })
+                Triple("📤", "Exportar Config", { _: TextView -> exportConfig() }),
+                Triple("📥", "Importar Config", { _: TextView -> importConfig() })
             ).forEach { (ic, lbl, action) ->
+                val tvLabel = TextView(this@MainActivity).apply {
+                    text = lbl; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                }
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     setPadding(0, dp(10), 0, 0); isClickable = true; isFocusable = true
-                    setOnClickListener { action() }
+                    setOnClickListener { action(tvLabel) }
                 }
                 row.addView(TextView(this@MainActivity).apply {
                     text = ic; textSize = 15f; gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(10) }
                 })
-                row.addView(TextView(this@MainActivity).apply {
-                    text = lbl; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                })
+                row.addView(tvLabel)
                 row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF555555.toInt()) })
                 addView(row)
             }
@@ -1261,7 +1293,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     setOnClickListener { action() }
                 }
             }
-            row1.addView(netBtn("Mode: Master") { NetworkManager.startMaster(this@MainActivity, 71, "400000000000000000", "7fffffffffffffffff") })
+            row1.addView(netBtn("Mode: Master") { startClusterMaster() })
             row1.addView(netBtn("Search Masters") {
                 NetworkManager.discoverMasters(this@MainActivity) { ip, _ ->
                     runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Master: $ip", android.widget.Toast.LENGTH_SHORT).show() }
@@ -1737,7 +1769,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(6) }
             setOnClickListener {
-                val puzzleNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: return@setOnClickListener
+                // Con el scan en marcha esto era null y el botón salía por el
+                // return sin decir nada: pulsar "Reiniciar progreso" no hacía
+                // absolutamente nada mientras estabas buscando.
+                val puzzleNum = currentPuzzleNum()
+                if (puzzleNum == 0) return@setOnClickListener
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Reiniciar progreso")
                     .setMessage("¿Borrar el progreso del puzzle #$puzzleNum?")
@@ -2327,10 +2363,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Default puzzle setup
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
         val defaultIdx = dayOfYear % visiblePuzzles.size
-        suppressPuzzleListener = true
-        puzzleSpinner = null  // no spinner in new design
         applyPuzzle(visiblePuzzles.getOrElse(defaultIdx) { visiblePuzzles.first() })
-        suppressPuzzleListener = false
 
         // Load checkpoint for default
         val defaultPuzzle = visiblePuzzles.getOrElse(defaultIdx) { visiblePuzzles.first() }
@@ -2346,12 +2379,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         Thread {
             checkPuzzleBalance(defaultPuzzle.addr) { bal ->
                 runOnUiThread {
+                    // Consultar el saldo tarda, y en ese rato el usuario ya suele
+                    // haber tocado otro chip. Escribir aquí sin comprobarlo pisaba
+                    // la etiqueta del puzzle que sí había elegido.
+                    if (puzzleFullStart != defaultPuzzle.start) return@runOnUiThread
                     if (bal > 0) {
-                        tvBalResult.text = "Balance: ${bal / 100_000_000.0} BTC ✓"
+                        tvBalResult.text = "✓ ${bal / 100_000_000.0} BTC disponibles"
                         tvBalResult.setTextColor(ACCENT)
                     } else {
-                        autoSelectPuzzle()
-                        tvBalResult.text = "Buscando puzzle con fondos..."
+                        // Antes ponía "Buscando puzzle con fondos..." y llamaba a
+                        // autoSelectPuzzle(), que no busca nada: la autoselección
+                        // está desactivada y lo único que hacía era dejar el
+                        // estado en "Selecciona un puzzle" con uno ya elegido.
+                        tvBalResult.text = "Sin fondos confirmados en #${defaultPuzzle.num}"
+                        tvBalResult.setTextColor(0xFFFF6B35.toInt())
                     }
                 }
             }
@@ -3397,7 +3438,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         } catch (e: Exception) {}
                     }
                 } else {
-                    tvWps?.text = numberFmt.format(wps.toLong())
+                    val (sv, su) = scaleSpeed(wps)
+                    tvWps?.text = sv
+                    tvSpeedUnitScan?.text = "${su.uppercase()} / SEG"
                     tvCount?.text = formatCount(HunterEngine.getCount())
                     tvTime?.text = formatElapsed(sessionStartTime)
                     chartView?.addPoint(wps.toFloat())
@@ -3459,7 +3502,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val lastKey = HunterEngine.getLastKey()
                     if (lastKey.isNotEmpty() && lastKey != "0".repeat(64)) {
                         val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-                        val puzzleNum = puzzles.firstOrNull { it.start == etRangeStart?.text.toString() }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
+                        val puzzleNum = currentPuzzleNum()
                         puzzlePrefs.edit()
                             .putString("last_key_$puzzleNum", lastKey)
                             .putLong("last_time_$puzzleNum", System.currentTimeMillis())
@@ -3472,10 +3515,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (HunterEngine.isLoading()) {
             val status = HunterEngine.getLoadStatus()
             tvCsvName?.text = status; tvCsvName?.setTextColor(AppTheme.CYAN)
-        } else if (HunterEngine.isCsvLoaded() && csvPath.isNotEmpty()) {
-            tvCsvName?.text = File(csvPath).name
-            tvCsvName?.setTextColor(0xFF00FF88.toInt())
-            // Actualizar card DATASET con conteo real del engine
+        } else if (HunterEngine.isCsvLoaded()) {
+            // La tarjeta DATASET sólo se refrescaba si csvPath seguía apuntando a
+            // un fichero, así que tras reinstalar o mover el .bin mostraba "—"
+            // con el dataset cargado y buscando. Lo que importa es lo que el
+            // motor tiene en memoria, y eso lo da getCsvCount().
+            if (csvPath.isNotEmpty()) {
+                tvCsvName?.text = File(csvPath).name
+                tvCsvName?.setTextColor(0xFF00FF88.toInt())
+            }
             val total = HunterEngine.getCsvCount()
             if (total > 0) {
                 val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
@@ -3511,8 +3559,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     HunterEngine.getFound(), sessionDur, sessionKps / 1000.0)
                 // Marcar bloque como escaneado al detener
                 if (puzzleMode) {
-                    val pNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
-                    markBlockScanned(pNum)
+                    // El respaldo era puzzles[puzzleSpinner.selectedItemPosition],
+                    // pero puzzleSpinner se fija a null ("no spinner in new
+                    // design"), así que caía en puzzles[0] = #70: parar un scan
+                    // del #80 apuntaba el bloque como escaneado en el #70.
+                    val pNum = currentPuzzleNum()
+                    if (pNum != 0) markBlockScanned(pNum)
                 }
                 val btn = activeToggleBtn
                 if (btn != null) {
@@ -3536,7 +3588,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     if (etRangeStart != null && etRangeEnd != null) {
                         // Cargar checkpoint si existe
                         val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-                        val puzzleNum = puzzles.firstOrNull { it.start == etRangeStart?.text.toString() }?.num ?: (puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: 0)
+                        val puzzleNum = currentPuzzleNum()
                         val savedKey = puzzlePrefs.getString("last_key_$puzzleNum", null)
                         val rangeEnd = etRangeEnd?.text.toString() ?: ""
                         // Elegir bloque no escaneado
@@ -3635,10 +3687,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvCsvName?.text = dest.name
             tvCsvName?.setTextColor(0xFF00FF88.toInt())
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
-            val mb = dest.length() / 1024 / 1024
             val hashes = dest.length() / 20
-            tvBinInfoRef?.text = "📦 ${dest.name}  ·  ${numberFmt.format(hashes)} hashes  ·  ${mb}MB"
-            tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
+            // Aquí se escribía "📦 nombre · N hashes · N MB" en la misma tarjeta
+            // que luego muestra el ritmo en claves/día: dos significados en un
+            // solo hueco, y el segundo pisaba al primero en cuanto arrancaba el
+            // scan. El nombre ya está en tvCsvName y el recuento en DATASET.
             // Actualizar stat card con conteo de hashes
             tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
@@ -4088,6 +4141,50 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }.start()
     }
 
+    /**
+     * Arranca el master del cluster con el puzzle que está seleccionado.
+     *
+     * El botón llamaba a startMaster(..., 71, "400000000000000000",
+     * "7fffffffffffffffff"): el puzzle 71 fijo en el código, sin relación con el
+     * que tuvieras elegido. Si estabas con el #70, los workers recibían bloques
+     * del rango del #71 y buscaban donde no estaba la clave — repartiendo
+     * trabajo inútil sin que nada lo indicara. applyPuzzle() ya deja el rango en
+     * prefs, así que se lee de ahí.
+     *
+     * Además muestra el código de acceso en un diálogo: lo generaba
+     * startMaster() y sólo aparecía en un log de cinco líneas, así que el master
+     * quedaba escuchando en 0.0.0.0:7771 sin que supieras el código que hay que
+     * dar a los workers.
+     */
+    private fun startClusterMaster() {
+        val pnum  = prefs.getInt("current_puzzle_num", 0)
+        val start = prefs.getString("current_range_start", "") ?: ""
+        val end   = prefs.getString("current_range_end", "") ?: ""
+        if (pnum == 0 || start.isEmpty() || end.isEmpty()) {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Sin puzzle seleccionado")
+                .setMessage("Elige un puzzle en la pestaña Puzzle antes de arrancar " +
+                            "el master: es el rango que se reparte entre los dispositivos.")
+                .setPositiveButton("OK", null)
+                .show()
+            return
+        }
+        NetworkManager.startMaster(this, pnum, start, end)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Master activo — Puzzle #$pnum")
+            .setMessage("Código de acceso:\n\n${NetworkManager.authToken}\n\n" +
+                        "Introdúcelo en cada worker. Sin él el master rechaza la " +
+                        "conexión.\n\nEscucha en el puerto ${NetworkManager.TCP_PORT} " +
+                        "de esta red. Úsalo sólo en una red de confianza.")
+            .setPositiveButton("Copiar código") { _, _ ->
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                    .setPrimaryClip(android.content.ClipData.newPlainText(
+                        "cluster", NetworkManager.authToken))
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
+    }
+
     private fun applyPuzzle(p: PuzzleInfo) {
         etRangeStart?.setText(p.start)
         etRangeEnd?.setText(p.end)
@@ -4114,13 +4211,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // No llamar setRange durante construcción — solo cuando engine está corriendo
     }
 
-    private fun autoSelectPuzzle() {
-        // Auto-select disabled: user selects puzzle manually via chip selector
-        runOnUiThread {
-            tvPuzzleStatus?.text = "Selecciona un puzzle"
-            tvPuzzleStatus?.setTextColor(0xFF868686.toInt())
-        }
-    }
 
 
 
@@ -4563,7 +4653,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val lastKey = HunterEngine.getLastKey()
             if (lastKey.isEmpty() || lastKey == "0".repeat(64)) return
             val puzzlePrefs = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
-            val puzzleNum = puzzles.firstOrNull { it.start == currentRangeStart }?.num ?: puzzles.getOrNull(puzzleSpinner?.selectedItemPosition ?: 0)?.num ?: return
+            // Mismo fallo: el checkpoint de cualquier puzzle se guardaba bajo
+            // el #70, así que al volver al puzzle real se reanudaba desde una
+            // clave de otro rango — o desde el principio.
+            val puzzleNum = currentPuzzleNum()
+            if (puzzleNum == 0) return
             puzzlePrefs.edit()
                 .putString("last_key_$puzzleNum", lastKey)
                 .putLong("last_time_$puzzleNum", System.currentTimeMillis())

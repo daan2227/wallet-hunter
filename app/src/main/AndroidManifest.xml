@@ -33,7 +33,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".MainActivity" android:exported="true"
+        <!-- exported="true" sin intent-filter: cualquier app instalada podía
+             abrir MainActivity por nombre de componente y saltarse la pantalla
+             de PIN de WelcomeActivity, que es el único sitio donde se pide.
+             Sólo la arrancan WelcomeActivity, el widget y la notificación del
+             servicio, todos dentro de la app. -->
+        <activity android:name=".MainActivity" android:exported="false"
             android:launchMode="singleTop"
         android:screenOrientation="portrait"
         android:configChanges="orientation|screenSize|keyboardHidden">
@@ -46,11 +51,6 @@
 
         <activity android:name=".NetworkActivity"
             android:theme="@style/AppThemeDark" />
-
-        <!-- AdMob App ID (TEST) -->
-        <meta-data
-            android:name="com.google.android.gms.ads.APPLICATION_ID"
-            android:value="ca-app-pub-3940256099942544~3347511713"/>
 
         <provider
             android:name="androidx.core.content.FileProvider"
