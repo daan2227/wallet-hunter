@@ -1,0 +1,98 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+    .card { background:#161616; border-radius:14px; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:14px; padding:18px 22px 16px">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="2.2" stroke-linecap="round"><path d="M15 6l-6 6 6 6"/></svg>
+    <div style="flex-grow:1; font-family:'Sora'; font-size:17px; font-weight:600; letter-spacing:-.01em">Recibir</div>
+  </div>
+
+  <!-- tipo de dirección -->
+  <div style="padding:2px 22px 18px">
+    <div style="display:flex; gap:7px">
+      <sc-for list="{{types}}" as="t" hint-placeholder-count="4">
+        <div style="flex-grow:1; text-align:center; padding:9px 0; border-radius:10px; font-size:12px; font-weight:{{t.w}}; background:{{t.bg}}; color:{{t.fg}}">{{t.n}}</div>
+      </sc-for>
+    </div>
+  </div>
+
+  <!-- QR -->
+  <div style="display:flex; justify-content:center; padding:0 22px 18px">
+    <div style="background:#F2F2F2; border-radius:18px; padding:16px; display:flex">
+      <svg width="216" height="216" viewBox="0 0 232 232" fill="#0E0E0E">
+<rect width="232" height="232" fill="#F2F2F2"/>
+<g transform="translate(0,0)">
+<rect x="0" y="0" width="56" height="8"/><rect x="80" y="0" width="8" height="8"/><rect x="112" y="0" width="8" height="8"/><rect x="128" y="0" width="8" height="8"/><rect x="144" y="0" width="8" height="8"/><rect x="176" y="0" width="56" height="8"/><rect x="0" y="8" width="8" height="8"/><rect x="48" y="8" width="8" height="8"/><rect x="88" y="8" width="48" height="8"/><rect x="152" y="8" width="8" height="8"/><rect x="176" y="8" width="8" height="8"/><rect x="224" y="8" width="8" height="8"/><rect x="0" y="16" width="8" height="8"/><rect x="16" y="16" width="24" height="8"/><rect x="48" y="16" width="8" height="8"/><rect x="72" y="16" width="8" height="8"/><rect x="112" y="16" width="16" height="8"/><rect x="144" y="16" width="8" height="8"/><rect x="160" y="16" width="8" height="8"/><rect x="176" y="16" width="8" height="8"/><rect x="192" y="16" width="24" height="8"/><rect x="224" y="16" width="8" height="8"/><rect x="0" y="24" width="8" height="8"/><rect x="16" y="24" width="24" height="8"/><rect x="48" y="24" width="8" height="8"/><rect x="104" y="24" width="8" height="8"/><rect x="128" y="24" width="16" height="8"/><rect x="160" y="24" width="8" height="8"/><rect x="176" y="24" width="8" height="8"/><rect x="192" y="24" width="24" height="8"/><rect x="224" y="24" width="8" height="8"/><rect x="0" y="32" width="8" height="8"/><rect x="16" y="32" width="24" height="8"/><rect x="48" y="32" width="8" height="8"/><rect x="64" y="32" width="16" height="8"/><rect x="112" y="32" width="24" height="8"/><rect x="144" y="32" width="24" height="8"/><rect x="176" y="32" width="8" height="8"/><rect x="192" y="32" width="24" height="8"/><rect x="224" y="32" width="8" height="8"/><rect x="0" y="40" width="8" height="8"/><rect x="48" y="40" width="8" height="8"/><rect x="64" y="40" width="32" height="8"/><rect x="104" y="40" width="24" height="8"/><rect x="152" y="40" width="16" height="8"/><rect x="176" y="40" width="8" height="8"/><rect x="224" y="40" width="8" height="8"/><rect x="0" y="48" width="56" height="8"/><rect x="64" y="48" width="8" height="8"/><rect x="80" y="48" width="8" height="8"/><rect x="96" y="48" width="8" height="8"/><rect x="112" y="48" width="8" height="8"/><rect x="128" y="48" width="8" height="8"/><rect x="144" y="48" width="8" height="8"/><rect x="160" y="48" width="8" height="8"/><rect x="176" y="48" width="56" height="8"/><rect x="88" y="56" width="8" height="8"/><rect x="104" y="56" width="8" height="8"/><rect x="120" y="56" width="8" height="8"/><rect x="144" y="56" width="24" height="8"/><rect x="0" y="64" width="32" height="8"/><rect x="40" y="64" width="16" height="8"/><rect x="64" y="64" width="24" height="8"/><rect x="96" y="64" width="8" height="8"/><rect x="120" y="64" width="56" height="8"/><rect x="184" y="64" width="8" height="8"/><rect x="216" y="64" width="8" height="8"/><rect x="0" y="72" width="24" height="8"/><rect x="40" y="72" width="8" height="8"/><rect x="64" y="72" width="16" height="8"/><rect x="120" y="72" width="8" height="8"/><rect x="144" y="72" width="24" height="8"/><rect x="176" y="72" width="8" height="8"/><rect x="192" y="72" width="8" height="8"/><rect x="208" y="72" width="16" height="8"/><rect x="0" y="80" width="16" height="8"/><rect x="24" y="80" width="8" height="8"/><rect x="48" y="80" width="8" height="8"/><rect x="72" y="80" width="24" height="8"/><rect x="104" y="80" width="8" height="8"/><rect x="120" y="80" width="8" height="8"/><rect x="144" y="80" width="8" height="8"/><rect x="160" y="80" width="48" height="8"/><rect x="216" y="80" width="8" height="8"/><rect x="8" y="88" width="8" height="8"/><rect x="88" y="88" width="40" height="8"/><rect x="136" y="88" width="8" height="8"/><rect x="160" y="88" width="16" height="8"/><rect x="184" y="88" width="8" height="8"/><rect x="200" y="88" width="16" height="8"/><rect x="224" y="88" width="8" height="8"/><rect x="8" y="96" width="8" height="8"/><rect x="24" y="96" width="8" height="8"/><rect x="48" y="96" width="24" height="8"/><rect x="80" y="96" width="8" height="8"/><rect x="104" y="96" width="8" height="8"/><rect x="120" y="96" width="32" height="8"/><rect x="176" y="96" width="8" height="8"/><rect x="192" y="96" width="16" height="8"/><rect x="224" y="96" width="8" height="8"/><rect x="0" y="104" width="8" height="8"/><rect x="16" y="104" width="8" height="8"/><rect x="32" y="104" width="8" height="8"/><rect x="72" y="104" width="8" height="8"/><rect x="96" y="104" width="16" height="8"/><rect x="120" y="104" width="24" height="8"/><rect x="152" y="104" width="8" height="8"/><rect x="168" y="104" width="8" height="8"/><rect x="216" y="104" width="8" height="8"/><rect x="0" y="112" width="8" height="8"/><rect x="16" y="112" width="16" height="8"/><rect x="48" y="112" width="24" height="8"/><rect x="88" y="112" width="8" height="8"/><rect x="104" y="112" width="8" height="8"/><rect x="128" y="112" width="16" height="8"/><rect x="208" y="112" width="8" height="8"/><rect x="24" y="120" width="8" height="8"/><rect x="72" y="120" width="32" height="8"/><rect x="120" y="120" width="8" height="8"/><rect x="136" y="120" width="8" height="8"/><rect x="160" y="120" width="24" height="8"/><rect x="192" y="120" width="32" height="8"/><rect x="8" y="128" width="16" height="8"/><rect x="32" y="128" width="8" height="8"/><rect x="48" y="128" width="8" height="8"/><rect x="72" y="128" width="16" height="8"/><rect x="96" y="128" width="16" height="8"/><rect x="168" y="128" width="48" height="8"/><rect x="224" y="128" width="8" height="8"/><rect x="56" y="136" width="8" height="8"/><rect x="80" y="136" width="24" height="8"/><rect x="120" y="136" width="8" height="8"/><rect x="144" y="136" width="8" height="8"/><rect x="160" y="136" width="8" height="8"/><rect x="176" y="136" width="8" height="8"/><rect x="192" y="136" width="8" height="8"/><rect x="208" y="136" width="8" height="8"/><rect x="224" y="136" width="8" height="8"/><rect x="0" y="144" width="24" height="8"/><rect x="32" y="144" width="8" height="8"/><rect x="48" y="144" width="32" height="8"/><rect x="104" y="144" width="8" height="8"/><rect x="120" y="144" width="8" height="8"/><rect x="152" y="144" width="8" height="8"/><rect x="192" y="144" width="8" height="8"/><rect x="224" y="144" width="8" height="8"/><rect x="0" y="152" width="8" height="8"/><rect x="24" y="152" width="8" height="8"/><rect x="40" y="152" width="8" height="8"/><rect x="56" y="152" width="8" height="8"/><rect x="72" y="152" width="8" height="8"/><rect x="120" y="152" width="8" height="8"/><rect x="136" y="152" width="32" height="8"/><rect x="200" y="152" width="32" height="8"/><rect x="0" y="160" width="24" height="8"/><rect x="40" y="160" width="40" height="8"/><rect x="88" y="160" width="32" height="8"/><rect x="136" y="160" width="80" height="8"/><rect x="224" y="160" width="8" height="8"/><rect x="64" y="168" width="8" height="8"/><rect x="88" y="168" width="24" height="8"/><rect x="128" y="168" width="24" height="8"/><rect x="160" y="168" width="8" height="8"/><rect x="192" y="168" width="40" height="8"/><rect x="0" y="176" width="56" height="8"/><rect x="80" y="176" width="8" height="8"/><rect x="96" y="176" width="8" height="8"/><rect x="120" y="176" width="16" height="8"/><rect x="160" y="176" width="8" height="8"/><rect x="176" y="176" width="8" height="8"/><rect x="192" y="176" width="8" height="8"/><rect x="208" y="176" width="16" height="8"/><rect x="0" y="184" width="8" height="8"/><rect x="48" y="184" width="8" height="8"/><rect x="72" y="184" width="16" height="8"/><rect x="96" y="184" width="32" height="8"/><rect x="152" y="184" width="16" height="8"/><rect x="192" y="184" width="8" height="8"/><rect x="208" y="184" width="8" height="8"/><rect x="0" y="192" width="8" height="8"/><rect x="16" y="192" width="24" height="8"/><rect x="48" y="192" width="8" height="8"/><rect x="64" y="192" width="8" height="8"/><rect x="80" y="192" width="40" height="8"/><rect x="160" y="192" width="64" height="8"/><rect x="0" y="200" width="8" height="8"/><rect x="16" y="200" width="24" height="8"/><rect x="48" y="200" width="8" height="8"/><rect x="72" y="200" width="8" height="8"/><rect x="88" y="200" width="8" height="8"/><rect x="104" y="200" width="16" height="8"/><rect x="168" y="200" width="8" height="8"/><rect x="184" y="200" width="24" height="8"/><rect x="216" y="200" width="8" height="8"/><rect x="0" y="208" width="8" height="8"/><rect x="16" y="208" width="24" height="8"/><rect x="48" y="208" width="8" height="8"/><rect x="72" y="208" width="24" height="8"/><rect x="104" y="208" width="8" height="8"/><rect x="144" y="208" width="8" height="8"/><rect x="176" y="208" width="56" height="8"/><rect x="0" y="216" width="8" height="8"/><rect x="48" y="216" width="8" height="8"/><rect x="64" y="216" width="24" height="8"/><rect x="96" y="216" width="8" height="8"/><rect x="160" y="216" width="8" height="8"/><rect x="176" y="216" width="16" height="8"/><rect x="200" y="216" width="8" height="8"/><rect x="216" y="216" width="16" height="8"/><rect x="0" y="224" width="56" height="8"/><rect x="80" y="224" width="16" height="8"/><rect x="112" y="224" width="16" height="8"/><rect x="144" y="224" width="8" height="8"/><rect x="160" y="224" width="16" height="8"/><rect x="200" y="224" width="16" height="8"/>
+</g></svg>
+    </div>
+  </div>
+
+  <!-- direccion, troceada para poder leerla en voz alta -->
+  <div class="card" style="margin:0 22px 14px; padding:17px 19px">
+    <div style="display:flex; align-items:center; gap:8px">
+      <div class="cap" style="flex-grow:1; font-size:11px">Tu dirección</div>
+      <div style="display:flex; align-items:center; gap:5px">
+        <span style="width:6px; height:6px; border-radius:50%; background:#00C896"></span>
+        <span style="font-size:11px; font-weight:600; color:#00C896">Sin estrenar</span>
+      </div>
+    </div>
+    <div class="disp" style="font-size:14px; line-height:1.75; letter-spacing:.02em; margin-top:10px; word-break:break-all">bc1q <span style="color:#8A8A8A">74nn</span> 76xh <span style="color:#8A8A8A">y0cp</span> zaqu <span style="color:#8A8A8A">5cnh</span> 3npd <span style="color:#8A8A8A">d4a6</span> q5p5 <span style="color:#8A8A8A">0xls</span> uy</div>
+  </div>
+
+  <!-- acciones -->
+  <div style="display:flex; gap:12px; padding:0 22px 16px">
+    <div style="flex-grow:1; height:50px; border-radius:14px; background:#00C896; display:flex; align-items:center; justify-content:center; gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#0E0E0E" stroke-width="2" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M15 5H5a2 2 0 00-2 2v10"/></svg>
+      <span style="font-size:14px; font-weight:600; color:#0E0E0E">Copiar</span>
+    </div>
+    <div style="flex-grow:1; height:50px; border-radius:14px; background:#1A1A1A; display:flex; align-items:center; justify-content:center; gap:9px">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#E8E8E8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4"/></svg>
+      <span style="font-size:14px; font-weight:500">Compartir</span>
+    </div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <!-- por qué cambia la dirección -->
+  <div class="card" style="margin:0 22px 26px; padding:16px 18px">
+    <div style="display:flex; gap:12px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M3 12a9 9 0 0114.5-7"/><path d="M21 12a9 9 0 01-14.5 7"/><path d="M17 2v5h-5M7 22v-5h5"/></svg>
+      <div style="flex-grow:1">
+        <div style="font-size:13px">Cada cobro usa una dirección nueva</div>
+        <div class="cap" style="font-size:11px; margin-top:3px; line-height:1.55">Las anteriores siguen siendo tuyas y se ven en Saldo. Reutilizar una deja tu historial a la vista de cualquiera.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const off = { bg:'#1A1A1A', fg:'#8A8A8A', w:'500' };
+    const on  = { bg:'#00C896', fg:'#0E0E0E', w:'600' };
+    return { types: [
+      { n:'bc1q', ...on }, { n:'bc1p', ...off }, { n:'3...', ...off }, { n:'1...', ...off }
+    ]};
+  }
+}
+</script>
+</body>
+</html>
