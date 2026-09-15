@@ -76,11 +76,16 @@ object AppTheme {
     const val SP_MICRO   = 11f   // sólo para datos densos: direcciones, hex
 
     /* ── Radios y espaciado ──────────────────────────────────────────────
-       Antes convivían 8, 10, 12, 14, 16 y 18 sin criterio. */
-    const val R_CARD   = 14f
-    const val R_INNER  = 12f
-    const val R_CHIP   = 10f
-    const val R_KEY    = 16f
+       Antes convivían 8, 10, 12, 14, 16 y 18 sin criterio.
+
+       En dp y como Int: se pasan por dp(), que toma Int, y el .toFloat() va al
+       final para cornerRadius. Declararlos Float obligaba a recordar el orden
+       exacto de las conversiones en cada uso, y bastaba equivocarse una vez
+       para no compilar. */
+    const val R_CARD   = 14
+    const val R_INNER  = 12
+    const val R_CHIP   = 10
+    const val R_KEY    = 16
 
     const val PAD_SIDE = 22   // margen lateral de pantalla
     const val PAD_CARD = 18   // interior de tarjeta

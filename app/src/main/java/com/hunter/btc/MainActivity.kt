@@ -861,7 +861,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Cifra y unidad en la misma línea, alineadas por la base.
         val speedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            baselineAligned = true
+            isBaselineAligned = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -923,7 +923,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
                     setColor(AppTheme.BG_CARD)
-                    cornerRadius = dp(AppTheme.R_CARD.toInt()).toFloat()
+                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     setMargins(dp(AppTheme.GAP / 2), dp(AppTheme.GAP / 2),
