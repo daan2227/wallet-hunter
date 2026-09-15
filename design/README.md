@@ -14,11 +14,16 @@ Publicado en https://claude.ai/artifact/AHccMLXW8p73hNmfenK1QU
 | `Cartera.dc.html` | Cartera (hub) |
 | `VerCartera.dc.html` | Ver cartera · pestaña Saldo |
 | `Enviar.dc.html` | Enviar |
+| `Recibir.dc.html` | Recibir |
 | `Recovery.dc.html` | Recuperar seed |
 | `Historial.dc.html` | Historial de sesiones |
 | `Clave.dc.html` | Clave de acceso |
 
-Recibir no está dibujada: es el QR, la dirección y poco más.
+El QR de `Recibir` es un marcador: no hay librería de QR en la máquina que
+generó estas maquetas, así que el código no es escaneable. Tiene los patrones
+de posición, temporización y alineación correctos y el resto son módulos
+deterministas — sirve para juzgar tamaño, contraste y encuadre. El QR real lo
+genera la app con zxing.
 
 ## El sistema
 
@@ -37,7 +42,7 @@ El resto de valores vienen de `AppTheme.kt` y de los colores literales de las
 activities: `#FF6B35` aviso, `#F04040` rojo, `#6EA8FE` azul.
 
 Iconos de trazo a 19-20px, ningún emoji. Blancos de toque de 50-62px.
-Las ocho pantallas caben en 390×844 sin scroll.
+Las nueve pantallas caben en 390×844 sin scroll.
 
 ## Historial
 
@@ -57,7 +62,7 @@ node <skill>/seed-canvas.mjs \
   --out wallet-hunter-rediseno.html \
   --title "Wallet Hunter · Rediseño" \
   --artboard Main.dc.html --artboard Puzzle.dc.html --artboard Cartera.dc.html \
-  --artboard VerCartera.dc.html --artboard Enviar.dc.html \
+  --artboard VerCartera.dc.html --artboard Enviar.dc.html --artboard Recibir.dc.html \
   --artboard Recovery.dc.html \
   --artboard Historial.dc.html --artboard Clave.dc.html \
   --canvas canvas.json

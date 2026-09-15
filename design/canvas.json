@@ -63,6 +63,14 @@
       "y": 0,
       "w": 390,
       "h": 844
+    },
+    {
+      "file": "Recibir.dc.html",
+      "title": "Recibir",
+      "x": 1880,
+      "y": 964,
+      "w": 390,
+      "h": 844
     }
   ],
   "annotations": [
@@ -81,11 +89,11 @@
       "text": "QUÉ CAMBIA DE FONDO\n\nFuera los emoji: iconos de trazo a 19-20px.\n\nMenos tarjetas. La pantalla de cartera pasa de seis a dos acciones primarias y un grupo.\n\nVer cartera deja de listar ocho ceros: enseña las que tienen saldo y pliega el resto.\n\nBlancos de toque de 50-62px en todo el teclado y los botones."
     },
     {
-      "id": "recibir",
-      "x": 1880,
+      "id": "qr-nota",
+      "x": 2350,
       "y": 964,
-      "w": 390,
-      "text": "PENDIENTE\n\nRecibir sigue sin dibujar: es el QR, la dirección y poco más, y no cambia con lo que hemos tocado por dentro.\n\nDime si la quieres y la hago."
+      "w": 300,
+      "text": "EL QR ES UN MARCADOR\n\nNo hay librería de QR en esta máquina, así que el código no es escaneable: tiene los patrones de posición, temporización y alineación correctos y el resto son módulos deterministas.\n\nSirve para juzgar tamaño, contraste y encuadre, que es lo que se decide aquí. El QR real ya lo genera la app con zxing."
     }
   ],
   "launch": {
