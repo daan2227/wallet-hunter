@@ -306,7 +306,6 @@ class DebugActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("hunt_prefs", MODE_PRIVATE)
         sb.appendLine("=== SISTEMA ===")
         sb.appendLine("RAM: ${usedMb}MB usado / ${maxMb}MB max")
-        sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
         sb.appendLine("Scan activo: ${prefs.getBoolean("scan_was_running", false)}")
         val modeStr = when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }
         sb.appendLine("Modo: $modeStr")

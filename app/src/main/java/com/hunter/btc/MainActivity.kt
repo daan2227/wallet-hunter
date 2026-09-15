@@ -177,9 +177,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvAvgWps: TextView? = null
     private var tvPeakWps: TextView? = null
     private var tvPeakWpsPuzzle: TextView? = null
-    private var watchdogEnabled = false
-    private var lastKnownRunning = false
-    private var watchdogRestarts = 0
     private var activeToggleBtn: Button? = null
     private var tvWpsPuzzle: TextView? = null
     private var tvPctPuzzle: TextView? = null
@@ -211,10 +208,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun currentPuzzleNum(): Int =
         puzzles.firstOrNull { it.start == puzzleFullStart }?.num
             ?: prefs.getInt("current_puzzle_num", 0)
-
-    private fun watchdogLabel() =
-        if (watchdogEnabled) "Watchdog ON — reinicia el scan si se detiene"
-        else                 "Watchdog OFF — no reinicia el scan"
 
     private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
         keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
@@ -451,7 +444,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             scheduledStop  = prefs.getInt("sched_stop",  -1)
             if (scheduledStart >= 0) startScheduler()
             selectedScanMode = prefs.getInt("scan_mode", 0)
-            watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
                 val profile = detectHardware()
@@ -1096,32 +1088,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             dataRow.addView(btnCsv); dataRow.addView(tvCsvLocal)
             addView(dataRow)
 
-            // Indicador detallado del archivo .bin
-            val tvBinInfo = TextView(this@MainActivity).apply {
-                val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
-                text = if (f != null && f.exists()) {
-                    val mb = f.length() / 1024 / 1024
-                    val hashes = f.length() / 20
-                    "📦 ${f.name}  ·  ${numberFmt.format(hashes)} hashes  ·  ${mb}MB"
-                } else {
-                    "📦 Sin dataset cargado"
-                }
-                textSize = 9f
-                setTextColor(if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
-                    0xFF00C896.toInt() else 0xFF555555.toInt())
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF0C0C0C.toInt()); cornerRadius = dp(8).toFloat()
-                    setStroke(1, 0xFF242424.toInt())
-                }
-                setPadding(dp(10), dp(8), dp(10), dp(8))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(6) }
-            }
-            tvDatasetStat = tvBinInfo
-            addView(tvBinInfo)
+            // Aquí había una segunda caja con "📦 utxos.bin · N hashes · N MB",
+            // repitiendo lo que ya dicen el nombre de fichero de arriba y la
+            // tarjeta DATASET. Peor: hacía "tvDatasetStat = tvBinInfo", pisando
+            // la referencia a la tarjeta, así que updateUI() escribía el recuento
+            // en esta caja y la tarjeta se quedaba con su texto inicial —de ahí
+            // el "—" que se veía arriba con el dataset cargado—.
 
             addView(TextView(this@MainActivity).apply {
                 text = "Threads"; textSize = 10f; setTextColor(0xFF868686.toInt())
@@ -1242,26 +1214,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
             listOf(
-
-                // El icono va a un TextView de 26dp: aquí llegaba
-                // "🐕 Watchdog ON" entero y se recortaba a "🐕/Wat" partido en
-                // dos líneas. El estado va ahora en la etiqueta, que es donde
-                // cabe, y se reescribe al pulsar: antes sólo cambiaba al volver
-                // a construir la pestaña, así que el rótulo se quedaba mintiendo.
-                Triple("🐕", watchdogLabel(), { lbl: TextView ->
-                    watchdogEnabled = !watchdogEnabled
-                    prefs.edit().putBoolean("watchdog", watchdogEnabled).apply()
-                    lbl.text = watchdogLabel()
-                    android.widget.Toast.makeText(this@MainActivity,
-                        if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
-                        android.widget.Toast.LENGTH_SHORT).show()
-                }),
-                Triple("⏰", "Programar Scan", { _: TextView -> showSchedulerDialog() }),
-                Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() }),
-                Triple("🔔", "Configurar Alertas", { _: TextView -> showAlertSettings() }),
-
-                Triple("📤", "Exportar Config", { _: TextView -> exportConfig() }),
-                Triple("📥", "Importar Config", { _: TextView -> importConfig() })
+                Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() })
             ).forEach { (ic, lbl, action) ->
                 val tvLabel = TextView(this@MainActivity).apply {
                     text = lbl; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
@@ -2153,12 +2106,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
         page.addView(collapsibleSection("🔧", "Herramientas") {
             listOf(
-                Triple("⏰", "Programar Puzzle", { showSchedulerDialog() }),
                 Triple("⚙", "Auto-configurar Hardware", { showHardwareInfo() }),
                 Triple("📤", "Exportar Progreso", { exportPuzzleProgress() }),
-                Triple("📥", "Importar Progreso", { importPuzzleProgress() }),
-                Triple("📤", "Exportar Config", { exportConfig() }),
-                Triple("📥", "Importar Config", { importConfig() })
+                Triple("📥", "Importar Progreso", { importPuzzleProgress() })
             ).forEach { (icon, label, action) ->
                 val row = LinearLayout(this@MainActivity).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -3486,18 +3436,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val rt = Runtime.getRuntime()
             tvRam?.text = "RAM ${(rt.totalMemory()-rt.freeMemory())/1048576}MB"
 
-        // ── WATCHDOG ─────────────────────────────────────────────────────
-        val wasRunning = prefs.getBoolean("scan_was_running", false)
-        val isNowRunning = HunterEngine.isRunning()
-        if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
-            watchdogRestarts++
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (!HunterEngine.isRunning() && prefs.getBoolean("scan_was_running", false)) {
-                    doToggle(if (puzzleMode) btnPuzzleToggle else btnToggle)
-                }
-            }, 2000)
-        }
-        lastKnownRunning = isNowRunning
 
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)
         if (puzzleMode && HunterEngine.isRunning()) {
@@ -3534,6 +3472,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
                           else "${total/1000}K"
                 tvDatasetStat?.text = fmt
+                tvDatasetStat?.textSize = 28f   // vuelve del tamaño de "sin cargar"
                 tvDatasetStat?.setTextColor(0xFF00C896.toInt())
             }
         } else {
@@ -3577,8 +3516,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                 "el modo Puzzle, que trae su propia dirección.")
                     .setPositiveButton("Entendido", null)
                     .show()
-                // Si no se limpia, el watchdog ve "estaba corriendo y ya no" y
-                // vuelve a llamar aquí cada ciclo, apilando diálogos.
                 prefs.edit().putBoolean("scan_was_running", false).apply()
                 return
             }
@@ -3737,138 +3674,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // scan. El nombre ya está en tvCsvName y el recuento en DATASET.
             // Actualizar stat card con conteo de hashes
             tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
+            tvDatasetStat?.textSize = 28f
+            tvDatasetStat?.setTextColor(0xFF00C896.toInt())
             Toast.makeText(this, "Dataset cargado: ${dest.name}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    private fun showAlertSettings() {
-        val ACCENT = 0xFF00C896.toInt()
-        val BG     = 0xFF141414.toInt()
-        val TXT    = 0xFFEFEFEF.toInt()
-        val MUTED  = 0xFF868686.toInt()
-        fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-
-        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
-        val vibEnabled  = alertPrefs.getBoolean("vibration", true)
-        val soundEnabled = alertPrefs.getBoolean("sound", true)
-        val ledEnabled  = alertPrefs.getBoolean("led", true)
-        val notifEnabled = alertPrefs.getBoolean("notification", true)
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-            setBackgroundColor(BG)
-        }
-
-        fun toggleRow(label: String, subtitle: String, checked: Boolean, key: String): LinearLayout {
-            return LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, dp(12), 0, dp(12))
-                val left = LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-                left.addView(android.widget.TextView(this@MainActivity).apply {
-                    text = label; textSize = 13f; setTextColor(TXT)
-                    typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.BOLD)
-                })
-                left.addView(android.widget.TextView(this@MainActivity).apply {
-                    text = subtitle; textSize = 10f; setTextColor(MUTED)
-                    typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.NORMAL)
-                })
-                addView(left)
-                val sw = android.widget.Switch(this@MainActivity).apply {
-                    isChecked = checked
-                    setOnCheckedChangeListener { _, v ->
-                        alertPrefs.edit().putBoolean(key, v).apply()
-                        updateAlertChannel()
-                    }
-                }
-                addView(sw)
-            }
-        }
-
-        layout.addView(android.widget.TextView(this).apply {
-            text = "ALERTAS AL ENCONTRAR MATCH"
-            textSize = 9f; setTextColor(MUTED)
-            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
-            letterSpacing = 0.1f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        })
-        layout.addView(toggleRow("Notificación", "Mostrar alerta en pantalla", notifEnabled, "notification"))
-        layout.addView(toggleRow("Vibración", "Vibrar al encontrar wallet", vibEnabled, "vibration"))
-        layout.addView(toggleRow("Sonido", "Alarma al encontrar wallet", soundEnabled, "sound"))
-        layout.addView(toggleRow("LED", "Parpadeo de LED", ledEnabled, "led"))
-
-        // Test button
-        layout.addView(android.widget.Button(this).apply {
-            text = "🔔  PROBAR ALERTA"
-            textSize = 12f; setTextColor(android.graphics.Color.BLACK)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(ACCENT, 0xFF6EA8FE.toInt())
-                orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
-                cornerRadius = dp(10).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-            ).apply { topMargin = dp(16) }
-            setOnClickListener {
-                HunterService.instance?.sendMatchNotif(1, "TEST: Wallet encontrada 0.001 BTC")
-                testVibration()
-            }
-        })
-
-        AlertDialog.Builder(this)
-            .setView(layout)
-            .setPositiveButton("OK", null)
-            .show()
-    }
-
-    private fun updateAlertChannel() {
-        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
-        val vibEnabled  = alertPrefs.getBoolean("vibration", true)
-        val soundEnabled = alertPrefs.getBoolean("sound", true)
-        val ledEnabled  = alertPrefs.getBoolean("led", true)
-
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            val nm = getSystemService(android.app.NotificationManager::class.java)
-            // Recrear canal con nuevas configuraciones
-            nm.deleteNotificationChannel(HunterService.CHANNEL_MATCH)
-            val alarmAttr = android.media.AudioAttributes.Builder()
-                .setUsage(android.media.AudioAttributes.USAGE_ALARM)
-                .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
-            val ch = android.app.NotificationChannel(
-                HunterService.CHANNEL_MATCH,
-                "Match encontrado",
-                android.app.NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                enableLights(ledEnabled)
-                lightColor = android.graphics.Color.YELLOW
-                enableVibration(vibEnabled)
-                if (vibEnabled) vibrationPattern = longArrayOf(0,300,150,300,150,300)
-                if (soundEnabled)
-                    setSound(android.media.RingtoneManager.getDefaultUri(
-                        android.media.RingtoneManager.TYPE_ALARM), alarmAttr)
-                else setSound(null, null)
-            }
-            nm.createNotificationChannel(ch)
-        }
-    }
-
-    private fun testVibration() {
-        val alertPrefs = getSharedPreferences("alert_settings", MODE_PRIVATE)
-        if (!alertPrefs.getBoolean("vibration", true)) return
-        val vib = getSystemService(android.os.Vibrator::class.java)
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            vib.vibrate(android.os.VibrationEffect.createWaveform(
-                longArrayOf(0,300,150,300,150,300), -1))
-        } else {
-            @Suppress("DEPRECATION")
-            vib.vibrate(longArrayOf(0,300,150,300,150,300), -1)
         }
     }
 
@@ -4267,46 +4075,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
     // ── Export / Import Configuración ────────────────────────────────────────
-    private fun exportConfig() {
-        try {
-            val cfg = org.json.JSONObject().apply {
-                put("threads",        prefs.getInt("threads", 3))
-                put("cpu",            prefs.getInt("cpu", 70))
-                put("puzzle_threads", prefs.getInt("puzzle_threads", 3))
-                put("puzzle_cpu",     prefs.getInt("puzzle_cpu", 70))
-                put("fastMode",       prefs.getBoolean("fastMode", false))
-                put("sched_start",    prefs.getInt("sched_start", -1))
-                put("sched_stop",     prefs.getInt("sched_stop", -1))
-                put("batch_size",     prefs.getInt("batch_size", 16000))
-                put("big_cores",      prefs.getString("big_cores", "4,5,6,7"))
-                put("hw_detected",    prefs.getBoolean("hw_detected", false))
-                put("exported_at",    System.currentTimeMillis())
-                put("device",         android.os.Build.MODEL)
-                put("app_version",    "1.0")
-            }
-            val json = cfg.toString(2)
-            val file = java.io.File(getExternalFilesDir(null), "wallet_hunter_config.json")
-            file.writeText(json)
-
-            // Compartir archivo
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this, "$packageName.provider", file
-            )
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "application/json"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Wallet Hunter Config")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(Intent.createChooser(intent, "Exportar configuración"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "Error exportando: ${e.message}", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    /* Se llamaba desde ningún sitio porque onActivityResult no trataba
-       REQ_IMPORT_CONFIG: "Importar Config" abría el selector y descartaba
-       el fichero en silencio. Restaurada y conectada. */
     private fun applyImportedConfig(uri: android.net.Uri) {
         try {
             val json = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
@@ -4348,20 +4116,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun importConfig() {
-        val intent = Intent(Intent.ACTION_GET_CONTENT).apply {
-            type = "application/json"
-            addCategory(Intent.CATEGORY_OPENABLE)
-        }
-        startActivityForResult(intent, REQ_IMPORT_CONFIG)
-    }
-
-
-    // ── Modo Scheduled ────────────────────────────────────────────────────────
-    private var scheduledStart: Int = -1  // hora de inicio (-1 = deshabilitado)
-    private var scheduledStop:  Int = -1  // hora de parada
-    private var schedulerRunning = false
-
     private fun startScheduler() {
         if (schedulerRunning) return
         schedulerRunning = true
@@ -4392,65 +4146,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Thread.sleep(60_000) // revisar cada minuto
             }
         }.start()
-    }
-
-    private fun showSchedulerDialog() {
-        val hours = (0..23).map { "%02d:00".format(it) }.toTypedArray()
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(16), dp(24), dp(8))
-        }
-        root.addView(TextView(this).apply {
-            text = "Inicio del scan (hora):"
-            textSize = 12f; setTextColor(AppTheme.TXT_PRI)
-            setPadding(0, 0, 0, dp(4))
-        })
-        val startPicker = android.widget.NumberPicker(this).apply {
-            minValue = 0; maxValue = 23
-            displayedValues = hours
-            value = if (scheduledStart >= 0) scheduledStart else 22
-        }
-        root.addView(startPicker)
-        root.addView(TextView(this).apply {
-            text = "Parada del scan (hora):"
-            textSize = 12f; setTextColor(AppTheme.TXT_PRI)
-            setPadding(0, dp(12), 0, dp(4))
-        })
-        val stopPicker = android.widget.NumberPicker(this).apply {
-            minValue = 0; maxValue = 23
-            displayedValues = hours
-            value = if (scheduledStop >= 0) scheduledStop else 6
-        }
-        root.addView(stopPicker)
-        root.addView(TextView(this).apply {
-            text = "Ejemplo: 22:00 → 06:00 = escanea de noche"
-            textSize = 10f; setTextColor(AppTheme.TXT_MUTED)
-            typeface = Typeface.MONOSPACE; setPadding(0, dp(8), 0, 0)
-        })
-
-        AlertDialog.Builder(this)
-            .setTitle("⏰ Scan Programado")
-            .setView(root)
-            .setPositiveButton("Activar") { _, _ ->
-                scheduledStart = startPicker.value
-                scheduledStop  = stopPicker.value
-                prefs.edit()
-                    .putInt("sched_start", scheduledStart)
-                    .putInt("sched_stop",  scheduledStop)
-                    .apply()
-                startScheduler()
-                Toast.makeText(this,
-                    "Scan programado: %02d:00 → %02d:00".format(scheduledStart, scheduledStop),
-                    Toast.LENGTH_SHORT).show()
-            }
-            .setNeutralButton("Desactivar") { _, _ ->
-                scheduledStart = -1; scheduledStop = -1
-                schedulerRunning = false
-                prefs.edit().remove("sched_start").remove("sched_stop").apply()
-                Toast.makeText(this, "Scan programado desactivado", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
     }
 
     private fun setupNotificationChannel() {
