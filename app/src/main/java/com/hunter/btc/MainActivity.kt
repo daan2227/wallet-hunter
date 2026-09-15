@@ -179,6 +179,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var watchdogEnabled = false
     private var lastKnownRunning = false
     private var tvRandomJump: TextView? = null
+    private var tvCurrentBlock: TextView? = null
     /** Bloque elegido a mano con "Saltar a un punto aleatorio"; lo usa el próximo START. */
     private var pendingBlockIdx: java.math.BigInteger? = null
     /** Reinicios hechos por el watchdog en esta sesión; se muestra en su etiqueta. */
@@ -1762,6 +1763,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setOnClickListener { pickRandomJump() }
         }
         progressCard.addView(tvRandomJump)
+
+        // En qué bloque se está (o se va a empezar) y dónde cae en el rango.
+        // Esto estaba en tvPuzzleStatus, pero updateUI() reescribe esa línea con
+        // el ETA cada 800 ms, así que la posición se borraba antes de poder
+        // leerla. Aquí no la pisa nadie.
+        tvCurrentBlock = TextView(this).apply {
+            text = "Bloque actual: —"
+            textSize = 11f; setTextColor(0xFF868686.toInt())
+            typeface = Typeface.MONOSPACE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        progressCard.addView(tvCurrentBlock)
 
         progressCard.addView(TextView(this).apply {
             // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
@@ -3349,6 +3364,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * no hay forma de ver dónde ha caído. Esto lo elige y lo enseña: "arrancará
      * en el 46,32 %".
      */
+    /**
+     * Escribe en qué bloque estamos y en qué punto del rango cae.
+     *
+     * Un id de bloque de doce cifras no dice nada solo; el porcentaje sí.
+     */
+    private fun setCurrentBlockLabel(prefix: String, blockIdx: java.math.BigInteger) {
+        val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
+        val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
+        if (rs.isEmpty() || re.isEmpty()) return
+        try {
+            val total = totalBlocksOf(rs, re)
+            val pct   = blockPercent(blockIdx, total)
+            val txt = "$prefix #%s  ·  %.4f%% del rango".format(
+                numberFmt.format(blockIdx), pct)
+            if (tvCurrentBlock?.text?.toString() != txt) tvCurrentBlock?.text = txt
+        } catch (e: Exception) {}
+    }
+
     private fun pickRandomJump() {
         val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
         val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
@@ -3361,7 +3394,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val idx   = randomBelow(total)
             pendingBlockIdx = idx
             val pct = blockPercent(idx, total)
-            tvRandomJump?.text = "🎲 Arrancará en el %.2f%% del rango  ·  toca para otro".format(pct)
+            tvRandomJump?.text = "🎲 Otro punto al azar"
+            setCurrentBlockLabel("Arrancará en el bloque", idx)
             val (bStart, _) = blockRange(rs, re, idx)
             if (HunterEngine.isRunning()) {
                 Toast.makeText(this,
@@ -3493,6 +3527,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             tvPuzzleStatus?.text =
                                 "Bloque: $etaBlock · Puzzle $cachedPuzzleLabel: $etaPuzzle"
                             tvBlockProgress?.text = etaPuzzle
+                            // Se reafirma cada ciclo para que sobreviva a que se
+                            // reconstruya la pestaña o se vuelva desde otra.
+                            if (currentBlockId.isNotEmpty())
+                                setCurrentBlockLabel("Escaneando bloque",
+                                    java.math.BigInteger(currentBlockId))
                         } catch (e: Exception) {}
                     }
                 } else {
@@ -3781,11 +3820,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             HunterEngine.setRange(bStart, bEnd)
                             currentRangeStart = bStart
                             currentRangeEnd = bEnd
-                            val posPct = blockPercent(
-                                java.math.BigInteger(currentBlockId),
-                                totalBlocksOf(fullStart, rangeEnd))
-                            tvPuzzleStatus?.text =
-                                "Bloque #$currentBlockId (%.2f%% del rango)".format(posPct)
+                            setCurrentBlockLabel("Escaneando bloque",
+                                java.math.BigInteger(currentBlockId))
                             tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
                         } else if (savedKey != null && savedKey.isNotEmpty()) {
                             HunterEngine.setRange(savedKey, rangeEnd)
@@ -4292,6 +4328,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleProgressUpdater?.invoke(p.num, p.start, p.end)
         etTarget?.setText(p.addr)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
+        // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
+        pendingBlockIdx = null
+        currentBlockId = ""
+        tvCurrentBlock?.text = "Bloque actual: —"
+        tvRandomJump?.text = "🎲 Saltar a un punto aleatorio del rango"
         // Guardar rango para modo distribuido
         prefs.edit()
             .putString("current_range_start", p.start)
