@@ -84,6 +84,60 @@ object ElectrumClient {
         } catch (e: Exception) { emptyList() }
     }
 
+    /**
+     * Monedas sin gastar de una dirección, en el mismo formato que devuelve
+     * mempool.space —{txid, vout, value}— para que quien las consuma no tenga
+     * que saber de dónde vinieron.
+     *
+     * Electrum las llama tx_hash, tx_pos y value.
+     *
+     * @return null si ningún servidor respondió. Lista vacía SÍ significa "esta
+     *   dirección no tiene nada": distinguirlo importa, porque tratar un fallo
+     *   de red como "sin fondos" haría que el envío dijera que no hay saldo.
+     */
+    fun listUnspent(addr: String, testnet: Boolean = false): List<JSONObject>? {
+        val sh = addrToScripthash(addr) ?: return null
+        val arr = requestArrayOrNull("blockchain.scripthash.listunspent", listOf(sh), testnet)
+            ?: return null
+        return arr.map {
+            JSONObject().apply {
+                put("txid",  it.getString("tx_hash"))
+                put("vout",  it.getInt("tx_pos"))
+                put("value", it.getLong("value"))
+            }
+        }
+    }
+
+    /**
+     * Comisión recomendada en sat/vB para confirmar en [bloques] bloques.
+     *
+     * blockchain.estimatefee devuelve BTC por kilobyte, o -1 cuando el servidor
+     * no tiene una estimación. Aquí sale en sat/vB, que es en lo que piensa el
+     * resto de la app.
+     */
+    fun estimateFee(bloques: Int, testnet: Boolean = false): Int? {
+        val btcPerKb = (requestRaw("blockchain.estimatefee", listOf(bloques), testnet)
+            as? Number)?.toDouble() ?: return null
+        if (btcPerKb <= 0) return null
+        // BTC/kB -> sat/vB: x1e8 para pasar a satoshis, /1000 por el kilobyte.
+        return Math.ceil(btcPerKb * 1e8 / 1000.0).toInt().coerceAtLeast(1)
+    }
+
+    /** Altura del último bloque. */
+    fun tipHeight(testnet: Boolean = false): Int? =
+        request("blockchain.headers.subscribe", emptyList(), testnet)
+            ?.optInt("height", 0)?.takeIf { it > 0 }
+
+    /**
+     * Difunde una transacción firmada.
+     *
+     * @return el txid, o el mensaje de error del nodo si lo rechaza — que hay
+     *   que enseñar tal cual: "bad-txns-inputs-missingorspent" dice qué pasó,
+     *   y un "no se pudo enviar" genérico no dice nada.
+     */
+    fun broadcast(rawHex: String, testnet: Boolean = false): String? =
+        requestRaw("blockchain.transaction.broadcast", listOf(rawHex), testnet) as? String
+
     private fun request(method: String, params: List<Any>, testnet: Boolean): JSONObject? {
         val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
         for ((host, port) in servers) {
@@ -126,6 +180,62 @@ object ElectrumClient {
             }
         }
         return emptyList()
+    }
+
+    /**
+     * Como [request], pero devuelve el "result" crudo: estimatefee da un número
+     * y broadcast una cadena, ninguno de los dos es un objeto JSON.
+     */
+    private fun requestRaw(method: String, params: List<Any>, testnet: Boolean): Any? {
+        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+        for ((host, port) in servers) {
+            try {
+                val result = connect(host, port) { reader, writer ->
+                    val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
+                    writer.write(req); writer.flush()
+                    val line = reader.readLine() ?: return@connect null
+                    val o = JSONObject(line)
+                    // Un nodo que rechaza la transacción responde con "error",
+                    // no con "result": devolverlo como null diría "no hay red"
+                    // cuando lo que hay es un motivo concreto.
+                    o.opt("error")?.takeIf { it != JSONObject.NULL }?.let { err ->
+                        val msg = (err as? JSONObject)?.optString("message") ?: err.toString()
+                        throw java.io.IOException(msg)
+                    }
+                    o.opt("result")?.takeIf { it != JSONObject.NULL }
+                }
+                if (result != null) { Log.d("Electrum", "OK: $host"); return result }
+            } catch (e: java.io.IOException) {
+                // Rechazo del nodo, no fallo de conexión: no sirve reintentar en
+                // otro servidor, porque todos van a decir lo mismo.
+                Log.w("Electrum", "$host rechazó: ${e.message}")
+                return "ERROR: ${e.message}"
+            } catch (e: Exception) {
+                Log.w("Electrum", "$host:$port falló: ${e.message}")
+            }
+        }
+        return null
+    }
+
+    /** Como [requestArray], pero distingue "lista vacía" de "nadie respondió". */
+    private fun requestArrayOrNull(method: String, params: List<Any>, testnet: Boolean):
+            List<JSONObject>? {
+        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+        for ((host, port) in servers) {
+            try {
+                val result = connect(host, port) { reader, writer ->
+                    val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
+                    writer.write(req); writer.flush()
+                    val line = reader.readLine() ?: return@connect null
+                    val arr = JSONObject(line).optJSONArray("result") ?: return@connect null
+                    (0 until arr.length()).map { arr.getJSONObject(it) }
+                }
+                if (result != null) { Log.d("Electrum", "OK: $host"); return result }
+            } catch (e: Exception) {
+                Log.w("Electrum", "$host:$port falló: ${e.message}")
+            }
+        }
+        return null
     }
 
     private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {

@@ -46,11 +46,11 @@ class WalletActivity : FragmentActivity() {
     /** Traduce una excepción de red al idioma de alguien que no la ha escrito. */
     private fun motivo(e: Exception): String = when {
         e is java.net.UnknownHostException ->
-            "Sin conexión: no se pudo resolver mempool.space."
+            "Sin conexión: no se pudo resolver el servidor."
         e is java.net.SocketTimeoutException || e is java.net.ConnectException ->
-            "mempool.space no respondió. Revisa la conexión y vuelve a intentarlo."
+            "Ningún servidor respondió. Revisa la conexión y vuelve a intentarlo."
         e.message?.contains("failed to connect", true) == true ->
-            "No se pudo conectar con mempool.space. Revisa la conexión."
+            "No se pudo conectar. Revisa la conexión."
         else -> e.message ?: e.javaClass.simpleName
     }
     private fun cardBg() = GradientDrawable().apply {
@@ -1388,18 +1388,22 @@ class WalletActivity : FragmentActivity() {
             tvStatus.setTextColor(TXT_SEC)
             Thread {
                 try {
-                    val url = if (isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo"
-                              else "https://mempool.space/api/address/$fromAddr/utxo"
-                    val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val utxos = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
-                    if (utxos.length() == 0) {
+                    val lista = ChainInfo.utxos(fromAddr, isTestnet)
+                    if (lista == null) {
+                        runOnUiThread {
+                            tvStatus.text = "No se pudo consultar la cadena. Revisa la conexión."
+                            tvStatus.setTextColor(RED)
+                        }
+                        return@Thread
+                    }
+                    if (lista.isEmpty()) {
                         runOnUiThread {
                             tvStatus.text = "Esa dirección no tiene monedas que gastar."
                             tvStatus.setTextColor(AppTheme.WARN)
                         }
                         return@Thread
                     }
+                    val utxos = JSONArray().also { a -> lista.forEach { a.put(it) } }
                     runOnUiThread {
                         tvStatus.text = ""
                         val items = Array(utxos.length()) { i ->
@@ -1467,10 +1471,25 @@ class WalletActivity : FragmentActivity() {
             tvStatus.text = "Preparando el envío…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
-                    val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
-                    conn.connectTimeout = 5000; conn.readTimeout = 5000
-                    val fetched = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
-                    if (fetched.length() == 0) { runOnUiThread { tvStatus.text = "Esa dirección no tiene saldo que gastar."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    // Iba directo a mempool.space sin respaldo. Hay redes e ISP
+                    // que no lo alcanzan —lo resuelven a una IP que no es suya—
+                    // y entonces no se podía enviar aunque Electrum sí llegara.
+                    val lista = ChainInfo.utxos(fromAddr, isTestnet)
+                    if (lista == null) {
+                        runOnUiThread {
+                            tvStatus.text = "No se pudo consultar la cadena. Revisa la conexión."
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }; return@Thread
+                    }
+                    // Lista vacía es "esta dirección no tiene nada", que es
+                    // distinto de "no hubo respuesta".
+                    if (lista.isEmpty()) {
+                        runOnUiThread {
+                            tvStatus.text = "Esa dirección no tiene monedas que gastar."
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }; return@Thread
+                    }
+                    val fetched = JSONArray().also { a -> lista.forEach { a.put(it) } }
 
                     // Coin Control rellenaba selectedUtxos y el envío lo ignoraba,
                     // gastando siempre todos los UTXOs: la función era decorativa.
@@ -1662,14 +1681,17 @@ class WalletActivity : FragmentActivity() {
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
                     runOnUiThread { tvStatus.text = "Difundiendo…"; tvStatus.setTextColor(TXT_SEC) }
-                    val bc = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/tx" else "https://mempool.space/api/tx").openConnection() as java.net.HttpURLConnection
-                    bc.requestMethod = "POST"; bc.doOutput = true; bc.setRequestProperty("Content-Type","text/plain")
-                    bc.outputStream.write(rawTx.toByteArray())
-                    val code = bc.responseCode
-                    val resp = try {
-                        if (code == 200) bc.inputStream.bufferedReader().readText() else bc.errorStream?.bufferedReader()?.readText() ?: "error"
-                    } finally { bc.disconnect() }
-                    runOnUiThread { tvStatus.text = if (code == 200) "Enviada.\nIdentificador: $resp" else "El nodo la rechazó ($code):\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
+                    // Difundir también tenía un único camino. Si la firma salió
+                    // bien y no se puede difundir, la transacción se pierde sin
+                    // más: mejor que lo intenten los dos.
+                    val resp = ChainInfo.broadcast(rawTx, isTestnet)
+                    val ok = !resp.startsWith("ERROR")
+                    runOnUiThread {
+                        tvStatus.text = if (ok) "Enviada.\nIdentificador: $resp"
+                                        else resp.removePrefix("ERROR: ")
+                        tvStatus.setTextColor(if (ok) GREEN else RED)
+                        btnSend.isEnabled = true
+                    }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()
     }
