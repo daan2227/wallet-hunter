@@ -68,6 +68,7 @@ object AppTheme {
     /* ── Escala tipográfica ───────────────────────────────────────────────
        Una cifra domina por pantalla; lo demás baja a BODY o CAPTION. Antes
        cada pantalla inventaba su tamaño: 56, 44, 40, 28, 22, 20, 19, 18… */
+    const val SP_HERO    = 58f   // la cifra del escáner, que domina su pantalla
     const val SP_DISPLAY = 44f   // la cifra protagonista
     const val SP_FIGURE  = 22f   // cifras de apoyo (tarjetas de estadística)
     const val SP_TITLE   = 17f   // título de pantalla o de sección

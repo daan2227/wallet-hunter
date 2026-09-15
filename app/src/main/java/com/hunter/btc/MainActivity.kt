@@ -83,6 +83,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var drawerView:   android.view.View?              = null
     private var overlayView:  android.view.View?              = null
     private fun goTab(idx: Int) {
+        tvHeaderTitle?.text = when (idx) {
+            0 -> "Escáner"; 1 -> "Puzzle"; 2 -> "Cartera"; else -> "Recuperar seed"
+        }
         tabPages.forEachIndexed { i, v ->
             v.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
         }
@@ -133,6 +136,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzleTabReady = false
     private var tvFooter: TextView? = null
     private var btnToggle: Button? = null
+    /** Línea de estado del escáner: "Buscando · 51 s". */
+    private var tvScanState: TextView? = null
+    private var scanStateDot: android.view.View? = null
+    /** Resumen a la derecha de las filas de ajuste: "8 hilos · 100 %". */
+    private var tvEngineSummary: TextView? = null
+    private var tvClusterSummary: TextView? = null
+    /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
+    private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
     private var sbThreads: SeekBar? = null
     private var sbCpu: SeekBar? = null
@@ -496,40 +507,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // el título. La caja sobra — el glifo en el acento ya identifica.
         header.addView(TextView(this).apply {
             text = "\u20BF"
-            textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.ACCENT)
+            textSize = 15f
+            setTextColor(AppTheme.BG_DEEP)
             typeface = AppTheme.display(context)
             gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).also {
+            background = Ui.cardBg(9, AppTheme.ACCENT, context)
+            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).also {
                 it.gravity = Gravity.CENTER_VERTICAL
             }
         })
 
-        header.addView(TextView(this).apply {
-            text = "Wallet Hunter"
+        // El título decía "Wallet Hunter" en las cuatro pestañas, así que no
+        // decía dónde estabas.
+        tvHeaderTitle = TextView(this).apply {
+            text = "Escáner"
             textSize = AppTheme.SP_TITLE
             typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
             setTextColor(AppTheme.TXT_PRI)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                 it.gravity = Gravity.CENTER_VERTICAL
-                it.marginStart = dp(8)
+                it.marginStart = dp(12)
             }
-        })
-
-        // Status dot
-        val dot = android.view.View(this).apply {
-            background = android.graphics.drawable.GradientDrawable().apply {
-                shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(AppTheme.TXT_SEC)
-                setSize(dp(8), dp(8))
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-                it.marginEnd = dp(12)
-            }
-            tag = "statusDot"
         }
-        header.addView(dot)
+        header.addView(tvHeaderTitle)
+
+
 
         // Las tres barras se dibujaban con tres Views de 16x2dp dentro de un
         // botón con borde. Es un icono: ic_menu lo dibuja con el mismo trazo
@@ -800,53 +803,60 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(0, 0, 0, dp(80))
         }
 
-        // ── VELOCIDAD ─────────────────────────────────────────────────────
-        //
-        // Estaba todo centrado dentro de una tarjeta con borde, y con la
-        // unidad en su propia línea DEBAJO de la cifra. Entre medias, el pico
-        // alineado a la derecha y la media al centro, ambos a 9sp: tres
-        // alineaciones distintas en cuatro líneas.
-        //
-        // Ahora: una cifra a la izquierda con su unidad al lado, y debajo una
-        // sola línea con pico y media. La tarjeta sobra — no separa nada.
-        val heroCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(AppTheme.PAD_SIDE), dp(20), dp(AppTheme.PAD_SIDE), dp(4))
+        fun side(v: android.view.View, top: Int = 0, bottom: Int = 0) = v.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(top), dp(AppTheme.PAD_SIDE), dp(bottom))
+            }
         }
 
-        heroCard.addView(TextView(this).apply {
-            text = "Velocidad"
+        // ── ESTADO ────────────────────────────────────────────────────────
+        //
+        // El estado vivía en un punto gris de 8dp en la cabecera, sin texto:
+        // había que saberse que el punto significaba algo. Aquí es una frase
+        // con el tiempo que lleva corriendo, que es lo primero que quieres
+        // saber al abrir la app.
+        val statusRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val statusDot = android.view.View(this).apply {
+            background = android.graphics.drawable.GradientDrawable().apply {
+                shape = android.graphics.drawable.GradientDrawable.OVAL
+                setColor(AppTheme.TXT_MUTED)
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(9) }
+        }
+        tvScanState = TextView(this).apply {
+            text = "En espera"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        })
+        }
+        scanStateDot = statusDot
+        statusRow.addView(statusDot); statusRow.addView(tvScanState)
+        page.addView(side(statusRow, top = 6, bottom = 18))
 
-        // Cifra y unidad en la misma línea, alineadas por la base.
+        // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
         val speedRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             isBaselineAligned = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
         }
         tvWps = TextView(this).apply {
             text = "0,0"
-            textSize = AppTheme.SP_DISPLAY
+            textSize = AppTheme.SP_HERO
             setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
-            letterSpacing = -0.04f
+            letterSpacing = -0.045f
         }
         // La unidad era el literal fijo "K KEYS / SEG" sobre una cifra que
-        // getWps() da en claves por segundo sin escalar: 1,843,200 se leía como
+        // getWps() da en claves por segundo sin escalar: 1 843 200 se leía como
         // 1.8 G/s, mil veces la velocidad real. La escala scaleSpeed().
         tvSpeedUnitScan = TextView(this).apply {
-            text = "Keys/s"
-            textSize = AppTheme.SP_TITLE
+            text = "K/s"
+            textSize = AppTheme.SP_FIGURE
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
@@ -855,142 +865,112 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { marginStart = dp(8) }
         }
         speedRow.addView(tvWps); speedRow.addView(tvSpeedUnitScan)
-        heroCard.addView(speedRow)
+        page.addView(side(speedRow))
 
-        // Pico y media: una sola línea, mismo tamaño, misma alineación.
-        val subRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12); bottomMargin = dp(22) }
-        }
+        // Pico y media: una sola línea. Antes el pico iba alineado a la derecha
+        // y la media al centro, ambos a 9sp.
         tvPeakWps = TextView(this).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-        }
-        tvAvgWps = TextView(this).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { marginStart = dp(6) }
-        }
-        subRow.addView(tvPeakWps); subRow.addView(tvAvgWps)
-        heroCard.addView(subRow)
-
-        // ── STAT GRID 2x2 ─────────────────────────────────────────────────
-        // El borde sobraba: sobre #0E0E0E, una tarjeta de #161616 ya se ve.
-        // Un borde MÁS un cambio de tono es decir dos veces lo mismo.
-        fun statCard(accentColor: Int, build: LinearLayout.() -> Unit): LinearLayout {
-            return LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(AppTheme.BG_CARD)
-                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
-                }
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
-                    setMargins(dp(AppTheme.GAP / 2), dp(AppTheme.GAP / 2),
-                               dp(AppTheme.GAP / 2), dp(AppTheme.GAP / 2))
-                }
-                setPadding(dp(16), dp(16), dp(16), dp(16))
-                build()
-            }
-        }
-
-        // Era mayúscula monoespaciada a 9sp con letter-spacing, que es un
-        // rótulo de instrumento, no de app. A 12sp en frase se lee sin esfuerzo.
-        fun statLabel(text: String) = TextView(this).apply {
-            this.text = text
+            text = ""
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
         }
+        tvAvgWps = TextView(this).apply { visibility = android.view.View.GONE }
+        page.addView(side(tvPeakWps, top = 12, bottom = 24))
+        page.addView(tvAvgWps)
 
-        // Las cuatro tarjetas usaban cuatro tratamientos: azul a 22sp, verde a
-        // 13sp, verde a 28sp y blanco a 22sp. Nada de eso significaba nada — el
-        // color no distinguía tipos de dato, sólo hacía ruido. Un tratamiento
-        // para todas, y el acento reservado para lo que de verdad lo pide.
-        fun statValue(initial: String, color: Int) = TextView(this).apply {
-            text = initial
-            textSize = AppTheme.SP_FIGURE
-            setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.02f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) }
-        }
-
-        tvCount = statValue("0", AppTheme.BLUE)
-        val tvBlocksStat = statValue("0", AppTheme.TXT_PRI)
-        val tvProgressStat = statValue("0.00%", ACCENT)
-        tvTime = statValue("00:00", AppTheme.TXT_PRI)
-
-        val gridRow1 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        val gridRow2 = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        gridRow1.addView(statCard(ACCENT2) {
-            addView(statLabel("TOTAL KEYS"))
-            addView(tvCount)
-        })
-        gridRow1.addView(statCard(AppTheme.BORDER_C) {
-            // Decía "SESIÓN" sobre un valor que es el ritmo extrapolado a un día
-            // ("159B/día"), no nada de la sesión: el tiempo de sesión está en su
-            // propia tarjeta y las claves de la sesión en TOTAL KEYS.
-            addView(statLabel("RITMO"))
-            val tvSessionStat = TextView(this@MainActivity).apply {
-                text = "—"; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+        // ── DOS TARJETAS, NO CUATRO ───────────────────────────────────────
+        //
+        // Eran cuatro: TOTAL KEYS, RITMO, DATASET y TIEMPO, en una rejilla 2x2
+        // con cuatro tratamientos de color distintos. De esas cuatro, el ritmo
+        // se entiende mucho mejor dicho en una frase (abajo) y el tiempo ya
+        // está en la línea de estado. Quedan las dos que son cifras de verdad.
+        fun statCard(label: String, accent: Boolean, last: Boolean = false):
+                Pair<LinearLayout, TextView> {
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Ui.cardBg(ctx = this@MainActivity)
+                setPadding(dp(18), dp(16), dp(18), dp(16))
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { if (!last) marginEnd = dp(AppTheme.GAP) }
+            }
+            card.addView(TextView(this).apply {
+                text = label
+                textSize = AppTheme.SP_MICRO
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
+            })
+            val value = TextView(this).apply {
+                text = "0"
+                textSize = 24f
+                setTextColor(if (accent) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 typeface = AppTheme.title(context)
                 letterSpacing = -0.02f
                 maxLines = 1
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(7) }
             }
-            tvBinInfoRef = tvSessionStat
-            addView(tvSessionStat)
-        })
-        gridRow2.addView(statCard(ACCENT) {
-            addView(statLabel("DATASET"))
-            val tvBinStat = TextView(this@MainActivity).apply {
-                val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
-                text = if (f != null && f.exists()) {
-                    val h = f.length() / 20
-                    if (h >= 1_000_000) "${"%.1f".format(h/1e6)}M" else "${h/1000}K"
-                } else "—"
-                // El dataset no es ni una acción, ni un saldo, ni "está
-                // corriendo": no le toca el acento.
-                textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
-                typeface = AppTheme.title(context)
-                letterSpacing = -0.02f
-            }
-            tvDatasetStat = tvBinStat
-            addView(tvBinStat)
-        })
-        gridRow2.addView(statCard(AppTheme.BORDER_C) {
-            addView(statLabel("TIEMPO"))
-            addView(tvTime)
-        })
+            card.addView(value)
+            return card to value
+        }
 
-        heroCard.addView(gridRow1)
-        heroCard.addView(gridRow2)
+        val (cardKeys, vKeys) = statCard("Claves revisadas", accent = false)
+        val (cardList, vList) = statCard("Lista cargada", accent = true, last = true)
+        tvCount = vKeys
+        tvDatasetStat = vList
+        vList.text = run {
+            val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
+            if (f != null && f.exists()) {
+                val h = f.length() / 20
+                if (h >= 1_000_000) "%.1f M".format(h / 1e6) else "${h / 1000} K"
+            } else "—"
+        }
+        val statRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(cardKeys); addView(cardList)
+        }
+        page.addView(side(statRow, bottom = 14))
 
-        // progress bar removed
-        page.addView(heroCard)
+        // ── RITMO, EN LENGUAJE LLANO ──────────────────────────────────────
+        //
+        // Decía "159B/día" bajo un rótulo que ponía "SESIÓN". Ni era de la
+        // sesión ni hay forma de leer "159B" sin pararse a pensar.
+        val rateCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = Ui.cardBg(ctx = this@MainActivity)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+        }
+        rateCard.addView(Ui.icon(this, R.drawable.ic_play, 20).apply {
+            (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(12)
+        })
+        val rateCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        rateCol.addView(TextView(this).apply {
+            text = "A este ritmo"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.body(context)
+        })
+        val tvRate = TextView(this).apply {
+            text = "—"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            setPadding(0, dp(2), 0, 0)
+        }
+        tvBinInfoRef = tvRate
+        rateCol.addView(tvRate)
+        rateCard.addView(rateCol)
+        page.addView(side(rateCard, bottom = 22))
 
-        // Invisible views para compatibilidad
+        // Vistas que el motor sigue actualizando pero que ya no se enseñan:
+        // el tiempo está en la línea de estado y el resto nunca se leía.
+        tvTime      = TextView(this).apply { visibility = android.view.View.GONE }
         tvKps       = tvWps
         tvRam       = TextView(this).apply { visibility = android.view.View.GONE }
         tvBattery   = TextView(this).apply { visibility = android.view.View.GONE }
@@ -1000,16 +980,74 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvStatus    = TextView(this).apply { visibility = android.view.View.GONE }
         tvAddrFeed  = TextView(this).apply { visibility = android.view.View.GONE }
         tvMatchList = TextView(this).apply { visibility = android.view.View.GONE }
-        page.addView(tvRam); page.addView(tvBattery); page.addView(tvFooter); page.addView(tvStatus)
+        page.addView(tvTime); page.addView(tvRam); page.addView(tvBattery)
+        page.addView(tvFooter); page.addView(tvStatus)
 
-        // ── HELPER: Collapsible Section ───────────────────────────────────
-        // Ahora en Ui.section: icono vectorial en vez de emoji, sin borde y con
-        // el chevron girando en lugar de dos glifos distintos.
-        fun collapsibleSection(icon: Int, title: String, build: LinearLayout.() -> Unit) =
-            Ui.section(this, icon, title, build)
+        // ── AJUSTES: dos filas en UNA tarjeta ─────────────────────────────
+        //
+        // Eran dos tarjetas plegables sueltas, cada una ocupando su franja
+        // entera. En el diseño son dos filas dentro de una tarjeta, con su
+        // valor actual a la derecha: se ve de un vistazo cómo está configurado
+        // el motor sin tener que abrir nada.
+        val settingsCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(ctx = this@MainActivity)
+        }
+        fun settingRow(icon: Int, title: String, primero: Boolean,
+                       build: LinearLayout.() -> Unit): TextView {
+            if (!primero) settingsCard.addView(android.view.View(this).apply {
+                setBackgroundColor(AppTheme.BORDER_C)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1
+                ).apply { marginStart = dp(18); marginEnd = dp(18) }
+            })
+            val head = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(18), dp(15), dp(18), dp(15))
+                isClickable = true; isFocusable = true
+            }
+            head.addView(Ui.icon(this, icon, 19).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14)
+            })
+            head.addView(TextView(this).apply {
+                text = title
+                textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val value = TextView(this).apply {
+                text = ""
+                textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+            }
+            head.addView(value)
+            val chevron = Ui.icon(this, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginStart = dp(10)
+            }
+            head.addView(chevron)
+            settingsCard.addView(head)
+
+            val body = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                visibility = android.view.View.GONE
+                setPadding(dp(18), 0, dp(18), dp(18))
+            }
+            body.build()
+            settingsCard.addView(body)
+            head.setOnClickListener {
+                val abriendo = body.visibility == android.view.View.GONE
+                body.visibility = if (abriendo) android.view.View.VISIBLE else android.view.View.GONE
+                chevron.animate().rotation(if (abriendo) 90f else 0f).setDuration(140).start()
+            }
+            return value
+        }
 
         // ── SECTION: Config Hardware ──────────────────────────────────────
-        page.addView(collapsibleSection(R.drawable.ic_gear, "Motor y hardware") {
+        tvEngineSummary = settingRow(R.drawable.ic_gear, "Motor", primero = true) {
             addView(TextView(this@MainActivity).apply {
                 text = "Dataset"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC)
@@ -1217,10 +1255,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 row.addView(Ui.icon(this@MainActivity, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED))
                 addView(row)
             }
-        })
+        }
 
         // ── SECTION: Red Multi-Dispositivo ────────────────────────────────
-        page.addView(collapsibleSection(R.drawable.ic_network, "Red multi-dispositivo") {
+        tvClusterSummary = settingRow(R.drawable.ic_network, "Varios dispositivos", primero = false) {
             addView(TextView(this@MainActivity).apply {
                 text = "Esta IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
                 textSize = AppTheme.SP_CAPTION
@@ -1276,56 +1314,72 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             }
             addView(tvNetLog)
-        })
+        }
 
 
+
+        // La tarjeta de ajustes va aquí, entre el ritmo y el modo.
+        page.addView(side(settingsCard, bottom = 22))
 
         // ── MODO DE ESCANEO ───────────────────────────────────────────────
         //
-        // Eran dos tarjetas sueltas, cada una con su borde, y el selector
-        // repartía tres colores de acento entre ellas. Ahora es un segmented
-        // control: un carril, y dentro la opción activa como una pastilla más
-        // clara. Se entiende que son excluyentes sin tener que leerlas.
-        //
-        // Además tenía los listeners DUPLICADOS — se asignaban dentro del
-        // bucle que construye las pastillas y otra vez en un segundo bucle
-        // justo después. El segundo pisaba al primero, así que el código de
-        // arriba no llegaba a ejecutarse nunca.
-        val modeCard = Ui.card(this, topGap = AppTheme.GAP)
-        modeCard.addView(Ui.sectionLabel(this, "Modo de escaneo"))
-
-        val tvModeInfo = TextView(this).apply {
-            text = "Genera seeds de 12 y 24 palabras y deriva carteras HD."
-            textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) }
-        }
+        // Eran dos tarjetas con borde y tres colores de acento repartidos entre
+        // ellas. Y tenía los listeners DUPLICADOS: se asignaban en el bucle que
+        // construye las pastillas y otra vez en un segundo bucle justo después,
+        // que pisaba al primero, así que el código de arriba no se ejecutaba.
+        page.addView(side(Ui.sectionLabel(this, "Modo"), bottom = 0))
 
         val scanModeValues = listOf(0, 2)
-        modeCard.addView(Ui.segmented(
-            this,
-            listOf("BIP39" to "Frases semilla", "Clave directa" to "Sin derivación"),
-            initial = scanModeValues.indexOf(selectedScanMode).coerceAtLeast(0)
-        ) { idx ->
-            selectedScanMode = scanModeValues[idx]
-            // El ajuste de escaneo rápido sólo aplica a BIP39: en clave directa
-            // no hay derivación que saltarse.
-            try {
-                fastScanRow?.visibility =
-                    if (selectedScanMode == 2) android.view.View.GONE
-                    else android.view.View.VISIBLE
-            } catch (e: Exception) {}
-            tvModeInfo.text = when (selectedScanMode) {
-                0 -> "Genera seeds de 12 y 24 palabras y deriva carteras HD."
-                else -> "Genera claves privadas aleatorias. Unas 10 veces más rápido."
+        val modeRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        val modeCards = mutableListOf<LinearLayout>()
+
+        fun paintModes(sel: Int) {
+            modeCards.forEachIndexed { i, c ->
+                val on = i == sel
+                c.background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(if (on) AppTheme.BG_ELEV else AppTheme.BG_CARD)
+                    cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                    if (on) setStroke(dp(2), AppTheme.ACCENT)
+                }
+                (c.getChildAt(0) as TextView).apply {
+                    setTextColor(if (on) AppTheme.ACCENT else AppTheme.TXT_SEC)
+                    typeface = if (on) AppTheme.bold(context) else AppTheme.medium(context)
+                }
+                (c.getChildAt(1) as TextView).setTextColor(
+                    if (on) AppTheme.ACCENT else AppTheme.TXT_SEC)
             }
-        })
-        modeCard.addView(tvModeInfo)
-        page.addView(modeCard)
+        }
+        listOf("BIP39" to "Frases semilla", "Clave directa" to "10× más rápido")
+            .forEachIndexed { i, (name, sub2) ->
+                val c = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL
+                    setPadding(dp(16), dp(14), dp(16), dp(14))
+                    isClickable = true; isFocusable = true
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        .apply { if (i == 0) marginEnd = dp(10) }
+                }
+                c.addView(TextView(this).apply { text = name; textSize = AppTheme.SP_BODY })
+                c.addView(TextView(this).apply {
+                    text = sub2
+                    textSize = AppTheme.SP_MICRO
+                    typeface = AppTheme.body(context)
+                    setPadding(0, dp(3), 0, 0)
+                })
+                c.setOnClickListener {
+                    selectedScanMode = scanModeValues[i]
+                    paintModes(i)
+                    // El escaneo rápido sólo aplica a BIP39: en clave directa no
+                    // hay derivación que saltarse.
+                    try {
+                        fastScanRow?.visibility =
+                            if (selectedScanMode == 2) android.view.View.GONE
+                            else android.view.View.VISIBLE
+                    } catch (e: Exception) {}
+                }
+                modeCards.add(c); modeRow.addView(c)
+            }
+        paintModes(scanModeValues.indexOf(selectedScanMode).coerceAtLeast(0))
+        page.addView(side(modeRow, top = 10, bottom = 18))
 
         // ── INICIAR / DETENER ─────────────────────────────────────────────
         //
@@ -1334,25 +1388,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // pone la app en marcha tiene que ser lo más sólido de la pantalla.
         val startBg = GradientDrawable().apply {
             setColor(AppTheme.ACCENT)
-            cornerRadius = dp(AppTheme.R_KEY).toFloat()
+            cornerRadius = dp(AppTheme.R_CARD).toFloat()
         }
+        // Parar no es la acción principal, es la destructiva: fondo tenue y
+        // texto rojo. Antes era un rectángulo rojo entero, que pide que lo
+        // pulses.
         val stopRed = GradientDrawable().apply {
-            setColor(AppTheme.RED)
-            cornerRadius = dp(AppTheme.R_KEY).toFloat()
+            setColor(AppTheme.BG_STOP)
+            cornerRadius = dp(AppTheme.R_CARD).toFloat()
         }
 
         btnToggle = Button(this).apply {
             text = s.start
-            textSize = AppTheme.SP_TITLE
+            textSize = AppTheme.SP_BODY + 1f
             setTextColor(AppTheme.BG_DEEP)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null   // sin la sombra de Material sobre el plano
             background = startBg
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(58)
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(54)
             ).apply {
-                setMargins(dp(AppTheme.PAD_SIDE), dp(20), dp(AppTheme.PAD_SIDE), dp(8))
+                setMargins(dp(AppTheme.PAD_SIDE), dp(18), dp(AppTheme.PAD_SIDE), dp(8))
             }
             setOnClickListener {
                 puzzleMode = false
@@ -3280,8 +3337,33 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                else "%02d:%02d:%02d".format(h, m, sc)
     }
 
+    private var peakLabel = ""
+
+    /** "Buscando · 51 s" o "En espera", con su punto. */
+    private fun paintScanState(running: Boolean) {
+        tvScanState?.text =
+            if (running) "Buscando · ${formatElapsed(sessionStartTime)}" else "En espera"
+        tvScanState?.setTextColor(if (running) AppTheme.ACCENT else AppTheme.TXT_SEC)
+        (scanStateDot?.background as? android.graphics.drawable.GradientDrawable)
+            ?.setColor(if (running) AppTheme.ACCENT else AppTheme.TXT_MUTED)
+    }
+
+    /** Resumen de las filas de ajuste, con el valor que tienen ahora mismo. */
+    private fun paintSettingSummaries() {
+        val hilos = (sbThreads?.progress ?: 3) + 1
+        val cpu   = (sbCpu?.progress ?: 70) + 10
+        tvEngineSummary?.text = "$hilos hilos · $cpu %"
+        tvClusterSummary?.text = when {
+            NetworkManager.isRunning.get() && NetworkManager.isMaster -> "Maestro"
+            NetworkManager.isRunning.get() -> "Trabajador"
+            else -> "Inactivo"
+        }
+    }
+
     private fun updateUI() {
         try {
+            paintScanState(HunterEngine.isRunning())
+            paintSettingSummaries()
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
@@ -3290,15 +3372,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // Se mostraba sin escalar junto a un valor ya escalado:
                     // "1.76 MKeys" al lado de "peak 4,816,000" es ilegible.
                     val (pv, pu) = scaleSpeed(wps)
-                    tvPeakWps?.text = "Pico $pv $pu"
-                    tvPeakWpsPuzzle?.text = "Pico $pv $pu"
+                    peakLabel = "Pico $pv $pu/s"
+                    tvPeakWpsPuzzle?.text = peakLabel
                 }
                 if (wps > 0) {
                     avgWpsSum += wps
                     avgWpsCount++
                     val avg = avgWpsSum / avgWpsCount
                     val (av, au) = scaleSpeed(avg)
-                    tvAvgWps?.text = "· media $av $au"
+                    tvPeakWps?.text =
+                        if (peakLabel.isEmpty()) "Media $av $au/s"
+                        else "$peakLabel · media $av $au/s"
                 }
 
                 if (puzzleMode) {
@@ -3375,12 +3459,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         val keysPerSec = wps
                         val perDay = (keysPerSec * 86400).toLong()
                         val perDayStr = when {
-                            perDay >= 1_000_000_000 -> "${numberFmt.format(perDay/1_000_000_000)}B/día"
-                            perDay >= 1_000_000 -> "${numberFmt.format(perDay/1_000_000)}M/día"
-                            else -> "${numberFmt.format(perDay/1000)}K/día"
+                            perDay >= 1_000_000_000_000L ->
+                                "${numberFmt.format(perDay/1_000_000_000_000L)} billones"
+                            perDay >= 1_000_000_000 ->
+                                "${numberFmt.format(perDay/1_000_000_000)} mil millones"
+                            perDay >= 1_000_000 -> "${numberFmt.format(perDay/1_000_000)} millones"
+                            else                -> numberFmt.format(perDay)
                         }
-                        tvBinInfoRef?.text = "$perDayStr"
-                        tvBinInfoRef?.setTextColor(AppTheme.ACCENT)
+                        tvBinInfoRef?.text = "$perDayStr de claves al día"
+                        tvBinInfoRef?.setTextColor(AppTheme.TXT_SEC)
                     }
                 }
             }
@@ -3580,9 +3667,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 peakWps = 0.0
                 avgWpsSum = 0.0
                 avgWpsCount = 0
+                peakLabel = ""
                 tvPeakWps?.text = ""
                 tvPeakWpsPuzzle?.text = ""
-                tvAvgWps?.text = ""
+                paintScanState(false)
                 // Guardar sesión en historial
                 val sessionKeys = HunterEngine.getCount() - sessionStartCount
                 val sessionDur = if (sessionStartTime > 0)
