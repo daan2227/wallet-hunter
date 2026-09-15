@@ -889,169 +889,606 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- SEND -- */
+    //
+    // Era un formulario: cinco campos apilados del mismo tamaño —origen,
+    // destino, importe, comisión, monedas— y un botón. Todos pesaban lo mismo,
+    // así que la pantalla no decía qué estabas a punto de hacer; había que
+    // leerla entera para enterarte.
+    //
+    // El mockup la ordena por lo que importa. El importe es la cifra
+    // protagonista y va arriba. Debajo, de dónde sale y a dónde va, cada uno en
+    // su tarjeta y con lo que hace falta saber de él: el tipo y el saldo de la
+    // dirección de origen, y si la de destino es válida y de qué clase. Luego
+    // la comisión como tres opciones con su tiempo estimado en vez de un número
+    // que hay que saberse. Y antes del botón, escrito, lo que va a pasar: a
+    // dónde vuelve el cambio y que se podrá subir la comisión después.
     private fun loadSendTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
-        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
-        // 9sp para una etiqueta de formulario es ilegible, y el campo a 11sp con
-        // 8dp de alto interior no llega ni de lejos al blanco de toque mínimo.
-        fun lbl(t: String) = TextView(this).apply {
-            text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-            setPadding(0, dp(16), 0, dp(7))
-        }
-        fun fld() = EditText(this).apply {
-            setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
-            typeface = Typeface.MONOSPACE          // es dato: dirección, importe, hex
-            setHintTextColor(AppTheme.TXT_MUTED)
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-            }
-            minHeight = dp(48)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
+        val ll = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(8), 0, dp(28))
         }
 
-        ll.addView(lbl("Desde"))
-        val spinFrom = Spinner(this).apply {
-            adapter = themedAdapter(addresses.keys.map { "$it  ${addresses[it]!!.take(14)}..." })
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-            }
-            minimumHeight = dp(48)
+        val keys = addresses.keys.toList()
+        if (keys.isEmpty()) {
+            ll.addView(TextView(this).apply {
+                text = "Todavía no hay direcciones de las que enviar."
+                textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(dp(AppTheme.PAD_SIDE), dp(24), dp(AppTheme.PAD_SIDE), 0)
+            })
+            scroll.addView(ll); tabContent.addView(scroll); return
         }
-        ll.addView(spinFrom)
-        ll.addView(lbl("Hacia")); val etTo = fld(); ll.addView(etTo)
-        ll.addView(lbl("Importe (BTC)")); val etAmt = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }; ll.addView(etAmt)
-        // Venía con "5" escrito, así que todo el mundo enviaba a 5 sat/vB pasara
-        // lo que pasara en la mempool. Vacío significa "la que recomiende la red".
-        ll.addView(lbl("Comisión en sat/vB — en blanco, la que recomiende la red"))
-        val etFee = fld().apply { inputType = InputType.TYPE_CLASS_NUMBER; hint = "automática" }
-        ll.addView(etFee)
+        var fromIdx = 0
 
-
-        val btnCoinControl = Button(this).apply {
-            text = "Elegir monedas (automático)"
-            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.medium(context)
-            isAllCaps = false
-            stateListAnimator = null
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-            }
+        fun side(v: View, top: Int = 0, bottom: Int = 0) = v.apply {
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(48)
-            ).apply { topMargin = dp(16) }
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(top), dp(AppTheme.PAD_SIDE), dp(bottom))
+            }
         }
-        ll.addView(btnCoinControl)
+        fun cap(t: String) = TextView(this).apply {
+            text = t; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.medium(context)
+        }
+
+        /* ── IMPORTE ───────────────────────────────────────────────────── */
+        val amountBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        amountBlock.addView(cap("Importe"))
+
+        val amountRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        // Un EditText sin fondo: la cifra se escribe donde se lee, sin un campo
+        // aparte que la repita más pequeña.
+        val etAmt = EditText(this).apply {
+            hint = "0,00000000"
+            textSize = 40f
+            setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.display(context)
+            letterSpacing = -0.04f
+            background = null
+            setPadding(0, 0, 0, 0)
+            isSingleLine = true
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        amountRow.addView(etAmt)
+        amountRow.addView(TextView(this).apply {
+            text = "BTC"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(8) }
+        })
+        amountBlock.addView(amountRow)
+
+        val underAmount = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        val tvFromBal = TextView(this).apply {
+            text = "Consultando el saldo…"
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        // "Todo" vacía la dirección entera. No pone el saldo tal cual: hay que
+        // dejar la comisión dentro, y eso sólo se sabe al seleccionar monedas,
+        // así que resta una estimación y doSend ajusta el resto.
+        val chipMax = TextView(this).apply {
+            text = "Todo"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.bold(context)
+            background = GradientDrawable().apply {
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+            }
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            isClickable = true; isFocusable = true
+        }
+        underAmount.addView(tvFromBal); underAmount.addView(chipMax)
+        amountBlock.addView(underAmount)
+        ll.addView(side(amountBlock, top = 8, bottom = 22))
+
+        /* ── SALE DE ───────────────────────────────────────────────────── */
+        val fromCard = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            background = cardBg()
+            setPadding(dp(17), dp(15), dp(17), dp(15))
+            isClickable = true; isFocusable = true
+        }
+        val tvFromType = TextView(this).apply {
+            textSize = AppTheme.SP_MICRO - 1f; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.bold(context)
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(11).toFloat()
+            }
+            layoutParams = LinearLayout.LayoutParams(dp(46), dp(38)).apply { marginEnd = dp(13) }
+        }
+        val fromCol = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        fromCol.addView(cap("Sale de").apply { textSize = AppTheme.SP_MICRO })
+        val tvFromAddr = TextView(this).apply {
+            textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+            typeface = Typeface.MONOSPACE   // es una dirección
+            maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+            setPadding(0, dp(3), 0, 0)
+        }
+        fromCol.addView(tvFromAddr)
+        fromCard.addView(tvFromType); fromCard.addView(fromCol)
+        fromCard.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron)
+            setColorFilter(AppTheme.TXT_MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(10) }
+        })
+        ll.addView(side(fromCard, bottom = AppTheme.GAP))
+
+        /* ── VA A ──────────────────────────────────────────────────────── */
+        val toCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBg()
+            setPadding(dp(17), dp(15), dp(17), dp(15))
+        }
+        val toHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        toHead.addView(cap("Va a").apply {
+            textSize = AppTheme.SP_MICRO
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        // El veredicto de la dirección, ahí mismo mientras se escribe. Antes
+        // sólo se comprobaba al pulsar enviar, y un envío a una dirección con
+        // un carácter cambiado no tiene vuelta atrás.
+        val tvToCheck = TextView(this).apply {
+            text = ""
+            textSize = AppTheme.SP_MICRO
+            typeface = AppTheme.bold(context)
+        }
+        toHead.addView(tvToCheck)
+        toCard.addView(toHead)
+
+        val etTo = EditText(this).apply {
+            hint = "bc1… o 1… o 3…"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            typeface = Typeface.MONOSPACE
+            background = null
+            setPadding(0, dp(8), 0, 0)
+            minHeight = dp(44)
+            setLineSpacing(0f, 1.45f)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+        toCard.addView(etTo)
+        ll.addView(side(toCard, bottom = 20))
+
+        /* ── COMISIÓN ──────────────────────────────────────────────────── */
+        ll.addView(side(cap("Comisión"), bottom = 10))
+
+        // -1 = automática. Se mantiene el contrato de doSend: quien decide es
+        // la red salvo que aquí se elija otra cosa.
+        var feeRate = -1
+        val feeNames = listOf("Lenta", "Normal", "Rápida")
+        val feeRates = intArrayOf(-1, -1, -1)
+        val feePills = mutableListOf<LinearLayout>()
+        val feeEtas  = mutableListOf<TextView>()
+        var feeSel = 1
+
+        val feeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT)
+        }
+
+        val tvTotal = TextView(this).apply {
+            text = "—"
+            textSize = 18f; setTextColor(TXT_PRI)
+            typeface = AppTheme.title(context)
+            letterSpacing = -0.02f
+        }
+        val tvFeeLine = TextView(this).apply {
+            text = "—"
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            typeface = AppTheme.bold(context)
+        }
+
+        /** Estimación honesta: una entrada, salida al destino y cambio. */
+        fun estimateFeeSat(): Long {
+            val r = if (feeRate > 0) feeRate.toLong() else feeRates[feeSel].toLong()
+            if (r <= 0) return -1L
+            val fromKey = keys[fromIdx]
+            val vb = CoinSelector.inputVBytes(fromKey) +
+                     CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) +
+                     CoinSelector.outputVBytes(addresses[fromKey] ?: "1") + 11
+            return r * vb
+        }
+        fun refreshTotals() {
+            val fee = estimateFeeSat()
+            val amt = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            tvFeeLine.text = if (fee < 0) "la que recomiende la red"
+                             else "≈ %,d sat".format(fee)
+            tvTotal.text = if (amt <= 0) "—"
+                           else "%.8f".format(amt + (if (fee > 0) fee / 1e8 else 0.0))
+        }
+
+        fun paintFees() {
+            feePills.forEachIndexed { i, pill ->
+                val on = i == feeSel && feeRate <= 0
+                pill.background = GradientDrawable().apply {
+                    setColor(if (on) AppTheme.BG_ELEV else AppTheme.BG_CARD)
+                    cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                }
+                (pill.getChildAt(0) as TextView).apply {
+                    setTextColor(if (on) AppTheme.ACCENT else TXT_SEC)
+                    typeface = if (on) AppTheme.bold(context) else AppTheme.medium(context)
+                }
+            }
+            refreshTotals()
+        }
+
+        feeNames.forEachIndexed { i, name ->
+            val pill = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setPadding(dp(10), dp(12), dp(10), dp(12))
+                isClickable = true; isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { if (i < 2) marginEnd = dp(8) }
+            }
+            pill.addView(TextView(this).apply {
+                text = name; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+            })
+            val eta = TextView(this).apply {
+                text = "—"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.body(context); gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(4) }
+            }
+            pill.addView(eta)
+            pill.setOnClickListener { feeSel = i; feeRate = -1; paintFees() }
+            feePills.add(pill); feeEtas.add(eta); feeRow.addView(pill)
+        }
+        ll.addView(side(feeRow, bottom = AppTheme.GAP))
+
+        /* ── LO QUE VA A PASAR ─────────────────────────────────────────── */
+        val infoCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = cardBg()
+        }
+        fun infoRow(iconRes: Int, tint: Int, title: String, sub: String?, right: View?): LinearLayout {
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(17), dp(14), dp(17), dp(14))
+            }
+            r.addView(android.widget.ImageView(this).apply {
+                setImageResource(iconRes); setColorFilter(tint)
+                layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(12) }
+            })
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            col.addView(TextView(this).apply {
+                text = title; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+                typeface = AppTheme.body(context)
+            })
+            if (sub != null) col.addView(TextView(this).apply {
+                text = sub; textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(0, dp(2), 0, 0)
+            })
+            r.addView(col)
+            if (right != null) r.addView(right)
+            return r
+        }
+        fun sep() = View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1
+            ).apply { marginStart = dp(17); marginEnd = dp(17) }
+        }
+
+        infoCard.addView(infoRow(R.drawable.ic_send, TXT_SEC, "Comisión", null, tvFeeLine))
+        infoCard.addView(sep())
+        infoCard.addView(infoRow(R.drawable.ic_refresh, AppTheme.ACCENT,
+            "El cambio vuelve a una dirección tuya", "No se queda en la comisión", null))
+        infoCard.addView(sep())
+        infoCard.addView(infoRow(R.drawable.ic_clock, TXT_SEC,
+            "Podrás subir la comisión después", "Se envía como reemplazable (RBF)", null))
+        infoCard.addView(sep())
+
+        // Coin Control estaba suelto como un botón más; es un detalle de esta
+        // misma lista: de qué monedas sale.
+        val tvCoinCtl = TextView(this).apply {
+            text = "automático"
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+            typeface = AppTheme.medium(context)
+        }
+        val rowCoinCtl = infoRow(R.drawable.ic_wallet, TXT_SEC, "Monedas que se gastan", null, tvCoinCtl)
+        rowCoinCtl.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron)
+            setColorFilter(AppTheme.TXT_MUTED)
+            layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(8) }
+        })
+        rowCoinCtl.isClickable = true; rowCoinCtl.isFocusable = true
+        infoCard.addView(rowCoinCtl)
+        ll.addView(side(infoCard, bottom = 20))
+
+        /* ── TOTAL Y ACCIÓN ────────────────────────────────────────────── */
+        val totalRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = true
+            setPadding(dp(2), 0, dp(2), dp(14))
+        }
+        totalRow.addView(TextView(this).apply {
+            text = "Total a descontar"
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        totalRow.addView(tvTotal)
+        totalRow.addView(TextView(this).apply {
+            text = "BTC"; textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(5) }
+        })
+        ll.addView(side(totalRow))
+
+        val btnSend = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CARD).toFloat()
+            }
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(54)
+            ).apply { setMargins(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0) }
+        }
+        btnSend.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_send)
+            setColorFilter(AppTheme.BG_DEEP)
+            layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(10) }
+        })
+        btnSend.addView(TextView(this).apply {
+            text = "Revisar envío"
+            textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.BG_DEEP)
+            typeface = AppTheme.bold(context)
+        })
+        ll.addView(btnSend)
 
         val tvStatus = TextView(this).apply {
             text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
-            typeface = Typeface.MONOSPACE   // lleva hex y cifras
-            setPadding(0, dp(14), 0, 0); setLineSpacing(0f, 1.35f)
+            typeface = AppTheme.body(context)
+            setLineSpacing(0f, 1.35f)
         }
-        // Era un rectángulo sin esquinas con "BUILD & BROADCAST" dentro, en
-        // inglés y en mayúsculas, en el botón que manda el dinero.
-        val btnSend = Button(this).apply {
-            text = "Revisar y enviar"
-            textSize = AppTheme.SP_TITLE; setTextColor(BG_DEEP)
-            typeface = AppTheme.bold(context)
-            isAllCaps = false
-            stateListAnimator = null
-            background = GradientDrawable().apply {
-                setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_KEY).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
-            ).apply { topMargin = dp(24) }
-        }
-        ll.addView(btnSend); ll.addView(tvStatus)
+        ll.addView(side(tvStatus, top = 14))
         scroll.addView(ll); tabContent.addView(scroll)
 
+        /* ── ESTADO ────────────────────────────────────────────────────── */
+        var fromSat = -1L
 
-        btnCoinControl.setOnClickListener {
-            val fromKey = addresses.keys.toList().getOrNull(spinFrom.selectedItemPosition) ?: return@setOnClickListener
-            val fromAddr = addresses[fromKey] ?: return@setOnClickListener
-            tvStatus.text = "Consultando las monedas disponibles…"; tvStatus.setTextColor(TXT_SEC)
+        fun loadFromBalance() {
+            val addr = addresses[keys[fromIdx]] ?: return
+            fromSat = -1L
+            tvFromBal.text = "Consultando el saldo…"
+            Thread {
+                val res = BalanceLookup.query(addr, isTestnet)
+                runOnUiThread {
+                    fromSat = res?.sat ?: -1L
+                    tvFromBal.text = if (fromSat < 0) "No se pudo consultar el saldo"
+                                     else "Disponible %.8f BTC".format(fromSat / 1e8)
+                }
+            }.start()
+        }
+        fun paintFrom() {
+            val k = keys[fromIdx]
+            tvFromType.text = when {
+                k.startsWith("p2pkh")  -> "P2PKH"
+                k.startsWith("p2sh")   -> "P2SH"
+                k.startsWith("p2wpkh") -> "SegWit"
+                k.startsWith("p2tr")   -> "Taproot"
+                else                   -> (labelMap[k] ?: k).take(6)
+            }
+            tvFromAddr.text = addresses[k] ?: ""
+            selectedUtxos.clear()
+            tvCoinCtl.text = "automático"
+            loadFromBalance()
+            refreshTotals()
+        }
+        paintFrom()
+
+        fromCard.setOnClickListener {
+            val items = keys.map { k ->
+                "${labelMap[k] ?: k}\n${(addresses[k] ?: "").take(22)}…"
+            }.toTypedArray()
+            AlertDialog.Builder(this)
+                .setTitle("¿De qué dirección sale?")
+                .setItems(items) { _, i -> fromIdx = i; paintFrom() }
+                .show()
+        }
+
+        chipMax.setOnClickListener {
+            if (fromSat <= 0) {
+                tvStatus.text = "Todavía no se sabe el saldo de esa dirección."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
+            val fee = estimateFeeSat().coerceAtLeast(0L)
+            val max = fromSat - fee
+            if (max <= CoinSelector.DUST) {
+                tvStatus.text = "El saldo no cubre ni la comisión."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
+            etAmt.setText("%.8f".format(max / 1e8))
+            tvStatus.text = ""
+        }
+
+        // Veredicto en vivo de la dirección de destino.
+        etTo.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val a = s?.toString()?.trim() ?: ""
+                if (a.isEmpty()) { tvToCheck.text = ""; refreshTotals(); return }
+                when (val r = BtcAddress.validate(a, isTestnet)) {
+                    is BtcAddress.Result.Valid -> {
+                        tvToCheck.text = when (r.info.type) {
+                            BtcAddress.Type.P2TR   -> "Taproot, válida"
+                            BtcAddress.Type.P2WPKH -> "SegWit, válida"
+                            BtcAddress.Type.P2WSH  -> "SegWit script, válida"
+                            BtcAddress.Type.P2SH   -> "P2SH, válida"
+                            BtcAddress.Type.P2PKH  -> "Legacy, válida"
+                        }
+                        tvToCheck.setTextColor(AppTheme.ACCENT)
+                    }
+                    is BtcAddress.Result.Invalid -> {
+                        tvToCheck.text = r.reason
+                        tvToCheck.setTextColor(AppTheme.RED)
+                    }
+                }
+                refreshTotals()
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+        etAmt.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { refreshTotals() }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+
+        // Las comisiones reales, de la mempool. Hasta que respondan, las tres
+        // opciones enseñan "—" y el envío va con la que recomiende la red, que
+        // es lo que hacía antes el campo vacío.
+        Thread {
+            val f = ChainInfo.fees(isTestnet)
+            runOnUiThread {
+                if (f == null) {
+                    feeEtas.forEach { it.text = "sin datos" }
+                } else {
+                    feeRates[0] = f.economy; feeRates[1] = f.halfHour; feeRates[2] = f.fastest
+                    listOf("~2 h" to f.economy, "~30 min" to f.halfHour, "~10 min" to f.fastest)
+                        .forEachIndexed { i, (eta, r) -> feeEtas[i].text = "$eta · $r sat/vB" }
+                }
+                paintFees()
+            }
+        }.start()
+        paintFees()
+
+        /* ── MONEDAS (Coin Control) ────────────────────────────────────── */
+        rowCoinCtl.setOnClickListener {
+            val fromAddr = addresses[keys[fromIdx]] ?: return@setOnClickListener
+            tvStatus.text = "Consultando las monedas disponibles…"
+            tvStatus.setTextColor(TXT_SEC)
             Thread {
                 try {
-                    val url = if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo"
+                    val url = if (isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo"
+                              else "https://mempool.space/api/address/$fromAddr/utxo"
                     val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val utxos = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
-                    if (utxos.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs available"; tvStatus.setTextColor(RED) }; return@Thread }
+                    if (utxos.length() == 0) {
+                        runOnUiThread {
+                            tvStatus.text = "Esa dirección no tiene monedas que gastar."
+                            tvStatus.setTextColor(AppTheme.WARN)
+                        }
+                        return@Thread
+                    }
                     runOnUiThread {
+                        tvStatus.text = ""
                         val items = Array(utxos.length()) { i ->
                             val u = utxos.getJSONObject(i)
-                            val sat = u.getLong("value")
-                            "%.8f BTC  ${u.getString("txid").take(12)}...".format(sat/1e8)
+                            "%.8f BTC · ${u.getString("txid").take(12)}…".format(u.getLong("value") / 1e8)
                         }
                         val checked = BooleanArray(items.size) { true }
                         selectedUtxos.clear()
                         for (i in 0 until utxos.length()) selectedUtxos.add(utxos.getJSONObject(i))
                         AlertDialog.Builder(this)
-                            .setTitle("Select UTXOs (Coin Control)")
+                            .setTitle("¿Qué monedas se gastan?")
                             .setMultiChoiceItems(items, checked) { _, idx, isChecked ->
-                                if (isChecked) { if (!selectedUtxos.contains(utxos.getJSONObject(idx))) selectedUtxos.add(utxos.getJSONObject(idx)) }
-                                else selectedUtxos.remove(utxos.getJSONObject(idx))
+                                val u = utxos.getJSONObject(idx)
+                                if (isChecked) { if (!selectedUtxos.contains(u)) selectedUtxos.add(u) }
+                                else selectedUtxos.remove(u)
                             }
-                            .setPositiveButton("OK") { _, _ ->
-                                if (selectedUtxos.isEmpty()) {
-                                    btnCoinControl.text = "Coin Control (auto)"
-                                    btnCoinControl.setTextColor(CYAN)
-                                } else {
-                                    val total = selectedUtxos.sumOf { it.getLong("value") }
-                                    btnCoinControl.text =
-                                        "${selectedUtxos.size} UTXOs seleccionados (%.8f BTC)".format(total/1e8)
-                                    btnCoinControl.setTextColor(AMBER)
-                                }
+                            .setPositiveButton("Usar éstas") { _, _ ->
+                                tvCoinCtl.text = if (selectedUtxos.isEmpty()) "automático"
+                                    else "%d · %.8f BTC".format(selectedUtxos.size,
+                                        selectedUtxos.sumOf { it.getLong("value") } / 1e8)
                             }
-                            .setNeutralButton("Usar todos") { _, _ ->
-                                selectedUtxos.clear()
-                                btnCoinControl.text = "Coin Control (auto)"
-                                btnCoinControl.setTextColor(CYAN)
+                            .setNeutralButton("Automático") { _, _ ->
+                                selectedUtxos.clear(); tvCoinCtl.text = "automático"
                             }
                             .setNegativeButton("Cancelar", null)
                             .show()
                     }
-                } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED) } }
+                } catch (e: Exception) {
+                    runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED) }
+                }
             }.start()
         }
+
+        /* ── ENVIAR ────────────────────────────────────────────────────── */
         btnSend.setOnClickListener {
             val toAddr = etTo.text.toString().trim()
-            val amtBtc = etAmt.text.toString().toDoubleOrNull() ?: 0.0
-            // -1 = el usuario no ha puesto nada: que decida la red.
-            val feeRate = etFee.text.toString().trim().toIntOrNull()?.takeIf { it > 0 } ?: -1
-            val fromKey = addresses.keys.toList().getOrNull(spinFrom.selectedItemPosition) ?: return@setOnClickListener
+            val amtBtc = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            val fromKey = keys.getOrNull(fromIdx) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
-            if (toAddr.isEmpty() || amtBtc <= 0) { tvStatus.text = "Fill all fields"; tvStatus.setTextColor(RED); return@setOnClickListener }
-
-            // Antes sólo se comprobaba que el campo no estuviera vacío. Un envío a
-            // una dirección con un carácter mal tecleado es irreversible.
+            if (toAddr.isEmpty()) {
+                tvStatus.text = "Falta la dirección de destino."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
+            if (amtBtc <= 0) {
+                tvStatus.text = "Falta el importe."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
             val check = BtcAddress.validate(toAddr, isTestnet)
             if (check is BtcAddress.Result.Invalid) {
                 tvStatus.text = "Dirección inválida: ${check.reason}"
-                tvStatus.setTextColor(RED)
-                return@setOnClickListener
+                tvStatus.setTextColor(RED); return@setOnClickListener
             }
             val addrType = (check as BtcAddress.Result.Valid).info.type
-
-            // La confirmación mostraba el importe y "%d sat/vB", que es la tarifa
-            // pero no lo que se va a pagar: la comisión real depende de cuántas
-            // entradas acabe usando, y eso no se sabía hasta después de aceptar.
-            // Ahora se consulta y se calcula TODO antes de preguntar.
-            doSend(toAddr, amtBtc, feeRate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString())
+            // El contrato de doSend no cambia: -1 sigue queriendo decir "la que
+            // recomiende la red". Lo que cambia es que ahora se elige viendo el
+            // tiempo estimado en vez de escribiendo un número a ciegas.
+            val rate = if (feeRate > 0) feeRate else feeRates[feeSel].takeIf { it > 0 } ?: -1
+            doSend(toAddr, amtBtc, rate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString())
         }
     }
 
     private fun doSend(toAddr: String, amtBtc: Double, feeRateManual: Int,
                        fromKey: String, fromAddr: String,
-                       tvStatus: TextView, btnSend: Button, addrType: String = "") {
+                       tvStatus: TextView, btnSend: View, addrType: String = "") {
             tvStatus.text = "Preparando el envío…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
                     val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/$fromAddr/utxo" else "https://mempool.space/api/address/$fromAddr/utxo").openConnection() as java.net.HttpURLConnection
                     conn.connectTimeout = 5000; conn.readTimeout = 5000
                     val fetched = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
-                    if (fetched.length() == 0) { runOnUiThread { tvStatus.text = "No UTXOs - no balance"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    if (fetched.length() == 0) { runOnUiThread { tvStatus.text = "Esa dirección no tiene saldo que gastar."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
 
                     // Coin Control rellenaba selectedUtxos y el envío lo ignoraba,
                     // gastando siempre todos los UTXOs: la función era decorativa.
@@ -1250,7 +1687,7 @@ class WalletActivity : FragmentActivity() {
                     val resp = try {
                         if (code == 200) bc.inputStream.bufferedReader().readText() else bc.errorStream?.bufferedReader()?.readText() ?: "error"
                     } finally { bc.disconnect() }
-                    runOnUiThread { tvStatus.text = if (code == 200) "Sent!\nTXID: $resp" else "Error $code:\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
+                    runOnUiThread { tvStatus.text = if (code == 200) "Enviada.\nIdentificador: $resp" else "El nodo la rechazó ($code):\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()
     }
