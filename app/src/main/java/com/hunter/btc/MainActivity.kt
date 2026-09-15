@@ -2419,75 +2419,69 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0E0E0E.toInt())
-            setPadding(dp(12), dp(16), dp(12), dp(80))
+            setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(80))
         }
 
-        // ── HEADER ────────────────────────────────────────────────────────
+        // ── CABECERA ──────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
-            text = "Wallet"
-            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
+            text = "Cartera"
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(4) }
+            ).apply { bottomMargin = dp(22) }
         })
-        page.addView(TextView(this).apply {
-            text = "Gestión de wallets encontradas"
-            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(20) }
-        })
+        // El subtítulo "Gestión de wallets encontradas" describía la pantalla a
+        // quien ya está mirándola. Fuera.
 
-        // ── HERO BALANCE CARD ─────────────────────────────────────────────
+        // ── SALDO ─────────────────────────────────────────────────────────
+        //
+        // Estaba metido en una tarjeta con borde y centrado. La tarjeta no
+        // separaba nada de nada —era lo único en su zona— y el centrado
+        // rompía la columna de lectura con todo lo de abajo alineado a la
+        // izquierda. Aquí la cifra va suelta sobre el fondo, como en el resto
+        // del sistema.
         val heroCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(0xFF161616.toInt(), 0xFF161616.toInt())
-                orientation = android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
-                cornerRadius = dp(20).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(12) }
-            setPadding(dp(20), dp(24), dp(20), dp(24))
+            ).apply { bottomMargin = dp(26) }
         }
 
         heroCard.addView(TextView(this).apply {
-            text = "BALANCE TOTAL ENCONTRADO"
-            textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            letterSpacing = 0.1f; gravity = Gravity.CENTER
+            text = "Saldo en hallazgos"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) }
         })
+        // El verde estaba fijo, así que un saldo de cero se pintaba igual que
+        // uno con fondos. Ahora el acento significa "hay algo"; lo pone
+        // refreshWallet según el total.
         val tvTotalBtc = TextView(this).apply {
-            text = "0.00000000"
-            textSize = 36f; setTextColor(ACCENT)
+            text = "0,00000000"
+            textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
-            gravity = Gravity.CENTER; letterSpacing = -0.02f
+            letterSpacing = -0.04f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
         val tvTotalUsd = TextView(this).apply {
-            text = "BTC  ≈  $0.00 USD"
-            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.CENTER
+            text = "Aún no ha encontrado ninguna clave"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(4) }
+            ).apply { topMargin = dp(8) }
         }
         heroCard.addView(tvTotalBtc)
         heroCard.addView(tvTotalUsd)
@@ -2522,13 +2516,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val (total, matches) = loadCoincidencias(consultarRed)
                 val pendientes = MatchVault.pendingBalance(this@MainActivity)
                 runOnUiThread {
-                    tvTotalBtc.text = "%.8f".format(total)
+                    tvTotalBtc.text = "%.8f".format(total).replace('.', ',')
+                    // El acento sólo cuando de verdad hay saldo. Pintar de verde
+                    // un cero es lo mismo que no pintar nada.
+                    tvTotalBtc.setTextColor(
+                        if (total > 0.0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                     tvTotalUsd.text = when {
-                        matches.isEmpty()  -> "BTC  ·  sin hallazgos todavía"
+                        matches.isEmpty()  -> "Aún no ha encontrado ninguna clave"
                         // Un total que suma ceros sin consultar no es un saldo:
-                        // decir "0.00000000" a secas afirma que están vacías.
-                        pendientes > 0     -> "BTC  ·  ${matches.size} hallazgo(s) · $pendientes sin consultar"
-                        else               -> "BTC  ·  ${matches.size} hallazgo(s)"
+                        // decir "0,00000000" a secas afirma que están vacías.
+                        pendientes > 0     -> "${matches.size} hallazgo(s) · $pendientes sin consultar"
+                        else               -> "${matches.size} hallazgo(s) · BTC"
                     }
                 }
             }.start()
@@ -2643,6 +2641,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.widget.Toast.makeText(this, "Consultando la cadena…",
                 android.widget.Toast.LENGTH_SHORT).show()
         })
+        // Las seis filas eran seis tarjetas idénticas: nada decía cuáles son
+        // acciones de cartera y cuáles son de resguardo. Un rótulo basta.
+        page.addView(TextView(this).apply {
+            text = "Resguardo"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(14); bottomMargin = dp(10) }
+        })
         page.addView(walletBtn(R.drawable.ic_vault, "Baúl de hallazgos", "Claves de puzzle y escáner, cifradas") {
             if (!PinAuthHelper.isSessionValid()) {
                 PinAuthHelper.show(this) { ok -> if (ok) showVault() }
@@ -2656,6 +2665,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } else {
                 exportEncryptedBackup()
             }
+        })
+
+        // Por qué los saldos no se consultan solos. Antes no se decía en
+        // ninguna parte, así que el botón "Consultar saldos" parecía un
+        // refresco cualquiera.
+        page.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0x12FF6B35); cornerRadius = dp(AppTheme.R_CARD).toFloat()
+            }
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(18) }
+            addView(android.widget.ImageView(this@MainActivity).apply {
+                setImageResource(R.drawable.ic_warning)
+                setColorFilter(AppTheme.WARN)
+                layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply {
+                    marginEnd = dp(11)
+                }
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Preguntar por un saldo revela esa dirección al servidor " +
+                       "que responde. Por eso se hace sólo cuando lo pides tú."
+                textSize = AppTheme.SP_CAPTION; setTextColor(0xFFB0A098.toInt())
+                typeface = AppTheme.body(context)
+                setLineSpacing(dp(4).toFloat(), 1f)
+                layoutParams = LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
         })
 
         scroll.addView(page)
