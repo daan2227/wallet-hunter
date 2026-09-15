@@ -244,10 +244,32 @@ static void derive_child(secp256k1_context *ctx,const HDKey *par,uint32_t idx,HD
     HMAC(EVP_sha512(),par->chain,32,data,37,I,&l);
     memcpy(child->key,par->key,32);secp256k1_ec_seckey_tweak_add(ctx,child->key,I);memcpy(child->chain,I+32,32);
 }
+/*
+ * Deriva una ruta BIP32 completa: m/84'/0'/0'/0/0 son CINCO niveles.
+ *
+ * Había un `if(*p=='/')p++;` al final del cuerpo que consumía el separador
+ * ANTES de que la condición `while(*p=='/')` volviera a mirarlo. Tras el primer
+ * segmento p quedaba apuntando al dígito siguiente, no a la barra, así que el
+ * bucle salía: sólo se derivaba m/84'.
+ *
+ * O sea, build_and_sign_tx firmaba con la clave de CUENTA en lugar de con la
+ * hoja. Esa clave no es dueña del UTXO, de modo que la firma no podía satisfacer
+ * el script y la red rechazaba la transacción — cualquier transacción, de
+ * cualquier tipo de dirección. Comprobado ejecutando el código: para
+ * m/84'/0'/0'/0/0 sobre la seed de prueba usaba el hash160 de m/84'.
+ *
+ * El separador lo consume ya el `p++` de la cabecera del bucle.
+ */
 static void derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *path,HDKey *o){
     uint8_t seed[64];memcpy(seed,s64,64);derive_master(seed,o);
     const char *p=path;while(*p&&*p!='/')p++;
-    while(*p=='/'){p++;uint32_t i=0;int h=0;while(*p>='0'&&*p<='9')i=i*10+(*p++-'0');if(*p=='\''){h=1;p++;}if(*p=='/')p++;HDKey c;derive_child(ctx,o,i+(h?0x80000000:0),&c);*o=c;}
+    while(*p=='/'){
+        p++;
+        uint32_t i=0;int h=0;
+        while(*p>='0'&&*p<='9') i=i*10+(uint32_t)(*p++-'0');
+        if(*p=='\''){h=1;p++;}
+        HDKey c;derive_child(ctx,o,i+(h?0x80000000u:0u),&c);*o=c;
+    }
 }
 static void pk_to_h160(secp256k1_context *ctx,const uint8_t *pk,uint8_t *out){uint8_t pub[33];get_pub33(ctx,pk,pub);uint8_t sha[32];SHA256(pub,33,sha);RIPEMD160(sha,32,out);}
 static const char B58C[]="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
@@ -1552,16 +1574,63 @@ static std::string sha256d(const std::string &data){
     return std::string((char*)h2,32);
 }
 /* Parse simple JSON string field */
+/*
+ * Posición del valor de una clave, buscándola SÓLO en el nivel superior.
+ *
+ * json_str/json_int hacían un find() de "clave": sobre toda la cadena, así que
+ * encontraban la primera aparición estuviera donde estuviera. La petición de
+ * firma lleva "utxos":[{...,"amount":N}] ANTES que el "amount" de nivel
+ * superior — org.json conserva el orden de inserción y Kotlin pone los utxos
+ * primero—, de modo que json_int(req,"amount") devolvía el valor del PRIMER
+ * UTXO en lugar del importe a enviar. Cada envío intentaba mandar la entrada
+ * entera, el cambio salía negativo y la transacción nunca era válida.
+ *
+ * De paso tolera espacios tras los dos puntos: antes "clave": con un espacio no
+ * se encontraba, lo que ataba el formato exacto del emisor.
+ */
+static size_t json_find_key(const std::string &j,const char *key){
+    const std::string k=std::string("\"")+key+"\"";
+    int depth=0; bool instr=false;
+    for(size_t i=0;i<j.size();i++){
+        char c=j[i];
+        if(instr){
+            if(c=='\\'){ i++; continue; }
+            if(c=='"') instr=false;
+            continue;
+        }
+        if(c=='"'){
+            if(depth==1 && j.compare(i,k.size(),k)==0){
+                size_t p=i+k.size();
+                while(p<j.size()&&(j[p]==' '||j[p]=='\t')) p++;
+                if(p<j.size()&&j[p]==':'){
+                    p++;
+                    while(p<j.size()&&(j[p]==' '||j[p]=='\t')) p++;
+                    return p;
+                }
+            }
+            instr=true; continue;
+        }
+        if(c=='{'||c=='[') depth++;
+        else if(c=='}'||c==']') depth--;
+    }
+    return std::string::npos;
+}
+
 static std::string json_str(const std::string &j,const char *key){
-    std::string k=std::string("\"")+key+"\":\"";
-    size_t p=j.find(k); if(p==std::string::npos)return "";
-    p+=k.size(); size_t e=j.find('"',p); if(e==std::string::npos)return "";
-    return j.substr(p,e-p);
+    size_t p=json_find_key(j,key);
+    if(p==std::string::npos||p>=j.size()||j[p]!='"') return "";
+    p++;
+    std::string out;
+    while(p<j.size()&&j[p]!='"'){
+        if(j[p]=='\\'&&p+1<j.size()){ out+=j[p+1]; p+=2; }
+        else out+=j[p++];
+    }
+    return out;
 }
 static int64_t json_int(const std::string &j,const char *key){
-    std::string k=std::string("\"")+key+"\":";
-    size_t p=j.find(k); if(p==std::string::npos)return 0;
-    p+=k.size(); return (int64_t)strtoll(j.c_str()+p,nullptr,10);
+    size_t p=json_find_key(j,key);
+    if(p==std::string::npos) return 0;
+    return (int64_t)strtoll(j.c_str()+p,nullptr,10);
 }
 
 static std::string addr_to_spk(const char *addr) {
@@ -1705,9 +1774,9 @@ static std::string build_and_sign_tx(const std::string &req){
     // parse UTXOs
     struct UTXO { std::string txid; uint32_t vout; int64_t amount; };
     std::vector<UTXO> utxos;
-    size_t ap=req.find("\"utxos\":[");
-    if(ap!=std::string::npos){
-        ap+=9;
+    size_t ap=json_find_key(req,"utxos");
+    if(ap!=std::string::npos&&ap<req.size()&&req[ap]=='['){
+        ap+=1;
         while(ap<req.size()&&req[ap]!=']'){
             size_t ob=req.find('{',ap); if(ob==std::string::npos)break;
             size_t cb=req.find('}',ob); if(cb==std::string::npos)break;
