@@ -2678,48 +2678,215 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(20) }
         })
 
-        // ── SEED INPUT CARD ───────────────────────────────────────────────
-        val seedCard = rCard()
-        seedCard.addView(fieldLabel("Frase semilla"))
-        seedCard.addView(TextView(this).apply {
-            text = "Usa ??? para las palabras que no recuerdas"
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-        })
+        // ── LAS PALABRAS ──────────────────────────────────────────────────
+        //
+        // Era un cuadro de texto donde escribías la frase entera separada por
+        // espacios y ponías "???" en los huecos. Eso obliga a llevar la cuenta
+        // mental de en qué posición vas, a no equivocarte con los espacios, y a
+        // saberse una convención que no está escrita en ninguna parte salvo en
+        // la línea de ayuda de encima.
+        //
+        // Son doce (o veinticuatro) casillas numeradas. Tocas una y escribes la
+        // palabra, con las sugerencias del diccionario BIP39 debajo; o la
+        // marcas como hueco. El estado se ve sin leer nada: los huecos van en
+        // el acento y con su borde.
+        val palabras = MutableList(12) { "" }
 
-        val etSeed = android.widget.EditText(this).apply {
-            hint = "abandon ??? letter ??? advice cage absurd amount doctor acoustic avoid ???"
-            setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
-            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
-            minHeight = dp(48)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            minLines = 3; maxLines = 5; isSingleLine = false
+        /** Lo que espera el motor: las palabras separadas por espacios, "???" en los huecos. */
+        fun seedText() = palabras.joinToString(" ") { it.ifEmpty { "???" } }
+
+        val wordGrid = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
+            ).apply { bottomMargin = dp(20) }
         }
-        seedCard.addView(etSeed)
 
-        // Info combinaciones
         val tvRecoveryInfo = TextView(this).apply {
-            text = "Palabras que faltan: —"
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            text = "Toca una casilla para escribirla"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.medium(context)
-            setPadding(0, dp(12), 0, 0)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        val tvRecoveryEta = TextView(this).apply {
+            text = ""
+            textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.title(context)
+        }
+        val tvRecoveryCombos = TextView(this).apply {
+            text = "Faltan palabras por poner"
+            textSize = AppTheme.SP_MICRO
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            setPadding(0, dp(6), 0, 0)
+        }
+
+        lateinit var pintarPalabras: () -> Unit
+
+        /** Recalcula cuánto va a costar el intento, antes de empezarlo. */
+        fun refrescarCoste() {
+            val huecos = palabras.count { it.isEmpty() }
+            val puestas = palabras.size - huecos
+            when {
+                huecos == 0 && puestas == palabras.size -> {
+                    tvRecoveryInfo.text = "No falta ninguna"
+                    tvRecoveryEta.text = ""
+                    tvRecoveryCombos.text = "Sin huecos no hay nada que probar: " +
+                                            "marca las que no recuerdes."
+                }
+                huecos == palabras.size -> {
+                    tvRecoveryInfo.text = "Toca una casilla para escribirla"
+                    tvRecoveryEta.text = ""
+                    tvRecoveryCombos.text = "Escribe al menos las que recuerdes."
+                }
+                else -> {
+                    // 2048^huecos. Por encima de 4 huecos se sale de Long, así
+                    // que la cuenta va en Double y se dice en texto.
+                    val combos = Math.pow(2048.0, huecos.toDouble())
+                    val porSeg = 6_300_000.0   // orden de magnitud de un móvil
+                    val secs = combos / porSeg
+                    tvRecoveryInfo.text =
+                        if (huecos == 1) "1 palabra por adivinar"
+                        else "$huecos palabras por adivinar"
+                    tvRecoveryEta.text = when {
+                        secs < 60        -> "~ ${secs.toInt()} s"
+                        secs < 3600      -> "~ ${(secs / 60).toInt()} min"
+                        secs < 86_400    -> "~ ${(secs / 3600).toInt()} h"
+                        secs < 31_536_000-> "~ ${(secs / 86_400).toInt()} días"
+                        else             -> "más de un año"
+                    }
+                    tvRecoveryEta.setTextColor(
+                        if (secs > 86_400) AppTheme.WARN else AppTheme.ACCENT)
+                    val combosTxt = when {
+                        combos >= 1e12 -> "%.1f billones".format(combos / 1e12)
+                        combos >= 1e9  -> "%.1f mil millones".format(combos / 1e9)
+                        combos >= 1e6  -> "%.1f millones".format(combos / 1e6)
+                        else           -> numberFmt.format(combos.toLong())
+                    }
+                    tvRecoveryCombos.text = "$combosTxt de combinaciones"
+                }
+            }
+        }
+
+        /** Pide la palabra de una casilla, con el diccionario delante. */
+        fun pedirPalabra(idx: Int) {
+            val cont = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(dp(22), dp(16), dp(22), dp(8))
+            }
+            val campo = android.widget.AutoCompleteTextView(this).apply {
+                setText(palabras[idx])
+                hint = "palabra ${idx + 1}"
+                setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+                textSize = AppTheme.SP_BODY
+                typeface = AppTheme.body(context)
+                setSingleLine()
+                inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                            android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+                // Las 2048 del diccionario: teclear una que no esté hace que la
+                // búsqueda no pueda encontrar nada, y antes no avisaba nadie.
+                setAdapter(android.widget.ArrayAdapter(
+                    this@MainActivity, android.R.layout.simple_list_item_1,
+                    Bip39Words.WORDS))
+                threshold = 1
+                setSelection(text.length)
+            }
+            cont.addView(campo)
+            AlertDialog.Builder(this)
+                .setTitle("Palabra ${idx + 1}")
+                .setView(cont)
+                .setPositiveButton("Guardar") { _, _ ->
+                    val w = campo.text.toString().trim().lowercase()
+                    palabras[idx] = if (w.isNotEmpty() && Bip39Words.WORDS.contains(w)) w else ""
+                    if (w.isNotEmpty() && !Bip39Words.WORDS.contains(w))
+                        Toast.makeText(this, "\"$w\" no está en el diccionario BIP39",
+                            Toast.LENGTH_LONG).show()
+                    pintarPalabras(); refrescarCoste()
+                }
+                .setNeutralButton("No la recuerdo") { _, _ ->
+                    palabras[idx] = ""
+                    pintarPalabras(); refrescarCoste()
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+        }
+
+        pintarPalabras = {
+            wordGrid.removeAllViews()
+            var fila: LinearLayout? = null
+            palabras.forEachIndexed { i, w ->
+                if (i % 3 == 0) {
+                    fila = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { if (i > 0) topMargin = dp(8) }
+                    }
+                    wordGrid.addView(fila)
+                }
+                val hueco = w.isEmpty()
+                val chip = TextView(this).apply {
+                    val sp = android.text.SpannableStringBuilder("${i + 1}  ")
+                    sp.setSpan(android.text.style.ForegroundColorSpan(AppTheme.TXT_MUTED),
+                        0, sp.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sp.setSpan(android.text.style.AbsoluteSizeSpan(
+                        (11 * resources.displayMetrics.scaledDensity).toInt()),
+                        0, sp.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                    sp.append(if (hueco) "falta" else w)
+                    text = sp
+                    textSize = AppTheme.SP_BODY
+                    gravity = Gravity.CENTER
+                    setTextColor(if (hueco) AppTheme.ACCENT else AppTheme.TXT_PRI)
+                    typeface = if (hueco) AppTheme.bold(context) else AppTheme.body(context)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        setColor(if (hueco) AppTheme.BG_ELEV else AppTheme.BG_KEY)
+                        cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                        if (hueco) setStroke(dp(2), AppTheme.ACCENT)
+                    }
+                    setPadding(dp(6), dp(14), dp(6), dp(14))
+                    isClickable = true; isFocusable = true
+                    setOnClickListener { pedirPalabra(i) }
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                        .apply { if (i % 3 < 2) marginEnd = dp(8) }
+                }
+                fila?.addView(chip)
+            }
+        }
+
+        // Selector de 12 o 24 palabras. Antes se deducía de cuántas escribías,
+        // así que una frase de 24 a medio poner se trataba como de 12.
+        val largoRow = Ui.segmented(this,
+            listOf("12 palabras" to null, "24 palabras" to null), initial = 0) { idx ->
+            val nuevo = if (idx == 0) 12 else 24
+            while (palabras.size < nuevo) palabras.add("")
+            while (palabras.size > nuevo) palabras.removeAt(palabras.size - 1)
+            pintarPalabras(); refrescarCoste()
+        }
+        recoveryPage.addView(largoRow.apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            )
+            ).apply { bottomMargin = dp(18) }
+        })
+        pintarPalabras()
+        recoveryPage.addView(wordGrid)
+
+        // ── LO QUE CUESTA EL INTENTO ──────────────────────────────────────
+        val costeCard = rCard()
+        val costeHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = true
         }
-        seedCard.addView(tvRecoveryInfo)
-        recoveryPage.addView(seedCard)
+        costeHead.addView(tvRecoveryInfo); costeHead.addView(tvRecoveryEta)
+        costeCard.addView(costeHead)
+        costeCard.addView(tvRecoveryCombos)
+        refrescarCoste()
+
+        recoveryPage.addView(costeCard)
 
         // ── TARGET ADDRESS CARD ───────────────────────────────────────────
         val targetCard = rCard()
@@ -2741,6 +2908,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(targetCard)
 
         // ── PROGRESS CARD ─────────────────────────────────────────────────
+        // El coste del intento está arriba, en costeCard; aquí sólo va la barra
+        // y lo que está probando ahora mismo.
         val progressCard = rCard()
         val pbRecovery = android.widget.ProgressBar(
             this, null, android.R.attr.progressBarStyleHorizontal
@@ -2840,32 +3009,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(btnSaveWallet)
 
         // ── LISTENERS ─────────────────────────────────────────────────────
-        etSeed.addTextChangedListener(object : android.text.TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, st: Int, c: Int, a: Int) {}
-            override fun onTextChanged(s: CharSequence?, st: Int, b: Int, c: Int) {}
-            override fun afterTextChanged(s: android.text.Editable?) {
-                val input = s?.toString() ?: ""
-                val missing = input.split(" ").count { it.trim() == "???" }
-                if (missing > 0) {
-                    val combos = Math.pow(2048.0, missing.toDouble()).toLong()
-                    val combosStr = when {
-                        combos < 1_000_000L -> "${combos / 1000}K"
-                        combos < 1_000_000_000L -> "${combos / 1_000_000}M"
-                        else -> "${combos / 1_000_000_000}B"
-                    }
-                    val secs = combos / 50_000L
-                    val timeStr = when {
-                        secs < 60 -> "$secs seg"
-                        secs < 3600 -> "${secs / 60} min"
-                        secs < 86400 -> "${secs / 3600} h"
-                        else -> "${secs / 86400} dias"
-                    }
-                    tvRecoveryInfo.text = "Faltan: $missing  |  Combos: ~$combosStr  |  ~$timeStr"
-                } else {
-                    tvRecoveryInfo.text = "Palabras que faltan: —"
-                }
-            }
-        })
 
         btnSaveWallet.setOnClickListener {
             val foundMnemonic = it.tag as? String ?: return@setOnClickListener
@@ -2957,14 +3100,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         btnStartRecovery.setOnClickListener {
-            val input = etSeed.text.toString().trim()
-            if (input.isEmpty()) {
-                tvRecoveryStatus.text = "Ingresa la seed phrase primero."
+            val input = seedText()
+            if (palabras.all { it.isEmpty() }) {
+                tvRecoveryStatus.text = "Escribe al menos las palabras que recuerdes."
+                tvRecoveryStatus.visibility = android.view.View.VISIBLE
+                return@setOnClickListener
+            }
+            if (palabras.none { it.isEmpty() }) {
+                tvRecoveryStatus.text = "No hay ningún hueco que probar: marca las que no recuerdes."
                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 return@setOnClickListener
             }
             if (!wordlistLoaded) {
-                tvRecoveryStatus.text = "Error: wordlist BIP39 no cargado."
+                tvRecoveryStatus.text = "No se pudo cargar el diccionario BIP39."
                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 return@setOnClickListener
             }

@@ -73,252 +73,355 @@ class StatsActivity : Activity() {
         }
     }
 
+    /**
+     * Barras de actividad de los últimos catorce días.
+     *
+     * La gráfica anterior no llegaba a dibujarse nunca: se pintaba con
+     * `setOnDraw {}`, una extensión que al final del fichero está declarada
+     * como no-op — "usar CustomChartView en su lugar", decía el comentario, y
+     * ese CustomChartView no se llegó a escribir. Así que la tarjeta
+     * "VELOCIDAD POR SESIÓN" salía vacía.
+     *
+     * Esto es una View de verdad con su onDraw.
+     */
+    private class BarsView(ctx: android.content.Context, val valores: LongArray) :
+            android.view.View(ctx) {
+        private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val d = ctx.resources.displayMetrics.density
+        override fun onDraw(c: Canvas) {
+            if (valores.isEmpty()) return
+            val max = valores.max().coerceAtLeast(1L)
+            val hueco = 5f * d
+            val ancho = (width - hueco * (valores.size - 1)) / valores.size
+            val radio = 2f * d
+            valores.forEachIndexed { i, v ->
+                // Un día sin buscar no es una barra de altura cero invisible:
+                // se deja un tocón gris para que el hueco se vea.
+                val frac = v.toDouble() / max
+                val alto = if (v == 0L) 4f * d else (height * frac).toFloat().coerceAtLeast(4f * d)
+                p.color = when {
+                    v == 0L      -> AppTheme.BG_ELEV
+                    frac > 0.70  -> AppTheme.ACCENT
+                    else         -> 0xFF2A4A40.toInt()
+                }
+                val x = i * (ancho + hueco)
+                c.drawRoundRect(x, height - alto, x + ancho, height.toFloat(), radio, radio, p)
+            }
+        }
+    }
+
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        AppTheme.init(this)
 
         val scroll = ScrollView(this).apply { setBackgroundColor(BG) }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
-            setPadding(dp(12), dp(0), dp(12), dp(40))
+            setPadding(0, 0, 0, dp(26))
         }
-
-        fun card(): LinearLayout = LinearLayout(this).apply {
+        fun side(v: View, top: Int = 0, bottom: Int = 0) = v.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(top), dp(AppTheme.PAD_SIDE), dp(bottom))
+            }
+        }
+        fun cap(t: String) = TextView(this).apply {
+            text = t; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.medium(context)
+        }
+        fun card() = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
                 setColor(SURFACE); cornerRadius = dp(AppTheme.R_CARD).toFloat()
             }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
-            setPadding(dp(14), dp(14), dp(14), dp(14))
         }
 
-        fun label(text: String) = TextView(this).apply {
-            this.text = text; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
-            typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(10) }
+        fun formatKeys(k: Long): Pair<String, String> = when {
+            k >= 1_000_000_000_000L -> "%.2f".format(k / 1e12).replace('.', ',') to "billones"
+            k >= 1_000_000_000L     -> "%.2f".format(k / 1e9).replace('.', ',')  to "mil M"
+            k >= 1_000_000L         -> "%.1f".format(k / 1e6).replace('.', ',')  to "M"
+            k >= 1_000L             -> "%.1f".format(k / 1e3).replace('.', ',')  to "K"
+            else                    -> k.toString() to ""
+        }
+        fun formatTime(sec: Long): String {
+            val h = sec / 3600; val m = (sec % 3600) / 60; val s2 = sec % 60
+            return when {
+                h > 0 -> "${h} h ${"%02d".format(m)}"
+                m > 0 -> "$m min"
+                else  -> "$s2 s"
+            }
         }
 
-        // ── HEADER ────────────────────────────────────────────────────────
+        // ── CABECERA ──────────────────────────────────────────────────────
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(4), dp(16), dp(4), dp(16))
+            setPadding(dp(AppTheme.PAD_SIDE) - dp(10), dp(12), dp(AppTheme.PAD_SIDE), dp(10))
         }
         header.addView(android.widget.ImageView(this).apply {
             setImageResource(R.drawable.ic_back)
-            setColorFilter(AppTheme.TXT_PRI)
+            setColorFilter(MUTED)
             setPadding(dp(10), dp(10), dp(10), dp(10))
             isClickable = true; isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
+            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(8) }
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "Historial"; textSize = 20f; setTextColor(TXT)
+            text = "Historial"; textSize = AppTheme.SP_TITLE; setTextColor(TXT)
             typeface = AppTheme.title(context)
+            letterSpacing = -0.01f
         })
         root.addView(header)
 
-        // ── TOTALES GLOBALES ──────────────────────────────────────────────
-        val (totalKeys, totalMatches, totalTime) = getTotals(this)
+        val (totalKeys, totalMatches, _) = getTotals(this)
         val sessions = loadSessions(this)
 
-        val globalCard = card()
-        globalCard.addView(label("TOTALES GLOBALES"))
-
-        fun statRow(lbl: String, value: String, color: Int = TXT): LinearLayout {
-            return LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) }
-                addView(TextView(this@StatsActivity).apply {
-                    text = lbl; textSize = AppTheme.SP_BODY; setTextColor(MUTED)
-                    typeface = AppTheme.body(context)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                })
-                addView(TextView(this@StatsActivity).apply {
-                    text = value; textSize = AppTheme.SP_BODY; setTextColor(color)
-                    typeface = AppTheme.bold(context)
-                })
-            }
+        // ── ACUMULADO ─────────────────────────────────────────────────────
+        //
+        // Eran cuatro filas de "etiqueta ......... valor" dentro de una tarjeta
+        // rotulada "TOTALES GLOBALES": cuatro datos del mismo peso, ninguno
+        // destacado. El total de claves revisadas es la cifra de la pantalla;
+        // el resto cabe en una línea debajo.
+        root.addView(side(cap("Claves revisadas en total"), top = 6))
+        val (tk, tu) = formatKeys(totalKeys)
+        val totalRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = true
         }
+        totalRow.addView(TextView(this).apply {
+            text = tk; textSize = AppTheme.SP_DISPLAY; setTextColor(TXT)
+            typeface = AppTheme.display(context)
+            letterSpacing = -0.04f
+        })
+        if (tu.isNotEmpty()) totalRow.addView(TextView(this).apply {
+            text = tu; textSize = 19f; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { marginStart = dp(6) }
+        })
+        root.addView(side(totalRow, top = 8))
+        root.addView(side(TextView(this).apply {
+            text = "${sessions.size} sesiones · " +
+                   if (totalMatches > 0) "$totalMatches hallazgo(s)" else "ningún hallazgo todavía"
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+        }, top = 8, bottom = 24))
 
-        fun formatKeys(k: Long): String = when {
-            k >= 1_000_000_000 -> "${"%.2f".format(k/1e9)}B"
-            k >= 1_000_000 -> "${"%.2f".format(k/1e6)}M"
-            k >= 1_000 -> "${"%.1f".format(k/1e3)}K"
-            else -> k.toString()
+        // ── ÚLTIMOS 14 DÍAS ───────────────────────────────────────────────
+        //
+        // La gráfica anterior era la velocidad de las últimas diez sesiones, un
+        // dato que no dice nada por sí solo: la velocidad depende del modo y
+        // del móvil. Lo que sí se quiere ver de un vistazo es cuánto has estado
+        // buscando, y los huecos.
+        val hoy = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val porDia = LongArray(14)
+        sessions.forEach { s2 ->
+            val diasAtras = ((hoy - s2.optLong("ts", 0)) / 86_400_000L).toInt()
+            if (diasAtras in 0..13) porDia[13 - diasAtras] += s2.optLong("keys", 0)
         }
+        val diasSinBuscar = porDia.reversedArray().takeWhile { it == 0L }.size
 
-        fun formatTime(sec: Long): String {
-            val h = sec / 3600; val m = (sec % 3600) / 60; val s = sec % 60
-            return if (h > 0) "${h}h ${m}m" else if (m > 0) "${m}m ${s}s" else "${s}s"
+        val chartCard = card().apply { setPadding(dp(20), dp(18), dp(20), dp(18)) }
+        val chartHead = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            isBaselineAligned = true
         }
-
-        globalCard.addView(statRow("Keys escaneadas", formatKeys(totalKeys), ACCENT))
-        globalCard.addView(statRow("Matches encontrados", totalMatches.toString(),
-            if (totalMatches > 0) ACCENT else MUTED))
-        globalCard.addView(statRow("Tiempo total", formatTime(totalTime)))
-        globalCard.addView(statRow("Sesiones totales", sessions.size.toString()))
-
-        // El guard miraba `sessions`, pero el filtro descarta las de kps<=0:
-        // con sesiones registradas y todas a cero, .average() sobre la lista
-        // vacía devuelve NaN.
-        val kpsValues = sessions.mapNotNull { it.optDouble("kps").takeIf { v -> v > 0 } }
-        val avgKps = if (kpsValues.isNotEmpty()) kpsValues.average() else 0.0
-        globalCard.addView(statRow("Velocidad promedio",
-            if (avgKps > 0) "${"%.0f".format(avgKps)} k/s" else "—"))
-
-        root.addView(globalCard)
-
-        // ── GRÁFICA DE VELOCIDAD (últimas 10 sesiones) ────────────────────
-        if (sessions.size >= 2) {
-            val chartCard = card()
-            chartCard.addView(label("VELOCIDAD POR SESIÓN (últimas 10)"))
-
-            val recent = sessions.take(10).reversed()
-            val maxKps = recent.mapNotNull { it.optDouble("kps").takeIf { v -> v > 0 } }
-                .maxOrNull() ?: 1.0
-
-            val chartHeight = dp(80)
-            val chartView = android.view.View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT, chartHeight
-                )
-                setOnDraw { canvas ->
-                    val w = width.toFloat()
-                    val h = height.toFloat()
-                    val barW = w / (recent.size * 1.5f)
-                    val gap = barW * 0.5f
-                    val paintBar = Paint().apply { isAntiAlias = true }
-                    val paintLine = Paint().apply {
-                        color = AppTheme.BG_ELEV; strokeWidth = 1f; isAntiAlias = true
-                    }
-                    // Grid line
-                    canvas.drawLine(0f, h * 0.5f, w, h * 0.5f, paintLine)
-
-                    recent.forEachIndexed { i, session ->
-                        val kps = session.optDouble("kps", 0.0)
-                        val barH = if (maxKps > 0) (kps / maxKps * h * 0.9f).toFloat() else 0f
-                        val x = i * (barW + gap) + gap
-                        val alpha = (155 + (100 * i / recent.size)).coerceIn(0, 255)
-                        paintBar.color = android.graphics.Color.argb(alpha, 0, 200, 150)
-                        canvas.drawRoundRect(x, h - barH, x + barW, h, dp(3).toFloat(), dp(3).toFloat(), paintBar)
-                    }
-                }
-            }
-            chartCard.addView(chartView)
-            root.addView(chartCard)
-        }
-
-        // ── HISTORIAL DE SESIONES ─────────────────────────────────────────
-        val histCard = card()
-        val histHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        }
-        histHeader.addView(TextView(this).apply {
-            text = "Sesiones"; textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+        chartHead.addView(TextView(this).apply {
+            text = "Últimos 14 días"; textSize = AppTheme.SP_BODY; setTextColor(TXT)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
-        histHeader.addView(TextView(this).apply {
-            text = "Limpiar"; textSize = AppTheme.SP_CAPTION; setTextColor(RED)
-            typeface = AppTheme.medium(context)
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                android.app.AlertDialog.Builder(this@StatsActivity)
-                    .setTitle("Limpiar historial")
-                    .setMessage("¿Borrar todas las sesiones guardadas?")
-                    .setPositiveButton("Borrar") { _, _ ->
-                        getSharedPreferences(PREFS_HISTORY, MODE_PRIVATE)
-                            .edit().remove(KEY_SESSIONS).apply()
-                        finish()
-                        startActivity(intent)
-                    }
-                    .setNegativeButton("Cancelar", null).show()
+        chartHead.addView(TextView(this).apply {
+            text = when (diasSinBuscar) {
+                0    -> "hoy has buscado"
+                1    -> "1 día sin buscar"
+                14   -> "sin actividad"
+                else -> "$diasSinBuscar días sin buscar"
             }
+            textSize = AppTheme.SP_MICRO; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
         })
-        histCard.addView(histHeader)
+        chartCard.addView(chartHead)
+        chartCard.addView(BarsView(this, porDia).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
+            ).apply { topMargin = dp(16) }
+        })
+        root.addView(side(chartCard, bottom = 20))
 
-        val df = SimpleDateFormat("dd/MM HH:mm", Locale.US)
+        // ── SESIONES ──────────────────────────────────────────────────────
+        root.addView(side(cap("Sesiones"), bottom = 10))
+        val histCard = card()
+        val df = SimpleDateFormat("d MMM", Locale.getDefault())
+        val hf = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         if (sessions.isEmpty()) {
             histCard.addView(TextView(this).apply {
-                text = "Sin sesiones aun. Inicia un scan para registrar actividad."
+                text = "Todavía no hay ninguna. Arranca un escaneo y aparecerá aquí."
                 textSize = AppTheme.SP_BODY; setTextColor(MUTED)
                 typeface = AppTheme.body(context)
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(10) }
+                setPadding(dp(17), dp(20), dp(17), dp(20))
+                setLineSpacing(0f, 1.4f)
             })
         } else {
-            sessions.take(20).forEach { session ->
+            val ultimas = sessions.take(20)
+            ultimas.forEachIndexed { i, session ->
                 val ts = session.optLong("ts", 0)
                 val mode = session.optString("mode", "BIP39")
                 val keys = session.optLong("keys", 0)
-                val matches = session.optLong("matches", 0)
                 val duration = session.optLong("duration", 0)
+                // kps se guarda ya dividido entre mil, así que es K/s.
                 val kps = session.optDouble("kps", 0.0)
 
                 val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    background = GradientDrawable().apply {
-                        setColor(AppTheme.BG_CARD); cornerRadius = dp(10).toFloat()
-
-                    }
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = dp(6) }
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding(dp(17), dp(15), dp(17), dp(15))
                 }
-
-                val modeName = if (mode == "PUZZLE") "Puzzle" else "Escáner"
-                val left = LinearLayout(this).apply {
+                // La pastilla del modo: lo que antes era un emoji distinto en
+                // cada móvil, y antes de eso nada.
+                val esPuzzle = mode == "PUZZLE"
+                val esRaw    = mode == "RAW" || mode == "RAWKEY"
+                row.addView(TextView(this).apply {
+                    text = if (esPuzzle) "PUZZLE" else if (esRaw) "RAW" else "BIP39"
+                    textSize = 9f
+                    gravity = Gravity.CENTER
+                    typeface = AppTheme.bold(context)
+                    setTextColor(when { esPuzzle -> ACCENT; esRaw -> ACCENT2; else -> MUTED })
+                    background = GradientDrawable().apply {
+                        setColor(AppTheme.BG_ELEV); cornerRadius = dp(11).toFloat()
+                    }
+                    layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                        .apply { marginEnd = dp(13) }
+                })
+                val col = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
-                left.addView(TextView(this).apply {
-                    text = "$modeName · ${df.format(Date(ts))} · ${formatTime(duration)}"
+                val (kv, ku) = formatKeys(keys)
+                col.addView(TextView(this).apply {
+                    text = if (ku.isEmpty()) "$kv claves" else "$kv $ku claves"
                     textSize = AppTheme.SP_BODY; setTextColor(TXT)
+                    typeface = AppTheme.bold(context)
+                    letterSpacing = -0.01f
+                })
+                val dias = ((hoy - ts) / 86_400_000L).toInt()
+                col.addView(TextView(this).apply {
+                    text = when (dias) {
+                        0    -> "Hoy ${hf.format(Date(ts))}"
+                        1    -> "Ayer ${hf.format(Date(ts))}"
+                        else -> df.format(Date(ts))
+                    } + " · duró ${formatTime(duration)}"
+                    textSize = AppTheme.SP_MICRO; setTextColor(MUTED)
+                    typeface = AppTheme.body(context)
+                    setPadding(0, dp(3), 0, 0)
+                })
+                row.addView(col)
+                row.addView(TextView(this).apply {
+                    text = if (kps >= 1000) "%.2f M/s".format(kps / 1000).replace('.', ',')
+                           else "%.0f K/s".format(kps)
+                    textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
                     typeface = AppTheme.medium(context)
                 })
-                left.addView(TextView(this).apply {
-                    text = "${formatKeys(keys)} keys  ·  ${"%.0f".format(kps)} k/s"
-                    textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
-                    typeface = AppTheme.body(context)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.MATCH_PARENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = dp(2) }
-                })
-                row.addView(left)
-
-                if (matches > 0) {
-                    row.addView(TextView(this).apply {
-                        text = "$matches"
-                        textSize = AppTheme.SP_FIGURE; setTextColor(ACCENT)
-                        typeface = AppTheme.title(context)
-                    })
-                }
                 histCard.addView(row)
+                if (i < ultimas.size - 1) histCard.addView(View(this).apply {
+                    setBackgroundColor(AppTheme.BORDER_C)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.MATCH_PARENT, 1
+                    ).apply { marginStart = dp(17); marginEnd = dp(17) }
+                })
             }
         }
-        root.addView(histCard)
+        root.addView(side(histCard, bottom = 18))
+
+        // ── EXPORTAR / VACIAR ─────────────────────────────────────────────
+        //
+        // "Limpiar" era una palabra en rojo de 9sp pegada al rótulo "Sesiones",
+        // que es donde menos se espera encontrar algo que borra.
+        fun accion(label: String, icon: Int, ancho: Int, rojo: Boolean, click: () -> Unit) =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_CARD).toFloat()
+                }
+                isClickable = true; isFocusable = true
+                setOnClickListener { click() }
+                layoutParams = LinearLayout.LayoutParams(ancho, dp(50), if (ancho == 0) 1f else 0f)
+                addView(android.widget.ImageView(context).apply {
+                    setImageResource(icon)
+                    setColorFilter(if (rojo) MUTED else TXT)
+                    layoutParams = LinearLayout.LayoutParams(dp(16), dp(16))
+                        .apply { marginEnd = dp(9) }
+                })
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(if (rojo) MUTED else TXT)
+                    typeface = AppTheme.medium(context)
+                })
+            }
+
+        val accionesRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        accionesRow.addView(accion("Exportar", R.drawable.ic_export, 0, false) {
+            exportarSesiones(sessions)
+        }.apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(AppTheme.GAP) })
+        accionesRow.addView(accion("Vaciar", R.drawable.ic_trash, dp(118), true) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("¿Vaciar el historial?")
+                .setMessage("Se borran las ${sessions.size} sesiones guardadas. Esto no se puede deshacer.")
+                .setPositiveButton("Vaciar") { _, _ ->
+                    getSharedPreferences(PREFS_HISTORY, MODE_PRIVATE)
+                        .edit().remove(KEY_SESSIONS).apply()
+                    finish(); startActivity(intent)
+                }
+                .setNegativeButton("Cancelar", null).show()
+        })
+        root.addView(side(accionesRow, top = 18))
 
         scroll.addView(root)
         setContentView(scroll)
     }
-}
 
-// Extension para onDraw sin subclase
-private fun android.view.View.setOnDraw(block: android.view.View.(Canvas) -> Unit) {
-    // No-op placeholder — usar CustomChartView en su lugar
+    /** Vuelca el historial a un fichero de texto y abre el selector de envío. */
+    private fun exportarSesiones(sessions: List<JSONObject>) {
+        if (sessions.isEmpty()) {
+            Toast.makeText(this, "No hay nada que exportar", Toast.LENGTH_SHORT).show(); return
+        }
+        try {
+            val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+            val txt = buildString {
+                appendLine("Wallet Hunter · historial de sesiones")
+                appendLine("fecha\tmodo\tclaves\thallazgos\tsegundos\tK/s")
+                sessions.forEach {
+                    appendLine(listOf(
+                        df.format(Date(it.optLong("ts", 0))),
+                        it.optString("mode", ""),
+                        it.optLong("keys", 0),
+                        it.optLong("matches", 0),
+                        it.optLong("duration", 0),
+                        "%.1f".format(it.optDouble("kps", 0.0))
+                    ).joinToString("\t"))
+                }
+            }
+            val f = java.io.File(filesDir, "historial.txt").apply { writeText(txt) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                this, "$packageName.provider", f)
+            startActivity(android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Exportar el historial"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "No se pudo exportar: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
 }
