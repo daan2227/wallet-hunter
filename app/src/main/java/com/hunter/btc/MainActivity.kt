@@ -829,14 +829,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(9) }
         }
-        tvScanState = TextView(this).apply {
+        val stateLabel = TextView(this).apply {
             text = "En espera"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
         }
+        tvScanState = stateLabel
         scanStateDot = statusDot
-        statusRow.addView(statusDot); statusRow.addView(tvScanState)
+        statusRow.addView(statusDot); statusRow.addView(stateLabel)
         page.addView(side(statusRow, top = 6, bottom = 18))
 
         // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
@@ -844,17 +845,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             orientation = LinearLayout.HORIZONTAL
             isBaselineAligned = true
         }
-        tvWps = TextView(this).apply {
+        val wpsFigure = TextView(this).apply {
             text = "0,0"
             textSize = AppTheme.SP_HERO
             setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
             letterSpacing = -0.045f
         }
+        tvWps = wpsFigure
         // La unidad era el literal fijo "K KEYS / SEG" sobre una cifra que
         // getWps() da en claves por segundo sin escalar: 1 843 200 se leía como
         // 1.8 G/s, mil veces la velocidad real. La escala scaleSpeed().
-        tvSpeedUnitScan = TextView(this).apply {
+        val wpsUnit = TextView(this).apply {
             text = "K/s"
             textSize = AppTheme.SP_FIGURE
             setTextColor(AppTheme.TXT_SEC)
@@ -864,20 +866,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { marginStart = dp(8) }
         }
-        speedRow.addView(tvWps); speedRow.addView(tvSpeedUnitScan)
+        tvSpeedUnitScan = wpsUnit
+        speedRow.addView(wpsFigure); speedRow.addView(wpsUnit)
         page.addView(side(speedRow))
 
         // Pico y media: una sola línea. Antes el pico iba alineado a la derecha
         // y la media al centro, ambos a 9sp.
-        tvPeakWps = TextView(this).apply {
+        val peakLine = TextView(this).apply {
             text = ""
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
         }
-        tvAvgWps = TextView(this).apply { visibility = android.view.View.GONE }
-        page.addView(side(tvPeakWps, top = 12, bottom = 24))
-        page.addView(tvAvgWps)
+        tvPeakWps = peakLine
+        val avgHidden = TextView(this).apply { visibility = android.view.View.GONE }
+        tvAvgWps = avgHidden
+        page.addView(side(peakLine, top = 12, bottom = 24))
+        page.addView(avgHidden)
 
         // ── DOS TARJETAS, NO CUATRO ───────────────────────────────────────
         //
@@ -980,8 +985,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvStatus    = TextView(this).apply { visibility = android.view.View.GONE }
         tvAddrFeed  = TextView(this).apply { visibility = android.view.View.GONE }
         tvMatchList = TextView(this).apply { visibility = android.view.View.GONE }
-        page.addView(tvTime); page.addView(tvRam); page.addView(tvBattery)
-        page.addView(tvFooter); page.addView(tvStatus)
+        listOf(tvTime, tvRam, tvBattery, tvFooter, tvStatus).forEach {
+            it?.let { v -> page.addView(v) }
+        }
 
         // ── AJUSTES: dos filas en UNA tarjeta ─────────────────────────────
         //
@@ -2254,20 +2260,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(80))
         }
 
-        // ── CABECERA ──────────────────────────────────────────────────────
-        page.addView(TextView(this).apply {
-            text = "Cartera"
-            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.01f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(22) }
-        })
-        // El subtítulo "Gestión de wallets encontradas" describía la pantalla a
-        // quien ya está mirándola. Fuera.
-
         // ── SALDO ─────────────────────────────────────────────────────────
         //
         // Estaba metido en una tarjeta con borde y centrado. La tarjeta no
@@ -2364,116 +2356,98 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         refreshWallet()
 
-        // ── ACTION CARDS ──────────────────────────────────────────────────
-        fun walletBtn(icon: Int, label: String, sub: String, click: () -> Unit): LinearLayout {
-            val r = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(16), dp(16), dp(16), dp(16))
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(AppTheme.BG_CARD)
-                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
-                }
-                isClickable = true; isFocusable = true
-                setOnClickListener { click() }
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(8) }
-            }
-            // El emoji ocupaba un cuadro de 40dp y lo dibujaba la fuente del
-            // sistema: distinto en cada móvil, a todo color, y sin forma de
-            // teñirlo. Ahora es un trazo a 20dp, del color del texto.
-            val iconTv = android.widget.ImageView(this).apply {
+        // ── DOS ACCIONES PRIMARIAS, GRANDES ───────────────────────────────
+        //
+        // Eran seis filas idénticas en fila india: nada decía cuáles son las
+        // dos que vas a usar siempre y cuáles el resguardo que miras una vez al
+        // mes. Las dos primeras pasan a tarjetas grandes, y "Ver cartera" va
+        // rellena con el acento porque es la que abres el 90 % de las veces.
+        fun bigCard(icon: Int, label: String, sub: String, primary: Boolean,
+                    last: Boolean, click: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(AppTheme.R_CARD,
+                if (primary) AppTheme.ACCENT else AppTheme.BG_CARD, context)
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            isClickable = true; isFocusable = true
+            setOnClickListener { click() }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { if (!last) marginEnd = dp(AppTheme.GAP) }
+            addView(android.widget.ImageView(context).apply {
                 setImageResource(icon)
-                setColorFilter(AppTheme.TXT_SEC)
-                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
-                    marginEnd = dp(16); gravity = Gravity.CENTER_VERTICAL
-                }
-            }
-            val lc = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            }
-            lc.addView(TextView(this).apply {
-                text = label; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
-                typeface = AppTheme.title(context)
+                setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.ACCENT)
+                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             })
-            lc.addView(TextView(this).apply {
-                text = sub; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-                typeface = Typeface.MONOSPACE
+            addView(TextView(context).apply {
+                text = label
+                textSize = AppTheme.SP_BODY
+                setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                typeface = AppTheme.bold(context)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { topMargin = dp(2) }
+                ).apply { topMargin = dp(24) }
             })
-            r.addView(iconTv); r.addView(lc)
-            r.addView(android.widget.ImageView(this).apply {
-                setImageResource(R.drawable.ic_chevron)
-                setColorFilter(AppTheme.TXT_MUTED)
-                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                }
+            addView(TextView(context).apply {
+                text = sub
+                textSize = AppTheme.SP_MICRO
+                setTextColor(if (primary) 0xA8000000.toInt() else AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(0, dp(2), 0, 0)
             })
-            return r
         }
 
-        page.addView(walletBtn(R.drawable.ic_wallet, "Ver cartera", "Saldos y direcciones guardadas") {
+        fun abrirCartera() {
             val hasSeed = WalletManager.hasPin(this) && WalletManager.loadSeed(this) != null
             val hasWif  = WalletManager.listWifs(this).isNotEmpty()
             if (hasSeed || hasWif) {
-                if (!PinAuthHelper.isSessionValid()) {
-                    PinAuthHelper.show(this) { ok ->
-                        if (ok) startActivity(Intent(this, WalletActivity::class.java).apply {
-                            putExtra("MODE", "seed")
-                        })
-                    }
-                } else {
+                val ir = {
                     startActivity(Intent(this, WalletActivity::class.java).apply {
                         putExtra("MODE", "seed")
                     })
                 }
+                if (!PinAuthHelper.isSessionValid())
+                    PinAuthHelper.show(this) { ok -> if (ok) ir() }
+                else ir()
             } else {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Sin wallets guardadas")
-                    .setMessage("No tienes wallets guardadas aún. ¿Quieres agregar una?")
-                    .setPositiveButton("Agregar") { _, _ ->
+                    .setTitle("Todavía no hay ninguna cartera")
+                    .setMessage("¿Quieres añadir una?")
+                    .setPositiveButton("Añadir") { _, _ ->
                         startActivity(Intent(this, WalletActivity::class.java).apply {
                             putExtra("MODE", "setup")
                         })
                     }
-                    .setNegativeButton("Cancelar", null)
+                    .setNegativeButton("Ahora no", null)
                     .show()
             }
-        })
-        page.addView(walletBtn(R.drawable.ic_add, "Añadir cartera", "Seed, WIF o dirección") {
-            // Mostrar opciones de importación
+        }
+        fun anadirCartera() {
             val opciones = arrayOf("Frase semilla (BIP39)", "Clave WIF", "Sólo observación (dirección)")
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Tipo de wallet")
+                .setTitle("¿Qué quieres añadir?")
                 .setItems(opciones) { _, which ->
-                    val mode = when (which) {
-                        0 -> "setup"
-                        1 -> "wif_import"
-                        2 -> "watch_import"
-                        else -> "setup"
-                    }
                     startActivity(Intent(this, WalletActivity::class.java).apply {
-                        putExtra("MODE", mode)
+                        putExtra("MODE", when (which) {
+                            1 -> "wif_import"; 2 -> "watch_import"; else -> "setup"
+                        })
                     })
                 }
                 .show()
+        }
+
+        page.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(24) }
+            addView(bigCard(R.drawable.ic_wallet, "Ver cartera", "Saldos y direcciones",
+                primary = true, last = false) { abrirCartera() })
+            addView(bigCard(R.drawable.ic_add, "Añadir", "Seed, WIF o dirección",
+                primary = false, last = true) { anadirCartera() })
         })
-        page.addView(walletBtn(R.drawable.ic_export, "Exportar resumen", "Sin claves privadas") {
-            exportLog()
-        })
-        page.addView(walletBtn(R.drawable.ic_refresh, "Consultar saldos", "Pregunta a la cadena ahora") {
-            refreshWallet(consultarRed = true)
-            android.widget.Toast.makeText(this, "Consultando la cadena…",
-                android.widget.Toast.LENGTH_SHORT).show()
-        })
-        // Las seis filas eran seis tarjetas idénticas: nada decía cuáles son
-        // acciones de cartera y cuáles son de resguardo. Un rótulo basta.
+
+        // ── RESGUARDO ─────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
             text = "Resguardo"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
@@ -2481,36 +2455,111 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(14); bottomMargin = dp(10) }
-        })
-        page.addView(walletBtn(R.drawable.ic_vault, "Baúl de hallazgos", "Claves de puzzle y escáner, cifradas") {
-            if (!PinAuthHelper.isSessionValid()) {
-                PinAuthHelper.show(this) { ok -> if (ok) showVault() }
-            } else {
-                showVault()
-            }
-        })
-        page.addView(walletBtn(R.drawable.ic_lock, "Copias de seguridad", "Crear, ver, compartir o restaurar") {
-            if (!PinAuthHelper.isSessionValid()) {
-                PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
-            } else {
-                exportEncryptedBackup()
-            }
+            ).apply { bottomMargin = dp(10) }
         })
 
-        // Por qué los saldos no se consultan solos. Antes no se decía en
-        // ninguna parte, así que el botón "Consultar saldos" parecía un
-        // refresco cualquiera.
+        val guardCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(ctx = this@MainActivity)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(22) }
+        }
+        fun guardRow(icon: Int, label: String, sub: String, primero: Boolean,
+                     click: () -> Unit): TextView {
+            if (!primero) guardCard.addView(android.view.View(this).apply {
+                setBackgroundColor(AppTheme.BORDER_C)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1
+                ).apply { marginStart = dp(18); marginEnd = dp(18) }
+            })
+            val r = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(18), dp(16), dp(18), dp(16))
+                isClickable = true; isFocusable = true
+                setOnClickListener { click() }
+            }
+            r.addView(Ui.icon(this, icon, 20).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14)
+            })
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            col.addView(TextView(this).apply {
+                text = label; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
+            })
+            col.addView(TextView(this).apply {
+                text = sub; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(0, dp(2), 0, 0)
+            })
+            r.addView(col)
+            // El estado a la derecha: cuántos hay, de cuándo es la última. Sin
+            // esto hay que entrar en cada uno para saber si tienes algo.
+            val estado = TextView(this).apply {
+                text = ""
+                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+            }
+            r.addView(estado)
+            r.addView(Ui.icon(this, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginStart = dp(10)
+            })
+            guardCard.addView(r)
+            return estado
+        }
+
+        val estVault = guardRow(R.drawable.ic_vault, "Baúl de hallazgos",
+                                "Cifrado, aparte de tus carteras", primero = true) {
+            if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) showVault() }
+            else showVault()
+        }
+        val estBackup = guardRow(R.drawable.ic_lock, "Copias de seguridad",
+                                 "Crear, ver, compartir o restaurar", primero = false) {
+            if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
+            else exportEncryptedBackup()
+        }
+        guardRow(R.drawable.ic_export, "Exportar resumen",
+                 "Sin claves privadas", primero = false) { exportLog() }
+        page.addView(guardCard)
+
+        // El estado de las dos filas, en segundo plano: leer el baúl y listar
+        // los ficheros de copia es I/O, y esto corre al construir la pestaña.
+        Thread {
+            val hallazgos = try { MatchVault.list(this@MainActivity).size } catch (e: Exception) { 0 }
+            val copias = try { BackupStore.list(this@MainActivity) } catch (e: Exception) { emptyList() }
+            val ultima = copias.firstOrNull()?.createdAt ?: 0L
+            runOnUiThread {
+                estVault.text = if (hallazgos == 0) "Vacío" else "$hallazgos"
+                estBackup.text = if (copias.isEmpty()) "Ninguna" else "${copias.size}"
+                if (ultima > 0) {
+                    val dias = ((System.currentTimeMillis() - ultima) / 86_400_000L).toInt()
+                    (((guardCard.getChildAt(3) as? LinearLayout)
+                        ?.getChildAt(1) as? LinearLayout)
+                        ?.getChildAt(1) as? TextView)?.text = when (dias) {
+                            0    -> "Última hoy"
+                            1    -> "Última ayer"
+                            else -> "Última hace $dias días"
+                        }
+                }
+            }
+        }.start()
+
+        // ── POR QUÉ NO SE CONSULTAN SOLOS ─────────────────────────────────
         page.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(0x12FF6B35); cornerRadius = dp(AppTheme.R_CARD).toFloat()
             }
-            setPadding(dp(16), dp(15), dp(16), dp(15))
+            setPadding(dp(18), dp(16), dp(18), dp(16))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(18) }
+            )
             addView(android.widget.ImageView(this@MainActivity).apply {
                 setImageResource(R.drawable.ic_warning)
                 setColorFilter(AppTheme.WARN)
@@ -2519,13 +2568,41 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             })
             addView(TextView(this@MainActivity).apply {
-                text = "Preguntar por un saldo revela esa dirección al servidor " +
-                       "que responde. Por eso se hace sólo cuando lo pides tú."
+                text = "Preguntar por un saldo revela esa dirección al servidor. " +
+                       "Por eso se hace sólo cuando lo pides tú."
                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context)
-                setLineSpacing(dp(4).toFloat(), 1f)
+                setLineSpacing(0f, 1.55f)
                 layoutParams = LinearLayout.LayoutParams(0,
                     LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        })
+
+        // ── CONSULTAR SALDOS ──────────────────────────────────────────────
+        //
+        // Era una fila más entre las seis, indistinguible de "Exportar
+        // resumen". Es la única acción de la pantalla que sale a la red, y va
+        // sola abajo, después del aviso que explica por qué no es automática.
+        page.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_KEY, context)
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
+            ).apply { topMargin = dp(18) }
+            setOnClickListener {
+                refreshWallet(consultarRed = true)
+                android.widget.Toast.makeText(this@MainActivity, "Consultando la cadena…",
+                    android.widget.Toast.LENGTH_SHORT).show()
+            }
+            addView(Ui.icon(this@MainActivity, R.drawable.ic_refresh, 16).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(10)
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Consultar saldos"
+                textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.medium(context)
             })
         })
 
