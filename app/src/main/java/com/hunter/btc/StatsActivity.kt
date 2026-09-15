@@ -14,12 +14,12 @@ import java.util.*
 class StatsActivity : Activity() {
 
     private val ACCENT  = 0xFF00C896.toInt()
-    private val ACCENT2 = 0xFF0087FF.toInt()
-    private val BG      = 0xFF0B0E14.toInt()
-    private val SURFACE = 0xFF111520.toInt()
-    private val BORDER  = 0xFF1E2540.toInt()
-    private val TXT     = 0xFFE8EAF0.toInt()
-    private val MUTED   = 0xFF5A607A.toInt()
+    private val ACCENT2 = 0xFF6EA8FE.toInt()
+    private val BG      = 0xFF0E0E0E.toInt()
+    private val SURFACE = 0xFF161616.toInt()
+    private val BORDER  = 0xFF1D1D1D.toInt()
+    private val TXT     = 0xFFF2F2F2.toInt()
+    private val MUTED   = 0xFF8A8A8A.toInt()
     private val RED     = 0xFFFF6B35.toInt()
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -199,7 +199,7 @@ class StatsActivity : Activity() {
                     val gap = barW * 0.5f
                     val paintBar = Paint().apply { isAntiAlias = true }
                     val paintLine = Paint().apply {
-                        color = 0xFF1E2540.toInt(); strokeWidth = 1f; isAntiAlias = true
+                        color = 0xFF1D1D1D.toInt(); strokeWidth = 1f; isAntiAlias = true
                     }
                     // Grid line
                     canvas.drawLine(0f, h * 0.5f, w, h * 0.5f, paintLine)
@@ -271,7 +271,7 @@ class StatsActivity : Activity() {
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
-                        setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat()
+                        setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
                         setStroke(1, BORDER)
                         if (matches > 0) setStroke(1, 0xFF00C896.toInt())
                     }

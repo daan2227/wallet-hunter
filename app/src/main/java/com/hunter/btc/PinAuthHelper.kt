@@ -34,7 +34,7 @@ object PinAuthHelper {
         lastAuthTime = System.currentTimeMillis()
     }
 
-    private val RED = 0xFFFF4444.toInt()
+    private val RED = 0xFFF04040.toInt()
 
     private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -62,13 +62,13 @@ object PinAuthHelper {
         onResult: (Boolean) -> Unit
     ) {
         val GOLD  = AppTheme.AMBER          // #a8ff00
-        val BG    = 0xFF0E0F0E.toInt()      // #0e0f0e
-        val BG2   = 0xFF1A1C19.toInt()      // #1a1c19
-        val BGKP  = 0xFF0D1018.toInt()      // #0d1018 keypad bg
-        val TXT   = 0xFFE6EAD8.toInt()      // #e6ead8
-        val MUTED = 0xFF556050.toInt()       // #556050
-        val SUBL  = 0xFF7A8A70.toInt()       // #7a8a70 sub-letters
-        val RED   = 0xFFFF4D4D.toInt()
+        val BG    = 0xFF0E0E0E.toInt()      // #0e0f0e
+        val BG2   = 0xFF1A1A1A.toInt()      // #1a1c19
+        val BGKP  = 0xFF0E0E0E.toInt()      // #0d1018 keypad bg
+        val TXT   = 0xFFF2F2F2.toInt()      // #e6ead8
+        val MUTED = 0xFF8A8A8A.toInt()       // #556050
+        val SUBL  = 0xFF8A8A8A.toInt()       // #7a8a70 sub-letters
+        val RED   = 0xFFF04040.toInt()
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
             android.util.TypedValue.COMPLEX_UNIT_SP, sp, activity.resources.displayMetrics).toInt()
@@ -138,7 +138,7 @@ object PinAuthHelper {
                 when {
                     error  -> { setColor(0x22FF4D4D); setStroke(dp(2), RED) }
                     filled -> { setColor(0x22A8FF00); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF2A2E25.toInt()) }
+                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF2E2E2E.toInt()) }
                 }
             }
         val dots = Array(6) { i ->
@@ -290,7 +290,7 @@ object PinAuthHelper {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF222521.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
+                            setColor(0xFF222222.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
                             setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0x0EFFFFFF)

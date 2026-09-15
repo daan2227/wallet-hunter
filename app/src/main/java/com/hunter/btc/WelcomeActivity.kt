@@ -39,11 +39,11 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
     // ── SPLASH ───────────────────────────────────────────────────────────────
     private fun showSplashThenPin() {
         val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF0087FF.toInt()
-        val SURFACE = 0xFF111520.toInt()
-        val BORDER  = 0xFF1E2540.toInt()
-        val TXT     = 0xFFE8EAF0.toInt()
-        val MUTED   = 0xFF5A607A.toInt()
+        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val SURFACE = 0xFF161616.toInt()
+        val BORDER  = 0xFF1D1D1D.toInt()
+        val TXT     = 0xFFF2F2F2.toInt()
+        val MUTED   = 0xFF8A8A8A.toInt()
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -213,7 +213,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = Typeface.create("monospace", Typeface.BOLD)
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
+                colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
                 orientation = GradientDrawable.Orientation.TL_BR
                 cornerRadius = dp(12).toFloat()
             }
@@ -228,7 +228,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                     6, 12, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
-            textSize = 28f; setTextColor(0xFFE8EAF0.toInt())
+            textSize = 28f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
         }
         logoRow.addView(logoIcon); logoRow.addView(logoText)
@@ -258,7 +258,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             letterSpacing = 0.04f
             background = GradientDrawable().apply {
-                colors = intArrayOf(0xFF00C896.toInt(), 0xFF0087FF.toInt())
+                colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
                 orientation = GradientDrawable.Orientation.LEFT_RIGHT
                 cornerRadius = dp(14).toFloat()
             }
@@ -294,12 +294,12 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         onResult: (Boolean) -> Unit
     ) {
         val GOLD  = 0xFF00C896.toInt()      // #00C896 accent green
-        val BG    = 0xFF0B0E14.toInt()      // #0b0e14
-        val BG2   = 0xFF111520.toInt()      // #111520 surface
-        val BGKP  = 0xFF0B0E14.toInt()      // #0b0e14 keypad bg
-        val TXT   = 0xFFE8EAF0.toInt()      // #e8eaf0
-        val MUTED = 0xFF5A607A.toInt()       // #5a607a muted
-        val SUBL  = 0xFF3A4060.toInt()       // #3a4060 sub-letters
+        val BG    = 0xFF0E0E0E.toInt()      // #0b0e14
+        val BG2   = 0xFF161616.toInt()      // #111520 surface
+        val BGKP  = 0xFF0E0E0E.toInt()      // #0b0e14 keypad bg
+        val TXT   = 0xFFF2F2F2.toInt()      // #e8eaf0
+        val MUTED = 0xFF8A8A8A.toInt()       // #5a607a muted
+        val SUBL  = 0xFF222222.toInt()       // #3a4060 sub-letters
         val RED   = 0xFFFF6B35.toInt()
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
@@ -370,7 +370,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 when {
                     error  -> { setColor(0x22FF6B35); setStroke(dp(2), RED) }
                     filled -> { setColor(0x2200C896); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF1E2540.toInt()) }
+                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF1D1D1D.toInt()) }
                 }
             }
         val dots = Array(6) { i ->
@@ -510,7 +510,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (key.type != "empty") {
                     background = android.graphics.drawable.GradientDrawable().apply {
                         setColor(BG2); cornerRadius = dp(12).toFloat()
-                        setStroke(1, 0xFF1E2540.toInt())
+                        setStroke(1, 0xFF1D1D1D.toInt())
                     }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
@@ -521,10 +521,10 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF171C2C.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1E2540.toInt())
+                            setColor(0xFF161616.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1D1D1D.toInt())
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1E2540.toInt())
+                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1D1D1D.toInt())
                         }
                         background = pressedBg
                         handler.postDelayed({ background = normalBg }, 120)

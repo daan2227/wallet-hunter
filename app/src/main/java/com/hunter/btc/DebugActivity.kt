@@ -21,12 +21,12 @@ class DebugActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF0087FF.toInt()
-        val BG      = 0xFF0B0E14.toInt()
-        val SURFACE = 0xFF111520.toInt()
-        val BORDER  = 0xFF1E2540.toInt()
-        val TXT     = 0xFFE8EAF0.toInt()
-        val MUTED   = 0xFF5A607A.toInt()
+        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val BG      = 0xFF0E0E0E.toInt()
+        val SURFACE = 0xFF161616.toInt()
+        val BORDER  = 0xFF1D1D1D.toInt()
+        val TXT     = 0xFFF2F2F2.toInt()
+        val MUTED   = 0xFF8A8A8A.toInt()
         val RED     = 0xFFFF6B35.toInt()
 
         fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -96,7 +96,7 @@ class DebugActivity : AppCompatActivity() {
             textSize = 10f; setTextColor(ACCENT)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = GradientDrawable().apply {
-                setColor(0xFF0B0E14.toInt()); cornerRadius = dp(8).toFloat()
+                setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat()
                 setStroke(1, BORDER)
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
@@ -136,7 +136,7 @@ class DebugActivity : AppCompatActivity() {
         logBtnRow.addView(actionBtn("▶ REFRESH", ACCENT) {
             startLogRefresh()
         })
-        logBtnRow.addView(actionBtn("⏹ PARAR", 0xFF5A607A.toInt()) {
+        logBtnRow.addView(actionBtn("⏹ PARAR", 0xFF8A8A8A.toInt()) {
             stopLogRefresh()
         })
         logBtnRow.addView(actionBtn("📋 COPIAR", ACCENT2) {
@@ -205,7 +205,7 @@ class DebugActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(6), 0, dp(6))
                 background = GradientDrawable().apply {
-                    setColor(0xFF171C2C.toInt()); cornerRadius = dp(8).toFloat()
+                    setColor(0xFF161616.toInt()); cornerRadius = dp(8).toFloat()
                     setStroke(1, BORDER)
                 }
                 layoutParams = LinearLayout.LayoutParams(
@@ -252,7 +252,7 @@ class DebugActivity : AppCompatActivity() {
             textSize = 10f; setTextColor(ACCENT2)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = GradientDrawable().apply {
-                setColor(0xFF0B0E14.toInt()); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER)
+                setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat(); setStroke(1, BORDER)
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))

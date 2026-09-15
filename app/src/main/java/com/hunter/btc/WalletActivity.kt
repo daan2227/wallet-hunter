@@ -1632,12 +1632,12 @@ class WalletActivity : FragmentActivity() {
             hint = "Ingresa tu PIN"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(0xFFE6EAD8.toInt())
-            setHintTextColor(0xFF556050.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
+            setHintTextColor(0xFF8A8A8A.toInt())
         }
         root.addView(android.widget.TextView(this).apply {
             text = "PIN para cifrar el backup:"
-            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setTextColor(0xFFF2F2F2.toInt()); textSize = 13f
             setPadding(0, 0, 0, 8)
         })
         root.addView(etPin)
@@ -1730,14 +1730,14 @@ class WalletActivity : FragmentActivity() {
             hint = "PIN de la copia"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(0xFFE6EAD8.toInt())
-            setHintTextColor(0xFF556050.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
+            setHintTextColor(0xFF8A8A8A.toInt())
         }
         root.addView(android.widget.TextView(this).apply {
             // Una copia vieja se abre con el PIN que tuvieras entonces: la clave
             // se deriva del PIN en el momento de crearla, no del PIN actual.
             text = "PIN con el que se creó esta copia:"
-            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setTextColor(0xFFF2F2F2.toInt()); textSize = 13f
             setPadding(0, 0, 0, 8)
         })
         root.addView(etPin)
@@ -1857,11 +1857,11 @@ class WalletActivity : FragmentActivity() {
             hint = "PIN del backup"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(0xFFE6EAD8.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
         }
         root.addView(android.widget.TextView(this).apply {
             text = "PIN usado al crear el backup:"
-            setTextColor(0xFFE6EAD8.toInt()); textSize = 13f
+            setTextColor(0xFFF2F2F2.toInt()); textSize = 13f
             setPadding(0, 0, 0, 8)
         })
         root.addView(etPin)

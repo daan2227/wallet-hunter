@@ -3,6 +3,24 @@ package com.hunter.btc
 import android.content.Context
 import android.graphics.Color
 
+/**
+ * Sistema visual "Bóveda".
+ *
+ * La app mezclaba TRES paletas: la gris de las pantallas principales, una
+ * azulada en cluster y recovery (#171C2C, #1E2540, #0B0E14…) y una verdosa en
+ * la wallet y el teclado de PIN (#E6EAD8, #556050, #2A3028…). Cada pantalla
+ * parecía de una aplicación distinta, y los colores estaban escritos a mano en
+ * 247 sitios, así que cambiar cualquier cosa obligaba a repasarlos todos.
+ *
+ * Aquí está la paleta única, y con ella la escala tipográfica, los radios y el
+ * espaciado que antes tampoco existían: cada pantalla elegía su propio tamaño
+ * de letra y su propio radio de esquina.
+ *
+ * REGLA DEL ACENTO: [ACCENT] sólo en tres sitios — la acción principal, un
+ * saldo positivo y el estado "está corriendo". En ningún otro. Antes pintaba
+ * también el dataset, el ritmo y los BTC disponibles, y cuando un color
+ * significa cinco cosas deja de significar ninguna.
+ */
 object AppTheme {
     var isDark = true
 
@@ -17,22 +35,54 @@ object AppTheme {
             .edit().putBoolean("dark_mode", isDark).apply()
     }
 
-    /* ── Paleta minimalista clean ── */
-    val BG_DEEP   get() = if (isDark) Color.parseColor("#090909") else Color.parseColor("#F4F4F4")
-    val BG_PANEL  get() = if (isDark) Color.parseColor("#111111") else Color.parseColor("#FFFFFF")
-    val BG_CARD   get() = if (isDark) Color.parseColor("#141414") else Color.parseColor("#FFFFFF")
-    val BG_ELEV   get() = if (isDark) Color.parseColor("#1C1C1C") else Color.parseColor("#E8E8E8")
-    val AMBER     get() = Color.parseColor("#00C896")   /* semantic: positive / found */
-    val GREEN     get() = Color.parseColor("#00C896")
-    val RED       get() = Color.parseColor("#F04040")
-    val CYAN      get() = Color.parseColor("#6EA8FE")
-    val BLUE      get() = Color.parseColor("#6EA8FE")
-    val TXT_PRI   get() = if (isDark) Color.parseColor("#EFEFEF") else Color.parseColor("#0A0A0A")
-    val TXT_SEC   get() = if (isDark) Color.parseColor("#868686") else Color.parseColor("#444444")
-    val TXT_MUTED get() = if (isDark) Color.parseColor("#444444") else Color.parseColor("#909090")
-    val BORDER_C  get() = if (isDark) Color.parseColor("#242424") else Color.parseColor("#E0E0E0")
+    /* ── Superficies ──────────────────────────────────────────────────────
+       Sin bordes: la elevación la hace el tono, no una línea. */
+    val BG_DEEP   get() = if (isDark) Color.parseColor("#0E0E0E") else Color.parseColor("#F4F4F4")
+    val BG_PANEL  get() = if (isDark) Color.parseColor("#161616") else Color.parseColor("#FFFFFF")
+    val BG_CARD   get() = if (isDark) Color.parseColor("#161616") else Color.parseColor("#FFFFFF")
+    val BG_ELEV   get() = if (isDark) Color.parseColor("#1D1D1D") else Color.parseColor("#E8E8E8")
+    /** Superficie de un control pulsable en reposo (teclas, botones secundarios). */
+    val BG_KEY    get() = if (isDark) Color.parseColor("#1A1A1A") else Color.parseColor("#EDEDED")
+    val BORDER_C  get() = if (isDark) Color.parseColor("#222222") else Color.parseColor("#E0E0E0")
 
-    /* aliases */
-    val YELLOW get() = AMBER
-    val ORANGE get() = AMBER
+    /* ── Texto ─────────────────────────────────────────────────────────── */
+    val TXT_PRI   get() = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#0A0A0A")
+    val TXT_SEC   get() = if (isDark) Color.parseColor("#8A8A8A") else Color.parseColor("#444444")
+    val TXT_MUTED get() = if (isDark) Color.parseColor("#4A4A4A") else Color.parseColor("#909090")
+
+    /* ── Semánticos: un color, un significado ─────────────────────────── */
+    val ACCENT get() = Color.parseColor("#00C896")   // acción / positivo / corriendo
+    val RED    get() = Color.parseColor("#F04040")   // destructivo / error
+    val WARN   get() = Color.parseColor("#FF6B35")   // aviso, no error
+    val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo
+    /** Fondo tenue del botón de parar. */
+    val BG_STOP get() = Color.parseColor("#1E1414")
+
+    /* Compatibilidad: AMBER y GREEN eran el mismo verde con dos nombres. */
+    val AMBER  get() = ACCENT
+    val GREEN  get() = ACCENT
+    val CYAN   get() = BLUE
+    val YELLOW get() = WARN
+    val ORANGE get() = WARN
+
+    /* ── Escala tipográfica ───────────────────────────────────────────────
+       Una cifra domina por pantalla; lo demás baja a BODY o CAPTION. Antes
+       cada pantalla inventaba su tamaño: 56, 44, 40, 28, 22, 20, 19, 18… */
+    const val SP_DISPLAY = 44f   // la cifra protagonista
+    const val SP_FIGURE  = 22f   // cifras de apoyo (tarjetas de estadística)
+    const val SP_TITLE   = 17f   // título de pantalla o de sección
+    const val SP_BODY    = 14f   // texto normal, etiquetas de fila
+    const val SP_CAPTION = 12f   // secundario, unidades, pies
+    const val SP_MICRO   = 11f   // sólo para datos densos: direcciones, hex
+
+    /* ── Radios y espaciado ──────────────────────────────────────────────
+       Antes convivían 8, 10, 12, 14, 16 y 18 sin criterio. */
+    const val R_CARD   = 14f
+    const val R_INNER  = 12f
+    const val R_CHIP   = 10f
+    const val R_KEY    = 16f
+
+    const val PAD_SIDE = 22   // margen lateral de pantalla
+    const val PAD_CARD = 18   // interior de tarjeta
+    const val GAP      = 12   // entre tarjetas hermanas
 }

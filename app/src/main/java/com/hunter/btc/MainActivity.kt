@@ -26,12 +26,12 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     private val maxPoints = 60
     private val wpsPoints = ArrayDeque<Float>()
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFCCCCCC.toInt(); strokeWidth = 1.5f; style = Paint.Style.STROKE
+        color = 0xFFF2F2F2.toInt(); strokeWidth = 1.5f; style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND
     }
     private val paintDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val paintLbl = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF505050.toInt(); textSize = 18f; typeface = Typeface.MONOSPACE
+        color = 0xFF4A4A4A.toInt(); textSize = 18f; typeface = Typeface.MONOSPACE
     }
     fun addPoint(wps: Float) { wpsPoints.addLast(wps); if(wpsPoints.size>maxPoints) wpsPoints.removeFirst(); postInvalidate() }
     fun reset() { wpsPoints.clear(); postInvalidate() }
@@ -484,7 +484,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val ACCENT = 0xFF00C896.toInt()
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
             )
@@ -496,14 +496,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val logoIcon = TextView(this).apply {
             text = "₿"
             textSize = 15f
-            setTextColor(0xFFEFEFEF.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             gravity = Gravity.CENTER
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                 cornerRadius = dp(8).toFloat()
-                setColor(0xFF1C1C1C.toInt())
-                setStroke(1, 0xFF303030.toInt())
+                setColor(0xFF1D1D1D.toInt())
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(dp(32), dp(32)).also {
                 it.gravity = Gravity.CENTER_VERTICAL
@@ -517,7 +517,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             textSize = 15f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             letterSpacing = 0.04f
-            setTextColor(0xFFEFEFEF.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                 it.gravity = Gravity.CENTER_VERTICAL
                 it.marginStart = dp(10)
@@ -529,7 +529,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val dot = android.view.View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0xFF868686.toInt())
+                setColor(0xFF8A8A8A.toInt())
                 setSize(dp(8), dp(8))
             }
             layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).also {
@@ -547,8 +547,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                 cornerRadius = dp(10).toFloat()
-                setColor(0xFF141414.toInt())
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt())
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).also {
                 it.gravity = Gravity.CENTER_VERTICAL
@@ -560,7 +560,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         repeat(3) {
             val bar = android.view.View(this).apply {
-                setBackgroundColor(0xFFEFEFEF.toInt())
+                setBackgroundColor(0xFFF2F2F2.toInt())
                 layoutParams = LinearLayout.LayoutParams(dp(16), dp(2)).also {
                     it.setMargins(0, dp(2), 0, dp(2))
                 }
@@ -573,7 +573,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Bottom border
         val border = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF242424.toInt())
+            setBackgroundColor(0xFF222222.toInt())
         }
 
         return header
@@ -608,7 +608,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val drawerWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
         val drawer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF141414.toInt())
+            setBackgroundColor(0xFF161616.toInt())
             translationX = -drawerWidth.toFloat()
             elevation = dp(16).toFloat()
         }
@@ -620,7 +620,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(20))
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt())
+                setColor(0xFF161616.toInt())
                 setStroke(0, 0)
             }
         }
@@ -634,13 +634,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             textSize = 20f
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
-            setTextColor(0xFFEFEFEF.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
         }
         val dSub = TextView(this).apply {
             text = "com.hunter.btc · ARM64"
             textSize = 10f
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            setTextColor(0xFF868686.toInt())
+            setTextColor(0xFF8A8A8A.toInt())
             setPadding(0, dp(4), 0, 0)
         }
         drawerHeader.addView(dTitle)
@@ -648,7 +648,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Divider
         val divider = android.view.View(this).apply {
-            setBackgroundColor(0xFF242424.toInt())
+            setBackgroundColor(0xFF222222.toInt())
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
             )
@@ -729,7 +729,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 text = item.label
                 textSize = 14f
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
-                setTextColor(if (item.idx == 0) ACCENT else 0xFF868686.toInt())
+                setTextColor(if (item.idx == 0) ACCENT else 0xFF8A8A8A.toInt())
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
                     it.gravity = Gravity.CENTER_VERTICAL
                     it.marginStart = dp(14)
@@ -744,14 +744,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Drawer footer
         val footerDiv = android.view.View(this).apply {
-            setBackgroundColor(0xFF242424.toInt())
+            setBackgroundColor(0xFF222222.toInt())
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
         }
         val footer = TextView(this).apply {
             text = "v2.4 · Wallet Hunter"
             textSize = 10f
             typeface = Typeface.create("monospace", Typeface.NORMAL)
-            setTextColor(0xFF555555.toInt())
+            setTextColor(0xFF4A4A4A.toInt())
             gravity = Gravity.CENTER
             setPadding(0, dp(16), 0, dp(24))
         }
@@ -802,7 +802,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             bg?.setColor(if (isActive) 0x14FFFFFF.toInt() else 0x00000000.toInt())
             bg?.setStroke(if (isActive) 1 else 0, if (isActive) 0x28FFFFFF.toInt() else 0x00000000.toInt())
             val label = row.getChildAt(1) as? TextView
-            label?.setTextColor(if (isActive) ACCENT else 0xFF868686.toInt())
+            label?.setTextColor(if (isActive) ACCENT else 0xFF8A8A8A.toInt())
         }
     }
 
@@ -810,10 +810,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun buildScanTab(): ScrollView {
         val ACCENT  = 0xFF00C896.toInt()
         val ACCENT2 = 0xFF6EA8FE.toInt()
-        val LIME    = 0xFF39FF14.toInt()  // kept for engine compat
+        val LIME    = 0xFF00C896.toInt()  // kept for engine compat
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -821,7 +821,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             setPadding(0, 0, 0, dp(80))
         }
 
@@ -829,7 +829,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val heroCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(0xFF111111.toInt())
+                setColor(0xFF161616.toInt())
                 setStroke(1, 0xFF222222.toInt())
             }
             setPadding(dp(24), dp(24), dp(24), dp(16))
@@ -839,7 +839,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         heroCard.addView(TextView(this).apply {
             text = "VELOCIDAD"
             textSize = 9f
-            setTextColor(0xFF505050.toInt())
+            setTextColor(0xFF4A4A4A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.2f
             gravity = Gravity.CENTER
@@ -853,7 +853,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvWps = TextView(this).apply {
             text = "0.0"
             textSize = 56f
-            setTextColor(0xFFEFEFEF.toInt())
+            setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
@@ -863,7 +863,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         heroCard.addView(tvWps)
         tvPeakWps = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.END
             layoutParams = LinearLayout.LayoutParams(
@@ -875,7 +875,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Promedio de velocidad
         tvAvgWps = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
@@ -893,7 +893,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvSpeedUnitScan = TextView(this).apply {
             text = "KEYS / SEG"
             textSize = 10f
-            setTextColor(0xFF505050.toInt())
+            setTextColor(0xFF4A4A4A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.15f
             gravity = Gravity.CENTER
@@ -909,9 +909,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(0xFF141414.toInt())
+                    setColor(0xFF161616.toInt())
                     cornerRadius = dp(16).toFloat()
-                    setStroke(1, 0xFF242424.toInt())
+                    setStroke(1, 0xFF222222.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
                     setMargins(dp(4), dp(4), dp(4), dp(4))
@@ -925,7 +925,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fun statLabel(text: String) = TextView(this).apply {
             this.text = text
             textSize = 9f
-            setTextColor(0xFF868686.toInt())
+            setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.1f
         }
@@ -939,9 +939,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         tvCount = statValue("0", 0xFF6EA8FE.toInt())
-        val tvBlocksStat = statValue("0", 0xFFEFEFEF.toInt())
+        val tvBlocksStat = statValue("0", 0xFFF2F2F2.toInt())
         val tvProgressStat = statValue("0.00%", ACCENT)
-        tvTime = statValue("00:00", 0xFFEFEFEF.toInt())
+        tvTime = statValue("00:00", 0xFFF2F2F2.toInt())
 
         val gridRow1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -960,13 +960,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(statLabel("TOTAL KEYS"))
             addView(tvCount)
         })
-        gridRow1.addView(statCard(0xFF242424.toInt()) {
+        gridRow1.addView(statCard(0xFF222222.toInt()) {
             // Decía "SESIÓN" sobre un valor que es el ritmo extrapolado a un día
             // ("159B/día"), no nada de la sesión: el tiempo de sesión está en su
             // propia tarjeta y las claves de la sesión en TOTAL KEYS.
             addView(statLabel("RITMO"))
             val tvSessionStat = TextView(this@MainActivity).apply {
-                text = "—"; textSize = 13f; setTextColor(0xFFEFEFEF.toInt())
+                text = "—"; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
                 typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
                 letterSpacing = -0.02f
                 maxLines = 2
@@ -989,7 +989,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvDatasetStat = tvBinStat
             addView(tvBinStat)
         })
-        gridRow2.addView(statCard(0xFF242424.toInt()) {
+        gridRow2.addView(statCard(0xFF222222.toInt()) {
             addView(statLabel("TIEMPO"))
             addView(tvTime)
         })
@@ -1017,8 +1017,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(0xFF141414.toInt()); cornerRadius = dp(14).toFloat()
-                    setStroke(1, 0xFF242424.toInt())
+                    setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
+                    setStroke(1, 0xFF222222.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1038,12 +1038,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val titleTv = TextView(this).apply {
                 text = title; textSize = 13f
-                setTextColor(0xFFEFEFEF.toInt())
+                setTextColor(0xFFF2F2F2.toInt())
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val arrowTv = TextView(this).apply {
-                text = "›"; textSize = 18f; setTextColor(0xFF555555.toInt())
+                text = "›"; textSize = 18f; setTextColor(0xFF4A4A4A.toInt())
             }
             header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
             container.addView(header)
@@ -1071,7 +1071,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── SECTION: Config Hardware ──────────────────────────────────────
         page.addView(collapsibleSection("⚙", "Configuración del Motor (Hardware)") {
             addView(TextView(this@MainActivity).apply {
-                text = "Dataset"; textSize = 10f; setTextColor(0xFF868686.toInt())
+                text = "Dataset"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 setPadding(0, dp(4), 0, dp(4))
             })
@@ -1080,10 +1080,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             btnCsv = Button(this@MainActivity).apply {
                 text = "Load CSV"; textSize = 10f
-                setTextColor(0xFFEFEFEF.toInt())
+                setTextColor(0xFFF2F2F2.toInt())
                 background = GradientDrawable().apply {
                     setColor(0xFF1A1A1A.toInt()); cornerRadius = dp(8).toFloat()
-                    setStroke(1, 0xFF383838.toInt())
+                    setStroke(1, 0xFF4A4A4A.toInt())
                 }
                 setPadding(dp(12), 0, dp(12), 0)
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(40))
@@ -1092,7 +1092,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val tvCsvLocal = TextView(this@MainActivity).apply {
                 text = if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
                     java.io.File(csvPath).name else "Sin archivo"
-                setTextColor(0xFF868686.toInt()); textSize = 10f; typeface = Typeface.MONOSPACE
+                setTextColor(0xFF8A8A8A.toInt()); textSize = 10f; typeface = Typeface.MONOSPACE
                 maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(dp(10), 0, 0, 0)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1109,11 +1109,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // el "—" que se veía arriba con el dataset cargado—.
 
             addView(TextView(this@MainActivity).apply {
-                text = "Threads"; textSize = 10f; setTextColor(0xFF868686.toInt())
+                text = "Threads"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 setPadding(0, dp(10), 0, dp(2))
             })
-            tvThreads = TextView(this@MainActivity).apply { setTextColor(0xFFEFEFEF.toInt()); textSize = 11f }
+            tvThreads = TextView(this@MainActivity).apply { setTextColor(0xFFF2F2F2.toInt()); textSize = 11f }
             addView(tvThreads)
             sbThreads = SeekBar(this@MainActivity).apply {
                 max = 7; progress = prefs.getInt("threads", 3)
@@ -1122,11 +1122,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(sbThreads)
 
             addView(TextView(this@MainActivity).apply {
-                text = "CPU Limit"; textSize = 10f; setTextColor(0xFF868686.toInt())
+                text = "CPU Limit"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 setPadding(0, dp(8), 0, dp(2))
             })
-            tvCpu = TextView(this@MainActivity).apply { setTextColor(0xFFEFEFEF.toInt()); textSize = 11f }
+            tvCpu = TextView(this@MainActivity).apply { setTextColor(0xFFF2F2F2.toInt()); textSize = 11f }
             addView(tvCpu)
             sbCpu = SeekBar(this@MainActivity).apply {
                 max = 90; progress = prefs.getInt("cpu", 70)
@@ -1148,14 +1148,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             fastLabels.addView(TextView(this@MainActivity).apply {
-                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
+                text = "Fast Scan Mode"; textSize = 12f; setTextColor(0xFFF2F2F2.toInt())
             })
             // Este modo baja PBKDF2 de 2048 iteraciones a 1. El contador sube
             // muchísimo, pero las seeds resultantes no son las de ningún
             // mnemónico BIP39: es velocidad sin ninguna posibilidad de acierto.
             val tvFastWarn = TextView(this@MainActivity).apply {
                 text = "Sólo benchmark: con 1 iteración las seeds NO son BIP39 y no puede encontrar nada"
-                textSize = 9f; setTextColor(0xFFFFAA33.toInt())
+                textSize = 9f; setTextColor(0xFFFF6B35.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 visibility = if (prefs.getBoolean("fastMode", false))
                     android.view.View.VISIBLE else android.view.View.GONE
@@ -1185,7 +1185,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // dirección la mitad del trabajo no sirve para nada.
             addView(TextView(this@MainActivity).apply {
                 text = "RUTAS DE DERIVACIÓN"; textSize = 9f
-                setTextColor(0xFF868686.toInt())
+                setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.create("monospace", Typeface.BOLD)
                 letterSpacing = 0.1f
                 setPadding(0, dp(12), 0, dp(4))
@@ -1197,13 +1197,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             var pathMask = prefs.getInt("bip39_paths", 3)
             val cb44 = android.widget.CheckBox(this@MainActivity).apply {
                 text = "BIP44 (1...)"; textSize = 11f
-                setTextColor(0xFFEFEFEF.toInt())
+                setTextColor(0xFFF2F2F2.toInt())
                 isChecked = (pathMask and 1) != 0
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val cb84 = android.widget.CheckBox(this@MainActivity).apply {
                 text = "BIP84 (bc1q...)"; textSize = 11f
-                setTextColor(0xFFEFEFEF.toInt())
+                setTextColor(0xFFF2F2F2.toInt())
                 isChecked = (pathMask and 2) != 0
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
@@ -1241,7 +1241,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 Triple("⚙", "Auto-configurar Hardware", { _: TextView -> showHardwareInfo() })
             ).forEach { (ic, lbl, action) ->
                 val tvLabel = TextView(this@MainActivity).apply {
-                    text = lbl; textSize = 12f; setTextColor(0xFFEFEFEF.toInt())
+                    text = lbl; textSize = 12f; setTextColor(0xFFF2F2F2.toInt())
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 val row = LinearLayout(this@MainActivity).apply {
@@ -1254,7 +1254,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     layoutParams = LinearLayout.LayoutParams(dp(26), dp(26)).apply { marginEnd = dp(10) }
                 })
                 row.addView(tvLabel)
-                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF555555.toInt()) })
+                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF4A4A4A.toInt()) })
                 addView(row)
             }
         })
@@ -1263,7 +1263,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(collapsibleSection("🌐", "Red Multi-Dispositivo (Cluster)") {
             addView(TextView(this@MainActivity).apply {
                 text = "MASTER_IP: ${NetworkManager.getLocalIp(this@MainActivity)}"
-                textSize = 11f; setTextColor(0xFF868686.toInt()); typeface = Typeface.MONOSPACE
+                textSize = 11f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.MONOSPACE
                 setPadding(0, dp(4), 0, dp(10))
             })
             val row1 = LinearLayout(this@MainActivity).apply {
@@ -1271,9 +1271,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val netBtn = { txt: String, action: () -> Unit ->
                 Button(this@MainActivity).apply {
-                    text = txt; textSize = 11f; setTextColor(0xFFEFEFEF.toInt())
+                    text = txt; textSize = 11f; setTextColor(0xFFF2F2F2.toInt())
                     background = GradientDrawable().apply {
-                        setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF242424.toInt())
+                        setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
                         cornerRadius = dp(10).toFloat()
                     }
                     layoutParams = LinearLayout.LayoutParams(0, dp(42), 1f).apply { marginEnd = dp(6) }
@@ -1296,8 +1296,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(row2)
             val tvNetLog = TextView(this@MainActivity).apply {
                 text = "Log:"
-                textSize = 10f; setTextColor(0xFF868686.toInt()); typeface = Typeface.MONOSPACE
-                background = GradientDrawable().apply { setColor(0xFF0C0C0C.toInt()); cornerRadius = dp(8).toFloat() }
+                textSize = 10f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.MONOSPACE
+                background = GradientDrawable().apply { setColor(0xFF0E0E0E.toInt()); cornerRadius = dp(8).toFloat() }
                 setPadding(dp(10), dp(8), dp(10), dp(8))
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(80)).apply { topMargin = dp(8) }
             }
@@ -1316,10 +1316,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val startBg = GradientDrawable().apply {
             setColor(0xFF1A1A1A.toInt())
             cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFEFEFEF.toInt())
+            setStroke(dp(1), 0xFFF2F2F2.toInt())
         }
         val stopRed = GradientDrawable().apply {
-            setColor(0xFF1A0808.toInt())
+            setColor(0xFF1E1414.toInt())
             cornerRadius = dp(16).toFloat()
             setStroke(dp(1), 0xFFF04040.toInt())
         }
@@ -1328,8 +1328,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val modeCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(14).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1338,7 +1338,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(14), dp(12), dp(14), dp(12))
         }
         modeCard.addView(TextView(this).apply {
-            text = "MODO DE ESCANEO"; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = "MODO DE ESCANEO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1381,21 +1381,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 text = sm.label; textSize = 12f
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setTextColor(if (idx == 0) 0xFF00C896.toInt() else 0xFF868686.toInt())
+                setTextColor(if (idx == 0) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
             })
             inner.addView(TextView(this).apply {
                 text = sm.sub; textSize = 9f
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 gravity = Gravity.CENTER
-                setTextColor(0xFF555555.toInt())
+                setTextColor(0xFF4A4A4A.toInt())
             })
 
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (idx == 0) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
+                    setColor(if (idx == 0) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
                     cornerRadius = dp(12).toFloat()
-                    setStroke(1, if (idx == 0) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                    setStroke(1, if (idx == 0) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply {
                     if (idx == 0) marginEnd = dp(8)
@@ -1408,12 +1408,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     modeBtns.forEachIndexed { i, b ->
                         val active = i == idx
                         (b.background as android.graphics.drawable.GradientDrawable).apply {
-                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
-                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
+                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                         }
                         val lbl = (b as LinearLayout).getChildAt(0) as? LinearLayout
                         (lbl?.getChildAt(0) as? TextView)?.setTextColor(
-                            if (active) 0xFF00C896.toInt() else 0xFF868686.toInt())
+                            if (active) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
                     }
                 }
             }
@@ -1425,7 +1425,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Info del modo seleccionado
         val tvModeInfo = TextView(this).apply {
             text = "BIP39: Genera seeds de 12/24 palabras y deriva wallets HD"
-            textSize = 10f; setTextColor(0xFF868686.toInt())
+            textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1447,12 +1447,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 modeBtns.forEachIndexed { i, c ->
                     val active = i == idx
                     (c.background as android.graphics.drawable.GradientDrawable).apply {
-                        setColor(if (active) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
-                        setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                        setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
+                        setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                     }
                     val lbl = (c as LinearLayout).getChildAt(0) as? LinearLayout
                     (lbl?.getChildAt(0) as? TextView)?.setTextColor(
-                        if (active) 0xFF00C896.toInt() else 0xFF868686.toInt())
+                        if (active) 0xFF00C896.toInt() else 0xFF8A8A8A.toInt())
                 }
             }
         }
@@ -1461,7 +1461,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         btnToggle = Button(this).apply {
             text = s.start
-            textSize = 16f; setTextColor(0xFFEFEFEF.toInt())
+            textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD)
             letterSpacing = 0.1f; isAllCaps = true
             background = startBg
@@ -1488,7 +1488,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val ACCENT2 = 0xFF6EA8FE.toInt()
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1497,7 +1497,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             setPadding(dp(12), dp(16), dp(12), dp(80))
         }
 
@@ -1505,8 +1505,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fun pCard(marginTop: Int = 10): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(16).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1516,19 +1516,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         fun sectionLabel(text: String) = TextView(this).apply {
-            this.text = text; textSize = 9f; setTextColor(0xFF868686.toInt())
+            this.text = text; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.12f
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(10) }
         }
 
-        fun styledInput(hint: String, color: Int = 0xFFEFEFEF.toInt()): EditText =
+        fun styledInput(hint: String, color: Int = 0xFFF2F2F2.toInt()): EditText =
             EditText(this).apply {
-                this.hint = hint; setTextColor(color); setHintTextColor(0xFF555555.toInt())
+                this.hint = hint; setTextColor(color); setHintTextColor(0xFF4A4A4A.toInt())
                 textSize = 11f; typeface = Typeface.MONOSPACE
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF242424.toInt())
+                    setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
                     cornerRadius = dp(10).toFloat()
                 }
                 setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -1542,8 +1542,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val container = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF141414.toInt()); cornerRadius = dp(14).toFloat()
-                    setStroke(1, 0xFF242424.toInt())
+                    setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
+                    setStroke(1, 0xFF222222.toInt())
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1560,12 +1560,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 gravity = Gravity.CENTER
             }
             val titleTv = TextView(this).apply {
-                text = title; textSize = 13f; setTextColor(0xFFEFEFEF.toInt())
+                text = title; textSize = 13f; setTextColor(0xFFF2F2F2.toInt())
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             val arrowTv = TextView(this).apply {
-                text = "›"; textSize = 18f; setTextColor(0xFF555555.toInt())
+                text = "›"; textSize = 18f; setTextColor(0xFF4A4A4A.toInt())
             }
             header.addView(iconTv); header.addView(titleTv); header.addView(arrowTv)
             container.addView(header)
@@ -1589,7 +1589,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── HEADER ────────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
             text = "Puzzle Mode"
-            textSize = 22f; setTextColor(0xFFEFEFEF.toInt())
+            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1597,7 +1597,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         page.addView(TextView(this).apply {
             text = "Selecciona el puzzle objetivo"
-            textSize = 12f; setTextColor(0xFF868686.toInt())
+            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1669,8 +1669,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val progressCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(14).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(14).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -1689,7 +1689,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = Typeface.create("monospace", Typeface.BOLD)
         }
         progressHeader.addView(TextView(this).apply {
-            text = "COBERTURA DEL RANGO"; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = "COBERTURA DEL RANGO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -1698,7 +1698,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val progressTrack = android.widget.FrameLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+                setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(8)
@@ -1718,7 +1718,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 intArrayOf(ACCENT2, ACCENT)
             ).apply { cornerRadius = dp(4).toFloat() }
             val track = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+                setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
             }
             progressDrawable = android.graphics.drawable.LayerDrawable(
                 arrayOf(
@@ -1740,7 +1740,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(progressTrack)
 
         val tvProgressDetail = TextView(this).apply {
-            text = "Bloques: —"; textSize = 10f; setTextColor(0xFF868686.toInt())
+            text = "Bloques: —"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
         }
         progressCard.addView(tvProgressDetail)
@@ -1751,8 +1751,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             textSize = 12f; setTextColor(ACCENT2)
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             gravity = Gravity.CENTER
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -1770,7 +1770,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // leerla. Aquí no la pisa nadie.
         tvCurrentBlock = TextView(this).apply {
             text = "Bloque actual: —"
-            textSize = 11f; setTextColor(0xFF868686.toInt())
+            textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.MONOSPACE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1781,7 +1781,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(TextView(this).apply {
             // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
             // pequeño para acertar con el dedo, siendo además destructivo.
-            text = "↺ Reiniciar progreso"; textSize = 12f; setTextColor(0xFF9A9A9A.toInt())
+            text = "↺ Reiniciar progreso"; textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             setPadding(dp(12), dp(10), dp(12), dp(10))
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.END; isClickable = true; isFocusable = true
@@ -1840,11 +1840,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Balance indicator - debajo del puzzle seleccionado
         val tvBalResult = TextView(this).apply {
             text = "Verificando balance..."
-            textSize = 11f; setTextColor(0xFF868686.toInt())
+            textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             setPadding(dp(14), dp(10), dp(14), dp(10))
             layoutParams = LinearLayout.LayoutParams(
@@ -1864,19 +1864,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
             }
-            colStart.addView(TextView(this@MainActivity).apply { text = "Start"; textSize = 9f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            colStart.addView(TextView(this@MainActivity).apply { text = "Start"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
             etRangeStart = styledInput("0x...")
             colStart.addView(etRangeStart)
             val colEnd = LinearLayout(this@MainActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
-            colEnd.addView(TextView(this@MainActivity).apply { text = "End"; textSize = 9f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            colEnd.addView(TextView(this@MainActivity).apply { text = "End"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
             etRangeEnd = styledInput("0x...")
             colEnd.addView(etRangeEnd)
             rangeRow.addView(colStart); rangeRow.addView(colEnd)
             addView(rangeRow)
-            addView(TextView(this@MainActivity).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
+            addView(TextView(this@MainActivity).apply { text = "Target Address"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL); setPadding(0,0,0,dp(4)) })
             etTarget = styledInput("1A2B3C...", 0xFF00C896.toInt())
             addView(etTarget)
         })
@@ -1916,7 +1916,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         speedRow.addView(tvWpsP)
         // Peak speed en esquina
         tvPeakWpsPuzzle = TextView(this).apply {
-            text = ""; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = ""; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.BOTTOM or Gravity.END
             layoutParams = LinearLayout.LayoutParams(
@@ -1928,9 +1928,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val speedUnit = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_VERTICAL }
         // getWps() devuelve claves/s directas; la etiqueta decía "kKeys", lo que
         // multiplicaba por mil la lectura. La unidad ahora la fija el escalado.
-        tvSpeedUnitPuzzle = TextView(this).apply { text = "Keys"; textSize = 11f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) }
+        tvSpeedUnitPuzzle = TextView(this).apply { text = "Keys"; textSize = 11f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) }
         speedUnit.addView(tvSpeedUnitPuzzle)
-        speedUnit.addView(TextView(this).apply { text = "por seg"; textSize = 10f; setTextColor(0xFF555555.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
+        speedUnit.addView(TextView(this).apply { text = "por seg"; textSize = 10f; setTextColor(0xFF4A4A4A.toInt()); typeface = Typeface.create("monospace", Typeface.NORMAL) })
         speedRow.addView(speedUnit)
         statsCard.addView(speedRow)
 
@@ -1938,18 +1938,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat(); setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat(); setStroke(1, 0xFF222222.toInt())
             }
             setPadding(dp(10), dp(10), dp(10), dp(10))
-            addView(TextView(this@MainActivity).apply { text = label; textSize = 8f; setTextColor(0xFF868686.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f })
+            addView(TextView(this@MainActivity).apply { text = label; textSize = 8f; setTextColor(0xFF8A8A8A.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f })
             addView(tv)
         }
 
-        val tvCntP = TextView(this).apply { text = "0"; textSize = 16f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 16f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        val tvCntP = TextView(this).apply { text = "0"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
+        val tvTmP  = TextView(this).apply { text = "00:00:00"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.create("monospace", Typeface.BOLD) }
         tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
         tvPctPuzzle = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(ACCENT2); typeface = Typeface.create("monospace", Typeface.BOLD) }
-        tvBlockProgress = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(0xFFEFEFEF.toInt()); typeface = Typeface.MONOSPACE }
+        tvBlockProgress = TextView(this).apply { text = "—"; textSize = 13f; setTextColor(0xFFF2F2F2.toInt()); typeface = Typeface.MONOSPACE }
 
         val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
         val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
@@ -2003,11 +2003,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 textSize = 13f; gravity = Gravity.CENTER
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (idx == 1) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
+                    setColor(if (idx == 1) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
                     cornerRadius = dp(12).toFloat()
-                    setStroke(1, if (idx == 1) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                    setStroke(1, if (idx == 1) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                 }
-                setTextColor(if (idx == 1) ACCENT else 0xFF868686.toInt())
+                setTextColor(if (idx == 1) ACCENT else 0xFF8A8A8A.toInt())
                 layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
                     if (idx < 2) marginEnd = dp(8)
                 }
@@ -2017,10 +2017,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     powerBtns.forEachIndexed { i, b ->
                         val active = i == idx
                         (b.background as android.graphics.drawable.GradientDrawable).apply {
-                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
-                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                            setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
+                            setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                         }
-                        b.setTextColor(if (active) ACCENT else 0xFF868686.toInt())
+                        b.setTextColor(if (active) ACCENT else 0xFF8A8A8A.toInt())
                     }
                     // Apply to seekbars
                     sbThreadsPuzzle?.progress = level.threads - 1
@@ -2047,7 +2047,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(12) }
         }
         scanModeRow.addView(TextView(this).apply {
-            text = "MODO"; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = "MODO"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -2067,10 +2067,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = "SECUENCIAL"; textSize = 11f; gravity = Gravity.CENTER
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
-            setTextColor(0xFF868686.toInt())
+            setTextColor(0xFF8A8A8A.toInt())
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
             isClickable = true; isFocusable = true
         }
@@ -2079,10 +2079,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.setSequential(sequential)
             listOf(btnRandom to !sequential, btnSeq to sequential).forEach { (btn, active) ->
                 (btn.background as android.graphics.drawable.GradientDrawable).apply {
-                    setColor(if (active) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
-                    setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                    setColor(if (active) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
+                    setStroke(1, if (active) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                 }
-                btn.setTextColor(if (active) ACCENT else 0xFF868686.toInt())
+                btn.setTextColor(if (active) ACCENT else 0xFF8A8A8A.toInt())
             }
         }
 
@@ -2106,7 +2106,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(14) }
         }
         batchHeaderRow.addView(TextView(this).apply {
-            text = "BATCH SIZE"; textSize = 9f; setTextColor(0xFF868686.toInt())
+            text = "BATCH SIZE"; textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD); letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -2150,7 +2150,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         listOf("64", "", "256", "", "1K", "", "4K", "", "16K").forEach { lbl ->
             batchLabelRow.addView(TextView(this).apply {
-                text = lbl; textSize = 8f; setTextColor(0xFF555555.toInt())
+                text = lbl; textSize = 8f; setTextColor(0xFF4A4A4A.toInt())
                 typeface = Typeface.create("monospace", Typeface.NORMAL)
                 gravity = android.view.Gravity.CENTER
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -2174,10 +2174,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     setOnClickListener { action() }
                 }
                 row.addView(TextView(this@MainActivity).apply { text = icon; textSize = 16f; gravity = Gravity.CENTER; layoutParams = LinearLayout.LayoutParams(dp(28), dp(28)).apply { marginEnd = dp(12) } })
-                row.addView(TextView(this@MainActivity).apply { text = label; textSize = 12f; setTextColor(0xFFEFEFEF.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
-                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF555555.toInt()) })
+                row.addView(TextView(this@MainActivity).apply { text = label; textSize = 12f; setTextColor(0xFFF2F2F2.toInt()); layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f) })
+                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF4A4A4A.toInt()) })
                 addView(row)
-                addView(android.view.View(this@MainActivity).apply { setBackgroundColor(0xFF242424.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
+                addView(android.view.View(this@MainActivity).apply { setBackgroundColor(0xFF222222.toInt()); layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1) })
             }
         })
 
@@ -2192,14 +2192,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── START BUTTON ──────────────────────────────────────────────────
         val startBg = android.graphics.drawable.GradientDrawable().apply {
             setColor(0xFF1A1A1A.toInt()); cornerRadius = dp(16).toFloat()
-            setStroke(dp(1), 0xFFEFEFEF.toInt())
+            setStroke(dp(1), 0xFFF2F2F2.toInt())
         }
         val stopRed = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0xFF1A0808.toInt()); cornerRadius = dp(16).toFloat()
+            setColor(0xFF1E1414.toInt()); cornerRadius = dp(16).toFloat()
             setStroke(dp(1), 0xFFF04040.toInt())
         }
         btnPuzzleToggle = Button(this).apply {
-            text = "▶  START PUZZLE"; textSize = 16f; setTextColor(0xFFEFEFEF.toInt())
+            text = "▶  START PUZZLE"; textSize = 16f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif-black", Typeface.BOLD); letterSpacing = 0.1f; isAllCaps = true
             background = startBg
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(60)).apply { setMargins(0, dp(12), 0, dp(8)) }
@@ -2268,7 +2268,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         }
                         else -> {
                             tvBalResult.text = "Sin conexión — reintenta"
-                            tvBalResult.setTextColor(0xFF868686.toInt())
+                            tvBalResult.setTextColor(0xFF8A8A8A.toInt())
                         }
                     }
                 }
@@ -2284,20 +2284,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     textSize = 12f; gravity = Gravity.CENTER
                     typeface = Typeface.create("monospace", Typeface.BOLD)
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (i == 0) 0x14FFFFFF.toInt() else 0xFF171C2C.toInt())
+                        setColor(if (i == 0) 0x14FFFFFF.toInt() else 0xFF161616.toInt())
                         cornerRadius = dp(12).toFloat()
-                        setStroke(1, if (i == 0) 0x28FFFFFF.toInt() else 0xFF242424.toInt())
+                        setStroke(1, if (i == 0) 0x28FFFFFF.toInt() else 0xFF222222.toInt())
                     }
-                    setTextColor(if (i == 0) ACCENT else 0xFF868686.toInt())
+                    setTextColor(if (i == 0) ACCENT else 0xFF8A8A8A.toInt())
                     layoutParams = LinearLayout.LayoutParams(dp(64), dp(40)).apply { marginEnd = dp(8) }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
                         for (j in 0 until indivRow.childCount) {
                             val c = indivRow.getChildAt(j) as? TextView ?: continue
                             (c.background as android.graphics.drawable.GradientDrawable).apply {
-                                setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF242424.toInt())
+                                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
                             }
-                            c.setTextColor(0xFF868686.toInt())
+                            c.setTextColor(0xFF8A8A8A.toInt())
                         }
                         (background as android.graphics.drawable.GradientDrawable).apply {
                             setColor(0x14FFFFFF.toInt()); setStroke(1, 0x28FFFFFF.toInt())
@@ -2323,11 +2323,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     textSize = 12f; gravity = Gravity.CENTER
                     typeface = Typeface.create("monospace", Typeface.BOLD)
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (idx == 0) 0x140087FF.toInt() else 0xFF171C2C.toInt())
+                        setColor(if (idx == 0) 0x140087FF.toInt() else 0xFF161616.toInt())
                         cornerRadius = dp(12).toFloat()
-                        setStroke(1, if (idx == 0) 0x330087FF.toInt() else 0xFF242424.toInt())
+                        setStroke(1, if (idx == 0) 0x330087FF.toInt() else 0xFF222222.toInt())
                     }
-                    setTextColor(if (idx == 0) ACCENT2 else 0xFF868686.toInt())
+                    setTextColor(if (idx == 0) ACCENT2 else 0xFF8A8A8A.toInt())
                     layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)).apply {
                         marginEnd = dp(8); setPadding(dp(14), 0, dp(14), 0)
                     }
@@ -2338,10 +2338,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         groupChips.forEachIndexed { i, c ->
                             val active = i == idx
                             (c.background as android.graphics.drawable.GradientDrawable).apply {
-                                setColor(if (active) 0x140087FF.toInt() else 0xFF171C2C.toInt())
-                                setStroke(1, if (active) 0x330087FF.toInt() else 0xFF242424.toInt())
+                                setColor(if (active) 0x140087FF.toInt() else 0xFF161616.toInt())
+                                setStroke(1, if (active) 0x330087FF.toInt() else 0xFF222222.toInt())
                             }
-                            c.setTextColor(if (active) ACCENT2 else 0xFF868686.toInt())
+                            c.setTextColor(if (active) ACCENT2 else 0xFF8A8A8A.toInt())
                         }
                         buildIndivChips(idx)
                     }
@@ -2402,7 +2402,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val ACCENT2 = 0xFF6EA8FE.toInt()
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -2411,14 +2411,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             setPadding(dp(12), dp(16), dp(12), dp(80))
         }
 
         // ── HEADER ────────────────────────────────────────────────────────
         page.addView(TextView(this).apply {
             text = "Wallet"
-            textSize = 22f; setTextColor(0xFFEFEFEF.toInt())
+            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2427,7 +2427,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         page.addView(TextView(this).apply {
             text = "Gestión de wallets encontradas"
-            textSize = 12f; setTextColor(0xFF868686.toInt())
+            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2439,10 +2439,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val heroCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(0xFF141414.toInt(), 0xFF171C2C.toInt())
+                colors = intArrayOf(0xFF161616.toInt(), 0xFF161616.toInt())
                 orientation = android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM
                 cornerRadius = dp(20).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2453,7 +2453,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         heroCard.addView(TextView(this).apply {
             text = "BALANCE TOTAL ENCONTRADO"
-            textSize = 9f; setTextColor(0xFF868686.toInt())
+            textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.1f; gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
@@ -2473,7 +2473,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val tvTotalUsd = TextView(this).apply {
             text = "BTC  ≈  $0.00 USD"
-            textSize = 12f; setTextColor(0xFF868686.toInt())
+            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(
@@ -2534,8 +2534,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(dp(16), dp(16), dp(16), dp(16))
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(0xFF141414.toInt()); cornerRadius = dp(16).toFloat()
-                    setStroke(1, 0xFF242424.toInt())
+                    setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
+                    setStroke(1, 0xFF222222.toInt())
                 }
                 isClickable = true; isFocusable = true
                 setOnClickListener { click() }
@@ -2555,11 +2555,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             lc.addView(TextView(this).apply {
-                text = label; textSize = 14f; setTextColor(0xFFEFEFEF.toInt())
+                text = label; textSize = 14f; setTextColor(0xFFF2F2F2.toInt())
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
             })
             lc.addView(TextView(this).apply {
-                text = sub; textSize = 11f; setTextColor(0xFF868686.toInt())
+                text = sub; textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
                 typeface = Typeface.MONOSPACE
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2568,7 +2568,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             })
             r.addView(iconTv); r.addView(lc)
             r.addView(TextView(this).apply {
-                text = "›"; textSize = 20f; setTextColor(0xFF555555.toInt())
+                text = "›"; textSize = 20f; setTextColor(0xFF4A4A4A.toInt())
             })
             return r
         }
@@ -2652,7 +2652,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val ACCENT2 = 0xFF6EA8FE.toInt()
 
         val recoveryScroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -2661,7 +2661,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val recoveryPage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF090909.toInt())
+            setBackgroundColor(0xFF0E0E0E.toInt())
             setPadding(dp(12), dp(16), dp(12), dp(80))
         }
 
@@ -2669,8 +2669,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fun rCard(): LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF141414.toInt()); cornerRadius = dp(16).toFloat()
-                setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); cornerRadius = dp(16).toFloat()
+                setStroke(1, 0xFF222222.toInt())
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2681,7 +2681,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         fun fieldLabel(text: String) = TextView(this).apply {
             this.text = text
-            textSize = 9f; setTextColor(0xFF868686.toInt())
+            textSize = 9f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.BOLD)
             letterSpacing = 0.1f
             layoutParams = LinearLayout.LayoutParams(
@@ -2693,7 +2693,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── HEADER ────────────────────────────────────────────────────────
         recoveryPage.addView(TextView(this).apply {
             text = "Recovery"
-            textSize = 22f; setTextColor(0xFFEFEFEF.toInt())
+            textSize = 22f; setTextColor(0xFFF2F2F2.toInt())
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2702,7 +2702,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         recoveryPage.addView(TextView(this).apply {
             text = "Recuperación de seed phrase"
-            textSize = 12f; setTextColor(0xFF868686.toInt())
+            textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2715,7 +2715,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         seedCard.addView(fieldLabel("SEED PHRASE"))
         seedCard.addView(TextView(this).apply {
             text = "Usa ??? para las palabras que no recuerdas"
-            textSize = 10f; setTextColor(0xFF555555.toInt())
+            textSize = 10f; setTextColor(0xFF4A4A4A.toInt())
             typeface = Typeface.create("monospace", Typeface.NORMAL)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2725,10 +2725,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val etSeed = android.widget.EditText(this).apply {
             hint = "abandon ??? letter ??? advice cage absurd amount doctor acoustic avoid ???"
-            setHintTextColor(0xFF555555.toInt()); setTextColor(0xFFEFEFEF.toInt())
+            setHintTextColor(0xFF4A4A4A.toInt()); setTextColor(0xFFF2F2F2.toInt())
             textSize = 11f; typeface = Typeface.MONOSPACE
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
                 cornerRadius = dp(10).toFloat()
             }
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2764,10 +2764,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         targetCard.addView(fieldLabel("DIRECCIÓN BTC OBJETIVO (opcional)"))
         val etTarget = android.widget.EditText(this).apply {
             hint = "1A2B3C... o bc1q..."
-            setHintTextColor(0xFF555555.toInt()); setTextColor(ACCENT)
+            setHintTextColor(0xFF4A4A4A.toInt()); setTextColor(ACCENT)
             textSize = 11f; typeface = Typeface.MONOSPACE
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF242424.toInt())
+                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
                 cornerRadius = dp(10).toFloat()
             }
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -2792,7 +2792,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             progressDrawable = android.graphics.drawable.LayerDrawable(
                 arrayOf(
                     android.graphics.drawable.GradientDrawable().apply {
-                        setColor(0xFF1A2030.toInt()); cornerRadius = dp(4).toFloat()
+                        setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
                     },
                     android.graphics.drawable.ClipDrawable(
                         android.graphics.drawable.GradientDrawable(
@@ -2812,7 +2812,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             visibility = android.view.View.GONE
         }
         val tvRecoveryStatus = TextView(this).apply {
-            text = ""; textSize = 10f; setTextColor(0xFF868686.toInt())
+            text = ""; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
             typeface = Typeface.MONOSPACE
             visibility = android.view.View.GONE
         }
@@ -2859,7 +2859,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             text = "■ CANCELAR"; textSize = 12f
             setTextColor(0xFFFF6B35.toInt())
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF171C2C.toInt()); setStroke(1, 0xFF3A2A20.toInt())
+                setColor(0xFF161616.toInt()); setStroke(1, 0xFF1E1414.toInt())
                 cornerRadius = dp(14).toFloat()
             }
             typeface = Typeface.create("sans-serif", Typeface.BOLD)
@@ -3646,7 +3646,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // motor tiene en memoria, y eso lo da getCsvCount().
             if (csvPath.isNotEmpty()) {
                 tvCsvName?.text = File(csvPath).name
-                tvCsvName?.setTextColor(0xFF00FF88.toInt())
+                tvCsvName?.setTextColor(0xFF00C896.toInt())
             }
             val total = HunterEngine.getCsvCount()
             if (total > 0) {
@@ -3938,7 +3938,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.loadCsv(csvPath)
             tvStatus?.text = dest.name
             tvCsvName?.text = dest.name
-            tvCsvName?.setTextColor(0xFF00FF88.toInt())
+            tvCsvName?.setTextColor(0xFF00C896.toInt())
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
             val hashes = dest.length() / 20
             // Aquí se escribía "📦 nombre · N hashes · N MB" en la misma tarjeta

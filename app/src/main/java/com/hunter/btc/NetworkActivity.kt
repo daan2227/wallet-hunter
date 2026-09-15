@@ -104,7 +104,7 @@ class NetworkActivity : AppCompatActivity() {
             setTextColor(TXT); setHintTextColor(MUTED)
             textSize = 13f; typeface = Typeface.MONOSPACE
             background = GradientDrawable().apply {
-                setColor(CARD); setStroke(1, 0xFF2A3028.toInt())
+                setColor(CARD); setStroke(1, 0xFF1D1D1D.toInt())
                 cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -128,7 +128,7 @@ class NetworkActivity : AppCompatActivity() {
             filters = arrayOf(android.text.InputFilter.AllCaps(),
                               android.text.InputFilter.LengthFilter(8))
             background = GradientDrawable().apply {
-                setColor(CARD); setStroke(1, 0xFF2A3028.toInt())
+                setColor(CARD); setStroke(1, 0xFF1D1D1D.toInt())
                 cornerRadius = dp(6).toFloat()
             }
             setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -145,7 +145,7 @@ class NetworkActivity : AppCompatActivity() {
             root.addView(it)
         }
 
-        btnWorker = actionButton("Conectar como Worker", 0xFF60A5FA.toInt(), android.graphics.Color.WHITE).also {
+        btnWorker = actionButton("Conectar como Worker", 0xFF6EA8FE.toInt(), android.graphics.Color.WHITE).also {
             it.setOnClickListener { startAsWorker() }
             root.addView(it)
         }
