@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Tres puntos. Rejilla de 24, como el resto; aquí van rellenos porque un
+     punto de 1,4 de radio dibujado a trazo se ve como un anillo. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="#F2F2F2">
+    <path android:pathData="M5 10.6a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8z"
+        android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M12 10.6a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8z"
+        android:fillColor="#FFFFFFFF" />
+    <path android:pathData="M19 10.6a1.4 1.4 0 1 1 0 2.8a1.4 1.4 0 1 1 0-2.8z"
+        android:fillColor="#FFFFFFFF" />
+</vector>

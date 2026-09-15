@@ -39,7 +39,20 @@ class WalletActivity : FragmentActivity() {
     private val TXT_MUTED get() = AppTheme.TXT_MUTED
     private val BORDER_C  get() = AppTheme.BORDER_C
 
+    private var actionBar: LinearLayout? = null
+
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+
+    /** Traduce una excepción de red al idioma de alguien que no la ha escrito. */
+    private fun motivo(e: Exception): String = when {
+        e is java.net.UnknownHostException ->
+            "Sin conexión: no se pudo resolver mempool.space."
+        e is java.net.SocketTimeoutException || e is java.net.ConnectException ->
+            "mempool.space no respondió. Revisa la conexión y vuelve a intentarlo."
+        e.message?.contains("failed to connect", true) == true ->
+            "No se pudo conectar con mempool.space. Revisa la conexión."
+        else -> e.message ?: e.javaClass.simpleName
+    }
     private fun cardBg() = GradientDrawable().apply {
         setColor(BG_CARD)
         cornerRadius = dp(AppTheme.R_CARD).toFloat()
@@ -504,8 +517,8 @@ class WalletActivity : FragmentActivity() {
             }
         })
         header.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_menu)
-            setColorFilter(AppTheme.TXT_PRI)
+            setImageResource(R.drawable.ic_more)
+            setColorFilter(AppTheme.TXT_SEC)
             setPadding(dp(10), dp(10), dp(10), dp(10))
             isClickable = true; isFocusable = true
             layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
@@ -525,6 +538,7 @@ class WalletActivity : FragmentActivity() {
         listOf("Saldo","Historial","Enviar","Recibir").forEachIndexed { i, name ->
             val btn = Button(this).apply {
                 text = name; textSize = AppTheme.SP_CAPTION + 1f
+                isAllCaps = false
                 typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
                 setTextColor(if (i == 0) AppTheme.BG_DEEP else AppTheme.TXT_SEC)
                 background = GradientDrawable().apply {
@@ -554,6 +568,7 @@ class WalletActivity : FragmentActivity() {
                     setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
                 }
                 currentTab = i; tabContent.removeAllViews()
+                actionBar?.visibility = if (i >= 2) View.GONE else View.VISIBLE
                 when (i) { 0 -> loadBalanceTab(); 1 -> loadHistoryTab(); 2 -> loadSendTab(); 3 -> loadReceiveTab() }
             }
         }
@@ -563,6 +578,49 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
         }
         root.addView(tabContent)
+
+        fun actionBtn(label: String, iconRes: Int, primary: Boolean, last: Boolean) =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER
+                background = GradientDrawable().apply {
+                    setColor(if (primary) AppTheme.ACCENT else AppTheme.BG_KEY)
+                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
+                }
+                isClickable = true; isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply {
+                    if (!last) marginEnd = dp(AppTheme.GAP)
+                }
+                addView(android.widget.ImageView(context).apply {
+                    setImageResource(iconRes)
+                    setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply {
+                        marginEnd = dp(9)
+                    }
+                })
+                addView(TextView(context).apply {
+                    text = label
+                    textSize = AppTheme.SP_BODY + 1f
+                    setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    typeface = if (primary) AppTheme.bold(context) else AppTheme.medium(context)
+                })
+            }
+
+        actionBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), dp(18), dp(AppTheme.PAD_SIDE), dp(26))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        actionBar?.addView(actionBtn("Enviar", R.drawable.ic_send, primary = false, last = false)
+            .apply { setOnClickListener { tabBtns[2].performClick() } })
+        actionBar?.addView(actionBtn("Recibir", R.drawable.ic_receive, primary = true, last = true)
+            .apply { setOnClickListener { tabBtns[3].performClick() } })
+        root.addView(actionBar)
+
         setContentView(root)
         loadBalanceTab()
     }
@@ -826,7 +884,7 @@ class WalletActivity : FragmentActivity() {
                         ll.addView(card)
                     }
                 }
-            } catch(e: Exception) { runOnUiThread { tvHead.text = "No se pudo consultar: ${e.message}"; tvHead.setTextColor(RED) } }
+            } catch(e: Exception) { runOnUiThread { tvHead.text = motivo(e); tvHead.setTextColor(RED) } }
         }.start()
     }
 
@@ -954,7 +1012,7 @@ class WalletActivity : FragmentActivity() {
                             .setNegativeButton("Cancelar", null)
                             .show()
                     }
-                } catch(e: Exception) { runOnUiThread { tvStatus.text = "Error: ${e.message}"; tvStatus.setTextColor(RED) } }
+                } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED) } }
             }.start()
         }
         btnSend.setOnClickListener {
@@ -1193,7 +1251,7 @@ class WalletActivity : FragmentActivity() {
                         if (code == 200) bc.inputStream.bufferedReader().readText() else bc.errorStream?.bufferedReader()?.readText() ?: "error"
                     } finally { bc.disconnect() }
                     runOnUiThread { tvStatus.text = if (code == 200) "Sent!\nTXID: $resp" else "Error $code:\n$resp"; tvStatus.setTextColor(if (code == 200) GREEN else RED); btnSend.isEnabled = true }
-                } catch(e: Exception) { runOnUiThread { tvStatus.text = "Error: ${e.message}"; tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
+                } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()
     }
 
