@@ -34,7 +34,7 @@ object PinAuthHelper {
         lastAuthTime = System.currentTimeMillis()
     }
 
-    private val RED = 0xFFF04040.toInt()
+    private val RED get() = AppTheme.RED
 
     private fun Activity.dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -70,7 +70,7 @@ object PinAuthHelper {
         val TXT   = AppTheme.TXT_PRI
         val MUTED = AppTheme.TXT_SEC
         val SUBL  = AppTheme.TXT_SEC
-        val RED   = 0xFFF04040.toInt()
+        val RED   = AppTheme.RED
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
             android.util.TypedValue.COMPLEX_UNIT_SP, sp, activity.resources.displayMetrics).toInt()
@@ -90,8 +90,8 @@ object PinAuthHelper {
             setPadding(dp(20), dp(20), dp(20), dp(12))
         }
         topBar.addView(android.widget.TextView(activity).apply {
-            text = "Passcode"
-            textSize = 17f; setTextColor(TXT)
+            text = "Código"
+            textSize = AppTheme.SP_TITLE; setTextColor(TXT)
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
             layoutParams = android.widget.FrameLayout.LayoutParams(
@@ -113,7 +113,7 @@ object PinAuthHelper {
         }
 
         val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Create passcode" else "Enter passcode"
+            text = if (isSetup) "Elige tu código" else "Introduce el código"
             textSize = 22f; setTextColor(TXT)
             typeface = AppTheme.display(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
@@ -141,9 +141,9 @@ object PinAuthHelper {
             android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
                 when {
-                    error  -> { setColor(RED);  setStroke(dp(2), RED) }
-                    filled -> { setColor(GOLD); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(0x00000000); setStroke(dp(2), 0xFF2E2E2E.toInt()) }
+                    error  -> setColor(RED)
+                    filled -> setColor(AppTheme.TXT_PRI)
+                    else   -> setColor(AppTheme.BG_ELEV)
                 }
             }
         val dots = Array(6) { i ->
@@ -159,10 +159,12 @@ object PinAuthHelper {
 
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
-                "Enter your passcode. Be sure to remember it\nso you can unlock your wallet."
-            else if (autoBiometric) "Use your passcode or fingerprint to unlock"
-            else "Enter your passcode"
-            textSize = 13f; setTextColor(MUTED)
+                "Apúntalo donde no se te pierda:\nsin él no puedes abrir la cartera."
+            else if (autoBiometric) "Introduce el código o usa la huella"
+            else "Introduce el código"
+            textSize = AppTheme.SP_BODY; setTextColor(MUTED)
+            typeface = AppTheme.body(context)
+            setLineSpacing(0f, 1.35f)
             gravity = android.view.Gravity.CENTER
         }
         body.addView(tvHint)
@@ -213,8 +215,8 @@ object PinAuthHelper {
                 if (isSetup) {
                     if (firstPin.isEmpty()) {
                         firstPin = pin.toString(); pin.clear(); updateDots()
-                        tvLabel.text = "Confirm passcode"
-                        tvHint.text = "Enter the same passcode again"
+                        tvLabel.text = "Repítelo"
+                        tvHint.text = "Escribe el mismo código otra vez"
                         tvHint.setTextColor(MUTED)
                     } else if (firstPin == pin.toString()) {
                         WalletManager.savePin(activity, pin.toString())
@@ -222,7 +224,7 @@ object PinAuthHelper {
                     } else {
                         firstPin = ""; shakeAndClear()
                         tvLabel.text = "Try again"
-                        tvHint.text = "Passcodes did not match"
+                        tvHint.text = "No coinciden"
                         tvHint.setTextColor(RED)
                     }
                 } else {
@@ -230,7 +232,7 @@ object PinAuthHelper {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Incorrect passcode. Try again."
+                        tvHint.text = "Código incorrecto. Inténtalo otra vez."
                         tvHint.setTextColor(RED)
                     }
                 }
@@ -294,7 +296,7 @@ object PinAuthHelper {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF2A2A2A.toInt()); cornerRadius = dp(AppTheme.R_KEY).toFloat()
+                            setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
                             setColor(BG2); cornerRadius = dp(AppTheme.R_KEY).toFloat()
@@ -308,7 +310,7 @@ object PinAuthHelper {
             when (key.type) {
                 "num" -> {
                     cell.addView(android.widget.TextView(activity).apply {
-                        text = key.digit; textSize = 23f; setTextColor(TXT)
+                        text = key.digit; textSize = 24f; setTextColor(TXT)
                         typeface = AppTheme.body(context)
                         gravity = android.view.Gravity.CENTER
                     })

@@ -26,12 +26,12 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     private val maxPoints = 60
     private val wpsPoints = ArrayDeque<Float>()
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFF2F2F2.toInt(); strokeWidth = 1.5f; style = Paint.Style.STROKE
+        color = AppTheme.TXT_PRI; strokeWidth = 1.5f; style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND
     }
     private val paintDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
     private val paintLbl = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF4A4A4A.toInt(); textSize = 18f; typeface = Typeface.MONOSPACE
+        color = AppTheme.TXT_MUTED; textSize = 18f; typeface = Typeface.MONOSPACE
     }
     fun addPoint(wps: Float) { wpsPoints.addLast(wps); if(wpsPoints.size>maxPoints) wpsPoints.removeFirst(); postInvalidate() }
     fun reset() { wpsPoints.clear(); postInvalidate() }
@@ -483,7 +483,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun buildHeader(): LinearLayout {
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
             )
@@ -520,7 +520,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val dot = android.view.View(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
                 shape = android.graphics.drawable.GradientDrawable.OVAL
-                setColor(0xFF8A8A8A.toInt())
+                setColor(AppTheme.TXT_SEC)
                 setSize(dp(8), dp(8))
             }
             layoutParams = LinearLayout.LayoutParams(dp(8), dp(8)).also {
@@ -554,7 +554,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── DRAWER ───────────────────────────────────────────────────────────────────
     private fun buildDrawerLayout(): FrameLayout {
-        val ACCENT = 0xFF00C896.toInt()
+        val ACCENT = AppTheme.ACCENT
         val frame = FrameLayout(this)
 
         // Content frame (tabs go here)
@@ -784,11 +784,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── BUILD SCAN TAB ────────────────────────────────────────────────────────
     private fun buildScanTab(): ScrollView {
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val ACCENT2 = AppTheme.BLUE
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
@@ -796,7 +796,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             setPadding(0, 0, 0, dp(80))
         }
 
@@ -926,10 +926,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(7) }
         }
 
-        tvCount = statValue("0", 0xFF6EA8FE.toInt())
-        val tvBlocksStat = statValue("0", 0xFFF2F2F2.toInt())
+        tvCount = statValue("0", AppTheme.BLUE)
+        val tvBlocksStat = statValue("0", AppTheme.TXT_PRI)
         val tvProgressStat = statValue("0.00%", ACCENT)
-        tvTime = statValue("00:00", 0xFFF2F2F2.toInt())
+        tvTime = statValue("00:00", AppTheme.TXT_PRI)
 
         val gridRow1 = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -948,7 +948,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(statLabel("TOTAL KEYS"))
             addView(tvCount)
         })
-        gridRow1.addView(statCard(0xFF222222.toInt()) {
+        gridRow1.addView(statCard(AppTheme.BORDER_C) {
             // Decía "SESIÓN" sobre un valor que es el ritmo extrapolado a un día
             // ("159B/día"), no nada de la sesión: el tiempo de sesión está en su
             // propia tarjeta y las claves de la sesión en TOTAL KEYS.
@@ -979,7 +979,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvDatasetStat = tvBinStat
             addView(tvBinStat)
         })
-        gridRow2.addView(statCard(0xFF222222.toInt()) {
+        gridRow2.addView(statCard(AppTheme.BORDER_C) {
             addView(statLabel("TIEMPO"))
             addView(tvTime)
         })
@@ -1214,7 +1214,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(14)
                 })
                 row.addView(tvLabel)
-                row.addView(TextView(this@MainActivity).apply { text = "›"; textSize = 16f; setTextColor(0xFF4A4A4A.toInt()) })
+                row.addView(Ui.icon(this@MainActivity, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED))
                 addView(row)
             }
         })
@@ -1369,11 +1369,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── BUILD PUZZLE TAB ──────────────────────────────────────────────────────
     private fun buildPuzzleTab(): ScrollView {
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val ACCENT2 = AppTheme.BLUE
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -1509,7 +1509,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val progressTrack = android.widget.FrameLayout(this).apply {
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(8)
@@ -1529,7 +1529,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 intArrayOf(ACCENT2, ACCENT)
             ).apply { cornerRadius = dp(4).toFloat() }
             val track = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
             }
             progressDrawable = android.graphics.drawable.LayerDrawable(
                 arrayOf(
@@ -1551,26 +1551,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(progressTrack)
 
         val tvProgressDetail = TextView(this).apply {
-            text = "Bloques: —"; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            text = "Bloques: —"; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            setPadding(0, dp(10), 0, 0)
         }
         progressCard.addView(tvProgressDetail)
 
         // Salto aleatorio dentro del rango del puzzle.
         tvRandomJump = TextView(this).apply {
             text = "Saltar a un punto aleatorio del rango"
-            textSize = 12f; setTextColor(ACCENT2)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0xFF222222.toInt())
-            }
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.medium(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            minHeight = dp(48)
             isClickable = true; isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(10) }
+            ).apply { topMargin = dp(16) }
             setOnClickListener { pickRandomJump() }
         }
         progressCard.addView(tvRandomJump)
@@ -1581,8 +1581,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // leerla. Aquí no la pisa nadie.
         tvCurrentBlock = TextView(this).apply {
             text = "Bloque actual: —"
-            textSize = 11f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.MONOSPACE
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE   // lleva el índice en hex
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(8) }
@@ -1592,10 +1592,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         progressCard.addView(TextView(this).apply {
             // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
             // pequeño para acertar con el dedo, siendo además destructivo.
-            text = "Reiniciar progreso"; textSize = 12f; setTextColor(0xFF8A8A8A.toInt())
-            setPadding(dp(12), dp(10), dp(12), dp(10))
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            gravity = Gravity.END; isClickable = true; isFocusable = true
+            text = "Reiniciar progreso"; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.RED)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            typeface = AppTheme.medium(context)
+            minHeight = dp(48)
+            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(6) }
@@ -1965,7 +1967,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── THERMAL & BALANCE ─────────────────────────────────────────────
         val tvThermalPuzzle = TextView(this).apply {
-            text = ""; textSize = 10f; setTextColor(ACCENT); typeface = Typeface.MONOSPACE
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             visibility = android.view.View.GONE
         }
         tvThermal = tvThermalPuzzle
@@ -2056,7 +2059,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         }
                         else -> {
                             tvBalResult.text = "Sin conexión — reintenta"
-                            tvBalResult.setTextColor(0xFF8A8A8A.toInt())
+                            tvBalResult.setTextColor(AppTheme.TXT_SEC)
                         }
                     }
                 }
@@ -2165,7 +2168,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         // está desactivada y lo único que hacía era dejar el
                         // estado en "Selecciona un puzzle" con uno ya elegido.
                         tvBalResult.text = "Sin fondos confirmados en #${defaultPuzzle.num}"
-                        tvBalResult.setTextColor(0xFFFF6B35.toInt())
+                        tvBalResult.setTextColor(AppTheme.WARN)
                     }
                 }
             }
@@ -2177,11 +2180,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     private fun buildWalletTab(): ScrollView {
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val ACCENT2 = AppTheme.BLUE
 
         val scroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -2475,11 +2478,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── BUILD RECOVERY TAB ────────────────────────────────────────────────────
     private fun buildRecoveryTab(): ScrollView {
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val ACCENT2 = AppTheme.BLUE
 
         val recoveryScroll = ScrollView(this).apply {
-            setBackgroundColor(0xFF0E0E0E.toInt())
+            setBackgroundColor(AppTheme.BG_DEEP)
             visibility = android.view.View.GONE
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
@@ -2532,7 +2535,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // de verdad hay que saber para usar la pantalla.
         recoveryPage.addView(TextView(this).apply {
             text = "Escribe las palabras que recuerdes y marca los huecos con ?"
-            textSize = AppTheme.SP_BODY; setTextColor(0xFFC4C4C4.toInt())
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             setLineSpacing(dp(4).toFloat(), 1f)
             layoutParams = LinearLayout.LayoutParams(
@@ -2546,8 +2549,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         seedCard.addView(fieldLabel("Frase semilla"))
         seedCard.addView(TextView(this).apply {
             text = "Usa ??? para las palabras que no recuerdas"
-            textSize = 10f; setTextColor(0xFF4A4A4A.toInt())
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2556,13 +2559,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val etSeed = android.widget.EditText(this).apply {
             hint = "abandon ??? letter ??? advice cage absurd amount doctor acoustic avoid ???"
-            setHintTextColor(0xFF4A4A4A.toInt()); setTextColor(0xFFF2F2F2.toInt())
-            textSize = 11f; typeface = Typeface.MONOSPACE
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
+            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            minHeight = dp(48)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE
             minLines = 3; maxLines = 5; isSingleLine = false
             layoutParams = LinearLayout.LayoutParams(
@@ -2574,14 +2575,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Info combinaciones
         val tvRecoveryInfo = TextView(this).apply {
-            text = "Palabras faltantes: —"
-            textSize = 10f; setTextColor(ACCENT2)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x0A0087FF.toInt()); cornerRadius = dp(8).toFloat()
-                setStroke(1, 0x150087FF.toInt())
-            }
-            setPadding(dp(10), dp(8), dp(10), dp(8))
+            text = "Palabras que faltan: —"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, dp(12), 0, 0)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -2595,13 +2592,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         targetCard.addView(fieldLabel("Dirección conocida · opcional"))
         val etTarget = android.widget.EditText(this).apply {
             hint = "1A2B3C... o bc1q..."
-            setHintTextColor(0xFF4A4A4A.toInt()); setTextColor(ACCENT)
-            textSize = 11f; typeface = Typeface.MONOSPACE
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); setStroke(1, 0xFF222222.toInt())
-                cornerRadius = dp(10).toFloat()
-            }
-            setPadding(dp(12), dp(10), dp(12), dp(10))
+            setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
+            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            minHeight = dp(48)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             isSingleLine = true
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2623,7 +2618,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             progressDrawable = android.graphics.drawable.LayerDrawable(
                 arrayOf(
                     android.graphics.drawable.GradientDrawable().apply {
-                        setColor(0xFF1D1D1D.toInt()); cornerRadius = dp(4).toFloat()
+                        setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
                     },
                     android.graphics.drawable.ClipDrawable(
                         android.graphics.drawable.GradientDrawable(
@@ -2643,21 +2638,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             visibility = android.view.View.GONE
         }
         val tvRecoveryStatus = TextView(this).apply {
-            text = ""; textSize = 10f; setTextColor(0xFF8A8A8A.toInt())
-            typeface = Typeface.MONOSPACE
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             visibility = android.view.View.GONE
         }
         progressCard.addView(pbRecovery)
         progressCard.addView(tvRecoveryStatus)
 
         val tvRecoveryResult = TextView(this).apply {
-            text = ""; textSize = 11f; setTextColor(ACCENT)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0x0A00C896.toInt()); cornerRadius = dp(10).toFloat()
-                setStroke(1, 0x1500C896.toInt())
-            }
-            setPadding(dp(12), dp(12), dp(12), dp(12))
+            // Un resultado encontrado SÍ merece el acento: es el hallazgo.
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = Typeface.MONOSPACE   // lleva la seed entera
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            setLineSpacing(0f, 1.35f)
             visibility = android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
@@ -2676,40 +2670,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val btnStartRecovery = Button(this).apply {
-            text = "Iniciar recuperación"; textSize = 13f
-            setTextColor(0xFF000000.toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(ACCENT, ACCENT2)
-                orientation = android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT
-                cornerRadius = dp(14).toFloat()
-            }
-            typeface = AppTheme.title(context)
-            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(8) }
+            text = "Iniciar recuperación"; textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.BG_DEEP)
+            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancelRecovery = Button(this).apply {
-            text = "Cancelar"; textSize = 12f
-            setTextColor(0xFFFF6B35.toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(0xFF161616.toInt()); setStroke(1, 0xFF1E1414.toInt())
-                cornerRadius = dp(14).toFloat()
-            }
-            typeface = AppTheme.title(context)
-            layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f)
+            text = "Cancelar"; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.RED)
+            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_ELEV, context)
+            typeface = AppTheme.medium(context)
+            isAllCaps = false
+            stateListAnimator = null
+            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
             visibility = android.view.View.GONE
         }
         btnRow.addView(btnStartRecovery); btnRow.addView(btnCancelRecovery)
         recoveryPage.addView(btnRow)
 
         val btnSaveWallet = Button(this).apply {
-            text = "Guardar en la cartera"; textSize = 13f
-            setTextColor(0xFF000000.toInt())
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(ACCENT); cornerRadius = dp(14).toFloat()
-            }
-            typeface = AppTheme.title(context)
+            text = "Guardar en la cartera"; textSize = AppTheme.SP_TITLE
+            setTextColor(AppTheme.BG_DEEP)
+            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null
             visibility = android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
             )
         }
         recoveryPage.addView(btnSaveWallet)
@@ -2737,7 +2728,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                     tvRecoveryInfo.text = "Faltan: $missing  |  Combos: ~$combosStr  |  ~$timeStr"
                 } else {
-                    tvRecoveryInfo.text = "Palabras faltantes: —"
+                    tvRecoveryInfo.text = "Palabras que faltan: —"
                 }
             }
         })
@@ -3389,7 +3380,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             else -> "${numberFmt.format(perDay/1000)}K/día"
                         }
                         tvBinInfoRef?.text = "$perDayStr"
-                        tvBinInfoRef?.setTextColor(0xFF00C896.toInt())
+                        tvBinInfoRef?.setTextColor(AppTheme.ACCENT)
                     }
                 }
             }
@@ -3479,7 +3470,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // motor tiene en memoria, y eso lo da getCsvCount().
             if (csvPath.isNotEmpty()) {
                 tvCsvName?.text = File(csvPath).name
-                tvCsvName?.setTextColor(0xFF00C896.toInt())
+                tvCsvName?.setTextColor(AppTheme.ACCENT)
             }
             val total = HunterEngine.getCsvCount()
             if (total > 0) {
@@ -3774,7 +3765,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.loadCsv(csvPath)
             tvStatus?.text = dest.name
             tvCsvName?.text = dest.name
-            tvCsvName?.setTextColor(0xFF00C896.toInt())
+            tvCsvName?.setTextColor(AppTheme.ACCENT)
             tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
             val hashes = dest.length() / 20
             // Aquí se escribía "📦 nombre · N hashes · N MB" en la misma tarjeta

@@ -38,12 +38,9 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── SPLASH ───────────────────────────────────────────────────────────────
     private fun showSplashThenPin() {
-        val ACCENT  = 0xFF00C896.toInt()
-        val ACCENT2 = 0xFF6EA8FE.toInt()
-        val SURFACE = 0xFF161616.toInt()
-        val BORDER  = 0xFF1D1D1D.toInt()
-        val TXT     = 0xFFF2F2F2.toInt()
-        val MUTED   = 0xFF8A8A8A.toInt()
+        val ACCENT  = AppTheme.ACCENT
+        val TXT     = AppTheme.TXT_PRI
+        val MUTED   = AppTheme.TXT_SEC
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -66,17 +63,12 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val logoIcon = android.widget.TextView(this).apply {
-            text = "₿"; textSize = 22f
-            setTextColor(android.graphics.Color.BLACK)
-            typeface = android.graphics.Typeface.create("monospace", android.graphics.Typeface.BOLD)
+            text = "\u20BF"; textSize = 26f
+            setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.display(context)
             gravity = android.view.Gravity.CENTER
-            background = android.graphics.drawable.GradientDrawable().apply {
-                colors = intArrayOf(ACCENT, ACCENT2)
-                orientation = android.graphics.drawable.GradientDrawable.Orientation.TL_BR
-                cornerRadius = dp(12).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(52), dp(52)).apply {
-                marginEnd = dp(14); gravity = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+                marginEnd = dp(10); gravity = android.view.Gravity.CENTER_VERTICAL
             }
         }
         val logoText = android.widget.TextView(this).apply {
@@ -207,59 +199,54 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val logoIcon = TextView(this).apply {
-            text = "₿"
-            textSize = 20f; setTextColor(Color.BLACK)
-            typeface = Typeface.create("monospace", Typeface.BOLD)
+            text = "\u20BF"
+            textSize = 24f; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.display(context)
             gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
-                orientation = GradientDrawable.Orientation.TL_BR
-                cornerRadius = dp(12).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-                marginEnd = dp(12); gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+                marginEnd = dp(10); gravity = Gravity.CENTER_VERTICAL
             }
         }
         val logoText = TextView(this).apply {
             text = android.text.SpannableString("WalletHunter").also { sp ->
                 sp.setSpan(
-                    android.text.style.ForegroundColorSpan(0xFF00C896.toInt()),
+                    android.text.style.ForegroundColorSpan(AppTheme.ACCENT),
                     6, 12, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
-            textSize = 28f; setTextColor(0xFFF2F2F2.toInt())
+            textSize = 28f; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
         }
         logoRow.addView(logoIcon); logoRow.addView(logoText)
         root.addView(logoRow)
 
         root.addView(TextView(this).apply {
-            text = "BITCOIN SEED SCANNER"
-            textSize = 9f; setTextColor(TXT3)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
-            letterSpacing = 0.2f; gravity = Gravity.CENTER
+            text = "Escáner de seeds de Bitcoin"
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(48))
         })
 
         // Descripción
         root.addView(TextView(this).apply {
-            text = "Crea un PIN de seguridad\npara proteger tus wallets"
-            textSize = 14f; setTextColor(TXT)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            text = "Elige un PIN para proteger tus carteras."
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
             gravity = Gravity.CENTER
             setPadding(0, 0, 0, dp(32))
         })
 
         // Botón crear PIN
         root.addView(Button(this).apply {
-            text = "Crear el PIN de seguridad"
-            textSize = 13f; setTextColor(Color.BLACK)
-            typeface = AppTheme.title(context)
-            letterSpacing = 0.04f
+            text = "Crear el PIN"
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.BG_DEEP)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null
             background = GradientDrawable().apply {
-                colors = intArrayOf(0xFF00C896.toInt(), 0xFF6EA8FE.toInt())
-                orientation = GradientDrawable.Orientation.LEFT_RIGHT
-                cornerRadius = dp(14).toFloat()
+                setColor(AppTheme.ACCENT)
+                cornerRadius = dp(AppTheme.R_KEY).toFloat()
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
@@ -292,13 +279,13 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         isSetup: Boolean,
         onResult: (Boolean) -> Unit
     ) {
-        val GOLD  = 0xFF00C896.toInt()      // #00C896 accent green
-        val BG    = 0xFF0E0E0E.toInt()      // #0b0e14
-        val BG2   = 0xFF161616.toInt()      // #111520 surface
-        val BGKP  = 0xFF0E0E0E.toInt()      // #0b0e14 keypad bg
-        val TXT   = 0xFFF2F2F2.toInt()      // #e8eaf0
-        val MUTED = 0xFF8A8A8A.toInt()       // #5a607a muted
-        val RED   = 0xFFFF6B35.toInt()
+        val GOLD  = AppTheme.ACCENT
+        val BG    = AppTheme.BG_DEEP
+        val BG2   = AppTheme.BG_KEY
+        val BGKP  = AppTheme.BG_DEEP
+        val TXT   = AppTheme.TXT_PRI
+        val MUTED = AppTheme.TXT_SEC
+        val RED   = AppTheme.RED
         fun dp(v: Int) = (v * activity.resources.displayMetrics.density).toInt()
         fun spToPx(sp: Float) = android.util.TypedValue.applyDimension(
             android.util.TypedValue.COMPLEX_UNIT_SP, sp, activity.resources.displayMetrics).toInt()
@@ -318,8 +305,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(12))
         }
         topBar.addView(android.widget.TextView(activity).apply {
-            text = "Passcode"
-            textSize = 17f; setTextColor(TXT)
+            text = "Código"
+            textSize = AppTheme.SP_TITLE; setTextColor(TXT)
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
             layoutParams = android.widget.FrameLayout.LayoutParams(
@@ -341,7 +328,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Create passcode" else "Enter passcode"
+            text = if (isSetup) "Elige tu código" else "Introduce el código"
             textSize = 22f; setTextColor(TXT)
             typeface = AppTheme.display(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
@@ -366,9 +353,9 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = dp(12).toFloat()
                 when {
-                    error  -> { setColor(0x22FF6B35); setStroke(dp(2), RED) }
-                    filled -> { setColor(0x2200C896); setStroke(dp(2), GOLD) }
-                    else   -> { setColor(BG2); setStroke(dp(2), 0xFF1D1D1D.toInt()) }
+                    error  -> setColor(AppTheme.RED)
+                    filled -> setColor(AppTheme.TXT_PRI)
+                    else   -> setColor(AppTheme.BG_ELEV)
                 }
             }
         val dots = Array(6) { i ->
@@ -437,8 +424,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (isSetup) {
                     if (firstPin.isEmpty()) {
                         firstPin = pin.toString(); pin.clear(); updateDots()
-                        tvLabel.text = "Confirm passcode"
-                        tvHint.text = "Enter the same passcode again"
+                        tvLabel.text = "Repítelo"
+                        tvHint.text = "Escribe el mismo código otra vez"
                         tvHint.setTextColor(MUTED)
                     } else if (firstPin == pin.toString()) {
                         WalletManager.savePin(activity, pin.toString())
@@ -446,7 +433,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                     } else {
                         firstPin = ""; shakeAndClear()
                         tvLabel.text = "Try again"
-                        tvHint.text = "Passcodes did not match"
+                        tvHint.text = "No coinciden"
                         tvHint.setTextColor(RED)
                     }
                 } else {
@@ -454,7 +441,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Incorrect passcode. Try again."
+                        tvHint.text = "Código incorrecto. Inténtalo otra vez."
                         tvHint.setTextColor(RED)
                     }
                 }
@@ -507,8 +494,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
                 if (key.type != "empty") {
                     background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(BG2); cornerRadius = dp(12).toFloat()
-                        setStroke(1, 0xFF1D1D1D.toInt())
+                        setColor(AppTheme.BG_KEY)
+                        cornerRadius = dp(AppTheme.R_KEY).toFloat()
                     }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
@@ -519,10 +506,10 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                         }
                         // Press feedback
                         val pressedBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(0xFF161616.toInt()); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1D1D1D.toInt())
+                            setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                         }
                         val normalBg = android.graphics.drawable.GradientDrawable().apply {
-                            setColor(BG2); cornerRadius = dp(12).toFloat(); setStroke(1, 0xFF1D1D1D.toInt())
+                            setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_KEY).toFloat()
                         }
                         background = pressedBg
                         handler.postDelayed({ background = normalBg }, 120)

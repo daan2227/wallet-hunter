@@ -121,7 +121,7 @@ class DebugActivity : AppCompatActivity() {
             this.text = text; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
             typeface = AppTheme.medium(context)
             isAllCaps = false
-            setTextColor(0xFF000000.toInt())
+            setTextColor(AppTheme.BG_DEEP)
             background = GradientDrawable().apply {
                 setColor(color); cornerRadius = dp(8).toFloat()
             }
@@ -134,7 +134,7 @@ class DebugActivity : AppCompatActivity() {
         logBtnRow.addView(actionBtn("Refrescar", ACCENT) {
             startLogRefresh()
         })
-        logBtnRow.addView(actionBtn("Parar", 0xFF8A8A8A.toInt()) {
+        logBtnRow.addView(actionBtn("Parar", AppTheme.TXT_SEC) {
             stopLogRefresh()
         })
         logBtnRow.addView(actionBtn("Copiar", ACCENT2) {
@@ -203,7 +203,7 @@ class DebugActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER_VERTICAL
                 setPadding(0, dp(6), 0, dp(6))
                 background = GradientDrawable().apply {
-                    setColor(0xFF161616.toInt()); cornerRadius = dp(8).toFloat()
+                    setColor(AppTheme.BG_CARD); cornerRadius = dp(8).toFloat()
                 }
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,

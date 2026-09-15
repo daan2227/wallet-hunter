@@ -198,7 +198,7 @@ class StatsActivity : Activity() {
                     val gap = barW * 0.5f
                     val paintBar = Paint().apply { isAntiAlias = true }
                     val paintLine = Paint().apply {
-                        color = 0xFF1D1D1D.toInt(); strokeWidth = 1f; isAntiAlias = true
+                        color = AppTheme.BG_ELEV; strokeWidth = 1f; isAntiAlias = true
                     }
                     // Grid line
                     canvas.drawLine(0f, h * 0.5f, w, h * 0.5f, paintLine)
@@ -270,7 +270,7 @@ class StatsActivity : Activity() {
                 val row = LinearLayout(this).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                     background = GradientDrawable().apply {
-                        setColor(0xFF161616.toInt()); cornerRadius = dp(10).toFloat()
+                        setColor(AppTheme.BG_CARD); cornerRadius = dp(10).toFloat()
 
                     }
                     setPadding(dp(12), dp(10), dp(12), dp(10))
