@@ -1,0 +1,134 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;700&display=swap">
+  <style>
+    body { margin:0; background:#0A0A0A; font-family:'IBM Plex Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .lbl { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:#6E6E6E; font-weight:500; }
+    .mono { font-family:'JetBrains Mono', ui-monospace, monospace; font-variant-numeric:tabular-nums; }
+    .rule { height:1px; background:#1C1C1C; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0A0A0A; color:#EDEDED; display:flex; flex-direction:column; overflow:hidden">
+
+  <!-- barra superior -->
+  <div style="display:flex; align-items:center; gap:10px; padding:16px 20px 14px">
+    <div style="width:22px; height:22px; border:1.5px solid #00C896; border-radius:3px; display:flex; align-items:center; justify-content:center">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#00C896" stroke-width="2.4" stroke-linecap="round"><path d="M12 3v18M8 7h6a3 3 0 010 6H8m0 0h7a3 3 0 010 6H8m0-12v12"/></svg>
+    </div>
+    <div style="flex-grow:1">
+      <div class="mono" style="font-size:13px; font-weight:500; letter-spacing:.02em">WALLET HUNTER</div>
+    </div>
+    <div class="mono" style="font-size:10px; color:#00C896; display:flex; align-items:center; gap:6px">
+      <span style="width:5px; height:5px; border-radius:50%; background:#00C896; display:inline-block"></span>SCAN
+    </div>
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7A7A7A" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </div>
+  <div class="rule"></div>
+
+  <!-- lectura principal -->
+  <div style="padding:26px 20px 18px">
+    <div class="lbl">Velocidad</div>
+    <div style="display:flex; align-items:baseline; gap:8px; margin-top:8px">
+      <div class="mono" style="font-size:58px; font-weight:700; line-height:.92; letter-spacing:-.03em">2.57</div>
+      <div class="mono" style="font-size:14px; color:#7A7A7A">MKeys/s</div>
+    </div>
+    <div style="display:flex; gap:22px; margin-top:14px">
+      <div><span class="lbl">Pico</span> <span class="mono" style="font-size:12px; color:#A8A8A8; margin-left:4px">5.64</span></div>
+      <div><span class="lbl">Media</span> <span class="mono" style="font-size:12px; color:#A8A8A8; margin-left:4px">3.01</span></div>
+    </div>
+  </div>
+
+  <!-- traza -->
+  <div style="padding:0 20px 20px">
+    <svg width="350" height="46" viewBox="0 0 350 46" preserveAspectRatio="none">
+      <polyline points="0,34 22,29 44,33 66,22 88,26 110,14 132,19 154,9 176,16 198,7 220,13 242,5 264,11 286,4 308,9 330,3 350,8"
+                fill="none" stroke="#00C896" stroke-width="1.4" stroke-linejoin="round"/>
+      <polyline points="0,34 22,29 44,33 66,22 88,26 110,14 132,19 154,9 176,16 198,7 220,13 242,5 264,11 286,4 308,9 330,3 350,8 350,46 0,46"
+                fill="#00C896" opacity=".07" stroke="none"/>
+    </svg>
+  </div>
+  <div class="rule"></div>
+
+  <!-- tabla de métricas: sin tarjetas, una lectura por fila -->
+  <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+    <div>
+      <div style="display:flex; align-items:center; padding:13px 20px">
+        <div class="lbl" style="flex-grow:1">{{r.k}}</div>
+        <div class="mono" style="font-size:15px; color:{{r.c}}">{{r.v}}</div>
+        <div class="mono" style="font-size:11px; color:#5A5A5A; width:52px; text-align:right">{{r.u}}</div>
+      </div>
+      <div class="rule"></div>
+    </div>
+  </sc-for>
+
+  <!-- modo -->
+  <div style="padding:20px 20px 12px">
+    <div class="lbl" style="margin-bottom:11px">Modo de escaneo</div>
+    <div style="display:flex; gap:1px; background:#1C1C1C; border:1px solid #1C1C1C">
+      <div style="flex-grow:1; background:#141414; padding:12px 14px">
+        <div class="mono" style="font-size:12px; color:#7A7A7A">BIP39</div>
+        <div style="font-size:10px; color:#4A4A4A; margin-top:3px">Frases semilla</div>
+      </div>
+      <div style="flex-grow:1; background:#0F1A16; padding:12px 14px; box-shadow:inset 2px 0 0 #00C896">
+        <div class="mono" style="font-size:12px; color:#00C896">RAW KEY</div>
+        <div style="font-size:10px; color:#6E6E6E; margin-top:3px">Claves directas</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ajustes, como filas no como tarjetas -->
+  <div style="padding:8px 0 0">
+    <div class="rule"></div>
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/></svg>
+      <div style="flex-grow:1; font-size:13px; color:#C8C8C8">Motor</div>
+      <div class="mono" style="font-size:11px; color:#6E6E6E">8 hilos · 100%</div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3A3A3A" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+    <div class="rule"></div>
+    <div style="display:flex; align-items:center; gap:12px; padding:14px 20px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6E6E6E" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 3 2.5 15 0 18c-2.5-3-2.5-15 0-18z"/></svg>
+      <div style="flex-grow:1; font-size:13px; color:#C8C8C8">Cluster</div>
+      <div class="mono" style="font-size:11px; color:#6E6E6E">inactivo</div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3A3A3A" stroke-width="2.4" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+    <div class="rule"></div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <!-- acción -->
+  <div style="padding:16px 20px 24px">
+    <div style="display:flex; align-items:center; justify-content:center; gap:10px; height:52px; border:1px solid #F04040; background:#150909">
+      <span style="width:9px; height:9px; background:#F04040"></span>
+      <span class="mono" style="font-size:13px; font-weight:500; letter-spacing:.14em; color:#F04040">DETENER</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      rows: [
+        { k: 'Claves totales', v: '166,442,496', u: '', c: '#EDEDED' },
+        { k: 'Ritmo',          v: '221',         u: 'G/día', c: '#EDEDED' },
+        { k: 'Dataset',        v: '10.3',        u: 'M dir', c: '#00C896' },
+        { k: 'Sesión',         v: '00:00:51',    u: '', c: '#EDEDED' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

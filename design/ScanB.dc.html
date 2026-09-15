@@ -1,0 +1,114 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Public+Sans:wght@400;500;600&display=swap">
+  <style>
+    body { margin:0; background:#0E0E0E; font-family:'Public Sans', system-ui, sans-serif; }
+    a { color:#00C896; } a:hover { color:#00E0A8; }
+    .disp { font-family:'Sora', system-ui, sans-serif; font-variant-numeric:tabular-nums; }
+    .cap { font-size:12px; color:#8A8A8A; font-weight:500; }
+    .card { background:#161616; border-radius:14px; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; background:#0E0E0E; color:#F2F2F2; display:flex; flex-direction:column; overflow:hidden">
+
+  <div style="display:flex; align-items:center; gap:12px; padding:18px 22px 10px">
+    <div style="width:30px; height:30px; border-radius:9px; background:#00C896; display:flex; align-items:center; justify-content:center">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0E0E0E" stroke-width="2.6" stroke-linecap="round"><path d="M12 3v18M8 7h6a3 3 0 010 6H8m0 0h7a3 3 0 010 6H8m0-12v12"/></svg>
+    </div>
+    <div style="flex-grow:1; font-family:'Sora'; font-size:17px; font-weight:600; letter-spacing:-.01em">Escáner</div>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+  </div>
+
+  <!-- estado: una frase, no un chip -->
+  <div style="padding:6px 22px 20px">
+    <div style="display:flex; align-items:center; gap:8px">
+      <span style="width:7px; height:7px; border-radius:50%; background:#00C896; box-shadow:0 0 0 4px rgba(0,200,150,.14)"></span>
+      <span class="cap" style="color:#00C896">Buscando · 51 s</span>
+    </div>
+  </div>
+
+  <!-- cifra principal -->
+  <div style="padding:0 22px 24px">
+    <div class="disp" style="font-size:66px; font-weight:700; line-height:.9; letter-spacing:-.045em">2.57<span style="font-size:22px; font-weight:400; color:#8A8A8A; letter-spacing:0"> M/s</span></div>
+    <div class="cap" style="margin-top:12px">Pico 5.64 M/s · media 3.01 M/s</div>
+  </div>
+
+  <!-- dos tarjetas, no cuatro -->
+  <div style="display:flex; gap:12px; padding:0 22px 14px">
+    <div class="card" style="flex-grow:1; padding:16px 18px">
+      <div class="cap" style="font-size:11px">Claves revisadas</div>
+      <div class="disp" style="font-size:24px; font-weight:600; margin-top:7px; letter-spacing:-.02em">166.4<span style="font-size:14px; color:#8A8A8A; font-weight:400"> M</span></div>
+    </div>
+    <div class="card" style="flex-grow:1; padding:16px 18px">
+      <div class="cap" style="font-size:11px">Lista cargada</div>
+      <div class="disp" style="font-size:24px; font-weight:600; margin-top:7px; letter-spacing:-.02em; color:#00C896">10.3<span style="font-size:14px; font-weight:400"> M</span></div>
+    </div>
+  </div>
+
+  <!-- ritmo, en lenguaje llano -->
+  <div class="card" style="margin:0 22px 22px; padding:16px 18px">
+    <div style="display:flex; align-items:center; gap:12px">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg>
+      <div style="flex-grow:1">
+        <div style="font-size:14px">A este ritmo</div>
+        <div class="cap" style="font-size:12px; margin-top:2px">221 mil millones de claves al día</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- modo -->
+  <div style="padding:0 22px 18px">
+    <div class="cap" style="margin-bottom:10px">Modo</div>
+    <div style="display:flex; gap:10px">
+      <div style="flex-grow:1; background:#161616; border-radius:12px; padding:14px 16px">
+        <div style="font-size:14px; font-weight:500; color:#8A8A8A">BIP39</div>
+        <div class="cap" style="font-size:11px; margin-top:3px">Frases semilla</div>
+      </div>
+      <div style="flex-grow:1; background:rgba(0,200,150,.10); border-radius:12px; padding:14px 16px; outline:1.5px solid #00C896">
+        <div style="font-size:14px; font-weight:600; color:#00C896">Raw key</div>
+        <div class="cap" style="font-size:11px; margin-top:3px; color:#6FBFA6">10× más rápido</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ajustes -->
+  <div class="card" style="margin:0 22px">
+    <div style="display:flex; align-items:center; gap:14px; padding:15px 18px">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M5 5l2 2M17 17l2 2M2 12h3M19 12h3M5 19l2-2M17 7l2-2"/></svg>
+      <div style="flex-grow:1; font-size:14px">Motor</div>
+      <div class="cap" style="font-size:12px">8 hilos · 100 %</div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+    <div style="height:1px; background:#222; margin:0 18px"></div>
+    <div style="display:flex; align-items:center; gap:14px; padding:15px 18px">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#8A8A8A" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 3 2.5 15 0 18c-2.5-3-2.5-15 0-18z"/></svg>
+      <div style="flex-grow:1; font-size:14px">Varios dispositivos</div>
+      <div class="cap" style="font-size:12px">Inactivo</div>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4A4A4A" stroke-width="2.2" stroke-linecap="round"><path d="M9 6l6 6-6 6"/></svg>
+    </div>
+  </div>
+
+  <div style="flex-grow:1"></div>
+
+  <div style="padding:18px 22px 26px">
+    <div style="height:54px; border-radius:14px; background:#1E1414; display:flex; align-items:center; justify-content:center; gap:10px">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F04040" stroke-width="2.2"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      <span style="font-size:15px; font-weight:600; color:#F04040">Detener</span>
+    </div>
+  </div>
+</div>
+</x-dc>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>
