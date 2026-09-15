@@ -665,15 +665,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
 
-        data class NavItem(val icon: String, val label: String, val idx: Int, val special: Boolean = false)
+        // El icono era un emoji dentro de un TextView, así que lo dibujaba la
+        // fuente del sistema: distinto en cada móvil, en color, y sin poder
+        // teñirlo para marcar la pestaña activa.
+        data class NavItem(val icon: Int, val label: String, val idx: Int, val special: Boolean = false)
         val items = listOf(
-            NavItem("⚡", "Scan", 0),
-            NavItem("🧩", "Puzzle", 1),
-            NavItem("◈", "Wallet", 2),
-            NavItem("⚷", "Recovery", 3),
-            NavItem("📊", "Stats", -3, true),
-            NavItem("🌐", "Network", -1, true),
-            NavItem("🐛", "Debug", -2, true)
+            NavItem(R.drawable.ic_scan,     "Escáner",  0),
+            NavItem(R.drawable.ic_puzzle,   "Puzzle",   1),
+            NavItem(R.drawable.ic_wallet,   "Cartera",  2),
+            NavItem(R.drawable.ic_recovery, "Recovery", 3),
+            NavItem(R.drawable.ic_stats,    "Historial", -3, true),
+            NavItem(R.drawable.ic_network,  "Cluster",  -1, true),
+            NavItem(R.drawable.ic_debug,    "Debug",    -2, true)
         )
 
         items.forEach { item ->
@@ -717,11 +720,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             }
 
-            val iconTv = TextView(this).apply {
-                text = item.icon
-                textSize = 18f
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(24), dp(24)).also {
+            val iconTv = android.widget.ImageView(this).apply {
+                setImageResource(item.icon)
+                // Se tiñe para poder marcar la pestaña activa, que con el emoji
+                // era imposible.
+                setColorFilter(AppTheme.TXT_SEC)
+                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).also {
                     it.gravity = Gravity.CENTER_VERTICAL
                 }
             }
@@ -803,6 +807,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             bg?.setStroke(if (isActive) 1 else 0, if (isActive) 0x28FFFFFF.toInt() else 0x00000000.toInt())
             val label = row.getChildAt(1) as? TextView
             label?.setTextColor(if (isActive) ACCENT else 0xFF8A8A8A.toInt())
+            // El icono acompaña al rótulo. Con el emoji no se podía: lo pintaba
+            // la fuente del sistema con sus propios colores.
+            (row.getChildAt(0) as? android.widget.ImageView)
+                ?.setColorFilter(if (isActive) ACCENT else 0xFF8A8A8A.toInt())
         }
     }
 
@@ -2528,7 +2536,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         refreshWallet()
 
         // ── ACTION CARDS ──────────────────────────────────────────────────
-        fun walletBtn(icon: String, label: String, sub: String, click: () -> Unit): LinearLayout {
+        fun walletBtn(icon: Int, label: String, sub: String, click: () -> Unit): LinearLayout {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2544,10 +2552,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(8) }
             }
-            val iconTv = TextView(this).apply {
-                text = icon; textSize = 20f; gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply {
-                    marginEnd = dp(14); gravity = Gravity.CENTER_VERTICAL
+            // El emoji ocupaba un cuadro de 40dp y lo dibujaba la fuente del
+            // sistema: distinto en cada móvil, a todo color, y sin forma de
+            // teñirlo. Ahora es un trazo a 20dp, del color del texto.
+            val iconTv = android.widget.ImageView(this).apply {
+                setImageResource(icon)
+                setColorFilter(AppTheme.TXT_SEC)
+                layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply {
+                    marginEnd = dp(16); gravity = Gravity.CENTER_VERTICAL
                 }
             }
             val lc = LinearLayout(this).apply {
@@ -2567,13 +2579,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 ).apply { topMargin = dp(2) }
             })
             r.addView(iconTv); r.addView(lc)
-            r.addView(TextView(this).apply {
-                text = "›"; textSize = 20f; setTextColor(0xFF4A4A4A.toInt())
+            r.addView(android.widget.ImageView(this).apply {
+                setImageResource(R.drawable.ic_chevron)
+                setColorFilter(AppTheme.TXT_MUTED)
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                }
             })
             return r
         }
 
-        page.addView(walletBtn("💰", "Ver Wallet", "Balances y direcciones guardadas") {
+        page.addView(walletBtn(R.drawable.ic_wallet, "Ver cartera", "Saldos y direcciones guardadas") {
             val hasSeed = WalletManager.hasPin(this) && WalletManager.loadSeed(this) != null
             val hasWif  = WalletManager.listWifs(this).isNotEmpty()
             if (hasSeed || hasWif) {
@@ -2601,7 +2617,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     .show()
             }
         })
-        page.addView(walletBtn("🔑", "Agregar Wallet", "Importar seed, WIF o dirección") {
+        page.addView(walletBtn(R.drawable.ic_add, "Añadir cartera", "Seed, WIF o dirección") {
             // Mostrar opciones de importación
             val opciones = arrayOf("📝 Seed Phrase (BIP39)", "🔑 Clave WIF", "👁 Watch-only (dirección)")
             androidx.appcompat.app.AlertDialog.Builder(this)
@@ -2619,22 +2635,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
                 .show()
         })
-        page.addView(walletBtn("📤", "Exportar Log", "Guardar matches en archivo") {
+        page.addView(walletBtn(R.drawable.ic_export, "Exportar resumen", "Sin claves privadas") {
             exportLog()
         })
-        page.addView(walletBtn("↻", "Actualizar Balance", "Consulta los saldos en la cadena") {
+        page.addView(walletBtn(R.drawable.ic_refresh, "Consultar saldos", "Pregunta a la cadena ahora") {
             refreshWallet(consultarRed = true)
             android.widget.Toast.makeText(this, "Consultando la cadena…",
                 android.widget.Toast.LENGTH_SHORT).show()
         })
-        page.addView(walletBtn("🗄", "Baúl de Hallazgos", "Claves de puzzle y escáner, cifradas") {
+        page.addView(walletBtn(R.drawable.ic_vault, "Baúl de hallazgos", "Claves de puzzle y escáner, cifradas") {
             if (!PinAuthHelper.isSessionValid()) {
                 PinAuthHelper.show(this) { ok -> if (ok) showVault() }
             } else {
                 showVault()
             }
         })
-        page.addView(walletBtn("🔒", "Copias de Seguridad", "Crear, ver, compartir o restaurar") {
+        page.addView(walletBtn(R.drawable.ic_lock, "Copias de seguridad", "Crear, ver, compartir o restaurar") {
             if (!PinAuthHelper.isSessionValid()) {
                 PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
             } else {
