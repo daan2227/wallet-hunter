@@ -178,6 +178,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvPeakWpsPuzzle: TextView? = null
     private var watchdogEnabled = false
     private var lastKnownRunning = false
+    private var tvRandomJump: TextView? = null
+    private var tvCurrentBlock: TextView? = null
+    /** Bloque elegido a mano con "Saltar a un punto aleatorio"; lo usa el próximo START. */
+    private var pendingBlockIdx: java.math.BigInteger? = null
     /** Reinicios hechos por el watchdog en esta sesión; se muestra en su etiqueta. */
     private var watchdogRestarts = 0
     private var activeToggleBtn: Button? = null
@@ -1741,6 +1745,39 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         progressCard.addView(tvProgressDetail)
 
+        // Salto aleatorio dentro del rango del puzzle.
+        tvRandomJump = TextView(this).apply {
+            text = "🎲 Saltar a un punto aleatorio del rango"
+            textSize = 12f; setTextColor(ACCENT2)
+            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(0xFF141414.toInt()); cornerRadius = dp(10).toFloat()
+                setStroke(1, 0xFF242424.toInt())
+            }
+            gravity = Gravity.CENTER
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+            setOnClickListener { pickRandomJump() }
+        }
+        progressCard.addView(tvRandomJump)
+
+        // En qué bloque se está (o se va a empezar) y dónde cae en el rango.
+        // Esto estaba en tvPuzzleStatus, pero updateUI() reescribe esa línea con
+        // el ETA cada 800 ms, así que la posición se borraba antes de poder
+        // leerla. Aquí no la pisa nadie.
+        tvCurrentBlock = TextView(this).apply {
+            text = "Bloque actual: —"
+            textSize = 11f; setTextColor(0xFF868686.toInt())
+            typeface = Typeface.MONOSPACE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
+        }
+        progressCard.addView(tvCurrentBlock)
+
         progressCard.addView(TextView(this).apply {
             // 9sp en gris #555 sobre fondo casi negro es ilegible y demasiado
             // pequeño para acertar con el dedo, siendo además destructivo.
@@ -1779,12 +1816,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleProgressUpdater = { puzzleNum: Int, rangeStart: String, rangeEnd: String ->
             Thread {
                 try {
-                    val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
-                    val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
-                    val total = end.subtract(start).divide(BLOCK_SIZE).toLong().coerceAtLeast(1)
-                    val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size?.toLong() ?: 0L
-                    val pct = (scanned * 10000L / total).toInt().coerceIn(0, 10000)
-                    val pctStr = "%.4f%%".format(scanned * 100.0 / total)
+                    // Mismo truncado que en getBlockProgressText: con BigInteger
+                    // el total es correcto para cualquier puzzle.
+                    val total = totalBlocksOf(rangeStart, rangeEnd)
+                    val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size ?: 0
+                    val pctD = blockPercent(java.math.BigInteger.valueOf(scanned.toLong()), total)
+                    val pct = (pctD * 100.0).toInt().coerceIn(0, 10000)
+                    val pctStr = "%.4f%%".format(pctD)
                     runOnUiThread {
                         progressBarPuzzle.progress = pct
                         tvProgressPct.text = pctStr
@@ -3258,37 +3296,120 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // ── Registro local de bloques escaneados ─────────────────────────────────
     private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
 
+    /** Entero aleatorio uniforme entre 0 y bound-1. Por rechazo: <2 intentos de media. */
+    private fun randomBelow(bound: java.math.BigInteger): java.math.BigInteger {
+        if (bound <= java.math.BigInteger.ONE) return java.math.BigInteger.ZERO
+        val rnd = java.security.SecureRandom()
+        val bits = bound.bitLength()
+        var r: java.math.BigInteger
+        do { r = java.math.BigInteger(bits, rnd) } while (r >= bound)
+        return r
+    }
+
+    /** Número total de bloques del rango de un puzzle. */
+    private fun totalBlocksOf(rangeStart: String, rangeEnd: String): java.math.BigInteger {
+        val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+        val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+        return end.subtract(start).divide(BLOCK_SIZE).max(java.math.BigInteger.ONE)
+    }
+
+    /** Traduce un índice de bloque al rango hexadecimal que entiende el motor. */
+    private fun blockRange(rangeStart: String, rangeEnd: String,
+                           blockIdx: java.math.BigInteger): Pair<String, String> {
+        val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
+        val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
+        val bStart = start.add(BLOCK_SIZE.multiply(blockIdx))
+        val bEnd   = bStart.add(BLOCK_SIZE).min(end)
+        return Pair(bStart.toString(16).padStart(18, '0'),
+                    bEnd.toString(16).padStart(18, '0'))
+    }
+
+    /** Posición del bloque dentro del rango, en porcentaje. */
+    private fun blockPercent(blockIdx: java.math.BigInteger,
+                             totalBlocks: java.math.BigInteger): Double =
+        if (totalBlocks.signum() <= 0) 0.0
+        else blockIdx.toBigDecimal()
+            .divide(totalBlocks.toBigDecimal(), 8, java.math.RoundingMode.HALF_UP)
+            .toDouble() * 100.0
+
     private fun getNextUnscannedBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): Pair<String, String>? {
         return try {
-            val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
-            val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
-            val range = end.subtract(start)
-            val totalBlocksBig = range.divide(BLOCK_SIZE)
-            val totalBlocks = if (totalBlocksBig > java.math.BigInteger.valueOf(100_000))
-                100_000L else totalBlocksBig.toLong().coerceAtLeast(1)
+            // totalBlocks estaba topado a 100.000 y el índice se sacaba con
+            // Math.random()*totalBlocks sobre un Long. El puzzle 70 tiene
+            // 590.295.810.358 bloques, así que el "bloque aleatorio" nunca salía
+            // de los primeros 100.000: el 0,0000169 % inicial del rango, una y
+            // otra vez. Ahora el índice es un BigInteger uniforme sobre el rango
+            // entero.
+            val totalBlocks = totalBlocksOf(rangeStart, rangeEnd)
+            val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet()) ?: emptySet()
 
-            val prefs = getBlockPrefs()
-            val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet()) ?: emptySet()
-
-            // Elegir bloque aleatorio no escaneado sin cargar lista entera
             var attempts = 0
-            var blockIdx: Long
+            var blockIdx: java.math.BigInteger
             do {
-                blockIdx = (Math.random() * totalBlocks).toLong()
+                blockIdx = randomBelow(totalBlocks)
                 attempts++
             } while (scanned.contains(blockIdx.toString()) && attempts < 100)
 
             if (attempts >= 100) return null  // todo escaneado
 
-            val blockStart = start.add(BLOCK_SIZE.multiply(java.math.BigInteger.valueOf(blockIdx)))
-            val blockEnd   = blockStart.add(BLOCK_SIZE).min(end)
-
             currentBlockId = blockIdx.toString()
-            Pair(
-                blockStart.toString(16).padStart(18, '0'),
-                blockEnd.toString(16).padStart(18, '0')
-            )
+            blockRange(rangeStart, rangeEnd, blockIdx)
         } catch (e: Exception) { null }
+    }
+
+    /**
+     * Elige un punto al azar del rango del puzzle para el siguiente arranque.
+     *
+     * Cada START ya escoge un bloque aleatorio, pero el rango es tan grande que
+     * no hay forma de ver dónde ha caído. Esto lo elige y lo enseña: "arrancará
+     * en el 46,32 %".
+     */
+    /**
+     * Escribe en qué bloque estamos y en qué punto del rango cae.
+     *
+     * Un id de bloque de doce cifras no dice nada solo; el porcentaje sí.
+     */
+    private fun setCurrentBlockLabel(prefix: String, blockIdx: java.math.BigInteger) {
+        val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
+        val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
+        if (rs.isEmpty() || re.isEmpty()) return
+        try {
+            val total = totalBlocksOf(rs, re)
+            val pct   = blockPercent(blockIdx, total)
+            val txt = "$prefix #%s  ·  %.4f%% del rango".format(
+                numberFmt.format(blockIdx), pct)
+            if (tvCurrentBlock?.text?.toString() != txt) tvCurrentBlock?.text = txt
+        } catch (e: Exception) {}
+    }
+
+    private fun pickRandomJump() {
+        val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
+        val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
+        if (rs.isEmpty() || re.isEmpty()) {
+            Toast.makeText(this, "Selecciona un puzzle primero", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            val total = totalBlocksOf(rs, re)
+            val idx   = randomBelow(total)
+            pendingBlockIdx = idx
+            val pct = blockPercent(idx, total)
+            tvRandomJump?.text = "🎲 Otro punto al azar"
+            setCurrentBlockLabel("Arrancará en el bloque", idx)
+            val (bStart, _) = blockRange(rs, re, idx)
+            if (HunterEngine.isRunning()) {
+                Toast.makeText(this,
+                    "Se aplicará al reiniciar el escaneo (%.2f%%)".format(pct),
+                    Toast.LENGTH_LONG).show()
+            } else {
+                Toast.makeText(this,
+                    "Bloque #$idx  ·  %.2f%%\nDesde 0x${bStart.trimStart('0')}".format(pct),
+                    Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(this, "No se pudo calcular el salto: ${e.message}",
+                Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun markBlockScanned(puzzleNum: Int) {
@@ -3314,11 +3435,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return NetworkManager.getGlobalProgress(rangeStart, rangeEnd) + " [RED]"
         }
         return try {
-            val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
-            val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
-            val total = end.subtract(start).divide(BLOCK_SIZE).toLong()
+            // .toLong() sobre el BigInteger truncaba en silencio: el puzzle 160
+            // tiene 7,3e38 bloques y el total salía como un número sin sentido.
+            val total = totalBlocksOf(rangeStart, rangeEnd)
             val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size ?: 0
-            val pct = if (total > 0) scanned * 100.0 / total else 0.0
+            val pct = blockPercent(java.math.BigInteger.valueOf(scanned.toLong()), total)
             "Bloques: $scanned / $total (%.4f%%)".format(pct)
         } catch (e: Exception) { "" }
     }
@@ -3406,6 +3527,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             tvPuzzleStatus?.text =
                                 "Bloque: $etaBlock · Puzzle $cachedPuzzleLabel: $etaPuzzle"
                             tvBlockProgress?.text = etaPuzzle
+                            // Se reafirma cada ciclo para que sobreviva a que se
+                            // reconstruya la pestaña o se vuelva desde otra.
+                            if (currentBlockId.isNotEmpty())
+                                setCurrentBlockLabel("Escaneando bloque",
+                                    java.math.BigInteger(currentBlockId))
                         } catch (e: Exception) {}
                     }
                 } else {
@@ -3678,13 +3804,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             Toast.makeText(this, "Error: rango no configurado", Toast.LENGTH_SHORT).show()
                             return
                         }
-                        val block = getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
+                        // Si el usuario pulsó "Saltar a un punto aleatorio",
+                        // se arranca ahí en vez de sortear otro bloque.
+                        val pend = pendingBlockIdx
+                        val block = if (pend != null) {
+                            currentBlockId = pend.toString()
+                            blockRange(fullStart, rangeEnd, pend)
+                        } else {
+                            getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
+                        }
+                        pendingBlockIdx = null
+                        tvRandomJump?.text = "🎲 Saltar a un punto aleatorio del rango"
                         if (block != null) {
                             val (bStart, bEnd) = block
                             HunterEngine.setRange(bStart, bEnd)
                             currentRangeStart = bStart
                             currentRangeEnd = bEnd
-                            tvPuzzleStatus?.text = "Bloque #$currentBlockId de ${getBlockProgressText(puzzleNum, fullStart, rangeEnd)}"
+                            setCurrentBlockLabel("Escaneando bloque",
+                                java.math.BigInteger(currentBlockId))
                             tvPuzzleStatus?.setTextColor(AppTheme.CYAN)
                         } else if (savedKey != null && savedKey.isNotEmpty()) {
                             HunterEngine.setRange(savedKey, rangeEnd)
@@ -4191,6 +4328,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleProgressUpdater?.invoke(p.num, p.start, p.end)
         etTarget?.setText(p.addr)
         tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
+        // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
+        pendingBlockIdx = null
+        currentBlockId = ""
+        tvCurrentBlock?.text = "Bloque actual: —"
+        tvRandomJump?.text = "🎲 Saltar a un punto aleatorio del rango"
         // Guardar rango para modo distribuido
         prefs.edit()
             .putString("current_range_start", p.start)
