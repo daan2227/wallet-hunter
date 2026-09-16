@@ -92,3 +92,30 @@ sin hash (compara la x)      2.32 M claves/s
 
 El hash se lleva el 56 % del coste. Es la mejora más grande que aparece en el
 motor — mayor que usar las instrucciones de SHA-256 por hardware.
+
+## Dónde se va el tiempo en cada modo
+
+`reparto.cpp` mide el coste por candidato de cada pieza. Sin esto, decidir qué
+optimizar es adivinar — y la respuesta resulta ser opuesta según el modo.
+
+```sh
+g++ -O3 -o reparto reparto.cpp -lcrypto && ./reparto
+```
+
+Medido aquí:
+
+```
+hash160                     0.548 us
+derivación BIP32 (x5)      10.192 us
+PBKDF2 2048 (BIP39)      1441.479 us
+```
+
+En **clave directa** el hash160 es el 56 % del trabajo, así que un dataset de
+claves públicas —comparando la x en vez de la dirección— daría unas 2x.
+
+En **BIP39** el mismo cambio da 1,0004x: PBKDF2 cuesta 2.630 veces más que el
+hash160, y el hash es el 0,038 % del candidato. Y PBKDF2 no es una
+implementación lenta que se pueda mejorar: las 2048 vueltas las exige la norma,
+precisamente para encarecer este tipo de búsqueda. Saltárselas produce semillas
+que no son de ningún mnemónico BIP39, que es lo que hace el interruptor de
+"escaneo rápido" y por lo que no puede encontrar nada.
