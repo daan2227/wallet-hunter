@@ -313,45 +313,97 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
     private val puzzles = listOf(
-        PuzzleInfo(66, "13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so", "20000000000000000",  "3ffffffffffffffff",  "6.6 BTC"),
-        PuzzleInfo(67, "1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9", "40000000000000000",  "7ffffffffffffffff",  "6.7 BTC"),
-        PuzzleInfo(68, "1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ", "80000000000000000",  "fffffffffffffffff",  "6.8 BTC"),
-        PuzzleInfo(69, "19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG", "100000000000000000", "1fffffffffffffffff",  "6.9 BTC"),
-        PuzzleInfo(70, "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU", "200000000000000000", "3fffffffffffffffff",  "7.0 BTC"),
-        PuzzleInfo(71, "1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR", "400000000000000000", "7fffffffffffffffff",  "7.1 BTC"),
-        PuzzleInfo(72, "12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4", "800000000000000000", "ffffffffffffffffff",  "7.2 BTC"),
-        PuzzleInfo(73, "1FWGcVDK3JGzCC3WtkYetULPszMaK2Jksv", "1000000000000000000","1ffffffffffffffffff",  "7.3 BTC"),
-        PuzzleInfo(74, "1Me6EfpwZK5kQziBwBfvLiHjaPGG5dneUd", "2000000000000000000","3ffffffffffffffffff",  "7.4 BTC"),
-        PuzzleInfo(75, "1DJh2eHFYQfACPmrvpyWc8MSTYKh7w9eRF", "4000000000000000000","7ffffffffffffffffff",  "7.5 BTC"),
-        PuzzleInfo(76, "1Bxk4CQdqL9p22JEtDfdXMsng1XacifUtE", "8000000000000000000","fffffffffffffffffff","7.6 BTC"),
-        PuzzleInfo(77, "15qF6X51huDjqTmF9BJgxXdt1xcj46Jmhb", "10000000000000000000","1fffffffffffffffffff","7.7 BTC"),
-        PuzzleInfo(78, "1ARk8HWJMn8js8tQmGUJeQHjSE7KRkn2t8","20000000000000000000","3fffffffffffffffffff","7.8 BTC"),
-        PuzzleInfo(79, "1AoeP37TmHdFh8uN72fu9AqgtLrUwcv2wJ", "40000000000000000000","7fffffffffffffffffff","7.9 BTC"),
-        PuzzleInfo(80, "15qsCm78whspNQFydGJQk5rexzxTQopnHZ", "80000000000000000000","ffffffffffffffffffff","8.0 BTC"),
-        PuzzleInfo(81, "1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv","100000000000000000000","1ffffffffffffffffffff","8.1 BTC"),
-        PuzzleInfo(82, "1L2GM8eE7mJWLdo3HZS6su1832NX2txaac", "200000000000000000000","3ffffffffffffffffffff","8.2 BTC"),
-        PuzzleInfo(83, "1rSnXMr63jdCuegJFuidJqWxUPV7AtUf7",  "400000000000000000000","7ffffffffffffffffffff","8.3 BTC"),
-        PuzzleInfo(84, "15ANYzzCp5BFHcCnVFzXqyibpzgPLWaD8b","800000000000000000000","fffffffffffffffffffff","8.4 BTC"),
-        PuzzleInfo(85, "15utf8aHAAZnHmzgDKW3tpkpnEQmcvWJJ4","1000000000000000000000","1fffffffffffffffffffff","8.5 BTC"),
-        PuzzleInfo(86, "1DNkyZhere7mLzt3D5bM3G2ycg4tBnkMTX","2000000000000000000000","3fffffffffffffffffffff","8.6 BTC"),
-        PuzzleInfo(87, "1HduPEXZRdG26SUT5Yk83mLkPyjnZuJ7Bm","4000000000000000000000","7fffffffffffffffffffff","8.7 BTC"),
-        PuzzleInfo(88, "1AmU5jNb65sqresUqwnz5tFcKou4YK2dzv","8000000000000000000000","ffffffffffffffffffffff","8.8 BTC"),
-        PuzzleInfo(89, "1FowZsFmaee5ozfGSCKoVs7fMdnE2B9Ex", "10000000000000000000000","1ffffffffffffffffffffff","8.9 BTC"),
-        PuzzleInfo(90, "1McVt1vMtCC7yn5b9wgX1833yCcLXzueeC","20000000000000000000000","3ffffffffffffffffffffff","9.0 BTC"),
-        PuzzleInfo(95, "1HBtApAFA9B2YZw3G2YKSMCtb3dVnjuNe2","400000000000000000000000","7fffffffffffffffffffffff","9.5 BTC"),
-        PuzzleInfo(100,"1CaBVPrwUxbQYYswu32oBQAlMAbEkG4v8f","8000000000000000000000000","fffffffffffffffffffffffff","10.0 BTC"),
-        PuzzleInfo(105,"1KwntMbt59bzvpHKQQe5KFznY9Bk9DhSwp","100000000000000000000000000","1ffffffffffffffffffffffffff","10.5 BTC"),
-        PuzzleInfo(110,"1LHtnpd8nU5VHEMkG2TMYYNUjjLc992bXs","2000000000000000000000000000","3fffffffffffffffffffffffffff","11.0 BTC"),
-        PuzzleInfo(115,"1QAT7jVJQMoMGSXBuJbKKANFR8M8E8UVZz","40000000000000000000000000000","7ffffffffffffffffffffffffffff","11.5 BTC"),
-        PuzzleInfo(120,"1MHC7nLqPkjFnNtLY12Jkiir4Du6t2f3H4","800000000000000000000000000000","ffffffffffffffffffffffffffffff","12.0 BTC"),
-        PuzzleInfo(125,"1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS","10000000000000000000000000000000","1fffffffffffffffffffffffffffffff","12.5 BTC"),
-        PuzzleInfo(130,"1NLbHuJebVwUZ1XqDjsAyfTRUPwDQbemfv","200000000000000000000000000000000","3ffffffffffffffffffffffffffffffff","13.0 BTC"),
-        PuzzleInfo(135,"16jY7qLJnxb7CHZyqBP8qca9d51gAjyXQN","4000000000000000000000000000000000","7fffffffffffffffffffffffffffffffff","13.5 BTC"),
-        PuzzleInfo(140,"18ZMbwUFLMHoZBbfpCjUJQTCMCbktshgpe","80000000000000000000000000000000000","fffffffffffffffffffffffffffffffffff","14.0 BTC"),
-        PuzzleInfo(145,"1Bu4G6Rb8CMW5GnB6WMoV9k82DhLFnVfXH","1000000000000000000000000000000000000","1ffffffffffffffffffffffffffffffffffff","14.5 BTC"),
-        PuzzleInfo(150,"1PXAyUB8ZoH3WD8n5zoAQKovelENNoYzqm","20000000000000000000000000000000000000","3fffffffffffffffffffffffffffffffffffff","15.0 BTC"),
-        PuzzleInfo(155,"1Fo65aKq8s8iquMt6weF1rku1moWVEd5Ua", "400000000000000000000000000000000000000","7ffffffffffffffffffffffffffffffffffffff","15.5 BTC"),
-        PuzzleInfo(160,"1H8ANdafjpqYntniT3Ddxh4xPBMCSz33pj","8000000000000000000000000000000000000000","ffffffffffffffffffffffffffffffffffffffff","16.0 BTC")
+        // Los 77 puzzles SIN RESOLVER, a 2026-09-16.
+        //
+        // La tabla anterior estaba mal de tres formas a la vez: doce entradas
+        // no eran ni direcciones de Bitcoin —dos llevaban una 'l', que no
+        // existe en Base58, y diez fallaban el checksum—, las direcciones que
+        // sí valían estaban en el número equivocado, y había trece puzzles ya
+        // resueltos ofreciéndose como objetivo.
+        //
+        // Los RANGOS no se transcriben: se calculan. El puzzle N va de 2^(N-1)
+        // a 2^N - 1 por definición, así que generarlos quita de en medio la
+        // única parte donde un dedo puede equivocarse sin que se note.
+        //
+        // Cada dirección está comprobada contra su checksum Base58Check antes
+        // de entrar aquí, y buildPuzzleTab vuelve a comprobarlas al arrancar.
+        PuzzleInfo(71, "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU", "400000000000000000", "7fffffffffffffffff", "7.10099385 BTC"),
+        PuzzleInfo(72, "1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR", "800000000000000000", "ffffffffffffffffff", "7.20003779 BTC"),
+        PuzzleInfo(73, "12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4", "1000000000000000000", "1ffffffffffffffffff", "7.30003777 BTC"),
+        PuzzleInfo(74, "1FWGcVDK3JGzCC3WtkYetULPszMaK2Jksv", "2000000000000000000", "3ffffffffffffffffff", "7.40003777 BTC"),
+        PuzzleInfo(76, "1DJh2eHFYQfACPmrvpyWc8MSTYKh7w9eRF", "8000000000000000000", "fffffffffffffffffff", "7.6 BTC"),
+        PuzzleInfo(77, "1Bxk4CQdqL9p22JEtDfdXMsng1XacifUtE", "10000000000000000000", "1fffffffffffffffffff", "7.70001826 BTC"),
+        PuzzleInfo(78, "15qF6X51huDjqTmF9BJgxXdt1xcj46Jmhb", "20000000000000000000", "3fffffffffffffffffff", "7.8 BTC"),
+        PuzzleInfo(79, "1ARk8HWJMn8js8tQmGUJeQHjSE7KRkn2t8", "40000000000000000000", "7fffffffffffffffffff", "7.9 BTC"),
+        PuzzleInfo(81, "15qsCm78whspNQFydGJQk5rexzxTQopnHZ", "100000000000000000000", "1ffffffffffffffffffff", "8.1 BTC"),
+        PuzzleInfo(82, "13zYrYhhJxp6Ui1VV7pqa5WDhNWM45ARAC", "200000000000000000000", "3ffffffffffffffffffff", "8.2 BTC"),
+        PuzzleInfo(83, "14MdEb4eFcT3MVG5sPFG4jGLuHJSnt1Dk2", "400000000000000000000", "7ffffffffffffffffffff", "8.30000546 BTC"),
+        PuzzleInfo(84, "1CMq3SvFcVEcpLMuuH8PUcNiqsK1oicG2D", "800000000000000000000", "fffffffffffffffffffff", "8.4 BTC"),
+        PuzzleInfo(86, "1K3x5L6G57Y494fDqBfrojD28UJv4s5JcK", "2000000000000000000000", "3fffffffffffffffffffff", "8.6 BTC"),
+        PuzzleInfo(87, "1PxH3K1Shdjb7gSEoTX7UPDZ6SH4qGPrvq", "4000000000000000000000", "7fffffffffffffffffffff", "8.7 BTC"),
+        PuzzleInfo(88, "16AbnZjZZipwHMkYKBSfswGWKDmXHjEpSf", "8000000000000000000000", "ffffffffffffffffffffff", "8.8 BTC"),
+        PuzzleInfo(89, "19QciEHbGVNY4hrhfKXmcBBCrJSBZ6TaVt", "10000000000000000000000", "1ffffffffffffffffffffff", "8.9 BTC"),
+        PuzzleInfo(91, "1EzVHtmbN4fs4MiNk3ppEnKKhsmXYJ4s74", "40000000000000000000000", "7ffffffffffffffffffffff", "9.1 BTC"),
+        PuzzleInfo(92, "1AE8NzzgKE7Yhz7BWtAcAAxiFMbPo82NB5", "80000000000000000000000", "fffffffffffffffffffffff", "9.2 BTC"),
+        PuzzleInfo(93, "17Q7tuG2JwFFU9rXVj3uZqRtioH3mx2Jad", "100000000000000000000000", "1fffffffffffffffffffffff", "9.3 BTC"),
+        PuzzleInfo(94, "1K6xGMUbs6ZTXBnhw1pippqwK6wjBWtNpL", "200000000000000000000000", "3fffffffffffffffffffffff", "9.4 BTC"),
+        PuzzleInfo(96, "15ANYzzCp5BFHcCnVFzXqyibpzgPLWaD8b", "800000000000000000000000", "ffffffffffffffffffffffff", "9.6 BTC"),
+        PuzzleInfo(97, "18ywPwj39nGjqBrQJSzZVq2izR12MDpDr8", "1000000000000000000000000", "1ffffffffffffffffffffffff", "9.7 BTC"),
+        PuzzleInfo(98, "1CaBVPrwUxbQYYswu32w7Mj4HR4maNoJSX", "2000000000000000000000000", "3ffffffffffffffffffffffff", "9.8 BTC"),
+        PuzzleInfo(99, "1JWnE6p6UN7ZJBN7TtcbNDoRcjFtuDWoNL", "4000000000000000000000000", "7ffffffffffffffffffffffff", "9.91257338 BTC"),
+        PuzzleInfo(101, "1CKCVdbDJasYmhswB6HKZHEAnNaDpK7W4n", "10000000000000000000000000", "1fffffffffffffffffffffffff", "10.1 BTC"),
+        PuzzleInfo(102, "1PXv28YxmYMaB8zxrKeZBW8dt2HK7RkRPX", "20000000000000000000000000", "3fffffffffffffffffffffffff", "10.2 BTC"),
+        PuzzleInfo(103, "1AcAmB6jmtU6AiEcXkmiNE9TNVPsj9DULf", "40000000000000000000000000", "7fffffffffffffffffffffffff", "10.3 BTC"),
+        PuzzleInfo(104, "1EQJvpsmhazYCcKX5Au6AZmZKRnzarMVZu", "80000000000000000000000000", "ffffffffffffffffffffffffff", "10.400016 BTC"),
+        PuzzleInfo(106, "18KsfuHuzQaBTNLASyj15hy4LuqPUo1FNB", "200000000000000000000000000", "3ffffffffffffffffffffffffff", "10.6 BTC"),
+        PuzzleInfo(107, "15EJFC5ZTs9nhsdvSUeBXjLAuYq3SWaxTc", "400000000000000000000000000", "7ffffffffffffffffffffffffff", "10.7 BTC"),
+        PuzzleInfo(108, "1HB1iKUqeffnVsvQsbpC6dNi1XKbyNuqao", "800000000000000000000000000", "fffffffffffffffffffffffffff", "10.8 BTC"),
+        PuzzleInfo(109, "1GvgAXVCbA8FBjXfWiAms4ytFeJcKsoyhL", "1000000000000000000000000000", "1fffffffffffffffffffffffffff", "10.9 BTC"),
+        PuzzleInfo(111, "1824ZJQ7nKJ9QFTRBqn7z7dHV5EGpzUpH3", "4000000000000000000000000000", "7fffffffffffffffffffffffffff", "11.1001 BTC"),
+        PuzzleInfo(112, "18A7NA9FTsnJxWgkoFfPAFbQzuQxpRtCos", "8000000000000000000000000000", "ffffffffffffffffffffffffffff", "11.2 BTC"),
+        PuzzleInfo(113, "1NeGn21dUDDeqFQ63xb2SpgUuXuBLA4WT4", "10000000000000000000000000000", "1ffffffffffffffffffffffffffff", "11.3 BTC"),
+        PuzzleInfo(114, "174SNxfqpdMGYy5YQcfLbSTK3MRNZEePoy", "20000000000000000000000000000", "3ffffffffffffffffffffffffffff", "11.4 BTC"),
+        PuzzleInfo(116, "1MnJ6hdhvK37VLmqcdEwqC3iFxyWH2PHUV", "80000000000000000000000000000", "fffffffffffffffffffffffffffff", "11.6 BTC"),
+        PuzzleInfo(117, "1KNRfGWw7Q9Rmwsc6NT5zsdvEb9M2Wkj5Z", "100000000000000000000000000000", "1fffffffffffffffffffffffffffff", "11.7 BTC"),
+        PuzzleInfo(118, "1PJZPzvGX19a7twf5HyD2VvNiPdHLzm9F6", "200000000000000000000000000000", "3fffffffffffffffffffffffffffff", "11.80000661 BTC"),
+        PuzzleInfo(119, "1GuBBhf61rnvRe4K8zu8vdQB3kHzwFqSy7", "400000000000000000000000000000", "7fffffffffffffffffffffffffffff", "11.9 BTC"),
+        PuzzleInfo(121, "1GDSuiThEV64c166LUFC9uDcVdGjqkxKyh", "1000000000000000000000000000000", "1ffffffffffffffffffffffffffffff", "12.1 BTC"),
+        PuzzleInfo(122, "1Me3ASYt5JCTAK2XaC32RMeH34PdprrfDx", "2000000000000000000000000000000", "3ffffffffffffffffffffffffffffff", "12.2 BTC"),
+        PuzzleInfo(123, "1CdufMQL892A69KXgv6UNBD17ywWqYpKut", "4000000000000000000000000000000", "7ffffffffffffffffffffffffffffff", "12.3 BTC"),
+        PuzzleInfo(124, "1BkkGsX9ZM6iwL3zbqs7HWBV7SvosR6m8N", "8000000000000000000000000000000", "fffffffffffffffffffffffffffffff", "12.4 BTC"),
+        PuzzleInfo(126, "1AWCLZAjKbV1P7AHvaPNCKiB7ZWVDMxFiz", "20000000000000000000000000000000", "3fffffffffffffffffffffffffffffff", "12.6 BTC"),
+        PuzzleInfo(127, "1G6EFyBRU86sThN3SSt3GrHu1sA7w7nzi4", "40000000000000000000000000000000", "7fffffffffffffffffffffffffffffff", "12.7 BTC"),
+        PuzzleInfo(128, "1MZ2L1gFrCtkkn6DnTT2e4PFUTHw9gNwaj", "80000000000000000000000000000000", "ffffffffffffffffffffffffffffffff", "12.8 BTC"),
+        PuzzleInfo(129, "1Hz3uv3nNZzBVMXLGadCucgjiCs5W9vaGz", "100000000000000000000000000000000", "1ffffffffffffffffffffffffffffffff", "12.9 BTC"),
+        PuzzleInfo(131, "16zRPnT8znwq42q7XeMkZUhb1bKqgRogyy", "400000000000000000000000000000000", "7ffffffffffffffffffffffffffffffff", "13.1 BTC"),
+        PuzzleInfo(132, "1KrU4dHE5WrW8rhWDsTRjR21r8t3dsrS3R", "800000000000000000000000000000000", "fffffffffffffffffffffffffffffffff", "13.2 BTC"),
+        PuzzleInfo(133, "17uDfp5r4n441xkgLFmhNoSW1KWp6xVLD", "1000000000000000000000000000000000", "1fffffffffffffffffffffffffffffffff", "13.3 BTC"),
+        PuzzleInfo(134, "13A3JrvXmvg5w9XGvyyR4JEJqiLz8ZySY3", "2000000000000000000000000000000000", "3fffffffffffffffffffffffffffffffff", "13.4 BTC"),
+        PuzzleInfo(136, "1UDHPdovvR985NrWSkdWQDEQ1xuRiTALq", "8000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffff", "13.6 BTC"),
+        PuzzleInfo(137, "15nf31J46iLuK1ZkTnqHo7WgN5cARFK3RA", "10000000000000000000000000000000000", "1ffffffffffffffffffffffffffffffffff", "13.7 BTC"),
+        PuzzleInfo(138, "1Ab4vzG6wEQBDNQM1B2bvUz4fqXXdFk2WT", "20000000000000000000000000000000000", "3ffffffffffffffffffffffffffffffffff", "13.8 BTC"),
+        PuzzleInfo(139, "1Fz63c775VV9fNyj25d9Xfw3YHE6sKCxbt", "40000000000000000000000000000000000", "7ffffffffffffffffffffffffffffffffff", "13.9 BTC"),
+        PuzzleInfo(140, "1QKBaU6WAeycb3DbKbLBkX7vJiaS8r42Xo", "80000000000000000000000000000000000", "fffffffffffffffffffffffffffffffffff", "14.00001 BTC"),
+        PuzzleInfo(141, "1CD91Vm97mLQvXhrnoMChhJx4TP9MaQkJo", "100000000000000000000000000000000000", "1fffffffffffffffffffffffffffffffffff", "14.10014846 BTC"),
+        PuzzleInfo(142, "15MnK2jXPqTMURX4xC3h4mAZxyCcaWWEDD", "200000000000000000000000000000000000", "3fffffffffffffffffffffffffffffffffff", "14.2 BTC"),
+        PuzzleInfo(143, "13N66gCzWWHEZBxhVxG18P8wyjEWF9Yoi1", "400000000000000000000000000000000000", "7fffffffffffffffffffffffffffffffffff", "14.3 BTC"),
+        PuzzleInfo(144, "1NevxKDYuDcCh1ZMMi6ftmWwGrZKC6j7Ux", "800000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffffff", "14.4 BTC"),
+        PuzzleInfo(145, "19GpszRNUej5yYqxXoLnbZWKew3KdVLkXg", "1000000000000000000000000000000000000", "1ffffffffffffffffffffffffffffffffffff", "14.5 BTC"),
+        PuzzleInfo(146, "1M7ipcdYHey2Y5RZM34MBbpugghmjaV89P", "2000000000000000000000000000000000000", "3ffffffffffffffffffffffffffffffffffff", "14.6 BTC"),
+        PuzzleInfo(147, "18aNhurEAJsw6BAgtANpexk5ob1aGTwSeL", "4000000000000000000000000000000000000", "7ffffffffffffffffffffffffffffffffffff", "14.7 BTC"),
+        PuzzleInfo(148, "1FwZXt6EpRT7Fkndzv6K4b4DFoT4trbMrV", "8000000000000000000000000000000000000", "fffffffffffffffffffffffffffffffffffff", "14.8 BTC"),
+        PuzzleInfo(149, "1CXvTzR6qv8wJ7eprzUKeWxyGcHwDYP1i2", "10000000000000000000000000000000000000", "1fffffffffffffffffffffffffffffffffffff", "14.90001 BTC"),
+        PuzzleInfo(150, "1MUJSJYtGPVGkBCTqGspnxyHahpt5Te8jy", "20000000000000000000000000000000000000", "3fffffffffffffffffffffffffffffffffffff", "15.00001 BTC"),
+        PuzzleInfo(151, "13Q84TNNvgcL3HJiqQPvyBb9m4hxjS3jkV", "40000000000000000000000000000000000000", "7fffffffffffffffffffffffffffffffffffff", "15.10001 BTC"),
+        PuzzleInfo(152, "1LuUHyrQr8PKSvbcY1v1PiuGuqFjWpDumN", "80000000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffffffff", "15.20001 BTC"),
+        PuzzleInfo(153, "18192XpzzdDi2K11QVHR7td2HcPS6Qs5vg", "100000000000000000000000000000000000000", "1ffffffffffffffffffffffffffffffffffffff", "15.30001 BTC"),
+        PuzzleInfo(154, "1NgVmsCCJaKLzGyKLFJfVequnFW9ZvnMLN", "200000000000000000000000000000000000000", "3ffffffffffffffffffffffffffffffffffffff", "15.40001 BTC"),
+        PuzzleInfo(155, "1AoeP37TmHdFh8uN72fu9AqgtLrUwcv2wJ", "400000000000000000000000000000000000000", "7ffffffffffffffffffffffffffffffffffffff", "15.50001 BTC"),
+        PuzzleInfo(156, "1FTpAbQa4h8trvhQXjXnmNhqdiGBd1oraE", "800000000000000000000000000000000000000", "fffffffffffffffffffffffffffffffffffffff", "15.60001 BTC"),
+        PuzzleInfo(157, "14JHoRAdmJg3XR4RjMDh6Wed6ft6hzbQe9", "1000000000000000000000000000000000000000", "1fffffffffffffffffffffffffffffffffffffff", "15.70001 BTC"),
+        PuzzleInfo(158, "19z6waranEf8CcP8FqNgdwUe1QRxvUNKBG", "2000000000000000000000000000000000000000", "3fffffffffffffffffffffffffffffffffffffff", "15.80001 BTC"),
+        PuzzleInfo(159, "14u4nA5sugaswb6SZgn5av2vuChdMnD9E5", "4000000000000000000000000000000000000000", "7fffffffffffffffffffffffffffffffffffffff", "15.90002 BTC"),
+        PuzzleInfo(160, "1NBC8uXJy1GiJ6drkiZa1WuKn51ps7EPTv", "8000000000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffffffffff", "16.00019082 BTC")
     )
 
     private val updater = object : Runnable {
@@ -384,6 +436,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
         }
         AppTheme.init(this)
+        migrarTablaPuzzles()
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = BG_DEEP
         s = Strings.EN
@@ -3490,6 +3543,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun formatCount(v: Long): String = numberFmt.format(v)
 
     // ── Registro local de bloques escaneados ─────────────────────────────────
+    /**
+     * Limpieza obligada por la corrección de la tabla de puzzles.
+     *
+     * La tabla anterior tenía las direcciones en el número equivocado, así que
+     * TODO lo que hay guardado por número de puzzle se hizo contra una
+     * dirección que no era la de ese puzzle:
+     *
+     *  - El progreso por bloques cuenta claves probadas, pero comparadas
+     *    contra el objetivo equivocado: son claves que nunca se han comprobado
+     *    de verdad contra este puzzle. Dejarlo diría que hay un 12 % recorrido
+     *    de algo que no se ha empezado.
+     *  - Los checkpoints apuntan a dónde se quedó esa búsqueda inútil.
+     *  - Los puzzles ocultados por "sin fondos" se ocultaron mirando el saldo
+     *    de otra dirección, así que hay puzzles con premio escondidos.
+     *
+     * Se hace una sola vez y queda anotado.
+     */
+    private fun migrarTablaPuzzles() {
+        val p = getSharedPreferences("app_settings", MODE_PRIVATE)
+        if (p.getInt("tabla_puzzles_ver", 0) >= 2) return
+        listOf("puzzle_blocks", "puzzle_checkpoint", "hidden_puzzles").forEach {
+            getSharedPreferences(it, MODE_PRIVATE).edit().clear().apply()
+        }
+        // La caché de claves públicas va por DIRECCIÓN, no por número, así que
+        // lo que tenga guardado sigue siendo cierto y no hay que tirarlo.
+        p.edit().putInt("tabla_puzzles_ver", 2).apply()
+        android.util.Log.i("MainActivity",
+            "Tabla de puzzles corregida: progreso y ocultos reiniciados")
+    }
+
     private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
 
     /** Entero aleatorio uniforme entre 0 y bound-1. Por rechazo: <2 intentos de media. */
