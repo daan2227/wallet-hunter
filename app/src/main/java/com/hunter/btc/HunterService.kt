@@ -140,6 +140,8 @@ class HunterService : Service() {
             .build()
     }
 
+    // Cuándo se le mandó la velocidad al master por última vez.
+    private var ultimoProgresoMs = 0L
     // Para sacar los saltos por segundo de Kangaroo, que sólo da el total.
     private var kangUltOps = 0L
     private var kangUltMs  = System.currentTimeMillis()
@@ -188,7 +190,37 @@ class HunterService : Service() {
             // Detectar nuevo match
             if (found > lastFound) {
                 lastFound = found
-                sendMatchNotif(found, HunterEngine.getMatches())
+                val detalles = HunterEngine.getMatches()
+                sendMatchNotif(found, detalles)
+                // Si este móvil trabaja para un cluster, avisar al master.
+                //
+                // reportMatch existía desde el principio y NO LA LLAMABA NADIE:
+                // un worker podía encontrar algo y el master no se enteraba
+                // jamás. Va aquí y no en la pantalla porque un worker suele
+                // estar en segundo plano, que es justo cuando la Activity no
+                // está viva para detectarlo.
+                //
+                // Sólo viaja la dirección. La clave se queda en este aparato:
+                // es la regla de reportMatch desde que se quitó el envío del
+                // WIF en claro, y no se toca.
+                if (NetworkManager.isWorker && NetworkManager.isRunning.get()) {
+                    val dir = Regex("[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{8,71}")
+                        .find(detalles)?.value
+                    if (!dir.isNullOrEmpty())
+                        NetworkManager.reportMatch(NetworkManager.masterIp, dir)
+                }
+            }
+
+            // Velocidad al master, para su lista de trabajadores.
+            //
+            // reportProgress tampoco la llamaba nadie, así que la columna de
+            // velocidad marcaba siempre 0 y no había forma de ver si un worker
+            // se había quedado parado. Cada 30 s basta.
+            if (NetworkManager.isWorker && NetworkManager.isRunning.get() &&
+                System.currentTimeMillis() - ultimoProgresoMs > 30_000L) {
+                ultimoProgresoMs = System.currentTimeMillis()
+                val v = if (kangOps >= 0) kangOps else HunterEngine.getCount()
+                NetworkManager.reportProgress(NetworkManager.masterIp, v)
             }
 
             handler.postDelayed(this, 2000L)

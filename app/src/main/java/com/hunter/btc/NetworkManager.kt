@@ -160,6 +160,19 @@ object NetworkManager {
     private var udpSocket:    DatagramSocket? = null
 
     // ── Master ────────────────────────────────────────────────────────────────
+    /**
+     * Master repartiendo bloques (fuerza bruta).
+     *
+     * LÍMITE CONOCIDO: el master no se reserva bloque. Sigue escaneando el
+     * rango entero por su cuenta, así que duplica trabajo que ya están haciendo
+     * los workers y su avance no entra en el recuento global. No está mal en el
+     * sentido de dar resultados falsos —si encuentra la clave, la encuentra—,
+     * pero con N workers el reparto real es N y no N+1.
+     *
+     * No se arregla aquí porque la búsqueda del master la gobierna la pantalla,
+     * no este objeto: haría falta que se pidiera bloque a sí mismo por el mismo
+     * camino que un worker.
+     */
     fun startMaster(ctx: Context, puzzleNum: Int, rangeStart: String, rangeEnd: String) =
         arrancarMaster(ctx, Modo.BLOQUES, puzzleNum, rangeStart, rangeEnd, "")
 
@@ -387,18 +400,39 @@ object NetworkManager {
         val size  = java.math.BigInteger(BLOCK_SIZE_HEX, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
 
-        val totalBlocks = end.subtract(start).divide(size).toLong().coerceAtLeast(1).coerceAtMost(1_000_000)
+        // Todo en BigInteger. Antes iba a Long y se recortaba a un millón:
+        //
+        //   .toLong().coerceAtLeast(1).coerceAtMost(1_000_000)
+        //
+        // Dos fallos en una línea. El recorte dejaba al cluster repartiendo sólo
+        // el primer millón de bloques, o sea 2^52 claves pasara lo que pasara:
+        // en el puzzle #71 es el 0,00036 % del rango, y en el #80 el
+        // 0,0000007 %. El 99,9996 % restante era inalcanzable.
+        //
+        // Y el .toLong() truncaba en silencio: el #160 tiene 2^127 bloques, que
+        // no caben en un Long, así que se quedaba con los 64 bits bajos. El
+        // recorte tapaba el destrozo, de ahí que nunca se notara.
+        val totalBlocks = end.subtract(start).divide(size).max(java.math.BigInteger.ONE)
         val taken = assignedBlocks.values.mapTo(HashSet()) { it.blockId }
         val rnd = java.security.SecureRandom()
-        var blockIdx = 0L
+        // Un índice al azar uniforme en [0, totalBlocks). nextDouble() no vale
+        // aquí: un Double sólo tiene 53 bits de mantisa y estos rangos pasan de
+        // 2^100, así que la mayoría de los bloques no serían ni alcanzables.
+        fun alAzar(): java.math.BigInteger {
+            val bits = totalBlocks.bitLength()
+            while (true) {
+                val v = java.math.BigInteger(bits, rnd)
+                if (v < totalBlocks) return v
+            }
+        }
+        var blockIdx = alAzar()
         var attempts = 0
-        do {
-            blockIdx = (rnd.nextDouble() * totalBlocks).toLong()
-            attempts++
-        } while ((taken.contains(blockIdx.toString()) ||
-                  globalScannedBlocks.contains(blockIdx.toString())) && attempts < 200)
+        while ((taken.contains(blockIdx.toString()) ||
+                globalScannedBlocks.contains(blockIdx.toString())) && attempts < 200) {
+            blockIdx = alAzar(); attempts++
+        }
 
-        val bStart = start.add(size.multiply(java.math.BigInteger.valueOf(blockIdx)))
+        val bStart = start.add(size.multiply(blockIdx))
         val bEnd   = bStart.add(size).min(end)
 
         val block = NetBlock(
@@ -444,6 +478,15 @@ object NetworkManager {
                 }
                 when (response.optString("type")) {
                     "BLOCK" -> {
+                        // Pedir de una vez la lista de bloques ya barridos.
+                        //
+                        // syncWithMaster tampoco la llamaba nadie, asi que el
+                        // progreso global que enseña un worker sólo contaba sus
+                        // propios bloques y salía siempre casi a cero por mucho
+                        // que llevara hecho el cluster entero.
+                        syncWithMaster(masterIp) { n ->
+                            if (n > 0) log("Sincronizados $n bloques ya barridos")
+                        }
                         val block = NetBlock(
                             blockId    = response.getString("block_id"),
                             rangeStart = response.getString("start"),
@@ -793,10 +836,14 @@ object NetworkManager {
             val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
             val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
             val size  = java.math.BigInteger(BLOCK_SIZE_HEX, 16)
-            val total = end.subtract(start).divide(size).toLong().coerceAtMost(1_000_000)
+            // Mismo arreglo que en nextBlock: el total se recortaba a un
+            // millón, así que el porcentaje se calculaba contra una cifra
+            // inventada y salía optimista por varios órdenes de magnitud.
+            val total = end.subtract(start).divide(size).max(java.math.BigInteger.ONE)
             val done  = globalScannedBlocks.size
-            val pct   = if (total > 0) done * 100.0 / total else 0.0
-            "Global: $done/$total bloques (%.4f%%)".format(pct)
+            val pct   = java.math.BigDecimal(done).multiply(java.math.BigDecimal(100))
+                            .divide(java.math.BigDecimal(total), 10, java.math.RoundingMode.HALF_UP)
+            "Global: $done/$total bloques (%s%%)".format(pct.toPlainString())
         } catch (e: Exception) { "Global: ${globalScannedBlocks.size} bloques" }
     }
 
