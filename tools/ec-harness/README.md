@@ -72,3 +72,23 @@ la búsqueda sigue hasta encontrar la clave.
 ```sh
 g++ -O2 -o persist persist.cpp -lpthread && ./persist
 ```
+
+## Cuánto cuesta el hash
+
+`coste.cpp` mide qué parte del trabajo por clave se va en el hash160. Importa
+porque si el dataset trajera claves públicas en vez de direcciones, ese trozo
+se podría saltar entero comparando la x.
+
+```sh
+g++ -O3 -o coste coste.cpp && ./coste
+```
+
+Medido aquí:
+
+```
+con hash160 (como ahora)     1.02 M claves/s
+sin hash (compara la x)      2.32 M claves/s
+```
+
+El hash se lleva el 56 % del coste. Es la mejora más grande que aparece en el
+motor — mayor que usar las instrucciones de SHA-256 por hardware.

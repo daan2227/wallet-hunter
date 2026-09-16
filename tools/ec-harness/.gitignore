@@ -1,0 +1,8 @@
+# Los binarios se compilan al ejecutar run.sh. Son ELF de x86 y este proyecto
+# es Android: en el repositorio no le sirven a nadie, y pesan más que todo el
+# código fuente del banco de pruebas junto.
+vectores
+prim
+kang
+persist
+coste
