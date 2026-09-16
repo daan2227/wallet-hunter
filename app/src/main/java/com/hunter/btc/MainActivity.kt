@@ -4874,6 +4874,58 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try { sendMatchNotification("(puzzle por red)", claveHex) } catch (e: Throwable) {}
     }
 
+    /* ── ¿Sigue habiendo premio? ──────────────────────────────────────────────
+     *
+     * El saldo del puzzle sólo se consultaba al pulsar su chip y al abrir la
+     * app. Nunca mientras la búsqueda corría.
+     *
+     * Con fuerza bruta daba igual, porque no ibas a terminar nunca de todas
+     * formas. Con Kangaroo no: una búsqueda dura semanas o meses, y desde que
+     * se reparte entre varios móviles hay aparatos enteros dedicados a esto sin
+     * que nadie mire la pantalla. Si alguien resuelve el puzzle entre medias,
+     * la app seguiría quemando batería contra una dirección vacía, y sin nada
+     * que lo indicara.
+     *
+     * No es un caso hipotético: el #135 se barrió el 28 de julio de 2026
+     * mientras las listas publicadas seguían dándolo por pendiente.
+     *
+     * Cada seis horas es de sobra —esto tarda meses— y son cuatro llamadas al
+     * día. Y es seguro pararlo por saldo cero porque checkPuzzleBalance
+     * devuelve -1, no 0, cuando la red falla: un corte de conexión no puede
+     * detener la búsqueda por error.
+     */
+    private var kgUltSaldoMs = 0L
+    private var kgSaldoPedido = false
+
+    private fun vigilarSaldoDelPuzzle() {
+        val ahora = System.currentTimeMillis()
+        if (kgSaldoPedido) return
+        if (kgUltSaldoMs != 0L && ahora - kgUltSaldoMs < 6L * 3600_000L) return
+        val p = puzzles.firstOrNull { it.num == puzzleSeleccionado } ?: return
+        kgSaldoPedido = true
+        kgUltSaldoMs = ahora
+        checkPuzzleBalance(p.addr) { bal ->
+            runOnUiThread {
+                kgSaldoPedido = false
+                // -1 = no se pudo consultar. No se toca nada: se reintenta a
+                // las seis horas.
+                if (bal != 0L) return@runOnUiThread
+                if (!HunterEngine.kangarooRunning()) return@runOnUiThread
+                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
+                getSharedPreferences("hidden_puzzles", MODE_PRIVATE)
+                    .edit().putBoolean("hidden_${p.num}", true).apply()
+                btnKangaroo?.text = "Buscar con Kangaroo"
+                tvPuzzleAtajo?.text = "Búsqueda detenida: el puzzle #${p.num} ya no " +
+                                      "tiene fondos, alguien lo ha resuelto. El trabajo " +
+                                      "queda guardado por si te sirve."
+                tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
+                // Que los workers del cluster paren también.
+                NetworkManager.marcarPuzzleVacio()
+            }
+        }
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     private fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -4909,6 +4961,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             return
         }
+        vigilarSaldoDelPuzzle()
+
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
         val dps = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
 

@@ -307,6 +307,14 @@ class NetworkActivity : AppCompatActivity() {
                 else "${tvLog?.text}\nNo se pudo arrancar Kangaroo"
             }
         }
+        // El master avisa cuando el puzzle se queda sin fondos: alguien lo ha
+        // resuelto mientras buscábamos. El bucle ya ha parado la búsqueda.
+        NetworkManager.onPuzzleAgotado = {
+            runOnUiThread {
+                tvLog?.text = "${tvLog?.text}\n\nBúsqueda detenida: el puzzle ya no " +
+                              "tiene fondos.\nAlguien lo ha resuelto. El trabajo queda guardado."
+            }
+        }
         NetworkManager.startWorker(ip, code)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
@@ -420,6 +428,7 @@ class NetworkActivity : AppCompatActivity() {
         NetworkManager.onLog     = null
         NetworkManager.onWorkers = null
         NetworkManager.onClave = null
+        NetworkManager.onPuzzleAgotado = null
         val app = applicationContext
         // Igual que onBlock: el encargo puede llegar despues de cerrar esta
         // pantalla, y entonces no puede quedar apuntando a una Activity muerta.

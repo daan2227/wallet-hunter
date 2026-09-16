@@ -123,6 +123,24 @@ object NetworkManager {
     /** Puntos distinguidos recibidos de los workers, para enseñarlo. */
     val puntosRecibidos = java.util.concurrent.atomic.AtomicLong(0)
 
+    /**
+     * El puzzle que se reparte ya no tiene fondos: alguien lo ha resuelto. Lo
+     * detecta el master vigilando el saldo.
+     *
+     * Los workers se enteran en su siguiente envío de puntos, aprovechando la
+     * respuesta que ya viajaba de vuelta. No hace falta un mensaje nuevo ni que
+     * el master sepa abrir conexiones hacia ellos: el worker ya pregunta cada
+     * veinte segundos.
+     */
+    @Volatile private var puzzleVacio = false
+
+    fun marcarPuzzleVacio() {
+        if (!puzzleVacio) {
+            puzzleVacio = true
+            log("El puzzle ya no tiene fondos: se avisará a los workers")
+        }
+    }
+
     // El encargo en curso. Antes viajaba como parámetros de handleWorkerConnection
     // capturados en el lambda; con Kangaroo son cuatro valores y se lía.
     @Volatile private var jobPuzzle = 0
@@ -268,7 +286,7 @@ object NetworkManager {
                     //           un momento la búsqueda del master tiraría a la
                     //           basura todo lo que llegara mientras.
                     val vivo = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-                    val n = if (!vivo) -2 else try {
+                    val n = if (puzzleVacio) -3 else if (!vivo) -2 else try {
                         val crudo = android.util.Base64.decode(
                             msg.optString("data", ""), android.util.Base64.NO_WRAP)
                         if (crudo.isEmpty()) -1 else HunterEngine.kangarooImport(crudo)
@@ -278,6 +296,7 @@ object NetworkManager {
                             puntosRecibidos.addAndGet(n.toLong())
                             workers[workerId]?.status = "kangaroo"
                         }
+                        n == -3 -> log("A $workerId se le dice que pare: el puzzle ya no tiene fondos")
                         n == -2 -> log("Puntos de $workerId en espera: aquí no hay búsqueda en marcha")
                         else    -> log("Puntos rechazados de $workerId (otro puzzle o mensaje roto)")
                     }
@@ -469,6 +488,10 @@ object NetworkManager {
     private const val MAX_PUNTOS_ENVIO = 2048
 
     @Volatile private var bucleVivo = false
+    /** El master ha dicho que el puzzle ya no tiene fondos. */
+    @Volatile private var puzzleResuelto = false
+    /** Aviso para la pantalla del worker: el puzzle se ha acabado. */
+    var onPuzzleAgotado: (() -> Unit)? = null
 
     private fun arrancarBucleReparto() {
         if (bucleVivo) return
@@ -482,6 +505,12 @@ object NetworkManager {
             var pendiente: ByteArray? = null
             try {
                 while (isRunning.get() && isWorker && modo == Modo.KANGAROO) {
+                    if (puzzleResuelto) {
+                        log("El puzzle ya no tiene fondos: se detiene la búsqueda")
+                        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        onPuzzleAgotado?.invoke()
+                        break
+                    }
                     try {
                         // 1) Primero lo que quedó a deber, si quedó algo.
                         if (pendiente != null) {
@@ -540,6 +569,10 @@ object NetworkManager {
                 val resp = readLineLimited(reader)
                 if (resp == null) false
                 else when (val n = JSONObject(resp).optInt("n", -1)) {
+                    // El puzzle ya no tiene fondos: alguien lo ha resuelto
+                    // mientras buscábamos. Seguir es quemar batería contra una
+                    // dirección vacía, así que se para aquí también.
+                    -3 -> { puzzleResuelto = true; true }
                     // El master no tiene la búsqueda en marcha. Es pasajero:
                     // hay que guardarlos y volver a intentarlo, porque el motor
                     // ya los dio por enviados y no pueden volver a salir.
@@ -771,6 +804,7 @@ object NetworkManager {
         isRunning.set(false)
         isMaster = false; isWorker = false
         modo = Modo.BLOQUES                  // el bucle de reparto mira esto
+        puzzleVacio = false; puzzleResuelto = false
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
         puntosRecibidos.set(0)
