@@ -2338,6 +2338,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Thread {
                 val (total, matches) = loadCoincidencias(consultarRed)
                 val pendientes = MatchVault.pendingBalance(this@MainActivity)
+                // Si no queda ninguno por consultar, es que la consulta llegó.
+                // Si quedan Y se había pedido red, es que no hubo respuesta:
+                // decirlo es la diferencia entre "está vacío" y "no lo sé".
+                val sinRed = consultarRed && pendientes > 0
                 runOnUiThread {
                     tvTotalBtc.text = "%.8f".format(total).replace('.', ',')
                     // El acento sólo cuando de verdad hay saldo. Pintar de verde
@@ -2346,15 +2350,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         if (total > 0.0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                     tvTotalUsd.text = when {
                         matches.isEmpty()  -> "Aún no ha encontrado ninguna clave"
+                        sinRed             -> "${matches.size} hallazgo(s) · sin conexión, " +
+                                              "$pendientes sin consultar"
                         // Un total que suma ceros sin consultar no es un saldo:
                         // decir "0,00000000" a secas afirma que están vacías.
                         pendientes > 0     -> "${matches.size} hallazgo(s) · $pendientes sin consultar"
-                        else               -> "${matches.size} hallazgo(s) · BTC"
+                        else               -> "${matches.size} hallazgo(s)"
                     }
                 }
             }.start()
         }
-        refreshWallet()
+        // Consulta automática al abrir la pestaña.
+        //
+        // Ojo con lo que implica, porque antes era justo al revés a propósito:
+        // preguntar por un saldo revela esa dirección al servidor que responde,
+        // y en un hallazgo eso delata que este dispositivo tiene la clave. Se
+        // hace automático porque lo has pedido; el aviso de abajo se ha
+        // reescrito para que diga la verdad de lo que pasa ahora.
+        refreshWallet(consultarRed = true)
 
         // ── DOS ACCIONES PRIMARIAS, GRANDES ───────────────────────────────
         //
@@ -2567,8 +2580,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             })
             addView(TextView(this@MainActivity).apply {
-                text = "Preguntar por un saldo revela esa dirección al servidor. " +
-                       "Por eso se hace sólo cuando lo pides tú."
+                text = "Los saldos se consultan solos al abrir esta pantalla. " +
+                       "Eso revela tus direcciones al servidor que responde: es el " +
+                       "precio de verlos sin pedirlo."
                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context)
                 setLineSpacing(0f, 1.55f)
@@ -4403,13 +4417,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
 
+    /**
+     * Saldo de la dirección de un puzzle.
+     *
+     * Iba sólo por Electrum y, peor, cuando Electrum no respondía hacía
+     * `bal?.confirmed ?: 0L` y devolvía CERO. Quien llama trata el cero como
+     * "sin fondos" y oculta el puzzle de la lista de forma permanente, así que
+     * un rato sin cobertura te borraba puzzles que sí tienen premio.
+     *
+     * @param onResult saldo en satoshis, o -1 si no respondió nadie. Los dos
+     *   casos NO son lo mismo y quien llama tiene que distinguirlos.
+     */
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
-            try {
-                val bal = ElectrumClient.getBalance(addr)
-                val total = (bal?.confirmed ?: 0L) + (bal?.unconfirmed ?: 0L)
-                runOnUiThread { onResult(total) }
-            } catch (e: Exception) { runOnUiThread { onResult(-1L) } }
+            val r = try { BalanceLookup.query(addr, false) } catch (e: Exception) { null }
+            runOnUiThread { onResult(r?.sat ?: -1L) }
         }.start()
     }
 

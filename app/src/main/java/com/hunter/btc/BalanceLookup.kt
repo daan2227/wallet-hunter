@@ -19,22 +19,16 @@ import org.json.JSONObject
  */
 object BalanceLookup {
 
-    /** @param source "" = mempool.space, "electrum" = se usó el respaldo. */
+    /** @param source "" = una API web, "electrum" = se usó el respaldo. */
     data class Result(val sat: Long, val source: String)
 
-    private const val TIMEOUT_MS = 5000
-
-    /** Saldo vía mempool.space. Lanza si la consulta o el JSON fallan. */
+    /**
+     * Saldo por la API web (mempool.space o blockstream.info, lo que responda).
+     * Lanza si no responde ninguna o si el JSON no se entiende.
+     */
     fun fromMempool(addr: String, testnet: Boolean = false): Long {
-        val conn = java.net.URL(
-            if (testnet) "https://mempool.space/testnet/api/address/$addr"
-            else "https://mempool.space/api/address/$addr"
-        ).openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = TIMEOUT_MS; conn.readTimeout = TIMEOUT_MS
-        val js = try {
-            if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
-            conn.inputStream.bufferedReader().readText()
-        } finally { conn.disconnect() }
+        val js = ChainApi.get("/address/$addr", testnet)
+            ?: throw java.io.IOException("ninguna API web respondió")
         // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia. La
         // respuesta trae esos campos en chain_stats y en mempool_stats, así que
         // el resultado dependía del orden que emitiera la API.
@@ -58,32 +52,37 @@ object BalanceLookup {
      */
     fun isUsed(addr: String, testnet: Boolean = false): Boolean? {
         if (addr.isEmpty()) return null
-        return try {
-            val conn = java.net.URL(
-                if (testnet) "https://mempool.space/testnet/api/address/$addr"
-                else "https://mempool.space/api/address/$addr"
-            ).openConnection() as java.net.HttpURLConnection
-            conn.connectTimeout = TIMEOUT_MS; conn.readTimeout = TIMEOUT_MS
-            val js = try {
-                if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
-                conn.inputStream.bufferedReader().readText()
-            } finally { conn.disconnect() }
-            val o = JSONObject(js)
-            fun txs(b: String) = o.optJSONObject(b)?.optInt("tx_count", 0) ?: 0
-            txs("chain_stats") + txs("mempool_stats") > 0
+        try {
+            val js = ChainApi.get("/address/$addr", testnet)
+            if (js != null) {
+                val o = JSONObject(js)
+                fun txs(b: String) = o.optJSONObject(b)?.optInt("tx_count", 0) ?: 0
+                return txs("chain_stats") + txs("mempool_stats") > 0
+            }
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "isUsed falló en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "isUsed por web falló en $addr: ${e.message}")
+        }
+        // Electrum no da el número de transacciones directamente, pero su
+        // historial sí: si tiene alguna entrada, la dirección se ha usado.
+        return try {
+            ElectrumClient.getHistory(addr, testnet).takeIf { it.isNotEmpty() }?.let { true }
+                ?: if (ElectrumClient.getBalance(addr, testnet) != null) false else null
+        } catch (e: Exception) {
+            android.util.Log.w("BalanceLookup", "isUsed por Electrum falló en $addr: ${e.message}")
             null
         }
     }
 
-    /** Saldo con respaldo. null si ninguna fuente respondió. */
+    /**
+     * Saldo con respaldo, en tres niveles: mempool.space, blockstream.info y
+     * Electrum. null sólo si no respondió ninguno de los tres.
+     */
     fun query(addr: String, testnet: Boolean = false): Result? {
         if (addr.isEmpty()) return null
         try {
             return Result(fromMempool(addr, testnet), "")
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "mempool falló en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "APIs web fallaron en $addr: ${e.message}")
         }
         return try {
             val eb = ElectrumClient.getBalance(addr, testnet)

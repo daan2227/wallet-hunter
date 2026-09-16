@@ -635,18 +635,31 @@ class WalletActivity : FragmentActivity() {
 
             // mempool.space con respaldo Electrum. La consulta vive en
             // BalanceLookup porque el baúl de hallazgos necesita la misma.
+            // Con doce direcciones y sin cobertura, preguntar una por una son
+            // doce esperas encadenadas —cada una contra dos APIs web y diez
+            // servidores Electrum— antes de poder decir nada. Se comprueba una
+            // vez si hay alguna ruta a la cadena.
+            var sinRed = !ChainApi.hayRed(isTestnet)
+            var fallosSeguidos = 0
             addresses.forEach { (k, addr) ->
                 val label = if (k == "wif_0") currentWalletName else (labelMap[k] ?: k)
-                if (addr.isEmpty()) { rows.add(BalanceRow("Error", "empty address", -1L, "")); return@forEach }
+                if (addr.isEmpty()) { rows.add(BalanceRow("Error", "dirección vacía", -1L, "")); return@forEach }
+                if (sinRed) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
 
                 val res = BalanceLookup.query(addr, isTestnet)
-                if (res == null) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
+                if (res == null) {
+                    // Si se cae a mitad, no seguir intentándolo con el resto.
+                    if (++fallosSeguidos >= 3) sinRed = true
+                    rows.add(BalanceRow(label, addr, -1L, "")); return@forEach
+                }
+                fallosSeguidos = 0
                 val bal = res.sat
                 val src = res.source
                 if (src == "electrum") usedFallback = true
                 totalSat += bal
                 rows.add(BalanceRow(label, addr, bal, src))
             }
+            val huboFallo = sinRed || rows.any { it.sat < 0 }
 
             /* Descubrimiento HD.
              *
@@ -661,7 +674,7 @@ class WalletActivity : FragmentActivity() {
              * listado. Va después del primer repaso para que el total salga
              * rápido y esto lo complete.
              */
-            if (!isWifMode && mnemonic.isNotEmpty()) {
+            if (!isWifMode && mnemonic.isNotEmpty() && !sinRed) {
                 val yaListadas = addresses.values.toHashSet()
                 // Las de recepción se suman al mapa con la clave canónica
                 // (p2pkh_3, p2wpkh_5...). Así la pestaña Enviar las ofrece y
@@ -704,11 +717,9 @@ class WalletActivity : FragmentActivity() {
 
             var price = 0.0
             try {
-                val conn = java.net.URL("https://mempool.space/api/v1/prices").openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 3000; conn.readTimeout = 3000
-                val js = try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() }
                 // "USD":(\d+) no captura decimales: con 67432.5 leía 67432.
-                price = JSONObject(js).optDouble("USD", 0.0)
+                val js = ChainApi.get("/v1/prices", false)
+                if (js != null) price = JSONObject(js).optDouble("USD", 0.0)
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
             runOnUiThread {
@@ -722,12 +733,23 @@ class WalletActivity : FragmentActivity() {
                     tvTotal.text = if (balanceVisible) btcText else "********"
                     tvFiat.text  = if (balanceVisible) fiatText else "******"
                 }
-                if (usedFallback) {
+                // Un fallo de red se decía antes fila a fila ("sin respuesta"
+                // doce veces) sin explicar nunca que el problema era el mismo.
+                if (huboFallo) {
                     ll.addView(TextView(this).apply {
-                        text = "mempool.space no respondió; el saldo viene de Electrum"
+                        text = "No se pudo consultar la cadena. Lo que ves puede estar " +
+                               "desactualizado; vuelve a entrar cuando tengas conexión."
                         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                         typeface = AppTheme.body(context)
-                        setPadding(0, dp(8), 0, 0)
+                        setLineSpacing(0f, 1.4f)
+                        setPadding(0, dp(10), 0, 0)
+                    })
+                } else if (usedFallback) {
+                    ll.addView(TextView(this).apply {
+                        text = "Las APIs web no respondieron; el saldo viene de Electrum"
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                        typeface = AppTheme.body(context)
+                        setPadding(0, dp(10), 0, 0)
                     })
                 }
                 rows.forEach { (lbl, addr, bal, src) ->
@@ -782,9 +804,21 @@ class WalletActivity : FragmentActivity() {
         }
         Thread {
             try {
-                val conn = java.net.URL(if(isTestnet) "https://mempool.space/testnet/api/address/${queryAddrs[0]}/txs" else "https://mempool.space/api/address/${queryAddrs[0]}/txs").openConnection() as java.net.HttpURLConnection
-                conn.connectTimeout = 5000; conn.readTimeout = 5000
-                val arr = JSONArray(try { conn.inputStream.bufferedReader().readText() } finally { conn.disconnect() })
+                val cuerpo = ChainApi.get("/address/${queryAddrs[0]}/txs", isTestnet)
+                if (cuerpo == null) {
+                    // Electrum da la lista de identificadores pero no el detalle
+                    // de cada transacción; reconstruirlo serían N llamadas más.
+                    // Al menos se puede decir CUÁNTAS hay, que es más que nada.
+                    val hist = ElectrumClient.getHistory(queryAddrs[0], isTestnet)
+                    runOnUiThread {
+                        tvHead.text = if (hist.isEmpty())
+                            "No se pudo consultar el historial. Revisa la conexión."
+                        else "${hist.size} transacciones · el detalle necesita mempool.space"
+                        tvHead.setTextColor(AppTheme.WARN)
+                    }
+                    return@Thread
+                }
+                val arr = JSONArray(cuerpo)
                 runOnUiThread {
                     tvHead.text = "${arr.length()} transacciones · ${queryAddrs[0].take(14)}…"
                     if (arr.length() == 0) {

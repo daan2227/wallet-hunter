@@ -20,11 +20,6 @@ import org.json.JSONObject
  */
 object ChainInfo {
 
-    // 5 s era corto para una conexión móvil con latencia; y sobre todo, cuando
-    // mempool.space no se alcanza —hay redes e ISP que lo resuelven a una IP
-    // que no es suya— la espera entera se gastaba para acabar sin nada.
-    private const val TIMEOUT_MS = 8000
-
     /** Comisiones recomendadas, en sat/vB. */
     data class Fees(
         val fastest: Int,   // siguiente bloque
@@ -33,18 +28,6 @@ object ChainInfo {
         val economy: Int,
         val minimum: Int
     )
-
-    private fun base(testnet: Boolean) =
-        if (testnet) "https://mempool.space/testnet/api" else "https://mempool.space/api"
-
-    private fun get(url: String): String {
-        val conn = java.net.URL(url).openConnection() as java.net.HttpURLConnection
-        conn.connectTimeout = TIMEOUT_MS; conn.readTimeout = TIMEOUT_MS
-        return try {
-            if (conn.responseCode != 200) throw java.io.IOException("HTTP ${conn.responseCode}")
-            conn.inputStream.bufferedReader().readText()
-        } finally { conn.disconnect() }
-    }
 
     /**
      * @return null sólo si no respondió NI mempool.space NI ningún Electrum.
@@ -58,7 +41,10 @@ object ChainInfo {
         feesFromMempool(testnet) ?: feesFromElectrum(testnet)
 
     private fun feesFromMempool(testnet: Boolean): Fees? = try {
-        val o = JSONObject(get("${base(testnet)}/v1/fees/recommended"))
+        // Sólo mempool.space tiene /v1/fees/recommended; Esplora a secas no.
+        // Si ese host no va, se cae a Electrum, que estima por bloques.
+        val o = JSONObject(ChainApi.get("/v1/fees/recommended", testnet)
+            ?: throw java.io.IOException("sin respuesta"))
         Fees(
             fastest  = o.optInt("fastestFee", 0),
             halfHour = o.optInt("halfHourFee", 0),
@@ -100,14 +86,13 @@ object ChainInfo {
      *   "no tienes saldo" cuando lo que pasa es que no hay red.
      */
     fun utxos(addr: String, testnet: Boolean = false): List<JSONObject>? {
-        try {
-            val txt = get(
-                if (testnet) "https://mempool.space/testnet/api/address/$addr/utxo"
-                else "https://mempool.space/api/address/$addr/utxo")
-            val arr = org.json.JSONArray(txt)
-            return (0 until arr.length()).map { arr.getJSONObject(it) }
-        } catch (e: Exception) {
-            android.util.Log.w("ChainInfo", "utxos por mempool.space falló: ${e.message}")
+        ChainApi.get("/address/$addr/utxo", testnet)?.let { txt ->
+            try {
+                val arr = org.json.JSONArray(txt)
+                return (0 until arr.length()).map { arr.getJSONObject(it) }
+            } catch (e: Exception) {
+                android.util.Log.w("ChainInfo", "utxos: respuesta ilegible: ${e.message}")
+            }
         }
         return ElectrumClient.listUnspent(addr, testnet)
     }
@@ -121,29 +106,17 @@ object ChainInfo {
      *   enviar" no dice nada.
      */
     fun broadcast(rawHex: String, testnet: Boolean = false): String {
-        try {
-            val url = java.net.URL(
-                if (testnet) "https://mempool.space/testnet/api/tx"
-                else "https://mempool.space/api/tx")
-            val conn = url.openConnection() as java.net.HttpURLConnection
-            conn.requestMethod = "POST"
-            conn.doOutput = true
-            conn.connectTimeout = TIMEOUT_MS; conn.readTimeout = TIMEOUT_MS
-            conn.outputStream.use { it.write(rawHex.toByteArray()) }
-            val code = conn.responseCode
-            val body = try {
-                (if (code == 200) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.readText().orEmpty()
-            } finally { conn.disconnect() }
-            if (code == 200 && body.length == 64) return body
-            // Un 400 de mempool.space es el nodo rechazando la transacción, no
-            // un problema de red: no sirve reintentar por Electrum.
-            if (code != 200 && body.isNotEmpty()) return "ERROR: $body"
-        } catch (e: Exception) {
-            android.util.Log.w("ChainInfo", "broadcast por mempool.space falló: ${e.message}")
+        when (val r = ChainApi.broadcast(rawHex, testnet)) {
+            is ChainApi.Envio.Ok -> return r.txid
+            // Un rechazo es definitivo: todos los nodos aplican las mismas
+            // reglas, así que reintentarlo por Electrum daría lo mismo.
+            is ChainApi.Envio.Rechazada -> return "ERROR: ${r.motivo}"
+            ChainApi.Envio.SinRespuesta -> {}
         }
-        return ElectrumClient.broadcast(rawHex, testnet)
-            ?: "ERROR: no se pudo contactar con ningún nodo para difundirla"
+        val porElectrum = ElectrumClient.broadcast(rawHex, testnet)
+        return porElectrum
+            ?: "ERROR: no se pudo contactar con ningún nodo para difundirla. " +
+               "Revisa la conexión: la transacción está firmada y puedes reintentarlo."
     }
 
     /**
@@ -154,13 +127,9 @@ object ChainInfo {
      *   validez hasta que la cadena la alcanzara.
      */
     fun tipHeight(testnet: Boolean = false): Int? {
-        try {
-            val h = get("${base(testnet)}/blocks/tip/height").trim().toInt()
-            // Por encima de 500.000.000 el campo se interpreta como marca de tiempo.
-            if (h in 1..499_999_999) return h
-        } catch (e: Exception) {
-            android.util.Log.w("ChainInfo", "tipHeight por mempool.space falló: ${e.message}")
-        }
+        // Por encima de 500.000.000 el campo se interpreta como marca de tiempo.
+        ChainApi.get("/blocks/tip/height", testnet)?.trim()?.toIntOrNull()
+            ?.takeIf { it in 1..499_999_999 }?.let { return it }
         return ElectrumClient.tipHeight(testnet)?.takeIf { it in 1..499_999_999 }
     }
 }

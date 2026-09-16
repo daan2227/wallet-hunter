@@ -131,8 +131,20 @@ object MatchVault {
         if (pendientes.isEmpty()) return 0
 
         val saldos = HashMap<String, Long>()
+        // Sin esto, una consulta automática sin cobertura encadena 25 esperas
+        // completas —cada una probando dos APIs web y diez servidores Electrum—
+        // y el hilo se queda minutos dando vueltas para acabar sin nada.
+        var fallosSeguidos = 0
         for (e in pendientes) {
-            val r = BalanceLookup.query(e.addr) ?: continue   // sin respuesta: se reintenta luego
+            val r = BalanceLookup.query(e.addr)
+            if (r == null) {
+                // Tres seguidas es que no hay ruta a la cadena, no que esas tres
+                // direcciones tengan mala suerte. Las que queden se reintentan
+                // la próxima vez, que es lo que ya hacía checkedTs.
+                if (++fallosSeguidos >= 3) break
+                continue
+            }
+            fallosSeguidos = 0
             saldos[e.addr] = r.sat
         }
         if (saldos.isEmpty()) return 0
