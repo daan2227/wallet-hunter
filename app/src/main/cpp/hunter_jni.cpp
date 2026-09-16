@@ -2106,6 +2106,12 @@ Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
  */
 static KangarooCtx g_kg;
 static bool        g_kg_vivo=false;
+/* Lo que hace falta para volver a guardar sin que Kotlin lo repita. */
+static char        g_kg_ruta[1024]={0};
+static uint8_t     g_kg_pub[33], g_kg_ini[32], g_kg_fin[32];
+static int         g_kg_dbits=0;
+/* Operaciones de sesiones anteriores, para que el contador no se reinicie. */
+static uint64_t    g_kg_ops_previas=0;
 static std::vector<pthread_t> g_kg_hilos;
 static std::mutex  g_kg_mtx;
 
@@ -2136,7 +2142,7 @@ static int hex2bin(const char *h,uint8_t *out,int max){
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooStart(
         JNIEnv *env, jobject, jstring jpub, jstring jini, jstring jfin,
-        jint hilos, jint por_hilo){
+        jint hilos, jint por_hilo, jstring jruta){
     std::lock_guard<std::mutex> lk(g_kg_mtx);
     if(g_kg_vivo) return JNI_FALSE;
 
@@ -2169,9 +2175,29 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     }
     if(bits<8) return JNI_FALSE;
     int dbits=bits/4+4; if(dbits<6) dbits=6; if(dbits>32) dbits=32;
-    int tbits=bits/2+2-dbits; if(tbits<14) tbits=14; if(tbits>24) tbits=24;
+    /* Se esperan del orden de 2*raiz(W)/2^dbits distinguidos hasta dar con la
+       clave. La tabla se dimensiona con holgura por encima de eso: si se llena,
+       se dejan de guardar y la busqueda se degrada sin avisar. Antes salia
+       apenas 1,4 veces lo esperado, que es demasiado justo. */
+    int tbits=bits/2+4-dbits; if(tbits<14) tbits=14; if(tbits>20) tbits=20;
 
     if(!kg_setup(&g_kg,pub,ini,fin,dbits,tbits)) return JNI_FALSE;
+
+    /* Recuperar el trabajo de sesiones anteriores, si lo hay y es del mismo
+       puzzle. La cabecera del fichero lo comprueba. */
+    memset(g_kg_ruta,0,sizeof(g_kg_ruta));
+    if(jruta){
+        const char *cr=env->GetStringUTFChars(jruta,0);
+        if(cr){ strncpy(g_kg_ruta,cr,sizeof(g_kg_ruta)-1);
+                env->ReleaseStringUTFChars(jruta,cr); }
+    }
+    memcpy(g_kg_pub,pub,33); memcpy(g_kg_ini,ini,32); memcpy(g_kg_fin,fin,32);
+    g_kg_dbits=dbits; g_kg_ops_previas=0;
+    if(g_kg_ruta[0]){
+        uint64_t ops_ant=0;
+        uint64_t n=dp_load(&g_kg.tabla,g_kg_ruta,pub,ini,fin,dbits,&ops_ant);
+        if(n) g_kg_ops_previas=ops_ant;
+    }
 
     if(hilos<1) hilos=1; if(hilos>16) hilos=16;
     if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
@@ -2194,13 +2220,38 @@ Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
     g_kg.parar.store(1);
     for(auto &t:g_kg_hilos) pthread_join(t,NULL);
     g_kg_hilos.clear();
+    /* Guardar ANTES de liberar: si no, parar tiraba a la basura todo el trabajo
+       de la sesion y la siguiente empezaba de cero. */
+    if(g_kg_ruta[0])
+        dp_save(&g_kg.tabla,g_kg_ruta,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
+                g_kg_ops_previas+(uint64_t)g_kg.saltos.load());
     kg_free(&g_kg);
     g_kg_vivo=false;
 }
 
+/* Guardado periodico. Android puede matar la app sin avisar, y entonces no hay
+ * ocasion de guardar al parar: quien llame a esto cada pocos minutos limita lo
+ * que se puede perder a esos pocos minutos. */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooSave(JNIEnv *, jobject){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(!g_kg_vivo || !g_kg_ruta[0]) return JNI_FALSE;
+    return dp_save(&g_kg.tabla,g_kg_ruta,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
+                   g_kg_ops_previas+(uint64_t)g_kg.saltos.load()) ? JNI_TRUE : JNI_FALSE;
+}
+
+/* Distinguidos en la tabla: es la medida real del trabajo acumulado, y lo que
+ * sobrevive a un reinicio. */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooPoints(JNIEnv *, jobject){
+    return g_kg_vivo ? (jlong)g_kg.tabla.guardados : 0;
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooOps(JNIEnv *, jobject){
-    return g_kg_vivo ? (jlong)g_kg.saltos.load() : 0;
+    /* Incluye lo de sesiones anteriores: el contador mide el trabajo total
+       hecho contra este puzzle, no el de este arranque. */
+    return g_kg_vivo ? (jlong)(g_kg_ops_previas+(uint64_t)g_kg.saltos.load()) : 0;
 }
 
 extern "C" JNIEXPORT jboolean JNICALL

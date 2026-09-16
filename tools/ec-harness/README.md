@@ -61,3 +61,14 @@ ahora los dos casos, aliasado y no.
 **k justo en el extremo inferior.** Entonces `P - a·G` es el punto en el
 infinito, el rebaño salvaje nace muerto y la búsqueda devolvía "no encontrada"
 cuando la respuesta era `a`.
+
+### Reanudar
+
+`persist.cpp` comprueba que guardar y recuperar conserva el trabajo, que un
+fichero de otro puzzle se rechaza en vez de mezclarse —dos tablas distintas
+darían colisiones que no significan nada— y, lo que importa, que tras recuperar
+la búsqueda sigue hasta encontrar la clave.
+
+```sh
+g++ -O2 -o persist persist.cpp -lpthread && ./persist
+```

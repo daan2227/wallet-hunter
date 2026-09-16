@@ -150,6 +150,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzlePubHex: String = ""
     private var puzzleIniHex: String = ""
     private var puzzleFinHex: String = ""
+    private var ultimoGuardadoKg = 0L
+    private var kangarooReinicios = 0
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -4554,16 +4556,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Arranca o para la búsqueda por Kangaroo del puzzle elegido. */
     private fun alternarKangaroo() {
         if (HunterEngine.kangarooRunning()) {
+            // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
             HunterEngine.kangarooStop()
+            prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Buscar con Kangaroo"
-            tvPuzzleAtajo?.text = "Búsqueda detenida."
+            tvPuzzleAtajo?.text = "Detenida. El trabajo queda guardado; " +
+                                  "al volver a darle sigue desde ahí."
+            tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
             return
         }
         if (puzzlePubHex.length != 66) return
         // Un hilo por núcleo menos uno, para que el móvil siga respondiendo.
         val hilos = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+        // Un fichero por puzzle: la clave pública lo identifica sin ambigüedad
+        // y así cambiar de puzzle y volver no pierde nada.
+        val ruta = java.io.File(filesDir, "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
         val ok = try {
-            HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex, hilos, 512)
+            HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,
+                                       hilos, 512, ruta)
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
@@ -4575,6 +4585,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnKangaroo?.text = "Detener Kangaroo"
         tvPuzzleAtajo?.text = "Buscando con Kangaroo en $hilos hilos…"
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+        // El watchdog lo relanza si Android se lo lleva por delante. Con el
+        // trabajo guardado, relanzar continúa donde estaba en vez de empezar.
+        prefs.edit().putBoolean("kangaroo_corriendo", true)
+            .putString("kangaroo_pub", puzzlePubHex)
+            .putString("kangaroo_ini", puzzleIniHex)
+            .putString("kangaroo_fin", puzzleFinHex).apply()
     }
 
     /** Se llama desde updateUI(): progreso y resultado. */
@@ -4593,14 +4609,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
             }
             HunterEngine.kangarooStop()
+            prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Buscar con Kangaroo"
             tv.text = "CLAVE ENCONTRADA\n$clave\nGuardada en el baúl de hallazgos."
             tv.setTextColor(AppTheme.ACCENT)
             return
         }
-        if (!HunterEngine.kangarooRunning()) return
+        if (!HunterEngine.kangarooRunning()) {
+            // ── WATCHDOG DE KANGAROO ──────────────────────────────────────
+            // El del escáner ya cubre el puzzle por fuerza bruta, porque
+            // doToggle es el mismo para los dos. Kangaroo corre en sus propios
+            // hilos y no pasa por ahí: si Android se los lleva, nadie los
+            // relanzaba. Con el trabajo guardado, relanzar continúa.
+            if (watchdogEnabled && prefs.getBoolean("kangaroo_corriendo", false)
+                && puzzlePubHex.length == 66) {
+                kangarooReinicios++
+                alternarKangaroo()
+            }
+            return
+        }
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
-        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones"
+        val dps = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
+        // Guardar cada pocos minutos: si el sistema mata la app no hay ocasión
+        // de guardar al parar, y se perdería todo lo de esta sesión.
+        val ahora = System.currentTimeMillis()
+        if (ahora - ultimoGuardadoKg > 120_000L) {
+            ultimoGuardadoKg = ahora
+            Thread { try { HunterEngine.kangarooSave() } catch (e: Throwable) {} }.start()
+        }
+        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones · " +
+                  "${numberFmt.format(dps)} puntos guardados" +
+                  (if (kangarooReinicios > 0) " · $kangarooReinicios reinicios" else "")
     }
 
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {

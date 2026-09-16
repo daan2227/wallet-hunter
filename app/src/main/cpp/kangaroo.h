@@ -37,6 +37,7 @@
  */
 #include "jac_batch.h"
 #include <stdlib.h>
+#include <stdio.h>
 #include <pthread.h>
 #include <atomic>
 
@@ -180,6 +181,92 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
     }
     pthread_mutex_unlock(&t->mtx);
     return res;
+}
+
+/* ---------- Guardar y recuperar el trabajo hecho ----------
+ *
+ * Lo que hay que conservar entre sesiones NO son los canguros, es la TABLA DE
+ * DISTINGUIDOS. Ahi esta todo el trabajo: cada entrada es un punto por el que ya
+ * paso alguien, con su distancia. Si se conserva, un rebano nuevo puede chocar
+ * con un distinguido viejo y resolver el problema igual.
+ *
+ * Volver a soltar los canguros cuesta llegar al siguiente distinguido, unos 2^D
+ * saltos. Frente a las 2^35 operaciones que lleva el conjunto, eso es nada.
+ *
+ * La cabecera lleva la clave publica y el rango: si no coinciden, el fichero es
+ * de OTRO puzzle y se ignora. Mezclar dos tablas daria colisiones que no
+ * significan nada. */
+
+#define KG_MAGIC 0x474E414BU   /* "KANG" */
+#define KG_VER   1u
+
+typedef struct {
+    uint32_t magic, ver;
+    uint8_t  pub[33], ini[32], fin[32];
+    uint32_t dbits;
+    uint64_t ops;
+    uint64_t n;
+} KgCab;
+
+/* Se escribe en un fichero aparte y se renombra al final: si el sistema mata la
+ * app a mitad, el guardado anterior sigue entero en vez de quedar a medias. */
+static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
+                   const uint8_t *ini,const uint8_t *fin,int dbits,uint64_t ops){
+    if(!ruta||!ruta[0]) return 0;
+    char tmp[1024];
+    snprintf(tmp,sizeof(tmp),"%s.tmp",ruta);
+    FILE *f=fopen(tmp,"wb");
+    if(!f) return 0;
+    pthread_mutex_lock(&t->mtx);
+    KgCab c;
+    memset(&c,0,sizeof(c));
+    c.magic=KG_MAGIC; c.ver=KG_VER; c.dbits=(uint32_t)dbits; c.ops=ops;
+    memcpy(c.pub,pub,33); memcpy(c.ini,ini,32); memcpy(c.fin,fin,32);
+    c.n=t->guardados;
+    int ok=(fwrite(&c,sizeof(c),1,f)==1);
+    uint64_t escritas=0;
+    if(ok) for(uint64_t i=0;i<=t->mask;i++){
+        DP *sl=&t->slots[i];
+        if(!sl->usado) continue;
+        if(fwrite(sl->kx,8,2,f)!=2){ ok=0; break; }
+        if(fwrite(sl->dist,8,4,f)!=4){ ok=0; break; }
+        if(fwrite(&sl->manso,1,1,f)!=1){ ok=0; break; }
+        escritas++;
+    }
+    pthread_mutex_unlock(&t->mtx);
+    fclose(f);
+    if(!ok||escritas!=c.n){ remove(tmp); return 0; }
+    if(rename(tmp,ruta)!=0){ remove(tmp); return 0; }
+    return 1;
+}
+
+/* @return numero de entradas recuperadas, 0 si el fichero no sirve. */
+static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
+                        const uint8_t *ini,const uint8_t *fin,int dbits,uint64_t *ops){
+    if(!ruta||!ruta[0]) return 0;
+    FILE *f=fopen(ruta,"rb");
+    if(!f) return 0;
+    KgCab c;
+    if(fread(&c,sizeof(c),1,f)!=1){ fclose(f); return 0; }
+    /* Todo tiene que cuadrar: otro puzzle, otro rango u otro criterio de
+       distinguido hacen que las entradas no signifiquen lo mismo. */
+    if(c.magic!=KG_MAGIC || c.ver!=KG_VER || c.dbits!=(uint32_t)dbits ||
+       memcmp(c.pub,pub,33)!=0 || memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){
+        fclose(f); return 0;
+    }
+    uint64_t leidas=0;
+    for(uint64_t i=0;i<c.n;i++){
+        uint64_t kx[2]; sc_t d; uint8_t manso;
+        if(fread(kx,8,2,f)!=2) break;
+        if(fread(d,8,4,f)!=4) break;
+        if(fread(&manso,1,1,f)!=1) break;
+        sc_t basura; int bm;
+        dp_insert(t,kx,d,manso,basura,&bm);
+        leidas++;
+    }
+    fclose(f);
+    if(ops) *ops=c.ops;
+    return leidas;
 }
 
 /* ---------- Contexto de la busqueda ---------- */

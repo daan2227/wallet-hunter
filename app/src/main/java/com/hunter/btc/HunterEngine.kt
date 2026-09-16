@@ -62,12 +62,24 @@ object HunterEngine {
      * @param finHex fin del rango
      * @return false si la clave pública no es válida o ya hay una búsqueda
      */
+    /**
+     * @param rutaEstado fichero donde guardar y de donde recuperar el trabajo.
+     *   Lo que se conserva es la tabla de puntos distinguidos, que es DONDE
+     *   está el progreso: los canguros se vuelven a soltar y eso cuesta nada.
+     *   La cabecera lleva la clave pública y el rango, así que un fichero de
+     *   otro puzzle se ignora en vez de mezclarse.
+     */
     external fun kangarooStart(pubHex: String, iniHex: String, finHex: String,
-                               hilos: Int, canguresPorHilo: Int): Boolean
+                               hilos: Int, canguresPorHilo: Int,
+                               rutaEstado: String): Boolean
     external fun kangarooStop()
     /** Operaciones de grupo hechas: es lo que se compara con raíz(W). */
     external fun kangarooOps(): Long
     external fun kangarooRunning(): Boolean
     /** Clave privada en hex de 64 caracteres, o "" si todavía no está. */
     external fun kangarooResult(): String
+    /** Guarda el trabajo ahora mismo. Android puede matar la app sin avisar. */
+    external fun kangarooSave(): Boolean
+    /** Puntos distinguidos acumulados: el trabajo que sobrevive a un reinicio. */
+    external fun kangarooPoints(): Long
 }
