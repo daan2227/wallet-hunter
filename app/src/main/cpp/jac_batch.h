@@ -53,32 +53,36 @@ static void fe_add(fe_t r,const fe_t a,const fe_t b){
         }
     }
 }
-/* fe_mul optimizado con umulh para ARM64 - evita __uint128_t */
+/* Multiplicacion modular.
+ *
+ * ESTABA MAL. La version anterior traia asm a mano "para evitar __uint128_t" y
+ * sumaba `lo` DOS VECES: una en C (t[i+j] = old + lo + c) y otra en el propio
+ * asm (adds %0, %0, %2 con %2 = lo). Ademas tiraba el acarreo de salida de la
+ * primera suma. Resultado: 2*3 daba 12 en vez de 6.
+ *
+ * Como fe_mul es la base de jp_add_G y de la normalizacion por lotes, el modo
+ * puzzle y el modo clave directa llevaban todo este tiempo calculando claves
+ * publicas que no corresponden a la privada que dicen estar probando. No se
+ * notaba porque "no encontrar nada" es justo lo que se espera de los dos.
+ *
+ * Aqui va con __uint128_t, que en ARM64 el compilador traduce exactamente a
+ * mul + umulh: lo que el asm intentaba hacer, pero bien. */
 static void fe_mul(fe_t r,const fe_t a,const fe_t b){
+    /* Escolar 4x4 -> 8 limbs. El maximo de cada paso es
+       (2^64-1) + (2^64-1)^2 + (2^64-1) = 2^128-1, asi que cabe en 128 bits y
+       el acarreo nunca pasa de 64. */
     uint64_t t[8]={0};
-    /* Schoolbook 4x4 usando umulh para el high word */
     for(int i=0;i<4;i++){
-        uint64_t c=0;
+        uint64_t carry=0;
         for(int j=0;j<4;j++){
-            uint64_t lo,hi;
-            /* mul: lo = a[i]*b[j], hi = mulhi(a[i],b[j]) */
-            __asm__("mul %0, %2, %3\n"
-                    "umulh %1, %2, %3"
-                    : "=&r"(lo), "=&r"(hi)
-                    : "r"(a[i]), "r"(b[j]));
-            /* accumulate into t[i+j] with carry */
-            uint64_t old = t[i+j];
-            t[i+j] = old + lo + c;
-            c = hi + (t[i+j] < old ? 1 : 0) + (lo > t[i+j]-c ? 1 : 0);
-            /* simpler: just use carry from addition */
-            c = hi;
-            __asm__("adds %0, %0, %2\n"
-                    "adc %1, %1, xzr"
-                    : "+r"(t[i+j]), "+r"(c)
-                    : "r"(lo + (i+j>0 ? 0 : 0)));
+            __uint128_t cur=(__uint128_t)a[i]*b[j]+t[i+j]+carry;
+            t[i+j]=(uint64_t)cur;
+            carry=(uint64_t)(cur>>64);
         }
-        t[i+4]+=c;
+        /* t[i+4] no se ha tocado todavia en esta pasada. */
+        t[i+4]=carry;
     }
+    /* Reduccion mod p usando 2^256 == 0x1000003D1 (mod p). */
     const uint64_t C=0x1000003D1ULL;
     uint64_t carry=0;
     for(int i=0;i<4;i++){
@@ -88,7 +92,7 @@ static void fe_mul(fe_t r,const fe_t a,const fe_t b){
     if(carry){
         __uint128_t p2=(__uint128_t)carry*C+t[0];
         t[0]=(uint64_t)p2;uint64_t c2=(uint64_t)(p2>>64);
-        for(int i=1;i<4&&c2;i++){t[i]+=c2;c2=(t[i]<c2)?1:0;}
+        for(int i=1;i<4&&c2;i++){uint64_t o=t[i];t[i]=o+c2;c2=(t[i]<o)?1:0;}
     }
     if(fe_cmp(t,FP)>=0){
         uint64_t borrow=0;

@@ -812,8 +812,12 @@ static PuzzleBatchCtx g_pbctx;
 
 static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
     PuzzleBatchCtx *c=(PuzzleBatchCtx*)raw;
-    uint8_t sha[32],h160[HASH160_BYTES];
-    SHA256(pub33,33,sha); RIPEMD160(sha,32,h160);
+    uint8_t h160[HASH160_BYTES];
+    /* Llamaba a SHA256() y RIPEMD160() de OpenSSL, que montan y desmontan su
+       contexto en cada llamada: para 33 bytes ese armazon pesa mas que el
+       hash. El worker de clave directa ya usaba hash160_inline; el del puzzle
+       se habia quedado atras. */
+    hash160_inline(pub33,h160);
     c->done++;
     /* Muestra de direcciones para la UI. Estaba cada 500 claves, lo que a
        1M/s son 2000 codificaciones Base58 por segundo — cada una con doble
