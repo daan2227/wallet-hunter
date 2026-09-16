@@ -4844,6 +4844,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putString("kangaroo_fin", puzzleFinHex).apply()
     }
 
+    /**
+     * Un worker del cluster ha encontrado la clave y lo ha avisado.
+     *
+     * Hace falta este camino además del intercambio de tablas. Cuando un
+     * aparato cierra la colisión en su propia tabla, la entrada que la cierra no
+     * llega a guardarse —dp_insert avisa y sale sin escribirla—, así que por
+     * muchos puntos que mande, aquí sólo llega media pareja y la cuenta no se
+     * puede repetir. Está comprobado en tools/ec-harness/reparte.cpp, prueba 4.
+     *
+     * Se guarda antes de tocar nada de la pantalla: si la app muere justo aquí,
+     * la clave no puede perderse.
+     */
+    private fun mostrarClaveDeWorker(dispositivo: String, claveHex: String) {
+        try {
+            MatchVault.add(this, MatchVault.Entry(
+                ts = System.currentTimeMillis(), source = "kangaroo",
+                addr = "", wif = "", privHex = claveHex, btc = 0.0,
+                extra = "PUZZLE kangaroo (red, desde $dispositivo)", checkedTs = 0L))
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
+        }
+        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+        prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
+        btnKangaroo?.text = "Buscar con Kangaroo"
+        tvPuzzleAtajo?.text = "CLAVE ENCONTRADA en $dispositivo\n$claveHex\n" +
+                              "Guardada en el baúl de hallazgos."
+        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+        try { sendMatchNotification("(puzzle por red)", claveHex) } catch (e: Throwable) {}
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     private fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -4970,13 +5000,40 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 .show()
             return
         }
-        NetworkManager.startMaster(this, pnum, start, end)
+        // Si este puzzle tiene la clave pública publicada, se reparte Kangaroo,
+        // que es seis órdenes de magnitud mejor que la fuerza bruta. Y entonces
+        // NO se parte el rango: con Kangaroo partirlo empeora la búsqueda. Lo
+        // que se reparte es la tabla de puntos distinguidos.
+        val conKangaroo = puzzlePubHex.length == 66 &&
+                          puzzleIniHex.isNotEmpty() && puzzleFinHex.isNotEmpty()
+        if (conKangaroo) {
+            // El master tiene que estar buscando él también: los puntos que
+            // llegan de los workers se meten en SU tabla, y es ahí donde
+            // aparece la colisión entre dos móviles.
+            if (!HunterEngine.kangarooRunning()) alternarKangaroo()
+            NetworkManager.startMasterKangaroo(this, pnum, puzzlePubHex,
+                                               puzzleIniHex, puzzleFinHex)
+            NetworkManager.onClave = { dispositivo, claveHex ->
+                runOnUiThread { mostrarClaveDeWorker(dispositivo, claveHex) }
+            }
+        } else {
+            NetworkManager.startMaster(this, pnum, start, end)
+        }
+
+        val explicacion = if (conKangaroo)
+            "Reparto de Kangaroo: todos los aparatos buscan el MISMO rango y " +
+            "juntan aquí sus puntos. Partir el rango empeoraría la búsqueda.\n\n" +
+            "AVISO: lo que viaja permite reconstruir la clave privada. Úsalo " +
+            "sólo en tu propia red."
+        else
+            "Reparto por bloques: cada aparato recibe un trozo del rango."
+
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Master activo — Puzzle #$pnum")
             .setMessage("Código de acceso:\n\n${NetworkManager.authToken}\n\n" +
                         "Introdúcelo en cada worker. Sin él el master rechaza la " +
                         "conexión.\n\nEscucha en el puerto ${NetworkManager.TCP_PORT} " +
-                        "de esta red. Úsalo sólo en una red de confianza.")
+                        "de esta red.\n\n$explicacion")
             .setPositiveButton("Copiar código") { _, _ ->
                 (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                     .setPrimaryClip(android.content.ClipData.newPlainText(

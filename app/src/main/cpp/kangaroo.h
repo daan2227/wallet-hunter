@@ -129,6 +129,13 @@ typedef struct {
     sc_t     dist;
     uint8_t  manso;   /* 1 manso, 0 salvaje */
     uint8_t  usado;
+    /* Ya se ha mandado por la red. Sirve para que cada envio lleve solo lo
+       nuevo en vez de la tabla entera. Un punto ya mandado no se vuelve a
+       mandar aunque se reciba de otro sitio: da igual quien lo tenga, lo que
+       importa es que el master lo tenga una vez.
+       El struct ya ocupaba 56 bytes por alineacion, asi que este byte es
+       gratis. */
+    uint8_t  enviado;
 } DP;
 
 typedef struct {
@@ -466,6 +473,193 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
 
 static void kg_free(KangarooCtx *c){ dp_free(&c->tabla); }
 
+/* ---------- Resolver una colision ----------
+ *
+ * Dos canguros de rebanos distintos han caido en el mismo punto. El manso va
+ * por d_manso*G desde el origen; el salvaje por P' + d_salvaje*G. Si estan en
+ * el mismo sitio, P' = (d_manso - d_salvaje)*G, o sea la clave es esa resta.
+ *
+ * Estaba dentro de kg_run. Se saca porque ahora hay DOS sitios que encuentran
+ * colisiones: los canguros de este movil, y los puntos que llegan por la red de
+ * otro. La cuenta es la misma y no debe haber dos copias de ella.
+ *
+ * Se comprueba SIEMPRE antes de cantar victoria: kp*G tiene que dar exactamente
+ * el objetivo. Dos caminos que se cruzan sin pegarse dan una resta que parece
+ * buena y no lo es.
+ *
+ * @return 1 si la clave era buena y queda guardada en c->k.
+ */
+static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
+                       const sc_t d_otro){
+    sc_t manso,salvaje;
+    if(manso_mio){ sc_copy(manso,d_mio); sc_copy(salvaje,d_otro); }
+    else         { sc_copy(manso,d_otro); sc_copy(salvaje,d_mio); }
+    sc_t kp;
+    if(!sc_sub(kp,manso,salvaje)) return 0;
+    if(sc_cmp(kp,c->ancho)>0) return 0;
+    JP chk; kg_scalar_mul(&chk,kp,FIELD_GX,FIELD_GY);
+    int inf=1; for(int z=0;z<4;z++) if(chk.z[z]) inf=0;
+    if(inf) return 0;
+    fe_t cx,cy; kg_normalize(&chk,cx,cy);
+    if(memcmp(cx,c->obj_x,32)!=0 || memcmp(cy,c->obj_y,32)!=0) return 0;
+    sc_t kfinal; sc_add(kfinal,kp,c->rango_ini);
+    sc_copy(c->k,kfinal);
+    c->encontrado.store(1);
+    return 1;
+}
+
+/* ---------- Reparto por red ----------
+ *
+ * POR QUE SE COMPARTE LA TABLA Y NO EL RANGO.
+ *
+ * Con fuerza bruta, partir el rango en N trozos y dar uno a cada movil divide
+ * el tiempo entre N: el coste es O(W) y cada uno hace W/N.
+ *
+ * Con Kangaroo no, porque el coste es O(raiz(W)). Partir el intervalo en N deja
+ * cada trozo en raiz(W/N), pero hay que recorrer varios trozos porque no se
+ * sabe en cual esta la clave: de media sale peor que no partir nada. Con N=2 el
+ * coste esperado es 1,06*raiz(W) frente a 1,00 de un solo aparato; con N=8, 1,59.
+ * O sea: repartir el rango EMPEORA la busqueda.
+ *
+ * Lo que si funciona es lo que ya hacen los hilos dentro de un movil: TODOS en
+ * el MISMO intervalo, compartiendo una tabla de distinguidos. Asi el reparto es
+ * casi lineal, porque la colision se encuentra N veces antes.
+ *
+ * Entre aparatos es lo mismo: cada uno camina el intervalo entero con sus
+ * propios canguros y manda al master los distinguidos que va encontrando. El
+ * master los mete todos en una sola tabla, y ahi aparece la colision aunque las
+ * dos mitades vengan de moviles distintos.
+ *
+ * AVISO: lo que viaja son pares (punto, distancia). Dos de rebanos distintos que
+ * coincidan DAN LA CLAVE. Es material de clave, y no hay forma de evitarlo sin
+ * perder el beneficio entero. Va con codigo de acceso y pensado para una red
+ * propia; no lo uses en una red que no controles.
+ */
+
+#define KG_NET_MAGIC 0x5044474BU   /* "KGDP" */
+#define KG_NET_VER   1u
+/* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
+   struct, para que el relleno del compilador no forme parte del formato. */
+#define KG_NET_CAB   (4+4+33+32+32+4+4)
+#define KG_NET_ENT   (16+32+1)     /* kx[2], dist[4], manso */
+
+static void kg_put32(uint8_t *p,uint32_t v){
+    p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24);
+}
+static uint32_t kg_get32(const uint8_t *p){
+    return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
+}
+static void kg_put64(uint8_t *p,uint64_t v){
+    for(int i=0;i<8;i++) p[i]=(uint8_t)(v>>(8*i));
+}
+static uint64_t kg_get64(const uint8_t *p){
+    uint64_t v=0; for(int i=0;i<8;i++) v|=((uint64_t)p[i])<<(8*i); return v;
+}
+
+/* Cuantos bytes ocupa un envio de n entradas. Lo usa quien reserva el buffer. */
+static size_t kg_export_bytes(uint32_t n){ return KG_NET_CAB+(size_t)n*KG_NET_ENT; }
+
+/* Vuelca a `buf` los distinguidos que aun no se han mandado y los marca.
+ *
+ * @param max_ent tope de entradas por envio, para que un mensaje no se haga
+ *                enorme. Lo que no quepa sale en el siguiente.
+ * @return bytes escritos, o 0 si no habia nada nuevo o no cabia la cabecera.
+ */
+static size_t kg_export(DPTable *t,const uint8_t *pub,const uint8_t *ini,
+                        const uint8_t *fin,int dbits,
+                        uint8_t *buf,size_t cap,uint32_t max_ent){
+    if(!buf || cap<KG_NET_CAB) return 0;
+    uint32_t caben=(uint32_t)((cap-KG_NET_CAB)/KG_NET_ENT);
+    if(max_ent && caben>max_ent) caben=max_ent;
+    if(caben==0) return 0;
+
+    uint8_t *p=buf+KG_NET_CAB;
+    uint32_t n=0;
+    pthread_mutex_lock(&t->mtx);
+    for(uint64_t i=0;i<=t->mask && n<caben;i++){
+        DP *s=&t->slots[i];
+        if(!s->usado || s->enviado) continue;
+        kg_put64(p,s->kx[0]); kg_put64(p+8,s->kx[1]);
+        for(int w=0;w<4;w++) kg_put64(p+16+8*w,s->dist[w]);
+        p[48]=s->manso;
+        p+=KG_NET_ENT;
+        s->enviado=1;
+        n++;
+    }
+    pthread_mutex_unlock(&t->mtx);
+    if(n==0) return 0;
+
+    kg_put32(buf,KG_NET_MAGIC);
+    kg_put32(buf+4,KG_NET_VER);
+    memcpy(buf+8,pub,33);
+    memcpy(buf+41,ini,32);
+    memcpy(buf+73,fin,32);
+    kg_put32(buf+105,(uint32_t)dbits);
+    kg_put32(buf+109,n);
+    return KG_NET_CAB+(size_t)n*KG_NET_ENT;
+}
+
+/* Mete en la tabla los distinguidos que vienen de otro aparato.
+ *
+ * La cabecera tiene que cuadrar del todo —mismo puzzle, mismo rango, mismo
+ * criterio de distinguido—: si no, las entradas no significan lo mismo y
+ * mezclarlas daria colisiones que no dicen nada. Es la misma comprobacion que
+ * hace dp_load con el fichero de guardado, y por el mismo motivo.
+ *
+ * Los que entran se marcan como YA ENVIADOS: vienen de fuera, asi que
+ * reenviarlos solo seria devolverle al master lo que ya tiene.
+ *
+ * @param n_ok si no es NULL, cuantas entradas se han metido.
+ * @return 1 si el bloque era valido, 0 si se rechaza entero.
+ */
+static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
+                     const uint8_t *fin,int dbits,
+                     const uint8_t *buf,size_t len,uint32_t *n_ok){
+    if(n_ok) *n_ok=0;
+    if(!buf || len<KG_NET_CAB) return 0;
+    if(kg_get32(buf)!=KG_NET_MAGIC || kg_get32(buf+4)!=KG_NET_VER) return 0;
+    if(memcmp(buf+8,pub,33)!=0)  return 0;
+    if(memcmp(buf+41,ini,32)!=0) return 0;
+    if(memcmp(buf+73,fin,32)!=0) return 0;
+    if(kg_get32(buf+105)!=(uint32_t)dbits) return 0;
+
+    uint32_t n=kg_get32(buf+109);
+    /* El mensaje viene de fuera: no fiarse de `n`. Tiene que cuadrar con el
+       tamano real, o el bucle leeria fuera del buffer. */
+    if((size_t)n>(len-KG_NET_CAB)/KG_NET_ENT) return 0;
+
+    const uint8_t *p=buf+KG_NET_CAB;
+    uint32_t metidas=0;
+    for(uint32_t i=0;i<n;i++,p+=KG_NET_ENT){
+        uint64_t kx[2]; sc_t d;
+        kx[0]=kg_get64(p); kx[1]=kg_get64(p+8);
+        for(int w=0;w<4;w++) d[w]=kg_get64(p+16+8*w);
+        int manso=p[48]?1:0;
+
+        sc_t otro; int otro_manso;
+        if(dp_insert(&c->tabla,kx,d,manso,otro,&otro_manso)){
+            /* Colision. Puede ser contra un punto de este movil o contra otro
+               que llego antes por la red: da igual, la cuenta es la misma. */
+            kg_resolver(c,d,manso,otro);
+        }
+        /* Marcarlo como ya enviado para no devolverlo. dp_insert no lo sabe,
+           asi que se busca el hueco donde ha quedado. */
+        pthread_mutex_lock(&c->tabla.mtx);
+        {
+            uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&c->tabla.mask;
+            for(uint64_t j=0;j<=c->tabla.mask;j++){
+                DP *s=&c->tabla.slots[(h+j)&c->tabla.mask];
+                if(!s->usado) break;
+                if(s->kx[0]==kx[0] && s->kx[1]==kx[1]){ s->enviado=1; break; }
+            }
+        }
+        pthread_mutex_unlock(&c->tabla.mtx);
+        metidas++;
+    }
+    if(n_ok) *n_ok=metidas;
+    return 1;
+}
+
 /* Un canguro: donde esta y cuanto lleva recorrido.
  *
  * EN AFIN, no en Jacobiano. El bucle anterior sumaba en Jacobiano y despues
@@ -588,28 +782,8 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                posicion ACTUAL, antes de saltar. */
             if((K[i].x[0]&c->dmask)==0){
                 sc_t otro; int otro_manso;
-                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,otro,&otro_manso)){
-                    sc_t manso,salvaje;
-                    if(K[i].manso){ sc_copy(manso,K[i].dist); sc_copy(salvaje,otro); }
-                    else          { sc_copy(manso,otro);      sc_copy(salvaje,K[i].dist); }
-                    sc_t kp;
-                    if(sc_sub(kp,manso,salvaje) && sc_cmp(kp,c->ancho)<=0){
-                        /* Se comprueba antes de cantar victoria: kp*G tiene que
-                           dar exactamente el objetivo trasladado. Dos caminos
-                           que se cruzan sin pegarse dan una resta que parece
-                           buena y no lo es. */
-                        JP chk; kg_scalar_mul(&chk,kp,FIELD_GX,FIELD_GY);
-                        int chk_inf=1; for(int z=0;z<4;z++) if(chk.z[z]) chk_inf=0;
-                        if(!chk_inf){
-                            fe_t cx,cy; kg_normalize(&chk,cx,cy);
-                            if(memcmp(cx,c->obj_x,32)==0 && memcmp(cy,c->obj_y,32)==0){
-                                sc_t kfinal; sc_add(kfinal,kp,c->rango_ini);
-                                sc_copy(c->k,kfinal);
-                                c->encontrado.store(1);
-                            }
-                        }
-                    }
-                }
+                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,otro,&otro_manso))
+                    kg_resolver(c,K[i].dist,K[i].manso,otro);
             }
 
             /* Suma afin: lambda = (y2-y1)/(x2-x1), x3 = lambda^2-x1-x2,

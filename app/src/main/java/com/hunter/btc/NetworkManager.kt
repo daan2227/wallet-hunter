@@ -76,16 +76,59 @@ object NetworkManager {
         var block:   String = ""
     )
 
+    /**
+     * Qué se reparte.
+     *
+     * - [BLOQUES] es fuerza bruta: el rango se parte en trozos y cada worker se
+     *   come uno. Es lo correcto ahí, porque el coste es O(W) y partirlo entre
+     *   N divide el tiempo entre N.
+     *
+     * - [KANGAROO] **no parte nada**. Con Kangaroo el coste es O(raíz(W)), y
+     *   partir el intervalo lo EMPEORA: cada trozo cuesta raíz(W/N) pero hay
+     *   que recorrer varios porque no se sabe en cuál está la clave. Con dos
+     *   aparatos sale 1,06·raíz(W) frente a 1,00 con uno solo; con ocho, 1,59.
+     *   Lo que se reparte es la tabla de puntos distinguidos: todos caminan el
+     *   MISMO intervalo y mandan sus puntos al master, que los junta. Así la
+     *   colisión aparece aunque sus dos mitades estén en móviles distintos.
+     */
+    enum class Modo { BLOQUES, KANGAROO }
+
     // ── Estado ────────────────────────────────────────────────────────────────
     var isMaster  = false
     var isWorker  = false
     val isRunning = AtomicBoolean(false)
+    @Volatile var modo = Modo.BLOQUES
     val globalScannedBlocks = ConcurrentHashMap.newKeySet<String>()
     var onBlockScanned: ((String, Int) -> Unit)? = null  // blockId, puzzleNum
     var deviceId  = ""
     var onLog:     ((String) -> Unit)? = null
     var onWorkers: ((List<NetWorker>) -> Unit)? = null
     var onBlock:   ((NetBlock) -> Unit)? = null  // worker recibe bloque
+
+    /**
+     * IP del master, fijada al conectar.
+     *
+     * Antes se leía de unas prefs "net_prefs"/"master_ip" **que no escribía
+     * nadie**: el worker recibía su primer bloque y ya no volvía a hablar con el
+     * master nunca más, porque no sabía a dónde. Aquí la guarda quien se conecta,
+     * que es el único que la conoce con seguridad.
+     */
+    @Volatile var masterIp: String = ""
+        private set
+
+    /** El worker recibe el encargo de Kangaroo: (pubHex, iniHex, finHex, puzzle). */
+    var onKangaroo: ((String, String, String, Int) -> Unit)? = null
+    /** El master recibe una clave que ha encontrado un worker. */
+    var onClave: ((String, String) -> Unit)? = null   // (deviceId, claveHex)
+    /** Puntos distinguidos recibidos de los workers, para enseñarlo. */
+    val puntosRecibidos = java.util.concurrent.atomic.AtomicLong(0)
+
+    // El encargo en curso. Antes viajaba como parámetros de handleWorkerConnection
+    // capturados en el lambda; con Kangaroo son cuatro valores y se lía.
+    @Volatile private var jobPuzzle = 0
+    @Volatile private var jobIni    = ""
+    @Volatile private var jobFin    = ""
+    @Volatile private var jobPub    = ""
 
     private val workers     = ConcurrentHashMap<String, NetWorker>()
     private val assignedBlocks = ConcurrentHashMap<String, NetBlock>()
@@ -99,14 +142,39 @@ object NetworkManager {
     private var udpSocket:    DatagramSocket? = null
 
     // ── Master ────────────────────────────────────────────────────────────────
-    fun startMaster(ctx: Context, puzzleNum: Int, rangeStart: String, rangeEnd: String) {
+    fun startMaster(ctx: Context, puzzleNum: Int, rangeStart: String, rangeEnd: String) =
+        arrancarMaster(ctx, Modo.BLOQUES, puzzleNum, rangeStart, rangeEnd, "")
+
+    /**
+     * Master repartiendo Kangaroo.
+     *
+     * A diferencia del modo de bloques, aquí **no se parte el rango**: a todos
+     * los workers se les manda el intervalo entero y la misma clave pública. Lo
+     * que se junta son sus tablas de puntos distinguidos.
+     *
+     * Este aparato tiene que tener su propia búsqueda de Kangaroo en marcha:
+     * los puntos que llegan se meten en SU tabla, y es ahí donde aparece la
+     * colisión entre dos móviles.
+     */
+    fun startMasterKangaroo(ctx: Context, puzzleNum: Int, pubHex: String,
+                            iniHex: String, finHex: String) =
+        arrancarMaster(ctx, Modo.KANGAROO, puzzleNum, iniHex, finHex, pubHex)
+
+    private fun arrancarMaster(ctx: Context, m: Modo, puzzleNum: Int,
+                               rangeStart: String, rangeEnd: String, pubHex: String) {
         isMaster = true; isWorker = false
         isRunning.set(true)
+        modo = m
+        jobPuzzle = puzzleNum; jobIni = rangeStart; jobFin = rangeEnd; jobPub = pubHex
+        puntosRecibidos.set(0)
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = generateToken()
-        log("Master iniciado — Puzzle #$puzzleNum")
+        log("Master iniciado — Puzzle #$puzzleNum (${if (m == Modo.KANGAROO) "Kangaroo" else "bloques"})")
         log("Código de acceso: $authToken")
-        log("Rango: $rangeStart → $rangeEnd")
+        if (m == Modo.KANGAROO)
+            log("Todos al mismo rango: $rangeStart → $rangeEnd")
+        else
+            log("Rango: $rangeStart → $rangeEnd")
 
         // Servidor TCP
         executor.submit {
@@ -115,7 +183,7 @@ object NetworkManager {
                 log("Escuchando en puerto $TCP_PORT")
                 while (isRunning.get()) {
                     val client = serverSocket?.accept() ?: break
-                    executor.submit { handleWorkerConnection(client, puzzleNum, rangeStart, rangeEnd) }
+                    executor.submit { handleWorkerConnection(client) }
                 }
             } catch (e: Exception) {
                 if (isRunning.get()) log("Error servidor: ${e.message}")
@@ -126,8 +194,10 @@ object NetworkManager {
         executor.submit { broadcastBeacon(ctx) }
     }
 
-    private fun handleWorkerConnection(socket: Socket, puzzleNum: Int,
-                                        rangeStart: String, rangeEnd: String) {
+    private fun handleWorkerConnection(socket: Socket) {
+        val puzzleNum = jobPuzzle
+        val rangeStart = jobIni
+        val rangeEnd = jobFin
         val workerId = socket.inetAddress.hostAddress ?: return
         try {
             socket.soTimeout = SOCKET_TIMEOUT_MS
@@ -155,17 +225,72 @@ object NetworkManager {
                     log("Worker conectado: $device ($workerId)")
                     notifyWorkers()
 
-                    // Asignar bloque
-                    val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
-                    worker.block = block.blockId
+                    if (modo == Modo.KANGAROO) {
+                        // Mismo intervalo para todos: en Kangaroo repartir el
+                        // rango empeora la búsqueda en vez de acelerarla.
+                        worker.block = "kangaroo"
+                        worker.status = "kangaroo"
+                        writer.println(JSONObject().apply {
+                            put("type",   "KANG")
+                            put("pub",    jobPub)
+                            put("start",  rangeStart)
+                            put("end",    rangeEnd)
+                            put("puzzle", puzzleNum)
+                        }.toString())
+                        log("Encargo Kangaroo enviado a $device (rango completo)")
+                    } else {
+                        // Asignar bloque
+                        val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
+                        worker.block = block.blockId
+                        writer.println(JSONObject().apply {
+                            put("type",  "BLOCK")
+                            put("block_id",  block.blockId)
+                            put("start", block.rangeStart)
+                            put("end",   block.rangeEnd)
+                            put("puzzle", block.puzzleNum)
+                        }.toString())
+                        log("Bloque ${block.blockId} asignado a $device")
+                    }
+                }
+                "DP" -> {
+                    // Puntos distinguidos de un worker. Van a la tabla de ESTE
+                    // aparato, que es donde se juntan los de todos: ahí aparece
+                    // la colisión aunque sus dos mitades vengan de móviles
+                    // distintos. El motor comprueba dentro que el bloque es del
+                    // mismo puzzle, rango y criterio; si no, lo rechaza entero.
+                    val n = try {
+                        val crudo = android.util.Base64.decode(
+                            msg.optString("data", ""), android.util.Base64.NO_WRAP)
+                        if (crudo.isEmpty()) -1 else HunterEngine.kangarooImport(crudo)
+                    } catch (e: Throwable) { -1 }
+                    if (n >= 0) {
+                        puntosRecibidos.addAndGet(n.toLong())
+                        workers[workerId]?.status = "kangaroo"
+                    } else {
+                        log("Puntos rechazados de $workerId (otro puzzle o mensaje roto)")
+                    }
                     writer.println(JSONObject().apply {
-                        put("type",  "BLOCK")
-                        put("block_id",  block.blockId)
-                        put("start", block.rangeStart)
-                        put("end",   block.rangeEnd)
-                        put("puzzle", block.puzzleNum)
+                        put("type", "DP_OK"); put("n", n)
                     }.toString())
-                    log("Bloque ${block.blockId} asignado a $device")
+                }
+                "KEY" -> {
+                    // Un worker la ha encontrado él solo.
+                    //
+                    // Hace falta este aviso además del intercambio de tablas:
+                    // cuando un aparato cierra la colisión en su propia tabla,
+                    // la entrada que la cierra NO llega a guardarse (dp_insert
+                    // avisa y sale), así que por muchos puntos que mande, el
+                    // master se queda siempre con media pareja y no puede
+                    // repetir la cuenta. Está comprobado en tools/ec-harness/
+                    // reparte.cpp, prueba 4.
+                    val clave = msg.optString("key", "").trim().lowercase()
+                    val dev = workers[workerId]?.device ?: workerId
+                    if (clave.length == 64 && clave.all { it in "0123456789abcdef" }) {
+                        log("CLAVE ENCONTRADA por $dev")
+                        onClave?.invoke(dev, clave)
+                    } else {
+                        log("Aviso de clave inválido de $workerId")
+                    }
                 }
                 "PROGRESS" -> {
                     val speed = msg.optLong("speed", 0)
@@ -259,6 +384,7 @@ object NetworkManager {
     fun startWorker(masterIp: String, token: String) {
         isWorker = true; isMaster = false
         isRunning.set(true)
+        this.masterIp = masterIp.trim()
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = token.trim().uppercase()
         log("Worker iniciando → Master: $masterIp")
@@ -285,22 +411,156 @@ object NetworkManager {
                     isRunning.set(false); isWorker = false
                     return@submit
                 }
-                if (response.optString("type") == "BLOCK") {
-                    val block = NetBlock(
-                        blockId    = response.getString("block_id"),
-                        rangeStart = response.getString("start"),
-                        rangeEnd   = response.getString("end"),
-                        puzzleNum  = response.getInt("puzzle")
-                    )
-                    log("Bloque recibido: #${block.blockId}")
-                    log("Rango: ${block.rangeStart} → ${block.rangeEnd}")
-                    onBlock?.invoke(block)
+                when (response.optString("type")) {
+                    "BLOCK" -> {
+                        val block = NetBlock(
+                            blockId    = response.getString("block_id"),
+                            rangeStart = response.getString("start"),
+                            rangeEnd   = response.getString("end"),
+                            puzzleNum  = response.getInt("puzzle")
+                        )
+                        log("Bloque recibido: #${block.blockId}")
+                        log("Rango: ${block.rangeStart} → ${block.rangeEnd}")
+                        onBlock?.invoke(block)
+                    }
+                    "KANG" -> {
+                        modo = Modo.KANGAROO
+                        val pub = response.optString("pub", "")
+                        val ini = response.optString("start", "")
+                        val fin = response.optString("end", "")
+                        val pz  = response.optInt("puzzle", 0)
+                        log("Encargo Kangaroo: puzzle #$pz, rango completo")
+                        onKangaroo?.invoke(pub, ini, fin, pz)
+                        arrancarBucleReparto()
+                    }
                 }
 
                 socket.close()
             } catch (e: Exception) {
                 log("Error conectando al master: ${e.message}")
             }
+        }
+    }
+
+    /* ── Bucle de reparto del worker ──────────────────────────────────────────
+     *
+     * Cada [REPARTO_MS] manda al master los puntos distinguidos que hayan
+     * salido desde la última vez. Sólo lo nuevo: el motor lleva la cuenta de lo
+     * que ya se mandó, así que esto no reenvía la tabla entera.
+     *
+     * Vive aquí y no en una pantalla porque tiene que seguir funcionando con la
+     * app en segundo plano: una búsqueda de Kangaroo está días encendida y
+     * nadie se queda mirándola.
+     */
+    private const val REPARTO_MS = 20_000L
+    /** Tope de puntos por envío. A 49 bytes cada uno, 2048 son ~100 KB. */
+    private const val MAX_PUNTOS_ENVIO = 2048
+
+    @Volatile private var bucleVivo = false
+
+    private fun arrancarBucleReparto() {
+        if (bucleVivo) return
+        bucleVivo = true
+        Thread({
+            var avisada = false
+            // El motor marca los puntos como enviados EN CUANTO se exportan, y
+            // eso no se puede deshacer. Si el envío falla y no se guarda el
+            // bloque, ese trabajo se pierde para siempre y sin avisar. Se queda
+            // aquí hasta que entre, y mientras tanto no se exporta más.
+            var pendiente: ByteArray? = null
+            try {
+                while (isRunning.get() && isWorker && modo == Modo.KANGAROO) {
+                    try {
+                        // 1) Primero lo que quedó a deber, si quedó algo.
+                        if (pendiente != null) {
+                            if (enviarPuntos(pendiente!!)) pendiente = null
+                        }
+                        // 2) Y luego lo nuevo, sólo si no hay atasco.
+                        if (pendiente == null) {
+                            val blob = HunterEngine.kangarooExport(MAX_PUNTOS_ENVIO)
+                            if (blob != null && blob.isNotEmpty() && !enviarPuntos(blob))
+                                pendiente = blob
+                        }
+
+                        // 3) ¿La hemos encontrado aquí? El master no puede
+                        //    deducirlo de la tabla (ver el mensaje "KEY"), así
+                        //    que hay que decírselo.
+                        if (!avisada) {
+                            val k = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+                            if (k.length == 64) { avisarClave(k); avisada = true }
+                        }
+                    } catch (e: Throwable) {
+                        log("Reparto: ${e.message}")
+                    }
+                    Thread.sleep(REPARTO_MS)
+                }
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+            } finally {
+                bucleVivo = false
+            }
+        }, "kang-reparto").apply { isDaemon = true }.start()
+    }
+
+    /**
+     * Un envío de puntos distinguidos. Síncrono: lo llama el bucle.
+     *
+     * @return true si el master los ha aceptado. Si no, quien llama tiene que
+     *   guardarlos y reintentar: el motor ya los ha dado por enviados y no hay
+     *   forma de que vuelvan a salir.
+     */
+    private fun enviarPuntos(blob: ByteArray): Boolean {
+        val ip = masterIp
+        if (ip.isEmpty()) return false
+        try {
+            Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
+                socket.soTimeout = SOCKET_TIMEOUT_MS
+                val writer = PrintWriter(socket.getOutputStream(), true)
+                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                writer.println(JSONObject().apply {
+                    put("type", "DP")
+                    put("id",   deviceId)
+                    put("auth", authToken)
+                    put("data", android.util.Base64.encodeToString(
+                        blob, android.util.Base64.NO_WRAP))
+                }.toString())
+                val resp = readLineLimited(reader) ?: return false
+                val n = JSONObject(resp).optInt("n", -1)
+                if (n < 0) {
+                    // Rechazado por el motor del master: es otro puzzle o el
+                    // mensaje venía roto. Reintentarlo no va a arreglarlo, así
+                    // que se da por bueno para no atascar el bucle con algo que
+                    // no va a entrar nunca.
+                    log("El master ha rechazado los puntos: ¿otro puzzle?")
+                    return true
+                }
+                return true
+            }
+        } catch (e: Exception) {
+            log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
+            return false
+        }
+    }
+
+    /** Avisa al master de que la clave ha salido aquí. */
+    private fun avisarClave(claveHex: String) {
+        val ip = masterIp
+        if (ip.isEmpty()) return
+        try {
+            Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
+                socket.soTimeout = SOCKET_TIMEOUT_MS
+                PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+                    put("type", "KEY")
+                    put("key",  claveHex)
+                    put("id",   deviceId)
+                    put("auth", authToken)
+                }.toString())
+            }
+            log("Clave comunicada al master")
+        } catch (e: Exception) {
+            log("No se pudo avisar de la clave: ${e.message}")
         }
     }
 
@@ -496,6 +756,10 @@ object NetworkManager {
     fun stop() {
         isRunning.set(false)
         isMaster = false; isWorker = false
+        modo = Modo.BLOQUES                  // el bucle de reparto mira esto
+        masterIp = ""
+        jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
+        puntosRecibidos.set(0)
         authToken = ""                       // invalida el código al parar
         try { serverSocket?.close() } catch (e: Exception) {}
         try { udpSocket?.close()    } catch (e: Exception) {}

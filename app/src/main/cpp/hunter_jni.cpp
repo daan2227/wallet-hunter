@@ -2275,6 +2275,68 @@ Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
     return (g_kg_vivo && !g_kg.encontrado.load()) ? JNI_TRUE : JNI_FALSE;
 }
 
+/* ---------- Reparto por red ----------
+ *
+ * Repartir Kangaroo NO es partir el rango: partirlo lo empeora, porque el coste
+ * es raiz(W) y hay que recorrer varios trozos sin saber en cual esta la clave.
+ * Lo que se reparte es la TABLA de puntos distinguidos. Todos los aparatos
+ * caminan el intervalo entero y mandan sus puntos al master, que los junta en
+ * una sola tabla: ahi aparece la colision aunque las dos mitades vengan de
+ * moviles distintos. El razonamiento largo esta en kangaroo.h.
+ *
+ * Lo que viaja son pares (punto, distancia). Dos de rebanos distintos que
+ * coincidan dan la clave: es material de clave y no hay forma de evitarlo.
+ */
+
+/* Los puntos que aun no se han mandado. Cada llamada devuelve solo lo nuevo.
+ * @return byte[] para mandar tal cual, o null si no hay nada.
+ */
+extern "C" JNIEXPORT jbyteArray JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooExport(JNIEnv *env, jobject, jint max_ent){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(!g_kg_vivo) return NULL;
+    if(max_ent<1) max_ent=1024;
+    if(max_ent>8192) max_ent=8192;
+    size_t cap=kg_export_bytes((uint32_t)max_ent);
+    std::vector<uint8_t> buf(cap);
+    size_t n=kg_export(&g_kg.tabla,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
+                       buf.data(),cap,(uint32_t)max_ent);
+    if(n==0) return NULL;
+    jbyteArray out=env->NewByteArray((jsize)n);
+    if(!out) return NULL;
+    env->SetByteArrayRegion(out,0,(jsize)n,(const jbyte*)buf.data());
+    return out;
+}
+
+/* Mete puntos que llegan de otro aparato. La cabecera lleva puzzle, rango y
+ * dbits: si no cuadran con los de aqui, se rechaza el bloque entero.
+ * @return cuantos han entrado, o -1 si el bloque no valia.
+ */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooImport(JNIEnv *env, jobject, jbyteArray jdatos){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(!g_kg_vivo || !jdatos) return -1;
+    jsize len=env->GetArrayLength(jdatos);
+    if(len<=0) return -1;
+    std::vector<uint8_t> buf((size_t)len);
+    env->GetByteArrayRegion(jdatos,0,len,(jbyte*)buf.data());
+    uint32_t metidas=0;
+    if(!kg_import(&g_kg,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
+                  buf.data(),(size_t)len,&metidas)) return -1;
+    return (jint)metidas;
+}
+
+/* La clave publica con la que se arranco, para que el master pueda decirle a
+ * cada trabajador en que puzzle tiene que ponerse. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooPub(JNIEnv *env, jobject){
+    if(!g_kg_vivo) return env->NewStringUTF("");
+    char hex[67];
+    for(int i=0;i<33;i++) sprintf(hex+i*2,"%02x",g_kg_pub[i]);
+    hex[66]=0;
+    return env->NewStringUTF(hex);
+}
+
 /* @return la clave privada en hex de 64 caracteres, o "" si aun no esta. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooResult(JNIEnv *env, jobject){

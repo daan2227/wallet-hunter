@@ -17,7 +17,8 @@ cd "$(dirname "$0")"
 # kang     - logaritmos discretos de los que YA sabemos la respuesta
 # coste    - reparto del tiempo por operacion
 # reparto  - PBKDF2 frente a hash160
-PRUEBAS="campo vectores prim hex persist kang coste reparto"
+# reparte  - Kangaroo repartido: exportar e importar distinguidos entre aparatos
+PRUEBAS="campo vectores prim hex persist kang reparte coste reparto"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {

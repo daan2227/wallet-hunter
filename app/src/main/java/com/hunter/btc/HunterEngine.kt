@@ -84,4 +84,45 @@ object HunterEngine {
     external fun kangarooPoints(): Long
     /** Cambia el límite de CPU con la búsqueda en marcha, sin reiniciarla. */
     external fun kangarooSetCpu(pct: Int)
+
+    /* ── Reparto por red ──────────────────────────────────────────────────────
+     *
+     * Repartir Kangaroo NO es partir el rango entre los móviles. Partirlo lo
+     * empeora: el coste es raíz(W), así que cada trozo cuesta raíz(W/N) pero
+     * hay que recorrer varios porque no se sabe en cuál está la clave. Con dos
+     * aparatos sale 1,06·raíz(W) frente a 1,00 de uno solo.
+     *
+     * Lo que sí funciona es que todos caminen el MISMO intervalo y compartan la
+     * tabla de puntos distinguidos, igual que hacen los hilos dentro de un
+     * móvil. Así el reparto es casi lineal.
+     *
+     * CUIDADO: lo que viaja son pares (punto, distancia). Dos de rebaños
+     * distintos que coincidan dan la clave privada directamente. Es material de
+     * clave, y no hay manera de evitarlo sin perder todo el beneficio.
+     */
+
+    /**
+     * Los puntos distinguidos que todavía no se han mandado.
+     *
+     * Cada llamada devuelve sólo lo nuevo, así que se puede llamar en bucle sin
+     * reenviar la tabla entera.
+     *
+     * @param maxEntradas tope por envío, para que un mensaje no se haga enorme.
+     * @return los bytes a mandar tal cual, o null si no hay nada nuevo.
+     */
+    external fun kangarooExport(maxEntradas: Int): ByteArray?
+
+    /**
+     * Mete puntos que llegan de otro aparato.
+     *
+     * El bloque lleva dentro el puzzle, el rango y el criterio de distinguido:
+     * si no cuadran con los de aquí se rechaza entero, porque mezclar tablas de
+     * búsquedas distintas daría colisiones que no significan nada.
+     *
+     * @return cuántos han entrado, o -1 si el bloque no valía.
+     */
+    external fun kangarooImport(datos: ByteArray): Int
+
+    /** La clave pública con la que se arrancó, en hex. "" si no hay búsqueda. */
+    external fun kangarooPub(): String
 }

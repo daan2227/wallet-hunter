@@ -20,6 +20,18 @@ class NetworkActivity : AppCompatActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    /**
+     * Los ajustes de la app.
+     *
+     * Aquí se leía de "hunt_prefs", **un fichero que no escribe nadie**:
+     * MainActivity guarda todo en "hunter". O sea que los hilos, la potencia y
+     * el rango que se leían aquí eran siempre los valores por defecto, dijeras
+     * lo que dijeras en la pantalla de puzzle. Afectaba también al worker de
+     * fuerza bruta, que iba siempre a 4 hilos y 80 %.
+     */
+    private fun ajustes(ctx: android.content.Context = this) =
+        ctx.getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val BG    = AppTheme.BG_DEEP
@@ -207,11 +219,28 @@ class NetworkActivity : AppCompatActivity() {
 
     private fun startAsMaster() {
         // Leer rango actual desde prefs
-        val prefs = getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+        val prefs = ajustes()
         val rangeStart = prefs.getString("current_range_start", "400000000000000000") ?: "400000000000000000"
         val rangeEnd   = prefs.getString("current_range_end",   "7fffffffffffffffff") ?: "7fffffffffffffffff"
         val puzzleNum  = prefs.getInt("current_puzzle_num", 71)
-        NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
+        // Si el puzzle elegido tiene clave pública publicada, se reparte
+        // Kangaroo en vez de bloques. Y entonces NO se parte el rango: en
+        // Kangaroo partirlo empeora la búsqueda, lo que se junta es la tabla
+        // de puntos distinguidos.
+        val pub = prefs.getString("kangaroo_pub", "") ?: ""
+        val kIni = prefs.getString("kangaroo_ini", "") ?: ""
+        val kFin = prefs.getString("kangaroo_fin", "") ?: ""
+        val conKangaroo = pub.length == 66 && kIni == rangeStart && kFin == rangeEnd
+        if (conKangaroo) {
+            if (!HunterEngine.kangarooRunning())
+                arrancarKangarooDeRed(this, pub, kIni, kFin, puzzleNum)
+            NetworkManager.startMasterKangaroo(this, puzzleNum, pub, kIni, kFin)
+            NetworkManager.onClave = { dispositivo, claveHex ->
+                runOnUiThread { avisarClaveEncontrada(dispositivo, claveHex) }
+            }
+        } else {
+            NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
+        }
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         val ip = NetworkManager.getLocalIp(this)
@@ -223,7 +252,12 @@ class NetworkActivity : AppCompatActivity() {
             .setTitle("Master activo")
             .setMessage("IP: $ip\n\nCódigo de acceso:\n\n        $code\n\n" +
                         "Introduce este código en cada worker. Sin él, ningún " +
-                        "dispositivo de la red puede conectarse.")
+                        "dispositivo de la red puede conectarse." +
+                        if (conKangaroo)
+                            "\n\nReparto de Kangaroo: todos al mismo rango.\n\n" +
+                            "AVISO: lo que viaja permite reconstruir la clave " +
+                            "privada. Úsalo sólo en tu propia red."
+                        else "")
             .setPositiveButton("OK", null)
             .show()
     }
@@ -244,7 +278,7 @@ class NetworkActivity : AppCompatActivity() {
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
                 HunterEngine.setMode(1) // puzzle mode
                 if (!HunterEngine.isRunning()) {
-                    val prefs = getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+                    val prefs = ajustes()
                     val threads = prefs.getInt("puzzle_threads", 3) + 1
                     val cpu = prefs.getInt("puzzle_cpu", 70) + 10
                     HunterEngine.startHunting(threads, cpu)
@@ -258,10 +292,84 @@ class NetworkActivity : AppCompatActivity() {
                 tvLog?.text = "$log\n▶ Bloque #${block.blockId}\n  ${block.rangeStart.take(16)}..."
             }
         }
+        // Encargo de Kangaroo. Aquí NO hay bloque: el rango es el entero y lo
+        // mismo para todos, porque en Kangaroo repartir el rango empeora la
+        // búsqueda. Lo que se reparte es la tabla de puntos, y de eso se ocupa
+        // el bucle de NetworkManager.
+        NetworkManager.onKangaroo = { pub, ini, fin, pz ->
+            runOnUiThread {
+                val ok = arrancarKangarooDeRed(this, pub, ini, fin, pz)
+                tvLog?.text = if (ok)
+                    "${tvLog?.text}\n▶ Kangaroo puzzle #$pz\n" +
+                    "  rango completo (en Kangaroo partirlo empeora la búsqueda)\n" +
+                    "  los puntos se mandan al master cada 20 s"
+                else "${tvLog?.text}\nNo se pudo arrancar Kangaroo"
+            }
+        }
         NetworkManager.startWorker(ip, code)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         tvLog?.text = "Conectando a master $ip..."
+    }
+
+    /**
+     * Arranca Kangaroo con el encargo que manda el master.
+     *
+     * Los hilos y la potencia salen de las mismas preferencias que usa la
+     * pantalla de puzzle, para que mover los mandos ahí valga también aquí.
+     *
+     * El estado se guarda en un fichero por clave pública, igual que en local:
+     * si el worker se reinicia, sigue desde donde lo dejó en vez de empezar de
+     * cero.
+     */
+    private fun arrancarKangarooDeRed(ctx: android.content.Context,
+                                      pub: String, ini: String, fin: String, pz: Int): Boolean {
+        if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return false
+        // Si ya hay fuerza bruta en marcha, se para: los dos motores compiten
+        // por los mismos núcleos y juntos van peor que cualquiera por separado.
+        try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
+
+        val prefs = ajustes(ctx)
+        val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val hilos = (prefs.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
+        val cpu   = (prefs.getInt("puzzle_cpu", 70) + 10).coerceIn(10, 100)
+        val porHilo = try { HunterEngine.getBatchSize() } catch (e: Throwable) { 512 }
+            .coerceIn(256, 4096)
+        val ruta = java.io.File(ctx.filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
+
+        val ok = try {
+            HunterEngine.kangarooStart(pub, ini, fin, hilos, porHilo, ruta)
+        } catch (e: Throwable) {
+            android.util.Log.e("NetworkActivity", "kangarooStart: ${e.message}", e); false
+        }
+        if (!ok) return false
+        try { HunterEngine.kangarooSetCpu(cpu) } catch (e: Throwable) {}
+        val svc = android.content.Intent(ctx, com.hunter.btc.HunterService::class.java)
+        try { ctx.startForegroundService(svc) } catch (e: Exception) { ctx.startService(svc) }
+        return true
+    }
+
+    /** Un worker ha encontrado la clave y lo ha avisado. */
+    private fun avisarClaveEncontrada(dispositivo: String, claveHex: String) {
+        // Guardar antes de tocar la pantalla: si la app muere aquí, la clave no
+        // puede perderse.
+        try {
+            MatchVault.add(this, MatchVault.Entry(
+                ts = System.currentTimeMillis(), source = "kangaroo",
+                addr = "", wif = "", privHex = claveHex, btc = 0.0,
+                extra = "PUZZLE kangaroo (red, desde $dispositivo)", checkedTs = 0L))
+        } catch (e: Exception) {
+            android.util.Log.e("NetworkActivity", "no se pudo guardar: ${e.message}", e)
+        }
+        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+        tvLog?.text = "${tvLog?.text}\n\nCLAVE ENCONTRADA en $dispositivo\n$claveHex\n" +
+                      "Guardada en el baúl de hallazgos."
+        AlertDialog.Builder(this)
+            .setTitle("Clave encontrada")
+            .setMessage("La ha encontrado $dispositivo:\n\n$claveHex\n\n" +
+                        "Está guardada en el baúl de hallazgos.")
+            .setPositiveButton("OK", null)
+            .show()
     }
 
     private fun discoverMasters() {
@@ -310,13 +418,20 @@ class NetworkActivity : AppCompatActivity() {
         // aplicación para que el worker siga recibiendo bloques.
         NetworkManager.onLog     = null
         NetworkManager.onWorkers = null
+        NetworkManager.onClave = null
         val app = applicationContext
+        // Igual que onBlock: el encargo puede llegar despues de cerrar esta
+        // pantalla, y entonces no puede quedar apuntando a una Activity muerta.
+        NetworkManager.onKangaroo = { pub, ini, fin, pz ->
+            try { arrancarKangarooDeRed(app, pub, ini, fin, pz) }
+            catch (e: Throwable) { android.util.Log.e("NetworkActivity","onKangaroo: ${e.message}", e) }
+        }
         NetworkManager.onBlock = { block ->
             try {
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
                 HunterEngine.setMode(1)
                 if (!HunterEngine.isRunning()) {
-                    val prefs = app.getSharedPreferences("hunt_prefs", android.content.Context.MODE_PRIVATE)
+                    val prefs = ajustes(app)
                     HunterEngine.startHunting(
                         prefs.getInt("puzzle_threads", 3) + 1,
                         prefs.getInt("puzzle_cpu", 70) + 10)
