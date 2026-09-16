@@ -4496,7 +4496,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tv.text = "Comprobando si la clave pública está publicada…"
         tv.setTextColor(AppTheme.TXT_SEC)
         Thread {
-            val r = try { PubKeyFinder.buscar(p.addr, false) }
+            val r = try { PubKeyFinder.buscar(this@MainActivity, p.addr, false) }
                     catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
             // Ritmo medido del propio motor si está corriendo; si no, un valor
             // del orden del que da este móvil, para no prometer de más.
@@ -4531,6 +4531,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                   "pública no es conocida. No hay atajo: sólo fuerza " +
                                   "bruta, ${humano(clavesBrutas / ritmo)} a este ritmo."
                         tv.setTextColor(AppTheme.WARN)
+                    }
+                    is PubKeyFinder.Resultado.Publicada -> {
+                        // Ha gastado, o sea que la clave ESTÁ publicada; lo que
+                        // no se ha podido es dar con la transacción. Decir "no
+                        // hay atajo" aquí sería mentir.
+                        tv.text = "Esta dirección ha gastado ${r.gastos} vez/veces, así que " +
+                                  "su clave pública está publicada — pero no se ha " +
+                                  "encontrado en el historial reciente. Vuelve a " +
+                                  "intentarlo; el atajo existe."
+                        tv.setTextColor(AppTheme.TXT_SEC)
                     }
                     PubKeyFinder.Resultado.SinRed -> {
                         tv.text = "No se pudo comprobar si la clave pública está publicada."
