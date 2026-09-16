@@ -2152,13 +2152,7 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     uint8_t pub[33],ini[32],fin[32];
     memset(ini,0,32); memset(fin,0,32);
     int okp=(hex2bin(cp,pub,33)==33);
-    /* Los extremos se admiten con menos de 64 caracteres: se alinean a la
-       derecha, que es como se escriben los rangos de los puzzles. */
-    auto carga=[&](const char *h,uint8_t *d)->bool{
-        size_t L=strlen(h); if(L>64||L==0||(L&1)) return false;
-        uint8_t tmp[32]; int n=hex2bin(h,tmp,32); if(n<0) return false;
-        memcpy(d+(32-n),tmp,n); return true; };
-    bool oki=carga(ci,ini), okf=carga(cf,fin);
+    bool oki=kg_hex_a_be32(ci,ini)!=0, okf=kg_hex_a_be32(cf,fin)!=0;
     env->ReleaseStringUTFChars(jpub,cp);
     env->ReleaseStringUTFChars(jini,ci);
     env->ReleaseStringUTFChars(jfin,cf);

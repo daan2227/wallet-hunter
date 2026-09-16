@@ -119,3 +119,23 @@ implementación lenta que se pueda mejorar: las 2048 vueltas las exige la norma,
 precisamente para encarecer este tipo de búsqueda. Saltárselas produce semillas
 que no son de ningún mnemónico BIP39, que es lo que hace el interruptor de
 "escaneo rápido" y por lo que no puede encontrar nada.
+
+## El parseo del rango
+
+`hex.cpp` prueba `kg_hex_a_be32`, que convierte el rango de texto a 32 bytes.
+
+Existe porque ahí se coló un fallo que los tests de Kangaroo no podían ver: a
+`kg_setup` le pasaban buffers de 32 bytes ya montados, nunca el texto que llega
+desde la app. Y el parseo **exigía un número par de dígitos hexadecimales**.
+
+Un número en hexadecimal no tiene por qué tener longitud par: 2^139 es un 8
+seguido de 34 ceros, o sea 35 dígitos. Eso hacía que arrancar Kangaroo fallara
+de plano en los puzzles #140, #145 y #155 — tres de los únicos cinco que admiten
+Kangaroo.
+
+```sh
+g++ -O2 -o hex hex.cpp -lpthread && ./hex
+```
+
+Cubre longitud impar y par, el prefijo `0x`, ceros a la izquierda, y los casos
+que deben rechazarse.

@@ -269,6 +269,40 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     return leidas;
 }
 
+/* Pasa un hex a 32 bytes big-endian, alineado a la derecha.
+ *
+ * OJO CON LA LONGITUD IMPAR. Un numero en hexadecimal no tiene por que tener un
+ * numero par de digitos: 2^139 es un 8 seguido de 34 ceros, o sea 35. La version
+ * anterior exigia longitud par y rechazaba de plano los rangos de los puzzles
+ * #140, #145 y #155 — justo tres de los cinco que admiten Kangaroo. Se rellena
+ * con un cero por delante, que es lo que significa.
+ *
+ * @return 1 si se pudo, 0 si el texto no es hex o no cabe en 32 bytes.
+ */
+static int kg_hex_a_be32(const char *h, uint8_t *out32){
+    if(!h) return 0;
+    size_t L=strlen(h);
+    /* Admitir el prefijo 0x, que es como vienen escritos en muchas fuentes. */
+    if(L>2 && h[0]=='0' && (h[1]=='x'||h[1]=='X')){ h+=2; L-=2; }
+    while(L>1 && *h=='0'){ h++; L--; }      /* ceros a la izquierda sobran */
+    if(L==0 || L>64) return 0;
+    memset(out32,0,32);
+    /* Se recorre de derecha a izquierda, asi el digito impar del principio cae
+       solo en el nibble alto del primer byte sin tener que copiar la cadena. */
+    int byte=31, alto=0;
+    for(int i=(int)L-1;i>=0;i--){
+        char c=h[i]; int v;
+        if(c>='0'&&c<='9') v=c-'0';
+        else if(c>='a'&&c<='f') v=c-'a'+10;
+        else if(c>='A'&&c<='F') v=c-'A'+10;
+        else return 0;
+        if(byte<0) return 0;
+        if(!alto){ out32[byte]=(uint8_t)v; alto=1; }
+        else     { out32[byte]|=(uint8_t)(v<<4); alto=0; byte--; }
+    }
+    return 1;
+}
+
 /* ---------- Contexto de la busqueda ---------- */
 #define KG_MAX_JUMPS 64
 
