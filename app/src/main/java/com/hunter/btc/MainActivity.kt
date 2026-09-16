@@ -142,6 +142,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Resumen a la derecha de las filas de ajuste: "8 hilos · 100 %". */
     private var tvEngineSummary: TextView? = null
     private var tvClusterSummary: TextView? = null
+    /** "Sin atajo: fuerza bruta" / "Admite Kangaroo". */
+    private var tvPuzzleAtajo: TextView? = null
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -1730,6 +1732,33 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         page.addView(tvBalResult)
 
+        // ── ¿TIENE ATAJO ESTE PUZZLE? ─────────────────────────────────────
+        //
+        // Es la información que decide si merece la pena dejar el móvil
+        // corriendo. Una dirección que nunca ha gastado no ha revelado su clave
+        // pública, y sin clave pública lo único que queda es probar claves de
+        // una en una: para el rango del #70 son 2^69, millones de años. Si la
+        // clave está publicada, sirve Pollard's Kangaroo, que es O(raiz(n)):
+        // el mismo rango baja a unas 2^35 operaciones.
+        //
+        // Kangaroo no está implementado todavía. Esto dice si sería posible,
+        // que es lo que hay que saber ANTES de dedicarle el móvil a algo.
+        tvPuzzleAtajo = TextView(this).apply {
+            text = "Comprobando si la clave pública está publicada…"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            setLineSpacing(0f, 1.4f)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), 0)
+            }
+        }
+        page.addView(tvPuzzleAtajo)
+
         // ── RANGE CONFIG ──────────────────────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_target, "Rango hexadecimal") {
             val rangeRow = LinearLayout(this@MainActivity).apply {
@@ -2093,6 +2122,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvCheckpointLive?.visibility = android.view.View.GONE
             }
             tvBalResult.text = "Consultando el saldo de #${p.num}…"
+            comprobarAtajo(p)
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
                     when {
@@ -4428,6 +4458,60 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * @param onResult saldo en satoshis, o -1 si no respondió nadie. Los dos
      *   casos NO son lo mismo y quien llama tiene que distinguirlos.
      */
+    /**
+     * Mira si la dirección del puzzle ha revelado alguna vez su clave pública,
+     * y traduce el resultado a lo único que importa: cuánto se tardaría.
+     *
+     * Los dos números salen del tamaño del rango, que es 2^(n-1) claves para el
+     * puzzle n. La fuerza bruta las recorre todas; Kangaroo necesita del orden
+     * de la raíz cuadrada, unas 2,2 veces.
+     */
+    private fun comprobarAtajo(p: PuzzleInfo) {
+        val tv = tvPuzzleAtajo ?: return
+        tv.text = "Comprobando si la clave pública está publicada…"
+        tv.setTextColor(AppTheme.TXT_SEC)
+        Thread {
+            val r = try { PubKeyFinder.buscar(p.addr, false) }
+                    catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
+            // Ritmo medido del propio motor si está corriendo; si no, un valor
+            // del orden del que da este móvil, para no prometer de más.
+            val ritmo = HunterEngine.getWps().takeIf { it > 1000 } ?: 4_000_000.0
+            val bits = (p.num - 1).coerceAtLeast(1)
+            val clavesBrutas = Math.pow(2.0, bits.toDouble())
+            val opsKangaroo = 2.2 * Math.pow(2.0, bits / 2.0)
+            fun humano(segundos: Double): String = when {
+                segundos < 90            -> "${segundos.toInt()} segundos"
+                segundos < 5400          -> "${(segundos / 60).toInt()} minutos"
+                segundos < 172_800       -> "${(segundos / 3600).toInt()} horas"
+                segundos < 63_072_000    -> "${(segundos / 86_400).toInt()} días"
+                segundos < 3.15e10       -> "${(segundos / 3.15e7).toInt()} años"
+                segundos < 3.15e13       -> "%.0f mil años".format(segundos / 3.15e10)
+                else                     -> "%.0f millones de años".format(segundos / 3.15e13)
+            }
+            runOnUiThread {
+                when (r) {
+                    is PubKeyFinder.Resultado.Encontrada -> {
+                        tv.text = "Clave pública publicada — admite Kangaroo.\n" +
+                                  "Fuerza bruta: ${humano(clavesBrutas / ritmo)}. " +
+                                  "Con Kangaroo: ${humano(opsKangaroo / ritmo)}.\n" +
+                                  "Kangaroo todavía no está implementado."
+                        tv.setTextColor(AppTheme.ACCENT)
+                    }
+                    PubKeyFinder.Resultado.NoRevelada -> {
+                        tv.text = "Esta dirección no ha gastado nunca, así que su clave " +
+                                  "pública no es conocida. No hay atajo: sólo fuerza " +
+                                  "bruta, ${humano(clavesBrutas / ritmo)} a este ritmo."
+                        tv.setTextColor(AppTheme.WARN)
+                    }
+                    PubKeyFinder.Resultado.SinRed -> {
+                        tv.text = "No se pudo comprobar si la clave pública está publicada."
+                        tv.setTextColor(AppTheme.TXT_SEC)
+                    }
+                }
+            }
+        }.start()
+    }
+
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
             val r = try { BalanceLookup.query(addr, false) } catch (e: Exception) { null }
