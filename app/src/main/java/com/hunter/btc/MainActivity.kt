@@ -152,6 +152,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var puzzleFinHex: String = ""
     private var ultimoGuardadoKg = 0L
     private var kangarooReinicios = 0
+    /** A qué puzzle pertenece la respuesta que estamos esperando. */
+    private var puzzleSeleccionado = -1
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -1492,7 +1494,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── PUZZLE CHIP SELECTOR ──────────────────────────────────────────
         val hiddenPuzzles = getSharedPreferences("hidden_puzzles", MODE_PRIVATE)
+        // Se descartan las entradas cuya dirección NO es una dirección de
+        // Bitcoin. Buscar una clave cuyo hash160 dé una dirección con el
+        // checksum roto es buscar algo que no puede existir: el contador
+        // subiría igual, para siempre, sin ninguna posibilidad.
+        val invalidas = puzzles.filter {
+            BtcAddress.validate(it.addr, false) !is BtcAddress.Result.Valid
+        }
+        if (invalidas.isNotEmpty())
+            android.util.Log.e("MainActivity",
+                "Tabla de puzzles: ${invalidas.size} direcciones inválidas: " +
+                invalidas.joinToString { "#${it.num}" })
         val visiblePuzzles = puzzles.filter { p ->
+            BtcAddress.validate(p.addr, false) is BtcAddress.Result.Valid &&
             !hiddenPuzzles.getBoolean("hidden_${p.num}", false)
         }.toMutableList()
 
@@ -2147,12 +2161,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvCheckpointLive?.text = ""
                 tvCheckpointLive?.visibility = android.view.View.GONE
             }
+            puzzleSeleccionado = p.num
             tvBalResult.text = "Consultando el saldo de #${p.num}…"
             comprobarAtajo(p)
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
                     when {
                         bal > 0L -> {
+                            if (puzzleSeleccionado != p.num) return@runOnUiThread
                             tvBalResult.text = "${bal / 100_000_000.0} BTC disponibles"
                             tvBalResult.setTextColor(AppTheme.ACCENT)
                         }
@@ -2277,6 +2293,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // Consultar el saldo tarda, y en ese rato el usuario ya suele
                     // haber tocado otro chip. Escribir aquí sin comprobarlo pisaba
                     // la etiqueta del puzzle que sí había elegido.
+                    // Dos consultas escriben este mismo TextView: la del chip que
+                    // pulsas y ésta, la del puzzle por defecto. Sin una marca
+                    // de a quién pertenece la respuesta, gana la que termine
+                    // última y acabas viendo el saldo de OTRO puzzle bajo el
+                    // que tienes seleccionado. Comparar el rango no basta: no
+                    // cambia hasta que applyPuzzle() lo escribe.
+                    if (puzzleSeleccionado != defaultPuzzle.num) return@runOnUiThread
                     if (puzzleFullStart != defaultPuzzle.start) return@runOnUiThread
                     if (bal > 0) {
                         tvBalResult.text = "${bal / 100_000_000.0} BTC disponibles"
@@ -4702,7 +4725,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleFullEnd = p.end
         puzzleProgressUpdater?.invoke(p.num, p.start, p.end)
         etTarget?.setText(p.addr)
-        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc} BTC"
+        // p.btc ya viene con la unidad dentro ("7.9 BTC"), así que añadirla
+        // otra vez daba "7.9 BTC BTC".
+        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc}"
         // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
         pendingBlockIdx = null
         currentBlockId = ""
