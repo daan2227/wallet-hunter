@@ -4794,7 +4794,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El "tamaño de lote" es literalmente cuántos canguros comparten una
         // inversión modular: el mismo papel que en el motor de fuerza bruta.
         // Se acota porque cada canguro ocupa unos 256 bytes por hilo.
-        val porHilo = HunterEngine.getBatchSize().coerceIn(64, 4096)
+        //
+        // El suelo son 256 y no 64 porque la inversión del lote se reparte
+        // entre los canguros que haya: con 64 sale a bastante más por salto que
+        // con 256. Medido en el banco de pruebas, mismo equipo y mismo rango:
+        //
+        //     lote  64  -> 2,50 M saltos/s
+        //     lote 256  -> 3,43 M saltos/s   (+37%)
+        //     lote 512  -> 3,63 M saltos/s
+        //     lote 1024 -> 3,75 M saltos/s
+        //
+        // De 256 en adelante la curva ya casi no sube, así que bajar de ahí es
+        // regalar un tercio de la velocidad sin ahorrar nada que se note: 256
+        // canguros por hilo son 64 KB.
+        val porHilo = HunterEngine.getBatchSize().coerceIn(256, 4096)
         // Un fichero por puzzle: la clave pública lo identifica sin ambigüedad
         // y así cambiar de puzzle y volver no pierde nada.
         val ruta = java.io.File(filesDir, "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath

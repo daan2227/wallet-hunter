@@ -311,6 +311,7 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
 typedef struct {
     /* Objetivo, ya trasladado a [0,W]: P' = P - a*G */
     JP       objetivo;
+    fe_t     obj_x, obj_y;   /* el mismo punto en afin, que es como anda el bucle */
     int      objetivo_ok;
     sc_t     rango_ini;      /* a */
     sc_t     ancho;          /* W = b - a */
@@ -459,13 +460,27 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->saltos.store(0);
     c->parar.store(0);
     c->cpu_limite.store(100);
+    kg_normalize(&c->objetivo,c->obj_x,c->obj_y);
     return 1;
 }
 
 static void kg_free(KangarooCtx *c){ dp_free(&c->tabla); }
 
-/* Un canguro: donde esta y cuanto lleva recorrido. */
-typedef struct { JP pos; sc_t dist; int manso; } Kangaroo;
+/* Un canguro: donde esta y cuanto lleva recorrido.
+ *
+ * EN AFIN, no en Jacobiano. El bucle anterior sumaba en Jacobiano y despues
+ * normalizaba por lotes para poder leer la x — unas 15 multiplicaciones de
+ * cuerpo por salto. Sumando directamente en afin, con la inversion tambien por
+ * lotes, salen 6:
+ *
+ *   inversion amortizada (Montgomery, 3 mul por punto)   3
+ *   lambda = (y2-y1) * inv                               1
+ *   x3 = lambda^2 - x1 - x2                              1
+ *   y3 = lambda*(x1-x3) - y1                             1
+ *
+ * La inversion por lotes ya estaba; lo que sobraba era convertir de ida y
+ * vuelta entre las dos representaciones en cada paso. */
+typedef struct { fe_t x, y; sc_t dist; int manso; } Kangaroo;
 
 /* Suelta un rebano y lo hace saltar hasta que aparezca la solucion o se pare.
  *
@@ -476,21 +491,21 @@ typedef struct { JP pos; sc_t dist; int manso; } Kangaroo;
 static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     if(!c->objetivo_ok || n_kang<1) return;
     Kangaroo *K=(Kangaroo*)calloc(n_kang,sizeof(Kangaroo));
-    JP  *pts=(JP*)calloc(n_kang,sizeof(JP));
+    fe_t *den=(fe_t*)calloc(n_kang,sizeof(fe_t));   /* x2 - x1 de cada uno */
     fe_t *pfx=(fe_t*)calloc(n_kang,sizeof(fe_t));
-    if(!K||!pts||!pfx){ free(K);free(pts);free(pfx); return; }
+    int  *jmp=(int*)calloc(n_kang,sizeof(int));
+    if(!K||!den||!pfx||!jmp){ free(K);free(den);free(pfx);free(jmp); return; }
 
     /* xorshift: aqui no hace falta un generador criptografico, solo que los
        puntos de salida esten repartidos. */
     uint64_t rng=semilla?semilla:0x2545F4914F6CDD1DULL;
     #define NEXT() (rng^=rng<<13, rng^=rng>>7, rng^=rng<<17, rng)
 
-    for(int i=0;i<n_kang;i++){
-        /* Salida aleatoria dentro del ancho, con los bits que toquen. */
+    /* Coloca (o recoloca) un canguro en un punto de salida al azar. */
+    auto soltar=[&](int i,int manso){
         sc_t d; sc_zero(d);
         int w=(c->bits+63)/64;
         for(int j=0;j<w&&j<4;j++) d[j]=NEXT();
-        /* recortar a [0,W) */
         for(int j=3;j>=0;j--) if(j>=w) d[j]=0;
         if(c->bits<256){
             int top=(c->bits-1)/64, sh=(c->bits-1)%64;
@@ -498,103 +513,100 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             if(sh<63) d[top]&=((1ULL<<(sh+1))-1);
         }
         if(sc_cmp(d,c->ancho)>=0) sc_sub(d,d,c->ancho);
+        int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
+        if(cero) sc_set_u64(d,1);      /* 0*G es el infinito: no vale de salida */
 
-        K[i].manso=(i&1);           /* mitad mansos, mitad salvajes */
+        K[i].manso=manso;
         sc_copy(K[i].dist,d);
         JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
-        int d_cero=1; for(int j=0;j<4;j++) if(d[j]) d_cero=0;
-        if(K[i].manso){
-            /* Manso: sale de d*G, logaritmo conocido = d */
-            if(d_cero){ sc_set_u64(K[i].dist,1); kg_scalar_mul(&dG,K[i].dist,FIELD_GX,FIELD_GY); }
-            K[i].pos=dG;
+        if(manso){
+            kg_normalize(&dG,K[i].x,K[i].y);           /* manso: sale de d*G */
         }else{
-            /* Salvaje: sale de P' + d*G, logaritmo = k + d */
-            if(d_cero){ K[i].pos=c->objetivo; }
-            else{
-                fe_t dx,dy; kg_normalize(&dG,dx,dy);
-                jp_add_affine(&K[i].pos,&c->objetivo,dx,dy);
-            }
+            fe_t dx,dy; kg_normalize(&dG,dx,dy);
+            JP w2; jp_add_affine(&w2,&c->objetivo,dx,dy);  /* salvaje: P' + d*G */
+            int inf=1; for(int j=0;j<4;j++) if(w2.z[j]) inf=0;
+            if(inf){ memcpy(K[i].x,c->obj_x,32); memcpy(K[i].y,c->obj_y,32); sc_zero(K[i].dist); }
+            else kg_normalize(&w2,K[i].x,K[i].y);
         }
-    }
+    };
+    for(int i=0;i<n_kang;i++) soltar(i,i&1);   /* mitad mansos, mitad salvajes */
 
     while(!c->parar.load() && !c->encontrado.load()){
         auto t_ini=std::chrono::steady_clock::now();
-        for(int i=0;i<n_kang;i++) pts[i]=K[i].pos;
 
-        /* Una sola inversion para todo el rebano: es lo que hace que cada salto
-           cueste unas pocas multiplicaciones en vez de una inversion entera. */
-        /* Un canguro puede caer en el infinito (sumar un punto a su opuesto).
-           Antes eso rompia el bucle y dejaba el hilo sin hacer nada el resto de
-           la sesion; ahora se le suelta de nuevo en otro sitio y el resto del
-           rebano sigue. */
+        /* 1) Elegir el salto de cada uno y preparar el denominador.
+              El salto depende SOLO de donde esta: por eso dos canguros que
+              coinciden se quedan pegados a partir de ahi. */
         for(int i=0;i<n_kang;i++){
-            int z0=1; for(int j=0;j<4;j++) if(pts[i].z[j]) z0=0;
-            if(!z0) continue;
-            sc_t d; sc_zero(d); d[0]=NEXT();
-            if(c->bits<64) d[0]&=((c->bits>=64)?~0ULL:((1ULL<<c->bits)-1));
-            if(sc_cmp(d,c->ancho)>=0) sc_sub(d,d,c->ancho);
-            int dz=1; for(int j=0;j<4;j++) if(d[j]) dz=0;
-            if(dz) sc_set_u64(d,1);
-            JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
-            sc_copy(K[i].dist,d);
-            if(K[i].manso) K[i].pos=dG;
-            else{
-                fe_t dx,dy; kg_normalize(&dG,dx,dy);
-                jp_add_affine(&K[i].pos,&c->objetivo,dx,dy);
-            }
-            pts[i]=K[i].pos;
+            int h=(int)(K[i].x[0]%(uint64_t)c->njumps);
+            jmp[i]=h;
+            fe_sub(den[i],c->jx[h],K[i].x);
+            /* Denominador cero: el canguro esta justo encima del punto de salto
+               o de su opuesto. No se puede dividir, y ademas su camino ya no
+               es util: se le suelta otra vez. */
+            int z=1; for(int j=0;j<4;j++) if(den[i][j]) z=0;
+            if(z){ soltar(i,K[i].manso);
+                   h=(int)(K[i].x[0]%(uint64_t)c->njumps); jmp[i]=h;
+                   fe_sub(den[i],c->jx[h],K[i].x);
+                   int z2=1; for(int j=0;j<4;j++) if(den[i][j]) z2=0;
+                   if(z2){ den[i][0]=1; den[i][1]=den[i][2]=den[i][3]=0; } }
         }
 
-        memcpy(pfx[0],pts[0].z,32);
-        for(int i=1;i<n_kang;i++) fe_mul(pfx[i],pfx[i-1],pts[i].z);
+        /* 2) Una sola inversion para todo el rebano. Es lo que hace que cada
+              salto cueste unas pocas multiplicaciones en vez de una inversion
+              entera, que son ~512. */
+        memcpy(pfx[0],den[0],32);
+        for(int i=1;i<n_kang;i++) fe_mul(pfx[i],pfx[i-1],den[i]);
         fe_t inv; fe_inv(inv,pfx[n_kang-1]);
 
+        /* 3) Recorrer al reves deshaciendo los prefijos, y saltar. */
         for(int i=n_kang-1;i>=0;i--){
-            fe_t zinv;
-            if(i){ fe_mul(zinv,inv,pfx[i-1]); fe_mul(inv,inv,pts[i].z); }
-            else   memcpy(zinv,inv,32);
-            fe_t z2,xa; fe_sqr(z2,zinv); fe_mul(xa,pts[i].x,z2);
+            fe_t dinv;
+            if(i){ fe_mul(dinv,inv,pfx[i-1]); fe_mul(inv,inv,den[i]); }
+            else   memcpy(dinv,inv,32);
 
-            /* Punto distinguido: los dbits bajos de la x a cero. */
-            if((xa[0]&c->dmask)==0){
+            /* Punto distinguido: los dbits bajos de la x a cero. Se mira la
+               posicion ACTUAL, antes de saltar. */
+            if((K[i].x[0]&c->dmask)==0){
                 sc_t otro; int otro_manso;
-                if(dp_insert(&c->tabla,xa,K[i].dist,K[i].manso,otro,&otro_manso)){
-                    /* k = distancia del manso - distancia del salvaje */
+                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,otro,&otro_manso)){
                     sc_t manso,salvaje;
                     if(K[i].manso){ sc_copy(manso,K[i].dist); sc_copy(salvaje,otro); }
                     else          { sc_copy(manso,otro);      sc_copy(salvaje,K[i].dist); }
                     sc_t kp;
                     if(sc_sub(kp,manso,salvaje) && sc_cmp(kp,c->ancho)<=0){
                         /* Se comprueba antes de cantar victoria: kp*G tiene que
-                           dar exactamente el objetivo trasladado. Una colision
-                           puede salir de dos caminos que se cruzan sin pegarse,
-                           y entonces la resta da un numero que parece bueno y
-                           no lo es. */
+                           dar exactamente el objetivo trasladado. Dos caminos
+                           que se cruzan sin pegarse dan una resta que parece
+                           buena y no lo es. */
                         JP chk; kg_scalar_mul(&chk,kp,FIELD_GX,FIELD_GY);
-                        fe_t cx,cy,ox,oy;
                         int chk_inf=1; for(int z=0;z<4;z++) if(chk.z[z]) chk_inf=0;
                         if(!chk_inf){
-                            kg_normalize(&chk,cx,cy);
-                            kg_normalize(&c->objetivo,ox,oy);
-                            if(memcmp(cx,ox,32)==0 && memcmp(cy,oy,32)==0){
+                            fe_t cx,cy; kg_normalize(&chk,cx,cy);
+                            if(memcmp(cx,c->obj_x,32)==0 && memcmp(cy,c->obj_y,32)==0){
                                 sc_t kfinal; sc_add(kfinal,kp,c->rango_ini);
                                 sc_copy(c->k,kfinal);
                                 c->encontrado.store(1);
                             }
                         }
                     }
-                    /* Si la resta sale negativa o fuera del rango, no es una
-                       colision util (puede pasar con caminos que se cruzan sin
-                       pegarse): se sigue saltando. */
                 }
             }
 
-            /* El salto depende SOLO de donde esta: por eso dos canguros que
-               coinciden se quedan pegados. */
-            int h=(int)(xa[0]%(uint64_t)c->njumps);
-            JP nueva;
-            jp_add_affine(&nueva,&K[i].pos,c->jx[h],c->jy[h]);
-            K[i].pos=nueva;
+            /* Suma afin: lambda = (y2-y1)/(x2-x1), x3 = lambda^2-x1-x2,
+               y3 = lambda*(x1-x3)-y1. Seis multiplicaciones contando la
+               inversion amortizada. */
+            int h=jmp[i];
+            fe_t lam,t1,x3,y3;
+            fe_sub(t1,c->jy[h],K[i].y);
+            fe_mul(lam,t1,dinv);
+            fe_sqr(x3,lam);
+            fe_sub(x3,x3,K[i].x);
+            fe_sub(x3,x3,c->jx[h]);
+            fe_sub(t1,K[i].x,x3);
+            fe_mul(y3,lam,t1);
+            fe_sub(y3,y3,K[i].y);
+            memcpy(K[i].x,x3,32); memcpy(K[i].y,y3,32);
             sc_add_u64(K[i].dist,c->jlen[h]);
         }
         c->saltos.fetch_add((long long)n_kang);
@@ -619,5 +631,5 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         }
     }
     #undef NEXT
-    free(K); free(pts); free(pfx);
+    free(K); free(den); free(pfx); free(jmp);
 }

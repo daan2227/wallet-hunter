@@ -66,7 +66,68 @@ static void fe_add(fe_t r,const fe_t a,const fe_t b){
  * notaba porque "no encontrar nada" es justo lo que se espera de los dos.
  *
  * Aqui va con __uint128_t, que en ARM64 el compilador traduce exactamente a
- * mul + umulh: lo que el asm intentaba hacer, pero bien. */
+ * mul + umulh: lo que el asm intentaba hacer, pero bien.
+ *
+ * (El comentario vale para fe_mul, justo debajo de fe_reduce8.) */
+/* Reduce un producto de 8 limbs a un elemento del cuerpo.
+ *
+ * Lo comparten fe_mul y fe_sqr: la reduccion no depende de como se haya
+ * calculado el producto, y tenerla una sola vez evita que las dos versiones se
+ * separen con el tiempo. */
+static void fe_reduce8(fe_t r,uint64_t *t){
+    /* 2^256 == 0x1000003D1 (mod p). */
+    const uint64_t C=0x1000003D1ULL;
+
+    /* Primera pasada: parte baja + C * parte alta. */
+    uint64_t carry=0;
+    for(int i=0;i<4;i++){
+        __uint128_t p=(__uint128_t)t[i+4]*C+t[i]+carry;
+        t[i]=(uint64_t)p;carry=(uint64_t)(p>>64);
+    }
+
+    /* Y ahora se dobla el sobrante hacia abajo, otra vez por C.
+     *
+     * ESTO ESTABA MAL, y llevaba mal desde el principio. La version anterior
+     * hacia una sola vuelta y la propagacion del acarreo cortaba en seco:
+     *
+     *     for(int i=1;i<4 && c2;i++) ...
+     *
+     * Si al llegar a i=3 todavia quedaba c2, se TIRABA. Y un acarreo que sale
+     * por arriba de 2^256 no vale cero: vale C. O sea, el resultado salia
+     * exactamente C corto.
+     *
+     * Hace falta que t[1], t[2] y t[3] esten los tres a 0xFFFF...FF justo en
+     * ese momento, asi que con numeros al azar no pasa casi nunca —5000
+     * productos aleatorios no lo encuentran— pero con valores con estructura
+     * salta enseguida: el primero que lo destapo fue elevar p-2 a p-2, dentro
+     * del inverso modular, donde daba un inverso que no era.
+     *
+     * El bucle repite mientras siga saliendo acarreo. Termina rapido: en la
+     * segunda vuelta t[0] acaba de darse la vuelta, asi que ya no arrastra.
+     */
+    while(carry){
+        uint64_t c=carry;
+        __uint128_t p=(__uint128_t)c*C+t[0];
+        t[0]=(uint64_t)p;
+        uint64_t c2=(uint64_t)(p>>64);
+        for(int i=1;i<4;i++){
+            __uint128_t q=(__uint128_t)t[i]+c2;
+            t[i]=(uint64_t)q;c2=(uint64_t)(q>>64);
+        }
+        carry=c2;
+    }
+
+    /* Ya cabe en 256 bits, y como 2p > 2^256 solo puede sobrar una p. */
+    if(fe_cmp(t,FP)>=0){
+        uint64_t borrow=0;
+        for(int i=0;i<4;i++){
+            __uint128_t p=(__uint128_t)t[i]-FP[i]-borrow;
+            t[i]=(uint64_t)p;borrow=(p>>127)&1;
+        }
+    }
+    memcpy(r,t,32);
+}
+
 static void fe_mul(fe_t r,const fe_t a,const fe_t b){
     /* Escolar 4x4 -> 8 limbs. El maximo de cada paso es
        (2^64-1) + (2^64-1)^2 + (2^64-1) = 2^128-1, asi que cabe en 128 bits y
@@ -82,45 +143,104 @@ static void fe_mul(fe_t r,const fe_t a,const fe_t b){
         /* t[i+4] no se ha tocado todavia en esta pasada. */
         t[i+4]=carry;
     }
-    /* Reduccion mod p usando 2^256 == 0x1000003D1 (mod p). */
-    const uint64_t C=0x1000003D1ULL;
-    uint64_t carry=0;
-    for(int i=0;i<4;i++){
-        __uint128_t p=(__uint128_t)t[i+4]*C+t[i]+carry;
-        t[i]=(uint64_t)p;carry=(uint64_t)(p>>64);
-    }
-    if(carry){
-        __uint128_t p2=(__uint128_t)carry*C+t[0];
-        t[0]=(uint64_t)p2;uint64_t c2=(uint64_t)(p2>>64);
-        for(int i=1;i<4&&c2;i++){uint64_t o=t[i];t[i]=o+c2;c2=(t[i]<o)?1:0;}
-    }
-    if(fe_cmp(t,FP)>=0){
-        uint64_t borrow=0;
-        for(int i=0;i<4;i++){
-            __uint128_t p=(__uint128_t)t[i]-FP[i]-borrow;
-            t[i]=(uint64_t)p;borrow=(p>>127)&1;
-        }
-    }
-    memcpy(r,t,32);
+    fe_reduce8(r,t);
 }
-static void fe_sqr(fe_t r,const fe_t a){fe_mul(r,a,a);}
+
+/* Elevar al cuadrado, con su propio camino.
+ *
+ * Antes era `fe_mul(a,a)`, que hace las 16 multiplicaciones de 64x64 del caso
+ * general. Pero al cuadrado a[i]*a[j] y a[j]*a[i] son el MISMO producto: basta
+ * calcular las 6 de arriba de la diagonal, duplicarlas de un golpe con un
+ * desplazamiento, y sumar despues los 4 cuadrados a[i]^2. Diez
+ * multiplicaciones en vez de dieciseis.
+ *
+ * Importa porque fe_sqr esta en los dos sitios calientes: una vez por salto de
+ * canguro (la lambda al cuadrado) y 255 veces dentro de fe_inv. */
+static void fe_sqr(fe_t r,const fe_t a){
+    uint64_t t[8]={0};
+    __uint128_t cur; uint64_t c;
+
+    /* Triangulo de arriba: a[i]*a[j] con i<j, colocado en t[1..6]. */
+    cur=(__uint128_t)a[0]*a[1];      t[1]=(uint64_t)cur; c=(uint64_t)(cur>>64);
+    cur=(__uint128_t)a[0]*a[2]+c;    t[2]=(uint64_t)cur; c=(uint64_t)(cur>>64);
+    cur=(__uint128_t)a[0]*a[3]+c;    t[3]=(uint64_t)cur; t[4]=(uint64_t)(cur>>64);
+
+    cur=(__uint128_t)a[1]*a[2]+t[3];      t[3]=(uint64_t)cur; c=(uint64_t)(cur>>64);
+    cur=(__uint128_t)a[1]*a[3]+t[4]+c;    t[4]=(uint64_t)cur; t[5]=(uint64_t)(cur>>64);
+
+    cur=(__uint128_t)a[2]*a[3]+t[5];      t[5]=(uint64_t)cur; t[6]=(uint64_t)(cur>>64);
+
+    /* Duplicar el triangulo entero: cada producto cruzado va dos veces.
+       t[0] es cero, asi que el desplazamiento no pierde nada por abajo. */
+    t[7]=t[6]>>63;
+    for(int i=6;i>=1;i--) t[i]=(t[i]<<1)|(t[i-1]>>63);
+
+    /* Y ahora los cuadrados de la diagonal, en las posiciones pares. */
+    c=0;
+    for(int i=0;i<4;i++){
+        cur=(__uint128_t)a[i]*a[i]+t[2*i]+c;
+        t[2*i]=(uint64_t)cur;   c=(uint64_t)(cur>>64);
+        cur=(__uint128_t)t[2*i+1]+c;
+        t[2*i+1]=(uint64_t)cur; c=(uint64_t)(cur>>64);
+    }
+    /* a < 2^256 => a^2 < 2^512: el ultimo acarreo es siempre 0. */
+    fe_reduce8(r,t);
+}
 static void fe_dbl(fe_t r,const fe_t a){fe_add(r,a,a);}
 
-/* Modular inverse: a^(p-2) mod p via square-and-multiply
-   p-2 = FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFF FFFFFFFE FFFFFC2D */
+/* Inverso modular: a^(p-2) mod p.
+ *
+ * Antes iba bit a bit sobre p-2: 256 cuadrados y ~128 multiplicaciones, unas
+ * 384 operaciones. Pero p-2 no es un exponente cualquiera, es
+ *
+ *     p-2 = 2^256 - 2^32 - 979
+ *
+ * y en binario son tiras larguisimas de unos. Eso permite una cadena de
+ * adicion: se construyen x2=a^(2^2-1), x3=a^(2^3-1), x6, x11, x22... cada una
+ * doblando la anterior, y se llega a p-2 con 255 cuadrados y solo 15
+ * multiplicaciones.
+ *
+ * Con el fe_sqr de arriba, el inverso sale a menos de la mitad de coste. Se
+ * nota sobre todo con lotes pequenos, donde la inversion del lote se reparte
+ * entre pocos canguros: con lote 64 eran seis multiplicaciones por salto solo
+ * de invertir.
+ *
+ * Nota: para a=0 esto devuelve 0, igual que la version anterior. Quien llama
+ * comprueba el cero antes (en el bucle de canguros es el caso de dos que caen
+ * en la misma x).
+ */
 static void fe_inv(fe_t r,const fe_t a){
-    const uint64_t EXP[4]={
-        0xFFFFFFFEFFFFFC2DULL,0xFFFFFFFFFFFFFFFFULL,
-        0xFFFFFFFFFFFFFFFFULL,0xFFFFFFFFFFFFFFFFULL
-    };
-    fe_t res; res[0]=1;res[1]=res[2]=res[3]=0;
-    for(int w=3;w>=0;w--){
-        for(int b=63;b>=0;b--){
-            fe_sqr(res,res);
-            if((EXP[w]>>b)&1) fe_mul(res,res,a);
-        }
-    }
-    memcpy(r,res,32);
+    fe_t x2,x3,x6,x9,x11,x22,x44,x88,x176,x220,x223,t;
+
+    fe_sqr(x2,a);        fe_mul(x2,x2,a);          /* a^(2^2-1)   */
+    fe_sqr(x3,x2);       fe_mul(x3,x3,a);          /* a^(2^3-1)   */
+
+    memcpy(x6,x3,32);
+    { for(int i=0;i<3;i++) fe_sqr(x6,x6); } fe_mul(x6,x6,x3);    /* 2^6-1  */
+    memcpy(x9,x6,32);
+    { for(int i=0;i<3;i++) fe_sqr(x9,x9); } fe_mul(x9,x9,x3);    /* 2^9-1  */
+    memcpy(x11,x9,32);
+    { for(int i=0;i<2;i++) fe_sqr(x11,x11); } fe_mul(x11,x11,x2);  /* 2^11-1 */
+    memcpy(x22,x11,32);
+    { for(int i=0;i<11;i++) fe_sqr(x22,x22); } fe_mul(x22,x22,x11);/* 2^22-1 */
+    memcpy(x44,x22,32);
+    { for(int i=0;i<22;i++) fe_sqr(x44,x44); } fe_mul(x44,x44,x22);
+    memcpy(x88,x44,32);
+    { for(int i=0;i<44;i++) fe_sqr(x88,x88); } fe_mul(x88,x88,x44);
+    memcpy(x176,x88,32);
+    { for(int i=0;i<88;i++) fe_sqr(x176,x176); } fe_mul(x176,x176,x88);
+    memcpy(x220,x176,32);
+    { for(int i=0;i<44;i++) fe_sqr(x220,x220); } fe_mul(x220,x220,x44);
+    memcpy(x223,x220,32);
+    { for(int i=0;i<3;i++) fe_sqr(x223,x223); } fe_mul(x223,x223,x3);
+
+    /* La cola: los 33 bits de abajo de p-2, que ya no son todo unos. */
+    memcpy(t,x223,32);
+    { for(int i=0;i<23;i++) fe_sqr(t,t); } fe_mul(t,t,x22);
+    { for(int i=0;i<5;i++) fe_sqr(t,t); } fe_mul(t,t,a);
+    { for(int i=0;i<3;i++) fe_sqr(t,t); } fe_mul(t,t,x2);
+    { for(int i=0;i<2;i++) fe_sqr(t,t); } fe_mul(t,t,a);
+    memcpy(r,t,32);
 }
 
 /* ---- Jacobian point ---- */
