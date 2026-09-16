@@ -2125,6 +2125,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_gear, "Herramientas") {
             listOf(
+                Triple(R.drawable.ic_search, "Buscar claves públicas",      { auditarClavesPublicas() }),
                 Triple(R.drawable.ic_gear,   "Configurar según el hardware", { showHardwareInfo() }),
                 Triple(R.drawable.ic_export, "Exportar progreso",            { exportPuzzleProgress() }),
                 Triple(R.drawable.ic_import, "Importar progreso",            { importPuzzleProgress() })
@@ -4655,6 +4656,101 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         tv.setTextColor(AppTheme.TXT_SEC)
                     }
                 }
+            }
+        }.start()
+    }
+
+    /**
+     * Pregunta a la cadena, puzzle por puzzle, si alguno ha revelado su clave
+     * pública.
+     *
+     * Kangaroo sólo sirve con la clave pública, y ésta sólo aparece cuando la
+     * dirección GASTA. Los puzzles sin resolver nunca han gastado — por eso
+     * siguen sin resolver — así que hoy previsiblemente no hay ninguno. Pero
+     * eso es una afirmación sobre el mundo, y conviene comprobarla contra la
+     * cadena en vez de darla por buena:
+     *
+     *  - Si mañana alguien gasta desde una de esas direcciones, deja de ser
+     *    cierta en ese instante.
+     *  - Y si resulta que alguna sí la tiene, es justo la que hay que atacar.
+     *
+     * Una consulta por puzzle, la barata: /address/{addr} y mirar cuántas veces
+     * ha gastado. Las respuestas quedan en caché, así que repetirlo es gratis.
+     */
+    private fun auditarClavesPublicas() {
+        val lista = puzzles.filter {
+            BtcAddress.validate(it.addr, false) is BtcAddress.Result.Valid
+        }
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Buscando claves públicas")
+            .setMessage("Consultando ${lista.size} direcciones…")
+            .setCancelable(false)
+            .create()
+        dlg.show()
+        Thread {
+            val con = mutableListOf<Pair<Int, String>>()
+            var sin = 0; var sinRed = 0; var publicadas = 0
+            for ((i, p) in lista.withIndex()) {
+                if (isFinishing || isDestroyed) return@Thread
+                when (val r = try { PubKeyFinder.buscar(this, p.addr, false) }
+                              catch (e: Exception) { PubKeyFinder.Resultado.SinRed }) {
+                    is PubKeyFinder.Resultado.Encontrada -> con.add(p.num to r.pubHex)
+                    PubKeyFinder.Resultado.NoRevelada    -> sin++
+                    is PubKeyFinder.Resultado.Publicada  -> publicadas++
+                    PubKeyFinder.Resultado.SinRed        -> {
+                        sinRed++
+                        // Si la cadena no contesta, seguir preguntando 77 veces
+                        // es gastar minutos para no saber nada. Tres seguidas
+                        // basta para concluir que no hay red.
+                        if (sinRed >= 3) break
+                    }
+                }
+                runOnUiThread {
+                    dlg.setMessage("Consultando… ${i + 1} de ${lista.size}")
+                }
+            }
+            runOnUiThread {
+                dlg.dismiss()
+                val texto = buildString {
+                    if (con.isEmpty() && publicadas == 0) {
+                        append("Ninguno de los ${lista.size} ha revelado su clave ")
+                        append("pública: ninguno ha gastado nunca.
+
+")
+                        append("Kangaroo no sirve para ninguno. La única vía es ")
+                        append("fuerza bruta, y para estos rangos eso son ")
+                        append("millones de años.
+
+")
+                        append("Si algún día alguien gasta desde una de esas ")
+                        append("direcciones, la clave quedará publicada y ")
+                        append("aparecerá aquí.")
+                    } else {
+                        if (con.isNotEmpty()) {
+                            append("Admiten Kangaroo:
+")
+                            con.forEach { (n, pk) -> append("  #$n  ${pk.take(20)}…
+") }
+                            append("
+")
+                        }
+                        if (publicadas > 0)
+                            append("$publicadas han gastado —o sea, su clave está " +
+                                   "publicada— pero no se encontró en el historial " +
+                                   "reciente.
+
+")
+                        append("$sin sin revelar.")
+                    }
+                    if (sinRed > 0) append("
+
+No se pudo consultar: sin conexión.")
+                }
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Claves públicas")
+                    .setMessage(texto)
+                    .setPositiveButton("Entendido", null)
+                    .show()
             }
         }.start()
     }
