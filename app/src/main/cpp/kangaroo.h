@@ -494,7 +494,12 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     fe_t *den=(fe_t*)calloc(n_kang,sizeof(fe_t));   /* x2 - x1 de cada uno */
     fe_t *pfx=(fe_t*)calloc(n_kang,sizeof(fe_t));
     int  *jmp=(int*)calloc(n_kang,sizeof(int));
-    if(!K||!den||!pfx||!jmp){ free(K);free(den);free(pfx);free(jmp); return; }
+    /* Canguros a los que no se les ha podido calcular el denominador en esta
+       vuelta. Ver mas abajo: en vez de dejarles dar un salto inventado, se les
+       vuelve a soltar. */
+    int  *mal=(int*)calloc(n_kang,sizeof(int));
+    if(!K||!den||!pfx||!jmp||!mal){
+        free(K);free(den);free(pfx);free(jmp);free(mal); return; }
 
     /* xorshift: aqui no hace falta un generador criptografico, solo que los
        puntos de salida esten repartidos. */
@@ -544,12 +549,22 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             /* Denominador cero: el canguro esta justo encima del punto de salto
                o de su opuesto. No se puede dividir, y ademas su camino ya no
                es util: se le suelta otra vez. */
+            mal[i]=0;
             int z=1; for(int j=0;j<4;j++) if(den[i][j]) z=0;
             if(z){ soltar(i,K[i].manso);
                    h=(int)(K[i].x[0]%(uint64_t)c->njumps); jmp[i]=h;
                    fe_sub(den[i],c->jx[h],K[i].x);
                    int z2=1; for(int j=0;j<4;j++) if(den[i][j]) z2=0;
-                   if(z2){ den[i][0]=1; den[i][1]=den[i][2]=den[i][3]=0; } }
+                   /* Dos veces seguidas cayendo justo encima del punto de salto
+                      no va a pasar nunca, pero si pasara no se puede dividir.
+                      Se mete un 1 para que la inversion del lote —que es
+                      compartida— siga saliendo bien para los DEMAS, y se marca
+                      este para no usar el resultado: con den = 1 el salto seria
+                      inventado y su distancia dejaria de corresponder con donde
+                      esta. Un canguro asi no solo no sirve: mete basura en la
+                      tabla de distinguidos, que la comparten todos los hilos. */
+                   if(z2){ den[i][0]=1; den[i][1]=den[i][2]=den[i][3]=0;
+                           mal[i]=1; } }
         }
 
         /* 2) Una sola inversion para todo el rebano. Es lo que hace que cada
@@ -564,6 +579,10 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             fe_t dinv;
             if(i){ fe_mul(dinv,inv,pfx[i-1]); fe_mul(inv,inv,den[i]); }
             else   memcpy(dinv,inv,32);
+
+            /* Marcado arriba: ni se apunta en la tabla ni se salta. Se suelta
+               otra vez y a la vuelta siguiente ya viene bien. */
+            if(mal[i]){ soltar(i,K[i].manso); continue; }
 
             /* Punto distinguido: los dbits bajos de la x a cero. Se mira la
                posicion ACTUAL, antes de saltar. */
@@ -631,5 +650,5 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         }
     }
     #undef NEXT
-    free(K); free(den); free(pfx); free(jmp);
+    free(K); free(den); free(pfx); free(jmp); free(mal);
 }
