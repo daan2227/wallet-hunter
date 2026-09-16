@@ -154,6 +154,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var kangarooReinicios = 0
     /** A qué puzzle pertenece la respuesta que estamos esperando. */
     private var puzzleSeleccionado = -1
+    /** Etiquetas de las tarjetas de estadística: cambian según el modo. */
+    private var lblEscaneadas: TextView? = null
+    private var lblRestantes: TextView? = null
+    /** Para calcular la velocidad de Kangaroo, que no pasa por HunterEngine. */
+    private var kgInicio = 0L
+    private var kgUltOps = 0L
+    private var kgUltMs = 0L
+    private var kgOpsSeg = 0.0
+    /** Operaciones que se esperan: ~2,2·raíz(W). */
+    private var kgOpsEsperadas = 0.0
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -1943,7 +1953,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         statsCard.addView(tvPeakWpsPuzzle)
 
-        fun miniStat(label: String, tv: TextView): LinearLayout = LinearLayout(this).apply {
+        fun miniStat(label: String, tv: TextView, guardarEtiqueta: ((TextView)->Unit)? = null):
+                LinearLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
@@ -1954,6 +1965,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 text = label; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.medium(context)
+                guardarEtiqueta?.invoke(this)
             })
             addView(tv)
         }
@@ -1978,12 +1990,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
         val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
-        miniRow1.addView(miniStat("Escaneadas", tvCntP).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        miniRow1.addView(miniStat("Escaneadas", tvCntP) { lblEscaneadas = it }
+            .also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
         miniRow1.addView(miniStat("Tiempo", tvTmP))
         val pctLocal = tvPctPuzzle!!
         val blkLocal = tvBlockProgress!!
         miniRow2.addView(miniStat("Progreso", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-        miniRow2.addView(miniStat("Bloques restantes", blkLocal))
+        miniRow2.addView(miniStat("Bloques restantes", blkLocal) { lblRestantes = it })
         statsCard.addView(miniRow1); statsCard.addView(miniRow2)
         page.addView(statsCard)
 
@@ -4750,6 +4763,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
+            lblEscaneadas?.text = "Escaneadas"
+            lblRestantes?.text = "Bloques restantes"
             btnKangaroo?.text = "Buscar con Kangaroo"
             tvPuzzleAtajo?.text = "Detenida. El trabajo queda guardado; " +
                                   "al volver a darle sigue desde ahí."
@@ -4773,6 +4788,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
         }
+        kgInicio = System.currentTimeMillis()
+        kgUltOps = 0L; kgUltMs = kgInicio; kgOpsSeg = 0.0
+        // El trabajo que hace falta: ~2,2 veces la raíz del ancho del rango.
+        kgOpsEsperadas = try {
+            val a = java.math.BigInteger(puzzleIniHex, 16)
+            val b = java.math.BigInteger(puzzleFinHex, 16)
+            2.2 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
+        } catch (e: Exception) { 0.0 }
+        lblEscaneadas?.text = "Operaciones"
+        lblRestantes?.text = "Estimado"
         btnKangaroo?.text = "Detener Kangaroo"
         tvPuzzleAtajo?.text = "Buscando con Kangaroo en $hilos hilos…"
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
@@ -4821,6 +4846,49 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
         val dps = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
+
+        // ── Las estadísticas de la pantalla ───────────────────────────────
+        //
+        // Todas esas tarjetas leían de HunterEngine, que durante Kangaroo está
+        // parado: por eso salía 0 Keys/s y 00:00:00 con la búsqueda en marcha.
+        // Kangaroo corre en sus propios hilos y lleva su propia cuenta.
+        val ahoraMs = System.currentTimeMillis()
+        val dtMs = ahoraMs - kgUltMs
+        if (dtMs >= 500) {
+            // Media móvil corta: el número salta menos y se lee mejor.
+            val inst = (ops - kgUltOps) * 1000.0 / dtMs
+            kgOpsSeg = if (kgOpsSeg <= 0) inst else kgOpsSeg * 0.7 + inst * 0.3
+            kgUltOps = ops; kgUltMs = ahoraMs
+        }
+        val (v, u) = scaleSpeed(kgOpsSeg)
+        tvWpsPuzzle?.text = v
+        tvSpeedUnitPuzzle?.text = "$u op/s"
+        tvPeakWpsPuzzle?.text = "$dps puntos distinguidos guardados"
+        tvCountPuzzle?.text = formatCount(ops)
+        tvTimePuzzle?.text = formatElapsed(kgInicio)
+
+        if (kgOpsEsperadas > 0) {
+            val pct = ops / kgOpsEsperadas * 100.0
+            // Con rangos de 2^139 el porcentaje es un cero con muchos decimales:
+            // decir "0,00 %" durante meses no informa de nada. Por debajo de la
+            // milésima se enseña en notación científica, que al menos cambia.
+            tvPctPuzzle?.text = when {
+                pct >= 0.01 -> "%.2f %%".format(pct)
+                pct > 0     -> "%.1e %%".format(pct)
+                else        -> "—"
+            }
+            tvBlockProgress?.text = if (kgOpsSeg > 1000) {
+                val seg = (kgOpsEsperadas - ops) / kgOpsSeg
+                when {
+                    seg < 5400        -> "${(seg / 60).toInt()} min"
+                    seg < 172_800     -> "${(seg / 3600).toInt()} h"
+                    seg < 6.3e7       -> "${(seg / 86_400).toInt()} días"
+                    seg < 3.15e10     -> "${(seg / 3.15e7).toInt()} años"
+                    seg < 3.15e13     -> "%.0f mil años".format(seg / 3.15e10)
+                    else              -> "%.0f M años".format(seg / 3.15e13)
+                }
+            } else "—"
+        }
         // Guardar cada pocos minutos: si el sistema mata la app no hay ocasión
         // de guardar al parar, y se perdería todo lo de esta sesión.
         val ahora = System.currentTimeMillis()
@@ -4828,8 +4896,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ultimoGuardadoKg = ahora
             Thread { try { HunterEngine.kangarooSave() } catch (e: Throwable) {} }.start()
         }
-        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones · " +
-                  "${numberFmt.format(dps)} puntos guardados" +
+        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones" +
                   (if (kangarooReinicios > 0) " · $kangarooReinicios reinicios" else "")
     }
 

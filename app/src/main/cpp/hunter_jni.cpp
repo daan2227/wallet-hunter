@@ -2168,7 +2168,19 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         if(v){ bits=(31-idx)*8; for(int b=7;b>=0;b--) if(v&(1<<b)){ bits+=b+1; break; } break; }
     }
     if(bits<8) return JNI_FALSE;
-    int dbits=bits/4+4; if(dbits<6) dbits=6; if(dbits>32) dbits=32;
+    /* Cada cuantas operaciones se apunta un punto distinguido.
+     *
+     * bits/4+4 es la proporcion sensata, pero con rangos enormes se dispara: en
+     * el puzzle #140 (139 bits) daba 38, o sea un punto cada 2^38 operaciones —
+     * a 6 M/s, uno cada DOCE HORAS Y MEDIA. Durante ese rato el contador de
+     * puntos se queda en cero y el fichero de guardado esta vacio, asi que
+     * cerrar la app tiraba todo el trabajo de la sesion.
+     *
+     * Con el tope en 28 sale uno cada 45 segundos y la tabla de 2^20 tarda
+     * un ano y medio en llenarse. Bajar el umbral no hace la busqueda peor:
+     * guardar mas puntos solo mejora la deteccion de colisiones, lo unico que
+     * cuesta es memoria. */
+    int dbits=bits/4+4; if(dbits<6) dbits=6; if(dbits>28) dbits=28;
     /* Se esperan del orden de 2*raiz(W)/2^dbits distinguidos hasta dar con la
        clave. La tabla se dimensiona con holgura por encima de eso: si se llena,
        se dejan de guardar y la busqueda se degrada sin avisar. Antes salia
