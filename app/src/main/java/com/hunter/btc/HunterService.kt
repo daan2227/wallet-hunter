@@ -34,13 +34,29 @@ class HunterService : Service() {
             if (level >= 0 && scale > 0) {
                 batteryLevel = (level * 100 / scale)
                 // Auto-pausa si batería < 15%
-                if (batteryLevel < 15 && HunterEngine.isRunning()) {
-                    HunterEngine.stopHunting()
-                    getSystemService(NotificationManager::class.java)
-                        .notify(NOTIF_FG, buildFgNotif(
-                            "Escaneo en pausa: batería baja",
-                            "Batería al ${batteryLevel}%. Recarga y reinicia."
-                        ))
+                //
+                // Cubría sólo la fuerza bruta. Kangaroo corre en sus propios
+                // hilos y no pasa por isRunning(), así que seguía quemando la
+                // batería hasta apagar el móvil — y es justo el motor que se
+                // deja días encendido, sobre todo en un móvil que trabaja para
+                // un cluster y que nadie está mirando.
+                //
+                // Pararlo no pierde nada: kangarooStop() guarda la tabla de
+                // puntos distinguidos, que es donde está todo el trabajo.
+                if (batteryLevel < 15) {
+                    val bruta = HunterEngine.isRunning()
+                    val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+                    if (bruta || kang) {
+                        if (bruta) HunterEngine.stopHunting()
+                        if (kang)  try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        getSystemService(NotificationManager::class.java)
+                            .notify(NOTIF_FG, buildFgNotif(
+                                "En pausa: batería baja",
+                                "Batería al ${batteryLevel}%. " +
+                                if (kang) "El trabajo de Kangaroo queda guardado."
+                                else "Recarga y reinicia."
+                            ))
+                    }
                 }
             }
         }
@@ -124,6 +140,10 @@ class HunterService : Service() {
             .build()
     }
 
+    // Para sacar los saltos por segundo de Kangaroo, que sólo da el total.
+    private var kangUltOps = 0L
+    private var kangUltMs  = System.currentTimeMillis()
+
     private val statsUpdater = object : Runnable {
         override fun run() {
             val running = HunterEngine.isRunning()
@@ -136,7 +156,26 @@ class HunterService : Service() {
             val wStr = if(wps>=1000) "${"%.1f".format(wps/1000)}K w/s" else "${wps.toInt()} w/s"
             val cStr = if(count>=1_000_000) "${"%.2f".format(count/1e6)}M seeds" else "$count seeds"
 
-            if (running) {
+            // Kangaroo va por su cuenta y no aparece en isRunning(): sin esto
+            // la notificación se quedaba con el texto de cuando se creó el
+            // servicio, así que un móvil llevaba días buscando y el aviso decía
+            // otra cosa. Va primero porque cuando Kangaroo corre es el único
+            // motor en marcha.
+            val kangOps = try {
+                if (HunterEngine.kangarooRunning()) HunterEngine.kangarooOps() else -1L
+            } catch (e: Throwable) { -1L }
+            if (kangOps >= 0) {
+                val dt = (System.currentTimeMillis() - kangUltMs).coerceAtLeast(1L)
+                val porSeg = if (kangUltOps > 0) (kangOps - kangUltOps) * 1000.0 / dt else 0.0
+                kangUltOps = kangOps; kangUltMs = System.currentTimeMillis()
+                val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
+                val vStr = if (porSeg >= 1e6) "${"%.2f".format(porSeg/1e6)}M saltos/s"
+                           else "${"%.0f".format(porSeg)} saltos/s"
+                getSystemService(NotificationManager::class.java)
+                    .notify(NOTIF_FG, buildFgNotif(
+                        "Kangaroo · $vStr",
+                        "$pts puntos · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
+            } else if (running) {
                 val title = "BTC Hunter · $wStr · $found coincidencias"
                 val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
