@@ -1430,7 +1430,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     if (on) AppTheme.ACCENT else AppTheme.TXT_SEC)
             }
         }
-        listOf("BIP39" to "Frases semilla", "Clave directa" to "10× más rápido")
+        // El subtítulo de "Clave directa" decía "10× más rápido". Medido en el
+        // banco de pruebas (tools/ec-harness), por candidato:
+        //
+        //   BIP39         2.074 µs   (PBKDF2 2048 + derivación BIP32 + 5 hash160)
+        //   Clave directa     1,45 µs
+        //   proporción       1.431×
+        //
+        // O sea que la etiqueta se quedaba corta 143 veces. No es un detalle de
+        // presentación: con "10×" alguien puede pensar que BIP39 sale a cuenta,
+        // y en realidad cada frase semilla cuesta lo que mil cuatrocientas
+        // claves. Casi todo se va en el PBKDF2 de 2048 vueltas, que es
+        // deliberadamente lento por diseño del propio BIP39.
+        listOf("BIP39" to "Frases semilla", "Clave directa" to "~1.400× más rápido")
             .forEachIndexed { i, (name, sub2) ->
                 val c = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL

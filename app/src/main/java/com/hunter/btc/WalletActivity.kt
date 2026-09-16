@@ -64,7 +64,19 @@ class WalletActivity : FragmentActivity() {
     private var isWifMode = false
     private var currentWalletId = ""
     private var currentWalletName = ""
-    private var isTestnet = false
+    /**
+     * Red de pruebas.
+     *
+     * Se guarda en preferencias. Antes era una variable suelta: al recrearse la
+     * pantalla —girar el móvil, volver atrás, o que Android matara el proceso—
+     * volvía sola a la red principal sin avisar, y te encontrabas enviando en
+     * mainnet creyendo que estabas en pruebas.
+     */
+    private var isTestnet: Boolean
+        get() = getSharedPreferences("app_settings", MODE_PRIVATE)
+                    .getBoolean("testnet", false)
+        set(v) { getSharedPreferences("app_settings", MODE_PRIVATE)
+                    .edit().putBoolean("testnet", v).apply() }
     private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
     private var currentTab = 0
@@ -408,7 +420,7 @@ class WalletActivity : FragmentActivity() {
                     // caracteres, pero basta un campo nuevo con una coma para que
                     // el mapa de direcciones salga corrupto — y de ahí se firman
                     // transacciones.
-                    val raw = HunterEngine.deriveWallet(mnemonic)
+                    val raw = HunterEngine.deriveWallet(mnemonic, isTestnet)
                     // Si el motor devuelve JSON mal formado, un JSONObject pelado
                     // deja la wallet sin ninguna dirección. Se rescatan las
                     // entradas bien formadas antes de rendirse: mejor una wallet
@@ -2274,7 +2286,19 @@ class WalletActivity : FragmentActivity() {
                         AlertDialog.Builder(this).setTitle("No se la enseñes a nadie").setMessage(msg).setPositiveButton("Entendido", null).show()
                     }
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
-                    3 -> { isTestnet = !isTestnet; Toast.makeText(this, if(isTestnet) "Red de pruebas activada" else "Red principal", Toast.LENGTH_SHORT).show() }
+                    3 -> {
+                        isTestnet = !isTestnet
+                        // Hay que volver a derivar: en testnet la rama del árbol
+                        // es otra (coin type 1'), así que las direcciones que se
+                        // están enseñando no son las de esta red. Sin esto el
+                        // interruptor cambiaba a qué explorador se preguntaba
+                        // pero seguías viendo —y usando— las de mainnet.
+                        loadAddresses()
+                        Toast.makeText(this,
+                            if (isTestnet) "Red de pruebas activada — direcciones recargadas"
+                            else "Red principal — direcciones recargadas",
+                            Toast.LENGTH_SHORT).show()
+                    }
                     4 -> showBackupVault()
                     5 -> showRestoreDialog()
                     6 -> AlertDialog.Builder(this).setTitle("¿Borrar la cartera?").setMessage("Asegúrate de tener una copia de la clave: esto no se puede deshacer.")

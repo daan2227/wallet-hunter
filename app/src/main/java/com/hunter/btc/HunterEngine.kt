@@ -30,15 +30,32 @@ object HunterEngine {
     external fun wifToAddr(wif: String): String
     external fun popMatch(): String
     external fun popRecentAddr(): String
-    external fun deriveWallet(mnemonic: String): String
+    /**
+     * Las direcciones principales de la cartera.
+     *
+     * @param testnet cambia la rama del árbol (coin type 1' en vez de 0') y los
+     *   prefijos. Son claves distintas, no la misma dirección repintada.
+     */
+    external fun deriveWallet(mnemonic: String, testnet: Boolean): String
     /**
      * Direcciones de una rama BIP32 concreta.
+     *
      * @param purpose 44, 49, 84 u 86
      * @param change 0 recepción, 1 cambio
+     * @param testnet coin type 1' y prefijos de la red de pruebas.
+     *
+     *   Antes no existía este parámetro, y ahí estaba el fallo: el buscador de
+     *   huecos preguntaba al explorador de testnet por direcciones derivadas en
+     *   mainnet. Una dirección de mainnet nunca aparece en la cadena de
+     *   pruebas, así que la respuesta era siempre "sin usar", el primer hueco
+     *   salía siempre en el índice 0, y cada envío reutilizaba la misma
+     *   dirección de cambio.
+     *
      * @return JSON [{"i":n,"addr":"..."},...]
      */
     external fun deriveAddresses(mnemonic: String, purpose: Int, change: Int,
-                                 from: Int, count: Int): String
+                                 from: Int, count: Int,
+                                 testnet: Boolean): String
     external fun buildAndSignTx(requestJson: String): String
     external fun setBigCores(cores: IntArray, enable: Boolean)
     external fun setBatchSize(size: Int)

@@ -18,12 +18,14 @@ cd "$(dirname "$0")"
 # coste    - reparto del tiempo por operacion
 # reparto  - PBKDF2 frente a hash160
 # reparte  - Kangaroo repartido: exportar e importar distinguidos entre aparatos
-PRUEBAS="campo vectores prim hex persist kang reparte coste reparto"
+# direcciones - el codificador de direcciones, mainnet y testnet
+PRUEBAS="campo vectores prim hex persist kang reparte direcciones coste reparto"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
     case "$1" in
-        reparto) echo "-lpthread -lcrypto" ;;
+        reparto)     echo "-lpthread -lcrypto" ;;
+        direcciones) echo "-lcrypto -Wno-deprecated-declarations" ;;
         *)       echo "-lpthread" ;;
     esac
 }

@@ -40,9 +40,10 @@ object HdScanner {
     data class Found(val purpose: Int, val change: Int, val index: Int, val addr: String)
 
     private fun derive(mnemonic: String, purpose: Int, change: Int,
-                       from: Int, count: Int): List<Pair<Int, String>> =
+                       from: Int, count: Int, testnet: Boolean): List<Pair<Int, String>> =
         try {
-            val arr = JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, change, from, count))
+            val arr = JSONArray(
+                HunterEngine.deriveAddresses(mnemonic, purpose, change, from, count, testnet))
             (0 until arr.length()).mapNotNull {
                 val o = arr.optJSONObject(it) ?: return@mapNotNull null
                 val a = o.optString("addr", "")
@@ -71,7 +72,7 @@ object HdScanner {
         var idx = 0
 
         while (idx < MAX_INDEX && seguidasSinUsar < GAP_LIMIT) {
-            val lote = derive(mnemonic, purpose, change, idx, BATCH)
+            val lote = derive(mnemonic, purpose, change, idx, BATCH, testnet)
             if (lote.isEmpty()) break
             for ((i, addr) in lote) {
                 val usada = BalanceLookup.isUsed(addr, testnet)
@@ -106,6 +107,11 @@ object HdScanner {
     fun nextChangePath(mnemonic: String, purpose: Int, testnet: Boolean = false): String? {
         val (_, libre) = scanBranch(mnemonic, purpose, change = 1, testnet = testnet)
         if (libre < 0) return null
-        return "m/$purpose'/0'/0'/1/$libre"
+        // El coin type tiene que coincidir con el que usó la derivación. Estaba
+        // clavado a 0', así que en testnet se devolvía una ruta de mainnet y el
+        // cambio de la transacción se habría ido a una rama distinta de la que
+        // enseña la cartera.
+        val coin = if (testnet) 1 else 0
+        return "m/$purpose'/$coin'/0'/1/$libre"
     }
 }
