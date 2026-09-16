@@ -4714,37 +4714,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val texto = buildString {
                     if (con.isEmpty() && publicadas == 0) {
                         append("Ninguno de los ${lista.size} ha revelado su clave ")
-                        append("pública: ninguno ha gastado nunca.
-
-")
+                        append("pública: ninguno ha gastado nunca.\n\n")
                         append("Kangaroo no sirve para ninguno. La única vía es ")
                         append("fuerza bruta, y para estos rangos eso son ")
-                        append("millones de años.
-
-")
+                        append("millones de años.\n\n")
                         append("Si algún día alguien gasta desde una de esas ")
                         append("direcciones, la clave quedará publicada y ")
                         append("aparecerá aquí.")
                     } else {
                         if (con.isNotEmpty()) {
-                            append("Admiten Kangaroo:
-")
-                            con.forEach { (n, pk) -> append("  #$n  ${pk.take(20)}…
-") }
-                            append("
-")
+                            append("Admiten Kangaroo:\n")
+                            con.forEach { (n, pk) -> append("  #$n  ${pk.take(20)}…\n") }
+                            append("\n")
                         }
                         if (publicadas > 0)
                             append("$publicadas han gastado —o sea, su clave está " +
                                    "publicada— pero no se encontró en el historial " +
-                                   "reciente.
-
-")
+                                   "reciente.\n\n")
                         append("$sin sin revelar.")
                     }
-                    if (sinRed > 0) append("
-
-No se pudo consultar: sin conexión.")
+                    if (sinRed > 0) append("\n\nNo se pudo consultar: sin conexión.")
                 }
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("Claves públicas")
