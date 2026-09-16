@@ -258,16 +258,28 @@ object NetworkManager {
                     // la colisión aunque sus dos mitades vengan de móviles
                     // distintos. El motor comprueba dentro que el bloque es del
                     // mismo puzzle, rango y criterio; si no, lo rechaza entero.
-                    val n = try {
+                    //  n >= 0  entraron
+                    //  n == -1  el motor lo rechaza por contenido: otro puzzle,
+                    //           otro rango, mensaje roto. Reintentarlo no lo va
+                    //           a arreglar.
+                    //  n == -2  aquí no hay búsqueda en marcha ahora mismo. Eso
+                    //           SÍ se arregla solo, así que el worker tiene que
+                    //           guardarlos y volver a intentarlo: si no, parar
+                    //           un momento la búsqueda del master tiraría a la
+                    //           basura todo lo que llegara mientras.
+                    val vivo = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+                    val n = if (!vivo) -2 else try {
                         val crudo = android.util.Base64.decode(
                             msg.optString("data", ""), android.util.Base64.NO_WRAP)
                         if (crudo.isEmpty()) -1 else HunterEngine.kangarooImport(crudo)
                     } catch (e: Throwable) { -1 }
-                    if (n >= 0) {
-                        puntosRecibidos.addAndGet(n.toLong())
-                        workers[workerId]?.status = "kangaroo"
-                    } else {
-                        log("Puntos rechazados de $workerId (otro puzzle o mensaje roto)")
+                    when {
+                        n >= 0 -> {
+                            puntosRecibidos.addAndGet(n.toLong())
+                            workers[workerId]?.status = "kangaroo"
+                        }
+                        n == -2 -> log("Puntos de $workerId en espera: aquí no hay búsqueda en marcha")
+                        else    -> log("Puntos rechazados de $workerId (otro puzzle o mensaje roto)")
                     }
                     writer.println(JSONObject().apply {
                         put("type", "DP_OK"); put("n", n)
@@ -526,16 +538,17 @@ object NetworkManager {
                         blob, android.util.Base64.NO_WRAP))
                 }.toString())
                 val resp = readLineLimited(reader) ?: return false
-                val n = JSONObject(resp).optInt("n", -1)
-                if (n < 0) {
-                    // Rechazado por el motor del master: es otro puzzle o el
-                    // mensaje venía roto. Reintentarlo no va a arreglarlo, así
-                    // que se da por bueno para no atascar el bucle con algo que
-                    // no va a entrar nunca.
-                    log("El master ha rechazado los puntos: ¿otro puzzle?")
-                    return true
+                return when (val n = JSONObject(resp).optInt("n", -1)) {
+                    // El master no tiene la búsqueda en marcha. Es pasajero:
+                    // hay que guardarlos y volver a intentarlo, porque el motor
+                    // ya los dio por enviados y no pueden volver a salir.
+                    -2 -> { log("El master no está buscando ahora; se reintenta"); false }
+                    // Rechazado por contenido: otro puzzle o mensaje roto.
+                    // Reintentarlo no lo va a arreglar, así que se descarta para
+                    // no atascar el bucle con algo que no va a entrar nunca.
+                    -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
+                    else -> { if (n > 0) android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
                 }
-                return true
             }
         } catch (e: Exception) {
             log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
