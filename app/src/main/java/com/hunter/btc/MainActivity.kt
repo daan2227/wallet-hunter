@@ -144,6 +144,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvClusterSummary: TextView? = null
     /** "Sin atajo: fuerza bruta" / "Admite Kangaroo". */
     private var tvPuzzleAtajo: TextView? = null
+    /** Botón de Kangaroo: sólo aparece si la clave pública es conocida. */
+    private var btnKangaroo: Button? = null
+    /** Clave pública del puzzle elegido, si está publicada. */
+    private var puzzlePubHex: String = ""
+    private var puzzleIniHex: String = ""
+    private var puzzleFinHex: String = ""
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -1758,6 +1764,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
         page.addView(tvPuzzleAtajo)
+
+        btnKangaroo = Button(this).apply {
+            text = "Buscar con Kangaroo"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.BG_DEEP)
+            typeface = AppTheme.bold(context)
+            isAllCaps = false
+            stateListAnimator = null
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, this@MainActivity)
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
+            ).apply {
+                setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), 0)
+            }
+            setOnClickListener { alternarKangaroo() }
+        }
+        page.addView(btnKangaroo)
 
         // ── RANGE CONFIG ──────────────────────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_target, "Rango hexadecimal") {
@@ -3632,6 +3656,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             paintScanState(HunterEngine.isRunning())
             paintSettingSummaries()
+            refrescarKangaroo()
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
@@ -4489,12 +4514,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 else                     -> "%.0f millones de años".format(segundos / 3.15e13)
             }
             runOnUiThread {
+                puzzleIniHex = p.start; puzzleFinHex = p.end
+                puzzlePubHex = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex ?: ""
+                btnKangaroo?.visibility =
+                    if (puzzlePubHex.length == 66) android.view.View.VISIBLE
+                    else android.view.View.GONE
                 when (r) {
                     is PubKeyFinder.Resultado.Encontrada -> {
                         tv.text = "Clave pública publicada — admite Kangaroo.\n" +
                                   "Fuerza bruta: ${humano(clavesBrutas / ritmo)}. " +
-                                  "Con Kangaroo: ${humano(opsKangaroo / ritmo)}.\n" +
-                                  "Kangaroo todavía no está implementado."
+                                  "Con Kangaroo: ${humano(opsKangaroo / ritmo)}."
                         tv.setTextColor(AppTheme.ACCENT)
                     }
                     PubKeyFinder.Resultado.NoRevelada -> {
@@ -4510,6 +4539,58 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    /** Arranca o para la búsqueda por Kangaroo del puzzle elegido. */
+    private fun alternarKangaroo() {
+        if (HunterEngine.kangarooRunning()) {
+            HunterEngine.kangarooStop()
+            btnKangaroo?.text = "Buscar con Kangaroo"
+            tvPuzzleAtajo?.text = "Búsqueda detenida."
+            return
+        }
+        if (puzzlePubHex.length != 66) return
+        // Un hilo por núcleo menos uno, para que el móvil siga respondiendo.
+        val hilos = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+        val ok = try {
+            HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex, hilos, 512)
+        } catch (e: Throwable) {
+            android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
+        }
+        if (!ok) {
+            tvPuzzleAtajo?.text = "No se pudo arrancar la búsqueda."
+            tvPuzzleAtajo?.setTextColor(AppTheme.RED)
+            return
+        }
+        btnKangaroo?.text = "Detener Kangaroo"
+        tvPuzzleAtajo?.text = "Buscando con Kangaroo en $hilos hilos…"
+        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+    }
+
+    /** Se llama desde updateUI(): progreso y resultado. */
+    private fun refrescarKangaroo() {
+        val tv = tvPuzzleAtajo ?: return
+        val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+        if (clave.length == 64) {
+            // Guardar ANTES de tocar la interfaz: si la app muere aquí, la
+            // clave no puede perderse.
+            try {
+                MatchVault.add(this, MatchVault.Entry(
+                    ts = System.currentTimeMillis(), source = "kangaroo",
+                    addr = "", wif = "", privHex = clave, btc = 0.0,
+                    extra = "PUZZLE kangaroo", checkedTs = 0L))
+            } catch (e: Exception) {
+                android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
+            }
+            HunterEngine.kangarooStop()
+            btnKangaroo?.text = "Buscar con Kangaroo"
+            tv.text = "CLAVE ENCONTRADA\n$clave\nGuardada en el baúl de hallazgos."
+            tv.setTextColor(AppTheme.ACCENT)
+            return
+        }
+        if (!HunterEngine.kangarooRunning()) return
+        val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
+        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones"
     }
 
     private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {

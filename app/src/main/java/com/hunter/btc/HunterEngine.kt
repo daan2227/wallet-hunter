@@ -48,4 +48,26 @@ object HunterEngine {
     external fun isSequential(): Boolean
     external fun getSeqProgress(): String
     external fun getLastKey(): String
+
+    /* ── Kangaroo ─────────────────────────────────────────────────────────
+       Logaritmo discreto en un intervalo, O(raíz(n)) en vez de O(n).
+       Necesita la CLAVE PÚBLICA del objetivo, no la dirección: de una
+       dirección no se puede volver atrás. PubKeyFinder averigua si existe.
+
+       Verificado en tools/ec-harness/kang.cpp contra logaritmos conocidos. */
+
+    /**
+     * @param pubHex clave pública comprimida, 66 caracteres
+     * @param iniHex inicio del rango, hex (se alinea a la derecha)
+     * @param finHex fin del rango
+     * @return false si la clave pública no es válida o ya hay una búsqueda
+     */
+    external fun kangarooStart(pubHex: String, iniHex: String, finHex: String,
+                               hilos: Int, canguresPorHilo: Int): Boolean
+    external fun kangarooStop()
+    /** Operaciones de grupo hechas: es lo que se compara con raíz(W). */
+    external fun kangarooOps(): Long
+    external fun kangarooRunning(): Boolean
+    /** Clave privada en hex de 64 caracteres, o "" si todavía no está. */
+    external fun kangarooResult(): String
 }

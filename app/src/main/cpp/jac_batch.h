@@ -139,29 +139,63 @@ static void jp_from_affine(JP *P,const uint8_t *pub65){
     memset(P->z,0,32); P->z[0]=1;
 }
 
-/* Mixed addition: R = P (Jacobian) + G (affine)
-   Uses formulas from https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-0.html#addition-madd-2007-bl */
-static void jp_add_G(JP *R,const JP *P){
-    fe_t Z1Z1,U2,S2,H,HH,HHH,R2,V,tmp;
+/* Adicion mixta general: R = P (Jacobiano) + Q (afin).
+   madd-2007-bl de https://hyperelliptic.org/EFD/g1p/auto-shortw-jacobian-0.html
+
+   OJO: no cubre el caso P == Q. Ahi H sale 0 y Z3 tambien, o sea el punto en el
+   infinito, que no es la respuesta. Para doblar esta jp_dbl. */
+static void jp_add_affine(JP *R,const JP *P,const uint64_t *qx,const uint64_t *qy){
+    /* Se calcula TODO en locales y se vuelca al final: asi vale llamarlo con
+       R == P. Escribiendo directamente en R->y y leyendo despues P->y se lee el
+       valor nuevo en vez del viejo, y el resultado es un punto que no esta en
+       la curva. Con R y P distintos no se nota, que es justo lo que hace que
+       este fallo sobreviva a las pruebas. */
+    fe_t Z1Z1,U2,S2,H,HH,HHH,R2,V,tmp,x3,y3,z3;
     fe_sqr(Z1Z1,P->z);
-    fe_mul(U2,FIELD_GX,Z1Z1);
-    fe_mul(S2,FIELD_GY,P->z); fe_mul(S2,S2,Z1Z1);
+    fe_mul(U2,qx,Z1Z1);
+    fe_mul(S2,qy,P->z); fe_mul(S2,S2,Z1Z1);
     fe_sub(H,U2,P->x);
     fe_sub(R2,S2,P->y);
     fe_sqr(HH,H);
     fe_mul(HHH,H,HH);
     fe_mul(V,P->x,HH);
-    /* X3 = R^2 - HHH - 2*V */
-    fe_sqr(R->x,R2);
-    fe_sub(R->x,R->x,HHH);
-    fe_dbl(tmp,V); fe_sub(R->x,R->x,tmp);
-    /* Y3 = R*(V-X3) - Y1*HHH */
-    fe_sub(tmp,V,R->x);
-    fe_mul(R->y,R2,tmp);
+    fe_sqr(x3,R2);
+    fe_sub(x3,x3,HHH);
+    fe_dbl(tmp,V); fe_sub(x3,x3,tmp);
+    fe_sub(tmp,V,x3);
+    fe_mul(y3,R2,tmp);
     fe_mul(tmp,P->y,HHH);
-    fe_sub(R->y,R->y,tmp);
-    /* Z3 = H*Z1 */
-    fe_mul(R->z,H,P->z);
+    fe_sub(y3,y3,tmp);
+    fe_mul(z3,H,P->z);
+    memcpy(R->x,x3,32); memcpy(R->y,y3,32); memcpy(R->z,z3,32);
+}
+
+/* Doblado Jacobiano para a=0 (secp256k1). dbl-2009-l */
+static void jp_dbl(JP *R,const JP *P){
+    /* Igual que jp_add_affine: en locales, para que jp_dbl(&S,&S) funcione.
+       Z3 = 2*Y*Z necesita la Y VIEJA, y escribir antes en R->y se la cargaba. */
+    fe_t A,B,C,D,E,F,t1,t2,x3,y3,z3;
+    fe_sqr(A,P->x);                 /* A = X^2 */
+    fe_sqr(B,P->y);                 /* B = Y^2 */
+    fe_sqr(C,B);                    /* C = B^2 */
+    fe_add(t1,P->x,B); fe_sqr(t1,t1);
+    fe_sub(t1,t1,A); fe_sub(t1,t1,C);
+    fe_dbl(D,t1);                   /* D = 2*((X+B)^2 - A - C) */
+    fe_dbl(E,A); fe_add(E,E,A);     /* E = 3*A */
+    fe_sqr(F,E);                    /* F = E^2 */
+    fe_dbl(t1,D); fe_sub(x3,F,t1);              /* X3 = F - 2D */
+    fe_sub(t1,D,x3); fe_mul(t1,E,t1);
+    fe_dbl(t2,C); fe_dbl(t2,t2); fe_dbl(t2,t2); /* 8C */
+    fe_sub(y3,t1,t2);                           /* Y3 = E*(D-X3) - 8C */
+    fe_mul(t1,P->y,P->z); fe_dbl(z3,t1);        /* Z3 = 2*Y*Z, con la Y vieja */
+    memcpy(R->x,x3,32); memcpy(R->y,y3,32); memcpy(R->z,z3,32);
+}
+
+/* R = P + G. Caso particular del anterior; se deja como nombre propio porque
+   es el del bucle secuencial, pero comparte formulas para que no haya dos
+   copias que puedan divergir. */
+static void jp_add_G(JP *R,const JP *P){
+    jp_add_affine(R,P,FIELD_GX,FIELD_GY);
 }
 
 #define JAC_BATCH 16000

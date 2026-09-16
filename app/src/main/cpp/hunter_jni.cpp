@@ -11,6 +11,7 @@
 #include <mutex>
 #include <deque>
 #include <vector>
+#include <ctime>
 #include <thread>
 #include <chrono>
 #include <sstream>
@@ -30,6 +31,7 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
+#include "kangaroo.h"
 #include "bloom.h"
 
 #include "sha256_ripemd160.h"
@@ -2093,6 +2095,128 @@ Java_com_hunter_btc_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
 JNIEXPORT jint JNICALL
 Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
     return g_batch_size.load();
+}
+
+
+/* ===================== KANGAROO ===================== */
+/*
+ * Verificado en tools/ec-harness/kang.cpp: resuelve logaritmos discretos de los
+ * que ya se sabe la respuesta, en intervalos de 20 a 36 bits, con una tanda de
+ * 30 claves al azar y con cuatro hilos sobre la misma tabla.
+ */
+static KangarooCtx g_kg;
+static bool        g_kg_vivo=false;
+static std::vector<pthread_t> g_kg_hilos;
+static std::mutex  g_kg_mtx;
+
+struct KgArg { int n_kang; uint64_t semilla; };
+static std::vector<KgArg> g_kg_args;
+
+static void *kg_thread(void *p){
+    KgArg *a=(KgArg*)p;
+    kg_run(&g_kg,a->n_kang,a->semilla);
+    return NULL;
+}
+
+static int hex2bin(const char *h,uint8_t *out,int max){
+    int n=0;
+    while(h[0]&&h[1]&&n<max){
+        auto v=[](char c)->int{
+            if(c>='0'&&c<='9')return c-'0';
+            if(c>='a'&&c<='f')return c-'a'+10;
+            if(c>='A'&&c<='F')return c-'A'+10;
+            return -1; };
+        int hi=v(h[0]),lo=v(h[1]);
+        if(hi<0||lo<0) return -1;
+        out[n++]=(uint8_t)((hi<<4)|lo); h+=2;
+    }
+    return (*h)?-1:n;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooStart(
+        JNIEnv *env, jobject, jstring jpub, jstring jini, jstring jfin,
+        jint hilos, jint por_hilo){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(g_kg_vivo) return JNI_FALSE;
+
+    const char *cp=env->GetStringUTFChars(jpub,0);
+    const char *ci=env->GetStringUTFChars(jini,0);
+    const char *cf=env->GetStringUTFChars(jfin,0);
+    uint8_t pub[33],ini[32],fin[32];
+    memset(ini,0,32); memset(fin,0,32);
+    int okp=(hex2bin(cp,pub,33)==33);
+    /* Los extremos se admiten con menos de 64 caracteres: se alinean a la
+       derecha, que es como se escriben los rangos de los puzzles. */
+    auto carga=[&](const char *h,uint8_t *d)->bool{
+        size_t L=strlen(h); if(L>64||L==0||(L&1)) return false;
+        uint8_t tmp[32]; int n=hex2bin(h,tmp,32); if(n<0) return false;
+        memcpy(d+(32-n),tmp,n); return true; };
+    bool oki=carga(ci,ini), okf=carga(cf,fin);
+    env->ReleaseStringUTFChars(jpub,cp);
+    env->ReleaseStringUTFChars(jini,ci);
+    env->ReleaseStringUTFChars(jfin,cf);
+    if(!okp||!oki||!okf) return JNI_FALSE;
+
+    /* Tamanos: los distinguidos se eligen para que la tabla no se llene. Con
+       2^d puntos por distinguido y ~2^(bits/2+1) operaciones totales, guardar
+       del orden de 2^(bits/2+1-d) entradas. d = bits/4 + 4 deja la tabla en
+       unos pocos MB hasta bits=80. */
+    int bits=0;
+    for(int i=0;i<32;i++){
+        int idx=i; uint8_t v=fin[idx];
+        if(v){ bits=(31-idx)*8; for(int b=7;b>=0;b--) if(v&(1<<b)){ bits+=b+1; break; } break; }
+    }
+    if(bits<8) return JNI_FALSE;
+    int dbits=bits/4+4; if(dbits<6) dbits=6; if(dbits>32) dbits=32;
+    int tbits=bits/2+2-dbits; if(tbits<14) tbits=14; if(tbits>24) tbits=24;
+
+    if(!kg_setup(&g_kg,pub,ini,fin,dbits,tbits)) return JNI_FALSE;
+
+    if(hilos<1) hilos=1; if(hilos>16) hilos=16;
+    if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
+    g_kg_args.assign(hilos,KgArg{});
+    g_kg_hilos.assign(hilos,pthread_t{});
+    for(int i=0;i<hilos;i++){
+        g_kg_args[i].n_kang=por_hilo;
+        g_kg_args[i].semilla=0x9E3779B97F4A7C15ULL*(uint64_t)(i+1)
+                             ^(uint64_t)time(NULL);
+        pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]);
+    }
+    g_kg_vivo=true;
+    return JNI_TRUE;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(!g_kg_vivo) return;
+    g_kg.parar.store(1);
+    for(auto &t:g_kg_hilos) pthread_join(t,NULL);
+    g_kg_hilos.clear();
+    kg_free(&g_kg);
+    g_kg_vivo=false;
+}
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooOps(JNIEnv *, jobject){
+    return g_kg_vivo ? (jlong)g_kg.saltos.load() : 0;
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
+    return (g_kg_vivo && !g_kg.encontrado.load()) ? JNI_TRUE : JNI_FALSE;
+}
+
+/* @return la clave privada en hex de 64 caracteres, o "" si aun no esta. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooResult(JNIEnv *env, jobject){
+    if(!g_kg_vivo || !g_kg.encontrado.load()) return env->NewStringUTF("");
+    uint8_t be[32]; sc_to_be32(g_kg.k,be);
+    char hex[65];
+    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",be[i]);
+    hex[64]=0;
+    return env->NewStringUTF(hex);
 }
 
 }
