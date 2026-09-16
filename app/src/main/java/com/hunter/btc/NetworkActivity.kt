@@ -247,17 +247,18 @@ class NetworkActivity : AppCompatActivity() {
         val code = NetworkManager.authToken
         tvLog?.text = "✓ Master iniciado\nIP: $ip\nCódigo: $code\n" +
                       "Puzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
+        val aviso = if (conKangaroo)
+            "\n\nReparto de Kangaroo: todos los aparatos al mismo rango, " +
+            "porque partirlo empeoraría la búsqueda.\n\n" +
+            "AVISO: lo que viaja entre los móviles permite reconstruir la " +
+            "clave privada. Úsalo sólo en tu propia red."
+        else ""
         // El código hay que teclearlo en cada worker; sin él no se aceptan.
         AlertDialog.Builder(this)
             .setTitle("Master activo")
             .setMessage("IP: $ip\n\nCódigo de acceso:\n\n        $code\n\n" +
                         "Introduce este código en cada worker. Sin él, ningún " +
-                        "dispositivo de la red puede conectarse." +
-                        if (conKangaroo)
-                            "\n\nReparto de Kangaroo: todos al mismo rango.\n\n" +
-                            "AVISO: lo que viaja permite reconstruir la clave " +
-                            "privada. Úsalo sólo en tu propia red."
-                        else "")
+                        "dispositivo de la red puede conectarse." + aviso)
             .setPositiveButton("OK", null)
             .show()
     }

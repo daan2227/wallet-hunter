@@ -524,7 +524,7 @@ object NetworkManager {
     private fun enviarPuntos(blob: ByteArray): Boolean {
         val ip = masterIp
         if (ip.isEmpty()) return false
-        try {
+        return try {
             Socket().use { socket ->
                 socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
                 socket.soTimeout = SOCKET_TIMEOUT_MS
@@ -537,8 +537,9 @@ object NetworkManager {
                     put("data", android.util.Base64.encodeToString(
                         blob, android.util.Base64.NO_WRAP))
                 }.toString())
-                val resp = readLineLimited(reader) ?: return false
-                return when (val n = JSONObject(resp).optInt("n", -1)) {
+                val resp = readLineLimited(reader)
+                if (resp == null) false
+                else when (val n = JSONObject(resp).optInt("n", -1)) {
                     // El master no tiene la búsqueda en marcha. Es pasajero:
                     // hay que guardarlos y volver a intentarlo, porque el motor
                     // ya los dio por enviados y no pueden volver a salir.
@@ -552,7 +553,7 @@ object NetworkManager {
             }
         } catch (e: Exception) {
             log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
-            return false
+            false
         }
     }
 
