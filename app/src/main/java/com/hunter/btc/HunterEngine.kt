@@ -82,4 +82,6 @@ object HunterEngine {
     external fun kangarooSave(): Boolean
     /** Puntos distinguidos acumulados: el trabajo que sobrevive a un reinicio. */
     external fun kangarooPoints(): Long
+    /** Cambia el límite de CPU con la búsqueda en marcha, sin reiniciarla. */
+    external fun kangarooSetCpu(pct: Int)
 }

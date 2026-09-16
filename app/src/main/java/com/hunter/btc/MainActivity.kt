@@ -2041,6 +2041,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val level = levels[idx]
             sbThreadsPuzzle?.progress = level.threads - 1
             sbCpuPuzzle?.progress = level.cpu - 10
+            // Si Kangaroo está corriendo, el freno cambia al momento. El número
+            // de hilos no: eso sí obligaría a reiniciar la búsqueda.
+            if (HunterEngine.kangarooRunning())
+                try { HunterEngine.kangarooSetCpu(level.cpu) } catch (e: Throwable) {}
             prefs.edit()
                 .putInt("puzzle_threads", level.threads - 1)
                 .putInt("puzzle_cpu", level.cpu - 10)
@@ -2055,7 +2059,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         powerCard.addView(Ui.sectionLabel(this, "Recorrido del rango", topGap = 18))
         powerCard.addView(Ui.segmented(
             this, listOf("Aleatorio" to null, "Secuencial" to null), initial = 0
-        ) { idx -> HunterEngine.setSequential(idx == 1) })
+        ) { idx ->
+            HunterEngine.setSequential(idx == 1)
+            if (HunterEngine.kangarooRunning())
+                android.widget.Toast.makeText(this,
+                    "Esto sólo afecta a la fuerza bruta: en Kangaroo el recorrido " +
+                    "lo decide la función de salto.",
+                    android.widget.Toast.LENGTH_LONG).show()
+        })
 
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
         // JAC_BATCH en jac_batch.h permite hasta 16000 y el worker ya acota a
@@ -4773,13 +4784,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         if (puzzlePubHex.length != 66) return
         // Un hilo por núcleo menos uno, para que el móvil siga respondiendo.
-        val hilos = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(1, 8)
+        // Antes iban fijos: "núcleos - 1" hilos y 512 canguros, ignorando la
+        // potencia y el tamaño de lote que tienes puestos justo debajo. Ahora
+        // salen de los mismos controles que la fuerza bruta, que es lo que
+        // esperas al moverlos.
+        val nucleos = Runtime.getRuntime().availableProcessors()
+        val hilos = ((sbThreadsPuzzle?.progress ?: 3) + 1).coerceIn(1, nucleos.coerceAtLeast(1))
+        val cpu = ((sbCpuPuzzle?.progress ?: 50) + 10).coerceIn(10, 100)
+        // El "tamaño de lote" es literalmente cuántos canguros comparten una
+        // inversión modular: el mismo papel que en el motor de fuerza bruta.
+        // Se acota porque cada canguro ocupa unos 256 bytes por hilo.
+        val porHilo = HunterEngine.getBatchSize().coerceIn(64, 4096)
         // Un fichero por puzzle: la clave pública lo identifica sin ambigüedad
         // y así cambiar de puzzle y volver no pierde nada.
         val ruta = java.io.File(filesDir, "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
         val ok = try {
             HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,
-                                       hilos, 512, ruta)
+                                       hilos, porHilo, ruta)
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
@@ -4799,7 +4820,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         lblEscaneadas?.text = "Operaciones"
         lblRestantes?.text = "Estimado"
         btnKangaroo?.text = "Detener Kangaroo"
-        tvPuzzleAtajo?.text = "Buscando con Kangaroo en $hilos hilos…"
+        tvPuzzleAtajo?.text = "Buscando con Kangaroo · $hilos hilos · $cpu % de CPU · " +
+                             "$porHilo canguros por hilo"
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
         // El watchdog lo relanza si Android se lo lleva por delante. Con el
         // trabajo guardado, relanzar continúa donde estaba en vez de empezar.

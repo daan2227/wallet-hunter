@@ -40,6 +40,8 @@
 #include <stdio.h>
 #include <pthread.h>
 #include <atomic>
+#include <chrono>
+#include <time.h>
 
 /* ---------- Escalares de 256 bits (distancias y resultado) ---------- */
 typedef uint64_t sc_t[4];
@@ -330,6 +332,10 @@ typedef struct {
 
     std::atomic<long long> saltos;   /* operaciones de grupo hechas, para la UI */
     std::atomic<int>       parar;
+    /* Porcentaje de CPU, 1..100. Kangaroo no tenia freno: el selector de
+       potencia estaba puesto pero no hacia nada, y "Baja" calentaba el movil
+       igual que "Alta". En algo que va a estar dias encendido eso importa. */
+    std::atomic<int>       cpu_limite;
 } KangarooCtx;
 
 /* Multiplicacion escalar sencilla (doblar y sumar). Solo se usa en la
@@ -413,6 +419,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
             c->dbits=dp_bits; c->dmask=0;
             if(!dp_init(&c->tabla,4)) return 0;
             c->encontrado.store(1); c->saltos.store(0); c->parar.store(0);
+            c->cpu_limite.store(100);
             return 1;
         }
     }
@@ -451,6 +458,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->encontrado.store(0);
     c->saltos.store(0);
     c->parar.store(0);
+    c->cpu_limite.store(100);
     return 1;
 }
 
@@ -510,6 +518,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     }
 
     while(!c->parar.load() && !c->encontrado.load()){
+        auto t_ini=std::chrono::steady_clock::now();
         for(int i=0;i<n_kang;i++) pts[i]=K[i].pos;
 
         /* Una sola inversion para todo el rebano: es lo que hace que cada salto
@@ -590,6 +599,24 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         }
         c->saltos.fetch_add((long long)n_kang);
         if(c->encontrado.load()) break;
+
+        /* Freno de CPU: se duerme en proporcion a lo que ha costado la vuelta,
+           igual que hace el motor de fuerza bruta. Al 50 % duerme lo mismo que
+           ha trabajado. En trozos de 250 ms como mucho, para que pulsar
+           "detener" no tarde en responder. */
+        int cpu=c->cpu_limite.load();
+        if(cpu>0 && cpu<100){
+            double ms=std::chrono::duration<double,std::milli>(
+                std::chrono::steady_clock::now()-t_ini).count();
+            double dormir=ms*(100.0-cpu)/cpu;
+            if(dormir>0.5){
+                if(dormir>250.0) dormir=250.0;
+                struct timespec ts;
+                ts.tv_sec=(time_t)(dormir/1000.0);
+                ts.tv_nsec=(long)((dormir-(double)ts.tv_sec*1000.0)*1e6);
+                nanosleep(&ts,NULL);
+            }
+        }
     }
     #undef NEXT
     free(K); free(pts); free(pfx);

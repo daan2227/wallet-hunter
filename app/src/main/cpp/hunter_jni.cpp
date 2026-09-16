@@ -2205,6 +2205,9 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         if(n) g_kg_ops_previas=ops_ant;
     }
 
+    /* La potencia y el tamano de lote los elige el usuario y hasta ahora
+       Kangaroo los ignoraba: los hilos iban fijos y el lote a 512. */
+    g_kg.cpu_limite.store(g_cpu_limit.load());
     if(hilos<1) hilos=1; if(hilos>16) hilos=16;
     if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
     g_kg_args.assign(hilos,KgArg{});
@@ -2248,6 +2251,13 @@ Java_com_hunter_btc_HunterEngine_kangarooSave(JNIEnv *, jobject){
 
 /* Distinguidos en la tabla: es la medida real del trabajo acumulado, y lo que
  * sobrevive a un reinicio. */
+/* Cambiar la potencia con la busqueda en marcha, sin reiniciarla. */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooSetCpu(JNIEnv *, jobject, jint pct){
+    if(pct<1) pct=1; if(pct>100) pct=100;
+    if(g_kg_vivo) g_kg.cpu_limite.store(pct);
+}
+
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooPoints(JNIEnv *, jobject){
     return g_kg_vivo ? (jlong)g_kg.tabla.guardados : 0;
