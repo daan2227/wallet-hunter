@@ -23,7 +23,39 @@ object NetworkManager {
     /* ── Límites defensivos ───────────────────────────────────────────────────
        El servidor escucha en 0.0.0.0 y acepta conexiones de cualquiera en la
        red, así que todo lo que venga de fuera va acotado. */
-    private const val MAX_LINE_BYTES  = 8 * 1024
+
+    /** Tope de puntos por envío. A 49 bytes cada uno, 2048 son ~100 KB. */
+    private const val MAX_PUNTOS_ENVIO = 2048
+    /* Tamaños del formato de red de kangaroo.h, para que el límite de abajo
+       salga de ellos y no de un número redondo elegido a ojo. */
+    private const val KG_CAB = 4 + 4 + 33 + 32 + 32 + 4 + 4   // 113
+    private const val KG_ENT = 16 + 32 + 1                    // 49
+
+    /**
+     * Lo más largo que se acepta en una línea.
+     *
+     * Eran 8 KB fijos, y NO LLEGABAN. Un envío de puntos distinguidos son
+     * 113 + n·49 bytes en base64 dentro de un JSON: con 8 KB sólo caben 123
+     * puntos, pero el tope de envío son 2048, que ocupan 134 KB. O sea 16 veces
+     * el límite.
+     *
+     * Lo que pasaba entonces: el maestro cortaba la conexión con "line too
+     * long", el trabajador lo contaba como fallo de red y se quedaba
+     * REINTENTANDO EL MISMO BLOQUE PARA SIEMPRE. Y como mientras hay un bloque
+     * pendiente no se exporta nada más, ese móvil dejaba de aportar del todo
+     * sin que nada lo dijera: en la lista del maestro seguía apareciendo con su
+     * velocidad, buscando, pero sin entregar un punto nunca más.
+     *
+     * No ha saltado todavía por suerte: en el puzzle #140 dbits está topado en
+     * 28, o sea un punto cada ~21 s a 12,8 M/s, y los envíos llevan uno o dos.
+     * Salta con rangos más pequeños —dbits baja con el tamaño del rango, y con
+     * 40 bits son 14, o sea cientos de puntos por segundo— y con cualquier
+     * trabajador que haya estado un rato desconectado y traiga atrasos.
+     *
+     * Ahora sale del tope de envío, así que los dos no pueden volver a
+     * separarse. El x2 es para el JSON de alrededor y para no ir justos.
+     */
+    private const val MAX_LINE_BYTES  = 2 * (KG_CAB + MAX_PUNTOS_ENVIO * KG_ENT) * 4 / 3
     private const val MAX_WORKERS     = 64
     private const val MAX_NET_THREADS = 16
     private const val SOCKET_TIMEOUT_MS = 15_000
@@ -597,8 +629,6 @@ object NetworkManager {
      * nadie se queda mirándola.
      */
     private const val REPARTO_MS = 20_000L
-    /** Tope de puntos por envío. A 49 bytes cada uno, 2048 son ~100 KB. */
-    private const val MAX_PUNTOS_ENVIO = 2048
 
     @Volatile private var bucleVivo = false
     /** Envios seguidos que han fallado. Sirve para avisar de que el maestro se
@@ -691,6 +721,15 @@ object NetworkManager {
             // bloque, ese trabajo se pierde para siempre y sin avisar. Se queda
             // aquí hasta que entre, y mientras tanto no se exporta más.
             var pendiente: ByteArray? = null
+            // Desde cuándo está atascado ese bloque, y si ya se ha avisado.
+            //
+            // Mientras hay uno pendiente NO se exporta nada nuevo, así que un
+            // atasco no es "se retrasa el reparto": es que este móvil deja de
+            // aportar del todo. Y por fuera no se nota — en la lista del maestro
+            // sigue apareciendo con su velocidad, buscando— así que si no se
+            // dice aquí no se entera nadie.
+            var atascoDesde = 0L
+            var atascoAvisado = false
             try {
                 while (isRunning.get() && isWorker && modo == Modo.KANGAROO) {
                     if (puzzleResuelto) {
@@ -711,7 +750,13 @@ object NetworkManager {
                         } else {
                             // 1) Primero lo que quedó a deber, si quedó algo.
                             if (pendiente != null) {
-                                if (enviarPuntos(pendiente!!)) pendiente = null
+                                if (enviarPuntos(pendiente!!)) {
+                                    pendiente = null
+                                    if (atascoAvisado)
+                                        log("El bloque atascado ha entrado. " +
+                                            "Se vuelve a repartir con normalidad.")
+                                    atascoDesde = 0L; atascoAvisado = false
+                                }
                             }
                             // 2) Y luego lo nuevo, sólo si no hay atasco.
                             if (pendiente == null) {
@@ -722,6 +767,21 @@ object NetworkManager {
                                 // enteros entre un punto y el siguiente.
                                 if (blob == null || blob.isEmpty()) latido()
                                 else if (!enviarPuntos(blob)) pendiente = blob
+                            }
+                            // Un atasco que dura es un móvil que ya no aporta.
+                            // Se dice UNA vez, a los cinco minutos: menos tiempo
+                            // saltaría con cualquier corte de WiFi, y repetirlo
+                            // llenaría el registro como pasaba con el maestro
+                            // caído.
+                            if (pendiente != null) {
+                                val ahora = System.currentTimeMillis()
+                                if (atascoDesde == 0L) atascoDesde = ahora
+                                else if (!atascoAvisado && ahora - atascoDesde > 300_000L) {
+                                    atascoAvisado = true
+                                    log("Llevo 5 min sin poder entregar un bloque de " +
+                                        "puntos. Mientras siga atascado este móvil " +
+                                        "busca pero NO aporta al cluster.")
+                                }
                             }
                         }
                         // Avisar UNA vez cuando el maestro deja de responder, y
