@@ -22,28 +22,47 @@ import com.hunter.btc.recovery.RecoveryEngine
 import com.hunter.btc.recovery.RecoveryParser
 import com.hunter.btc.recovery.ParseResult
 
+/**
+ * Velocidad en el tiempo, una muestra por minuto.
+ *
+ * Tres cosas que la version anterior hacia mal y que se veian en cuanto habia
+ * datos de verdad:
+ *
+ *  - Repartia los puntos sobre los 60 huecos aunque solo hubiera tres, asi que
+ *    la linea salia amontonada en el borde izquierdo y el resto vacio.
+ *  - El eje vertical arrancaba en cero. En una busqueda estable todas las
+ *    muestras son parecidas, asi que la linea quedaba pegada al techo y la
+ *    variacion —que es LO UNICO que se quiere mirar— no se apreciaba.
+ *  - Las etiquetas de maximo y media se dibujaban las dos arriba a la
+ *    izquierda, una encima de la otra.
+ */
 class SpeedChartView(context: android.content.Context) : android.view.View(context) {
     private val maxPoints = 60
     private val wpsPoints = ArrayDeque<Float>()
+    private val d = context.resources.displayMetrics.density
+
     private val paintLine = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.TXT_PRI; strokeWidth = 1.5f; style = Paint.Style.STROKE
+        color = AppTheme.ACCENT; strokeWidth = 2f * d; style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND
     }
-    private val paintDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFFFFFFFF.toInt() }
+    private val paintDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.ACCENT }
     private val paintLbl = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.TXT_MUTED; textSize = 18f; typeface = Typeface.MONOSPACE
+        color = AppTheme.TXT_SEC; textSize = 9f * d; typeface = Typeface.MONOSPACE
     }
-    fun addPoint(wps: Float) { wpsPoints.addLast(wps); if(wpsPoints.size>maxPoints) wpsPoints.removeFirst(); postInvalidate() }
+    private val paintMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AppTheme.TXT_SEC; strokeWidth = 1f * d; style = Paint.Style.STROKE
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f)
+    }
+    private val paintBanda = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AppTheme.BG_ELEV; style = Paint.Style.FILL
+    }
+
+    fun addPoint(wps: Float) {
+        wpsPoints.addLast(wps); if (wpsPoints.size > maxPoints) wpsPoints.removeFirst()
+        postInvalidate()
+    }
     fun reset() { wpsPoints.clear(); postInvalidate() }
     fun getPoints(): List<Float> = wpsPoints.toList()
-    /** Línea de trazos para marcar el promedio. */
-    private val paintMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.ACCENT; strokeWidth = 1.5f; style = Paint.Style.STROKE
-        pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f, 6f), 0f)
-    }
-    private val paintLblMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.ACCENT; textSize = 18f; typeface = Typeface.MONOSPACE
-    }
 
     /** El promedio de lo que hay dibujado. 0 si no hay nada. */
     fun media(): Float = if (wpsPoints.isEmpty()) 0f else wpsPoints.sum() / wpsPoints.size
@@ -56,32 +75,58 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     }
 
     override fun onDraw(canvas: Canvas) {
-        val w=width.toFloat(); val h=height.toFloat()
-        if(w<=0||h<=0||wpsPoints.size<2) return
-        val pad=4f
-        // La escala sale del máximo, pero con un suelo: si todos los puntos son
-        // casi iguales —que es lo normal en una búsqueda estable— dividir por el
-        // máximo exacto convierte el ruido en picos enormes y parece que la
-        // velocidad da bandazos cuando no los da.
-        val mx=wpsPoints.max().coerceAtLeast(1f)
-        val pts=wpsPoints.mapIndexed{i,v->PointF(pad+(w-pad*2)*i/(maxPoints-1),h-pad-(h-pad*2)*(v/mx))}
-        val fill=Path(); fill.moveTo(pts[0].x,h); pts.forEach{fill.lineTo(it.x,it.y)}
-        fill.lineTo(pts.last().x,h); fill.close()
-        canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply{
-            shader=LinearGradient(0f,0f,0f,h,0x14FFFFFF,0x00FFFFFF,Shader.TileMode.CLAMP)
-            style=Paint.Style.FILL })
-        val lp=Path(); pts.forEachIndexed{i,p->if(i==0)lp.moveTo(p.x,p.y) else lp.lineTo(p.x,p.y)}
-        canvas.drawPath(lp,paintLine)
-        canvas.drawCircle(pts.last().x,pts.last().y,4f,paintDot)
+        val w = width.toFloat(); val h = height.toFloat()
+        if (w <= 0 || h <= 0) return
+        val topTxt = 11f * d      // sitio para la fila de arriba
+        val botTxt = 11f * d      // y para el eje de tiempo
+        val pad    = 2f * d
+        val y0 = topTxt; val y1 = h - botTxt
 
-        // El promedio, que es el dato que se pidió: línea de trazos y su cifra.
-        val med = media()
-        if (med > 0f) {
-            val y = h - pad - (h - pad*2) * (med / mx)
-            canvas.drawLine(pad, y, w - pad, y, paintMedia)
-            canvas.drawText("media ${corto(med)}", pad + 2, (y - 6f).coerceAtLeast(16f), paintLblMedia)
+        if (wpsPoints.size < 2) {
+            canvas.drawText("esperando muestras…", pad, h / 2, paintLbl)
+            return
         }
-        canvas.drawText("máx ${corto(wpsPoints.max())}", pad + 2, 22f, paintLbl)
+
+        val mx = wpsPoints.max(); val mn = wpsPoints.min(); val med = media()
+        // Eje ajustado a los datos, no a cero: con muestras parecidas un eje
+        // desde cero deja la linea plana pegada arriba y no se ve nada. Se deja
+        // un 8 % de aire a cada lado para que el maximo no toque el borde.
+        val aire = ((mx - mn) * 0.08f).coerceAtLeast(mx * 0.02f).coerceAtLeast(1f)
+        val lo = (mn - aire).coerceAtLeast(0f); val hi = mx + aire
+        val rango = (hi - lo).coerceAtLeast(1f)
+        fun yDe(v: Float) = y1 - (y1 - y0) * ((v - lo) / rango)
+        fun xDe(i: Int) = pad + (w - pad * 2) * i / (wpsPoints.size - 1).coerceAtLeast(1)
+
+        // Banda entre el minimo y el maximo, para que se vea de un golpe cuanto
+        // baila la velocidad.
+        canvas.drawRect(pad, yDe(mx), w - pad, yDe(mn), paintBanda)
+
+        val pts = wpsPoints.mapIndexed { i, v -> PointF(xDe(i), yDe(v)) }
+        val fill = Path(); fill.moveTo(pts[0].x, y1); pts.forEach { fill.lineTo(it.x, it.y) }
+        fill.lineTo(pts.last().x, y1); fill.close()
+        canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = LinearGradient(0f, y0, 0f, y1, 0x3341D9A0, 0x0041D9A0, Shader.TileMode.CLAMP)
+            style = Paint.Style.FILL
+        })
+        val lp = Path(); pts.forEachIndexed { i, p -> if (i == 0) lp.moveTo(p.x, p.y) else lp.lineTo(p.x, p.y) }
+        canvas.drawPath(lp, paintLine)
+        canvas.drawCircle(pts.last().x, pts.last().y, 3f * d, paintDot)
+
+        // La media, en trazos, con su cifra pegada a la derecha para no chocar
+        // con la fila de arriba.
+        val ym = yDe(med)
+        canvas.drawLine(pad, ym, w - pad, ym, paintMedia)
+
+        // Fila de arriba: maximo a la izquierda, minimo a la derecha. Asi el
+        // lector sabe que el eje NO empieza en cero.
+        canvas.drawText("máx ${corto(mx)}", pad, topTxt - 2f * d, paintLbl)
+        val tMin = "mín ${corto(mn)}"
+        canvas.drawText(tMin, w - pad - paintLbl.measureText(tMin), topTxt - 2f * d, paintLbl)
+
+        // Eje de tiempo abajo: cuanto abarca y donde esta el ahora.
+        canvas.drawText("hace ${wpsPoints.size} min", pad, h - 2f * d, paintLbl)
+        val tAhora = "ahora ${corto(wpsPoints.last())}"
+        canvas.drawText(tAhora, w - pad - paintLbl.measureText(tAhora), h - 2f * d, paintLbl)
     }
 }
 
@@ -2024,8 +2069,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         statsCard.addView(tvMediaPuzzle)
         chartView = SpeedChartView(this).apply {
+            // 110 y no 90: ahora hay una fila de etiquetas arriba (máx/mín) y
+            // otra abajo (tiempo), y con 90 la línea se quedaba sin sitio.
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(90)
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(110)
             ).apply { topMargin = dp(8) }
         }
         statsCard.addView(chartView)
@@ -3655,6 +3702,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private fun formatCount(v: Long): String = numberFmt.format(v)
 
+    /**
+     * El mismo número, pero que quepa.
+     *
+     * "10,500,411,904" ya se sale de la tarjeta, y eso son cuatro minutos de
+     * Kangaroo: en un día son quince dígitos y en una semana dieciocho. Con
+     * separadores de millar el texto crece sin techo, así que para los
+     * contadores que van en las tarjetas pequeñas se abrevia.
+     *
+     * Se conserva una cifra decimal porque sin ella "10 G" y "10,9 G" se ven
+     * iguales durante horas y parece que no avanza.
+     */
+    private fun formatCorto(v: Long): String = when {
+        v >= 1_000_000_000_000_000L -> "%.1f P".format(v / 1e15).replace('.', ',')
+        v >= 1_000_000_000_000L     -> "%.1f T".format(v / 1e12).replace('.', ',')
+        v >= 1_000_000_000L         -> "%.1f G".format(v / 1e9).replace('.', ',')
+        v >= 1_000_000L             -> "%.1f M".format(v / 1e6).replace('.', ',')
+        else                        -> numberFmt.format(v)
+    }
+
     // ── Registro local de bloques escaneados ─────────────────────────────────
     /**
      * Limpieza obligada por la corrección de la tabla de puzzles.
@@ -5138,11 +5204,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             guardarMuestras()
         }
         chartView?.let { ch ->
+            val pts = ch.getPoints()
             val m = ch.media()
-            tvMediaPuzzle?.text = if (m > 0) {
+            tvMediaPuzzle?.text = if (m > 0 && pts.size >= 2) {
                 val (mv, mu) = scaleSpeed(m.toDouble())
-                val n = ch.getPoints().size
-                "Media de los últimos $n min: $mv $mu/s"
+                // Lo que la gráfica no puede decir por sí sola: si el móvil
+                // aguanta el ritmo. Se comparan las últimas cinco muestras con
+                // la media de todo. En una búsqueda de días esto es el aviso de
+                // que se está calentando o de que la batería ha entrado en
+                // ahorro, mucho antes de que se note en el número grande.
+                val ultimas = pts.takeLast(5)
+                val reciente = ultimas.sum() / ultimas.size
+                val desvio = (reciente - m) / m * 100.0
+                val estado = when {
+                    pts.size < 5          -> ""
+                    desvio >  8           -> " · subiendo ${"%.0f".format(desvio)} %"
+                    desvio < -8           -> " · BAJANDO ${"%.0f".format(-desvio)} %"
+                    else                  -> " · estable"
+                }
+                "Media de ${pts.size} min: $mv $mu/s$estado"
             } else "Velocidad media · primera muestra en un minuto"
         }
 
@@ -5150,7 +5230,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvWpsPuzzle?.text = v
         tvSpeedUnitPuzzle?.text = "$u op/s"
         tvPeakWpsPuzzle?.text = "$dps puntos distinguidos guardados"
-        tvCountPuzzle?.text = formatCount(ops)
+        tvCountPuzzle?.text = formatCorto(ops)
         val segTotal = kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000
         tvTimePuzzle?.text = formatSegundos(segTotal)
         // Se guarda sobre la marcha y no sólo al parar: Android puede matar la
