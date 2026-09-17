@@ -2203,6 +2203,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         sbCpuPuzzle?.progress    = prefs.getInt("puzzle_cpu", 50)
         powerCard.addView(powerRow)
 
+        // Bajo la potencia: que se aplica al momento y que no.
+        //
+        // El % de CPU si cambia en caliente, pero el numero de hilos no: eso
+        // obliga a reiniciar la busqueda. Sin decirlo, mover "Potencia" con
+        // Kangaroo en marcha parece que hace mas de lo que hace.
+        powerCard.addView(TextView(this).apply {
+            text = "El % de CPU se aplica al momento. Los hilos, al reiniciar la búsqueda."
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        })
+
         // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
         powerCard.addView(Ui.sectionLabel(this, "Recorrido del rango", topGap = 18))
         powerCard.addView(Ui.segmented(
@@ -2215,11 +2230,35 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     "lo decide la función de salto.",
                     android.widget.Toast.LENGTH_LONG).show()
         })
+        // El aviso de arriba sólo salía SI tocabas el control Y Kangaroo estaba
+        // en marcha. Si lo dejabas puesto y arrancabas, nada te decía que no
+        // hace nada. Va fijo en la pantalla.
+        powerCard.addView(TextView(this).apply {
+            text = "Sólo para fuerza bruta. Kangaroo no recorre el rango: " +
+                   "salta por la curva según la función de salto."
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        })
 
         // ── BATCH SIZE SLIDER ─────────────────────────────────────────────
-        // JAC_BATCH en jac_batch.h permite hasta 16000 y el worker ya acota a
-        // ese máximo; el slider se quedaba en 4096, la cuarta parte. Lotes
-        // mayores amortizan mejor la única inversión modular por lote.
+        //
+        // OJO CON EL COMENTARIO QUE HABÍA AQUÍ. Decía que "lotes mayores
+        // amortizan mejor la única inversión modular por lote", y por eso se
+        // subió el tope del deslizador a 16000. Medido en el banco, en Kangaroo
+        // eso es FALSO por encima de ~2048: el conjunto de trabajo se sale de
+        // la caché y va peor.
+        //
+        //     1024  4,21 M saltos/s      8192  4,08 M
+        //     2048  4,33 M  <- óptimo   16000  3,69 M   (16 % peor)
+        //     4096  4,28 M              32000  3,45 M
+        //
+        // Kangaroo acota a 256..4096 por eso. El deslizador sigue llegando a
+        // 16000 porque el motor de fuerza bruta es otro bucle y ahí no se ha
+        // medido lo mismo.
         val batchLabels = listOf(64, 128, 256, 512, 1024, 2048, 4096, 8192, 16000)
 
         val batchHeaderRow = LinearLayout(this).apply {
@@ -2290,6 +2329,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             })
         }
         powerCard.addView(batchLabelRow)
+        // Medido: en Kangaroo por encima de ~2048 va peor, no mejor. Y el valor
+        // se lee al arrancar, asi que moverlo con la busqueda en marcha no hace
+        // nada hasta reiniciarla. Las dos cosas son invisibles sin decirlas.
+        powerCard.addView(TextView(this).apply {
+            text = "En Kangaroo se limita a 4096 y el óptimo medido es 2048: " +
+                   "más grande va peor. Se aplica al reiniciar la búsqueda."
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        })
 
         page.addView(powerCard)
         updatePuzzleLabels()
