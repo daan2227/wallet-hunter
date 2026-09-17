@@ -11,6 +11,7 @@ class NetworkActivity : AppCompatActivity() {
 
     private var tvLog: TextView? = null
     private var tvWorkers: TextView? = null
+    private var tvWorkersLbl: TextView? = null
     private var tvIp: TextView? = null
     private var etMasterIp: EditText? = null
     private var etCode: EditText? = null
@@ -181,7 +182,7 @@ class NetworkActivity : AppCompatActivity() {
             root.addView(it)
         }
 
-        root.addView(sectionLabel("Trabajadores conectados"))
+        tvWorkersLbl = sectionLabel("Trabajadores conectados").also { root.addView(it) }
         tvWorkers = TextView(this).apply {
             text = "Ninguno todavía"
             textSize = AppTheme.SP_BODY; setTextColor(MUTED)
@@ -254,10 +255,35 @@ class NetworkActivity : AppCompatActivity() {
         else            -> "—"
     }
 
-    /** Todo lo que el maestro puede saber del cluster, en un sitio. */
+    private fun haceCuanto(ms: Long): String {
+        if (ms == 0L) return "nunca"
+        val s = (System.currentTimeMillis() - ms) / 1000
+        return if (s < 60) "hace ${s}s" else "hace ${s / 60}min"
+    }
+
+    /** El estado del cluster, distinto según este móvil sea maestro o
+     *  trabajador.
+     *
+     *  Antes enseñaba SIEMPRE la lista de trabajadores. En un trabajador esa
+     *  lista está vacía por definición, así que ponía "ningún trabajador
+     *  todavía" y parecía que la conexión había fallado cuando en realidad
+     *  estaba buscando y mandando puntos. */
     private fun pintarEstado() {
+        if (NetworkManager.isWorker) {
+            tvWorkersLbl?.text = "Este móvil"
+            val env = NetworkManager.puntosEnviados.get()
+            tvWorkers?.text =
+                "Trabajando para ${NetworkManager.masterIp}\n" +
+                "Puntos enviados: $env\n" +
+                "Último envío: ${haceCuanto(NetworkManager.ultimoEnvioMs)}" +
+                (if (env == 0L)
+                    "\n\nEl primer envío tarda hasta 20 s, y sólo va cuando hay " +
+                    "puntos nuevos que mandar."
+                 else "")
+            return
+        }
+        tvWorkersLbl?.text = "Trabajadores conectados"
         val list = NetworkManager.listaWorkers()
-        val ahora = System.currentTimeMillis()
         val cab = if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO)
             // puntosRecibidos se contaba desde el principio y NO SE ENSEÑABA EN
             // NINGÚN SITIO: el maestro no tenía forma de ver si el cluster
@@ -266,12 +292,7 @@ class NetworkActivity : AppCompatActivity() {
         else ""
         tvWorkers?.text = cab + if (list.isEmpty()) "Ningún trabajador todavía"
         else list.joinToString("\n") { w ->
-            val hace = (ahora - w.vistoMs) / 1000
-            val visto = when {
-                hace < 60  -> "hace ${hace}s"
-                else       -> "hace ${hace / 60}min"
-            }
-            "· ${w.device}  ${velocidad(w.speed)}  [${w.status}]  $visto"
+            "· ${w.device}  ${velocidad(w.speed)}  [${w.status}]  ${haceCuanto(w.vistoMs)}"
         }
     }
 

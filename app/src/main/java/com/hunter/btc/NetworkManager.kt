@@ -126,6 +126,14 @@ object NetworkManager {
     var onClave: ((String, String) -> Unit)? = null   // (deviceId, claveHex)
     /** Puntos distinguidos recibidos de los workers, para enseñarlo. */
     val puntosRecibidos = java.util.concurrent.atomic.AtomicLong(0)
+    /** Y los que este aparato ha mandado, si es trabajador. La pantalla del
+     *  trabajador enseñaba la lista de workers —información de maestro— y
+     *  ponía "ningún trabajador todavía", que parece un fallo de conexión
+     *  cuando en realidad está trabajando. */
+    val puntosEnviados = java.util.concurrent.atomic.AtomicLong(0)
+    /** Cuándo entró el último envío. 0 = ninguno todavía. */
+    @Volatile var ultimoEnvioMs = 0L
+        private set
 
     /**
      * El puzzle que se reparte ya no tiene fondos: alguien lo ha resuelto. Lo
@@ -666,7 +674,11 @@ object NetworkManager {
                     // no atascar el bucle con algo que no va a entrar nunca.
                     -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
                     else -> { fallosSeguidos = 0
-                              if (n > 0) android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
+                              if (n > 0) {
+                                  puntosEnviados.addAndGet(n.toLong())
+                                  ultimoEnvioMs = System.currentTimeMillis()
+                              }
+                              android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
                 }
             }
         } catch (e: Exception) {
@@ -898,6 +910,7 @@ object NetworkManager {
         isMaster = false; isWorker = false
         modo = Modo.BLOQUES                  // el bucle de reparto mira esto
         puzzleVacio = false; puzzleResuelto = false; fallosSeguidos = 0
+        puntosEnviados.set(0); ultimoEnvioMs = 0L
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
         puntosRecibidos.set(0)
