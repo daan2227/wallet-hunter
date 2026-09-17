@@ -2150,10 +2150,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         powerCard.addView(tvCpuPuzzle); powerCard.addView(sbCpuPuzzle)
 
         data class PowerLevel(val label: String, val threads: Int, val cpu: Int)
+        // "Alta" eran 7 hilos fijos. En un móvil de 8 núcleos eso deja uno sin
+        // usar, y si el móvil tiene menos de 8 pide más hilos que núcleos.
+        // Ahora sale del hardware: Alta = todos, Media = la mitad, Baja = 1.
+        //
+        // No se reserva núcleo para la interfaz porque el freno de CPU ya deja
+        // aire: al 90 % los hilos duermen un 11 % del tiempo.
+        val nuc = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
         val levels = listOf(
             PowerLevel("Baja",  1, 30),
-            PowerLevel("Media", 3, 60),
-            PowerLevel("Alta",  7, 90)
+            PowerLevel("Media", (nuc / 2).coerceAtLeast(1), 60),
+            PowerLevel("Alta",  nuc, 90)
         )
 
         // Eran tres TextViews con su borde, repintados a mano en un
@@ -3528,6 +3535,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val archInfo: String
     )
 
+    /**
+     * Los núcleos rápidos de verdad, leídos del sistema.
+     *
+     * Estaban ADIVINADOS: "los últimos 4 suelen ser los big", o sea
+     * intArrayOf(4,5,6,7). En un Dimensity 1080 eso es falso: la topología es
+     * 2 Cortex-A78 + 6 Cortex-A55, así que los núcleos 4 y 5 son PEQUEÑOS y
+     * sólo el 6 y el 7 son grandes. Fijar hilos en 4 y 5 creyendo que son
+     * rápidos es peor que no fijar nada, porque además deja los demás libres.
+     *
+     * Se lee cpuinfo_max_freq de cada núcleo y se queda con los de frecuencia
+     * máxima. Si el sistema no deja leerlo, se devuelve vacío: mejor sin
+     * afinidad que con una inventada.
+     */
+    private fun nucleosRapidos(): IntArray {
+        val n = Runtime.getRuntime().availableProcessors()
+        if (n <= 1) return IntArray(0)
+        val frec = IntArray(n)
+        for (i in 0 until n) {
+            frec[i] = try {
+                java.io.File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
+                    .readText().trim().toInt()
+            } catch (e: Exception) { 0 }
+        }
+        if (frec.any { it <= 0 }) return IntArray(0)
+        val max = frec.max()
+        val rapidos = (0 until n).filter { frec[it] == max }
+        // Si TODOS tienen la misma frecuencia no hay big.LITTLE que aprovechar.
+        return if (rapidos.size == n) IntArray(0) else rapidos.toIntArray()
+    }
+
     private fun detectHardware(): HardwareProfile {
         val cores = Runtime.getRuntime().availableProcessors()
 
@@ -3611,17 +3648,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         updateLabels()
         updatePuzzleLabels()
 
-        // CPU Affinity: big cores en Exynos/Snapdragon big.LITTLE
-        val totalCores = profile.cores
-        val bigCores = if (totalCores >= 8) {
-            // Últimos 4 cores suelen ser los big (A78/Kryo)
-            intArrayOf(4, 5, 6, 7)
-        } else if (totalCores >= 6) {
-            intArrayOf(4, 5)
-        } else {
-            intArrayOf(0, 1, 2, 3)
-        }
-        try { HunterEngine.setBigCores(bigCores, true) } catch (e: Exception) {}
+        // Fijar hilos a núcleos concretos, pero sólo cuando tenga sentido.
+        //
+        // Antes se activaba SIEMPRE con una lista adivinada. Dos problemas:
+        // la lista podía estar mal (ver nucleosRapidos) y, aunque estuviera
+        // bien, fijar más hilos que núcleos grandes es contraproducente. En un
+        // Dimensity 1080 hay 2 núcleos grandes: con 7 hilos fijados ahí, seis
+        // núcleos se quedan sin usar y los hilos se amontonan de tres en tres.
+        // Repartido entre los ocho rinde bastante más, aunque los A55 sean
+        // lentos, porque suman.
+        //
+        // Regla: se fija sólo si los hilos caben en los núcleos rápidos. Si no,
+        // se deja al planificador, que ya lleva los hilos pesados a los
+        // grandes por su cuenta.
+        val rapidos = nucleosRapidos()
+        val hilosActuales = (sbThreadsPuzzle?.progress ?: 3) + 1
+        val fijar = rapidos.isNotEmpty() && hilosActuales <= rapidos.size
+        try {
+            HunterEngine.setBigCores(
+                if (rapidos.isEmpty()) intArrayOf(-1) else rapidos, fijar)
+        } catch (e: Exception) {}
 
         // Batch dinámico según RAM
         val batchSize = when {
@@ -3667,7 +3713,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             • CPU limit: ${profile.recommendedCpu}%
             
             Batch size: ${if (profile.ramMB > 3000) 32000 else if (profile.ramMB > 1500) 16000 else 8000} keys
-            Big cores: ${if (profile.cores >= 8) "4-7" else "auto"}
+            Núcleos rápidos: ${nucleosRapidos().let {
+                if (it.isEmpty()) "no detectados (sin fijar)" else it.joinToString(",")
+            }}
             
             ¿Aplicar configuración óptima?
         """.trimIndent()
