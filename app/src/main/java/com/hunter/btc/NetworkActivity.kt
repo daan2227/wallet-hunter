@@ -12,6 +12,8 @@ class NetworkActivity : AppCompatActivity() {
     private var tvLog: TextView? = null
     private var tvWorkers: TextView? = null
     private var tvWorkersLbl: TextView? = null
+    /** Los botones de pausar/reanudar. Sólo se enseñan en el maestro. */
+    private var filaMando: LinearLayout? = null
     private var tvIp: TextView? = null
     private var etMasterIp: EditText? = null
     private var etCode: EditText? = null
@@ -193,8 +195,38 @@ class NetworkActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(4); bottomMargin = dp(12) }
+            // Tocar la lista abre el mando de UNO. Los botones de abajo son para
+            // todos a la vez, que es lo más frecuente.
+            setOnClickListener { if (NetworkManager.isMaster) elegirTrabajador() }
         }
         root.addView(tvWorkers)
+
+        // ── Mando de los trabajadores ─────────────────────────────────────
+        // Sólo tiene sentido en el maestro: es él quien puede mandar, porque la
+        // orden viaja colgada de la respuesta a lo que le manden ellos.
+        filaMando = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+        }
+        actionButton("Pausar todos", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
+            it.setOnClickListener { mandarATodos(true) }
+            (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
+                lp.width = 0; lp.weight = 1f; lp.marginEnd = dp(8)
+            }
+            filaMando?.addView(it)
+        }
+        actionButton("Reanudar todos", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+            it.setOnClickListener { mandarATodos(false) }
+            (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
+                lp.width = 0; lp.weight = 1f
+            }
+            filaMando?.addView(it)
+        }
+        root.addView(filaMando)
 
         root.addView(sectionLabel("Registro"))
         tvLog = TextView(this).apply {
@@ -271,8 +303,17 @@ class NetworkActivity : AppCompatActivity() {
     private fun pintarEstado() {
         if (NetworkManager.isWorker) {
             tvWorkersLbl?.text = "Este móvil"
+            filaMando?.visibility = android.view.View.GONE
             val env = NetworkManager.puntosEnviados.get()
-            tvWorkers?.text =
+            // Una pausa mandada desde el maestro tiene que decirse aquí. Si no,
+            // el dueño de este móvil ve que se ha parado y no sabe por qué: lo
+            // primero que piensa es que se ha roto.
+            tvWorkers?.text = if (NetworkManager.pausadoPorMaestro)
+                "EN PAUSA\n" +
+                "El maestro (${NetworkManager.masterIp}) ha mandado parar.\n" +
+                "El trabajo está guardado y sigue desde ahí cuando mande seguir.\n\n" +
+                "Puntos enviados antes de parar: $env"
+            else
                 "Trabajando para ${NetworkManager.masterIp}\n" +
                 "Puntos enviados: $env\n" +
                 "Último envío: ${haceCuanto(NetworkManager.ultimoEnvioMs)}" +
@@ -284,16 +325,30 @@ class NetworkActivity : AppCompatActivity() {
         }
         tvWorkersLbl?.text = "Trabajadores conectados"
         val list = NetworkManager.listaWorkers()
-        val cab = if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO)
+        filaMando?.visibility =
+            if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO)
+                android.view.View.VISIBLE else android.view.View.GONE
+        val cab = if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO) {
             // puntosRecibidos se contaba desde el principio y NO SE ENSEÑABA EN
             // NINGÚN SITIO: el maestro no tenía forma de ver si el cluster
             // estaba aportando algo o si los workers hablaban al vacío.
-            "Puntos recibidos: ${NetworkManager.puntosRecibidos.get()}\n\n"
-        else ""
+            //
+            // Y qué está haciendo ESTE móvil, que ya no es evidente: de maestro
+            // arranca recogiendo, sin buscar, hasta que se lo pidas.
+            val hilos = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 0 }
+            "Puntos recibidos: ${NetworkManager.puntosRecibidos.get()}\n" +
+            (if (hilos > 0) "Este móvil: buscando con $hilos hilos\n"
+             else "Este móvil: sólo recoge, no busca\n") + "\n"
+        } else ""
         tvWorkers?.text = cab + if (list.isEmpty()) "Ningún trabajador todavía"
         else list.joinToString("\n") { w ->
-            "· ${w.device}  ${velocidad(w.speed)}  [${w.status}]  ${haceCuanto(w.vistoMs)}"
-        }
+            // El estado que se enseña es el que el maestro QUIERE, no el último
+            // que dijo el trabajador: entre que se pulsa el botón y llega la
+            // orden pasan hasta veinte segundos, y durante ese rato la lista
+            // diría "kangaroo" con la pausa ya pedida.
+            val est = if (w.pausado) "en pausa" else w.status
+            "· ${w.device}  ${velocidad(w.speed)}  [$est]  ${haceCuanto(w.vistoMs)}"
+        } + (if (list.isNotEmpty()) "\n\nToca aquí para pausar uno solo." else "")
     }
 
     private fun startAsMaster() {
@@ -311,8 +366,25 @@ class NetworkActivity : AppCompatActivity() {
         val kFin = prefs.getString("kangaroo_fin", "") ?: ""
         val conKangaroo = pub.length == 66 && kIni == rangeStart && kFin == rangeEnd
         if (conKangaroo) {
+            // El maestro arranca como RECOLECTOR, no buscando.
+            //
+            // Antes se ponía a buscar solo al pulsar "iniciar como maestro", y
+            // eso no es lo que se le pide a un maestro: puede que el móvil que
+            // coordina sea el que quieres dejar en paz —el que usas, el que no
+            // quieres que se caliente— y los que trabajan sean los otros.
+            //
+            // Recolector NO es "no hacer nada": mantiene la tabla de puntos
+            // distinguidos, que es donde se juntan los de todos y donde aparece
+            // la colisión. Sin tabla, los puntos de los trabajadores se
+            // rechazan, cada móvil busca por su cuenta y el cluster pierde
+            // justo lo que lo hace valer: con la tabla compartida N móviles van
+            // N veces más rápido, sin compartirla sólo raíz(N). Con dos móviles
+            // eso es 2x contra 1,41x.
+            //
+            // De hecho el maestro puede encontrar la clave sin dar un salto,
+            // juntando dos mitades que vengan de móviles distintos.
             if (!HunterEngine.kangarooRunning())
-                arrancarKangarooDeRed(this, pub, kIni, kFin, puzzleNum)
+                arrancarKangarooDeRed(this, pub, kIni, kFin, puzzleNum, hilos = 0)
             NetworkManager.startMasterKangaroo(this, puzzleNum, pub, kIni, kFin)
             NetworkManager.onClave = { dispositivo, claveHex ->
                 runOnUiThread { avisarClaveEncontrada(dispositivo, claveHex) }
@@ -411,23 +483,31 @@ class NetworkActivity : AppCompatActivity() {
      * si el worker se reinicia, sigue desde donde lo dejó en vez de empezar de
      * cero.
      */
+    /**
+     * @param hilos  −1 usa los que tenga puestos el usuario. CERO es el modo
+     *   RECOLECTOR: la tabla queda viva y recoge los puntos que manden los
+     *   trabajadores, pero aquí no camina ningún canguro y no se gasta batería.
+     */
     private fun arrancarKangarooDeRed(ctx: android.content.Context,
-                                      pub: String, ini: String, fin: String, pz: Int): Boolean {
+                                      pub: String, ini: String, fin: String, pz: Int,
+                                      hilos: Int = -1): Boolean {
         if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return false
         // Si ya hay fuerza bruta en marcha, se para: los dos motores compiten
         // por los mismos núcleos y juntos van peor que cualquiera por separado.
-        try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
+        // Recolectando no compite con nadie, así que no hay por qué pararla.
+        try { if (hilos != 0 && HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
 
         val prefs = ajustes(ctx)
         val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val hilos = (prefs.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
+        val hilosReales = if (hilos >= 0) hilos
+                          else (prefs.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
         val cpu   = (prefs.getInt("puzzle_cpu", 70) + 10).coerceIn(10, 100)
         val porHilo = try { HunterEngine.getBatchSize() } catch (e: Throwable) { 512 }
             .coerceIn(256, 4096)
         val ruta = java.io.File(ctx.filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
 
         val ok = try {
-            HunterEngine.kangarooStart(pub, ini, fin, hilos, porHilo, ruta)
+            HunterEngine.kangarooStart(pub, ini, fin, hilosReales, porHilo, ruta)
         } catch (e: Throwable) {
             android.util.Log.e("NetworkActivity", "kangarooStart: ${e.message}", e); false
         }
@@ -439,7 +519,11 @@ class NetworkActivity : AppCompatActivity() {
         // y en el cluster eso es un aparato que sigue apareciendo conectado pero
         // ya no aporta nada. Son las mismas claves que escribe MainActivity, así
         // que las lee igual venga de donde venga.
-        prefs.edit().putBoolean("kangaroo_corriendo", true)
+        //
+        // Recolectando NO se marca: no hay búsqueda que relanzar, y marcarlo
+        // haría que el watchdog arrancara una de verdad —con todos los núcleos—
+        // en el móvil al que se le acaba de pedir justo lo contrario.
+        prefs.edit().putBoolean("kangaroo_corriendo", hilosReales > 0)
             .putString("kangaroo_pub", pub)
             .putString("kangaroo_ini", ini)
             .putString("kangaroo_fin", fin).apply()
@@ -495,6 +579,59 @@ class NetworkActivity : AppCompatActivity() {
         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.medium(context)
         setPadding(0, dp(22), 0, dp(6))
+    }
+
+    /* ── Mando a distancia de los trabajadores ────────────────────────────────
+     *
+     * El maestro no puede llamar al trabajador: es el trabajador quien abre la
+     * conexión, manda una cosa, lee la respuesta y cierra. Así que la orden no
+     * se envía, se cuelga de la respuesta al siguiente mensaje que llegue de él
+     * —sus puntos, cada veinte segundos, o su latido si está parado.
+     *
+     * Por eso todos los avisos de aquí dicen "en unos segundos" en vez de dar
+     * la orden por hecha: prometer que ya está parado cuando aún no lo está es
+     * peor que decir la verdad, porque entonces el usuario cree que el botón no
+     * funciona y lo pulsa otra vez.
+     */
+    private fun mandarATodos(pausar: Boolean) {
+        val n = NetworkManager.mandarPausaATodos(pausar)
+        if (n == 0) {
+            Toast.makeText(this, "No hay trabajadores conectados",
+                           Toast.LENGTH_SHORT).show()
+            return
+        }
+        Toast.makeText(this,
+            if (pausar) "$n trabajador(es) pararán en unos segundos"
+            else "$n trabajador(es) seguirán en unos segundos",
+            Toast.LENGTH_SHORT).show()
+        pintarEstado()
+    }
+
+    /** Tocar la lista: elegir un trabajador y pausarlo o reanudarlo él solo. */
+    private fun elegirTrabajador() {
+        val lista = NetworkManager.listaWorkers()
+        if (lista.isEmpty()) {
+            Toast.makeText(this, "No hay trabajadores conectados",
+                           Toast.LENGTH_SHORT).show()
+            return
+        }
+        val nombres = lista.map {
+            "${it.device}  ${if (it.pausado) "· en pausa" else "· trabajando"}"
+        }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("Pausar o reanudar")
+            .setItems(nombres) { _, i ->
+                val w = lista[i]
+                val nuevo = !w.pausado
+                NetworkManager.mandarPausa(w.id, nuevo)
+                Toast.makeText(this,
+                    if (nuevo) "${w.device} parará en unos segundos"
+                    else "${w.device} seguirá en unos segundos",
+                    Toast.LENGTH_SHORT).show()
+                pintarEstado()
+            }
+            .setNegativeButton("Cerrar", null)
+            .show()
     }
 
     private fun actionButton(label: String, color: Int, textColor: Int) = Button(this).apply {

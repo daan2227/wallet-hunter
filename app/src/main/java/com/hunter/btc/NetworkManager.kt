@@ -77,7 +77,18 @@ object NetworkManager {
         /** Cuándo se supo de él por última vez. Sin esto, un móvil que se
          *  apaga o se sale de la WiFi se quedaba listado como conectado para
          *  siempre, porque sólo se borraba al fallar una conexión suya. */
-        var vistoMs: Long = System.currentTimeMillis()
+        var vistoMs: Long = System.currentTimeMillis(),
+        /**
+         * Lo que el maestro QUIERE que haga este trabajador, no lo que está
+         * haciendo. Es un estado y no una orden de una vez a propósito: el
+         * maestro lo repite en cada respuesta y el trabajador lo obedece si no
+         * coincide con lo suyo. Así una orden que se pierda —porque el envío
+         * falló, porque el móvil estaba reiniciándose— se aplica sola en el
+         * siguiente intercambio, que es como mucho veinte segundos después. Con
+         * órdenes de una vez habría que acertar a la primera o quedarse con el
+         * cluster a medio pausar y sin forma de saberlo.
+         */
+        var pausado: Boolean = false
     )
 
     /**
@@ -329,6 +340,27 @@ object NetworkManager {
                     }
                     writer.println(JSONObject().apply {
                         put("type", "DP_OK"); put("n", n)
+                        put("cmd", ordenPara(workerId))
+                    }.toString())
+                }
+                // Latido de un trabajador PARADO. Uno que busca ya habla cada
+                // veinte segundos al mandar sus puntos, y la orden viaja en esa
+                // respuesta. Pero uno pausado no tiene puntos que mandar y se
+                // quedaría mudo para siempre: sin esto se podría pausar y nunca
+                // reanudar, que es la mitad inútil de un botón.
+                "PING" -> {
+                    workers[workerId]?.let {
+                        it.status = if (it.pausado) "pausado" else "esperando"
+                        notifyWorkers()
+                    }
+                    writer.println(JSONObject().apply {
+                        put("type", "PONG")
+                        put("cmd", ordenPara(workerId))
+                        // El encargo va en el latido para que un trabajador que
+                        // se reanuda sepa a qué ponerse aunque lo hayan matado y
+                        // relanzado entre medias.
+                        put("pub", jobPub); put("start", jobIni)
+                        put("end", jobFin); put("puzzle", jobPuzzle)
                     }.toString())
                 }
                 "KEY" -> {
@@ -463,6 +495,7 @@ object NetworkManager {
     fun startWorker(masterIp: String, token: String) {
         isWorker = true; isMaster = false
         isRunning.set(true)
+        pausadoPorMaestro = false
         this.masterIp = masterIp.trim()
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = token.trim().uppercase()
@@ -531,6 +564,10 @@ object NetworkManager {
                         val ini = response.optString("start", "")
                         val fin = response.optString("end", "")
                         val pz  = response.optInt("puzzle", 0)
+                        // Guardarlo: sin esto el trabajador no podía volver a
+                        // arrancar solo, y "reanudar" no tendría con qué.
+                        jobPub = pub; jobIni = ini; jobFin = fin; jobPuzzle = pz
+                        pausadoPorMaestro = false
                         log("Encargo Kangaroo: puzzle #$pz, rango completo")
                         onKangaroo?.invoke(pub, ini, fin, pz)
                         arrancarBucleReparto()
@@ -572,6 +609,78 @@ object NetworkManager {
     /** Aviso para la pantalla del worker: el puzzle se ha acabado. */
     var onPuzzleAgotado: (() -> Unit)? = null
 
+    /** Este trabajador está parado porque lo ha mandado el maestro (no porque
+     *  haya fallado ni porque lo haya parado su dueño). La pantalla lo lee en
+     *  su refresco de cada cinco segundos; no hace falta avisarla. */
+    @Volatile var pausadoPorMaestro = false
+        private set
+
+    /**
+     * Obedecer lo que el maestro quiere. Llega colgado de la respuesta a
+     * cualquier cosa que mandemos, y llega SIEMPRE, no sólo cuando cambia: por
+     * eso aquí se compara antes de actuar. Repetir la orden es lo que hace que
+     * una que se perdió se aplique sola en el siguiente intercambio.
+     */
+    private fun aplicarOrden(cmd: String) {
+        when (cmd) {
+            "pausa" -> {
+                if (pausadoPorMaestro) return
+                pausadoPorMaestro = true
+                // kangarooStop() guarda la tabla antes de soltarla: pausar no
+                // tira el trabajo, y al reanudar se sigue desde donde iba.
+                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                log("El maestro ha mandado parar. El trabajo queda guardado.")
+            }
+            "sigue" -> {
+                if (!pausadoPorMaestro) return
+                pausadoPorMaestro = false
+                log("El maestro ha mandado seguir.")
+                // Arrancar el motor no es cosa de aquí: lo hace la pantalla,
+                // que es la que sabe de hilos, CPU y afinidad de núcleos.
+                if (jobPub.length == 66)
+                    onKangaroo?.invoke(jobPub, jobIni, jobFin, jobPuzzle)
+            }
+        }
+    }
+
+    /**
+     * Latido de un trabajador parado.
+     *
+     * Uno que busca habla solo cada veinte segundos al mandar sus puntos, y la
+     * orden viaja en esa respuesta. Uno pausado no tiene puntos que mandar: sin
+     * este latido se quedaría mudo y no habría forma de reanudarlo nunca, o sea
+     * que el botón de pausa sería de ida y no de vuelta.
+     */
+    private fun latido() {
+        val ip = masterIp
+        if (ip.isEmpty()) return
+        try {
+            Socket().use { socket ->
+                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
+                socket.soTimeout = SOCKET_TIMEOUT_MS
+                PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+                    put("type", "PING")
+                    put("id",   deviceId)
+                    put("auth", authToken)
+                }.toString())
+                val resp = readLineLimited(
+                    BufferedReader(InputStreamReader(socket.getInputStream()))) ?: return
+                val j = JSONObject(resp)
+                // El encargo puede haber cambiado mientras estábamos parados.
+                val pub = j.optString("pub", "")
+                if (pub.length == 66) {
+                    jobPub = pub
+                    jobIni = j.optString("start", jobIni)
+                    jobFin = j.optString("end", jobFin)
+                    jobPuzzle = j.optInt("puzzle", jobPuzzle)
+                }
+                aplicarOrden(j.optString("cmd", ""))
+            }
+        } catch (e: Exception) {
+            // En silencio: si el maestro no está, ya lo dice el bucle de puntos.
+        }
+    }
+
     private fun arrancarBucleReparto() {
         if (bucleVivo) return
         bucleVivo = true
@@ -592,15 +701,28 @@ object NetworkManager {
                     }
                     try {
                         val antes = fallosSeguidos
-                        // 1) Primero lo que quedó a deber, si quedó algo.
-                        if (pendiente != null) {
-                            if (enviarPuntos(pendiente!!)) pendiente = null
-                        }
-                        // 2) Y luego lo nuevo, sólo si no hay atasco.
-                        if (pendiente == null) {
-                            val blob = HunterEngine.kangarooExport(MAX_PUNTOS_ENVIO)
-                            if (blob != null && blob.isNotEmpty() && !enviarPuntos(blob))
-                                pendiente = blob
+                        // 0) Parados: sólo latir. No hay puntos que mandar, y sin
+                        //    hablar no llegaría nunca la orden de reanudar, o sea
+                        //    que el botón de pausa sería de ida y no de vuelta.
+                        val motorVivo = try { HunterEngine.kangarooRunning() }
+                                        catch (e: Throwable) { false }
+                        if (pausadoPorMaestro || !motorVivo) {
+                            latido()
+                        } else {
+                            // 1) Primero lo que quedó a deber, si quedó algo.
+                            if (pendiente != null) {
+                                if (enviarPuntos(pendiente!!)) pendiente = null
+                            }
+                            // 2) Y luego lo nuevo, sólo si no hay atasco.
+                            if (pendiente == null) {
+                                val blob = HunterEngine.kangarooExport(MAX_PUNTOS_ENVIO)
+                                // Sin puntos nuevos tampoco hay respuesta donde
+                                // venga la orden, así que se late igual. Pasa de
+                                // verdad: con dbits alto puede haber minutos
+                                // enteros entre un punto y el siguiente.
+                                if (blob == null || blob.isEmpty()) latido()
+                                else if (!enviarPuntos(blob)) pendiente = blob
+                            }
                         }
                         // Avisar UNA vez cuando el maestro deja de responder, y
                         // otra cuando vuelve. Antes el worker seguía buscando y
@@ -660,25 +782,34 @@ object NetworkManager {
                 // Conectó pero no contestó: cuenta como fallo igual, porque el
                 // problema está al otro lado.
                 if (resp == null) { fallosSeguidos++; false }
-                else when (val n = JSONObject(resp).optInt("n", -1)) {
-                    // El puzzle ya no tiene fondos: alguien lo ha resuelto
-                    // mientras buscábamos. Seguir es quemar batería contra una
-                    // dirección vacía, así que se para aquí también.
-                    -3 -> { puzzleResuelto = true; true }
-                    // El master no tiene la búsqueda en marcha. Es pasajero:
-                    // hay que guardarlos y volver a intentarlo, porque el motor
-                    // ya los dio por enviados y no pueden volver a salir.
-                    -2 -> { log("El master no está buscando ahora; se reintenta"); false }
-                    // Rechazado por contenido: otro puzzle o mensaje roto.
-                    // Reintentarlo no lo va a arreglar, así que se descarta para
-                    // no atascar el bucle con algo que no va a entrar nunca.
-                    -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
-                    else -> { fallosSeguidos = 0
-                              if (n > 0) {
-                                  puntosEnviados.addAndGet(n.toLong())
-                                  ultimoEnvioMs = System.currentTimeMillis()
-                              }
-                              android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
+                else {
+                    val j = JSONObject(resp)
+                    // La orden del maestro viaja colgada de esta respuesta: él
+                    // no puede llamarnos, así que aprovecha que le hablamos. Se
+                    // aplica antes de mirar cómo fue el envío, porque una orden
+                    // de parar vale igual aunque los puntos no hayan entrado.
+                    aplicarOrden(j.optString("cmd", ""))
+                    when (val n = j.optInt("n", -1)) {
+                        // El puzzle ya no tiene fondos: alguien lo ha resuelto
+                        // mientras buscábamos. Seguir es quemar batería contra
+                        // una dirección vacía, así que se para aquí también.
+                        -3 -> { puzzleResuelto = true; true }
+                        // El master no tiene la búsqueda en marcha. Es pasajero:
+                        // hay que guardarlos y volver a intentarlo, porque el
+                        // motor ya los dio por enviados y no pueden volver a
+                        // salir.
+                        -2 -> { log("El master no está buscando ahora; se reintenta"); false }
+                        // Rechazado por contenido: otro puzzle o mensaje roto.
+                        // Reintentarlo no lo va a arreglar, así que se descarta
+                        // para no atascar el bucle con algo que no entrará nunca.
+                        -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
+                        else -> { fallosSeguidos = 0
+                                  if (n > 0) {
+                                      puntosEnviados.addAndGet(n.toLong())
+                                      ultimoEnvioMs = System.currentTimeMillis()
+                                  }
+                                  android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
+                    }
                 }
             }
         } catch (e: Exception) {
@@ -910,6 +1041,9 @@ object NetworkManager {
         isMaster = false; isWorker = false
         modo = Modo.BLOQUES                  // el bucle de reparto mira esto
         puzzleVacio = false; puzzleResuelto = false; fallosSeguidos = 0
+        // Si no, salir de la red y volver a entrar dejaba el móvil convencido de
+        // que seguía pausado por un maestro que ya no existe.
+        pausadoPorMaestro = false
         puntosEnviados.set(0); ultimoEnvioMs = 0L
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
@@ -948,5 +1082,50 @@ object NetworkManager {
         // habla al menos cada 30 s (progreso) o cada 20 s (puntos), asi que
         // diez minutos de silencio es que no esta.
         onWorkers?.invoke(listaWorkers())
+    }
+
+    /* ── Mando a distancia de los trabajadores ────────────────────────────────
+     *
+     * El maestro no puede llamar al trabajador: el trabajador abre la conexión,
+     * manda una cosa, lee la respuesta y cierra. Así que la orden no se envía,
+     * se CUELGA de la respuesta al siguiente mensaje que llegue de él —sus
+     * puntos, cada veinte segundos, o su latido si está parado.
+     *
+     * Consecuencia que conviene tener clara: una orden tarda hasta veinte
+     * segundos en surtir efecto. No es un fallo, es el precio de no abrir un
+     * puerto de escucha en cada trabajador, que sería una superficie de ataque
+     * más en una red donde ya viaja material de clave.
+     */
+
+    /** Lo que el maestro quiere que haga [workerId] ahora mismo. */
+    private fun ordenPara(workerId: String): String =
+        if (workers[workerId]?.pausado == true) "pausa" else "sigue"
+
+    /**
+     * Pausar o reanudar UN trabajador. La orden no viaja ahora: viaja en la
+     * respuesta a lo próximo que mande, como mucho veinte segundos después.
+     *
+     * @return false si ese trabajador ya no está en la lista.
+     */
+    fun mandarPausa(workerId: String, pausado: Boolean): Boolean {
+        val w = workers[workerId] ?: return false
+        if (w.pausado == pausado) return true
+        w.pausado = pausado
+        log(if (pausado) "Se le pide a ${w.device} que pare"
+            else "Se le pide a ${w.device} que siga")
+        notifyWorkers()
+        return true
+    }
+
+    /** Pausar o reanudar todos a la vez. @return a cuántos afecta. */
+    fun mandarPausaATodos(pausado: Boolean): Int {
+        val lista = listaWorkers()
+        lista.forEach { it.pausado = pausado }
+        if (lista.isNotEmpty()) {
+            log(if (pausado) "Se les pide a ${lista.size} trabajador(es) que paren"
+                else "Se les pide a ${lista.size} trabajador(es) que sigan")
+            notifyWorkers()
+        }
+        return lista.size
     }
 }

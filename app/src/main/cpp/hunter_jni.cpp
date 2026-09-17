@@ -2128,7 +2128,23 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     /* La potencia y el tamano de lote los elige el usuario y hasta ahora
        Kangaroo los ignoraba: los hilos iban fijos y el lote a 512. */
     g_kg.cpu_limite.store(g_cpu_limit.load());
-    if(hilos<1) hilos=1; if(hilos>16) hilos=16;
+    /* CERO hilos es valido y significa "recolector": la tabla queda viva y
+     * kangarooImport() mete en ella los puntos que lleguen de otros aparatos,
+     * pero aqui no camina ningun canguro y no se gasta CPU ni bateria.
+     *
+     * Hace falta para que el maestro de un cluster pueda coordinar sin buscar.
+     * La alternativa —que el maestro no tenga tabla— parece lo mismo y no lo
+     * es: sin tabla donde juntarlos, kangarooImport() rechaza los puntos, cada
+     * movil se queda buscando por su cuenta y el cluster pierde justo lo que lo
+     * hacia valer. N aparatos con la tabla compartida van N veces mas rapido;
+     * sin compartirla, raiz(N). Con dos moviles eso es 2x contra 1,41x.
+     *
+     * La colision se detecta igual, porque kg_import() llama a kg_resolver()
+     * con cada punto que entra: el maestro puede encontrar la clave sin haber
+     * dado un solo salto, juntando las dos mitades de dos moviles distintos.
+     * Eso no es teoria: es lo que comprueban las pruebas 5 y 6 de
+     * tools/ec-harness/reparte.cpp, "un master que solo escucha". */
+    if(hilos<0) hilos=0; if(hilos>16) hilos=16;
     if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
     g_kg_args.assign(hilos,KgArg{});
     g_kg_hilos.assign(hilos,pthread_t{});
@@ -2193,6 +2209,17 @@ Java_com_hunter_btc_HunterEngine_kangarooOps(JNIEnv *, jobject){
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
     return (g_kg_vivo && !g_kg.encontrado.load()) ? JNI_TRUE : JNI_FALSE;
+}
+
+/* Cuantos hilos estan caminando. CERO con la tabla viva es el modo recolector:
+ * el maestro de un cluster junta los puntos de los trabajadores sin buscar.
+ *
+ * Hace falta porque kangarooRunning() dice que si en los dos casos —y tiene que
+ * decirlo, porque de eso depende que el maestro acepte los puntos que le
+ * mandan—, asi que sin esto la pantalla ensenaria "buscando a 0 op/s". */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooHilos(JNIEnv *, jobject){
+    return g_kg_vivo ? (jint)g_kg_hilos.size() : 0;
 }
 
 /* ---------- Reparto por red ----------

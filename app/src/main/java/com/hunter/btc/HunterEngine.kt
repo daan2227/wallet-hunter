@@ -142,4 +142,15 @@ object HunterEngine {
 
     /** La clave pública con la que se arrancó, en hex. "" si no hay búsqueda. */
     external fun kangarooPub(): String
+
+    /**
+     * Hilos caminando. CERO con la tabla viva es el modo RECOLECTOR: el maestro
+     * de un cluster junta los puntos que le mandan los trabajadores sin buscar
+     * él, así que no gasta CPU ni batería.
+     *
+     * Hace falta distinguirlo porque [kangarooRunning] dice que sí en los dos
+     * casos — y tiene que decirlo, porque de eso depende que el maestro acepte
+     * los puntos que le llegan.
+     */
+    external fun kangarooHilos(): Int
 }

@@ -191,8 +191,17 @@ class HunterService : Service() {
                 kangUltOps = kangOps; kangUltMs = System.currentTimeMillis()
                 ultimaVel = porSeg
                 val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
-                val vStr = if (porSeg >= 1e6) "${"%.2f".format(porSeg/1e6)}M saltos/s"
-                           else "${"%.0f".format(porSeg)} saltos/s"
+                // Cero hilos con la tabla viva es el maestro de un cluster
+                // recogiendo los puntos de los trabajadores sin buscar él. Decir
+                // "Kangaroo · 0 saltos/s" ahí parece una búsqueda averiada, que
+                // es justo lo contrario de lo que pasa.
+                val hilos = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }
+                val vStr = when {
+                    hilos == 0    -> "recogiendo del cluster"
+                    porSeg >= 1e6 -> "${"%.2f".format(porSeg/1e6)}M saltos/s"
+                    else          -> "${"%.0f".format(porSeg)} saltos/s"
+                }
+                if (hilos == 0) ultimaVel = 0.0
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(
                         "Kangaroo · $vStr",

@@ -5134,16 +5134,46 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     /** Arranca o para la búsqueda por Kangaroo del puzzle elegido. */
     private fun alternarKangaroo() {
-        if (HunterEngine.kangarooRunning()) {
+        // Recolectando (maestro de un cluster, tabla viva y cero hilos): esto no
+        // es "parar", es "ponerse a buscar TAMBIÉN". El motor no deja añadir
+        // hilos a un contexto vivo, así que se para y se vuelve a arrancar; la
+        // tabla no se pierde porque kangarooStop() la guarda y kangarooStart()
+        // la recupera del mismo fichero. Lo comprueba la prueba "persist".
+        val recolectando = HunterEngine.kangarooRunning() &&
+            (try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }) == 0
+        if (recolectando) {
+            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+            // y sigue abajo, arrancando de verdad
+        } else if (HunterEngine.kangarooRunning()) {
             // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             lblEscaneadas?.text = "Escaneadas"
             lblRestantes?.text = "Bloques restantes"
             btnKangaroo?.text = "Buscar con Kangaroo"
-            tvPuzzleAtajo?.text = "Detenida. El trabajo queda guardado; " +
-                                  "al volver a darle sigue desde ahí."
+            // Si este móvil es el maestro del cluster, volver a recoger: dejarlo
+            // sin tabla haría que rechazara los puntos de los trabajadores y el
+            // cluster se quedaría en N búsquedas sueltas sin enterarse nadie.
+            val vuelveARecoger = NetworkManager.isMaster &&
+                NetworkManager.modo == NetworkManager.Modo.KANGAROO &&
+                puzzlePubHex.length == 66
+            if (vuelveARecoger) {
+                val ruta = java.io.File(filesDir,
+                    "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
+                val ok = try {
+                    HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex,
+                                               puzzleFinHex, 0, 256, ruta)
+                } catch (e: Throwable) { false }
+                tvPuzzleAtajo?.text = if (ok)
+                    "Este móvil deja de buscar, pero sigue recogiendo los " +
+                    "puntos de los trabajadores."
+                else "Detenida. El trabajo queda guardado."
+            } else {
+                tvPuzzleAtajo?.text = "Detenida. El trabajo queda guardado; " +
+                                      "al volver a darle sigue desde ahí."
+            }
             tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
+            kgInicio = 0L
             return
         }
         if (puzzlePubHex.length != 66) return
@@ -5433,6 +5463,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             return
         }
+        // Va ANTES de mirar si sólo se recoge. El que vigila si el puzzle sigue
+        // teniendo fondos es el maestro, y es el que avisa a los trabajadores
+        // para que no sigan quemando batería contra una dirección vacía. Si el
+        // maestro está recolectando y esto quedara detrás del return, nadie
+        // vigilaría nada y el cluster entero seguiría buscando algo ya resuelto.
+        vigilarSaldoDelPuzzle()
+
+        // ── ¿Buscando, o sólo recogiendo? ────────────────────────────────
+        //
+        // El maestro de un cluster tiene la tabla viva para juntar los puntos
+        // de los trabajadores, pero sin ningún hilo caminando. kangarooRunning()
+        // dice que sí —y tiene que decirlo, porque de eso depende que acepte los
+        // puntos que le mandan—, así que sin esto la pantalla enseñaría una
+        // búsqueda a 0 op/s, con su gráfica plana y su "Estimado" absurdo.
+        val hilosKg = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }
+        if (hilosKg == 0) {
+            val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
+            cardCobertura?.visibility = android.view.View.GONE
+            btnKangaroo?.text = "Buscar con Kangaroo"
+            tv.text = "Recogiendo puntos del cluster · $pts en la tabla\n" +
+                      "Este móvil no está buscando. Dale a «Buscar con " +
+                      "Kangaroo» si quieres que aporte también."
+            tv.setTextColor(AppTheme.TXT_SEC)
+            return
+        }
         // Hay un Kangaroo en marcha. Si kgInicio sigue a cero es que lo arrancó
         // otro (la pantalla de red, como maestro o como trabajador) y esta
         // pantalla no se ha enterado. Se adopta: los contadores se ponen en hora
@@ -5440,7 +5495,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // el usuario. Se hace aquí y no duplicando el arranque en la pantalla de
         // red porque así queda cubierto cualquier otro camino que aparezca.
         if (kgInicio == 0L) adoptarKangaroo()
-        vigilarSaldoDelPuzzle()
 
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
         val dps = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
