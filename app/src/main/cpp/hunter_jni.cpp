@@ -2062,7 +2062,7 @@ static int hex2bin(const char *h,uint8_t *out,int max){
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooStart(
         JNIEnv *env, jobject, jstring jpub, jstring jini, jstring jfin,
-        jint hilos, jint por_hilo, jstring jruta){
+        jint hilos, jint por_hilo, jstring jruta, jint tope_tabla_bits){
     std::lock_guard<std::mutex> lk(g_kg_mtx);
     if(g_kg_vivo) return JNI_FALSE;
 
@@ -2105,7 +2105,27 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
        clave. La tabla se dimensiona con holgura por encima de eso: si se llena,
        se dejan de guardar y la busqueda se degrada sin avisar. Antes salia
        apenas 1,4 veces lo esperado, que es demasiado justo. */
-    int tbits=bits/2+4-dbits; if(tbits<14) tbits=14; if(tbits>20) tbits=20;
+    /* Cuantos huecos tiene la tabla.
+     *
+     * El techo estaba fijo en 2^20 —un millon de puntos, 59 MB— y ese es el
+     * limite de verdad de una busqueda larga, mucho antes que ningun otro: al
+     * 90 % lleno dp_insert deja de guardar, y a partir de ahi la busqueda sigue
+     * corriendo, gastando bateria y ensenando sus megasaltos por segundo, pero
+     * ya no acumula nada nuevo. O sea que deja de avanzar sin avisar.
+     *
+     * Y es peor cuantos mas aparatos haya, que es lo contrario de lo que uno
+     * espera: en el puzzle #140 se llena en 229 dias con un movil, 93 con dos y
+     * 20 con diez, porque todos meten en la misma tabla.
+     *
+     * Ahora el techo lo pone quien llama, sacado de la RAM del aparato (ver
+     * HunterEngine.topeTablaBits). En un movil de 8 GB son 2^22, que cuadruplica
+     * el margen. Se sigue cogiendo el MENOR entre eso y lo que pida el rango:
+     * para un puzzle de 40 bits reservar 235 MB seria tirar memoria. */
+    if(tope_tabla_bits<14) tope_tabla_bits=14;
+    if(tope_tabla_bits>24) tope_tabla_bits=24;
+    int tbits=bits/2+4-dbits;
+    if(tbits<14) tbits=14;
+    if(tbits>tope_tabla_bits) tbits=tope_tabla_bits;
 
     if(!kg_setup(&g_kg,pub,ini,fin,dbits,tbits)) return JNI_FALSE;
 
@@ -2220,6 +2240,21 @@ Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
 extern "C" JNIEXPORT jint JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooHilos(JNIEnv *, jobject){
     return g_kg_vivo ? (jint)g_kg_hilos.size() : 0;
+}
+
+/* Huecos de la tabla de distinguidos. */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooCapacidad(JNIEnv *, jobject){
+    return g_kg_vivo ? (jlong)(g_kg.tabla.mask+1) : 0;
+}
+
+/* Cuantos caben antes de que dp_insert deje de guardar. Es el 90 % de la
+ * capacidad, y esta aqui —y no calculado en Kotlin— para que salga del mismo
+ * sitio que la condicion de dp_insert y no puedan separarse. */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooTope(JNIEnv *, jobject){
+    if(!g_kg_vivo) return 0;
+    return (jlong)(((g_kg.tabla.mask+1)*9)/10);
 }
 
 /* ---------- Reparto por red ----------

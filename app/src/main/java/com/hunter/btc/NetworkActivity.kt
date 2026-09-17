@@ -336,9 +336,21 @@ class NetworkActivity : AppCompatActivity() {
             // Y qué está haciendo ESTE móvil, que ya no es evidente: de maestro
             // arranca recogiendo, sin buscar, hasta que se lo pidas.
             val hilos = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 0 }
+            // La tabla que se llena es LA DEL MAESTRO, porque es donde se juntan
+            // los puntos de todos. Y cuantos más trabajadores haya antes pasa,
+            // que es justo lo contrario de lo que uno espera al añadir aparatos.
+            // Aquí es donde tiene que verse.
+            val guardados = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
+            val tope = try { HunterEngine.kangarooTope() } catch (e: Throwable) { 0L }
+            val tabla = if (tope > 0) {
+                val pct = guardados * 100.0 / tope
+                "Tabla: $guardados de $tope (${"%.1f".format(pct)} %)" +
+                (if (guardados >= tope) "  ¡LLENA, no se guarda nada nuevo!"
+                 else if (pct >= 80) "  se está llenando" else "") + "\n"
+            } else ""
             "Puntos recibidos: ${NetworkManager.puntosRecibidos.get()}\n" +
             (if (hilos > 0) "Este móvil: buscando con $hilos hilos\n"
-             else "Este móvil: sólo recoge, no busca\n") + "\n"
+             else "Este móvil: sólo recoge, no busca\n") + tabla + "\n"
         } else ""
         tvWorkers?.text = cab + if (list.isEmpty()) "Ningún trabajador todavía"
         else list.joinToString("\n") { w ->
@@ -507,7 +519,8 @@ class NetworkActivity : AppCompatActivity() {
         val ruta = java.io.File(ctx.filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
 
         val ok = try {
-            HunterEngine.kangarooStart(pub, ini, fin, hilosReales, porHilo, ruta)
+            HunterEngine.kangarooStart(pub, ini, fin, hilosReales, porHilo, ruta,
+                                       HunterEngine.topeTablaBits(ctx))
         } catch (e: Throwable) {
             android.util.Log.e("NetworkActivity", "kangarooStart: ${e.message}", e); false
         }

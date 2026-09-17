@@ -86,10 +86,56 @@ object HunterEngine {
      *   La cabecera lleva la clave pública y el rango, así que un fichero de
      *   otro puzzle se ignora en vez de mezclarse.
      */
+    /**
+     * @param topeTablaBits techo del tamaño de la tabla de distinguidos, en
+     *   potencias de dos. Sale de la RAM del aparato — ver [topeTablaBits] —
+     *   porque la tabla es lo único que crece sin parar y lo que decide cuánto
+     *   puede durar una búsqueda antes de atascarse. El motor coge el menor
+     *   entre esto y lo que pida el tamaño del rango: para un puzzle pequeño no
+     *   tiene sentido reservar cientos de megas.
+     */
     external fun kangarooStart(pubHex: String, iniHex: String, finHex: String,
                                hilos: Int, canguresPorHilo: Int,
-                               rutaEstado: String): Boolean
+                               rutaEstado: String, topeTablaBits: Int): Boolean
     external fun kangarooStop()
+
+    /** Huecos que tiene la tabla de distinguidos. 0 si no hay búsqueda. */
+    external fun kangarooCapacidad(): Long
+
+    /**
+     * Cuántos puntos caben ANTES de que el motor deje de guardar.
+     *
+     * No es la capacidad: dp_insert para de guardar al 90 % para no dar vueltas
+     * eternamente buscando hueco. Pasado ese punto la búsqueda sigue corriendo y
+     * gastando batería, pero ya no acumula nada nuevo — o sea que deja de
+     * avanzar sin que nada lo diga. Por eso hay que poder enseñarlo.
+     */
+    external fun kangarooTope(): Long
+
+    /**
+     * El techo de tabla que aguanta este aparato, en potencias de dos.
+     *
+     * Cada hueco son 56 bytes, así que 2^22 son 235 MB. Se reserva como mucho el
+     * 4 % de la RAM total: en un móvil de 8 GB eso da el tope de 2^22, y en uno
+     * de 3 GB baja solo a 2^21. El 4 % es un juicio, no una medida: por encima
+     * empieza a ser probable que Android mate la app por memoria, y una app
+     * muerta pierde mucho más que una tabla pequeña.
+     *
+     * Sólo pesa en el MAESTRO, que es donde se juntan los puntos de todos.
+     */
+    fun topeTablaBits(ctx: android.content.Context): Int {
+        val ram = try {
+            val am = ctx.getSystemService(android.content.Context.ACTIVITY_SERVICE)
+                     as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo()
+            am.getMemoryInfo(mi)
+            mi.totalMem
+        } catch (e: Throwable) { 3L * 1024 * 1024 * 1024 }
+        val presupuesto = ram / 25          // 4 %
+        var t = 14
+        while (t < 22 && (1L shl (t + 1)) * 56L <= presupuesto) t++
+        return t
+    }
     /** Operaciones de grupo hechas: es lo que se compara con raíz(W). */
     external fun kangarooOps(): Long
     external fun kangarooRunning(): Boolean

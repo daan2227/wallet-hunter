@@ -5162,7 +5162,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
                 val ok = try {
                     HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex,
-                                               puzzleFinHex, 0, 256, ruta)
+                                               puzzleFinHex, 0, 256, ruta,
+                                               HunterEngine.topeTablaBits(this))
                 } catch (e: Throwable) { false }
                 tvPuzzleAtajo?.text = if (ok)
                     "Este móvil deja de buscar, pero sigue recogiendo los " +
@@ -5207,7 +5208,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val ruta = java.io.File(filesDir, "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
         val ok = try {
             HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,
-                                       hilos, porHilo, ruta)
+                                       hilos, porHilo, ruta,
+                                       HunterEngine.topeTablaBits(this))
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
@@ -5420,6 +5422,33 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
     }
 
+    /**
+     * "123.456 puntos distinguidos guardados", y cuánto queda de tabla.
+     *
+     * La tabla tiene un tope y al llegar el motor DEJA DE GUARDAR. La búsqueda
+     * sigue corriendo y gastando batería, pero ya no acumula nada nuevo: deja de
+     * avanzar. Antes lo único que lo delataba era que este número se quedase
+     * clavado, y con un punto cada veinte segundos eso no lo nota nadie.
+     *
+     * El aviso se enseña a partir del 80 %, que a ese ritmo son semanas de
+     * margen: tiempo de sobra para hacer algo, y suficientemente tarde para no
+     * estar dando la lata desde el primer día.
+     */
+    private fun textoDeLaTabla(dps: Long): String {
+        val tope = try { HunterEngine.kangarooTope() } catch (e: Throwable) { 0L }
+        if (tope <= 0) return "${numberFmt.format(dps)} puntos distinguidos guardados"
+        val pct = dps * 100.0 / tope
+        val base = "${numberFmt.format(dps)} de ${numberFmt.format(tope)} " +
+                   "puntos (${"%.1f".format(pct)} % de la tabla)"
+        return when {
+            dps >= tope -> "$base\nTABLA LLENA: ya no se guardan puntos nuevos. " +
+                           "La búsqueda no avanza aunque siga corriendo."
+            pct >= 80   -> "$base\nLa tabla se está llenando. Al llegar al tope " +
+                           "dejará de guardar y la búsqueda no avanzará más."
+            else        -> base
+        }
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     private fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -5563,7 +5592,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val (v, u) = scaleSpeed(kgOpsSeg)
         tvWpsPuzzle?.text = v
         tvSpeedUnitPuzzle?.text = "$u op/s"
-        tvPeakWpsPuzzle?.text = "$dps puntos distinguidos guardados"
+        tvPeakWpsPuzzle?.text = textoDeLaTabla(dps)
         tvCountPuzzle?.text = formatCorto(ops)
         val segTotal = kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000
         tvTimePuzzle?.text = formatSegundos(segTotal)
