@@ -164,6 +164,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var kgOpsSeg = 0.0
     /** Operaciones que se esperan: ~2,2·raíz(W). */
     private var kgOpsEsperadas = 0.0
+    /** Segundos de búsqueda de sesiones anteriores, para que el reloj cuadre
+     *  con el contador de operaciones, que también es acumulado. */
+    private var kgSegPrevios = 0L
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
     private var btnSwitch: Button? = null
@@ -3762,6 +3765,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
 
+    /** Un total de segundos a texto. formatElapsed sólo sabe de un instante de
+     *  inicio, y aquí hace falta sumar lo de sesiones anteriores. */
+    private fun formatSegundos(elapsed: Long): String {
+        if (elapsed <= 0) return "00:00:00"
+        val d  = elapsed / 86400
+        val h  = (elapsed % 86400) / 3600
+        val m  = (elapsed % 3600) / 60
+        val sc = elapsed % 60
+        return if (d > 0) "%dd %02d:%02d:%02d".format(d, h, m, sc)
+               else "%02d:%02d:%02d".format(h, m, sc)
+    }
+
     private fun formatElapsed(startTimeMs: Long): String {
         if (startTimeMs <= 0) return "00:00:00"
         val elapsed = (System.currentTimeMillis() - startTimeMs) / 1000
@@ -4835,7 +4850,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return
         }
         kgInicio = System.currentTimeMillis()
-        kgUltOps = 0L; kgUltMs = kgInicio; kgOpsSeg = 0.0
+        // La velocidad se saca de (ops - kgUltOps) / dt. Y kangarooOps() NO es
+        // el trabajo de esta sesión: devuelve el acumulado, con lo recuperado
+        // del fichero de guardado incluido.
+        //
+        // Arrancar kgUltOps en CERO hacía que la primera muestra contara todo
+        // ese trabajo previo como si se hubiera hecho en el último segundo. Con
+        // 2.870 millones de operaciones recuperadas salía "2,05 GKeys/s", y
+        // como el suavizado es 0,7·anterior + 0,3·nueva, tardaba unos quince
+        // ticks en lavarse: 2,05 G -> 355 M -> 13,9 M, bajando sin parar. El
+        // usuario veía el móvil "frenándose" y un tiempo estimado que se
+        // multiplicaba por diez en cada refresco (29 mil -> 164 mil -> 4 M años).
+        //
+        // Se parte del valor real, así que la primera diferencia es la de esta
+        // sesión y no hay nada que lavar.
+        kgUltOps = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
+        kgUltMs = kgInicio; kgOpsSeg = 0.0
+        // El tiempo también tiene que ser acumulado, porque "Operaciones" lo es:
+        // 2.870 millones de operaciones junto a 00:00:01 no significa nada. Se
+        // guarda lo llevado y se sigue contando desde ahí.
+        kgSegPrevios = prefs.getLong("kangaroo_seg_${puzzlePubHex.take(16)}", 0L)
         // El trabajo que hace falta: ~2,2 veces la raíz del ancho del rango.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(puzzleIniHex, 16)
@@ -4996,7 +5030,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvSpeedUnitPuzzle?.text = "$u op/s"
         tvPeakWpsPuzzle?.text = "$dps puntos distinguidos guardados"
         tvCountPuzzle?.text = formatCount(ops)
-        tvTimePuzzle?.text = formatElapsed(kgInicio)
+        val segTotal = kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000
+        tvTimePuzzle?.text = formatSegundos(segTotal)
+        // Se guarda sobre la marcha y no sólo al parar: Android puede matar la
+        // app sin darle ocasión de despedirse, igual que pasa con la tabla de
+        // puntos distinguidos.
+        if (segTotal % 15 == 0L)
+            prefs.edit().putLong("kangaroo_seg_${puzzlePubHex.take(16)}", segTotal).apply()
 
         if (kgOpsEsperadas > 0) {
             val pct = ops / kgOpsEsperadas * 100.0
