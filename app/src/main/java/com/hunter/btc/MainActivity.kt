@@ -3746,13 +3746,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (rapidos.isEmpty()) intArrayOf(-1) else rapidos, fijar)
         } catch (e: Exception) {}
 
-        // Batch dinámico según RAM
-        val batchSize = when {
-            profile.ramMB > 3000 -> 32000  // RAM alta → batch grande
-            profile.ramMB > 1500 -> 16000  // normal
-            profile.ramMB > 800  -> 8000   // conservador
-            else                 -> 4000
-        }
+        // Tamaño de lote: 2048, y no "según la RAM".
+        //
+        // Esto elegía entre 4000 y 32000 mirando la memoria del móvil. Dos
+        // cosas lo hacen inútil, las dos medidas:
+        //
+        //  - La RAM no pinta nada. El lote más grande de esa tabla ocupa 4 MB;
+        //    cualquier móvil que ejecute la app los tiene. No hay nada que
+        //    decidir por memoria.
+        //
+        //  - En el bucle de fuerza bruta el rendimiento es PLANO a partir de
+        //    unos 256, porque el hash160 se lleva el 56 % del coste por clave y
+        //    eso no depende del lote. De 256 en adelante todo cae entre 0,76 y
+        //    0,79 M claves/s, que es ruido de medida; lo unico claro es que 64
+        //    es peor (0,71). Ver tools/ec-harness/lote.cpp.
+        //
+        //  - Y en Kangaroo el óptimo está en 2048, con 16000 un 16 % peor.
+        //
+        // 2048 es lo mejor para Kangaroo y está en la zona plana del escáner,
+        // así que sirve para los tres motores que comparten este ajuste.
+        val batchSize = 2048
         try { HunterEngine.setBatchSize(batchSize) } catch (e: Exception) {}
 
         prefs.edit()
@@ -3789,7 +3802,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             • Threads: ${profile.recommendedThreads}
             • CPU limit: ${profile.recommendedCpu}%
             
-            Batch size: ${if (profile.ramMB > 3000) 32000 else if (profile.ramMB > 1500) 16000 else 8000} keys
+            Tamaño de lote: 2048 (medido: el mejor para Kangaroo y
+            en la zona plana del escáner)
             Núcleos rápidos: ${nucleosRapidos().let {
                 if (it.isEmpty()) "no detectados (sin fijar)" else it.joinToString(",")
             }}

@@ -19,7 +19,8 @@ cd "$(dirname "$0")"
 # reparto  - PBKDF2 frente a hash160
 # reparte  - Kangaroo repartido: exportar e importar distinguidos entre aparatos
 # direcciones - el codificador de direcciones, mainnet y testnet
-PRUEBAS="campo vectores prim hex persist kang reparte direcciones coste reparto"
+# lote     - tamano de lote optimo del bucle de fuerza bruta
+PRUEBAS="campo vectores prim hex persist kang reparte direcciones coste reparto lote"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
