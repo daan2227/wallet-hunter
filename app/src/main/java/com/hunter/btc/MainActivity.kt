@@ -23,7 +23,7 @@ import com.hunter.btc.recovery.RecoveryParser
 import com.hunter.btc.recovery.ParseResult
 
 /**
- * Velocidad en el tiempo, una muestra por minuto.
+ * Velocidad en el tiempo: una muestra cada diez segundos, la ultima hora.
  *
  * Tres cosas que la version anterior hacia mal y que se veian en cuanto habia
  * datos de verdad:
@@ -37,7 +37,9 @@ import com.hunter.btc.recovery.ParseResult
  *    izquierda, una encima de la otra.
  */
 class SpeedChartView(context: android.content.Context) : android.view.View(context) {
-    private val maxPoints = 60
+    /** Una hora a una muestra cada diez segundos. */
+    private val maxPoints = 360
+    companion object { const val SEG_MUESTRA = 10 }
     private val wpsPoints = ArrayDeque<Float>()
     private val d = context.resources.displayMetrics.density
 
@@ -124,7 +126,10 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         canvas.drawText(tMin, w - pad - paintLbl.measureText(tMin), topTxt - 2f * d, paintLbl)
 
         // Eje de tiempo abajo: cuanto abarca y donde esta el ahora.
-        canvas.drawText("hace ${wpsPoints.size} min", pad, h - 2f * d, paintLbl)
+        val min = wpsPoints.size * SEG_MUESTRA / 60
+        canvas.drawText(
+            if (min >= 1) "hace $min min" else "hace ${wpsPoints.size * SEG_MUESTRA} s",
+            pad, h - 2f * d, paintLbl)
         val tAhora = "ahora ${corto(wpsPoints.last())}"
         canvas.drawText(tAhora, w - pad - paintLbl.measureText(tAhora), h - 2f * d, paintLbl)
     }
@@ -203,6 +208,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Cuándo se tomó la última muestra de la gráfica, y con qué contador. */
     private var kgMuestraMs = 0L
     private var kgMuestraOps = 0L
+    private var kgMuestrasSinGuardar = 0
     private var tvPuzzleStatus: TextView? = null
     private var tvTime: TextView? = null
     private var tvMatches: TextView? = null
@@ -2047,18 +2053,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         statsCard.addView(tvPeakWpsPuzzle)
 
-        // Gráfica de velocidad, una muestra por minuto.
+        // Gráfica de velocidad: una muestra cada 10 s, la última hora.
         //
         // SpeedChartView existía desde hacía tiempo y `chartView` NUNCA se
         // asignaba: era siempre null, así que addPoint() no hacía nada y la
         // gráfica no aparecía en ninguna pantalla.
         //
-        // Una muestra por minuto y no por segundo porque lo que interesa de una
+        // Cada diez segundos, y no cada segundo, porque lo que interesa de una
         // búsqueda que dura días es si el móvil mantiene el ritmo o se está
-        // frenando por calor o por batería, y eso no se ve en un segundo.
-        // Sesenta puntos son una hora de historia.
+        // frenando por calor o por batería, y eso no se ve en un segundo. 360
+        // puntos son una hora de historia.
         tvMediaPuzzle = TextView(this).apply {
-            text = "Velocidad media · se toma una muestra por minuto"
+            text = "Velocidad media · una muestra cada 10 s, última hora"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
@@ -5257,18 +5263,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             kgOpsSeg = if (kgOpsSeg <= 0) inst else kgOpsSeg * 0.7 + inst * 0.3
             kgUltOps = ops; kgUltMs = ahoraMs
         }
-        // ── Una muestra por minuto para la gráfica ───────────────────────
+        // ── Una muestra cada diez segundos para la gráfica ───────────────
         //
         // No se usa kgOpsSeg: eso es una media móvil corta, pensada para que el
         // número grande no dé saltos. Para la gráfica interesa el promedio REAL
-        // del minuto, que sale de dividir el trabajo hecho entre el tiempo que
-        // ha costado. Así un bajón por calor se ve tal cual y no suavizado.
+        // del intervalo, que sale de dividir el trabajo hecho entre el tiempo
+        // que ha costado. Así un bajón por calor se ve tal cual y no suavizado.
         if (kgMuestraMs == 0L) { kgMuestraMs = ahoraMs; kgMuestraOps = ops }
-        else if (ahoraMs - kgMuestraMs >= 60_000L) {
+        else if (ahoraMs - kgMuestraMs >= SpeedChartView.SEG_MUESTRA * 1000L) {
             val media = (ops - kgMuestraOps) * 1000.0 / (ahoraMs - kgMuestraMs)
             kgMuestraMs = ahoraMs; kgMuestraOps = ops
             chartView?.addPoint(media.toFloat())
-            guardarMuestras()
+            kgMuestrasSinGuardar++
+            // Guardar en disco las 360 muestras cada diez segundos seria
+            // escribir en preferencias seis veces por minuto durante dias. Se
+            // hace una vez por minuto: lo que se puede perder si Android mata
+            // la app son cinco muestras, o sea menos de un minuto de grafica.
+            if (kgMuestrasSinGuardar >= 6) { kgMuestrasSinGuardar = 0; guardarMuestras() }
         }
         chartView?.let { ch ->
             val pts = ch.getPoints()
@@ -5280,17 +5291,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // la media de todo. En una búsqueda de días esto es el aviso de
                 // que se está calentando o de que la batería ha entrado en
                 // ahorro, mucho antes de que se note en el número grande.
-                val ultimas = pts.takeLast(5)
+                // La tendencia se mira sobre los ultimos cinco minutos, no
+                // sobre las ultimas muestras: a diez segundos, cinco muestras
+                // son menos de un minuto y el aviso saltaria con cualquier
+                // ruido.
+                val nVent = 5 * 60 / SpeedChartView.SEG_MUESTRA      // 30 muestras
+                val ultimas = pts.takeLast(nVent)
                 val reciente = ultimas.sum() / ultimas.size
                 val desvio = (reciente - m) / m * 100.0
                 val estado = when {
-                    pts.size < 5          -> ""
+                    pts.size < nVent      -> ""
                     desvio >  8           -> " · subiendo ${"%.0f".format(desvio)} %"
                     desvio < -8           -> " · BAJANDO ${"%.0f".format(-desvio)} %"
                     else                  -> " · estable"
                 }
-                "Media de ${pts.size} min: $mv $mu/s$estado"
-            } else "Velocidad media · primera muestra en un minuto"
+                val seg = pts.size * SpeedChartView.SEG_MUESTRA
+                val span = if (seg >= 60) "${seg / 60} min" else "$seg s"
+                "Media de $span: $mv $mu/s$estado"
+            } else "Velocidad media · primera muestra en 10 s"
         }
 
         val (v, u) = scaleSpeed(kgOpsSeg)
@@ -5435,7 +5453,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // La gráfica es de la búsqueda anterior: mezclar velocidades de dos
         // puzzles en la misma línea no significa nada.
         chartView?.reset()
-        tvMediaPuzzle?.text = "Velocidad media · se toma una muestra por minuto"
+        tvMediaPuzzle?.text = "Velocidad media · una muestra cada 10 s"
         kgMuestraMs = 0L; kgMuestraOps = 0L
         tvCurrentBlock?.text = "Bloque actual: —"
         tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
