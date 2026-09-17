@@ -55,8 +55,11 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         color = AppTheme.TXT_SEC; strokeWidth = 1f * d; style = Paint.Style.STROKE
         pathEffect = android.graphics.DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f)
     }
-    private val paintBanda = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.BG_ELEV; style = Paint.Style.FILL
+    /** El dato sin suavizar: fino y apagado, de fondo. */
+    private val paintCrudo = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = (AppTheme.ACCENT and 0x00FFFFFF) or 0x40000000
+        strokeWidth = 1f * d; style = Paint.Style.STROKE
+        strokeJoin = Paint.Join.ROUND
     }
 
     fun addPoint(wps: Float) {
@@ -76,11 +79,23 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         else      -> "%.0f".format(v)
     }
 
+    /** Media móvil de [n] muestras. Suaviza sin inventar: cada punto es el
+     *  promedio real de su entorno. */
+    private fun suavizado(n: Int): List<Float> {
+        val v = wpsPoints.toList()
+        if (v.size < 2) return v
+        return v.indices.map { i ->
+            val a = maxOf(0, i - n / 2); val b = minOf(v.size - 1, i + n / 2)
+            var s = 0f; for (j in a..b) s += v[j]
+            s / (b - a + 1)
+        }
+    }
+
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         if (w <= 0 || h <= 0) return
-        val topTxt = 11f * d      // sitio para la fila de arriba
-        val botTxt = 11f * d      // y para el eje de tiempo
+        val topTxt = 11f * d
+        val botTxt = 11f * d
         val pad    = 2f * d
         val y0 = topTxt; val y1 = h - botTxt
 
@@ -90,47 +105,50 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         }
 
         val mx = wpsPoints.max(); val mn = wpsPoints.min(); val med = media()
-        // Eje ajustado a los datos, no a cero: con muestras parecidas un eje
-        // desde cero deja la linea plana pegada arriba y no se ve nada. Se deja
-        // un 8 % de aire a cada lado para que el maximo no toque el borde.
         val aire = ((mx - mn) * 0.08f).coerceAtLeast(mx * 0.02f).coerceAtLeast(1f)
         val lo = (mn - aire).coerceAtLeast(0f); val hi = mx + aire
         val rango = (hi - lo).coerceAtLeast(1f)
         fun yDe(v: Float) = y1 - (y1 - y0) * ((v - lo) / rango)
         fun xDe(i: Int) = pad + (w - pad * 2) * i / (wpsPoints.size - 1).coerceAtLeast(1)
 
-        // Banda entre el minimo y el maximo, para que se vea de un golpe cuanto
-        // baila la velocidad.
-        canvas.drawRect(pad, yDe(mx), w - pad, yDe(mn), paintBanda)
+        // El dato crudo, en fino y apagado. A diez segundos por muestra, en un
+        // movil de 2 nucleos grandes y 6 pequenos, la linea salta de 14 a 4
+        // millones segun donde ponga el planificador cada hilo: es real, pero
+        // dibujada sola parece que algo va mal.
+        val crudo = wpsPoints.toList()
+        val pc = Path()
+        crudo.forEachIndexed { i, v -> if (i == 0) pc.moveTo(xDe(i), yDe(v)) else pc.lineTo(xDe(i), yDe(v)) }
+        canvas.drawPath(pc, paintCrudo)
 
-        val pts = wpsPoints.mapIndexed { i, v -> PointF(xDe(i), yDe(v)) }
-        val fill = Path(); fill.moveTo(pts[0].x, y1); pts.forEach { fill.lineTo(it.x, it.y) }
-        fill.lineTo(pts.last().x, y1); fill.close()
+        // Y encima la media movil de un minuto, que es la que se lee.
+        // Antes habia ademas una banda gris entre el minimo y el maximo; con la
+        // linea cruda de fondo sobra, porque la dispersion ya se ve, y las dos
+        // cosas juntas emborronaban el dibujo.
+        val suave = suavizado(6)
+        val ps = Path()
+        suave.forEachIndexed { i, v -> if (i == 0) ps.moveTo(xDe(i), yDe(v)) else ps.lineTo(xDe(i), yDe(v)) }
+        // Relleno suave bajo la media, para que la linea tenga peso.
+        val fill = Path(ps)
+        fill.lineTo(xDe(suave.size - 1), y1); fill.lineTo(xDe(0), y1); fill.close()
         canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(0f, y0, 0f, y1, 0x3341D9A0, 0x0041D9A0, Shader.TileMode.CLAMP)
             style = Paint.Style.FILL
         })
-        val lp = Path(); pts.forEachIndexed { i, p -> if (i == 0) lp.moveTo(p.x, p.y) else lp.lineTo(p.x, p.y) }
-        canvas.drawPath(lp, paintLine)
-        canvas.drawCircle(pts.last().x, pts.last().y, 3f * d, paintDot)
+        canvas.drawPath(ps, paintLine)
+        canvas.drawCircle(xDe(crudo.size - 1), yDe(suave.last()), 3f * d, paintDot)
 
-        // La media, en trazos, con su cifra pegada a la derecha para no chocar
-        // con la fila de arriba.
-        val ym = yDe(med)
-        canvas.drawLine(pad, ym, w - pad, ym, paintMedia)
+        // La media de todo, en trazos.
+        canvas.drawLine(pad, yDe(med), w - pad, yDe(med), paintMedia)
 
-        // Fila de arriba: maximo a la izquierda, minimo a la derecha. Asi el
-        // lector sabe que el eje NO empieza en cero.
         canvas.drawText("máx ${corto(mx)}", pad, topTxt - 2f * d, paintLbl)
         val tMin = "mín ${corto(mn)}"
         canvas.drawText(tMin, w - pad - paintLbl.measureText(tMin), topTxt - 2f * d, paintLbl)
 
-        // Eje de tiempo abajo: cuanto abarca y donde esta el ahora.
         val min = wpsPoints.size * SEG_MUESTRA / 60
         canvas.drawText(
             if (min >= 1) "hace $min min" else "hace ${wpsPoints.size * SEG_MUESTRA} s",
             pad, h - 2f * d, paintLbl)
-        val tAhora = "ahora ${corto(wpsPoints.last())}"
+        val tAhora = "ahora ${corto(suave.last())}"
         canvas.drawText(tAhora, w - pad - paintLbl.measureText(tAhora), h - 2f * d, paintLbl)
     }
 }

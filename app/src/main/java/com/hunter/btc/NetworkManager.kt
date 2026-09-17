@@ -460,7 +460,21 @@ object NetworkManager {
         authToken = token.trim().uppercase()
         log("Worker iniciando → Master: $masterIp")
 
+        // Se intenta varias veces, espaciando. Antes era UN solo intento: si
+        // pulsabas "Conectar" antes de que el maestro terminara de arrancar
+        // —que es lo normal, porque el servidor tarda un momento en escuchar—
+        // fallaba, lo escribia en el registro y ahi se quedaba. Habia que
+        // volver a pulsar sin saber por que.
         executor.submit {
+          var intento = 0
+          while (isRunning.get() && isWorker && intento < 5) {
+            if (intento > 0) {
+                val espera = intento * 3000L
+                log("Reintentando en ${espera / 1000} s… (intento ${intento + 1} de 5)")
+                try { Thread.sleep(espera) } catch (e: InterruptedException) {
+                    Thread.currentThread().interrupt(); return@submit }
+            }
+            intento++
             try {
                 val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
                 socket.soTimeout = SOCKET_TIMEOUT_MS
@@ -516,9 +530,14 @@ object NetworkManager {
                 }
 
                 socket.close()
+                return@submit                 // registrado: no hay que reintentar
             } catch (e: Exception) {
-                log("Error conectando al master: ${e.message}")
+                log("No se pudo conectar con el maestro: ${e.message}")
             }
+          }
+          if (isRunning.get() && isWorker)
+              log("El maestro no responde. Comprueba la IP, el código y que " +
+                  "los dos móviles estén en la misma WiFi.")
         }
     }
 
@@ -537,6 +556,9 @@ object NetworkManager {
     private const val MAX_PUNTOS_ENVIO = 2048
 
     @Volatile private var bucleVivo = false
+    /** Envios seguidos que han fallado. Sirve para avisar de que el maestro se
+     *  ha ido en vez de seguir golpeando en silencio. */
+    @Volatile private var fallosSeguidos = 0
     /** El master ha dicho que el puzzle ya no tiene fondos. */
     @Volatile private var puzzleResuelto = false
     /** Aviso para la pantalla del worker: el puzzle se ha acabado. */
@@ -561,6 +583,7 @@ object NetworkManager {
                         break
                     }
                     try {
+                        val antes = fallosSeguidos
                         // 1) Primero lo que quedó a deber, si quedó algo.
                         if (pendiente != null) {
                             if (enviarPuntos(pendiente!!)) pendiente = null
@@ -571,6 +594,16 @@ object NetworkManager {
                             if (blob != null && blob.isNotEmpty() && !enviarPuntos(blob))
                                 pendiente = blob
                         }
+                        // Avisar UNA vez cuando el maestro deja de responder, y
+                        // otra cuando vuelve. Antes el worker seguía buscando y
+                        // golpeando una IP muerta cada veinte segundos sin que
+                        // nada lo indicara: creías que estabas en un cluster y
+                        // llevabas horas solo.
+                        if (fallosSeguidos == 3 && antes < 3)
+                            log("El maestro lleva un minuto sin responder. Se sigue " +
+                                "buscando aquí y los puntos se guardan para cuando vuelva.")
+                        if (antes >= 3 && fallosSeguidos == 0)
+                            log("El maestro ha vuelto.")
 
                         // 3) ¿La hemos encontrado aquí? El master no puede
                         //    deducirlo de la tabla (ver el mensaje "KEY"), así
@@ -616,7 +649,9 @@ object NetworkManager {
                         blob, android.util.Base64.NO_WRAP))
                 }.toString())
                 val resp = readLineLimited(reader)
-                if (resp == null) false
+                // Conectó pero no contestó: cuenta como fallo igual, porque el
+                // problema está al otro lado.
+                if (resp == null) { fallosSeguidos++; false }
                 else when (val n = JSONObject(resp).optInt("n", -1)) {
                     // El puzzle ya no tiene fondos: alguien lo ha resuelto
                     // mientras buscábamos. Seguir es quemar batería contra una
@@ -630,11 +665,16 @@ object NetworkManager {
                     // Reintentarlo no lo va a arreglar, así que se descarta para
                     // no atascar el bucle con algo que no va a entrar nunca.
                     -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
-                    else -> { if (n > 0) android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
+                    else -> { fallosSeguidos = 0
+                              if (n > 0) android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
                 }
             }
         } catch (e: Exception) {
-            log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
+            fallosSeguidos++
+            // Sólo se escribe el primero: si no, con el maestro caído el
+            // registro se llena de la misma línea cada veinte segundos.
+            if (fallosSeguidos == 1)
+                log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
             false
         }
     }
@@ -857,7 +897,7 @@ object NetworkManager {
         isRunning.set(false)
         isMaster = false; isWorker = false
         modo = Modo.BLOQUES                  // el bucle de reparto mira esto
-        puzzleVacio = false; puzzleResuelto = false
+        puzzleVacio = false; puzzleResuelto = false; fallosSeguidos = 0
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
         puntosRecibidos.set(0)
