@@ -3811,7 +3811,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putInt("cpu", cpuProgress)
             .putInt("puzzle_threads", threadProgress)
             .putInt("puzzle_cpu", cpuProgress)
-            .putString("big_cores", rapidos.joinToString(","))
+            .putString("big_cores", nucleosRapidos().joinToString(","))
             .putInt("batch_size", batchSize)
             .apply()
 
