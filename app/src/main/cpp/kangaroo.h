@@ -344,6 +344,24 @@ typedef struct {
        potencia estaba puesto pero no hacia nada, y "Baja" calentaba el movil
        igual que "Alta". En algo que va a estar dias encendido eso importa. */
     std::atomic<int>       cpu_limite;
+
+    /* Donde se sueltan los canguros.
+     *
+     *   0  Reparto ancho (el de siempre). El manso sale de d*G y el salvaje de
+     *      P'+d*G, con d al azar en [0,W). Como la clave relativa tambien esta
+     *      en [0,W), los salvajes acaban repartidos por [0,2W) mientras los
+     *      mansos solo cubren [0,W). Y como todos los saltos van hacia delante,
+     *      un salvaje que arranque por encima de W no puede cruzarse jamas con
+     *      el rastro de un manso.
+     *
+     *   1  Rebanos juntos. Los mansos alrededor del centro del intervalo y los
+     *      salvajes alrededor de P, los dos con dispersion pequena. Asi la
+     *      distancia entre un manso y un salvaje esta acotada por W/2 en vez de
+     *      ser del orden de W, y los dos rebanos pisan el mismo terreno.
+     *
+     * Es un campo y no una constante para poder medir el uno contra el otro con
+     * el mismo banco antes de cambiar el que viene por defecto. */
+    int      politica_salida;
 } KangarooCtx;
 
 /* Multiplicacion escalar sencilla (doblar y sumar). Solo se usa en la
@@ -467,6 +485,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->saltos.store(0);
     c->parar.store(0);
     c->cpu_limite.store(100);
+    c->politica_salida=0;
     kg_normalize(&c->objetivo,c->obj_x,c->obj_y);
     return 1;
 }
@@ -701,17 +720,48 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     #define NEXT() (rng^=rng<<13, rng^=rng>>7, rng^=rng<<17, rng)
 
     /* Coloca (o recoloca) un canguro en un punto de salida al azar. */
+    /* Dispersion de salida para la politica 1: bastante para que los canguros
+       no se pisen desde el primer salto, pero pequena frente a W. Se toma
+       (salto medio) * (numero de canguros) * 8, en potencias de dos. */
+    int disp_bits;
+    {
+        int lm = c->njumps - 1;              /* log2 del salto medio, aprox */
+        int ln = 0; while((1<<ln) < n_kang && ln < 20) ln++;
+        disp_bits = lm + ln + 3;
+        if(disp_bits > c->bits-2) disp_bits = c->bits-2;   /* nunca mas de W/4 */
+        if(disp_bits < 1) disp_bits = 1;
+    }
+    /* Centro del intervalo, W/2: de ahi salen los mansos en la politica 1. */
+    sc_t centro; sc_copy(centro,c->ancho);
+    {
+        uint64_t arr=0;
+        for(int j=3;j>=0;j--){ uint64_t n=centro[j]&1ULL; centro[j]=(centro[j]>>1)|(arr<<63); arr=n; }
+    }
+
     auto soltar=[&](int i,int manso){
         sc_t d; sc_zero(d);
-        int w=(c->bits+63)/64;
-        for(int j=0;j<w&&j<4;j++) d[j]=NEXT();
-        for(int j=3;j>=0;j--) if(j>=w) d[j]=0;
-        if(c->bits<256){
-            int top=(c->bits-1)/64, sh=(c->bits-1)%64;
+        if(c->politica_salida==1){
+            /* Un valor al azar de disp_bits bits, y al manso se le suma el
+               centro. El salvaje se queda pegado a P. Asi la distancia entre
+               un manso y un salvaje esta acotada por W/2 + dispersion, en vez
+               de llegar a W. */
+            for(int j=0;j<4;j++) d[j]=NEXT();
+            int top=disp_bits/64, sh=disp_bits%64;
             for(int j=3;j>top;j--) d[j]=0;
-            if(sh<63) d[top]&=((1ULL<<(sh+1))-1);
+            d[top] &= sh ? ((1ULL<<sh)-1) : 0ULL;
+            if(manso) sc_add(d,d,centro);
+        }else{
+            /* Politica 0, la de siempre: d al azar en todo [0,W). */
+            int w=(c->bits+63)/64;
+            for(int j=0;j<w&&j<4;j++) d[j]=NEXT();
+            for(int j=3;j>=0;j--) if(j>=w) d[j]=0;
+            if(c->bits<256){
+                int top=(c->bits-1)/64, sh=(c->bits-1)%64;
+                for(int j=3;j>top;j--) d[j]=0;
+                if(sh<63) d[top]&=((1ULL<<(sh+1))-1);
+            }
+            if(sc_cmp(d,c->ancho)>=0) sc_sub(d,d,c->ancho);
         }
-        if(sc_cmp(d,c->ancho)>=0) sc_sub(d,d,c->ancho);
         int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
         if(cero) sc_set_u64(d,1);      /* 0*G es el infinito: no vale de salida */
 
