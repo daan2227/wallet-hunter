@@ -479,7 +479,9 @@ class NetworkActivity : AppCompatActivity() {
                               "tiene fondos.\nAlguien lo ha resuelto. El trabajo queda guardado."
             }
         }
-        NetworkManager.startWorker(ip, code)
+        // Con el contexto: es lo que deja la sesión guardada en disco para que
+        // el servicio pueda volver a conectarse solo si Android mata la app.
+        NetworkManager.startWorker(ip, code, this)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
         tvLog?.text = "Conectando a master $ip..."
@@ -502,48 +504,8 @@ class NetworkActivity : AppCompatActivity() {
      */
     private fun arrancarKangarooDeRed(ctx: android.content.Context,
                                       pub: String, ini: String, fin: String, pz: Int,
-                                      hilos: Int = -1): Boolean {
-        if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return false
-        // Si ya hay fuerza bruta en marcha, se para: los dos motores compiten
-        // por los mismos núcleos y juntos van peor que cualquiera por separado.
-        // Recolectando no compite con nadie, así que no hay por qué pararla.
-        try { if (hilos != 0 && HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
-
-        val prefs = ajustes(ctx)
-        val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val hilosReales = if (hilos >= 0) hilos
-                          else (prefs.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
-        val cpu   = (prefs.getInt("puzzle_cpu", 70) + 10).coerceIn(10, 100)
-        val porHilo = try { HunterEngine.getBatchSize() } catch (e: Throwable) { 512 }
-            .coerceIn(256, 4096)
-        val ruta = java.io.File(ctx.filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
-
-        val ok = try {
-            HunterEngine.kangarooStart(pub, ini, fin, hilosReales, porHilo, ruta,
-                                       HunterEngine.topeTablaBits(ctx))
-        } catch (e: Throwable) {
-            android.util.Log.e("NetworkActivity", "kangarooStart: ${e.message}", e); false
-        }
-        if (!ok) return false
-        try { HunterEngine.kangarooSetCpu(cpu) } catch (e: Throwable) {}
-        // Dejar dicho QUÉ se está buscando. Sin esto, el watchdog de la pantalla
-        // principal no relanzaba un Kangaroo arrancado desde aquí: si Android se
-        // llevaba los hilos por delante, el móvil se quedaba parado sin avisar,
-        // y en el cluster eso es un aparato que sigue apareciendo conectado pero
-        // ya no aporta nada. Son las mismas claves que escribe MainActivity, así
-        // que las lee igual venga de donde venga.
-        //
-        // Recolectando NO se marca: no hay búsqueda que relanzar, y marcarlo
-        // haría que el watchdog arrancara una de verdad —con todos los núcleos—
-        // en el móvil al que se le acaba de pedir justo lo contrario.
-        prefs.edit().putBoolean("kangaroo_corriendo", hilosReales > 0)
-            .putString("kangaroo_pub", pub)
-            .putString("kangaroo_ini", ini)
-            .putString("kangaroo_fin", fin).apply()
-        val svc = android.content.Intent(ctx, com.hunter.btc.HunterService::class.java)
-        try { ctx.startForegroundService(svc) } catch (e: Exception) { ctx.startService(svc) }
-        return true
-    }
+                                      hilos: Int = -1): Boolean =
+        NetworkManager.arrancarMotorKangaroo(ctx, pub, ini, fin, hilos)
 
     /** Un worker ha encontrado la clave y lo ha avisado. */
     private fun avisarClaveEncontrada(dispositivo: String, claveHex: String) {

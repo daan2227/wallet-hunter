@@ -13,6 +13,11 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Para volver a arrancar tras reiniciar el móvil. Sin esto, un reinicio
+         —incluido el que hace Android solo al actualizarse— dejaba parado para
+         siempre un aparato que llevaba días trabajando para un cluster, y lo
+         único que se veía era que desaparecía de la lista del maestro. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
@@ -46,6 +51,22 @@
         <service android:name=".HunterService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- exported="true" es obligatorio aquí: quien manda estos avisos es el
+             propio Android, o sea un proceso de fuera. El receptor no decide
+             nada por su cuenta —sólo levanta el servicio, que mira en
+             preferencias si había algo que recuperar—, así que una app ajena
+             que lo dispare no consigue nada que no pudiera conseguir abriendo
+             la app. -->
+        <receiver android:name=".BootReceiver"
+            android:exported="true"
+            android:enabled="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <activity android:name=".DebugActivity"
             android:theme="@style/AppThemeDark" />
 

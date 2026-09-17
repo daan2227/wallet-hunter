@@ -524,10 +524,153 @@ object NetworkManager {
     }
 
     // ── Worker ────────────────────────────────────────────────────────────────
-    fun startWorker(masterIp: String, token: String) {
+    /* ── Arranque del motor ───────────────────────────────────────────────────
+     *
+     * Esto vivía en NetworkActivity, y ahí no podía estar: cuando Android mata
+     * el proceso y vuelve a levantar el servicio (START_STICKY), no hay ninguna
+     * pantalla viva que lo llame. El servicio necesita poder arrancar el motor
+     * él solo, así que la función tiene que estar donde los dos la alcancen.
+     *
+     * @param hilos −1 usa los que tenga puestos el usuario. CERO es el modo
+     *   RECOLECTOR: la tabla queda viva para juntar los puntos de los
+     *   trabajadores, pero aquí no camina ningún canguro.
+     */
+    fun arrancarMotorKangaroo(ctx: Context, pub: String, ini: String, fin: String,
+                              hilos: Int = -1): Boolean {
+        if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return false
+        appCtx = ctx.applicationContext
+
+        // ¿Ya hay un Kangaroo andando? kangarooStart devuelve false sin más si
+        // lo hay, y eso esconde un caso que importa: que esté buscando OTRA
+        // clave. Pasa al recuperarse de que Android mate la app —el servicio
+        // relanza lo que había guardado y acto seguido el maestro manda un
+        // encargo que puede ser otro— y pasaría también si el maestro cambia de
+        // puzzle con el cluster en marcha.
+        //
+        // Sin esto el trabajador se quedaría buscando el puzzle viejo, mandando
+        // puntos que el maestro rechaza por no cuadrar la cabecera, y en la
+        // lista seguiría saliendo como que trabaja.
+        val yaVive = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        if (yaVive) {
+            val actual = try { HunterEngine.kangarooPub() } catch (e: Throwable) { "" }
+            val mismosHilos = hilos < 0 ||
+                (try { HunterEngine.kangarooHilos() } catch (e: Throwable) { -1 }) == hilos
+            // La misma clave y el mismo papel: no hay nada que hacer, y pararlo
+            // para volver a arrancarlo sólo perdería tiempo.
+            if (actual.equals(pub, ignoreCase = true) && mismosHilos) return true
+            // kangarooStop() guarda la tabla antes de soltarla, así que cambiar
+            // de puzzle no tira el trabajo del anterior: queda en su fichero.
+            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+        }
+
+        // Si ya hay fuerza bruta en marcha, se para: los dos motores compiten
+        // por los mismos núcleos y juntos van peor que cualquiera por separado.
+        // Recolectando no compite con nadie, así que no hay por qué pararla.
+        try { if (hilos != 0 && HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
+
+        val prefs = ctx.getSharedPreferences("hunter", Context.MODE_PRIVATE)
+        val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        val hilosReales = if (hilos >= 0) hilos
+                          else (prefs.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
+        val cpu   = (prefs.getInt("puzzle_cpu", 70) + 10).coerceIn(10, 100)
+        val porHilo = try { HunterEngine.getBatchSize() } catch (e: Throwable) { 512 }
+            .coerceIn(256, 4096)
+        val ruta = java.io.File(ctx.filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
+
+        val ok = try {
+            HunterEngine.kangarooStart(pub, ini, fin, hilosReales, porHilo, ruta,
+                                       HunterEngine.topeTablaBits(ctx))
+        } catch (e: Throwable) {
+            android.util.Log.e("NetworkManager", "kangarooStart: ${e.message}", e); false
+        }
+        if (!ok) return false
+        try { HunterEngine.kangarooSetCpu(cpu) } catch (e: Throwable) {}
+        // Dejar dicho QUÉ se está buscando, para que cualquiera que encuentre el
+        // motor parado pueda relanzarlo: el watchdog de la pantalla principal y
+        // ahora también el servicio al volver de que lo maten.
+        //
+        // Recolectando NO se marca: no hay búsqueda que relanzar, y marcarlo
+        // haría que se arrancara una de verdad —con todos los núcleos— en el
+        // móvil al que se le acaba de pedir justo lo contrario.
+        prefs.edit().putBoolean("kangaroo_corriendo", hilosReales > 0)
+            .putString("kangaroo_pub", pub)
+            .putString("kangaroo_ini", ini)
+            .putString("kangaroo_fin", fin).apply()
+        val svc = android.content.Intent(ctx, HunterService::class.java)
+        try { ctx.startForegroundService(svc) } catch (e: Exception) { ctx.startService(svc) }
+        return true
+    }
+
+    /* ── Sobrevivir a que Android mate la app ─────────────────────────────────
+     *
+     * El servicio es START_STICKY, así que Android lo vuelve a levantar. Pero
+     * volvía con su notificación y nada más: ni buscando ni conectado al
+     * maestro, porque el estado del cluster vivía sólo en memoria. Por fuera se
+     * veía igual que si todo fuera bien — la notificación puesta— mientras el
+     * móvil no aportaba nada, y en la lista del maestro desaparecía a los diez
+     * minutos sin más explicación.
+     *
+     * Con esto en disco, el servicio puede volver a ser trabajador él solo.
+     */
+    /** Contexto de APLICACIÓN, para poder escribir preferencias desde aquí sin
+     *  depender de que haya una pantalla viva. El de aplicación no se filtra:
+     *  dura lo mismo que el proceso. */
+    @Volatile private var appCtx: Context? = null
+
+    private fun guardarSesionDeWorker(ctx: Context?, ip: String, token: String) {
+        val c = ctx ?: return
+        try {
+            c.getSharedPreferences("hunter", Context.MODE_PRIVATE).edit()
+                .putBoolean("net_worker", true)
+                .putString("net_master_ip", ip)
+                .putString("net_token", token).apply()
+        } catch (e: Throwable) {}
+    }
+
+    private fun olvidarSesionDeWorker(ctx: Context?) {
+        val c = ctx ?: return
+        try {
+            c.getSharedPreferences("hunter", Context.MODE_PRIVATE).edit()
+                .putBoolean("net_worker", false)
+                .remove("net_master_ip").remove("net_token").apply()
+        } catch (e: Throwable) {}
+    }
+
+    /**
+     * Volver a ser trabajador después de que Android matara la app.
+     *
+     * Lo llama el servicio al levantarse. Deja instalado un [onKangaroo] propio
+     * si no hay ninguno, porque en este camino puede que no se haya abierto
+     * ninguna pantalla: sin él, el trabajador se registraría, recibiría su
+     * encargo y no arrancaría nada.
+     *
+     * @return true si había una sesión que reanudar.
+     */
+    fun reanudarSesionDeWorker(ctx: Context): Boolean {
+        if (isRunning.get()) return false          // ya está en marcha
+        val p = ctx.getSharedPreferences("hunter", Context.MODE_PRIVATE)
+        if (!p.getBoolean("net_worker", false)) return false
+        val ip = p.getString("net_master_ip", "") ?: ""
+        val tk = p.getString("net_token", "") ?: ""
+        if (ip.isEmpty() || tk.isEmpty()) return false
+        val app = ctx.applicationContext
+        if (onKangaroo == null) onKangaroo = { pub, ini, fin, _ ->
+            try { arrancarMotorKangaroo(app, pub, ini, fin) }
+            catch (e: Throwable) {
+                android.util.Log.e("NetworkManager", "reanudar: ${e.message}", e)
+            }
+        }
+        log("Reanudando como trabajador de $ip tras reiniciarse la app")
+        startWorker(ip, tk, app)
+        return true
+    }
+
+    fun startWorker(masterIp: String, token: String, ctx: Context? = null) {
         isWorker = true; isMaster = false
         isRunning.set(true)
         pausadoPorMaestro = false
+        if (ctx != null) appCtx = ctx.applicationContext
+        guardarSesionDeWorker(appCtx, masterIp.trim(), token.trim().uppercase())
         this.masterIp = masterIp.trim()
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = token.trim().uppercase()
@@ -1104,6 +1247,9 @@ object NetworkManager {
         // Si no, salir de la red y volver a entrar dejaba el móvil convencido de
         // que seguía pausado por un maestro que ya no existe.
         pausadoPorMaestro = false
+        // Parar es a propósito. Sin esto, el servicio volvería a conectarlo al
+        // maestro la próxima vez que Android lo levantara.
+        olvidarSesionDeWorker(appCtx)
         puntosEnviados.set(0); ultimoEnvioMs = 0L
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0

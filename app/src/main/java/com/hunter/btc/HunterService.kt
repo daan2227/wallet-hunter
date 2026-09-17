@@ -92,6 +92,48 @@ class HunterService : Service() {
             "WalletHunter::ScanWakeLock"
         ).also { it.acquire() }
         handler.post(statsUpdater)
+        recuperarTrasMorir()
+    }
+
+    /**
+     * Volver a lo que estábamos haciendo cuando Android nos mató.
+     *
+     * El servicio es START_STICKY, así que Android lo vuelve a levantar solo.
+     * Pero volvía con la notificación puesta y nada más: ni buscando ni
+     * conectado al maestro. Por fuera se veía igual que si todo fuera bien,
+     * mientras el móvil no aportaba nada y en la lista del maestro desaparecía a
+     * los diez minutos sin explicación.
+     *
+     * El watchdog que relanza Kangaroo vive en la pantalla principal, así que
+     * sólo actúa si esa pantalla está viva. Si muere el proceso entero no queda
+     * nadie que lo llame — y eso es exactamente lo que pasa en el móvil que se
+     * deja días trabajando para un cluster, que es donde más duele.
+     *
+     * Las dos cosas se recuperan de preferencias, que es donde ya quedan
+     * escritas arranque por donde arranque la búsqueda.
+     */
+    private fun recuperarTrasMorir() {
+        try {
+            val p = getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
+            // 1) La búsqueda
+            val corriendo = p.getBoolean("kangaroo_corriendo", false)
+            val viva = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+            if (corriendo && !viva) {
+                val pub = p.getString("kangaroo_pub", "") ?: ""
+                val ini = p.getString("kangaroo_ini", "") ?: ""
+                val fin = p.getString("kangaroo_fin", "") ?: ""
+                if (pub.length == 66 && ini.isNotEmpty() && fin.isNotEmpty()) {
+                    val ok = NetworkManager.arrancarMotorKangaroo(this, pub, ini, fin)
+                    android.util.Log.i("HunterService",
+                        "Kangaroo relanzado tras morir la app: $ok")
+                }
+            }
+            // 2) El sitio en el cluster. Va después: si sólo se recupera la
+            //    búsqueda, el móvil trabaja pero para nadie.
+            NetworkManager.reanudarSesionDeWorker(this)
+        } catch (e: Throwable) {
+            android.util.Log.e("HunterService", "recuperar: ${e.message}", e)
+        }
     }
 
     override fun onDestroy() {
