@@ -3544,24 +3544,43 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * sólo el 6 y el 7 son grandes. Fijar hilos en 4 y 5 creyendo que son
      * rápidos es peor que no fijar nada, porque además deja los demás libres.
      *
-     * Se lee cpuinfo_max_freq de cada núcleo y se queda con los de frecuencia
-     * máxima. Si el sistema no deja leerlo, se devuelve vacío: mejor sin
-     * afinidad que con una inventada.
+     * Se lee del sistema, sin suposiciones sobre el modelo: primero
+     * cpu_capacity —la capacidad relativa que asigna el kernel, que es lo que
+     * usa el planificador— y si no está, la frecuencia máxima. Si no hay
+     * ninguna de las dos, se devuelve vacío: mejor sin afinidad que con una
+     * inventada.
      */
     private fun nucleosRapidos(): IntArray {
         val n = Runtime.getRuntime().availableProcessors()
         if (n <= 1) return IntArray(0)
-        val frec = IntArray(n)
-        for (i in 0 until n) {
-            frec[i] = try {
-                java.io.File("/sys/devices/system/cpu/cpu$i/cpufreq/cpuinfo_max_freq")
-                    .readText().trim().toInt()
-            } catch (e: Exception) { 0 }
-        }
-        if (frec.any { it <= 0 }) return IntArray(0)
-        val max = frec.max()
-        val rapidos = (0 until n).filter { frec[it] == max }
-        // Si TODOS tienen la misma frecuencia no hay big.LITTLE que aprovechar.
+
+        fun leer(ruta: String): Int = try {
+            java.io.File(ruta).readText().trim().toInt()
+        } catch (e: Exception) { 0 }
+
+        // 1) cpu_capacity es lo que hay que mirar: es la capacidad RELATIVA que
+        //    el propio kernel asigna a cada núcleo, y es justo lo que el
+        //    planificador usa para repartir. No todos los móviles lo exponen.
+        var peso = IntArray(n) { leer("/sys/devices/system/cpu/cpu$it/cpu_capacity") }
+        // 2) Si no está, la frecuencia máxima. Es un sustituto: casi siempre el
+        //    orden coincide, pero un A55 a 2,0 GHz no rinde como un A78 a 2,0.
+        if (peso.any { it <= 0 })
+            peso = IntArray(n) { leer("/sys/devices/system/cpu/cpu$it/cpufreq/cpuinfo_max_freq") }
+        // 3) Ni una cosa ni otra: sin afinidad. Mejor eso que una inventada.
+        if (peso.any { it <= 0 }) return IntArray(0)
+
+        val max = peso.max()
+        // Todos iguales: no hay big.LITTLE que aprovechar.
+        if (peso.all { it == max }) return IntArray(0)
+
+        // Se toman los núcleos "del grupo de arriba", no sólo los del máximo
+        // exacto. En un chip de tres clústeres (1 prime + 3 grandes + 4
+        // pequeños) quedarse con el máximo exacto devolvía UN solo núcleo y
+        // descartaba los tres grandes. Con el umbral al 85 % del máximo entran
+        // el prime y los grandes, y quedan fuera los pequeños, que están muy
+        // por debajo.
+        val umbral = max * 85 / 100
+        val rapidos = (0 until n).filter { peso[it] >= umbral }
         return if (rapidos.size == n) IntArray(0) else rapidos.toIntArray()
     }
 
