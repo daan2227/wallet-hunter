@@ -73,7 +73,11 @@ object NetworkManager {
         val device:  String,
         var speed:   Long   = 0,
         var status:  String = "idle",
-        var block:   String = ""
+        var block:   String = "",
+        /** Cuándo se supo de él por última vez. Sin esto, un móvil que se
+         *  apaga o se sale de la WiFi se quedaba listado como conectado para
+         *  siempre, porque sólo se borraba al fallar una conexión suya. */
+        var vistoMs: Long = System.currentTimeMillis()
     )
 
     /**
@@ -247,6 +251,8 @@ object NetworkManager {
                 log("Worker $workerId rechazado: límite de $MAX_WORKERS alcanzado")
                 return
             }
+
+            workers[workerId]?.vistoMs = System.currentTimeMillis()
 
             when (msg.optString("type")) {
                 "REGISTER" -> {
@@ -869,7 +875,25 @@ object NetworkManager {
         android.util.Log.d("NetworkManager", msg)
     }
 
+    /** Sin noticias durante este tiempo, se considera mudo. */
+    private const val MUDO_MS    = 90_000L
+    /** Y pasado este, se quita de la lista. */
+    private const val CADUCA_MS  = 10 * 60_000L
+
+    /** La lista de trabajadores, ya caducada. Para que la pantalla pueda
+     *  repintarse sola sin esperar a que cambie algo. */
+    fun listaWorkers(): List<NetWorker> {
+        val ahora = System.currentTimeMillis()
+        workers.entries.removeAll { ahora - it.value.vistoMs > CADUCA_MS }
+        for (w in workers.values)
+            if (ahora - w.vistoMs > MUDO_MS) w.status = "sin noticias"
+        return workers.values.toList()
+    }
+
     private fun notifyWorkers() {
-        onWorkers?.invoke(workers.values.toList())
+        // Los que llevan mucho callados se van. Un worker que sigue trabajando
+        // habla al menos cada 30 s (progreso) o cada 20 s (puntos), asi que
+        // diez minutos de silencio es que no esta.
+        onWorkers?.invoke(listaWorkers())
     }
 }

@@ -4954,6 +4954,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             runOnUiThread {
                 puzzleIniHex = p.start; puzzleFinHex = p.end
                 puzzlePubHex = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex ?: ""
+                // A preferencias EN CUANTO se sabe, no sólo al arrancar
+                // Kangaroo. Hay dos sitios desde donde se puede ser maestro:
+                // "Ser maestro" en esta pantalla, que usa el campo de memoria,
+                // y el de la pantalla Cluster, que lee de aquí. Si sólo se
+                // escribía al arrancar Kangaroo, entrar por Cluster sin haber
+                // pasado por aquí repartía bloques de fuerza bruta en vez de
+                // Kangaroo, sin decir nada.
+                prefs.edit()
+                    .putString("kangaroo_pub", puzzlePubHex)
+                    .putString("kangaroo_ini", puzzleIniHex)
+                    .putString("kangaroo_fin", puzzleFinHex).apply()
                 btnKangaroo?.visibility =
                     if (puzzlePubHex.length == 66) android.view.View.VISIBLE
                     else android.view.View.GONE

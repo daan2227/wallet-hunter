@@ -142,6 +142,8 @@ class HunterService : Service() {
 
     // Cuándo se le mandó la velocidad al master por última vez.
     private var ultimoProgresoMs = 0L
+    /** Última velocidad calculada, en operaciones por segundo. */
+    private var ultimaVel = 0.0
     // Para sacar los saltos por segundo de Kangaroo, que sólo da el total.
     private var kangUltOps = 0L
     private var kangUltMs  = System.currentTimeMillis()
@@ -170,6 +172,7 @@ class HunterService : Service() {
                 val dt = (System.currentTimeMillis() - kangUltMs).coerceAtLeast(1L)
                 val porSeg = if (kangUltOps > 0) (kangOps - kangUltOps) * 1000.0 / dt else 0.0
                 kangUltOps = kangOps; kangUltMs = System.currentTimeMillis()
+                ultimaVel = porSeg
                 val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
                 val vStr = if (porSeg >= 1e6) "${"%.2f".format(porSeg/1e6)}M saltos/s"
                            else "${"%.0f".format(porSeg)} saltos/s"
@@ -178,6 +181,7 @@ class HunterService : Service() {
                         "Kangaroo · $vStr",
                         "$pts puntos · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
             } else if (running) {
+                ultimaVel = wps
                 val title = "BTC Hunter · $wStr · $found coincidencias"
                 val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
@@ -219,8 +223,11 @@ class HunterService : Service() {
             if (NetworkManager.isWorker && NetworkManager.isRunning.get() &&
                 System.currentTimeMillis() - ultimoProgresoMs > 30_000L) {
                 ultimoProgresoMs = System.currentTimeMillis()
-                val v = if (kangOps >= 0) kangOps else HunterEngine.getCount()
-                NetworkManager.reportProgress(NetworkManager.masterIp, v)
+                // ESTO MANDABA EL TOTAL ACUMULADO, NO LA VELOCIDAD.
+                // kangarooOps() y getCount() son contadores que solo suben, asi
+                // que el master pintaba "13800000K/s" en su lista de
+                // trabajadores. Se manda la tasa, que es lo que dice el rotulo.
+                NetworkManager.reportProgress(NetworkManager.masterIp, ultimaVel.toLong())
             }
 
             handler.postDelayed(this, 2000L)

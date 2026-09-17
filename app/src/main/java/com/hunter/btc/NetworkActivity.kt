@@ -207,13 +207,47 @@ class NetworkActivity : AppCompatActivity() {
                 tvLog?.text = (lines + listOf(msg)).joinToString("\n")
             }
         }
-        NetworkManager.onWorkers = { list ->
-            runOnUiThread {
-                tvWorkers?.text = if (list.isEmpty()) "Sin workers"
-                else list.joinToString("\n") { w ->
-                    "- ${w.device} (${w.address}) ${w.speed/1000}K/s [${w.status}]"
-                }
+        NetworkManager.onWorkers = { runOnUiThread { pintarEstado() } }
+        // La lista sólo se repintaba cuando cambiaba algo. Pero "hace cuánto se
+        // supo de este worker" y "cuántos puntos llevo recibidos" cambian solos
+        // con el tiempo, así que sin un refresco periódico se quedaban clavados.
+        refresco = object : Runnable {
+            override fun run() {
+                if (NetworkManager.isRunning.get()) pintarEstado()
+                handler.postDelayed(this, 5000L)
             }
+        }
+        handler.post(refresco!!)
+    }
+
+    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var refresco: Runnable? = null
+
+    private fun velocidad(v: Long): String = when {
+        v >= 1_000_000L -> "%.1f M/s".format(v / 1e6)
+        v >= 1_000L     -> "%.0f K/s".format(v / 1e3)
+        v > 0           -> "$v /s"
+        else            -> "—"
+    }
+
+    /** Todo lo que el maestro puede saber del cluster, en un sitio. */
+    private fun pintarEstado() {
+        val list = NetworkManager.listaWorkers()
+        val ahora = System.currentTimeMillis()
+        val cab = if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO)
+            // puntosRecibidos se contaba desde el principio y NO SE ENSEÑABA EN
+            // NINGÚN SITIO: el maestro no tenía forma de ver si el cluster
+            // estaba aportando algo o si los workers hablaban al vacío.
+            "Puntos recibidos: ${NetworkManager.puntosRecibidos.get()}\n\n"
+        else ""
+        tvWorkers?.text = cab + if (list.isEmpty()) "Ningún trabajador todavía"
+        else list.joinToString("\n") { w ->
+            val hace = (ahora - w.vistoMs) / 1000
+            val visto = when {
+                hace < 60  -> "hace ${hace}s"
+                else       -> "hace ${hace / 60}min"
+            }
+            "· ${w.device}  ${velocidad(w.speed)}  [${w.status}]  $visto"
         }
     }
 
@@ -425,6 +459,7 @@ class NetworkActivity : AppCompatActivity() {
         // apuntando a esta Activity destruida. onBlock capturaba `this` y la
         // mantenía viva indefinidamente; se reinstala con el contexto de
         // aplicación para que el worker siga recibiendo bloques.
+        refresco?.let { handler.removeCallbacks(it) }
         NetworkManager.onLog     = null
         NetworkManager.onWorkers = null
         NetworkManager.onClave = null
