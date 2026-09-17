@@ -42,6 +42,57 @@
 #include <atomic>
 #include <chrono>
 #include <time.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdint.h>
+
+/* ── Semilla de los puntos de salida ──────────────────────────────────────────
+ *
+ * De donde sale cada canguro lo decide un xorshift sembrado con esto. Dos
+ * aparatos con la MISMA semilla sueltan sus canguros en los MISMOS sitios y
+ * recorren las MISMAS trayectorias: todo su trabajo esta duplicado, y por fuera
+ * se ve identico a que fueran bien.
+ *
+ * Antes era:
+ *
+ *     semilla = 0x9E3779B97F4A7C15 * (hilo+1) ^ time(NULL)
+ *
+ * y time(NULL) va en SEGUNDOS. O sea que dos moviles que arrancaran Kangaroo en
+ * el mismo segundo, con el mismo numero de hilos, salian con semillas iguales
+ * byte a byte. No es rebuscado: en un cluster los arranques se agolpan —cuando
+ * el maestro manda "reanudar todos", cuando vuelve la corriente, cuando se
+ * reconecta la WiFi— y basta con caer en el mismo segundo.
+ *
+ * Ahora se coge entropia de verdad de /dev/urandom, y si no se puede, algo que
+ * al menos no comparten dos aparatos: el reloj monotono en nanosegundos, el pid
+ * y una direccion de la pila. El generador de destino no es criptografico y no
+ * necesita serlo; lo que hace falta es que NO se repita entre aparatos.
+ */
+static uint64_t kg_semilla(uint64_t mezcla){
+    uint64_t s=0;
+    int fd=open("/dev/urandom",O_RDONLY);
+    if(fd>=0){
+        if(read(fd,&s,sizeof(s))!=(ssize_t)sizeof(s)) s=0;
+        close(fd);
+    }
+    if(!s){
+        struct timespec ts; ts.tv_sec=0; ts.tv_nsec=0;
+        clock_gettime(CLOCK_MONOTONIC,&ts);
+        s  = (uint64_t)ts.tv_nsec;
+        s ^= (uint64_t)ts.tv_sec*0x9E3779B97F4A7C15ULL;
+        s ^= (uint64_t)getpid()*0xC2B2AE3D27D4EB4FULL;
+        s ^= (uint64_t)(uintptr_t)&ts;          /* ASLR */
+        s ^= (uint64_t)time(NULL);
+    }
+    s ^= mezcla*0x9E3779B97F4A7C15ULL;
+    /* Un revuelto final (splitmix64) para que bits parecidos den semillas
+       distintas: sin esto, dos hilos consecutivos empiezan casi igual. */
+    s += 0x9E3779B97F4A7C15ULL;
+    uint64_t z=s;
+    z=(z^(z>>30))*0xBF58476D1CE4E5B9ULL;
+    z=(z^(z>>27))*0x94D049BB133111EBULL;
+    return z^(z>>31);
+}
 
 /* ---------- Escalares de 256 bits (distancias y resultado) ---------- */
 typedef uint64_t sc_t[4];

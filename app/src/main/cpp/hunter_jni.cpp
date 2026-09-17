@@ -2170,8 +2170,12 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     g_kg_hilos.assign(hilos,pthread_t{});
     for(int i=0;i<hilos;i++){
         g_kg_args[i].n_kang=por_hilo;
-        g_kg_args[i].semilla=0x9E3779B97F4A7C15ULL*(uint64_t)(i+1)
-                             ^(uint64_t)time(NULL);
+        /* Entropia de verdad por hilo. Con la version anterior —el numero de
+           hilo revuelto con time(NULL), que va en segundos— dos moviles que
+           arrancaran en el mismo segundo soltaban sus canguros en los mismos
+           sitios y duplicaban todo su trabajo sin que nada lo dijera. Ver
+           kg_semilla() en kangaroo.h. */
+        g_kg_args[i].semilla=kg_semilla((uint64_t)(i+1));
         pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]);
     }
     g_kg_vivo=true;

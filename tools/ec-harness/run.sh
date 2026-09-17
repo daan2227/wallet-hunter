@@ -20,7 +20,8 @@ cd "$(dirname "$0")"
 # reparte  - Kangaroo repartido: exportar e importar distinguidos entre aparatos
 # direcciones - el codificador de direcciones, mainnet y testnet
 # lote     - tamano de lote optimo del bucle de fuerza bruta
-PRUEBAS="campo vectores prim hex persist kang reparte direcciones coste reparto lote"
+# semilla  - dos aparatos no pueden salir por el mismo sitio
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
