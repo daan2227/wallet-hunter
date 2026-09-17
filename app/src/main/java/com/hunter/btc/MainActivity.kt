@@ -295,6 +295,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val REQ_IMPORT_PROGRESS = 1003
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
+    /**
+     * La tarjeta de "Cobertura del rango". Se esconde mientras corre Kangaroo:
+     * Kangaroo NO recorre el rango bloque a bloque, da saltos por él, así que
+     * esa cobertura se queda clavada en 0,0000 % para siempre por bien que vaya
+     * la búsqueda. Enseñar un 0 % junto a una búsqueda sana es peor que no
+     * enseñar nada.
+     */
+    private var cardCobertura: android.view.View? = null
     private var etTarget: EditText? = null
     private var layoutPuzzle: LinearLayout? = null
     private var rbBip39: Button? = null
@@ -1889,6 +1897,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         })
         page.addView(progressCard)
+        cardCobertura = progressCard
 
         /* Estaba definida aquí dentro y no se llamaba desde ningún sitio, así
            que la barra y el detalle se quedaban en sus valores iniciales
@@ -5177,6 +5186,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
         }
+        prepararContadoresKangaroo(puzzlePubHex, puzzleIniHex, puzzleFinHex)
+        tvPuzzleAtajo?.text = "Buscando con Kangaroo · $hilos hilos · $cpu % de CPU · " +
+                             "$porHilo canguros por hilo"
+        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+    }
+
+    /**
+     * Pone en hora todo lo que la pantalla necesita para seguir una búsqueda de
+     * Kangaroo. Está aparte de arrancarKangaroo() porque el motor NO se arranca
+     * sólo desde aquí: la pantalla de red lo arranca por su cuenta, tanto en el
+     * maestro como en el trabajador. Cuando eso pasa, esta pantalla se encuentra
+     * un Kangaroo corriendo que ella no puso en marcha, y sin esto se quedaba
+     * con los contadores a cero. Se veía así, y en los dos móviles a la vez:
+     *
+     *   Tiempo   20713d 12:17:15      <- kgInicio valía 0, así que el "tiempo
+     *                                    transcurrido" era la hora de Unix
+     *                                    entera: 56 años.
+     *   Progreso            —         <- kgOpsEsperadas a 0
+     *   Bloques restantes   —         <- y encima con los rótulos de la fuerza
+     *                                    bruta, que en Kangaroo no significan
+     *                                    nada: Kangaroo no recorre el rango.
+     *
+     * Y lo que no se veía: sin kangaroo_corriendo el watchdog no lo relanzaba,
+     * y sin kgUltOps volvía el pico de 2 G/s de la primera muestra.
+     */
+    private fun prepararContadoresKangaroo(pub: String, ini: String, fin: String) {
         kgInicio = System.currentTimeMillis()
         // La velocidad se saca de (ops - kgUltOps) / dt. Y kangarooOps() NO es
         // el trabajo de esta sesión: devuelve el acumulado, con lo recuperado
@@ -5197,27 +5232,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El tiempo también tiene que ser acumulado, porque "Operaciones" lo es:
         // 2.870 millones de operaciones junto a 00:00:01 no significa nada. Se
         // guarda lo llevado y se sigue contando desde ahí.
-        kgSegPrevios = prefs.getLong("kangaroo_seg_${puzzlePubHex.take(16)}", 0L)
+        kgSegPrevios = prefs.getLong("kangaroo_seg_${pub.take(16)}", 0L)
         kgMuestraMs = 0L; kgMuestraOps = 0L
         recuperarMuestras()
         // El trabajo que hace falta: ~2,2 veces la raíz del ancho del rango.
         kgOpsEsperadas = try {
-            val a = java.math.BigInteger(puzzleIniHex, 16)
-            val b = java.math.BigInteger(puzzleFinHex, 16)
+            val a = java.math.BigInteger(ini, 16)
+            val b = java.math.BigInteger(fin, 16)
             2.2 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
         } catch (e: Exception) { 0.0 }
         lblEscaneadas?.text = "Operaciones"
         lblRestantes?.text = "Estimado"
         btnKangaroo?.text = "Detener Kangaroo"
-        tvPuzzleAtajo?.text = "Buscando con Kangaroo · $hilos hilos · $cpu % de CPU · " +
-                             "$porHilo canguros por hilo"
-        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+        cardCobertura?.visibility = android.view.View.GONE
         // El watchdog lo relanza si Android se lo lleva por delante. Con el
         // trabajo guardado, relanzar continúa donde estaba en vez de empezar.
         prefs.edit().putBoolean("kangaroo_corriendo", true)
-            .putString("kangaroo_pub", puzzlePubHex)
-            .putString("kangaroo_ini", puzzleIniHex)
-            .putString("kangaroo_fin", puzzleFinHex).apply()
+            .putString("kangaroo_pub", pub)
+            .putString("kangaroo_ini", ini)
+            .putString("kangaroo_fin", fin).apply()
     }
 
     /**
@@ -5326,6 +5359,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /**
+     * Se encontró un Kangaroo corriendo que esta pantalla no arrancó. Pasa
+     * siempre que el cluster se pone en marcha desde la pantalla de red.
+     *
+     * Quién manda aquí es el motor, no las preferencias: kangarooPub() dice qué
+     * clave pública se está atacando de verdad. El rango sí sale de las
+     * preferencias, pero sólo si la clave coincide — si no coincidiera, el
+     * watchdog acabaría relanzando un puzzle distinto del que estaba corriendo,
+     * que es peor que no relanzar nada.
+     */
+    private fun adoptarKangaroo() {
+        val pub = try { HunterEngine.kangarooPub() } catch (e: Throwable) { "" }
+        if (pub.length != 66) { kgInicio = System.currentTimeMillis(); return }
+        val ini = prefs.getString("kangaroo_ini", "") ?: ""
+        val fin = prefs.getString("kangaroo_fin", "") ?: ""
+        val mismo = prefs.getString("kangaroo_pub", "") == pub &&
+                    ini.isNotEmpty() && fin.isNotEmpty()
+        // La pantalla tiene que hablar del puzzle que se está buscando, no del
+        // que hubiera elegido antes: el trabajador recibe el encargo del
+        // maestro y puede no ser el mismo. Y si el rango guardado NO es el de
+        // esta clave, se tira: quedarse con el que hubiera antes daría un
+        // "Estimado" calculado sobre un rango que no es, y dejaría escrito un
+        // par clave/rango incoherente que el watchdog relanzaría tal cual. Vale
+        // más un guion que un número inventado.
+        puzzlePubHex = pub
+        puzzleIniHex = if (mismo) ini else ""
+        puzzleFinHex = if (mismo) fin else ""
+        prepararContadoresKangaroo(pub, puzzleIniHex, puzzleFinHex)
+        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     private fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -5349,6 +5413,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return
         }
         if (!HunterEngine.kangarooRunning()) {
+            // Parado. Se marca como "no adoptado" para que, si vuelve a
+            // arrancar por cualquier camino —el botón, el watchdog o la
+            // pantalla de red—, los contadores se pongan en hora otra vez. Se
+            // hace aquí, en el único sitio por donde pasan todas las paradas,
+            // y no en cada botón de parar: parar desde la pantalla de red no
+            // llama a ninguno de ellos.
+            kgInicio = 0L
+            cardCobertura?.visibility = android.view.View.VISIBLE
             // ── WATCHDOG DE KANGAROO ──────────────────────────────────────
             // El del escáner ya cubre el puzzle por fuerza bruta, porque
             // doToggle es el mismo para los dos. Kangaroo corre en sus propios
@@ -5361,6 +5433,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             return
         }
+        // Hay un Kangaroo en marcha. Si kgInicio sigue a cero es que lo arrancó
+        // otro (la pantalla de red, como maestro o como trabajador) y esta
+        // pantalla no se ha enterado. Se adopta: los contadores se ponen en hora
+        // y a partir de aquí se sigue igual que si el botón lo hubiera pulsado
+        // el usuario. Se hace aquí y no duplicando el arranque en la pantalla de
+        // red porque así queda cubierto cualquier otro camino que aparezca.
+        if (kgInicio == 0L) adoptarKangaroo()
         vigilarSaldoDelPuzzle()
 
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }

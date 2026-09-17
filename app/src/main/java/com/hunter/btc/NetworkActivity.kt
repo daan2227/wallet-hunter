@@ -433,6 +433,16 @@ class NetworkActivity : AppCompatActivity() {
         }
         if (!ok) return false
         try { HunterEngine.kangarooSetCpu(cpu) } catch (e: Throwable) {}
+        // Dejar dicho QUÉ se está buscando. Sin esto, el watchdog de la pantalla
+        // principal no relanzaba un Kangaroo arrancado desde aquí: si Android se
+        // llevaba los hilos por delante, el móvil se quedaba parado sin avisar,
+        // y en el cluster eso es un aparato que sigue apareciendo conectado pero
+        // ya no aporta nada. Son las mismas claves que escribe MainActivity, así
+        // que las lee igual venga de donde venga.
+        prefs.edit().putBoolean("kangaroo_corriendo", true)
+            .putString("kangaroo_pub", pub)
+            .putString("kangaroo_ini", ini)
+            .putString("kangaroo_fin", fin).apply()
         val svc = android.content.Intent(ctx, com.hunter.btc.HunterService::class.java)
         try { ctx.startForegroundService(svc) } catch (e: Exception) { ctx.startService(svc) }
         return true
