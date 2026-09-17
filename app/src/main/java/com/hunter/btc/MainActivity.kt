@@ -2050,8 +2050,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Eran tres TextViews con su borde, repintados a mano en un
         // forEachIndexed: el mismo patrón que el selector de modo del escáner y
         // el de aleatorio/secuencial de aquí abajo, escrito tres veces.
+        // Cual de los tres esta guardado. Iba fijo a 1 (Media), asi que al
+        // reabrir la app el selector mentia: marcaba Media aunque hubieras
+        // elegido Alta.
+        val nivelGuardado = prefs.getInt("puzzle_threads", 3).let { g ->
+            levels.indexOfFirst { it.threads - 1 == g }.let { if (it < 0) 1 else it }
+        }
         powerRow.addView(Ui.segmented(
-            this, levels.map { it.label to null }, initial = 1
+            this, levels.map { it.label to null }, initial = nivelGuardado
         ) { idx ->
             val level = levels[idx]
             sbThreadsPuzzle?.progress = level.threads - 1
@@ -2066,8 +2072,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 .apply()
             updatePuzzleLabels()
         })
-        sbThreadsPuzzle?.progress = 3
-        sbCpuPuzzle?.progress = 50
+        // ESTO TIRABA LA PREFERENCIA. Los dos deslizadores se cargan de prefs
+        // unas lineas mas arriba y aqui se pisaban con 3 y 50 fijos, pasara lo
+        // que pasara. Efecto: elegias "Alta" (7 hilos, 90 % de CPU), cerrabas
+        // la app, y al volver buscaba con 4 hilos al 60 % sin avisar de nada.
+        // En una busqueda que dura dias eso es casi la mitad del trabajo tirado.
+        sbThreadsPuzzle?.progress = prefs.getInt("puzzle_threads", 3)
+        sbCpuPuzzle?.progress    = prefs.getInt("puzzle_cpu", 50)
         powerCard.addView(powerRow)
 
         // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
