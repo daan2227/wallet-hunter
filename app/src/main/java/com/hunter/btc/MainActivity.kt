@@ -36,10 +36,34 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     fun addPoint(wps: Float) { wpsPoints.addLast(wps); if(wpsPoints.size>maxPoints) wpsPoints.removeFirst(); postInvalidate() }
     fun reset() { wpsPoints.clear(); postInvalidate() }
     fun getPoints(): List<Float> = wpsPoints.toList()
+    /** Línea de trazos para marcar el promedio. */
+    private val paintMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AppTheme.ACCENT; strokeWidth = 1.5f; style = Paint.Style.STROKE
+        pathEffect = android.graphics.DashPathEffect(floatArrayOf(6f, 6f), 0f)
+    }
+    private val paintLblMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = AppTheme.ACCENT; textSize = 18f; typeface = Typeface.MONOSPACE
+    }
+
+    /** El promedio de lo que hay dibujado. 0 si no hay nada. */
+    fun media(): Float = if (wpsPoints.isEmpty()) 0f else wpsPoints.sum() / wpsPoints.size
+
+    private fun corto(v: Float) = when {
+        v >= 1e9f -> "%.2fG".format(v / 1e9f)
+        v >= 1e6f -> "%.1fM".format(v / 1e6f)
+        v >= 1e3f -> "%.0fK".format(v / 1e3f)
+        else      -> "%.0f".format(v)
+    }
+
     override fun onDraw(canvas: Canvas) {
         val w=width.toFloat(); val h=height.toFloat()
         if(w<=0||h<=0||wpsPoints.size<2) return
-        val pad=4f; val mx=wpsPoints.max().coerceAtLeast(1f)
+        val pad=4f
+        // La escala sale del máximo, pero con un suelo: si todos los puntos son
+        // casi iguales —que es lo normal en una búsqueda estable— dividir por el
+        // máximo exacto convierte el ruido en picos enormes y parece que la
+        // velocidad da bandazos cuando no los da.
+        val mx=wpsPoints.max().coerceAtLeast(1f)
         val pts=wpsPoints.mapIndexed{i,v->PointF(pad+(w-pad*2)*i/(maxPoints-1),h-pad-(h-pad*2)*(v/mx))}
         val fill=Path(); fill.moveTo(pts[0].x,h); pts.forEach{fill.lineTo(it.x,it.y)}
         fill.lineTo(pts.last().x,h); fill.close()
@@ -49,9 +73,15 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         val lp=Path(); pts.forEachIndexed{i,p->if(i==0)lp.moveTo(p.x,p.y) else lp.lineTo(p.x,p.y)}
         canvas.drawPath(lp,paintLine)
         canvas.drawCircle(pts.last().x,pts.last().y,4f,paintDot)
-        val wpsMax=wpsPoints.maxOrNull()?:0f
-        val lbl=if(wpsMax>=1e6)"%.1fM".format(wpsMax/1e6) else if(wpsMax>=1000)"%.0fK".format(wpsMax/1000) else "%.0f".format(wpsMax)
-        canvas.drawText(lbl,pad+2,22f,paintLbl)
+
+        // El promedio, que es el dato que se pidió: línea de trazos y su cifra.
+        val med = media()
+        if (med > 0f) {
+            val y = h - pad - (h - pad*2) * (med / mx)
+            canvas.drawLine(pad, y, w - pad, y, paintMedia)
+            canvas.drawText("media ${corto(med)}", pad + 2, (y - 6f).coerceAtLeast(16f), paintLblMedia)
+        }
+        canvas.drawText("máx ${corto(wpsPoints.max())}", pad + 2, 22f, paintLbl)
     }
 }
 
@@ -124,6 +154,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvLangLbl: TextView? = null
     private var tvCount: TextView? = null
     private var chartView: SpeedChartView? = null
+    private var tvMediaPuzzle: TextView? = null
+    /** Cuándo se tomó la última muestra de la gráfica, y con qué contador. */
+    private var kgMuestraMs = 0L
+    private var kgMuestraOps = 0L
     private var tvPuzzleStatus: TextView? = null
     private var tvTime: TextView? = null
     private var tvMatches: TextView? = null
@@ -1967,6 +2001,34 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(10) }
         }
         statsCard.addView(tvPeakWpsPuzzle)
+
+        // Gráfica de velocidad, una muestra por minuto.
+        //
+        // SpeedChartView existía desde hacía tiempo y `chartView` NUNCA se
+        // asignaba: era siempre null, así que addPoint() no hacía nada y la
+        // gráfica no aparecía en ninguna pantalla.
+        //
+        // Una muestra por minuto y no por segundo porque lo que interesa de una
+        // búsqueda que dura días es si el móvil mantiene el ritmo o se está
+        // frenando por calor o por batería, y eso no se ve en un segundo.
+        // Sesenta puntos son una hora de historia.
+        tvMediaPuzzle = TextView(this).apply {
+            text = "Velocidad media · se toma una muestra por minuto"
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(16) }
+        }
+        statsCard.addView(tvMediaPuzzle)
+        chartView = SpeedChartView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(90)
+            ).apply { topMargin = dp(8) }
+        }
+        statsCard.addView(chartView)
 
         fun miniStat(label: String, tv: TextView, guardarEtiqueta: ((TextView)->Unit)? = null):
                 LinearLayout = LinearLayout(this).apply {
@@ -4881,6 +4943,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // 2.870 millones de operaciones junto a 00:00:01 no significa nada. Se
         // guarda lo llevado y se sigue contando desde ahí.
         kgSegPrevios = prefs.getLong("kangaroo_seg_${puzzlePubHex.take(16)}", 0L)
+        kgMuestraMs = 0L; kgMuestraOps = 0L
+        recuperarMuestras()
         // El trabajo que hace falta: ~2,2 veces la raíz del ancho del rango.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(puzzleIniHex, 16)
@@ -4983,6 +5047,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /**
+     * Las muestras de la gráfica, guardadas por clave pública.
+     *
+     * Una búsqueda de Kangaroo dura días y la app se abre y se cierra. Sin
+     * guardarlas, cada vez que vuelves la gráfica empieza vacía y tarda una
+     * hora en volver a tener algo que mirar — justo cuando lo que quieres saber
+     * es si el móvil ha mantenido el ritmo mientras no mirabas.
+     */
+    private fun guardarMuestras() {
+        val pts = chartView?.getPoints() ?: return
+        prefs.edit().putString("kangaroo_grafica_${puzzlePubHex.take(16)}",
+            pts.joinToString(",") { it.toLong().toString() }).apply()
+    }
+
+    private fun recuperarMuestras() {
+        chartView?.reset()
+        val txt = prefs.getString("kangaroo_grafica_${puzzlePubHex.take(16)}", "") ?: ""
+        if (txt.isEmpty()) return
+        for (t in txt.split(",")) {
+            val v = t.trim().toFloatOrNull() ?: continue
+            chartView?.addPoint(v)
+        }
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     private fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -5036,6 +5124,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             kgOpsSeg = if (kgOpsSeg <= 0) inst else kgOpsSeg * 0.7 + inst * 0.3
             kgUltOps = ops; kgUltMs = ahoraMs
         }
+        // ── Una muestra por minuto para la gráfica ───────────────────────
+        //
+        // No se usa kgOpsSeg: eso es una media móvil corta, pensada para que el
+        // número grande no dé saltos. Para la gráfica interesa el promedio REAL
+        // del minuto, que sale de dividir el trabajo hecho entre el tiempo que
+        // ha costado. Así un bajón por calor se ve tal cual y no suavizado.
+        if (kgMuestraMs == 0L) { kgMuestraMs = ahoraMs; kgMuestraOps = ops }
+        else if (ahoraMs - kgMuestraMs >= 60_000L) {
+            val media = (ops - kgMuestraOps) * 1000.0 / (ahoraMs - kgMuestraMs)
+            kgMuestraMs = ahoraMs; kgMuestraOps = ops
+            chartView?.addPoint(media.toFloat())
+            guardarMuestras()
+        }
+        chartView?.let { ch ->
+            val m = ch.media()
+            tvMediaPuzzle?.text = if (m > 0) {
+                val (mv, mu) = scaleSpeed(m.toDouble())
+                val n = ch.getPoints().size
+                "Media de los últimos $n min: $mv $mu/s"
+            } else "Velocidad media · primera muestra en un minuto"
+        }
+
         val (v, u) = scaleSpeed(kgOpsSeg)
         tvWpsPuzzle?.text = v
         tvSpeedUnitPuzzle?.text = "$u op/s"
@@ -5175,6 +5285,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
         pendingBlockIdx = null
         currentBlockId = ""
+        // La gráfica es de la búsqueda anterior: mezclar velocidades de dos
+        // puzzles en la misma línea no significa nada.
+        chartView?.reset()
+        tvMediaPuzzle?.text = "Velocidad media · se toma una muestra por minuto"
+        kgMuestraMs = 0L; kgMuestraOps = 0L
         tvCurrentBlock?.text = "Bloque actual: —"
         tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
         // Guardar rango para modo distribuido
