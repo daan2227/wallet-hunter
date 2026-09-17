@@ -3626,6 +3626,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * ninguna de las dos, se devuelve vacío: mejor sin afinidad que con una
      * inventada.
      */
+    /**
+     * Decide la afinidad JUSTO ANTES de arrancar, con los hilos que se van a
+     * usar de verdad.
+     *
+     * Estaba sólo dentro del botón de "configuración óptima", y con el valor
+     * que tuviera el deslizador en ese momento. Dos consecuencias:
+     *
+     *  - Si nunca pulsabas ese botón, la afinidad no se activaba jamás.
+     *  - Y si lo pulsabas con "Media" y luego cambiabas a "Alta", quedaban ocho
+     *    hilos clavados en cuatro núcleos, que es el caso malo: cuatro núcleos
+     *    sin usar y los hilos amontonados de dos en dos.
+     *
+     * Fijar sólo tiene sentido si los hilos CABEN en los núcleos rápidos. Si no,
+     * se deja al planificador. En un Exynos 1580 —4 A720 rápidos— con "Media"
+     * (4 hilos) sí se fija; con "Alta" (8) no. En un Dimensity 1080 —2 A78— no
+     * se fija nunca salvo en "Baja".
+     */
+    private fun aplicarAfinidad(hilos: Int) {
+        val rapidos = nucleosRapidos()
+        val fijar = rapidos.isNotEmpty() && hilos <= rapidos.size
+        try {
+            HunterEngine.setBigCores(
+                if (rapidos.isEmpty()) intArrayOf(-1) else rapidos, fijar)
+        } catch (e: Exception) {}
+    }
+
     private fun nucleosRapidos(): IntArray {
         val n = Runtime.getRuntime().availableProcessors()
         if (n <= 1) return IntArray(0)
@@ -3756,13 +3782,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Regla: se fija sólo si los hilos caben en los núcleos rápidos. Si no,
         // se deja al planificador, que ya lleva los hilos pesados a los
         // grandes por su cuenta.
-        val rapidos = nucleosRapidos()
-        val hilosActuales = (sbThreadsPuzzle?.progress ?: 3) + 1
-        val fijar = rapidos.isNotEmpty() && hilosActuales <= rapidos.size
-        try {
-            HunterEngine.setBigCores(
-                if (rapidos.isEmpty()) intArrayOf(-1) else rapidos, fijar)
-        } catch (e: Exception) {}
+        aplicarAfinidad((sbThreadsPuzzle?.progress ?: 3) + 1)
 
         // Tamaño de lote: 2048, y no "según la RAM".
         //
@@ -4526,6 +4546,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     HunterEngine.setTarget("")
                 }
                 HunterEngine.setMode(if (puzzleMode) 1 else selectedScanMode)
+                aplicarAfinidad(threads)
                 HunterEngine.startHunting(threads, cpu)
 
                 // startHunting() en C++ vuelve sin hacer nada en varios casos

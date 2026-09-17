@@ -32,6 +32,30 @@ class NetworkActivity : AppCompatActivity() {
     private fun ajustes(ctx: android.content.Context = this) =
         ctx.getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
 
+    /**
+     * Fijar hilos a los núcleos rápidos sólo si CABEN. Misma regla que en la
+     * pantalla principal, y por el mismo motivo: con más hilos que núcleos
+     * rápidos se amontonan y el resto del chip se queda sin usar.
+     *
+     * Aquí hace falta porque el worker de fuerza bruta arranca desde esta
+     * pantalla, sin pasar por la otra.
+     */
+    private fun aplicarAfinidad(hilos: Int) {
+        val n = Runtime.getRuntime().availableProcessors()
+        if (n <= 1) return
+        fun leer(r: String) = try { java.io.File(r).readText().trim().toInt() } catch (e: Exception) { 0 }
+        var peso = IntArray(n) { leer("/sys/devices/system/cpu/cpu$it/cpu_capacity") }
+        if (peso.any { it <= 0 })
+            peso = IntArray(n) { leer("/sys/devices/system/cpu/cpu$it/cpufreq/cpuinfo_max_freq") }
+        if (peso.any { it <= 0 }) return
+        val mx = peso.max()
+        if (peso.all { it == mx }) return
+        val rapidos = (0 until n).filter { peso[it] >= mx * 85 / 100 }
+        if (rapidos.size == n) return
+        try { HunterEngine.setBigCores(rapidos.toIntArray(), hilos <= rapidos.size) }
+        catch (e: Exception) {}
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val BG    = AppTheme.BG_DEEP
@@ -316,6 +340,7 @@ class NetworkActivity : AppCompatActivity() {
                     val prefs = ajustes()
                     val threads = prefs.getInt("puzzle_threads", 3) + 1
                     val cpu = prefs.getInt("puzzle_cpu", 70) + 10
+                    aplicarAfinidad(threads)
                     HunterEngine.startHunting(threads, cpu)
                     try {
                         startForegroundService(android.content.Intent(this, com.hunter.btc.HunterService::class.java))
