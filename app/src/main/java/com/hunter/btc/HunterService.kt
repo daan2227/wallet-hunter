@@ -49,6 +49,23 @@ class HunterService : Service() {
                     if (bruta || kang) {
                         if (bruta) HunterEngine.stopHunting()
                         if (kang)  try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        // Y decir que la parada es a propósito. Sin esto la
+                        // pausa no servía de nada: el watchdog de la pantalla
+                        // principal ve el motor caído, lee estas dos banderas,
+                        // y lo relanza a los dos segundos. Con la pantalla
+                        // abierta el móvil seguía buscando hasta apagarse, que
+                        // es justo lo que la pausa tenía que evitar — y en un
+                        // móvil del cluster, que nadie está mirando, aún peor.
+                        //
+                        // Se apagan las dos aunque sólo uno estuviera en
+                        // marcha: son baratas de escribir y dejar la otra a
+                        // medias es como se llega a fallos así.
+                        try {
+                            getSharedPreferences("hunter",
+                                android.content.Context.MODE_PRIVATE).edit()
+                                .putBoolean("kangaroo_corriendo", false)
+                                .putBoolean("scan_was_running", false).apply()
+                        } catch (e: Throwable) {}
                         getSystemService(NotificationManager::class.java)
                             .notify(NOTIF_FG, buildFgNotif(
                                 "En pausa: batería baja",
