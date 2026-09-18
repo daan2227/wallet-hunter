@@ -339,6 +339,17 @@ class NetworkActivity : AppCompatActivity() {
         // con el tiempo, así que sin un refresco periódico se quedaban clavados.
         refresco = object : Runnable {
             override fun run() {
+                // La tarjeta de Tailscale SIEMPRE, la red esté en marcha o no.
+                //
+                // Estaba dentro del "if (isRunning)" y eso era justo al revés de
+                // lo que hace falta: esa tarjeta es lo que miras ANTES de
+                // arrancar nada —para saber qué dirección teclear, y para
+                // encender el nodo propio—. Con la red parada nunca se pintaba,
+                // así que se quedaba en "Comprobando..." para siempre y el botón
+                // del nodo no llegaba a aparecer nunca.
+                //
+                // No cuesta: mirar las interfaces no hace red.
+                pintarTailscale()
                 if (NetworkManager.isRunning.get()) pintarEstado()
                 handler.postDelayed(this, 5000L)
             }
@@ -496,16 +507,27 @@ class NetworkActivity : AppCompatActivity() {
         val ts = Tailscale.estado()
         btnTsAbrir?.text = if (Tailscale.instalado(this)) "Abrir Tailscale"
                            else "Instalar Tailscale"
+        // Decir SIEMPRE si el nodo propio está o no. Callárselo es lo que hace
+        // que la pantalla parezca estar pidiendo la app de Tailscale cuando se
+        // supone que va integrada: sin esta línea, el botón simplemente no
+        // aparece y no hay forma de saber si es que no está o es que falla.
+        val notaNodo = if (hayNodo)
+            "\n\nEste móvil PUEDE ser su propio nodo, sin instalar Tailscale: " +
+            "dale a «Usar nodo propio» aquí abajo."
+        else
+            "\n\nEl nodo propio no está disponible en esta versión, así que hace " +
+            "falta la app de Tailscale."
         if (!ts.activo) {
             miNombreTs = ""; nombreTsPedido = false
-            tvTailscale?.text = if (Tailscale.instalado(this))
-                "Instalado pero sin conectar.\n\n" +
+            tvTailscale?.text = (if (Tailscale.instalado(this))
+                "Tailscale instalado pero sin conectar.\n\n" +
                 "Ábrelo y activa el interruptor. Mientras esté apagado, los dos " +
                 "móviles sólo se ven si están en la misma WiFi."
             else
-                "No está instalado.\n\n" +
+                "La app de Tailscale no está instalada.\n\n" +
                 "Hace falta para que los móviles se vean fuera de la misma WiFi: " +
                 "tu operadora usa CGNAT y no hay puerto que abrir que lo arregle."
+            ) + notaNodo
             return
         }
         if (!nombreTsPedido) {
@@ -518,8 +540,10 @@ class NetworkActivity : AppCompatActivity() {
         val comoMeLlamo = if (miNombreTs.isNotEmpty())
             "\nNombre: $miNombreTs   ← esto es lo que conviene dar al otro móvil"
         else ""
-        tvTailscale?.text = "Conectado.\nDirección: ${ts.direccion}$comoMeLlamo\n\n" +
-            "Funciona igual desde cualquier red y va cifrado de punta a punta."
+        tvTailscale?.text = "Conectado por la app de Tailscale.\n" +
+            "Dirección: ${ts.direccion}$comoMeLlamo\n\n" +
+            "Funciona igual desde cualquier red y va cifrado de punta a punta." +
+            notaNodo
     }
 
     /**

@@ -18,6 +18,17 @@
          siempre un aparato que llevaba días trabajando para un cluster, y lo
          único que se veía era que desaparecía de la lista del maestro. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Desde Android 11 una app no ve qué otras hay instaladas salvo que las
+         declare aquí. Sin esto, getPackageInfo("com.tailscale.ipn") lanza
+         NameNotFoundException AUNQUE Tailscale esté instalado, así que el botón
+         diría "Instalar Tailscale" a quien ya lo tiene y le mandaría a la
+         tienda. Y getLaunchIntentForPackage devolvería null, o sea que tampoco
+         podría abrirlo.
+         targetSdk es 34, así que el filtrado aplica. -->
+    <queries>
+        <package android:name="com.tailscale.ipn" />
+    </queries>
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
