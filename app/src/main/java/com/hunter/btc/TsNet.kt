@@ -25,22 +25,53 @@ import android.content.Context
 object TsNet {
 
     /**
-     * Estas funciones viven dentro de libhunter_jni.so, la misma que carga
-     * HunterEngine. Hay que cargarla aquí TAMBIÉN porque este objeto se puede
-     * tocar antes que aquél —la pantalla de red pregunta si hay tsnet antes de
-     * que nadie haya buscado nada—, y entonces el símbolo no estaría y saldría
-     * un UnsatisfiedLinkError. loadLibrary es idempotente: llamarla dos veces no
-     * cuesta nada.
+     * La librería se carga PEREZOSAMENTE, y en un try.
      *
-     * libtailscale.so no se carga a mano: libhunter_jni.so la trae como
-     * dependencia y el enlazador de Android la resuelve sola. Si no está en el
-     * APK —compilación sin tsnet— tampoco figura como dependencia, así que no
-     * falta nada.
+     * Estuvo dentro de libhunter_jni.so y rompió la app entera. libtailscale.so
+     * trae el runtime de Go, que arranca al CARGAR la librería: enlazada dentro,
+     * Go arrancaba al abrir la app —antes de que nadie hubiera pedido nada de
+     * Tailscale— y System.loadLibrary fallaba.
+     *
+     * Y el fallo no se veía. La pestaña de escaneo tiene
+     *
+     *     try { HunterEngine.setBip39Paths(pathMask) } catch (e: Throwable) {}
+     *
+     * que se tragaba el UnsatisfiedLinkError sin decir nada; luego la pestaña de
+     * puzzle llamaba a setBatchSize sin proteger, el Error subía hasta un
+     * catch (e: Exception) —que NO atrapa Error— y mataba la app. Lo que se veía
+     * era una pantalla negra con un "Building Puzzle..." colgado.
+     *
+     * Ahora vive en libtsbridge.so y sólo se carga cuando alguien pregunta por
+     * tsnet. Si no se puede, [disponible] devuelve false y no pasa nada más: la
+     * app entera sigue funcionando sin Tailscale.
      */
-    init { System.loadLibrary("hunter_jni") }
+    @Volatile private var cargada: Boolean? = null
 
-    /** ¿Lleva esta compilación el nodo dentro? */
-    external fun disponible(): Boolean
+    @Synchronized
+    private fun cargar(): Boolean {
+        cargada?.let { return it }
+        val ok = try {
+            System.loadLibrary("tsbridge"); true
+        } catch (t: Throwable) {
+            android.util.Log.w("TsNet", "libtsbridge no se pudo cargar: ${t.message}")
+            false
+        }
+        cargada = ok
+        return ok
+    }
+
+    /** Lo de verdad, sólo llamable con la librería cargada. */
+    private external fun disponibleNativo(): Boolean
+
+    /**
+     * ¿Se puede usar el nodo empotrado?
+     *
+     * Nunca lanza. Es lo primero que pregunta la pantalla, y una excepción aquí
+     * volvería a tumbar la app por algo que es perfectamente opcional.
+     */
+    fun disponible(): Boolean =
+        if (!cargar()) false
+        else try { disponibleNativo() } catch (t: Throwable) { false }
 
     /**
      * Levanta el nodo y ESPERA a que esté autorizado.

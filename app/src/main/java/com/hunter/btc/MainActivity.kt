@@ -592,7 +592,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.widget.Toast.makeText(this, "Building Puzzle...", android.widget.Toast.LENGTH_SHORT).show()
             try {
                 puzzleScroll = buildPuzzleTab()
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 val msg = "PUZZLE_BUILD: ${e.javaClass.simpleName}: ${e.message}"
                 android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
                 java.io.File(filesDir, "crash_log.txt").appendText("\n$msg\n${e.stackTraceToString()}\n")
@@ -602,13 +602,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
             recoveryScroll = buildRecoveryTab()
 
-        } catch (e: Exception) {
+        // Throwable y no Exception. Esto no es puntillismo: un
+        // UnsatisfiedLinkError —la librería nativa que no carga— es un Error, no
+        // una Exception, asi que se colaba por encima de este catch y mataba la
+        // app SIN ESCRIBIR NADA. Lo que se veía era una pantalla negra con el
+        // último toast colgado y ni un mensaje ni una línea en crash_log.txt.
+        //
+        // Con librerías nativas de por medio, atrapar sólo Exception es dejar
+        // fuera justo la familia de fallos que más cuesta diagnosticar.
+        } catch (e: Throwable) {
             // Escribir error a archivo para diagnóstico
             try {
                 val errFile = java.io.File(filesDir, "crash_log.txt")
                 errFile.writeText("CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
-            } catch (ex: Exception) {}
-            android.widget.Toast.makeText(this, "CRASH guardado en crash_log.txt", android.widget.Toast.LENGTH_LONG).show()
+            } catch (ex: Throwable) {}
+            android.widget.Toast.makeText(this,
+                "CRASH: ${e.javaClass.simpleName}: ${e.message}",
+                android.widget.Toast.LENGTH_LONG).show()
             finish(); return
         }
 
