@@ -120,6 +120,26 @@ jobs:
         if unzip -l "$APK" | grep -q 'lib/arm64-v8a/libtsbridge.so'; then
           echo "OK: libtsbridge.so está en el APK"
           unzip -l "$APK" | grep -E 'libtsbridge|libtailscale' || true
+          # Que pida el NOMBRE y no una ruta.
+          #
+          # Estar dentro del APK no basta: si libtailscale.so se compiló sin
+          # SONAME, libtsbridge.so anota como dependencia la ruta absoluta de
+          # ESTE runner, y en el móvil sale "library ... not found" al cargarla.
+          # El APK se construye igual de bien, así que sin esto no se sabe hasta
+          # instalarlo. Pasó, y costó tres intentos verlo.
+          rm -rf /tmp/apkchk && mkdir -p /tmp/apkchk
+          unzip -q -o "$APK" 'lib/arm64-v8a/lib*.so' -d /tmp/apkchk
+          RE=$(ls $ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null || echo readelf)
+          NEED=$("$RE" -d /tmp/apkchk/lib/arm64-v8a/libtsbridge.so 2>/dev/null \
+                 | grep -o 'NEEDED.*\[.*\]' | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')
+          echo "libtsbridge.so necesita: $NEED"
+          case "$NEED" in
+            */*) echo "::error::libtsbridge.so pide una RUTA y no un nombre: $NEED. \
+        Falta el SONAME en libtailscale.so; en el móvil dará 'library not found'."
+                 exit 1 ;;
+            *libtailscale.so*) echo "OK: pide libtailscale.so por su nombre" ;;
+            *) echo "::warning::libtsbridge.so no depende de libtailscale.so ($NEED)" ;;
+          esac
         else
           echo "::warning::El APK NO lleva el nodo empotrado (libtsbridge.so). \
         La app funciona igual, pero 'Usar nodo propio' dirá que no está disponible."

@@ -110,8 +110,22 @@ export CC
 # cambia nada salvo unos pocos KB de relleno, asi que se pone siempre: cuesta
 # nada y quita de en medio una causa de "no carga" que no da la cara hasta que
 # alguien la instala en el movil equivocado.
+# -soname es OBLIGATORIO, y su falta es lo que hizo que no cargara en el movil:
+#
+#   dlopen failed: library "/home/runner/work/wallet-hunter/wallet-hunter/app/
+#   src/main/cpp/../jniLibs/arm64-v8a/libtailscale.so" not found:
+#   needed by .../base.apk!/lib/arm64-v8a/libtsbridge.so
+#
+# O sea que libtsbridge.so pedia LA RUTA ABSOLUTA DE LA MAQUINA DE COMPILACION.
+# Go no le pone SONAME a lo que produce con c-shared, y sin SONAME el enlazador
+# anota como dependencia la ruta con la que se le nombro — que en el movil no
+# existe. Con SONAME anota solo "libtailscale.so" y el enlazador de Android la
+# encuentra al lado, dentro del APK.
+#
+# Es un fallo que NO da la cara al compilar: el APK sale entero y con las dos
+# librerias dentro. Solo se ve al instalarlo.
 go build -buildmode=c-shared \
-    -ldflags="-extldflags=-Wl,-z,max-page-size=16384" \
+    -ldflags '-extldflags "-Wl,-soname,libtailscale.so -Wl,-z,max-page-size=16384"' \
     -o "$SALIDA_SO/libtailscale.so" .
 
 # El .h que genera cgo NO es el que hay que incluir: trae los prototipos de los
@@ -137,3 +151,17 @@ n=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
     | grep -c '^tailscale_' || true)
 echo "  simbolos tailscale_* exportados: $n"
 [ "$n" -ge 15 ] || { echo "  MAL  esperaba al menos 15"; exit 1; }
+
+# Y el SONAME, que es lo que fallaba y no daba la cara hasta instalar el APK.
+# Sin el, quien enlace contra esta libreria anota como dependencia la RUTA de
+# esta maquina, y en el movil no existe. Se comprueba aqui y se corta.
+readelf="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf"
+son=$("$readelf" -d "$SALIDA_SO/libtailscale.so" 2>/dev/null \
+      | grep -o 'SONAME.*\[.*\]' | sed 's/.*\[\(.*\)\]/\1/')
+echo "  SONAME: ${son:-(ninguno)}"
+[ "$son" = "libtailscale.so" ] || {
+    echo "  MAL  el SONAME tiene que ser libtailscale.so."
+    echo "       Sin el, libtsbridge.so pedira la ruta de compilacion y el"
+    echo "       movil dira 'library ... not found' al cargarla."
+    exit 1
+}
