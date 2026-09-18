@@ -8,6 +8,41 @@ permissions:
   contents: write
 
 jobs:
+  # Empotrar el nodo de Tailscale (tsnet) dentro de la app.
+  #
+  # Va en un trabajo APARTE del que compila el APK, y a propósito: mete la
+  # cadena de Go, el NDK y el árbol entero de tailscale.com en la ecuación, y si
+  # algo de eso se rompe no puede llevarse por delante la compilación de una app
+  # que funciona. Mientras este trabajo no esté verde, nada de esto entra en el
+  # APK — el .a que produce se queda como artefacto y ya está.
+  #
+  # Lo que comprueba es justo lo único que no se puede comprobar fuera de CI: el
+  # enlazado con cgo usando el clang del NDK. El resto ya está verificado —que
+  # tailscale.com/tsnet compila para android/arm64, y que el Go 1.25.5 que pide
+  # el go.mod se descarga solo—.
+  tailscale-archive:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Install NDK
+      run: |
+        echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
+          "ndk;25.1.8937393"
+
+    - name: Cross-compile libtailscale for android/arm64
+      run: scripts/build-libtailscale.sh "$PWD/out-tailscale"
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libtailscale-arm64
+        path: out-tailscale/
+        if-no-files-found: error
+
   build:
     runs-on: ubuntu-latest
     steps:
