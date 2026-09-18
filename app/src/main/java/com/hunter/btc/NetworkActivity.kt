@@ -788,8 +788,17 @@ class NetworkActivity : AppCompatActivity() {
         else ""
         // Todas, no sólo la primera IPv4: desde fuera de la WiFi la que sirve es
         // la IPv6, y sin verla no hay forma de saber qué teclear en el otro.
-        val dirs = NetworkManager.direccionesLocales()
-            .joinToString("\n") { "  ${it.first}  ${it.second}" }
+        //
+        // Y con el nodo empotrado en marcha, la PRIMERA es la del tailnet: no
+        // sale en la enumeración de interfaces porque tsnet vive en espacio de
+        // usuario, y es justo la única que vale desde otra red.
+        val ts = if (NetworkManager.usarTsnet)
+                     try { TsNet.direcciones() } catch (e: Throwable) { "" } else ""
+        val dirs = (if (ts.isNotEmpty())
+                        ts.split(",").joinToString("\n") { "  tailnet  ${it.trim()}" } + "\n"
+                    else "") +
+            NetworkManager.direccionesLocales()
+                .joinToString("\n") { "  ${it.first}  ${it.second}" }
         // El código hay que teclearlo en cada worker; sin él no se aceptan.
         AlertDialog.Builder(this)
             .setTitle("Master activo")
@@ -968,6 +977,23 @@ class NetworkActivity : AppCompatActivity() {
      * había forma de saber qué poner en el otro móvil.
      */
     private fun textoDeMisDirecciones(): String {
+        // La del nodo empotrado va PRIMERA y aparte.
+        //
+        // direccionesLocales() enumera las interfaces del sistema, y la de tsnet
+        // NO está ahí: tsnet vive en espacio de usuario, así que Java no la ve.
+        // Sin esto, la caja enseña la IP de la WiFi y esa es justo la que NO
+        // sirve cuando el cluster va por el tailnet — se teclearía la
+        // equivocada sin que nada avisara.
+        if (NetworkManager.usarTsnet) {
+            val ts = try { TsNet.direcciones() } catch (e: Throwable) { "" }
+            if (ts.isNotEmpty()) {
+                return "Dirección en tu tailnet (la que vale desde cualquier red):\n" +
+                       "  " + ts.split(",").joinToString("\n  ") { it.trim() } +
+                       "\n\nY en esta WiFi:\n" +
+                       NetworkManager.direccionesLocales()
+                           .joinToString("\n") { "  ${it.first}  ${it.second}" }
+            }
+        }
         val d = NetworkManager.direccionesLocales()
         if (d.isEmpty()) return "Sin red"
         if (d.size == 1) return "IP: ${d[0].second}"
