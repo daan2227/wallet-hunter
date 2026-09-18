@@ -539,14 +539,28 @@ class NetworkActivity : AppCompatActivity() {
     }
 
     private fun discoverMasters() {
-        tvLog?.text = "Buscando masters..."
-        NetworkManager.discoverMasters(this) { ip, device ->
+        tvLog?.text = "Buscando masters en esta WiFi..."
+        NetworkManager.discoverMasters(this, { ip, device ->
             runOnUiThread {
                 etMasterIp?.setText(ip)
                 val current = tvLog?.text?.toString() ?: ""
                 tvLog?.text = "$current\nOK Master: $device ($ip)"
             }
-        }
+        }, { n ->
+            // Sin esto la pantalla se quedaba en "Buscando..." para siempre
+            // cuando no encontraba nada, que es SIEMPRE si el maestro no está
+            // en esta misma WiFi: la difusión no cruza routers, ni VPNs, ni
+            // datos móviles. Quedarse esperando algo imposible sin que nada lo
+            // diga es peor que no tener el botón.
+            if (n == 0) runOnUiThread {
+                tvLog?.text = "No se ha encontrado ningún maestro en esta WiFi.\n\n" +
+                    "Esta búsqueda sólo ve aparatos de la MISMA red: no cruza " +
+                    "routers, ni VPN, ni datos móviles.\n\n" +
+                    "Si el maestro está en otra red o al otro lado de una VPN, " +
+                    "escribe su dirección a mano arriba — la enseña él en su " +
+                    "propia pantalla."
+            }
+        })
     }
 
     private fun stopNetwork() {
@@ -589,10 +603,15 @@ class NetworkActivity : AppCompatActivity() {
         val d = NetworkManager.direccionesLocales()
         if (d.isEmpty()) return "Sin red"
         if (d.size == 1) return "IP: ${d[0].second}"
+        val hayVpn = d.any { it.second.contains("VPN") }
         return "Direcciones de este móvil:\n" +
                d.joinToString("\n") { "  ${it.first}  ${it.second}" } +
-               "\n\nEn la misma WiFi se usa la IPv4. Desde fuera —otro móvil con " +
-               "datos— hace falta la IPv6, o abrir el puerto en el router."
+               if (hayVpn)
+                   "\n\nUsa la de la VPN: funciona igual desde cualquier red, " +
+                   "sin abrir puertos."
+               else
+                   "\n\nEn la misma WiFi se usa la IPv4. Desde fuera hace falta " +
+                   "la IPv6, abrir el puerto en el router, o una VPN."
     }
 
     private fun mandarATodos(pausar: Boolean) {

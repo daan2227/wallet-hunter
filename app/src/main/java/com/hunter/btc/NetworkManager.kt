@@ -1113,8 +1113,24 @@ object NetworkManager {
     }
 
     // ── Descubrimiento UDP ────────────────────────────────────────────────────
-    fun discoverMasters(ctx: Context, onFound: (String, String) -> Unit) {
+    /**
+     * Busca maestros por difusión UDP.
+     *
+     * Sólo funciona DENTRO DE LA MISMA WiFi: la difusión no cruza routers, ni
+     * VPNs, ni datos móviles. Es una comodidad para el caso fácil, no la forma
+     * general de conectarse — para lo demás se teclea la dirección.
+     *
+     * @param onFin cuántos ha encontrado cuando termina de buscar. Hace falta
+     *   porque antes no se avisaba de NADA al no encontrar nada: la pantalla se
+     *   quedaba en "Buscando masters..." para siempre. En una WiFi eso ya
+     *   despistaba; con el maestro al otro lado de una VPN o de Internet, donde
+     *   no lo va a encontrar nunca, era quedarse mirando un mensaje que no
+     *   cambia sin saber que estabas esperando algo imposible.
+     */
+    fun discoverMasters(ctx: Context, onFound: (String, String) -> Unit,
+                        onFin: ((Int) -> Unit)? = null) {
         executor.submit {
+            var hallados = 0
             try {
                 val udp = DatagramSocket(UDP_PORT)
                 udp.soTimeout = 3000
@@ -1129,12 +1145,14 @@ object NetworkManager {
                             val parts = msg.split("|")
                             val ip     = packet.address.hostAddress ?: continue
                             val device = parts.getOrNull(1) ?: "Unknown"
+                            hallados++
                             onFound(ip, device)
                         }
                     } catch (e: SocketTimeoutException) { break }
                 }
                 udp.close()
             } catch (e: Exception) { log("Discovery error: ${e.message}") }
+            onFin?.invoke(hallados)
         }
     }
 
@@ -1197,7 +1215,12 @@ object NetworkManager {
                     if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
                     val txt = addr.hostAddress?.substringBefore('%') ?: continue
                     val tipo = if (addr is Inet4Address) "IPv4" else "IPv6"
-                    out.add(tipo to "$txt  (${iface.name})")
+                    // Marcar cuál es la de la VPN. Con Tailscale puesto salen
+                    // tres o cuatro direcciones y sólo UNA sirve para que te
+                    // llamen desde fuera; sin decir cuál, la lista informa poco
+                    // más que enseñar la primera.
+                    val nota = if (esVpn(iface.name, txt)) "  ← la de la VPN" else ""
+                    out.add(tipo to "$txt  (${iface.name})$nota")
                 }
             }
         } catch (e: Exception) {
@@ -1205,6 +1228,26 @@ object NetworkManager {
         }
         // IPv4 primero: es la que sirve en una WiFi, que es el caso normal.
         return out.sortedBy { if (it.first == "IPv4") 0 else 1 }
+    }
+
+    /**
+     * ¿Esta dirección es de una VPN?
+     *
+     * Se piden las DOS cosas —interfaz de túnel Y rango 100.64.0.0/10— porque
+     * por separado cada una se equivoca: hay VPN de empresa que no usan ese
+     * rango, y sobre todo 100.64/10 es el rango del CGNAT de las operadoras, o
+     * sea que una IP de datos móviles puede caer ahí sin ser ninguna VPN.
+     * Juntas aciertan en el caso que importa, que es Tailscale.
+     */
+    private fun esVpn(iface: String, dir: String): Boolean {
+        val tunel = iface.startsWith("tun") || iface.startsWith("ts") ||
+                    iface.startsWith("wg")  || iface.startsWith("ppp")
+        if (!tunel) return false
+        val p = dir.split(".")
+        if (p.size != 4) return false
+        val a = p[0].toIntOrNull() ?: return false
+        val b = p[1].toIntOrNull() ?: return false
+        return a == 100 && b in 64..127          // 100.64.0.0/10
     }
 
     fun getLocalIp(ctx: Context): String {
