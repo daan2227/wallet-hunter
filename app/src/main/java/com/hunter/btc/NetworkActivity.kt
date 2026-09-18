@@ -515,8 +515,12 @@ class NetworkActivity : AppCompatActivity() {
             "\n\nEste móvil PUEDE ser su propio nodo, sin instalar Tailscale: " +
             "dale a «Usar nodo propio» aquí abajo."
         else
-            "\n\nEl nodo propio no está disponible en esta versión, así que hace " +
-            "falta la app de Tailscale."
+            "\n\nEl nodo propio no está disponible, así que hace falta la app de " +
+            "Tailscale." +
+            // El motivo, si se sabe. Sin esto lo único que queda es "no está
+            // disponible", que no da un solo dato con el que averiguar nada. El
+            // mensaje del enlazador suele decir exactamente qué pasa.
+            (TsNet.errorCarga.let { if (it.isEmpty()) "" else "\n\nMotivo: $it" })
         if (!ts.activo) {
             miNombreTs = ""; nombreTsPedido = false
             tvTailscale?.text = (if (Tailscale.instalado(this))

@@ -47,13 +47,27 @@ object TsNet {
      */
     @Volatile private var cargada: Boolean? = null
 
+    /**
+     * Por qué no se pudo cargar la librería. "" si cargó o si no se ha probado.
+     *
+     * Se guarda para poder ENSEÑARLO. Antes sólo iba al registro del sistema,
+     * que desde el móvil no se ve, así que lo único que sabía el usuario era que
+     * el nodo "no está disponible" — sin un solo dato con el que averiguar por
+     * qué. Con librerías nativas el mensaje del enlazador suele decir
+     * exactamente lo que pasa: falta un símbolo, la arquitectura no cuadra, la
+     * alineación de página no vale...
+     */
+    @Volatile var errorCarga = ""
+        private set
+
     @Synchronized
     private fun cargar(): Boolean {
         cargada?.let { return it }
         val ok = try {
-            System.loadLibrary("tsbridge"); true
+            System.loadLibrary("tsbridge"); errorCarga = ""; true
         } catch (t: Throwable) {
-            android.util.Log.w("TsNet", "libtsbridge no se pudo cargar: ${t.message}")
+            errorCarga = "${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}"
+            android.util.Log.w("TsNet", "libtsbridge no se pudo cargar: $errorCarga")
             false
         }
         cargada = ok

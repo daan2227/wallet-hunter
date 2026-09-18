@@ -103,7 +103,16 @@ export CC
 #
 # El build mete tambien tailscale.c, que es la fachada que convierte los
 # simbolos exportados de Go en el API tailscale_* que usa el JNI.
-go build -buildmode=c-shared -o "$SALIDA_SO/libtailscale.so" .
+#
+# -z max-page-size=16384: Android 15 en adelante puede usar paginas de 16 KB, y
+# entonces el enlazador del sistema RECHAZA las librerias alineadas a 4 KB, que
+# es lo que produce Go por omision. En un movil con paginas de 4 KB esto no
+# cambia nada salvo unos pocos KB de relleno, asi que se pone siempre: cuesta
+# nada y quita de en medio una causa de "no carga" que no da la cara hasta que
+# alguien la instala en el movil equivocado.
+go build -buildmode=c-shared \
+    -ldflags="-extldflags=-Wl,-z,max-page-size=16384" \
+    -o "$SALIDA_SO/libtailscale.so" .
 
 # El .h que genera cgo NO es el que hay que incluir: trae los prototipos de los
 # simbolos de Go (TsnetDial y compania). El bueno es el tailscale.h del repo,
