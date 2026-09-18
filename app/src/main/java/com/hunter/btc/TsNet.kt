@@ -314,7 +314,21 @@ object TsNet {
      */
     fun registro(ctx: Context, lineas: Int = 12): String = try {
         val f = java.io.File(carpetaEstado(ctx), "tsnet.log")
-        if (!f.exists()) "" else f.readLines().takeLast(lineas).joinToString("\n")
+        if (!f.exists()) "" else {
+            val todo = f.readLines()
+            // Si hay un pánico, se enseña DESDE ÉL y no las últimas líneas.
+            //
+            // La traza de Go ocupa decenas de líneas y lo que explica el fallo
+            // —"panic: ..." y la función donde reventó— va al PRINCIPIO. Coger
+            // las últimas daría el final de la pila de llamadas, que es la parte
+            // que menos dice.
+            val i = todo.indexOfFirst {
+                it.startsWith("panic:") || it.startsWith("fatal error:") ||
+                it.contains("SIGSEGV") || it.contains("runtime error:")
+            }
+            if (i >= 0) todo.drop(i).take(lineas.coerceAtLeast(20)).joinToString("\n")
+            else todo.takeLast(lineas).joinToString("\n")
+        }
     } catch (e: Throwable) { "" }
 
     /** Da de baja este nodo: para, olvida la identidad y la marca. */

@@ -142,7 +142,24 @@ Java_com_hunter_btc_TsNet_arrancar(JNIEnv *env, jobject, jstring jclave,
         int fd = open(ruta.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0600);
         if(fd >= 0){
             tailscale_set_logfd(sd, fd);
-            /* No se cierra: lo usa Go mientras el nodo viva. Se lo queda el. */
+            /* Y la SALIDA DE ERROR del proceso al mismo sitio.
+             *
+             * Sin esto faltaba justo lo que importa. El registro de tsnet
+             * llegaba hasta
+             *
+             *     pm: migrating "ipn-android" profile to new format
+             *
+             * y ahi se cortaba, porque lo siguiente —el panico de Go con su
+             * traza— NO sale por el log de tailscale: sale por stderr. Y en
+             * Android el stderr de una app va a /dev/null, asi que se perdia.
+             *
+             * Redirigirlo no quita nada: nadie lo estaba leyendo. Y trae la
+             * linea que dice en que funcion revento y por que, que es la
+             * diferencia entre arreglarlo y adivinar.
+             *
+             * No se cierra el fd: lo usa Go mientras el nodo viva. */
+            dup2(fd, STDERR_FILENO);
+            dup2(fd, STDOUT_FILENO);
         }
         env->ReleaseStringUTFChars(jdir,dir);
     }
