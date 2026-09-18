@@ -2439,4 +2439,105 @@ Java_com_hunter_btc_TsNet_parar(JNIEnv *, jobject){
 #endif
 }
 
+/* ---------- Conexiones por tsnet ----------
+ *
+ * Lo que devuelven listen, accept y dial son DESCRIPTORES DE FICHERO
+ * corrientes: la cabecera de libtailscale lo dice tal cual —"it is a pipe(2) on
+ * which you can use read(2), write(2), and close(2)"—. Eso es lo que hace que
+ * empotrar tsnet no obligue a reescribir el protocolo: el reparto del cluster
+ * sigue mandando sus mismas lineas JSON, solo que por otro descriptor.
+ *
+ * Aqui NO se envuelve nada en objetos. Se devuelve el numero y que Kotlin lo
+ * meta en un ParcelFileDescriptor, que es lo que sabe hacer Android. Cuanto
+ * menos haya en este lado, menos hay que depurar a ciegas.
+ *
+ * NO hay tailscale_listener_close ni tailscale_conn_close: se cierran con
+ * close(2), que es lo que hace ParcelFileDescriptor al cerrarse.
+ *
+ * accept() y dial() BLOQUEAN. Nunca desde el hilo principal.
+ *
+ * Convenio de errores: negativo es fallo. -1 es "no hay tsnet en esta
+ * compilacion o el nodo no esta arrancado" y -2 es "tsnet ha dicho que no",
+ * para que quien llame pueda distinguir "no se puede" de "no ha podido".
+ */
+
+/* Escucha en el puerto dado. @return el descriptor del escuchador, o <0. */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_TsNet_escuchar(JNIEnv *, jobject, jint puerto){
+#ifndef TIENE_TAILSCALE
+    return -1;
+#else
+    std::lock_guard<std::mutex> lk(g_ts_mtx);
+    if(g_ts < 0) return -1;
+    char dir[32]; snprintf(dir,sizeof(dir),":%d",(int)puerto);
+    tailscale_listener l = 0;
+    if(tailscale_listen(g_ts,"tcp",dir,&l) != 0) return -2;
+    return (jint)l;
+#endif
+}
+
+/* Espera una conexion entrante. BLOQUEA. @return descriptor, o <0. */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_TsNet_aceptar(JNIEnv *, jobject, jint escuchador){
+#ifndef TIENE_TAILSCALE
+    return -1;
+#else
+    /* SIN el mutex: accept se queda bloqueado hasta que llegue alguien, y con
+       el cerrojo cogido dejaria colgada a toda la app —incluido parar()—. El
+       descriptor del escuchador ya es nuestro y no lo toca nadie mas. */
+    tailscale_conn c = 0;
+    if(tailscale_accept((tailscale_listener)escuchador,&c) != 0) return -2;
+    return (jint)c;
+#endif
+}
+
+/* Abre una conexion. destino es "maquina:puerto". BLOQUEA. @return desc, o <0. */
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_TsNet_marcar(JNIEnv *env, jobject, jstring jdestino){
+#ifndef TIENE_TAILSCALE
+    return -1;
+#else
+    int sd;
+    { std::lock_guard<std::mutex> lk(g_ts_mtx); sd = g_ts; }
+    if(sd < 0) return -1;
+    const char *d = env->GetStringUTFChars(jdestino,0);
+    if(!d) return -1;
+    tailscale_conn c = 0;
+    /* Igual que accept: fuera del cerrojo, porque marcar tarda lo que tarde la
+       red y mientras tanto la app tiene que seguir viva. */
+    int r = tailscale_dial(sd,"tcp",d,&c);
+    env->ReleaseStringUTFChars(jdestino,d);
+    return r==0 ? (jint)c : -2;
+#endif
+}
+
+/* Quien hay al otro lado de una conexion aceptada. "" si no se sabe.
+ *
+ * Hace falta porque el maestro identifica a cada trabajador por su direccion, y
+ * con tsnet no hay Socket del que sacarla. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_TsNet_remoto(JNIEnv *env, jobject, jint escuchador, jint con){
+#ifndef TIENE_TAILSCALE
+    return env->NewStringUTF("");
+#else
+    char buf[128]; buf[0]=0;
+    if(tailscale_getremoteaddr((tailscale_listener)escuchador,
+                               (tailscale_conn)con,buf,sizeof(buf)) != 0)
+        return env->NewStringUTF("");
+    return env->NewStringUTF(buf);
+#endif
+}
+
+/* El ultimo error del nodo, para poder ensenarlo. "" si no hay nodo. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_TsNet_ultimoFallo(JNIEnv *env, jobject){
+#ifndef TIENE_TAILSCALE
+    return env->NewStringUTF("");
+#else
+    std::lock_guard<std::mutex> lk(g_ts_mtx);
+    if(g_ts < 0) return env->NewStringUTF("");
+    return env->NewStringUTF(ts_error(g_ts).c_str());
+#endif
+}
+
 }

@@ -63,6 +63,61 @@ object TsNet {
     /** Para el nodo. Se puede llamar aunque no esté arrancado. */
     external fun parar()
 
+    /* ── Conexiones ─────────────────────────────────────────────────────────
+     *
+     * Lo que devuelven son DESCRIPTORES DE FICHERO. La cabecera de libtailscale
+     * lo dice tal cual: "it is a pipe(2) on which you can use read(2), write(2),
+     * and close(2)". Por eso empotrar tsnet no obliga a reescribir el protocolo
+     * del cluster — las mismas líneas JSON, por otro descriptor.
+     *
+     * Negativo es fallo: −1 es "no hay tsnet o el nodo no está arrancado" y −2
+     * es "tsnet ha dicho que no", para poder distinguir "no se puede" de "no ha
+     * podido".
+     *
+     * [aceptar] y [marcar] BLOQUEAN. Nunca desde el hilo principal.
+     */
+    external fun escuchar(puerto: Int): Int
+    external fun aceptar(escuchador: Int): Int
+    external fun marcar(destino: String): Int
+    /** Quién hay al otro lado de una conexión aceptada. "" si no se sabe. */
+    external fun remoto(escuchador: Int, con: Int): String
+    /** El último error del nodo, para poder enseñarlo. */
+    external fun ultimoFallo(): String
+
+    /**
+     * Una conexión de tsnet vestida de flujos de Java.
+     *
+     * OJO CON EL CIERRE, que es donde esto se rompe de forma difícil de ver.
+     *
+     * [entrada] y [salida] salen del MISMO descriptor. Cerrar cualquiera de los
+     * dos lo cierra, y con él el otro. Así que aquí no se cierra ninguno: se
+     * cierra el ParcelFileDescriptor y ya está.
+     *
+     * Eso tiene una consecuencia para quien lo use: envolver [entrada] en un
+     * BufferedReader y cerrarlo —o pasarlo a algo que lo cierre— tumba la
+     * conexión entera, incluida la escritura. En el reparto del cluster se lee y
+     * se escribe por la misma conexión, así que hay que dejar que cierre esto y
+     * no los envoltorios.
+     */
+    class Conexion(fd: Int) : java.io.Closeable {
+        private val pfd = android.os.ParcelFileDescriptor.adoptFd(fd)
+        val entrada: java.io.InputStream = java.io.FileInputStream(pfd.fileDescriptor)
+        val salida:  java.io.OutputStream = java.io.FileOutputStream(pfd.fileDescriptor)
+        override fun close() {
+            // Vaciar antes de soltar: lo que quede en el búfer de salida se
+            // perdería, y en este protocolo la última línea suele ser la
+            // respuesta que el otro está esperando.
+            try { salida.flush() } catch (e: Throwable) {}
+            try { pfd.close() }   catch (e: Throwable) {}
+        }
+    }
+
+    /** @return la conexión, o null si no se pudo. */
+    fun conectar(destino: String): Conexion? {
+        val fd = try { marcar(destino) } catch (t: Throwable) { -1 }
+        return if (fd < 0) null else Conexion(fd)
+    }
+
     /* ── Envoltorio cómodo ──────────────────────────────────────────────── */
 
     /** Dónde guarda tsnet su identidad. Privado de la app y estable. */
