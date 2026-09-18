@@ -540,13 +540,13 @@ class NetworkActivity : AppCompatActivity() {
 
     private fun discoverMasters() {
         tvLog?.text = "Buscando masters en esta WiFi..."
-        NetworkManager.discoverMasters(this, { ip, device ->
+        NetworkManager.discoverMasters(this, onFound = { ip, device ->
             runOnUiThread {
                 etMasterIp?.setText(ip)
                 val current = tvLog?.text?.toString() ?: ""
                 tvLog?.text = "$current\nOK Master: $device ($ip)"
             }
-        }, { n ->
+        }, onFin = { n ->
             // Sin esto la pantalla se quedaba en "Buscando..." para siempre
             // cuando no encontraba nada, que es SIEMPRE si el maestro no está
             // en esta misma WiFi: la difusión no cruza routers, ni VPNs, ni

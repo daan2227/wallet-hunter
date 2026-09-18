@@ -1479,9 +1479,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             row1.addView(netBtn("Ser maestro") { startClusterMaster() })
             row1.addView(netBtn("Buscar maestro") {
-                NetworkManager.discoverMasters(this@MainActivity) { ip, _ ->
-                    runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Maestro encontrado: $ip", android.widget.Toast.LENGTH_SHORT).show() }
-                }
+                // Los dos avisos van como argumentos con nombre y no como
+                // lambda suelta al final: con dos parámetros de función
+                // seguidos, la lambda suelta se engancha al ÚLTIMO, que no es
+                // el que uno cree al leerlo.
+                NetworkManager.discoverMasters(this@MainActivity,
+                    onFound = { ip, _ ->
+                        runOnUiThread { android.widget.Toast.makeText(this@MainActivity, "Maestro encontrado: $ip", android.widget.Toast.LENGTH_SHORT).show() }
+                    },
+                    // Sin esto, no encontrar nada no decía nada: el botón se
+                    // quedaba mudo y parecía que no hacía nada. Y no encontrar
+                    // nada es lo NORMAL salvo en la misma WiFi, porque va por
+                    // difusión y eso no cruza routers, VPN ni datos móviles.
+                    onFin = { n ->
+                        if (n == 0) runOnUiThread {
+                            android.widget.Toast.makeText(this@MainActivity,
+                                "Ningún maestro en esta WiFi. Desde otra red, " +
+                                "escribe su dirección en la pantalla de red.",
+                                android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    })
             })
             addView(row1)
             val row2 = LinearLayout(this@MainActivity).apply {
