@@ -300,6 +300,23 @@ object TsNet {
         } catch (e: Throwable) { "" }
     }
 
+    /**
+     * Lo último que dijo tsnet antes de callarse.
+     *
+     * El JNI le pasa a Go un fichero donde escribir sus registros. Cuando esto
+     * falla de verdad falla DENTRO de Go —un pánico en una librería c-shared
+     * llama a abort() y se lleva el proceso—, así que lo que quede escrito aquí
+     * es lo último que se sabe. Sin un ordenador con adb conectado, es la única
+     * forma de leerlo.
+     *
+     * @param lineas cuántas del final. Las primeras son ruido de arranque; lo
+     *   que interesa está siempre al final.
+     */
+    fun registro(ctx: Context, lineas: Int = 12): String = try {
+        val f = java.io.File(carpetaEstado(ctx), "tsnet.log")
+        if (!f.exists()) "" else f.readLines().takeLast(lineas).joinToString("\n")
+    } catch (e: Throwable) { "" }
+
     /** Da de baja este nodo: para, olvida la identidad y la marca. */
     fun olvidarNodo(ctx: Context) {
         try { parar() } catch (e: Throwable) {}

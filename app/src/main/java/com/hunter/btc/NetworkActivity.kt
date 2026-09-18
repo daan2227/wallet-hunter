@@ -496,6 +496,12 @@ class NetworkActivity : AppCompatActivity() {
                 "código de Go y se lleva el proceso entero por delante, por eso " +
                 "la app se cerró y volviste al escáner." +
                 (if (motivo.isNotEmpty()) "\n\nEl sistema dice: $motivo" else "") +
+                // Lo ultimo que escribio Go antes de morir. Suele ser la linea
+                // que explica el fallo, y sin esto habria que conectar un
+                // ordenador por adb para verla.
+                (TsNet.registro(this).let {
+                    if (it.isEmpty()) "" else "\n\nÚltimo registro de tsnet:\n$it"
+                }) +
                 "\n\nEl cluster por la red normal sigue funcionando. Toca aquí " +
                 "para olvidar este aviso."
             tvTailscale?.setOnClickListener {

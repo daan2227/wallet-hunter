@@ -29,6 +29,8 @@
 #include <string>
 #include <mutex>
 #include <cstdio>
+#include <fcntl.h>      /* open, para el fichero de registro de tsnet */
+#include <unistd.h>
 
 extern "C" {
 
@@ -121,7 +123,29 @@ Java_com_hunter_btc_TsNet_arrancar(JNIEnv *env, jobject, jstring jclave,
     if(sd < 0) return env->NewStringUTF("No se pudo crear el nodo");
 
     const char *dir = jdir ? env->GetStringUTFChars(jdir,0) : NULL;
-    if(dir){ tailscale_set_dir(sd,dir); env->ReleaseStringUTFChars(jdir,dir); }
+    if(dir){
+        tailscale_set_dir(sd,dir);
+        /* Los registros de tsnet a un fichero nuestro.
+         *
+         * Hace falta porque cuando esto falla de verdad, falla DENTRO de Go: un
+         * panico en una libreria c-shared llama a abort() y se lleva el proceso
+         * entero. No hay excepcion que capturar, no se escribe crash_log.txt, y
+         * lo unico que se ve desde fuera es que la app se cierra.
+         *
+         * Lo que Go haya dicho antes de morir sale por aqui. Es la unica via que
+         * hay para leerlo sin un ordenador conectado por adb.
+         *
+         * O_TRUNC y no O_APPEND: interesa el intento de AHORA. Un fichero que
+         * crece con todos los intentos obliga a buscar dentro cual fue el
+         * ultimo, que es justo lo que no quieres cuando algo va mal. */
+        std::string ruta = std::string(dir) + "/tsnet.log";
+        int fd = open(ruta.c_str(), O_WRONLY|O_CREAT|O_TRUNC, 0600);
+        if(fd >= 0){
+            tailscale_set_logfd(sd, fd);
+            /* No se cierra: lo usa Go mientras el nodo viva. Se lo queda el. */
+        }
+        env->ReleaseStringUTFChars(jdir,dir);
+    }
     const char *nom = jnombre ? env->GetStringUTFChars(jnombre,0) : NULL;
     if(nom){ tailscale_set_hostname(sd,nom); env->ReleaseStringUTFChars(jnombre,nom); }
     const char *cla = jclave ? env->GetStringUTFChars(jclave,0) : NULL;
