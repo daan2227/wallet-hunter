@@ -55,6 +55,29 @@ target_compile_options(hunter_jni PRIVATE
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
 
+# ── tsnet empotrado, si está ──────────────────────────────────────────────
+#
+# libtailscale.so la produce scripts/build-libtailscale.sh cruzando Go con el
+# clang del NDK. Aquí es OPCIONAL a propósito: si no está, el APK compila
+# exactamente igual que siempre y lo único que cambia es que las funciones de
+# tsnet dicen que no están disponibles.
+#
+# Eso no es pereza. Compilarla mete la cadena de Go, el árbol entero de
+# tailscale.com y 14 MB en la ecuación, y nada de eso puede ser motivo de que
+# una app que funciona deje de construirse. El JNI se envuelve en
+# #ifdef TIENE_TAILSCALE por el mismo motivo.
+set(TS_SO  "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libtailscale.so")
+set(TS_INC "${CMAKE_CURRENT_SOURCE_DIR}/tailscale")
+if(EXISTS "${TS_SO}" AND EXISTS "${TS_INC}/tailscale.h")
+    message(STATUS "tsnet: enlazando ${TS_SO}")
+    add_library(tailscale SHARED IMPORTED)
+    set_target_properties(tailscale PROPERTIES IMPORTED_LOCATION "${TS_SO}")
+    target_include_directories(hunter_jni PRIVATE "${TS_INC}")
+    target_compile_definitions(hunter_jni PRIVATE TIENE_TAILSCALE)
+else()
+    message(STATUS "tsnet: sin libtailscale.so, se compila sin él")
+endif()
+
 find_library(log-lib log)
 
 # openssl::ssl se enlazaba sin usarse: el C++ sólo incluye sha.h, ripemd.h,
@@ -65,3 +88,7 @@ target_link_libraries(hunter_jni
     openssl::crypto
     ${log-lib}
 )
+
+if(TARGET tailscale)
+    target_link_libraries(hunter_jni tailscale)
+endif()

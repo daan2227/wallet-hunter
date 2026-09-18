@@ -2334,4 +2334,109 @@ Java_com_hunter_btc_HunterEngine_kangarooResult(JNIEnv *env, jobject){
     return env->NewStringUTF(hex);
 }
 
+/* ---------- tsnet empotrado ----------
+ *
+ * El nodo de Tailscale DENTRO de la app, en vez de depender de que la app de
+ * Tailscale este instalada y encendida enrutando el movil entero.
+ *
+ * Todo esto va entre #ifdef porque libtailscale.so es OPCIONAL: la produce
+ * scripts/build-libtailscale.sh, que mete la cadena de Go y 14 MB, y nada de
+ * eso puede ser motivo de que una app que funciona deje de construirse. Sin
+ * ella el APK compila igual y estas funciones contestan que no hay tsnet.
+ *
+ * Por eso existen las dos versiones de cada una: Kotlin declara sus external
+ * fun una sola vez y tienen que resolverse SIEMPRE, haya o no libreria. Un
+ * external fun sin simbolo detras no falla al compilar, falla al llamarlo, con
+ * un UnsatisfiedLinkError en medio de la busqueda.
+ */
+#ifdef TIENE_TAILSCALE
+#include "tailscale.h"
+
+/* El nodo. Uno solo: la app es un aparato del tailnet, no varios. */
+static int g_ts = -1;
+static std::mutex g_ts_mtx;
+
+/* El ultimo error que dio tsnet, para poder ensenarlo en vez de un numero. */
+static std::string ts_error(int sd){
+    char buf[512]; buf[0]=0;
+    if(tailscale_errmsg(sd,buf,sizeof(buf))==0 && buf[0]) return std::string(buf);
+    return std::string("sin detalle");
+}
+#endif
+
+/* @return true si esta compilacion lleva tsnet dentro. */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_TsNet_disponible(JNIEnv *, jobject){
+#ifdef TIENE_TAILSCALE
+    return JNI_TRUE;
+#else
+    return JNI_FALSE;
+#endif
+}
+
+/* Levanta el nodo y espera a que este autenticado.
+ *
+ * @param jdir  carpeta privada de la app donde tsnet guarda su estado. Tiene
+ *   que ser escribible y sobrevivir entre arranques: ahi vive la identidad del
+ *   nodo, y perderla obliga a volver a autorizarlo.
+ * @return "" si todo bien, o el motivo. Se devuelve el TEXTO y no un codigo
+ *   porque el que lo lee es el usuario: "clave caducada" se entiende y "-3" no.
+ *
+ * BLOQUEA hasta que el nodo esta arriba. Nunca desde el hilo principal.
+ */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_TsNet_arrancar(JNIEnv *env, jobject, jstring jclave,
+                                   jstring jnombre, jstring jdir){
+#ifndef TIENE_TAILSCALE
+    return env->NewStringUTF("Esta compilacion no lleva tsnet dentro");
+#else
+    std::lock_guard<std::mutex> lk(g_ts_mtx);
+    if(g_ts >= 0) return env->NewStringUTF("");      /* ya estaba */
+
+    int sd = tailscale_new();
+    if(sd < 0) return env->NewStringUTF("No se pudo crear el nodo");
+
+    const char *dir = jdir ? env->GetStringUTFChars(jdir,0) : NULL;
+    if(dir){ tailscale_set_dir(sd,dir); env->ReleaseStringUTFChars(jdir,dir); }
+    const char *nom = jnombre ? env->GetStringUTFChars(jnombre,0) : NULL;
+    if(nom){ tailscale_set_hostname(sd,nom); env->ReleaseStringUTFChars(jnombre,nom); }
+    const char *cla = jclave ? env->GetStringUTFChars(jclave,0) : NULL;
+    if(cla){ tailscale_set_authkey(sd,cla); env->ReleaseStringUTFChars(jclave,cla); }
+
+    /* up() y no start(): start deja el nodo corriendo pero sin esperar a que
+       este autorizado, y entonces el primer dial falla por una razon que no
+       tiene nada que ver con la red. */
+    if(tailscale_up(sd) != 0){
+        std::string e = ts_error(sd);
+        tailscale_close(sd);
+        return env->NewStringUTF(e.c_str());
+    }
+    g_ts = sd;
+    return env->NewStringUTF("");
+#endif
+}
+
+/* Las direcciones del nodo en el tailnet, separadas por coma. "" si no hay. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_TsNet_direcciones(JNIEnv *env, jobject){
+#ifndef TIENE_TAILSCALE
+    return env->NewStringUTF("");
+#else
+    std::lock_guard<std::mutex> lk(g_ts_mtx);
+    if(g_ts < 0) return env->NewStringUTF("");
+    char buf[256]; buf[0]=0;
+    if(tailscale_getips(g_ts,buf,sizeof(buf)) != 0) return env->NewStringUTF("");
+    return env->NewStringUTF(buf);
+#endif
+}
+
+/* Para el nodo. Idempotente. */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_TsNet_parar(JNIEnv *, jobject){
+#ifdef TIENE_TAILSCALE
+    std::lock_guard<std::mutex> lk(g_ts_mtx);
+    if(g_ts >= 0){ tailscale_close(g_ts); g_ts = -1; }
+#endif
+}
+
 }

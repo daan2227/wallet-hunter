@@ -77,6 +77,23 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
+    # tsnet empotrado. Va con continue-on-error a PROPÓSITO: compilarlo mete la
+    # cadena de Go, el árbol entero de tailscale.com y 14 MB, y nada de eso
+    # puede ser motivo de que una app que funciona deje de construirse. Si esto
+    # falla, CMake no encuentra libtailscale.so, compila sin ella, y TsNet
+    # contesta que no está disponible.
+    #
+    # El trabajo tailscale-archive de arriba sí falla en rojo cuando la
+    # compilación se rompe, que es donde queremos enterarnos.
+    - uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+      continue-on-error: true
+
+    - name: Build embedded tsnet (optional)
+      continue-on-error: true
+      run: scripts/build-libtailscale.sh
+
     # Restaura el keystore real si el secret existe; si no, genera el de debug
     # para que la compilación siga funcionando (APK no publicable).
     - name: Restore signing keystore

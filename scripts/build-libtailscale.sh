@@ -40,7 +40,22 @@ COMMIT=59d4bb82744915815178e0f0776d60026a397ee7   # 2026-08-31
 # cargar, no al compilar.
 API=26
 
-SALIDA="${1:-$(pwd)/app/src/main/cpp/tailscale}"
+# Dos destinos, porque cada cosa la quiere un sitio distinto:
+#
+#   la .so  -> app/src/main/jniLibs/arm64-v8a/, que es de donde Gradle recoge
+#              las librerias nativas prefabricadas y las mete en el APK sin que
+#              haya que decirle nada.
+#   el .h   -> app/src/main/cpp/tailscale/, que es donde lo busca el JNI.
+#
+# Se puede dar un directorio por argumento y entonces va todo ahi junto, que es
+# lo que hace el trabajo de CI que solo comprueba que compila.
+if [ $# -ge 1 ]; then
+    SALIDA="$1"; SALIDA_SO="$1"
+else
+    raiz="$(cd "$(dirname "$0")/.." && pwd)"
+    SALIDA="$raiz/app/src/main/cpp/tailscale"
+    SALIDA_SO="$raiz/app/src/main/jniLibs/arm64-v8a"
+fi
 
 # ── El NDK ────────────────────────────────────────────────────────────────
 #
@@ -69,7 +84,7 @@ git -C "$tmp/libtailscale" checkout --quiet "$COMMIT"
 echo "libtailscale en $COMMIT"
 
 # ── Compilar ──────────────────────────────────────────────────────────────
-mkdir -p "$SALIDA"
+mkdir -p "$SALIDA" "$SALIDA_SO"
 cd "$tmp/libtailscale"
 export GOTOOLCHAIN=auto          # el go.mod pide una version mas nueva que la del runner
 export CGO_ENABLED=1
@@ -88,7 +103,7 @@ export CC
 #
 # El build mete tambien tailscale.c, que es la fachada que convierte los
 # simbolos exportados de Go en el API tailscale_* que usa el JNI.
-go build -buildmode=c-shared -o "$SALIDA/libtailscale.so" .
+go build -buildmode=c-shared -o "$SALIDA_SO/libtailscale.so" .
 
 # El .h que genera cgo NO es el que hay que incluir: trae los prototipos de los
 # simbolos de Go (TsnetDial y compania). El bueno es el tailscale.h del repo,
@@ -97,19 +112,19 @@ cp tailscale.h "$SALIDA/tailscale.h"
 
 echo
 echo "Listo:"
-ls -lh "$SALIDA/libtailscale.so" "$SALIDA/tailscale.h"
+ls -lh "$SALIDA_SO/libtailscale.so" "$SALIDA/tailscale.h"
 echo
 # Que sea arm64 DE VERDAD y no del anfitrion: si la cruz-compilacion se cae sin
 # avisar y sale un .so de x86_64, aqui no falla nada y el movil revienta al
 # cargarla. Asi que se comprueba y se corta.
-arq=$(file -b "$SALIDA/libtailscale.so" 2>/dev/null || echo "?")
+arq=$(file -b "$SALIDA_SO/libtailscale.so" 2>/dev/null || echo "?")
 echo "  $arq"
 case "$arq" in
     *aarch64*|*ARM\ aarch64*) echo "  OK  es arm64" ;;
     *) echo "  MAL  no es arm64"; exit 1 ;;
 esac
 n=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
-    --defined-only --just-symbol-name "$SALIDA/libtailscale.so" 2>/dev/null \
+    --defined-only --just-symbol-name "$SALIDA_SO/libtailscale.so" 2>/dev/null \
     | grep -c '^tailscale_' || true)
 echo "  simbolos tailscale_* exportados: $n"
 [ "$n" -ge 15 ] || { echo "  MAL  esperaba al menos 15"; exit 1; }
