@@ -124,6 +124,35 @@ object TsNet {
     fun carpetaEstado(ctx: Context): String =
         java.io.File(ctx.filesDir, "tsnet").apply { mkdirs() }.absolutePath
 
+    /**
+     * ¿Este móvil ya está dado de alta en el tailnet?
+     *
+     * La clave de autorización hace falta UNA vez. A partir de ahí la identidad
+     * del nodo vive en [carpetaEstado] y arrancar con clave vacía funciona. Por
+     * eso se guarda que ya se hizo, en vez de guardar la clave: una credencial
+     * que no hace falta conservar es una credencial que no conviene conservar.
+     *
+     * Y por eso [olvidarNodo] borra también la carpeta: dejar la bandera a false
+     * con la identidad todavía ahí daría un nodo duplicado en el tailnet.
+     */
+    fun autorizado(ctx: Context): Boolean =
+        ctx.getSharedPreferences("hunter", Context.MODE_PRIVATE)
+            .getBoolean("tsnet_autorizado", false)
+
+    private fun marcarAutorizado(ctx: Context) {
+        ctx.getSharedPreferences("hunter", Context.MODE_PRIVATE).edit()
+            .putBoolean("tsnet_autorizado", true).apply()
+    }
+
+    /** Da de baja este nodo: para, olvida la identidad y la marca. */
+    fun olvidarNodo(ctx: Context) {
+        try { parar() } catch (e: Throwable) {}
+        arrancado = false; ultimoError = ""
+        try { java.io.File(carpetaEstado(ctx)).deleteRecursively() } catch (e: Throwable) {}
+        ctx.getSharedPreferences("hunter", Context.MODE_PRIVATE).edit()
+            .putBoolean("tsnet_autorizado", false).apply()
+    }
+
     @Volatile var arrancando = false
         private set
     /** Lo último que dijo [arrancar]. "" si fue bien o si no se ha intentado. */
@@ -154,6 +183,10 @@ object TsNet {
             arrancando = false
             ultimoError = e
             arrancado = e.isEmpty()
+            // Sólo al salir bien: si se marcara antes, una clave rechazada
+            // dejaría el móvil convencido de estar dado de alta y el siguiente
+            // arranque iría sin clave, que también falla, y sin decir por qué.
+            if (e.isEmpty()) marcarAutorizado(ctx)
             onFin(e.isEmpty(), e)
         }, "tsnet-up").apply { isDaemon = true }.start()
     }

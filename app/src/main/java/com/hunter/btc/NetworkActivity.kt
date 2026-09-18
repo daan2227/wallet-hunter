@@ -16,6 +16,7 @@ class NetworkActivity : AppCompatActivity() {
     private var filaMando: LinearLayout? = null
     private var tvTailscale: TextView? = null
     private var btnTsAbrir: Button? = null
+    private var btnNodoPropio: Button? = null
     /** El nombre MagicDNS de este móvil. Se resuelve por DNS —o sea, red— así
      *  que se saca una vez en segundo plano y se guarda, en vez de pedirlo en
      *  cada refresco de pantalla. */
@@ -179,6 +180,15 @@ class NetworkActivity : AppCompatActivity() {
             filaTs.addView(it)
         }
         root.addView(filaTs)
+
+        // El nodo empotrado. Sólo aparece si esta compilación lo lleva —
+        // libtailscale.so es opcional— para no ofrecer un botón que no puede
+        // hacer nada.
+        btnNodoPropio = actionButton("Usar nodo propio", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+            it.visibility = android.view.View.GONE
+            it.setOnClickListener { alternarNodoPropio() }
+            root.addView(it)
+        }
 
         root.addView(TextView(this).apply {
             // Antes ponía "IP del maestro" y el ejemplo era una IP de WiFi. Con
@@ -366,7 +376,123 @@ class NetworkActivity : AppCompatActivity() {
      * llamar aquí. El nombre MagicDNS sí resuelve por DNS, así que se pide una
      * sola vez en un hilo aparte y se guarda.
      */
+    /**
+     * El nodo empotrado: encenderlo o apagarlo.
+     *
+     * La clave de autorización hace falta UNA vez. Después la identidad vive en
+     * los ficheros de la app, así que arrancar con clave vacía funciona — por
+     * eso aquí sólo se pide si no consta que ya se hizo.
+     */
+    private fun alternarNodoPropio() {
+        if (NetworkManager.usarTsnet || TsNet.arrancado) {
+            AlertDialog.Builder(this)
+                .setTitle("Apagar el nodo propio")
+                .setMessage("El cluster volverá a hablar por la red normal, que " +
+                            "sólo llega si los dos móviles están en la misma WiFi.")
+                // El transporte se apaga AQUÍ, en el acto: lo demás va a un hilo
+                // porque cerrar el nodo para el servidor de Go y borrar la
+                // identidad toca disco, y las dos cosas desde el hilo de la
+                // pantalla la congelan.
+                .setPositiveButton("Apagar") { _, _ ->
+                    NetworkManager.activarTsnet(false)
+                    Thread { try { TsNet.parar() } catch (e: Throwable) {} }
+                        .apply { isDaemon = true }.start()
+                    pintarTailscale()
+                }
+                .setNeutralButton("Dar de baja este nodo") { _, _ ->
+                    // Borra también la identidad: dejar la marca a false con los
+                    // ficheros ahí daría un nodo duplicado en el tailnet.
+                    NetworkManager.activarTsnet(false)
+                    val app = applicationContext
+                    Thread { try { TsNet.olvidarNodo(app) } catch (e: Throwable) {} }
+                        .apply { isDaemon = true }.start()
+                    Toast.makeText(this, "Nodo dado de baja", Toast.LENGTH_SHORT).show()
+                    pintarTailscale()
+                }
+                .setNegativeButton("Cancelar", null)
+                .show()
+            return
+        }
+        if (TsNet.autorizado(this)) { encenderNodo("") ; return }
+        pedirClaveDeAlta()
+    }
+
+    private fun pedirClaveDeAlta() {
+        val campo = EditText(this).apply {
+            hint = "tskey-auth-..."
+            setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Dar de alta este móvil")
+            .setMessage(
+                "La app tendrá su PROPIO nodo en tu tailnet, sin necesidad de la " +
+                "app de Tailscale y sin enrutar el móvil entero.\n\n" +
+                "Hace falta una clave de alta, que se saca en login.tailscale.com " +
+                "→ Settings → Keys → Generate auth key.\n\n" +
+                "Sólo se usa esta vez: después la identidad queda guardada en la " +
+                "app y la clave no se conserva.")
+            .setView(campo)
+            .setPositiveButton("Dar de alta") { _, _ ->
+                val k = campo.text?.toString()?.trim() ?: ""
+                if (k.isEmpty()) return@setPositiveButton
+                encenderNodo(k)
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
+    private fun encenderNodo(clave: String) {
+        tvTailscale?.text = "Levantando el nodo propio...\n\n" +
+                            "La primera vez puede tardar un rato."
+        btnNodoPropio?.isEnabled = false
+        val nombre = android.os.Build.MODEL.replace(" ", "-").lowercase()
+        TsNet.arrancarEnHilo(this, clave, nombre) { ok, msg ->
+            runOnUiThread {
+                btnNodoPropio?.isEnabled = true
+                if (ok) {
+                    // Sólo se enciende el transporte si el nodo está arriba de
+                    // verdad. activarTsnet lo vuelve a comprobar por su cuenta.
+                    if (NetworkManager.activarTsnet(true))
+                        Toast.makeText(this, "Nodo propio en marcha",
+                                       Toast.LENGTH_SHORT).show()
+                } else {
+                    AlertDialog.Builder(this)
+                        .setTitle("No se pudo levantar el nodo")
+                        .setMessage(msg.ifEmpty { "Sin detalle" })
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+                pintarTailscale()
+            }
+        }
+    }
+
     private fun pintarTailscale() {
+        val hayNodo = try { TsNet.disponible() } catch (e: Throwable) { false }
+        btnNodoPropio?.visibility =
+            if (hayNodo) android.view.View.VISIBLE else android.view.View.GONE
+        btnNodoPropio?.text =
+            if (NetworkManager.usarTsnet) "Apagar el nodo propio" else "Usar nodo propio"
+
+        // El nodo propio manda sobre lo demás: si está en marcha, es por donde
+        // va el cluster, y enseñar el estado de la app de Tailscale ahí sería
+        // hablar de otra cosa.
+        if (NetworkManager.usarTsnet) {
+            val dirs = try { TsNet.direcciones() } catch (e: Throwable) { "" }
+            tvTailscale?.text = "Nodo propio en marcha.\n" +
+                (if (dirs.isNotEmpty()) "Direcciones: $dirs\n" else "") +
+                "\nEl cluster va por aquí: atraviesa el CGNAT de la operadora y " +
+                "va cifrado, sin la app de Tailscale y sin enrutar el móvil entero."
+            return
+        }
+        if (TsNet.arrancando) {
+            tvTailscale?.text = "Levantando el nodo propio...\n\n" +
+                                "La primera vez puede tardar un rato."
+            return
+        }
+
         val ts = Tailscale.estado()
         btnTsAbrir?.text = if (Tailscale.instalado(this)) "Abrir Tailscale"
                            else "Instalar Tailscale"
