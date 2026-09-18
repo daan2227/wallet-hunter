@@ -92,6 +92,127 @@ object NetworkManager {
         }
     }
 
+    /* ── Por dónde van las conexiones ─────────────────────────────────────────
+     *
+     * El cluster habla siempre igual —líneas JSON, una por mensaje— pero puede
+     * ir por dos caminos:
+     *
+     *   sockets  lo de siempre. Vale en la misma WiFi, y fuera de ella sólo si
+     *            hay IP pública y puertos abiertos.
+     *   tsnet    el nodo de Tailscale empotrado en la app. Atraviesa el CGNAT
+     *            de la operadora por los dos lados y va cifrado.
+     *
+     * [Canal] es lo que tienen en común: un lector, un escritor y quién hay al
+     * otro lado. Todo lo demás del protocolo no se entera de por dónde va.
+     *
+     * NADIE cierra el lector ni el escritor por su cuenta. En tsnet los dos
+     * salen del MISMO descriptor, así que cerrar uno tumba la conexión entera
+     * —incluida la dirección contraria—. Se cierra el Canal y ya.
+     */
+    private class Canal(
+        val lector:   BufferedReader,
+        val escritor: PrintWriter,
+        /** Dirección del otro extremo, para identificar al trabajador. */
+        val remoto:   String,
+        private val cerrarlo: () -> Unit
+    ) : java.io.Closeable {
+        override fun close() { try { cerrarlo() } catch (e: Throwable) {} }
+    }
+
+    /**
+     * Si el cluster va por tsnet en vez de por sockets.
+     *
+     * Por omisión NO: empotrar tsnet es aditivo a propósito. Si la compilación
+     * no lo lleva, si el nodo no arranca o si la clave no vale, el cluster tiene
+     * que seguir funcionando exactamente como funcionaba.
+     */
+    @Volatile var usarTsnet = false
+        private set
+
+    /**
+     * Enciende o apaga el camino por tsnet.
+     *
+     * @return false si se pide encenderlo y no se puede —esta compilación no lo
+     *   lleva, o el nodo no está arrancado—. Se devuelve en vez de tragarlo para
+     *   que la pantalla pueda decirlo: quedarse en sockets creyendo que vas por
+     *   la VPN es la clase de cosa que luego no se entiende.
+     */
+    fun activarTsnet(si: Boolean): Boolean {
+        if (!si) { usarTsnet = false; return true }
+        val hay = try { TsNet.disponible() && TsNet.arrancado } catch (e: Throwable) { false }
+        usarTsnet = hay
+        return hay
+    }
+
+    /**
+     * Abre una conexión hacia [destino].
+     *
+     * LANZA si no puede, en vez de devolver null: todos los sitios que la usan
+     * ya están dentro de un try/catch que trata los fallos de red, así que
+     * lanzando se comportan igual que cuando esto era un Socket pelado. Con un
+     * null habría que acordarse de comprobarlo en ocho sitios.
+     */
+    private fun abrirCanal(destino: String, puerto: Int = TCP_PORT): Canal {
+        if (usarTsnet) {
+            val c = TsNet.conectar("$destino:$puerto")
+                ?: throw IOException("tsnet no pudo conectar con $destino" +
+                                     (TsNet.ultimoFallo().let { if (it.isEmpty()) "" else ": $it" }))
+            return Canal(BufferedReader(InputStreamReader(c.entrada)),
+                         PrintWriter(c.salida, true),
+                         destino) { c.close() }
+        }
+        val s = Socket()
+        s.connect(java.net.InetSocketAddress(destino, puerto), 10000)
+        s.soTimeout = SOCKET_TIMEOUT_MS
+        return Canal(BufferedReader(InputStreamReader(s.getInputStream())),
+                     PrintWriter(s.getOutputStream(), true),
+                     s.inetAddress?.hostAddress ?: destino) { s.close() }
+    }
+
+    /** El lado que espera conexiones. Mismo papel que ServerSocket. */
+    private interface Escuchador : java.io.Closeable {
+        /** Bloquea hasta que llegue alguien. null si se ha cerrado. */
+        fun aceptar(): Canal?
+    }
+
+    private fun abrirEscuchador(): Escuchador {
+        if (usarTsnet) {
+            val l = TsNet.escuchar(TCP_PORT)
+            if (l < 0) throw IOException(
+                "tsnet no pudo escuchar en $TCP_PORT" +
+                (TsNet.ultimoFallo().let { if (it.isEmpty()) "" else ": $it" }))
+            return object : Escuchador {
+                override fun aceptar(): Canal? {
+                    val fd = TsNet.aceptar(l)
+                    if (fd < 0) return null
+                    // Quién ha llamado. Con tsnet no hay Socket del que sacarlo,
+                    // y el maestro identifica a los trabajadores por ahí.
+                    val quien = try { TsNet.remoto(l, fd) } catch (e: Throwable) { "" }
+                    val c = TsNet.Conexion(fd)
+                    return Canal(BufferedReader(InputStreamReader(c.entrada)),
+                                 PrintWriter(c.salida, true),
+                                 quien.substringBeforeLast(':').ifEmpty { "tsnet" }) { c.close() }
+                }
+                override fun close() {
+                    // No hay tailscale_listener_close: se cierra el descriptor.
+                    try { android.os.ParcelFileDescriptor.adoptFd(l).close() }
+                    catch (e: Throwable) {}
+                }
+            }
+        }
+        val ss = ServerSocket(TCP_PORT)
+        return object : Escuchador {
+            override fun aceptar(): Canal? {
+                val s = try { ss.accept() } catch (e: Exception) { return null }
+                s.soTimeout = SOCKET_TIMEOUT_MS
+                return Canal(BufferedReader(InputStreamReader(s.getInputStream())),
+                             PrintWriter(s.getOutputStream(), true),
+                             s.inetAddress?.hostAddress ?: "") { s.close() }
+            }
+            override fun close() { try { ss.close() } catch (e: Exception) {} }
+        }
+    }
+
     data class NetBlock(
         val blockId:    String,
         val rangeStart: String,
@@ -211,7 +332,8 @@ object NetworkManager {
         Executors.newFixedThreadPool(MAX_NET_THREADS) { r ->
             Thread(r, "net").apply { isDaemon = true }
         }
-    private var serverSocket: ServerSocket? = null
+    /** El que espera conexiones: ServerSocket o tsnet, segun el camino. */
+    private var escuchador: Escuchador? = null
     private var udpSocket:    DatagramSocket? = null
 
     // ── Master ────────────────────────────────────────────────────────────────
@@ -262,14 +384,16 @@ object NetworkManager {
         else
             log("Rango: $rangeStart → $rangeEnd")
 
-        // Servidor TCP
+        // Servidor
         executor.submit {
             try {
-                serverSocket = ServerSocket(TCP_PORT)
-                log("Escuchando en puerto $TCP_PORT")
+                val esc = abrirEscuchador()
+                escuchador = esc
+                log("Escuchando en puerto $TCP_PORT" +
+                    (if (usarTsnet) " (por tsnet)" else ""))
                 while (isRunning.get()) {
-                    val client = serverSocket?.accept() ?: break
-                    executor.submit { handleWorkerConnection(client) }
+                    val c = esc.aceptar() ?: break
+                    executor.submit { handleWorkerConnection(c) }
                 }
             } catch (e: Exception) {
                 if (isRunning.get()) log("Error servidor: ${e.message}")
@@ -280,15 +404,14 @@ object NetworkManager {
         executor.submit { broadcastBeacon(ctx) }
     }
 
-    private fun handleWorkerConnection(socket: Socket) {
+    private fun handleWorkerConnection(canal: Canal) {
         val puzzleNum = jobPuzzle
         val rangeStart = jobIni
         val rangeEnd = jobFin
-        val workerId = socket.inetAddress.hostAddress ?: return
+        val workerId = canal.remoto.ifEmpty { return }
         try {
-            socket.soTimeout = SOCKET_TIMEOUT_MS
-            val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
-            val writer = PrintWriter(socket.getOutputStream(), true)
+            val reader = canal.lector
+            val writer = canal.escritor
 
             val msg = JSONObject(readLineLimited(reader) ?: return)
 
@@ -462,7 +585,7 @@ object NetworkManager {
             workers.remove(workerId)
             notifyWorkers()
         } finally {
-            try { socket.close() } catch (e: Exception) {}
+            canal.close()
         }
     }
 
@@ -692,10 +815,9 @@ object NetworkManager {
             }
             intento++
             try {
-                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
-                socket.soTimeout = SOCKET_TIMEOUT_MS
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val canal = abrirCanal(masterIp)
+                val writer = canal.escritor
+                val reader = canal.lector
 
                 // Registrar
                 writer.println(JSONObject().apply {
@@ -749,7 +871,7 @@ object NetworkManager {
                     }
                 }
 
-                socket.close()
+                canal.close()
                 return@submit                 // registrado: no hay que reintentar
             } catch (e: Exception) {
                 log("No se pudo conectar con el maestro: ${e.message}")
@@ -828,16 +950,13 @@ object NetworkManager {
         val ip = masterIp
         if (ip.isEmpty()) return
         try {
-            Socket().use { socket ->
-                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
-                socket.soTimeout = SOCKET_TIMEOUT_MS
-                PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+            abrirCanal(ip).use { canal ->
+                canal.escritor.println(JSONObject().apply {
                     put("type", "PING")
                     put("id",   deviceId)
                     put("auth", authToken)
                 }.toString())
-                val resp = readLineLimited(
-                    BufferedReader(InputStreamReader(socket.getInputStream()))) ?: return
+                val resp = readLineLimited(canal.lector) ?: return
                 val j = JSONObject(resp)
                 // El encargo puede haber cambiado mientras estábamos parados.
                 val pub = j.optString("pub", "")
@@ -969,11 +1088,9 @@ object NetworkManager {
         val ip = masterIp
         if (ip.isEmpty()) return false
         return try {
-            Socket().use { socket ->
-                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
-                socket.soTimeout = SOCKET_TIMEOUT_MS
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+            abrirCanal(ip).use { canal ->
+                val writer = canal.escritor
+                val reader = canal.lector
                 writer.println(JSONObject().apply {
                     put("type", "DP")
                     put("id",   deviceId)
@@ -1030,10 +1147,8 @@ object NetworkManager {
         val ip = masterIp
         if (ip.isEmpty()) return
         try {
-            Socket().use { socket ->
-                socket.connect(java.net.InetSocketAddress(ip, TCP_PORT), 10000)
-                socket.soTimeout = SOCKET_TIMEOUT_MS
-                PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+            abrirCanal(ip).use { canal ->
+                canal.escritor.println(JSONObject().apply {
                     put("type", "KEY")
                     put("key",  claveHex)
                     put("id",   deviceId)
@@ -1049,15 +1164,14 @@ object NetworkManager {
     fun reportProgress(masterIp: String, speed: Long) {
         executor.submit {
             try {
-                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                writer.println(JSONObject().apply {
+                val canal = abrirCanal(masterIp)
+                canal.escritor.println(JSONObject().apply {
                     put("type",  "PROGRESS")
                     put("speed", speed)
                     put("id",    deviceId)
                     put("auth",  authToken)
                 }.toString())
-                socket.close()
+                canal.close()
             } catch (e: Exception) {}
         }
     }
@@ -1065,9 +1179,9 @@ object NetworkManager {
     fun reportBlockDone(masterIp: String, blockId: String) {
         executor.submit {
             try {
-                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val canal = abrirCanal(masterIp)
+                val writer = canal.escritor
+                val reader = canal.lector
                 writer.println(JSONObject().apply {
                     put("type",     "DONE")
                     put("block_id", blockId)
@@ -1084,7 +1198,7 @@ object NetworkManager {
                         puzzleNum  = resp.getInt("puzzle")
                     ))
                 }
-                socket.close()
+                canal.close()
             } catch (e: Exception) {}
         }
     }
@@ -1098,10 +1212,8 @@ object NetworkManager {
     fun reportMatch(masterIp: String, addr: String) {
         executor.submit {
             try {
-                Socket().use { socket ->
-                    socket.connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000)
-                    socket.soTimeout = SOCKET_TIMEOUT_MS
-                    PrintWriter(socket.getOutputStream(), true).println(JSONObject().apply {
+                abrirCanal(masterIp).use { canal ->
+                    canal.escritor.println(JSONObject().apply {
                         put("type", "MATCH")
                         put("addr", addr)
                         put("id",   deviceId)
@@ -1270,9 +1382,9 @@ object NetworkManager {
     fun syncWithMaster(masterIp: String, onComplete: (Int) -> Unit) {
         executor.submit {
             try {
-                val socket = Socket().apply { connect(java.net.InetSocketAddress(masterIp, TCP_PORT), 10000) }
-                val writer = PrintWriter(socket.getOutputStream(), true)
-                val reader = BufferedReader(InputStreamReader(socket.getInputStream()))
+                val canal = abrirCanal(masterIp)
+                val writer = canal.escritor
+                val reader = canal.lector
 
                 // Pedir sync
                 writer.println(JSONObject().apply {
@@ -1293,7 +1405,7 @@ object NetworkManager {
                     log("Sync recibido: $count bloques del puzzle #$puzzleNum")
                     onComplete(count)
                 }
-                socket.close()
+                canal.close()
             } catch (e: Exception) {
                 log("Sync error: ${e.message}")
                 onComplete(0)
@@ -1333,9 +1445,9 @@ object NetworkManager {
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
         puntosRecibidos.set(0)
         authToken = ""                       // invalida el código al parar
-        try { serverSocket?.close() } catch (e: Exception) {}
+        try { escuchador?.close() } catch (e: Exception) {}
         try { udpSocket?.close()    } catch (e: Exception) {}
-        serverSocket = null
+        escuchador = null
         workers.clear()
         assignedBlocks.clear()
         log("Red detenida")
