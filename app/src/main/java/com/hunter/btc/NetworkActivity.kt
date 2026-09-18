@@ -17,6 +17,10 @@ class NetworkActivity : AppCompatActivity() {
     private var tvTailscale: TextView? = null
     private var btnTsAbrir: Button? = null
     private var btnNodoPropio: Button? = null
+    /** Una fila por trabajador, cada una con su boton de pausa. */
+    private var contenedorWorkers: LinearLayout? = null
+    /** Que puzzle repartira este movil si se inicia como maestro. */
+    private var tvQueReparte: TextView? = null
     /** El nombre MagicDNS de este móvil. Se resuelve por DNS —o sea, red— así
      *  que se saca una vez en segundo plano y se guarda, en vez de pedirlo en
      *  cada refresco de pantalla. */
@@ -122,12 +126,23 @@ class NetworkActivity : AppCompatActivity() {
         root.addView(tvIp)
 
         root.addView(sectionLabel("Como maestro"))
-        root.addView(TextView(this).apply {
-            text = "Este móvil reparte los bloques y recoge los resultados."
+        // QUE se va a repartir, y donde se cambia.
+        //
+        // El maestro coge el puzzle que este elegido en la pantalla de Puzzle
+        // —de ahi que saliera siempre el #108 sin que nadie lo hubiera pedido
+        // aqui— pero esta pantalla no lo decia por ningun lado. Se elegia a
+        // ciegas y se descubria al leer el registro.
+        //
+        // Se ensena aqui en vez de poner un selector propio a proposito: la
+        // lista de puzzles vive en la pantalla de Puzzle, y tenerla en dos
+        // sitios es como acaban divergiendo.
+        tvQueReparte = TextView(this).apply {
+            text = ""
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(10))
-        })
+        }
+        root.addView(tvQueReparte)
         btnMaster = actionButton("Iniciar como maestro", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
             it.setOnClickListener { startAsMaster() }
             root.addView(it)
@@ -264,11 +279,23 @@ class NetworkActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(4); bottomMargin = dp(12) }
-            // Tocar la lista abre el mando de UNO. Los botones de abajo son para
-            // todos a la vez, que es lo más frecuente.
-            setOnClickListener { if (NetworkManager.isMaster) elegirTrabajador() }
         }
         root.addView(tvWorkers)
+
+        // Una fila por trabajador, con su boton.
+        //
+        // Antes habia que tocar la lista para abrir un dialogo, elegir de una
+        // lista de texto y confirmar: tres pasos y una pantalla entera para
+        // pausar un movil. Con un boton por fila se ve de un vistazo quien esta
+        // parado y se cambia de un toque.
+        contenedorWorkers = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        root.addView(contenedorWorkers)
 
         // ── Mando de los trabajadores ─────────────────────────────────────
         // Sólo tiene sentido en el maestro: es él quien puede mandar, porque la
@@ -350,6 +377,9 @@ class NetworkActivity : AppCompatActivity() {
                 //
                 // No cuesta: mirar las interfaces no hace red.
                 pintarTailscale()
+                // Y qué se va a repartir, que es justo lo que hay que mirar
+                // ANTES de iniciar — o sea con la red parada.
+                pintarQueReparte()
                 if (NetworkManager.isRunning.get()) pintarEstado()
                 handler.postDelayed(this, 5000L)
             }
@@ -693,8 +723,11 @@ class NetworkActivity : AppCompatActivity() {
         }
         tvWorkersLbl?.text = "Trabajadores conectados"
         val list = NetworkManager.listaWorkers()
+        // Los mandos, en LOS DOS modos. Estaban sólo en Kangaroo, y era
+        // coherente mientras la pausa tampoco llegaba en modo bloques; ahora que
+        // llega, esconderlos seria quitar algo que funciona.
         filaMando?.visibility =
-            if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO)
+            if (NetworkManager.isMaster && list.isNotEmpty())
                 android.view.View.VISIBLE else android.view.View.GONE
         val cab = if (NetworkManager.isMaster && NetworkManager.modo == NetworkManager.Modo.KANGAROO) {
             // puntosRecibidos se contaba desde el principio y NO SE ENSEÑABA EN
@@ -720,15 +753,82 @@ class NetworkActivity : AppCompatActivity() {
             (if (hilos > 0) "Este móvil: buscando con $hilos hilos\n"
              else "Este móvil: sólo recoge, no busca\n") + tabla + "\n"
         } else ""
-        tvWorkers?.text = cab + if (list.isEmpty()) "Ningún trabajador todavía"
-        else list.joinToString("\n") { w ->
+        tvWorkers?.text = cab + (if (list.isEmpty()) "Ningún trabajador todavía"
+                                 else "${list.size} trabajador(es)")
+        pintarFilasDeWorkers(list)
+    }
+
+    /**
+     * Una fila por trabajador, con su botón de pausa.
+     *
+     * Se reconstruyen enteras en cada refresco —cada cinco segundos— en vez de
+     * ir actualizando las que hay. Con dos o tres móviles eso no se nota, y
+     * evita el enredo de emparejar filas con trabajadores que entran y salen.
+     */
+    /** "Repartira el puzzle #108" y donde se cambia. */
+    private fun pintarQueReparte() {
+        val p = ajustes()
+        val num = p.getInt("current_puzzle_num", 71)
+        val ini = p.getString("current_range_start", "") ?: ""
+        val pub = p.getString("kangaroo_pub", "") ?: ""
+        val kIni = p.getString("kangaroo_ini", "") ?: ""
+        val kFin = p.getString("kangaroo_fin", "") ?: ""
+        val conKangaroo = pub.length == 66 && kIni == ini &&
+                          kFin == (p.getString("current_range_end", "") ?: "")
+        tvQueReparte?.text =
+            "Repartirá el puzzle #$num" +
+            (if (conKangaroo) " con Kangaroo." else " por bloques.") +
+            "\nPara cambiarlo, elige otro en la pantalla Puzzle antes de iniciar."
+    }
+
+    private fun pintarFilasDeWorkers(list: List<NetworkManager.NetWorker>) {
+        val cont = contenedorWorkers ?: return
+        cont.removeAllViews()
+        if (!NetworkManager.isMaster) return
+        for (w in list) {
+            val fila = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+                setPadding(dp(14), dp(10), dp(8), dp(10))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(6) }
+            }
             // El estado que se enseña es el que el maestro QUIERE, no el último
             // que dijo el trabajador: entre que se pulsa el botón y llega la
-            // orden pasan hasta veinte segundos, y durante ese rato la lista
-            // diría "kangaroo" con la pausa ya pedida.
+            // orden pasan hasta treinta segundos, y durante ese rato la lista
+            // diría "trabajando" con la pausa ya pedida.
             val est = if (w.pausado) "en pausa" else w.status
-            "· ${w.device}  ${velocidad(w.speed)}  [$est]  ${haceCuanto(w.vistoMs)}"
-        } + (if (list.isNotEmpty()) "\n\nToca aquí para pausar uno solo." else "")
+            fila.addView(TextView(this).apply {
+                text = "${w.device}\n${velocidad(w.speed)} · $est · ${haceCuanto(w.vistoMs)}"
+                textSize = AppTheme.SP_CAPTION
+                setTextColor(if (w.pausado) AppTheme.TXT_SEC else AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
+                layoutParams = LinearLayout.LayoutParams(
+                    0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            fila.addView(TextView(this).apply {
+                text = if (w.pausado) "\u25B6" else "\u23F8"
+                textSize = 22f
+                setTextColor(if (w.pausado) AppTheme.ACCENT else AppTheme.TXT_PRI)
+                gravity = android.view.Gravity.CENTER
+                setPadding(dp(16), dp(6), dp(16), dp(6))
+                isClickable = true; isFocusable = true
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+                setOnClickListener {
+                    val nuevo = !w.pausado
+                    NetworkManager.mandarPausa(w.id, nuevo)
+                    Toast.makeText(this@NetworkActivity,
+                        if (nuevo) "${w.device} parará en unos segundos"
+                        else "${w.device} seguirá en unos segundos",
+                        Toast.LENGTH_SHORT).show()
+                    pintarEstado()
+                }
+            })
+            cont.addView(fila)
+        }
     }
 
     private fun startAsMaster() {
@@ -1022,32 +1122,6 @@ class NetworkActivity : AppCompatActivity() {
         pintarEstado()
     }
 
-    /** Tocar la lista: elegir un trabajador y pausarlo o reanudarlo él solo. */
-    private fun elegirTrabajador() {
-        val lista = NetworkManager.listaWorkers()
-        if (lista.isEmpty()) {
-            Toast.makeText(this, "No hay trabajadores conectados",
-                           Toast.LENGTH_SHORT).show()
-            return
-        }
-        val nombres = lista.map {
-            "${it.device}  ${if (it.pausado) "· en pausa" else "· trabajando"}"
-        }.toTypedArray()
-        AlertDialog.Builder(this)
-            .setTitle("Pausar o reanudar")
-            .setItems(nombres) { _, i ->
-                val w = lista[i]
-                val nuevo = !w.pausado
-                NetworkManager.mandarPausa(w.id, nuevo)
-                Toast.makeText(this,
-                    if (nuevo) "${w.device} parará en unos segundos"
-                    else "${w.device} seguirá en unos segundos",
-                    Toast.LENGTH_SHORT).show()
-                pintarEstado()
-            }
-            .setNegativeButton("Cerrar", null)
-            .show()
-    }
 
     private fun actionButton(label: String, color: Int, textColor: Int) = Button(this).apply {
         text = label; textSize = AppTheme.SP_BODY
