@@ -239,6 +239,67 @@ object TsNet {
             .putBoolean("tsnet_autorizado", true).apply()
     }
 
+    /* ── Detectar que la app se ha muerto levantando el nodo ─────────────────
+     *
+     * tailscale_up arranca el runtime de Go y su pila de red. Si eso revienta en
+     * nativo, el proceso muere ENTERO: no hay excepción, no se ejecuta ningún
+     * catch, y crash_log.txt se queda vacío. Desde fuera se ve como que la app
+     * "se sale al escáner", porque Android vuelve a abrir la pantalla principal.
+     *
+     * O sea que el sitio donde más falta hace un diagnóstico es justo donde
+     * ninguna herramienta de Kotlin llega. Se resuelve con dos cosas:
+     *
+     *   1. Una miga de pan: se deja un fichero ANTES de llamar y se borra
+     *      después. Si al arrancar sigue ahí, la app murió dentro. Funciona en
+     *      cualquier versión de Android.
+     *   2. ApplicationExitInfo, desde Android 11: el sistema guarda por qué
+     *      murió el proceso la última vez, y distingue un fallo nativo de que lo
+     *      mataran por memoria. Eso ya dice QUÉ pasó y no sólo DÓNDE.
+     */
+    private fun ficheroIntento(ctx: Context) = java.io.File(ctx.filesDir, "tsnet_intento")
+
+    /** ¿La app murió la última vez que se intentó levantar el nodo? */
+    fun murioLevantando(ctx: Context): Boolean =
+        try { ficheroIntento(ctx).exists() } catch (e: Throwable) { false }
+
+    fun olvidarIntento(ctx: Context) {
+        try { ficheroIntento(ctx).delete() } catch (e: Throwable) {}
+    }
+
+    /**
+     * Por qué murió el proceso la última vez, si el sistema lo sabe.
+     *
+     * Necesita Android 11. Por debajo devuelve "" y nos quedamos con la miga de
+     * pan, que dice dónde pero no por qué.
+     */
+    fun motivoUltimaMuerte(ctx: Context): String {
+        if (android.os.Build.VERSION.SDK_INT < 30) return ""
+        return try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE)
+                     as android.app.ActivityManager
+            val l = am.getHistoricalProcessExitReasons(ctx.packageName, 0, 3)
+            if (l.isEmpty()) return ""
+            val e = l[0]
+            val que = when (e.reason) {
+                android.app.ApplicationExitInfo.REASON_CRASH_NATIVE ->
+                    "fallo NATIVO (el código de Go o C reventó)"
+                android.app.ApplicationExitInfo.REASON_CRASH ->
+                    "excepción de Java sin capturar"
+                android.app.ApplicationExitInfo.REASON_LOW_MEMORY ->
+                    "el sistema lo mató por falta de memoria"
+                android.app.ApplicationExitInfo.REASON_SIGNALED ->
+                    "recibió una señal (${e.status})"
+                android.app.ApplicationExitInfo.REASON_ANR ->
+                    "se quedó colgado (ANR)"
+                android.app.ApplicationExitInfo.REASON_USER_REQUESTED ->
+                    "lo cerraste tú"
+                else -> "motivo ${e.reason}"
+            }
+            val desc = e.description?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
+            "$que$desc"
+        } catch (e: Throwable) { "" }
+    }
+
     /** Da de baja este nodo: para, olvida la identidad y la marca. */
     fun olvidarNodo(ctx: Context) {
         try { parar() } catch (e: Throwable) {}
@@ -278,8 +339,15 @@ object TsNet {
             // la pantalla porque enumerar interfaces puede tardar un poco.
             val n = refrescarInterfaces()
             android.util.Log.i("TsNet", "interfaces pasadas a tsnet: $n")
+            // La miga de pan, justo antes de entrar en Go. Si la app muere ahí
+            // dentro no se ejecuta nada más, así que este fichero se queda — y
+            // al arrancar de nuevo sabremos dónde murió.
+            try { ficheroIntento(ctx).writeText("${System.currentTimeMillis()}") }
+            catch (t: Throwable) {}
             val e = try { arrancar(clave.trim(), nombre, dir) }
                     catch (t: Throwable) { t.message ?: "error desconocido" }
+            // Vivo: se borra. Que siga existiendo sólo puede significar muerte.
+            olvidarIntento(ctx)
             arrancando = false
             ultimoError = e
             arrancado = e.isEmpty()

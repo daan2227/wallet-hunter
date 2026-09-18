@@ -482,6 +482,30 @@ class NetworkActivity : AppCompatActivity() {
 
     private fun pintarTailscale() {
         val hayNodo = try { TsNet.disponible() } catch (e: Throwable) { false }
+
+        // ¿Murió la app la última vez intentando levantar el nodo?
+        //
+        // Esto se enseña ANTES que nada y manda sobre el resto: si el proceso se
+        // muere dentro de Go, no hay excepción, no hay crash_log.txt y lo único
+        // que ve el usuario es que "la app se sale al escáner". Sin decirlo
+        // aquí, no hay forma de saber que eso fue un fallo y no un despiste.
+        if (hayNodo && TsNet.murioLevantando(this)) {
+            val motivo = TsNet.motivoUltimaMuerte(this)
+            tvTailscale?.text = "LA APP MURIÓ levantando el nodo propio.\n\n" +
+                "No es un error que se pueda capturar: el fallo ocurre dentro del " +
+                "código de Go y se lleva el proceso entero por delante, por eso " +
+                "la app se cerró y volviste al escáner." +
+                (if (motivo.isNotEmpty()) "\n\nEl sistema dice: $motivo" else "") +
+                "\n\nEl cluster por la red normal sigue funcionando. Toca aquí " +
+                "para olvidar este aviso."
+            tvTailscale?.setOnClickListener {
+                TsNet.olvidarIntento(this); pintarTailscale()
+            }
+            btnNodoPropio?.visibility = android.view.View.VISIBLE
+            btnNodoPropio?.text = "Reintentar el nodo propio"
+            return
+        }
+        tvTailscale?.setOnClickListener(null)
         btnNodoPropio?.visibility =
             if (hayNodo) android.view.View.VISIBLE else android.view.View.GONE
         btnNodoPropio?.text =
