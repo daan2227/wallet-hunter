@@ -69,6 +69,35 @@ Java_com_hunter_btc_TsNet_disponibleNativo(JNIEnv *, jobject){
     return JNI_TRUE;
 }
 
+/* Las interfaces de red, que se las damos nosotros desde Java.
+ *
+ * Lo exporta nuestro anadido a libtailscale (interfaces_desde_java.go), asi que
+ * no esta en tailscale.h y hay que declararlo a mano.
+ *
+ * Android 11+ le prohibe a Go preguntar por las interfaces con netlink, y sin
+ * ellas tailscale_up muere con "netlinkrib: permission denied". java.net si
+ * puede enumerarlas, asi que se las pasamos hechas.
+ */
+#ifdef TIENE_TAILSCALE
+extern "C" int tsnet_set_interfaces(char *spec);
+#endif
+
+extern "C" JNIEXPORT jint JNICALL
+Java_com_hunter_btc_TsNet_ponerInterfaces(JNIEnv *env, jobject, jstring jspec){
+#ifndef TIENE_TAILSCALE
+    return -1;
+#else
+    if(!jspec) return -1;
+    const char *s = env->GetStringUTFChars(jspec,0);
+    if(!s) return -1;
+    /* La firma pide char* y no const char*: Go no promete no tocarlo, aunque
+       de hecho solo lo lee. Se copia para no darle nunca el buffer de la JVM. */
+    std::string copia(s);
+    env->ReleaseStringUTFChars(jspec,s);
+    return (jint)tsnet_set_interfaces(&copia[0]);
+#endif
+}
+
 /* Levanta el nodo y espera a que este autenticado.
  *
  * @param jdir  carpeta privada de la app donde tsnet guarda su estado. Tiene

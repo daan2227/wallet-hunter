@@ -83,6 +83,15 @@ git clone --quiet "$REPO" "$tmp/libtailscale"
 git -C "$tmp/libtailscale" checkout --quiet "$COMMIT"
 echo "libtailscale en $COMMIT"
 
+# Nuestro anadido: las interfaces de red se las da Java, porque Android 11+ le
+# prohibe a Go preguntarselas al kernel por netlink. Sin esto, levantar el nodo
+# muere con "netlinkrib: permission denied". El detalle esta en el propio
+# fichero.
+PARCHE="$(cd "$(dirname "$0")/.." && pwd)/app/src/main/cpp/tailscale-patch"
+[ -d "$PARCHE" ] || { echo "Falta $PARCHE"; exit 1; }
+cp "$PARCHE"/*.go "$tmp/libtailscale/"
+echo "parche anadido: $(ls "$PARCHE")"
+
 # ── Compilar ──────────────────────────────────────────────────────────────
 mkdir -p "$SALIDA" "$SALIDA_SO"
 cd "$tmp/libtailscale"
@@ -151,6 +160,19 @@ n=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
     | grep -c '^tailscale_' || true)
 echo "  simbolos tailscale_* exportados: $n"
 [ "$n" -ge 15 ] || { echo "  MAL  esperaba al menos 15"; exit 1; }
+
+# Y el nuestro. Que compile no basta: si el fichero del parche se excluyera por
+# lo que sea, la compilacion saldria bien y el simbolo no estaria — que es
+# exactamente lo que paso al probarlo la primera vez, porque el nombre
+# terminaba en _android.go y Go lo trata como condicion de compilacion.
+"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
+    --defined-only --just-symbol-name "$SALIDA_SO/libtailscale.so" 2>/dev/null \
+    | grep -q '^tsnet_set_interfaces$' || {
+    echo "  MAL  falta tsnet_set_interfaces: el parche no ha entrado."
+    echo "       Sin el, levantar el nodo muere con 'netlinkrib: permission denied'."
+    exit 1
+}
+echo "  OK  tsnet_set_interfaces exportado (parche de interfaces dentro)"
 
 # Y el SONAME, que es lo que fallaba y no daba la cara hasta instalar el APK.
 # Sin el, quien enlace contra esta libreria anota como dependencia la RUTA de

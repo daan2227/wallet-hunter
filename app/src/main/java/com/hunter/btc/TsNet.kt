@@ -108,6 +108,56 @@ object TsNet {
     /** Para el nodo. Se puede llamar aunque no esté arrancado. */
     external fun parar()
 
+    /**
+     * Darle a tsnet la lista de interfaces de red. @return cuántas ha aceptado.
+     *
+     * Hace falta porque **Android 11+ le prohíbe a Go preguntárselas al kernel**
+     * por netlink. Sin esto, levantar el nodo muere con:
+     *
+     *     tsnet.Up: tsnet: route ip+net: netlinkrib: permission denied
+     *
+     * No es un permiso que se pueda pedir: el sistema lo bloquea y ya. Tailscale
+     * deja el gancho a propósito para esto —lo usa su propia app de Android— y
+     * `java.net.NetworkInterface` sí funciona, así que se las damos hechas.
+     */
+    external fun ponerInterfaces(spec: String): Int
+
+    /**
+     * Enumera las interfaces y se las pasa a tsnet.
+     *
+     * Formato, una por línea: `nombre|índice|mtu|banderas|ip/prefijo,...`
+     *
+     * Se llama antes de levantar el nodo. Si la red cambia después —cambiar de
+     * WiFi a datos— habría que volver a llamarla; de momento no se hace, y la
+     * consecuencia es que tsnet seguiría creyendo lo de antes hasta el próximo
+     * arranque. Queda dicho porque es un límite real y no un olvido.
+     */
+    fun refrescarInterfaces(): Int {
+        val sb = StringBuilder()
+        try {
+            for (i in java.util.Collections.list(
+                    java.net.NetworkInterface.getNetworkInterfaces())) {
+                val banderas = ArrayList<String>()
+                try { if (i.isUp) banderas.add("up") } catch (e: Throwable) {}
+                try { if (i.isLoopback) banderas.add("loopback") } catch (e: Throwable) {}
+                try { if (i.isPointToPoint) banderas.add("ptp") } catch (e: Throwable) {}
+                try { if (i.supportsMulticast()) banderas.add("multicast") } catch (e: Throwable) {}
+                val dirs = i.interfaceAddresses.mapNotNull { ia ->
+                    val a = ia.address?.hostAddress?.substringBefore('%') ?: return@mapNotNull null
+                    "$a/${ia.networkPrefixLength}"
+                }
+                val mtu = try { i.mtu } catch (e: Throwable) { 1500 }
+                sb.append(i.name).append('|').append(i.index).append('|')
+                  .append(if (mtu > 0) mtu else 1500).append('|')
+                  .append(banderas.joinToString(",")).append('|')
+                  .append(dirs.joinToString(",")).append('\n')
+            }
+        } catch (e: Throwable) {
+            android.util.Log.w("TsNet", "interfaces: ${e.message}")
+        }
+        return try { ponerInterfaces(sb.toString()) } catch (e: Throwable) { -1 }
+    }
+
     /* ── Conexiones ─────────────────────────────────────────────────────────
      *
      * Lo que devuelven son DESCRIPTORES DE FICHERO. La cabecera de libtailscale
@@ -223,6 +273,11 @@ object TsNet {
         arrancando = true
         val dir = carpetaEstado(ctx)
         Thread({
+            // ANTES de levantar nada: sin las interfaces, tailscale_up muere
+            // con "netlinkrib: permission denied". Va aquí y no en el hilo de
+            // la pantalla porque enumerar interfaces puede tardar un poco.
+            val n = refrescarInterfaces()
+            android.util.Log.i("TsNet", "interfaces pasadas a tsnet: $n")
             val e = try { arrancar(clave.trim(), nombre, dir) }
                     catch (t: Throwable) { t.message ?: "error desconocido" }
             arrancando = false
