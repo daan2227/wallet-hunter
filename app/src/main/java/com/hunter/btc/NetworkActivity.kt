@@ -14,6 +14,13 @@ class NetworkActivity : AppCompatActivity() {
     private var tvWorkersLbl: TextView? = null
     /** Los botones de pausar/reanudar. Sólo se enseñan en el maestro. */
     private var filaMando: LinearLayout? = null
+    private var tvTailscale: TextView? = null
+    private var btnTsAbrir: Button? = null
+    /** El nombre MagicDNS de este móvil. Se resuelve por DNS —o sea, red— así
+     *  que se saca una vez en segundo plano y se guarda, en vez de pedirlo en
+     *  cada refresco de pantalla. */
+    @Volatile private var miNombreTs: String = ""
+    @Volatile private var nombreTsPedido = false
     private var tvIp: TextView? = null
     private var etMasterIp: EditText? = null
     private var etCode: EditText? = null
@@ -126,14 +133,66 @@ class NetworkActivity : AppCompatActivity() {
         }
 
         root.addView(sectionLabel("Como trabajador"))
+        // ── Tailscale ─────────────────────────────────────────────────────
+        // Va aquí, encima del campo de la dirección, porque es lo que decide
+        // QUÉ se escribe en él. Con el CGNAT de la operadora delante no hay
+        // manera de que un móvil de fuera llame al de casa —ni abriendo
+        // puertos, porque el NAT que estorba no es el del router—, así que para
+        // un cluster que salga de la WiFi esto no es un extra: es el camino.
+        root.addView(sectionLabel("Tailscale"))
+        tvTailscale = TextView(this).apply {
+            text = "Comprobando..."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(4); bottomMargin = dp(8) }
+        }
+        root.addView(tvTailscale)
+
+        val filaTs = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(8) }
+        }
+        btnTsAbrir = actionButton("Abrir Tailscale", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
+            it.setOnClickListener {
+                if (!Tailscale.abrir(this)) Toast.makeText(this,
+                    "No se ha podido abrir Tailscale ni su ficha en la tienda",
+                    Toast.LENGTH_LONG).show()
+            }
+            (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
+                lp.width = 0; lp.weight = 1f; lp.marginEnd = dp(8)
+            }
+            filaTs.addView(it)
+        }
+        actionButton("Elegir aparato", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+            it.setOnClickListener { elegirDeTailnet() }
+            (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
+                lp.width = 0; lp.weight = 1f
+            }
+            filaTs.addView(it)
+        }
+        root.addView(filaTs)
+
         root.addView(TextView(this).apply {
-            text = "IP del maestro"
+            // Antes ponía "IP del maestro" y el ejemplo era una IP de WiFi. Con
+            // Tailscale lo que conviene escribir es el NOMBRE: la dirección
+            // también vale, pero el nombre se teclea sin equivocarse y no
+            // cambia. El campo nunca ha validado nada, así que ya aceptaba
+            // nombres — sólo que nada lo decía.
+            text = "Dirección o nombre del maestro"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(10), 0, dp(6))
         })
         etMasterIp = EditText(this).apply {
-            hint = "192.168.1.100"
+            hint = "192.168.1.100  ·  100.x.y.z  ·  a34"
             setTextColor(TXT); setHintTextColor(MUTED)
             textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
@@ -300,7 +359,132 @@ class NetworkActivity : AppCompatActivity() {
      *  lista está vacía por definición, así que ponía "ningún trabajador
      *  todavía" y parecía que la conexión había fallado cuando en realidad
      *  estaba buscando y mandando puntos. */
+    /**
+     * El recuadro de Tailscale. Se llama desde el refresco de cada 5 s.
+     *
+     * [Tailscale.estado] no hace red —sólo mira las interfaces— así que se puede
+     * llamar aquí. El nombre MagicDNS sí resuelve por DNS, así que se pide una
+     * sola vez en un hilo aparte y se guarda.
+     */
+    private fun pintarTailscale() {
+        val ts = Tailscale.estado()
+        btnTsAbrir?.text = if (Tailscale.instalado(this)) "Abrir Tailscale"
+                           else "Instalar Tailscale"
+        if (!ts.activo) {
+            miNombreTs = ""; nombreTsPedido = false
+            tvTailscale?.text = if (Tailscale.instalado(this))
+                "Instalado pero sin conectar.\n\n" +
+                "Ábrelo y activa el interruptor. Mientras esté apagado, los dos " +
+                "móviles sólo se ven si están en la misma WiFi."
+            else
+                "No está instalado.\n\n" +
+                "Hace falta para que los móviles se vean fuera de la misma WiFi: " +
+                "tu operadora usa CGNAT y no hay puerto que abrir que lo arregle."
+            return
+        }
+        if (!nombreTsPedido) {
+            nombreTsPedido = true
+            Thread {
+                val n = Tailscale.nombreDe(ts.direccion)
+                if (n.isNotEmpty()) runOnUiThread { miNombreTs = n; pintarTailscale() }
+            }.apply { isDaemon = true }.start()
+        }
+        val comoMeLlamo = if (miNombreTs.isNotEmpty())
+            "\nNombre: $miNombreTs   ← esto es lo que conviene dar al otro móvil"
+        else ""
+        tvTailscale?.text = "Conectado.\nDirección: ${ts.direccion}$comoMeLlamo\n\n" +
+            "Funciona igual desde cualquier red y va cifrado de punta a punta."
+    }
+
+    /**
+     * Elegir el maestro de entre los aparatos del tailnet, sin teclear nada.
+     *
+     * "Buscar maestros en la red" no sirve aquí y no puede servir: va por
+     * difusión UDP y la difusión no cruza VPNs. Lo que sí hay es la API de
+     * Tailscale, que es HTTPS normal.
+     */
+    private fun elegirDeTailnet() {
+        val k = Tailscale.clave(this)
+        if (k.isEmpty()) { pedirClaveTailscale(); return }
+        Toast.makeText(this, "Consultando tu tailnet...", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val lista = Tailscale.aparatos(k)
+                runOnUiThread {
+                    if (lista.isEmpty()) {
+                        Toast.makeText(this, "Tu tailnet no tiene aparatos",
+                                       Toast.LENGTH_LONG).show()
+                        return@runOnUiThread
+                    }
+                    val etiquetas = lista.map {
+                        "${it.nombre}  ${it.direccion}" +
+                        (if (it.so.isNotEmpty()) "  (${it.so})" else "") +
+                        (if (!it.enLinea) "  · desconectado" else "")
+                    }.toTypedArray()
+                    AlertDialog.Builder(this)
+                        .setTitle("¿Cuál es el maestro?")
+                        .setItems(etiquetas) { _, i ->
+                            // El nombre antes que la dirección: la dirección de
+                            // Tailscale es estable, pero si algún día cambia el
+                            // nombre sigue resolviendo y esto no se entera.
+                            val a = lista[i]
+                            etMasterIp?.setText(
+                                if (a.nombre.isNotEmpty()) a.nombre else a.direccion)
+                        }
+                        .setNegativeButton("Cerrar", null)
+                        .setNeutralButton("Olvidar mi clave") { _, _ ->
+                            Tailscale.olvidarClave(this)
+                            Toast.makeText(this, "Clave borrada", Toast.LENGTH_SHORT).show()
+                        }
+                        .show()
+                }
+            } catch (e: Exception) {
+                // El mensaje de Tailscale.aparatos ya está escrito para leerse
+                // tal cual, incluido el caso de la clave caducada.
+                runOnUiThread {
+                    AlertDialog.Builder(this)
+                        .setTitle("No se ha podido consultar")
+                        .setMessage(e.message ?: "Error desconocido")
+                        .setPositiveButton("OK", null)
+                        .show()
+                }
+            }
+        }.apply { isDaemon = true }.start()
+    }
+
+    private fun pedirClaveTailscale() {
+        // Los colores salen de AppTheme y no de TXT/MUTED: aquellos son
+        // variables locales de onCreate y desde aquí no se ven.
+        val campo = EditText(this).apply {
+            hint = "tskey-api-..."
+            setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_SEC)
+            typeface = Typeface.MONOSPACE
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Clave de API de Tailscale")
+            .setMessage(
+                "Para listar tus aparatos hace falta una clave de API.\n\n" +
+                "Se saca en login.tailscale.com → Settings → Keys → Generate " +
+                "API key.\n\n" +
+                "AVISO: esa clave permite LEER el inventario de tu tailnet " +
+                "—nombres, direcciones, sistemas— a quien la tenga. Se guarda " +
+                "sólo en este móvil y caduca a los 90 días.\n\n" +
+                "No hace falta para usar el cluster: también puedes escribir la " +
+                "dirección o el nombre del maestro a mano.")
+            .setView(campo)
+            .setPositiveButton("Guardar") { _, _ ->
+                val k = campo.text?.toString()?.trim() ?: ""
+                if (k.isEmpty()) return@setPositiveButton
+                Tailscale.guardarClave(this, k)
+                elegirDeTailnet()
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
+    }
+
     private fun pintarEstado() {
+        pintarTailscale()
         if (NetworkManager.isWorker) {
             tvWorkersLbl?.text = "Este móvil"
             filaMando?.visibility = android.view.View.GONE
