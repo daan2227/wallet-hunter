@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compila libtailscale para android/arm64 como archivo C.
+# Compila libtailscale para android/arm64 como libreria compartida.
 #
 # QUE ES ESTO
 #
@@ -16,7 +16,7 @@
 #
 # app/build.gradle tiene abiFilters "arm64-v8a" y nada mas, asi que hay que
 # cruzar-compilar una vez. Si algun dia se anaden mas ABIs, hay que repetir esto
-# por cada una y juntar los .a: Go no hace binarios gordos.
+# por cada una y meter cada .so en su carpeta de jniLibs: Go no hace binarios gordos.
 #
 # LO QUE YA ESTA COMPROBADO
 #
@@ -36,21 +36,25 @@ REPO=https://github.com/tailscale/libtailscale.git
 COMMIT=59d4bb82744915815178e0f0776d60026a397ee7   # 2026-08-31
 
 # minSdk del proyecto. Tiene que cuadrar con app/build.gradle: si aqui se pone
-# un nivel mas alto, el .a pide simbolos que el movil no tiene y revienta al
+# un nivel mas alto, la .so pide simbolos que el movil no tiene y revienta al
 # cargar, no al compilar.
 API=26
 
 SALIDA="${1:-$(pwd)/app/src/main/cpp/tailscale}"
 
 # ── El NDK ────────────────────────────────────────────────────────────────
-NDK="${ANDROID_NDK_HOME:-}"
-if [ -z "$NDK" ]; then
-    raiz="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
-    [ -n "$raiz" ] || { echo "No se encuentra el NDK: ni ANDROID_NDK_HOME ni ANDROID_SDK_ROOT"; exit 1; }
-    # El que instala el workflow.
-    NDK="$raiz/ndk/25.1.8937393"
-fi
-[ -d "$NDK" ] || { echo "No existe el NDK en $NDK"; exit 1; }
+#
+# El MISMO que compila el APK, y por delante de ANDROID_NDK_HOME. El runner
+# trae esa variable apuntando a otro (27.3 cuando el proyecto usa 25.1), y
+# construir la libreria con un NDK y la app con otro es de los problemas que no
+# dan la cara al compilar sino al cargar.
+NDK_VER=25.1.8937393
+NDK=""
+for cand in "${ANDROID_SDK_ROOT:-}/ndk/$NDK_VER" "${ANDROID_HOME:-}/ndk/$NDK_VER" \
+            "${ANDROID_NDK_HOME:-}"; do
+    if [ -n "$cand" ] && [ -d "$cand" ]; then NDK="$cand"; break; fi
+done
+[ -n "$NDK" ] || { echo "No se encuentra ningun NDK (buscado $NDK_VER)"; exit 1; }
 
 CC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android${API}-clang"
 [ -x "$CC" ] || { echo "No existe el compilador $CC"; ls "$NDK/toolchains/llvm/prebuilt/"; exit 1; }
@@ -73,9 +77,18 @@ export GOOS=android
 export GOARCH=arm64
 export CC
 
-# -buildmode=c-archive mete tambien tailscale.c, que es la fachada que convierte
-# los simbolos exportados de Go en el API tailscale_* que usa el JNI.
-go build -buildmode=c-archive -o "$SALIDA/libtailscale.a" .
+# c-shared y no c-archive. El primer intento uso c-archive y Go contesto:
+#
+#     -buildmode=c-archive not supported on android/arm64
+#
+# No es una pega de rutas ni del NDK: Go NO hace archivos estaticos para
+# Android, solo librerias compartidas. Es lo mismo que hace gomobile, y para el
+# APK viene mejor —una .so en jniLibs es lo que Android espera— a cambio de que
+# haya que empaquetarla en vez de fundirla dentro de libhunter_jni.so.
+#
+# El build mete tambien tailscale.c, que es la fachada que convierte los
+# simbolos exportados de Go en el API tailscale_* que usa el JNI.
+go build -buildmode=c-shared -o "$SALIDA/libtailscale.so" .
 
 # El .h que genera cgo NO es el que hay que incluir: trae los prototipos de los
 # simbolos de Go (TsnetDial y compania). El bueno es el tailscale.h del repo,
@@ -84,10 +97,19 @@ cp tailscale.h "$SALIDA/tailscale.h"
 
 echo
 echo "Listo:"
-ls -lh "$SALIDA/libtailscale.a" "$SALIDA/tailscale.h"
+ls -lh "$SALIDA/libtailscale.so" "$SALIDA/tailscale.h"
 echo
-echo "Comprobacion de que es arm64 de verdad y no del anfitrion:"
-"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --just-symbol-name \
-    "$SALIDA/libtailscale.a" 2>/dev/null | grep -c tailscale_ \
-    | sed 's/^/  simbolos tailscale_*: /'
-file "$SALIDA/libtailscale.a" 2>/dev/null || true
+# Que sea arm64 DE VERDAD y no del anfitrion: si la cruz-compilacion se cae sin
+# avisar y sale un .so de x86_64, aqui no falla nada y el movil revienta al
+# cargarla. Asi que se comprueba y se corta.
+arq=$(file -b "$SALIDA/libtailscale.so" 2>/dev/null || echo "?")
+echo "  $arq"
+case "$arq" in
+    *aarch64*|*ARM\ aarch64*) echo "  OK  es arm64" ;;
+    *) echo "  MAL  no es arm64"; exit 1 ;;
+esac
+n=$("$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
+    --defined-only --just-symbol-name "$SALIDA/libtailscale.so" 2>/dev/null \
+    | grep -c '^tailscale_' || true)
+echo "  simbolos tailscale_* exportados: $n"
+[ "$n" -ge 15 ] || { echo "  MAL  esperaba al menos 15"; exit 1; }
