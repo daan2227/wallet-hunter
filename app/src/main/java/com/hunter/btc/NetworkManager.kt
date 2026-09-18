@@ -539,8 +539,26 @@ object NetworkManager {
                 }
                 "PROGRESS" -> {
                     val speed = msg.optLong("speed", 0)
-                    workers[workerId]?.speed = speed
+                    workers[workerId]?.let {
+                        it.speed = speed
+                        // Estaba quedandose en "idle" con el worker trabajando a
+                        // 1,7 M/s: status sólo se tocaba al recibir puntos, que
+                        // es cosa de Kangaroo. En modo bloques nunca cambiaba.
+                        if (it.status == "idle" && speed > 0) it.status = "trabajando"
+                    }
                     notifyWorkers()
+                    // La orden de pausa TAMBIÉN por aquí.
+                    //
+                    // Iba sólo colgada de las respuestas a DP y PING, y esas dos
+                    // son del bucle de reparto, que SÓLO existe en modo
+                    // Kangaroo. En modo bloques el trabajador manda PROGRESS y
+                    // DONE y nada más, así que la orden no tenía por dónde
+                    // llegarle: el maestro anotaba "se le pide que pare" y el
+                    // otro no se enteraba jamás.
+                    writer.println(JSONObject().apply {
+                        put("type", "PROGRESS_OK")
+                        put("cmd", ordenPara(workerId))
+                    }.toString())
                 }
                 "DONE" -> {
                     val blockId = msg.optString("block_id")
@@ -853,6 +871,7 @@ object NetworkManager {
                         )
                         log("Bloque recibido: #${block.blockId}")
                         log("Rango: ${block.rangeStart} → ${block.rangeEnd}")
+                        ultimoBloque = block
                         onBlock?.invoke(block)
                     }
                     "KANG" -> {
@@ -916,24 +935,37 @@ object NetworkManager {
      * eso aquí se compara antes de actuar. Repetir la orden es lo que hace que
      * una que se perdió se aplique sola en el siguiente intercambio.
      */
+    /** El último bloque que mandó el maestro, para poder reanudarlo. */
+    @Volatile private var ultimoBloque: NetBlock? = null
+
     private fun aplicarOrden(cmd: String) {
         when (cmd) {
             "pausa" -> {
                 if (pausadoPorMaestro) return
                 pausadoPorMaestro = true
-                // kangarooStop() guarda la tabla antes de soltarla: pausar no
-                // tira el trabajo, y al reanudar se sigue desde donde iba.
+                // LOS DOS motores. Antes sólo paraba Kangaroo, y en modo bloques
+                // —que es lo que corre en un puzzle sin clave pública— la pausa
+                // no hacía absolutamente nada: el trabajador seguía escaneando
+                // como si nada mientras el maestro daba la orden por dada.
+                //
+                // kangarooStop() guarda la tabla antes de soltarla, así que
+                // pausar no tira el trabajo.
                 try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() }
+                catch (e: Throwable) {}
                 log("El maestro ha mandado parar. El trabajo queda guardado.")
             }
             "sigue" -> {
                 if (!pausadoPorMaestro) return
                 pausadoPorMaestro = false
                 log("El maestro ha mandado seguir.")
-                // Arrancar el motor no es cosa de aquí: lo hace la pantalla,
-                // que es la que sabe de hilos, CPU y afinidad de núcleos.
+                // Arrancar el motor no es cosa de aquí: lo hacen las pantallas,
+                // que son las que saben de hilos, CPU y afinidad de núcleos. Se
+                // reanuda lo que hubiera: Kangaroo si había encargo, y si no el
+                // último bloque, que para eso se guarda.
                 if (jobPub.length == 66)
                     onKangaroo?.invoke(jobPub, jobIni, jobFin, jobPuzzle)
+                else ultimoBloque?.let { onBlock?.invoke(it) }
             }
         }
     }
@@ -1171,7 +1203,15 @@ object NetworkManager {
                     put("id",    deviceId)
                     put("auth",  authToken)
                 }.toString())
+                // Y se LEE la respuesta, que es por donde viene la orden de
+                // pausar o seguir. En modo bloques este es el único mensaje
+                // periódico que manda el trabajador, así que sin leerlo aquí no
+                // hay forma de mandarle nada.
+                val resp = readLineLimited(canal.lector)
                 canal.close()
+                if (resp != null) try {
+                    aplicarOrden(JSONObject(resp).optString("cmd", ""))
+                } catch (e: Exception) {}
             } catch (e: Exception) {}
         }
     }
@@ -1191,12 +1231,14 @@ object NetworkManager {
                 // Recibir nuevo bloque
                 val resp = JSONObject(readLineLimited(reader) ?: return@submit)
                 if (resp.optString("type") == "BLOCK") {
-                    onBlock?.invoke(NetBlock(
+                    val nb = NetBlock(
                         blockId    = resp.getString("block_id"),
                         rangeStart = resp.getString("start"),
                         rangeEnd   = resp.getString("end"),
                         puzzleNum  = resp.getInt("puzzle")
-                    ))
+                    )
+                    ultimoBloque = nb
+                    onBlock?.invoke(nb)
                 }
                 canal.close()
             } catch (e: Exception) {}
@@ -1443,6 +1485,9 @@ object NetworkManager {
         puntosEnviados.set(0); ultimoEnvioMs = 0L
         masterIp = ""
         jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
+        // Si no, salir de la red y volver a entrar podria reanudar un bloque
+        // del encargo anterior, que ya no es el que toca.
+        ultimoBloque = null
         puntosRecibidos.set(0)
         authToken = ""                       // invalida el código al parar
         try { escuchador?.close() } catch (e: Exception) {}

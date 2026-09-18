@@ -4145,6 +4145,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     /** "Buscando · 51 s" o "En espera", con su punto. */
     private fun paintScanState(running: Boolean) {
+        // Adoptar una búsqueda que arrancó otro.
+        //
+        // sessionStartTime sólo se ponía al pulsar el botón de esta pantalla,
+        // pero el motor NO se arranca sólo desde aquí: cuando este móvil trabaja
+        // para un cluster, el bloque llega por la red y la pantalla de red
+        // arranca la búsqueda por su cuenta. Entonces esto se quedaba a cero y
+        // salía "Buscando · 00:00:00" con cientos de millones de claves ya
+        // revisadas.
+        //
+        // Es el mismo fallo que tenía Kangaroo con kgInicio, y se arregla igual:
+        // el que encuentra una búsqueda en marcha que no puso él, la adopta.
+        if (running && sessionStartTime == 0L) {
+            sessionStartTime = System.currentTimeMillis()
+            // El contador es acumulado, así que la cuenta de ESTA sesión parte
+            // de lo que ya hubiera. Sin esto, la primera medida contaría todo lo
+            // anterior como hecho en un instante.
+            sessionStartCount = try { HunterEngine.getCount() } catch (e: Throwable) { 0L }
+        }
+        if (!running) sessionStartTime = 0L
         tvScanState?.text =
             if (running) "Buscando · ${formatElapsed(sessionStartTime)}" else "En espera"
         tvScanState?.setTextColor(if (running) AppTheme.ACCENT else AppTheme.TXT_SEC)
