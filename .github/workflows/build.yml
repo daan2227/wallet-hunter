@@ -8,41 +8,16 @@ permissions:
   contents: write
 
 jobs:
-  # Empotrar el nodo de Tailscale (tsnet) dentro de la app.
+  # NOTA sobre el gasto de minutos.
   #
-  # Va en un trabajo APARTE del que compila el APK, y a propósito: mete la
-  # cadena de Go, el NDK y el árbol entero de tailscale.com en la ecuación, y si
-  # algo de eso se rompe no puede llevarse por delante la compilación de una app
-  # que funciona. Mientras este trabajo no esté verde, nada de esto entra en el
-  # APK — el .a que produce se queda como artefacto y ya está.
+  # Habia aqui un trabajo "tailscale-archive" aparte que cruzaba Go otra vez
+  # sólo para fallar en rojo si se rompía. Se ha quitado: DUPLICABA la
+  # compilación de tailscale.com —lo más caro de todo esto— en cada commit, y el
+  # repositorio es privado, o sea con minutos contados. Se agotaron.
   #
-  # Lo que comprueba es justo lo único que no se puede comprobar fuera de CI: el
-  # enlazado con cgo usando el clang del NDK. El resto ya está verificado —que
-  # tailscale.com/tsnet compila para android/arm64, y que el Go 1.25.5 que pide
-  # el go.mod se descarga solo—.
-  tailscale-archive:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v4
-
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-
-    - name: Install NDK
-      run: |
-        echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
-          "ndk;25.1.8937393"
-
-    - name: Cross-compile libtailscale for android/arm64
-      run: scripts/build-libtailscale.sh "$PWD/out-tailscale"
-
-    - uses: actions/upload-artifact@v4
-      with:
-        name: libtailscale-arm64
-        path: out-tailscale/
-        if-no-files-found: error
-
+  # Lo que aportaba se consigue más barato: el paso de abajo compila tsnet una
+  # sola vez, y otro comprueba que libtsbridge.so acabó dentro del APK y avisa
+  # si no. Se pierde el rojo inmediato; se gana poder seguir compilando.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -90,6 +65,19 @@ jobs:
         go-version: '1.25'
       continue-on-error: true
 
+    # Sin esto, cada commit recompila el árbol entero de tailscale.com —con
+    # gvisor dentro—, que son varios minutos. La clave lleva el commit fijado de
+    # libtailscale: mientras no se cambie, el caché vale y la compilación baja a
+    # menos de un minuto. Al cambiarlo, la clave cambia sola y se recompila.
+    - uses: actions/cache@v4
+      continue-on-error: true
+      with:
+        path: |
+          ~/go/pkg/mod
+          ~/.cache/go-build
+        key: go-tsnet-${{ hashFiles('scripts/build-libtailscale.sh') }}
+        restore-keys: go-tsnet-
+
     - name: Build embedded tsnet (optional)
       continue-on-error: true
       run: scripts/build-libtailscale.sh
@@ -119,6 +107,23 @@ jobs:
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease
+
+    # Que se vea si tsnet entró o no.
+    #
+    # El paso que lo compila lleva continue-on-error, así que puede fallar sin
+    # teñir nada de rojo — y entonces el APK sale sin nodo empotrado y con la
+    # misma pinta que uno bueno. Esto lo dice a la cara: warning en el resumen
+    # del build en vez de un descubrimiento en el móvil media hora después.
+    - name: ¿Lleva el APK el nodo empotrado?
+      run: |
+        APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+        if unzip -l "$APK" | grep -q 'lib/arm64-v8a/libtsbridge.so'; then
+          echo "OK: libtsbridge.so está en el APK"
+          unzip -l "$APK" | grep -E 'libtsbridge|libtailscale' || true
+        else
+          echo "::warning::El APK NO lleva el nodo empotrado (libtsbridge.so). \
+        La app funciona igual, pero 'Usar nodo propio' dirá que no está disponible."
+        fi
 
     # Deja el desglose en el log del build, para no tener que descargar el APK
     # y abrirlo a mano cada vez que se quiera saber qué ocupa qué.
