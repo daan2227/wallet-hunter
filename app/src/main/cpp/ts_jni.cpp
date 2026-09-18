@@ -82,6 +82,7 @@ Java_com_hunter_btc_TsNet_disponibleNativo(JNIEnv *, jobject){
  */
 #ifdef TIENE_TAILSCALE
 extern "C" int tsnet_set_interfaces(char *spec);
+extern "C" int tsnet_set_dirs(char *dir);
 #endif
 
 extern "C" JNIEXPORT jint JNICALL
@@ -125,6 +126,20 @@ Java_com_hunter_btc_TsNet_arrancar(JNIEnv *env, jobject, jstring jclave,
     const char *dir = jdir ? env->GetStringUTFChars(jdir,0) : NULL;
     if(dir){
         tailscale_set_dir(sd,dir);
+        /* Decirle a Go donde puede escribir, ANTES de levantar nada.
+         *
+         * Sin esto moria con "no safe place found to store log state": una app
+         * de Android no tiene HOME, ni XDG_CACHE_HOME, ni TMPDIR, ni /tmp, y
+         * logpolicy revienta al quedarse sin sitios que probar. Ver
+         * interfaces_desde_java.go.
+         *
+         * Se pasa por Go y no con setenv() de C a proposito: el runtime de Go
+         * se queda con una copia del entorno al arrancar, y un setenv posterior
+         * no lo veria nunca. */
+        {
+            std::string d(dir);
+            tsnet_set_dirs(&d[0]);
+        }
         /* Los registros de tsnet a un fichero nuestro.
          *
          * Hace falta porque cuando esto falla de verdad, falla DENTRO de Go: un

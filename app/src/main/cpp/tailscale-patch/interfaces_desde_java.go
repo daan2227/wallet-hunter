@@ -54,6 +54,8 @@ import "C"
 
 import (
 	"net"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -95,6 +97,49 @@ func tsnet_set_interfaces(spec *C.char) C.int {
 	ifCache = lista
 	ifMu.Unlock()
 	return C.int(len(lista))
+}
+
+// Decirle a Go donde puede escribir.
+//
+// Sin esto, levantar el nodo moria con:
+//
+//	panic: no safe place found to store log state
+//	tailscale.com/logpolicy.LogsDir(...)  logpolicy.go:275
+//
+// logpolicy.LogsDir prueba sitios en orden y en Android no vale ninguno:
+//
+//	STATE_DIRECTORY (systemd)  no existe
+//	/var/lib/tailscale         no existe ni se puede crear
+//	os.UserCacheDir()          necesita XDG_CACHE_HOME o HOME, sin definir
+//	el directorio actual       es "/", y lo rechaza a proposito
+//	os.MkdirTemp("")           necesita TMPDIR o /tmp, no hay
+//
+// y al quedarse sin sitios, revienta. Una app de Android no tiene ninguna de
+// esas variables porque su sitio para escribir se lo da el sistema por otra
+// via, asi que basta con decirselo.
+//
+// # POR QUE DESDE GO Y NO CON setenv() EN C
+//
+// El runtime de Go se queda con una COPIA del entorno al arrancar, y os.Getenv
+// lee esa copia. Un setenv() desde C despues de cargar la libreria no lo veria
+// Go jamas — se pondria la variable, no fallaria nada, y el panico seguiria
+// saliendo igual. os.Setenv si actualiza la copia, que es la que se consulta.
+//
+//export tsnet_set_dirs
+func tsnet_set_dirs(dir *C.char) C.int {
+	d := C.GoString(dir)
+	if d == "" {
+		return -1
+	}
+	// Las tres: cada una la mira un sitio distinto de la cadena de arriba, y
+	// poner solo una deja las demas dependiendo de que se llegue a ella.
+	os.Setenv("XDG_CACHE_HOME", d)
+	os.Setenv("HOME", d)
+	os.Setenv("TMPDIR", d)
+	// logpolicy le anade "Tailscale" a lo que devuelva UserCacheDir y da por
+	// hecho que se puede escribir ahi.
+	os.MkdirAll(filepath.Join(d, "Tailscale"), 0700)
+	return 0
 }
 
 func parseInterfaces(txt string) []netmon.Interface {

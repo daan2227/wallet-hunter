@@ -172,7 +172,15 @@ echo "  simbolos tailscale_* exportados: $n"
     echo "       Sin el, levantar el nodo muere con 'netlinkrib: permission denied'."
     exit 1
 }
-echo "  OK  tsnet_set_interfaces exportado (parche de interfaces dentro)"
+"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-nm" --dynamic \
+    --defined-only --just-symbol-name "$SALIDA_SO/libtailscale.so" 2>/dev/null \
+    | grep -q '^tsnet_set_dirs$' || {
+    echo "  MAL  falta tsnet_set_dirs."
+    echo "       Sin el, levantar el nodo muere con 'no safe place found to"
+    echo "       store log state'."
+    exit 1
+}
+echo "  OK  tsnet_set_interfaces y tsnet_set_dirs exportados (parche dentro)"
 
 # Y el SONAME, que es lo que fallaba y no daba la cara hasta instalar el APK.
 # Sin el, quien enlace contra esta libreria anota como dependencia la RUTA de
