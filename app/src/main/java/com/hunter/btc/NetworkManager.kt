@@ -1172,6 +1172,41 @@ object NetworkManager {
      * WifiManager.connectionInfo, que está deprecado desde API 31 y devuelve
      * datos inválidos cuando la app no está en primer plano.
      */
+    /**
+     * TODAS las direcciones por las que se puede llegar a este móvil.
+     *
+     * [getLocalIp] devuelve la primera IPv4 que encuentra, y eso vale mientras
+     * el cluster viva en una WiFi. No vale en cuanto sale de ahí:
+     *
+     *  - Por datos móviles la IPv4 está detrás del CGNAT de la operadora y no
+     *    sirve para que te llamen. La IPv6 sí, porque en IPv6 no hay NAT.
+     *  - Con una VPN puesta, la primera IPv4 que salga puede ser la de la WiFi
+     *    o la de la VPN, según el orden en que el sistema liste las interfaces.
+     *    Enseñar una de las dos sin decir cuál es peor que enseñar las dos.
+     *
+     * Se quitan las de enlace local (fe80:) porque no salen del cable, y las de
+     * bucle. El resto se enseña tal cual: cuál sirve depende de por dónde vaya a
+     * llamar el otro móvil, y eso lo sabe el usuario y no la app.
+     */
+    fun direccionesLocales(): List<Pair<String, String>> {
+        val out = ArrayList<Pair<String, String>>()
+        try {
+            for (iface in java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {
+                if (iface.isLoopback || !iface.isUp) continue
+                for (addr in java.util.Collections.list(iface.inetAddresses)) {
+                    if (addr.isLoopbackAddress || addr.isLinkLocalAddress) continue
+                    val txt = addr.hostAddress?.substringBefore('%') ?: continue
+                    val tipo = if (addr is Inet4Address) "IPv4" else "IPv6"
+                    out.add(tipo to "$txt  (${iface.name})")
+                }
+            }
+        } catch (e: Exception) {
+            log("direccionesLocales: ${e.message}")
+        }
+        // IPv4 primero: es la que sirve en una WiFi, que es el caso normal.
+        return out.sortedBy { if (it.first == "IPv4") 0 else 1 }
+    }
+
     fun getLocalIp(ctx: Context): String {
         try {
             for (iface in java.util.Collections.list(NetworkInterface.getNetworkInterfaces())) {

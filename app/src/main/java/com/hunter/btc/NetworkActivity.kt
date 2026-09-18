@@ -101,7 +101,7 @@ class NetworkActivity : AppCompatActivity() {
         })
 
         tvIp = TextView(this).apply {
-            text = "IP: ${NetworkManager.getLocalIp(this@NetworkActivity)}"
+            text = textoDeMisDirecciones()
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
             typeface = Typeface.MONOSPACE   // es una dirección
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
@@ -408,20 +408,28 @@ class NetworkActivity : AppCompatActivity() {
         btnStop?.visibility = android.view.View.VISIBLE
         val ip = NetworkManager.getLocalIp(this)
         val code = NetworkManager.authToken
+        tvIp?.text = textoDeMisDirecciones()
         tvLog?.text = "✓ Master iniciado\nIP: $ip\nCódigo: $code\n" +
                       "Puzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
         val aviso = if (conKangaroo)
             "\n\nReparto de Kangaroo: todos los aparatos al mismo rango, " +
             "porque partirlo empeoraría la búsqueda.\n\n" +
             "AVISO: lo que viaja entre los móviles permite reconstruir la " +
-            "clave privada. Úsalo sólo en tu propia red."
+            "clave privada, y viaja SIN CIFRAR. En tu propia WiFi es una cosa; " +
+            "si lo sacas a Internet, cualquiera por el camino ve lo mismo que tú."
         else ""
+        // Todas, no sólo la primera IPv4: desde fuera de la WiFi la que sirve es
+        // la IPv6, y sin verla no hay forma de saber qué teclear en el otro.
+        val dirs = NetworkManager.direccionesLocales()
+            .joinToString("\n") { "  ${it.first}  ${it.second}" }
         // El código hay que teclearlo en cada worker; sin él no se aceptan.
         AlertDialog.Builder(this)
             .setTitle("Master activo")
-            .setMessage("IP: $ip\n\nCódigo de acceso:\n\n        $code\n\n" +
-                        "Introduce este código en cada worker. Sin él, ningún " +
-                        "dispositivo de la red puede conectarse." + aviso)
+            .setMessage("Direcciones de este móvil:\n$dirs\n\n" +
+                        "Código de acceso:\n\n        $code\n\n" +
+                        "Introduce la dirección y este código en cada worker. " +
+                        "Sin el código, ningún dispositivo de la red puede " +
+                        "conectarse." + aviso)
             .setPositiveButton("OK", null)
             .show()
     }
@@ -568,6 +576,25 @@ class NetworkActivity : AppCompatActivity() {
      * peor que decir la verdad, porque entonces el usuario cree que el botón no
      * funciona y lo pulsa otra vez.
      */
+    /**
+     * Las direcciones de este móvil, para que el trabajador sepa cuál teclear.
+     *
+     * Antes salía sólo la primera IPv4 encontrada, que es la buena mientras el
+     * cluster viva en una WiFi. Fuera de ahí no vale: por datos móviles la IPv4
+     * está detrás del CGNAT de la operadora y no sirve para que te llamen,
+     * mientras que la IPv6 sí, porque en IPv6 no hay NAT. Sin verlas todas no
+     * había forma de saber qué poner en el otro móvil.
+     */
+    private fun textoDeMisDirecciones(): String {
+        val d = NetworkManager.direccionesLocales()
+        if (d.isEmpty()) return "Sin red"
+        if (d.size == 1) return "IP: ${d[0].second}"
+        return "Direcciones de este móvil:\n" +
+               d.joinToString("\n") { "  ${it.first}  ${it.second}" } +
+               "\n\nEn la misma WiFi se usa la IPv4. Desde fuera —otro móvil con " +
+               "datos— hace falta la IPv6, o abrir el puerto en el router."
+    }
+
     private fun mandarATodos(pausar: Boolean) {
         val n = NetworkManager.mandarPausaATodos(pausar)
         if (n == 0) {
