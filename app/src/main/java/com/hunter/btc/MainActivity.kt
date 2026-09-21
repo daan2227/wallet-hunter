@@ -4156,6 +4156,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         //
         // Es el mismo fallo que tenía Kangaroo con kgInicio, y se arregla igual:
         // el que encuentra una búsqueda en marcha que no puso él, la adopta.
+        // Y si el trabajo viene de la red, es de un PUZZLE, no del escáner.
+        //
+        // onBlock hace setMode(1) —el motor sí está en modo puzzle— pero
+        // puzzleMode es una bandera de Kotlin que sólo se ponía al pulsar la
+        // pestaña. Así que el trabajo de un bloque asignado por red salía en la
+        // pantalla de Escáner, con su "Modo BIP39" y su "Lista cargada: sin
+        // cargar", mientras la de Puzzle enseñaba ceros.
+        if (running) NetworkManager.bloqueActual?.let { b ->
+            if (!puzzleMode || currentBlockId != b.blockId) {
+                puzzleMode = true
+                currentRangeStart = b.rangeStart
+                currentRangeEnd   = b.rangeEnd
+                currentBlockId    = b.blockId
+                puzzles.firstOrNull { it.num == b.puzzleNum }?.let { p ->
+                    puzzleFullStart = p.start
+                    puzzleFullEnd   = p.end
+                }
+            }
+        }
         if (running && sessionStartTime == 0L) {
             sessionStartTime = System.currentTimeMillis()
             // El contador es acumulado, así que la cuenta de ESTA sesión parte
@@ -5707,6 +5726,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val pnum  = prefs.getInt("current_puzzle_num", 0)
         val start = prefs.getString("current_range_start", "") ?: ""
         val end   = prefs.getString("current_range_end", "") ?: ""
+        // La dirección va con cada bloque: es contra lo que compara el
+        // trabajador. Se saca de la tabla si las preferencias aún no la tienen
+        // —un puzzle elegido antes de que esto existiera— para no obligar a
+        // volver a elegirlo.
+        val addr  = (prefs.getString("current_puzzle_addr", "") ?: "")
+            .ifEmpty { puzzles.firstOrNull { it.num == pnum }?.addr ?: "" }
         if (pnum == 0 || start.isEmpty() || end.isEmpty()) {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Sin puzzle seleccionado")
@@ -5728,12 +5753,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // aparece la colisión entre dos móviles.
             if (!HunterEngine.kangarooRunning()) alternarKangaroo()
             NetworkManager.startMasterKangaroo(this, pnum, puzzlePubHex,
-                                               puzzleIniHex, puzzleFinHex)
+                                               puzzleIniHex, puzzleFinHex, addr)
             NetworkManager.onClave = { dispositivo, claveHex ->
                 runOnUiThread { mostrarClaveDeWorker(dispositivo, claveHex) }
             }
         } else {
-            NetworkManager.startMaster(this, pnum, start, end)
+            if (addr.isEmpty()) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Falta la dirección del puzzle")
+                    .setMessage("Vuelve a elegir el puzzle #$pnum en la pestaña " +
+                                "Puzzle. Sin su dirección, los trabajadores " +
+                                "buscarían sin nada contra lo que comparar.")
+                    .setPositiveButton("OK", null)
+                    .show()
+                return
+            }
+            NetworkManager.startMaster(this, pnum, start, end, addr)
         }
 
         val explicacion = if (conKangaroo)
@@ -5781,10 +5816,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         kgMuestraMs = 0L; kgMuestraOps = 0L
         tvCurrentBlock?.text = "Bloque actual: —"
         tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
-        // Guardar rango para modo distribuido
+        // Guardar rango para modo distribuido.
+        //
+        // Y la DIRECCION, que faltaba. El maestro reparte bloques con el rango
+        // dentro, pero sin decir contra que hay que comparar; el trabajador
+        // arrancaba en modo puzzle sin objetivo, y el motor con
+        // g_has_target=0 y sin lista cargada NO PUEDE encontrar nada:
+        //
+        //     if(g_has_target){ ...compara... }
+        //     else if(g_csv_loaded){ ...busca... }
+        //
+        // O sea que el trabajador calculaba hashes y los comparaba contra nada.
+        // A toda velocidad, con su grafica y sus millones de claves revisadas.
         prefs.edit()
             .putString("current_range_start", p.start)
             .putString("current_range_end", p.end)
+            .putString("current_puzzle_addr", p.addr)
             .putInt("current_puzzle_num", p.num)
             .apply()
         // Resetear contadores al cambiar puzzle

@@ -766,6 +766,39 @@ class NetworkActivity : AppCompatActivity() {
      * evita el enredo de emparejar filas con trabajadores que entran y salen.
      */
     /** "Repartira el puzzle #108" y donde se cambia. */
+    /**
+     * Fija la direccion contra la que va a comparar el motor.
+     *
+     * @return false si no se puede, y entonces NO se arranca. Buscar sin
+     *   objetivo no es "buscar peor": es no buscar, gastando la bateria igual.
+     *   Mas vale un trabajador parado que se ve, que uno a toda velocidad que
+     *   no puede encontrar nada.
+     */
+    private fun fijarObjetivo(block: NetworkManager.NetBlock): Boolean {
+        val a = block.addr.trim()
+        if (a.isEmpty()) {
+            val m = "El maestro no ha mandado la direccion del puzzle #${block.puzzleNum}. " +
+                    "No se arranca: sin ella la busqueda no puede encontrar nada. " +
+                    "Actualiza la app del maestro."
+            android.util.Log.w("NetworkActivity", m)
+            runOnUiThread { tvLog?.text = "${tvLog?.text}\n$m" }
+            return false
+        }
+        try {
+            HunterEngine.setTarget(a)
+            if (!HunterEngine.hasTarget()) {
+                val m = "Direccion invalida del maestro: $a. No se arranca."
+                android.util.Log.w("NetworkActivity", m)
+                runOnUiThread { tvLog?.text = "${tvLog?.text}\n$m" }
+                return false
+            }
+        } catch (e: Throwable) {
+            android.util.Log.e("NetworkActivity", "setTarget: ${e.message}", e)
+            return false
+        }
+        return true
+    }
+
     private fun pintarQueReparte() {
         val p = ajustes()
         val num = p.getInt("current_puzzle_num", 71)
@@ -845,6 +878,22 @@ class NetworkActivity : AppCompatActivity() {
         val kIni = prefs.getString("kangaroo_ini", "") ?: ""
         val kFin = prefs.getString("kangaroo_fin", "") ?: ""
         val conKangaroo = pub.length == 66 && kIni == rangeStart && kFin == rangeEnd
+        // La direccion del puzzle, que es contra lo que compara el trabajador.
+        // Sin ella su busqueda no puede encontrar nada: el motor sin objetivo y
+        // sin lista cargada ni siquiera hace la comparacion.
+        val addr = prefs.getString("current_puzzle_addr", "") ?: ""
+        if (!conKangaroo && addr.isEmpty()) {
+            AlertDialog.Builder(this)
+                .setTitle("Falta la direccion del puzzle")
+                .setMessage("Abre la pantalla Puzzle y elige el puzzle #$puzzleNum " +
+                            "una vez. Asi queda guardada la direccion contra la " +
+                            "que tienen que comparar los trabajadores.\n\n" +
+                            "Sin ella repartirias trabajo que no puede encontrar " +
+                            "nada.")
+                .setPositiveButton("Entendido", null)
+                .show()
+            return
+        }
         if (conKangaroo) {
             // El maestro arranca como RECOLECTOR, no buscando.
             //
@@ -865,12 +914,12 @@ class NetworkActivity : AppCompatActivity() {
             // juntando dos mitades que vengan de móviles distintos.
             if (!HunterEngine.kangarooRunning())
                 arrancarKangarooDeRed(this, pub, kIni, kFin, puzzleNum, hilos = 0)
-            NetworkManager.startMasterKangaroo(this, puzzleNum, pub, kIni, kFin)
+            NetworkManager.startMasterKangaroo(this, puzzleNum, pub, kIni, kFin, addr)
             NetworkManager.onClave = { dispositivo, claveHex ->
                 runOnUiThread { avisarClaveEncontrada(dispositivo, claveHex) }
             }
         } else {
-            NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd)
+            NetworkManager.startMaster(this, puzzleNum, rangeStart, rangeEnd, addr)
         }
         btnMaster?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
@@ -924,6 +973,12 @@ class NetworkActivity : AppCompatActivity() {
         }
         NetworkManager.onBlock = { block ->
             runOnUiThread {
+                // LA DIRECCION PRIMERO. Sin ella el motor no puede encontrar
+                // nada: con g_has_target a 0 y sin lista cargada, la
+                // comparacion no se hace y la busqueda entera es humo. Estuvo
+                // asi y el trabajador se paso horas calculando hashes contra
+                // nada, a toda velocidad y con su grafica.
+                if (!fijarObjetivo(block)) return@runOnUiThread
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
                 HunterEngine.setMode(1) // puzzle mode
                 if (!HunterEngine.isRunning()) {
@@ -1155,6 +1210,7 @@ class NetworkActivity : AppCompatActivity() {
         }
         NetworkManager.onBlock = { block ->
             try {
+                if (!fijarObjetivo(block)) return@onBlock
                 HunterEngine.setRange(block.rangeStart, block.rangeEnd)
                 HunterEngine.setMode(1)
                 if (!HunterEngine.isRunning()) {

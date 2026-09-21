@@ -217,7 +217,16 @@ object NetworkManager {
         val blockId:    String,
         val rangeStart: String,
         val rangeEnd:   String,
-        val puzzleNum:  Int
+        val puzzleNum:  Int,
+        /**
+         * La direccion contra la que hay que comparar.
+         *
+         * FALTABA, y sin ella el trabajo del trabajador no valia nada: llegaba
+         * el rango pero no el objetivo, arrancaba en modo puzzle sin fijarlo, y
+         * el motor sin objetivo y sin lista cargada no puede encontrar nada —
+         * calcula los hashes y los compara contra nada.
+         */
+        val addr: String = ""
     )
 
     data class NetWorker(
@@ -323,6 +332,8 @@ object NetworkManager {
     @Volatile private var jobIni    = ""
     @Volatile private var jobFin    = ""
     @Volatile private var jobPub    = ""
+    /** La direccion del puzzle que se reparte, para mandarla con cada bloque. */
+    @Volatile private var jobAddr   = ""
 
     private val workers     = ConcurrentHashMap<String, NetWorker>()
     private val assignedBlocks = ConcurrentHashMap<String, NetBlock>()
@@ -350,8 +361,9 @@ object NetworkManager {
      * no este objeto: haría falta que se pidiera bloque a sí mismo por el mismo
      * camino que un worker.
      */
-    fun startMaster(ctx: Context, puzzleNum: Int, rangeStart: String, rangeEnd: String) =
-        arrancarMaster(ctx, Modo.BLOQUES, puzzleNum, rangeStart, rangeEnd, "")
+    fun startMaster(ctx: Context, puzzleNum: Int, rangeStart: String,
+                    rangeEnd: String, addr: String) =
+        arrancarMaster(ctx, Modo.BLOQUES, puzzleNum, rangeStart, rangeEnd, "", addr)
 
     /**
      * Master repartiendo Kangaroo.
@@ -365,15 +377,17 @@ object NetworkManager {
      * colisión entre dos móviles.
      */
     fun startMasterKangaroo(ctx: Context, puzzleNum: Int, pubHex: String,
-                            iniHex: String, finHex: String) =
-        arrancarMaster(ctx, Modo.KANGAROO, puzzleNum, iniHex, finHex, pubHex)
+                            iniHex: String, finHex: String, addr: String = "") =
+        arrancarMaster(ctx, Modo.KANGAROO, puzzleNum, iniHex, finHex, pubHex, addr)
 
     private fun arrancarMaster(ctx: Context, m: Modo, puzzleNum: Int,
-                               rangeStart: String, rangeEnd: String, pubHex: String) {
+                               rangeStart: String, rangeEnd: String, pubHex: String,
+                               addr: String) {
         isMaster = true; isWorker = false
         isRunning.set(true)
         modo = m
         jobPuzzle = puzzleNum; jobIni = rangeStart; jobFin = rangeEnd; jobPub = pubHex
+        jobAddr = addr
         puntosRecibidos.set(0)
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = generateToken()
@@ -459,6 +473,7 @@ object NetworkManager {
                             put("start", block.rangeStart)
                             put("end",   block.rangeEnd)
                             put("puzzle", block.puzzleNum)
+                            put("addr",  jobAddr)
                         }.toString())
                         log("Bloque ${block.blockId} asignado a $device")
                     }
@@ -658,7 +673,8 @@ object NetworkManager {
             blockId    = blockIdx.toString(),
             rangeStart = bStart.toString(16).padStart(18, '0'),
             rangeEnd   = bEnd.toString(16).padStart(18, '0'),
-            puzzleNum  = puzzleNum
+            puzzleNum  = puzzleNum,
+            addr       = jobAddr
         )
         assignedBlocks[workerId] = block   // reservado dentro del bloque sincronizado
         return block
@@ -867,7 +883,8 @@ object NetworkManager {
                             blockId    = response.getString("block_id"),
                             rangeStart = response.getString("start"),
                             rangeEnd   = response.getString("end"),
-                            puzzleNum  = response.getInt("puzzle")
+                            puzzleNum  = response.getInt("puzzle"),
+                            addr       = response.optString("addr", "")
                         )
                         log("Bloque recibido: #${block.blockId}")
                         log("Rango: ${block.rangeStart} → ${block.rangeEnd}")
@@ -937,6 +954,11 @@ object NetworkManager {
      */
     /** El último bloque que mandó el maestro, para poder reanudarlo. */
     @Volatile private var ultimoBloque: NetBlock? = null
+
+    /** El bloque en el que trabaja este móvil ahora, o null. Lo lee la pantalla
+     *  principal para enseñar el trabajo en la pestaña de Puzzle en vez de en la
+     *  de Escáner, que es donde salía por no saber nadie que había un bloque. */
+    val bloqueActual: NetBlock? get() = if (isWorker) ultimoBloque else null
 
     private fun aplicarOrden(cmd: String) {
         when (cmd) {
@@ -1235,7 +1257,8 @@ object NetworkManager {
                         blockId    = resp.getString("block_id"),
                         rangeStart = resp.getString("start"),
                         rangeEnd   = resp.getString("end"),
-                        puzzleNum  = resp.getInt("puzzle")
+                        puzzleNum  = resp.getInt("puzzle"),
+                        addr       = resp.optString("addr", "")
                     )
                     ultimoBloque = nb
                     onBlock?.invoke(nb)
@@ -1484,7 +1507,7 @@ object NetworkManager {
         olvidarSesionDeWorker(appCtx)
         puntosEnviados.set(0); ultimoEnvioMs = 0L
         masterIp = ""
-        jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0
+        jobPub = ""; jobIni = ""; jobFin = ""; jobPuzzle = 0; jobAddr = ""
         // Si no, salir de la red y volver a entrar podria reanudar un bloque
         // del encargo anterior, que ya no es el que toca.
         ultimoBloque = null
