@@ -101,6 +101,38 @@ object MatchVault {
 
     fun add(ctx: Context, e: Entry): Int = add(ctx, listOf(e))
 
+    /**
+     * Rellena la dirección y el WIF de los hallazgos que sólo tengan la clave.
+     *
+     * Kangaroo devolvía la clave privada y nada más, y así se guardaban: el
+     * baúl lista POR DIRECCIÓN, así que esas entradas salían en blanco y
+     * parecía que no se había guardado nada. Eso ya no pasa al guardar, pero
+     * las que quedaron de antes siguen ahí — y son justo las que más importa
+     * poder ver.
+     *
+     * Se deriva de la clave, que es lo único que hace falta: la dirección y el
+     * WIF salen de ella, no al revés.
+     *
+     * @return cuántas se han podido completar.
+     */
+    fun completarClaves(ctx: Context): Int {
+        val todas = list(ctx)
+        var tocadas = 0
+        val nuevas = todas.map { e ->
+            if (e.privHex.length != 64 || (e.addr.isNotEmpty() && e.wif.isNotEmpty())) e
+            else {
+                val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) { "" }
+                if (!d.contains("|")) e
+                else {
+                    tocadas++
+                    e.copy(wif = d.substringBefore("|"), addr = d.substringAfter("|"))
+                }
+            }
+        }
+        if (tocadas > 0) write(ctx, nuevas)
+        return tocadas
+    }
+
     fun clear(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
         try {

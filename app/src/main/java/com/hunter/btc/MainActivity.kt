@@ -2922,6 +2922,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // a quien responde, y eso delata que este dispositivo tiene la clave.
         fun loadCoincidencias(consultarRed: Boolean): Pair<Double, List<Triple<String,Double,String>>> {
             MatchVault.ingestPlaintextFile(this@MainActivity)
+            // Los hallazgos de Kangaroo de antes del arreglo se guardaron sólo
+            // con la clave, y el baúl lista por dirección: salían en blanco.
+            // Se completan al abrirlo, que es cuando importa verlos.
+            try { MatchVault.completarClaves(this@MainActivity) } catch (e: Exception) {}
             if (consultarRed) {
                 try { MatchVault.resolvePendingBalances(this@MainActivity) } catch (e: Exception) {}
             }
