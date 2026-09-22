@@ -258,7 +258,18 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * significan nada. */
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
-#define KG_VER   1u
+/* Version 2: cada entrada lleva ademas la marca de "ya enviado".
+ *
+ * La 1 no la guardaba, asi que al recuperar la tabla todas las entradas
+ * volvian a contar como sin mandar y el trabajador REENVIABA LA TABLA ENTERA.
+ * Con la pausa a distancia eso pasa en cada pausa, no solo al reiniciar la app.
+ *
+ * dp_load sigue leyendo ficheros de la 1 —seria una faena tirar la tabla de
+ * alguien por cambiar el formato—: se leen sus entradas de 49 bytes y se dan
+ * por no enviadas, que provoca un ultimo reenvio y a partir de ahi ya se
+ * guarda. */
+#define KG_VER   2u
+#define KG_VER_SIN_ENVIADO 1u
 
 typedef struct {
     uint32_t magic, ver;
@@ -291,6 +302,7 @@ static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
         if(fwrite(sl->kx,8,2,f)!=2){ ok=0; break; }
         if(fwrite(sl->dist,8,4,f)!=4){ ok=0; break; }
         if(fwrite(&sl->manso,1,1,f)!=1){ ok=0; break; }
+        if(fwrite(&sl->enviado,1,1,f)!=1){ ok=0; break; }
         escritas++;
     }
     pthread_mutex_unlock(&t->mtx);
@@ -310,18 +322,35 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     if(fread(&c,sizeof(c),1,f)!=1){ fclose(f); return 0; }
     /* Todo tiene que cuadrar: otro puzzle, otro rango u otro criterio de
        distinguido hacen que las entradas no signifiquen lo mismo. */
-    if(c.magic!=KG_MAGIC || c.ver!=KG_VER || c.dbits!=(uint32_t)dbits ||
+    /* Se aceptan las dos versiones. La 1 no guardaba la marca de "ya enviado";
+       tirar la tabla de alguien por eso seria una faena mucho mayor que el
+       ultimo reenvio que provoca. */
+    if(c.magic!=KG_MAGIC ||
+       (c.ver!=KG_VER && c.ver!=KG_VER_SIN_ENVIADO) ||
+       c.dbits!=(uint32_t)dbits ||
        memcmp(c.pub,pub,33)!=0 || memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){
         fclose(f); return 0;
     }
+    int con_enviado = (c.ver==KG_VER);
     uint64_t leidas=0;
     for(uint64_t i=0;i<c.n;i++){
-        uint64_t kx[2]; sc_t d; uint8_t manso;
+        uint64_t kx[2]; sc_t d; uint8_t manso, env=0;
         if(fread(kx,8,2,f)!=2) break;
         if(fread(d,8,4,f)!=4) break;
         if(fread(&manso,1,1,f)!=1) break;
+        if(con_enviado && fread(&env,1,1,f)!=1) break;
         sc_t basura; int bm;
         dp_insert(t,kx,d,manso,basura,&bm);
+        /* dp_insert no sabe de esto, asi que se busca el hueco donde ha
+           quedado. Igual que hace kg_import con los que llegan por red. */
+        if(env){
+            uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&t->mask;
+            for(uint64_t j=0;j<=t->mask;j++){
+                DP *sl=&t->slots[(h+j)&t->mask];
+                if(!sl->usado) break;
+                if(sl->kx[0]==kx[0] && sl->kx[1]==kx[1]){ sl->enviado=1; break; }
+            }
+        }
         leidas++;
     }
     fclose(f);
@@ -699,7 +728,13 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
     if((size_t)n>(len-KG_NET_CAB)/KG_NET_ENT) return 0;
 
     const uint8_t *p=buf+KG_NET_CAB;
-    uint32_t metidas=0;
+    /* Cuantas entran DE VERDAD, no cuantas llegan.
+     *
+     * Antes se contaba una por entrada del mensaje, entrara o no. Con la tabla
+     * reenviada por completo tras cada pausa, el maestro decia "Puntos
+     * recibidos: 12" con 4 en la tabla — y el que mira no tiene forma de saber
+     * cual de los dos numeros es el bueno. */
+    uint64_t antes_guardados=c->tabla.guardados;
     for(uint32_t i=0;i<n;i++,p+=KG_NET_ENT){
         uint64_t kx[2]; sc_t d;
         kx[0]=kg_get64(p); kx[1]=kg_get64(p+8);
@@ -724,9 +759,8 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
             }
         }
         pthread_mutex_unlock(&c->tabla.mtx);
-        metidas++;
     }
-    if(n_ok) *n_ok=metidas;
+    if(n_ok) *n_ok=(uint32_t)(c->tabla.guardados-antes_guardados);
     return 1;
 }
 

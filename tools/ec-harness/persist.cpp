@@ -1,6 +1,7 @@
 /* Comprueba que guardar y recuperar la tabla conserva el trabajo, y que un
    fichero de OTRO puzzle se rechaza en vez de mezclarse. */
 #include <stdio.h>
+#include <vector>
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -81,6 +82,41 @@ int main(){
            (unsigned long long)c5.k[0]);
     f+=!ok5;
     kg_free(&c5);
+
+    /* 6) La marca de "ya enviado" sobrevive al guardado.
+     *
+     * Sin esto, al recuperar la tabla TODAS las entradas volvian a contar como
+     * sin mandar y el trabajador reenviaba la tabla entera al maestro. Con la
+     * pausa a distancia eso pasa en cada pausa, no solo al reiniciar la app.
+     *
+     * Se ve desde fuera con kg_export, que es quien decide que mandar: si la
+     * marca se ha guardado, tras recuperar no hay NADA nuevo que enviar.
+     */
+    {
+        KangarooCtx c6; kg_setup(&c6,pub,ini,fin,7,18);
+        dp_load(&c6.tabla,"/tmp/kg_test.dat",pub,ini,fin,7,NULL);
+        /* Primer export: se lleva todo lo que haya y lo marca. */
+        size_t cap=kg_export_bytes(4096);
+        std::vector<uint8_t> buf(cap);
+        size_t n_1=kg_export(&c6.tabla,pub,ini,fin,7,buf.data(),cap,4096);
+        /* Segundo: ya no queda nada nuevo. */
+        size_t n_2=kg_export(&c6.tabla,pub,ini,fin,7,buf.data(),cap,4096);
+        printf("%s  export marca lo enviado (1o %s, 2o %s)\n",
+               (n_1>0 && n_2==0)?"OK ":"MAL",
+               n_1>0?"con datos":"vacio", n_2==0?"vacio":"con datos");
+        f+=!(n_1>0 && n_2==0);
+
+        /* Ahora se guarda CON las marcas puestas y se vuelve a recuperar. */
+        dp_save(&c6.tabla,"/tmp/kg_test2.dat",pub,ini,fin,7,0);
+        KangarooCtx c7; kg_setup(&c7,pub,ini,fin,7,18);
+        dp_load(&c7.tabla,"/tmp/kg_test2.dat",pub,ini,fin,7,NULL);
+        size_t n_3=kg_export(&c7.tabla,pub,ini,fin,7,buf.data(),cap,4096);
+        printf("%s  tras recuperar no reenvia (%s)\n",
+               n_3==0?"OK ":"MAL", n_3==0?"nada que mandar":"reenvia la tabla");
+        f+=(n_3!=0);
+        kg_free(&c6); kg_free(&c7);
+        remove("/tmp/kg_test2.dat");
+    }
 
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");
     return f;
