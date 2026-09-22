@@ -5636,14 +5636,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * la clave no puede perderse.
      */
     private fun mostrarClaveDeWorker(dispositivo: String, claveHex: String) {
-        try {
-            MatchVault.add(this, MatchVault.Entry(
-                ts = System.currentTimeMillis(), source = "kangaroo",
-                addr = "", wif = "", privHex = claveHex, btc = 0.0,
-                extra = "PUZZLE kangaroo (red, desde $dispositivo)", checkedTs = 0L))
-        } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
-        }
+        guardarHallazgoKangaroo(claveHex, "PUZZLE kangaroo (red, desde $dispositivo)")
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
         prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
         btnKangaroo?.text = "Buscar con Kangaroo"
@@ -5810,14 +5803,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (clave.length == 64) {
             // Guardar ANTES de tocar la interfaz: si la app muere aquí, la
             // clave no puede perderse.
-            try {
-                MatchVault.add(this, MatchVault.Entry(
-                    ts = System.currentTimeMillis(), source = "kangaroo",
-                    addr = "", wif = "", privHex = clave, btc = 0.0,
-                    extra = "PUZZLE kangaroo", checkedTs = 0L))
-            } catch (e: Exception) {
-                android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
-            }
+            guardarHallazgoKangaroo(clave, "PUZZLE kangaroo")
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Buscar con Kangaroo"
@@ -6102,6 +6088,35 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             .setNegativeButton("Cerrar", null)
             .show()
+    }
+
+    /**
+     * Guarda un hallazgo de Kangaroo en el baúl, con su dirección y su WIF.
+     *
+     * Kangaroo devuelve la clave privada y nada más, y así se guardaba: con
+     * `addr` y `wif` vacíos. La entrada quedaba en el baúl pero sin nada que la
+     * identificara —el baúl lista por dirección— ni nada con lo que gastar. O
+     * sea que encontrar una clave y no verla por ningún lado.
+     *
+     * Si la derivación fallara se guarda igual con lo que haya: perder la clave
+     * por no poder adornarla sería mucho peor que una entrada incompleta.
+     */
+    private fun guardarHallazgoKangaroo(claveHex: String, deDonde: String) {
+        var addr = ""; var wif = ""
+        try {
+            val d = HunterEngine.datosDeClave(claveHex)
+            if (d.contains("|")) { wif = d.substringBefore("|"); addr = d.substringAfter("|") }
+        } catch (e: Throwable) {
+            android.util.Log.w("MainActivity", "datosDeClave: ${e.message}")
+        }
+        try {
+            MatchVault.add(this, MatchVault.Entry(
+                ts = System.currentTimeMillis(), source = "kangaroo",
+                addr = addr, wif = wif, privHex = claveHex, btc = 0.0,
+                extra = deDonde, checkedTs = 0L))
+        } catch (e: Exception) {
+            android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
+        }
     }
 
     private fun applyPuzzle(p: PuzzleInfo) {

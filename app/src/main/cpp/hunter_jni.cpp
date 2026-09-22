@@ -1383,6 +1383,49 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     return env->NewStringUTF(addr);
 }
 
+/* De una clave privada en hexadecimal, su WIF y su direccion.
+ *
+ * Kangaroo devuelve la clave y nada mas, y asi es como se guardaba en el baul:
+ * con la direccion y el WIF vacios. La entrada quedaba ahi, pero sin nada que
+ * la identificara ni nada con lo que gastar, o sea que parecia que no se habia
+ * guardado. Encontrar una clave y que no se vea es de lo peor que puede hacer
+ * este programa.
+ *
+ * @return "WIF|direccion", o "" si la clave no es valida.
+ */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_datosDeClave(JNIEnv *env, jobject, jstring jhex){
+    const char *hex = env->GetStringUTFChars(jhex, nullptr);
+    if(!hex || strlen(hex)!=64){ if(hex) env->ReleaseStringUTFChars(jhex,hex);
+                                 return env->NewStringUTF(""); }
+    uint8_t privkey[32]={0};
+    int malo=0;
+    for(int i=0;i<32;i++){
+        int a=-1,b=-1;
+        char c1=hex[i*2], c2=hex[i*2+1];
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        else if(c1>='A'&&c1<='F')a=c1-'A'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        else if(c2>='A'&&c2<='F')b=c2-'A'+10;
+        if(a<0||b<0){ malo=1; break; }
+        privkey[i]=(uint8_t)((a<<4)|b);
+    }
+    env->ReleaseStringUTFChars(jhex,hex);
+    if(malo) return env->NewStringUTF("");
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    if(!secp256k1_ec_seckey_verify(ctx,privkey)){
+        secp256k1_context_destroy(ctx);
+        return env->NewStringUTF("");
+    }
+    uint8_t h160[20]; char addr[64]={0}, wif[60]={0};
+    pk_to_h160(ctx,privkey,h160);
+    h160_to_addr(h160,addr);
+    pk_to_wif(privkey,wif);
+    secp256k1_context_destroy(ctx);
+    std::string r=std::string(wif)+"|"+addr;
+    return env->NewStringUTF(r.c_str());
+}
+
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
     std::string s=coinc_pop(&g_matches);

@@ -28,6 +28,16 @@ object HunterEngine {
     external fun popLog(): String
     external fun getMatches(): String
     external fun wifToAddr(wif: String): String
+    /**
+     * De una clave privada en hexadecimal, su WIF y su dirección: `"WIF|addr"`,
+     * o `""` si no vale.
+     *
+     * Kangaroo devuelve la clave y nada más. Sin esto se guardaba en el baúl con
+     * la dirección y el WIF vacíos: la entrada estaba, pero sin nada que la
+     * identificara ni nada con lo que gastar, así que parecía que no se había
+     * guardado nada.
+     */
+    external fun datosDeClave(privHex: String): String
     external fun popMatch(): String
     external fun popRecentAddr(): String
     /**
