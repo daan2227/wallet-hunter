@@ -123,6 +123,46 @@ static int sc_sub(sc_t r,const sc_t a,const sc_t b){
     }
     return borrow?0:1;
 }
+/* ---------- Aritmetica modulo el orden del grupo ----------
+ *
+ * Hace falta para poder RESTAR distancias sin salirse. Mientras todos los saltos
+ * van hacia delante, una distancia solo crece y sc_t sin signo basta; en cuanto
+ * un canguro puede ir hacia atras —que es lo que hace el mapa de negacion, donde
+ * cambiar P por -P cambia d por -d— hay que trabajar en Z_n.
+ *
+ * n es el orden del grupo de secp256k1: cuantos puntos distintos hay. d*G y
+ * (d+n)*G son el mismo punto, asi que las distancias viven ahi de forma natural.
+ */
+static const sc_t SC_N = {
+    0xBFD25E8CD0364141ULL, 0xBAAEDCE6AF48A03BULL,
+    0xFFFFFFFFFFFFFFFEULL, 0xFFFFFFFFFFFFFFFFULL
+};
+
+/* r = (a + b) mod n. Exige a,b < n. */
+static void sc_add_n(sc_t r,const sc_t a,const sc_t b){
+    uint64_t acarreo=0; sc_t t;
+    for(int i=0;i<4;i++){
+        __uint128_t s=(__uint128_t)a[i]+b[i]+acarreo;
+        t[i]=(uint64_t)s; acarreo=(uint64_t)(s>>64);
+    }
+    /* a+b < 2n, asi que con restar n una vez basta. Si hubo acarreo fuera de los
+       256 bits, la resta con prestamo da justo a+b-n: no es un caso aparte. */
+    if(acarreo || sc_cmp(t,SC_N)>=0) sc_sub(r,t,SC_N);
+    else                             sc_copy(r,t);
+}
+
+/* r = -a mod n. Exige a < n. */
+static void sc_neg_n(sc_t r,const sc_t a){
+    int cero=1; for(int i=0;i<4;i++) if(a[i]) cero=0;
+    if(cero){ sc_zero(r); return; }      /* -0 = 0, y n-0 = n no vale */
+    sc_sub(r,SC_N,a);
+}
+
+/* r = (a - b) mod n. Exige a,b < n. */
+static void sc_sub_n(sc_t r,const sc_t a,const sc_t b){
+    sc_t nb; sc_neg_n(nb,b); sc_add_n(r,a,nb);
+}
+
 /* r = a >> s. Se usa para sacar fracciones del ancho del intervalo (W/2, W/4...)
  * al repartir los puntos de salida. Solo en la preparacion. */
 static void sc_shr(sc_t r,const sc_t a,int s){
@@ -305,6 +345,14 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * de OTRO puzzle y se ignora. Mezclar dos tablas daria colisiones que no
  * significan nada. */
 
+/* Mapa de negacion: 0 apagado, 1 encendido. Ver el campo `negacion` del
+ * contexto para el razonamiento entero.
+ *
+ * Va suelto por lo mismo que kg_politica_saltos: kg_setup tiene que saberlo
+ * ANTES de construir nada, porque cambia a donde se traslada el objetivo. Se
+ * copia al contexto en kg_setup y a partir de ahi se lee de ahi. */
+static int kg_negacion = 1;
+
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
 /* Version 2: cada entrada lleva ademas la marca de "ya enviado".
  *
@@ -329,9 +377,17 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * las malas dentro del fichero, asi que en esos rangos se tira la tabla vieja.
  * En rangos pequenos nunca hubo problema y se siguen leyendo.
  */
-#define KG_VER   3u
+/* Version 4: las distancias de los SALVAJES van medidas desde el centro del
+ * intervalo y no desde su inicio, que es lo que pide el mapa de negacion.
+ *
+ * No hace falta tirar nada: P' = P'' + (W/2)*G, asi que una distancia de
+ * salvaje medida desde P' es esa misma mas W/2 medida desde P''. dp_load la
+ * convierte al vuelo en los dos sentidos. Las de los mansos no cambian: un
+ * manso esta en d*G y eso no depende de donde se traslade el objetivo. */
+#define KG_VER   4u
 #define KG_VER_SIN_ENVIADO 1u
 #define KG_VER_CON_ENVIADO 2u
+#define KG_VER_SIN_CENTRAR 3u
 /* A partir de este ancho de intervalo, la tabla de saltos vieja se topaba. */
 #define KG_BITS_SALTOS_ROTOS 118
 
@@ -355,7 +411,10 @@ static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
     pthread_mutex_lock(&t->mtx);
     KgCab c;
     memset(&c,0,sizeof(c));
-    c.magic=KG_MAGIC; c.ver=KG_VER; c.dbits=(uint32_t)dbits; c.ops=ops;
+    /* La version dice desde donde se miden las distancias de los salvajes, que
+       es lo unico que cambia con el mapa de negacion. */
+    c.magic=KG_MAGIC; c.ver=kg_negacion?KG_VER:KG_VER_SIN_CENTRAR;
+    c.dbits=(uint32_t)dbits; c.ops=ops;
     memcpy(c.pub,pub,33); memcpy(c.ini,ini,32); memcpy(c.fin,fin,32);
     c.n=t->guardados;
     int ok=(fwrite(&c,sizeof(c),1,f)==1);
@@ -390,7 +449,8 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
        tirar la tabla de alguien por eso seria una faena mucho mayor que el
        ultimo reenvio que provoca. */
     if(c.magic!=KG_MAGIC ||
-       (c.ver!=KG_VER && c.ver!=KG_VER_CON_ENVIADO && c.ver!=KG_VER_SIN_ENVIADO) ||
+       (c.ver!=KG_VER && c.ver!=KG_VER_SIN_CENTRAR &&
+        c.ver!=KG_VER_CON_ENVIADO && c.ver!=KG_VER_SIN_ENVIADO) ||
        c.dbits!=(uint32_t)dbits ||
        memcmp(c.pub,pub,33)!=0 || memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){
         fclose(f); return 0;
@@ -400,13 +460,18 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
        de movil— y aun asi es lo correcto: lo que hay ahi dentro no puede
        resolver nada, y guardarlo solo sirve para reenviarlo al master para
        siempre. */
-    if(c.ver!=KG_VER){
-        sc_t a,b,ancho;
-        sc_from_be32(a,ini); sc_from_be32(b,fin);
-        if(sc_sub(ancho,b,a) && sc_bits(ancho)>KG_BITS_SALTOS_ROTOS){
-            fclose(f); return 0;
-        }
+    sc_t rango_a,rango_b,ancho,medio;
+    sc_from_be32(rango_a,ini); sc_from_be32(rango_b,fin);
+    if(!sc_sub(ancho,rango_b,rango_a)){ fclose(f); return 0; }
+    sc_shr(medio,ancho,1);
+    if(c.ver==KG_VER_SIN_ENVIADO || c.ver==KG_VER_CON_ENVIADO){
+        if(sc_bits(ancho)>KG_BITS_SALTOS_ROTOS){ fclose(f); return 0; }
     }
+    /* ¿Desde donde mide el fichero las distancias de los salvajes, y desde
+       donde las mide este motor? Si no coinciden hay que convertirlas: son
+       exactamente W/2 de diferencia, ni una mas. */
+    int fichero_centrado = (c.ver==KG_VER);
+    int motor_centrado   = kg_negacion?1:0;
     int con_enviado = (c.ver!=KG_VER_SIN_ENVIADO);
     uint64_t leidas=0;
     for(uint64_t i=0;i<c.n;i++){
@@ -415,6 +480,10 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
         if(fread(d,8,4,f)!=4) break;
         if(fread(&manso,1,1,f)!=1) break;
         if(con_enviado && fread(&env,1,1,f)!=1) break;
+        if(!manso && fichero_centrado!=motor_centrado){
+            if(motor_centrado) sc_add_n(d,d,medio);   /* de P' a P'' */
+            else               sc_sub_n(d,d,medio);   /* de P'' a P' */
+        }
         sc_t basura; int bm;
         /* NULL: aqui no hay canguro al que volver a soltar, se esta leyendo un
            fichero. Repetido solo significa que ya estaba. */
@@ -503,6 +572,7 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
  * saberlo antes de tener contexto. */
 static int kg_politica_saltos = 0;
 
+
 typedef struct {
     /* Objetivo, ya trasladado a [0,W]: P' = P - a*G */
     JP       objetivo;
@@ -511,6 +581,54 @@ typedef struct {
     sc_t     rango_ini;      /* a */
     sc_t     ancho;          /* W = b - a */
     int      bits;           /* log2(W), para dimensionar */
+    /* Lo que hay que volver a sumar a la incognita para tener la clave.
+     * Sin mapa de negacion es `a` y ya esta. Con el es a + W/2, porque el
+     * problema se traslada al CENTRO del intervalo — ver `negacion`. */
+    sc_t     desp;
+    sc_t     medio;          /* W/2 */
+
+    /* ---- Mapa de negacion ----
+     *
+     * 0 = apagado (todos los saltos hacia delante, distancias que solo crecen).
+     * 1 = encendido.
+     *
+     * DE DONDE SALE LA GANANCIA. En esta curva -P = (x,-y): un punto y su
+     * opuesto comparten la x, o sea que son el mismo a efectos de la tabla de
+     * distinguidos, que va indexada por la x. Si ademas el CAMINO se queda
+     * siempre con el mismo representante de la pareja {P,-P}, el espacio a
+     * recorrer se parte por la mitad y el coste, que va con la raiz, baja en
+     * raiz(2) = 1,41.
+     *
+     * POR QUE HAY QUE TRASLADAR AL CENTRO. La clave esta en [a,b], o sea que la
+     * incognita relativa esta en [0,W): toda positiva. Identificar d con -d no
+     * dobla nada si todo lo que hay es positivo — el opuesto cae en una zona por
+     * la que no pasa nadie. Trasladando el objetivo a a+W/2, la incognita queda
+     * en [-W/2, W/2] y su valor absoluto en [0, W/2]: AHI la identificacion si
+     * parte el problema por la mitad, y por eso los mansos solo tienen que
+     * cubrir W/2 en vez de W.
+     *
+     * LO QUE CUESTA. Las distancias pasan a poder ir hacia atras, asi que viven
+     * en Z_n (ver sc_add_n). Y aparecen los ciclos esteriles: ver `eps` y el
+     * escape en kg_run.
+     *
+     * MEDIDO (tools/ec-harness/constante, 30 bits, 256 canguros, 400 tandas):
+     *
+     *     sin negacion, tabla de ~20 saltos    2,27
+     *     con negacion, tabla de ~20 saltos    1,99     1,14 veces
+     *     sin negacion, tabla de 32 saltos     2,33
+     *     con negacion, tabla de 32 saltos     1,69     1,38 veces
+     *
+     * Las dos primeras lineas parecen decir que el mapa de negacion solo vale un
+     * 14 %, y no es verdad: lo que frena ahi es el TAMANO DE LA TABLA DE SALTOS
+     * del banco. Los ciclos esteriles aparecen una vez cada 2*njumps pasos, asi
+     * que con una tabla corta hay que escapar a todas horas y el escape se come
+     * la ganancia. Con 32 saltos sale 1,38, que es practicamente el raiz(2)=1,41
+     * teorico.
+     *
+     * En el movil esto no es un problema: la tabla tiene 75 entradas en el #140
+     * y 82 en el #155, o sea mas del doble que las 32 con las que ya se mide
+     * 1,38. Por eso se deja encendido. */
+    int      negacion;
 
     /* Tabla de saltos: S[i] = 2^i * G, en afin */
     int      njumps;
@@ -540,6 +658,10 @@ typedef struct {
      * el fenomeno y no el arreglo, y se puede ver si el arreglo tiene siquiera
      * ocasion de hacer algo. */
     std::atomic<long long> pegados;
+    /* Canguros que ha habido que volver a soltar por llevar demasiado tiempo sin
+     * dar un punto distinguido. Ver `pasos_sin_dp`. Deberia quedarse en cero o
+     * casi; si sube, es que el detector de ciclos no da abasto. */
+    std::atomic<long long> rescatados;
     std::atomic<int>       parar;
     /* Porcentaje de CPU, 1..100. Kangaroo no tenia freno: el selector de
        potencia estaba puesto pero no hacia nada, y "Baja" calentaba el movil
@@ -658,6 +780,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     memset(c->jlen,0,sizeof(c->jlen));
     memset(&c->tabla,0,sizeof(c->tabla));
     sc_zero(c->rango_ini); sc_zero(c->ancho); sc_zero(c->k); c->bits=0;
+    sc_zero(c->desp); sc_zero(c->medio); c->negacion=0;
     fe_t px,py;
     if(!kg_decompress(pub33,px,py)) return 0;
 
@@ -671,28 +794,40 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         if((c->ancho[w]>>i)&1){ c->bits=w*64+i+1; w=-1; break; }
     if(c->bits<4) return 0;
 
-    /* P' = P - a*G : se resta el inicio del rango para que la incognita quede
-       en [0,W] y las distancias sean pequenas. */
+    sc_shr(c->medio,c->ancho,1);              /* W/2 */
+    c->negacion = kg_negacion ? 1 : 0;
+    /* Cuanto se traslada el objetivo, y por tanto cuanto hay que volver a sumar
+       al final. Sin mapa de negacion, el inicio del rango: la incognita queda en
+       [0,W]. Con el, el CENTRO del intervalo: queda en [-W/2, W/2], que es lo
+       que permite que identificar d con -d parta el problema por la mitad.
+       a + W/2 no puede desbordar: a cabe de sobra en 161 bits en los puzzles que
+       existen, y aqui hay 256. */
+    if(c->negacion) sc_add(c->desp,c->rango_ini,c->medio);
+    else            sc_copy(c->desp,c->rango_ini);
+
+    /* P'' = P - desp*G, para que la incognita sea pequena y las distancias
+       tambien. */
     JP P; memcpy(P.x,px,32); memcpy(P.y,py,32); memset(P.z,0,32); P.z[0]=1;
     int es_cero=1;
-    for(int i=0;i<4;i++) if(c->rango_ini[i]) es_cero=0;
+    for(int i=0;i<4;i++) if(c->desp[i]) es_cero=0;
     if(es_cero){
         c->objetivo=P;
     }else{
-        JP aG; kg_scalar_mul(&aG,c->rango_ini,FIELD_GX,FIELD_GY);
+        JP aG; kg_scalar_mul(&aG,c->desp,FIELD_GX,FIELD_GY);
         fe_t ax,ay; kg_normalize(&aG,ax,ay);
-        fe_t cero,nay; memset(cero,0,32); fe_sub(nay,cero,ay);   /* -a*G */
+        fe_t cero,nay; memset(cero,0,32); fe_sub(nay,cero,ay);   /* -desp*G */
         jp_add_affine(&c->objetivo,&P,ax,nay);
-        /* Si la clave es EXACTAMENTE el inicio del rango, P' sale el punto en
+        /* Si la clave es EXACTAMENTE el punto de traslado, P'' sale el punto en
            el infinito y el rebano salvaje nace muerto. Pasa una vez entre 2^69,
-           pero devolver "no encontrada" ahi seria mentir: la respuesta es a. */
+           pero devolver "no encontrada" ahi seria mentir: la respuesta es desp. */
         int inf=1; for(int i=0;i<4;i++) if(c->objetivo.z[i]) inf=0;
         if(inf){
-            sc_copy(c->k,c->rango_ini);
+            sc_copy(c->k,c->desp);
             c->objetivo_ok=1;
             c->dbits=dp_bits; c->dmask=0;
             if(!dp_init(&c->tabla,4)) return 0;
             c->encontrado.store(1); c->saltos.store(0); c->pegados.store(0);
+            c->rescatados.store(0);
             c->parar.store(0);
             c->cpu_limite.store(100);
             /* Aunque ya este resuelto, kg_run puede llamarse igual y suelta el
@@ -728,7 +863,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
            splitmix64: es determinista y los dos lados del cluster tienen la
            misma clave publica, asi que construyen la MISMA tabla. Con 32 saltos
            basta para que el camino sea impredecible. */
-        int n=32; if(n>KG_MAX_JUMPS) n=KG_MAX_JUMPS;
+        int n=32; if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
         c->njumps=n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
         for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
@@ -763,7 +898,8 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
             nd=objetivo+l;
         }
         int n=(int)(nd+0.5);
-        if(n>KG_MAX_JUMPS) n=KG_MAX_JUMPS;
+        /* -1: la ultima casilla se reserva para el salto de escape. */
+        if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
         if(n<4) n=4;
         c->njumps=n;
         JP S; memcpy(S.x,FIELD_GX,32); memcpy(S.y,FIELD_GY,32);
@@ -775,11 +911,46 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         }
     }
 
+    /* ---- El salto de escape ----
+     *
+     * Va en la casilla njumps, fuera de la tabla que usa el camino normal, y
+     * solo lo usa el escape de un ciclo esteril. Que NO este en la tabla es
+     * justo lo que lo hace funcionar, y costo una tarde verlo:
+     *
+     * Un ciclo de dos aparece cuando, tras darle la vuelta al punto, el salto
+     * que toca es el MISMO que se acaba de usar. Si el escape usara otro indice
+     * de la tabla, la vuelta al mismo ciclo volveria a ser posible con
+     * probabilidad 1/njumps — y como el escape es determinista, al fallar una
+     * vez falla siempre: el canguro se queda atrapado para siempre, andando y
+     * sin llegar a ningun punto distinguido. Medido antes de esto: 27.435
+     * saltos por punto guardado, cuando tocaban 64.
+     *
+     * Con un salto que no esta en la tabla, volver al mismo sitio exigiria que
+     * algun salto de la tabla valiera exactamente lo mismo que el de escape. Se
+     * elige uno que no coincide con ninguno, asi que no puede pasar.
+     *
+     * La longitud es pequena a proposito: lo unico que tiene que hacer es sacar
+     * al canguro del ciclo, y desde el punto nuevo el camino sigue como siempre.
+     */
+    {
+        sc_t le; sc_set_u64(le,3);         /* 3 no es potencia de dos */
+        for(int intento=0;intento<64;intento++){
+            int choca=0;
+            for(int i=0;i<c->njumps;i++) if(sc_cmp(c->jlen[i],le)==0){ choca=1; break; }
+            if(!choca) break;
+            sc_add_u64(le,2);
+        }
+        sc_copy(c->jlen[c->njumps],le);
+        JP E; kg_scalar_mul(&E,le,FIELD_GX,FIELD_GY);
+        kg_normalize(&E,c->jx[c->njumps],c->jy[c->njumps]);
+    }
+
     c->dbits=dp_bits; c->dmask=(dp_bits>=64)?~0ULL:((1ULL<<dp_bits)-1);
     if(!dp_init(&c->tabla,tabla_bits)) return 0;
     c->encontrado.store(0);
     c->saltos.store(0);
     c->pegados.store(0);
+    c->rescatados.store(0);
     c->parar.store(0);
     c->cpu_limite.store(100);
     c->politica_salida=2;
@@ -807,23 +978,55 @@ static void kg_free(KangarooCtx *c){ dp_free(&c->tabla); }
  *
  * @return 1 si la clave era buena y queda guardada en c->k.
  */
-static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
-                       const sc_t d_otro){
-    sc_t manso,salvaje;
-    if(manso_mio){ sc_copy(manso,d_mio); sc_copy(salvaje,d_otro); }
-    else         { sc_copy(manso,d_otro); sc_copy(salvaje,d_mio); }
-    sc_t kp;
-    if(!sc_sub(kp,manso,salvaje)) return 0;
-    if(sc_cmp(kp,c->ancho)>0) return 0;
+/* Prueba UN candidato: ¿es kp la incognita trasladada?
+ *
+ * Dos filtros, y los dos hacen falta:
+ *   - kp*G tiene que dar el objetivo. Esto NO distingue kp de kp-n, porque
+ *     n*G es el infinito y los dos dan el mismo punto.
+ *   - la clave resultante tiene que caer dentro de [a,b]. Esto si los
+ *     distingue, y es lo que descarta las restas que se fueron en negativo.
+ */
+static int kg_resolver_uno(KangarooCtx *c,const sc_t kp){
     JP chk; kg_scalar_mul(&chk,kp,FIELD_GX,FIELD_GY);
     int inf=1; for(int z=0;z<4;z++) if(chk.z[z]) inf=0;
     if(inf) return 0;
     fe_t cx,cy; kg_normalize(&chk,cx,cy);
     if(memcmp(cx,c->obj_x,32)!=0 || memcmp(cy,c->obj_y,32)!=0) return 0;
-    sc_t kfinal; sc_add(kfinal,kp,c->rango_ini);
+    sc_t kfinal; sc_add_n(kfinal,kp,c->desp);
+    sc_t rel;
+    if(!sc_sub(rel,kfinal,c->rango_ini)) return 0;   /* por debajo de a */
+    if(sc_cmp(rel,c->ancho)>0) return 0;             /* por encima de b */
     sc_copy(c->k,kfinal);
     c->encontrado.store(1);
     return 1;
+}
+
+static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
+                       const sc_t d_otro){
+    sc_t manso,salvaje;
+    if(manso_mio){ sc_copy(manso,d_mio); sc_copy(salvaje,d_otro); }
+    else         { sc_copy(manso,d_otro); sc_copy(salvaje,d_mio); }
+
+    sc_t kp;
+    sc_sub_n(kp,manso,salvaje);
+    if(kg_resolver_uno(c,kp)) return 1;
+
+    /* Con mapa de negacion, ninguno de los dos guarda si esta en su punto o en
+     * el opuesto: no hace falta. El manso esta en e_m*d_m*G y el salvaje en
+     * e_s*(P'' + d_s*G); igualando y multiplicando por e_s sale
+     *
+     *     P'' = (e_m*e_s*d_m - d_s) * G
+     *
+     * o sea que solo cuenta el PRODUCTO de los dos signos: hay dos candidatos,
+     * d_m - d_s y -d_m - d_s. Se prueban los dos y kg_resolver_uno se queda con
+     * el que cuadre. Por eso el signo no viaja por la red ni ocupa sitio en la
+     * tabla: sale mas barato probar dos veces una vez que guardarlo siempre. */
+    if(c->negacion){
+        sc_t nm; sc_neg_n(nm,manso);
+        sc_sub_n(kp,nm,salvaje);
+        if(kg_resolver_uno(c,kp)) return 1;
+    }
+    return 0;
 }
 
 /* ---------- Reparto por red ----------
@@ -866,7 +1069,11 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
  * —"Puntos recibidos" se queda quieto—, que es justo lo que hay que ver. La
  * alternativa era un cluster con buena pinta que no puede encontrar nada, que
  * es de donde venimos. */
-#define KG_NET_VER   2u
+/* Version 3: las distancias de los salvajes van medidas desde el centro, por el
+ * mapa de negacion (ver KG_VER). Aqui no se convierte al vuelo como en el
+ * fichero: dos aparatos que no coincidan tienen caminos distintos y ademas no se
+ * cruzarian bien, asi que es mejor que se rechacen y se vea. */
+#define KG_NET_VER   3u
 /* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
    struct, para que el relleno del compilador no forme parte del formato. */
 #define KG_NET_CAB   (4+4+33+32+32+4+4)
@@ -1056,7 +1263,85 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
  * tools/ec-harness/constante. Si los ciclos se estan comiendo la ganancia, el
  * 1,54 no aparece y se ve en el acto. */
 
-typedef struct { fe_t x, y; sc_t dist; int manso; } Kangaroo;
+/* Cuantas posiciones recuerda cada canguro para detectar ciclos esteriles.
+ * El reparto medido de longitudes esta en el comentario de `ventana`. */
+#define KG_VENTANA 16
+
+typedef struct {
+    fe_t x, y;
+    sc_t dist;
+    int  manso;
+    /* ---- Solo con mapa de negacion ----
+     *
+     * La invariante deja de ser "el canguro esta en base + dist*G" y pasa a ser
+     *
+     *     posicion = eps * (base + dist*G),   eps = +1 o -1
+     *
+     * porque quedarse con el representante canonico de {P,-P} le da la vuelta al
+     * punto. Un salto suma eps*jlen a la distancia; canonizar cambia eps y deja
+     * la distancia igual. El eps NO se guarda en la tabla: al resolver salen dos
+     * candidatos y se prueban los dos. */
+    int  eps;
+
+    /* Ciclos esteriles. Desde un punto P se salta a Q = P + S_h; si al canonizar
+     * hay que darle la vuelta, se sigue en -Q, que tiene la MISMA x que Q y por
+     * tanto el mismo salto h. Si ademas ese h coincide con el de P —una vez de
+     * cada njumps— entonces -Q + S_h = -P, que al canonizar vuelve a ser P: el
+     * canguro se queda dando vueltas entre dos puntos para siempre.
+     *
+     * Pasa una vez de cada 2*njumps pasos, asi que no es raro: sin tratarlo el
+     * rebano se queda parado y la busqueda no avanza, con la UI contando saltos
+     * igual que siempre.
+     *
+     * Se detecta comparando con la x de hace dos pasos. Para escapar hay que
+     * saltar con otro indice, y AQUI ESTA LO DELICADO: el escape tiene que
+     * depender solo del punto, nunca de por donde se venia. Si dos canguros que
+     * se han juntado escapan distinto, se separan y ya no llegan al mismo punto
+     * distinguido — la colision se pierde sin que nada lo diga. Por eso se
+     * escapa siempre desde el MISMO punto del ciclo: el menor de todos ellos.
+     * Dos canguros que caigan en el ciclo, vengan de donde vengan, acaban en el
+     * mismo sitio.
+     *
+     * POR QUE UNA VENTANA Y NO SOLO EL PASO ANTERIOR. Los ciclos no son todos de
+     * longitud dos. Medido a tamano real (njumps=75), sobre 20.000 canguros
+     * sueltos sin detector ninguno:
+     *
+     *     longitud   2      3     4    5   6   mas
+     *     veces    19442   406   136  15   1    0
+     *
+     * El 97 % son de dos, pero la cola importa: entre dos puntos distinguidos
+     * hay ~1,7 millones de ciclos, asi que fallar uno de cada mil seria fallar
+     * mil veces. Con el reparto medido, una ventana de 16 falla menos de una vez
+     * entre 10^12, que sobra. (Con njumps=15 salian ciclos de 82; eran artefacto
+     * del rango de juguete, no del algoritmo.)
+     *
+     * Se guarda (x[0],x[1]) y no la x entera: son los mismos 16 bytes con los
+     * que la tabla de distinguidos identifica un punto. */
+    uint64_t ventana[KG_VENTANA][2];
+    int  vn;              /* cuantas posiciones hay guardadas */
+    int  vpos;            /* siguiente hueco del anillo */
+    uint64_t esc_obj[2];  /* el punto del ciclo desde el que hay que escapar */
+    int  esc_act;         /* 1 = hay un escape pendiente */
+
+    /* Pasos desde el ultimo punto distinguido.
+     *
+     * RED DE SEGURIDAD. La ventana de arriba caza los ciclos que se han medido,
+     * pero no puede prometer que los caza todos: un ciclo mas largo que la
+     * ventana deja al canguro dando vueltas PARA SIEMPRE, andando y sin producir
+     * nada. Y kg_run no tiene forma de salir de ahi, asi que en un rango pequeno
+     * —donde la tabla de saltos es corta y los ciclos largos son mas frecuentes—
+     * el motor se queda colgado. Paso de verdad: la prueba `semilla`, que va en
+     * 22 bits, estuvo diez minutos sin terminar.
+     *
+     * Un punto distinguido sale cada 2^dbits pasos de media, y la espera es
+     * geometrica: pasar de 20 veces esa media tiene probabilidad e^-20, o sea
+     * dos entre mil millones. Asi que si se pasa, no es mala suerte: es que el
+     * canguro no va a ningun sitio. Se le vuelve a soltar y el motor sigue.
+     *
+     * Lo que se pierde es su rastro desde el ultimo distinguido. Lo que se gana
+     * es que no haya ningun camino por el que esto se quede parado. */
+    uint64_t pasos_sin_dp;
+} Kangaroo;
 
 /* Suelta un rebano y lo hace saltar hasta que aparezca la solucion o se pare.
  *
@@ -1098,9 +1383,15 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
        [0, rango_m) con rango_m = W + disp_s, que es lo que hace falta para que
        el terreno de los salvajes quepa entero dentro del de los mansos. */
     sc_t disp_s, rango_m;
-    sc_shr(disp_s,c->ancho,c->salvaje_shift);
+    /* El terreno a cubrir: W normalmente, W/2 con mapa de negacion —el objetivo
+       esta trasladado al centro, asi que la incognita en valor absoluto no pasa
+       de W/2—. Esa mitad es exactamente de donde sale el raiz(2). */
+    sc_t terreno;
+    if(c->negacion) sc_copy(terreno,c->medio); else sc_copy(terreno,c->ancho);
+    if(sc_bits(terreno)==0) sc_set_u64(terreno,1);
+    sc_shr(disp_s,terreno,c->salvaje_shift);
     if(sc_bits(disp_s)==0) sc_set_u64(disp_s,1);
-    sc_add(rango_m,c->ancho,disp_s);
+    sc_add(rango_m,terreno,disp_s);
     int bits_disp=sc_bits(disp_s), bits_rm=sc_bits(rango_m);
 
     /* Un valor al azar en [0, lim), por rechazo. Como lim pasa de 2^(bits-1),
@@ -1143,6 +1434,10 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                siguen dando k = d_m - d_s, que es lo que resuelve kg_resolver.
                Y como d_m llega hasta W + disp y d_s empieza en 0, la resta no
                se queda nunca corta. */
+            /* Con mapa de negacion el objetivo esta trasladado al centro, asi
+               que la incognita vive en [-W/2, W/2] y su valor absoluto en
+               [0, W/2]: los mansos solo tienen que cubrir la MITAD de terreno
+               que antes. De ahi sale el raiz(2). */
             if(manso) azar_bajo(d,rango_m,bits_rm);
             else      azar_bajo(d,disp_s,bits_disp);
         }else{
@@ -1162,15 +1457,24 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
 
         K[i].manso=manso;
         sc_copy(K[i].dist,d);
+        K[i].eps=1;
+        K[i].vn=0; K[i].vpos=0; K[i].esc_act=0;   /* ventana de ciclos limpia */
+        K[i].pasos_sin_dp=0;
         JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
         if(manso){
             kg_normalize(&dG,K[i].x,K[i].y);           /* manso: sale de d*G */
         }else{
             fe_t dx,dy; kg_normalize(&dG,dx,dy);
-            JP w2; jp_add_affine(&w2,&c->objetivo,dx,dy);  /* salvaje: P' + d*G */
+            JP w2; jp_add_affine(&w2,&c->objetivo,dx,dy);  /* salvaje: P'' + d*G */
             int inf=1; for(int j=0;j<4;j++) if(w2.z[j]) inf=0;
             if(inf){ memcpy(K[i].x,c->obj_x,32); memcpy(K[i].y,c->obj_y,32); sc_zero(K[i].dist); }
             else kg_normalize(&w2,K[i].x,K[i].y);
+        }
+        /* Salir ya canonizado. Si no, el primer paso lo haria y el canguro
+           empezaria con el eps al reves de lo que dice su distancia. */
+        if(c->negacion && (K[i].y[0]&1)){
+            fe_t cero; memset(cero,0,32); fe_sub(K[i].y,cero,K[i].y);
+            K[i].eps=-1;
         }
     };
     for(int i=0;i<n_kang;i++) soltar(i,i&1);   /* mitad mansos, mitad salvajes */
@@ -1183,6 +1487,14 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
               coinciden se quedan pegados a partir de ahi. */
         for(int i=0;i<n_kang;i++){
             int h=(int)(K[i].x[0]%(uint64_t)c->njumps);
+            /* Escape de un ciclo esteril: solo al pasar por el punto elegido
+               del ciclo, y con el salto reservado, que no esta en la tabla.
+               Ver el comentario de Kangaroo.ventana y el de kg_setup. */
+            if(K[i].esc_act && K[i].x[0]==K[i].esc_obj[0]
+                            && K[i].x[1]==K[i].esc_obj[1]){
+                h=c->njumps; K[i].esc_act=0;
+                K[i].vn=0; K[i].vpos=0;   /* tras escapar, el camino es otro */
+            }
             jmp[i]=h;
             fe_sub(den[i],c->jx[h],K[i].x);
             /* Denominador cero: el canguro esta justo encima del punto de salto
@@ -1225,7 +1537,17 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
 
             /* Punto distinguido: los dbits bajos de la x a cero. Se mira la
                posicion ACTUAL, antes de saltar. */
+            /* Red de seguridad: un canguro que lleva demasiado sin dar un
+               distinguido no esta de mala suerte, esta atrapado. Ver
+               Kangaroo.pasos_sin_dp. */
+            if(++K[i].pasos_sin_dp > (20ULL<<c->dbits)){
+                c->rescatados.fetch_add(1);
+                soltar(i,K[i].manso);
+                continue;
+            }
+
             if((K[i].x[0]&c->dmask)==0){
+                K[i].pasos_sin_dp=0;
                 sc_t otro; int otro_manso, mismo=0;
                 if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,
                              otro,&otro_manso,&mismo))
@@ -1257,8 +1579,53 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             fe_sub(t1,K[i].x,x3);
             fe_mul(y3,lam,t1);
             fe_sub(y3,y3,K[i].y);
-            memcpy(K[i].x,x3,32); memcpy(K[i].y,y3,32);
-            sc_add(K[i].dist,K[i].dist,c->jlen[h]);
+
+            if(!c->negacion){
+                memcpy(K[i].x,x3,32); memcpy(K[i].y,y3,32);
+                sc_add(K[i].dist,K[i].dist,c->jlen[h]);
+            }else{
+                /* La posicion es eps*(base + dist*G). Sumarle el salto deja eps
+                   igual y mueve la distancia eps*jlen: hacia delante si eps es
+                   +1 y hacia atras si es -1. De ahi que las distancias tengan
+                   que vivir en Z_n. */
+                if(K[i].eps>0) sc_add_n(K[i].dist,K[i].dist,c->jlen[h]);
+                else           sc_sub_n(K[i].dist,K[i].dist,c->jlen[h]);
+
+                /* Canonizar: de la pareja {P,-P} nos quedamos siempre con la de
+                   y par. Eso le da la vuelta al punto, o sea que cambia eps y
+                   deja la distancia como esta. */
+                if(y3[0]&1){
+                    fe_t cero; memset(cero,0,32); fe_sub(y3,cero,y3);
+                    K[i].eps=-K[i].eps;
+                }
+
+                /* ¿Ciclo? Si la posicion nueva es una por la que ya se paso
+                   hace j pasos, el canguro esta dando vueltas a un ciclo de j
+                   puntos: los j ultimos de la ventana. Se escapa desde el MENOR
+                   de ellos, que es un criterio que no depende de por donde se
+                   vino: dos canguros que caigan en este mismo ciclo saldran por
+                   el mismo punto y con el mismo salto, y por tanto seguiran
+                   juntos. Si dependiera de la historia se separarian, y la
+                   colision que ya tenian se perderia sin dejar rastro. */
+                for(int j=1;j<=K[i].vn;j++){
+                    int idx=(K[i].vpos-j+KG_VENTANA)%KG_VENTANA;
+                    if(K[i].ventana[idx][0]!=x3[0] ||
+                       K[i].ventana[idx][1]!=x3[1]) continue;
+                    uint64_t m0=K[i].ventana[idx][0], m1=K[i].ventana[idx][1];
+                    for(int q=1;q<j;q++){
+                        int p2=(K[i].vpos-q+KG_VENTANA)%KG_VENTANA;
+                        uint64_t a0=K[i].ventana[p2][0], a1=K[i].ventana[p2][1];
+                        if(a1<m1 || (a1==m1 && a0<m0)){ m0=a0; m1=a1; }
+                    }
+                    K[i].esc_obj[0]=m0; K[i].esc_obj[1]=m1; K[i].esc_act=1;
+                    break;
+                }
+                K[i].ventana[K[i].vpos][0]=x3[0];
+                K[i].ventana[K[i].vpos][1]=x3[1];
+                K[i].vpos=(K[i].vpos+1)%KG_VENTANA;
+                if(K[i].vn<KG_VENTANA) K[i].vn++;
+                memcpy(K[i].x,x3,32); memcpy(K[i].y,y3,32);
+            }
         }
         c->saltos.fetch_add((long long)n_kang);
         if(c->encontrado.load()) break;

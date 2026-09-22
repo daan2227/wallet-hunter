@@ -261,3 +261,56 @@ tools/desde-cero.sh
 Exporta **sólo lo que sigue git** a un directorio temporal y corre el banco desde
 ahí. Correr desde otro sitio pilla las rutas absolutas; exportar sólo lo seguido
 pilla los ficheros que hacen falta y nadie subió.
+
+## El mapa de negación
+
+En esta curva `-P = (x, -y)`: un punto y su opuesto comparten la x, así que son
+el mismo a efectos de la tabla de distinguidos. Si además el **camino** se queda
+siempre con el mismo representante de la pareja `{P,-P}`, el espacio a recorrer
+se parte por la mitad y el coste, que va con la raíz, baja en √2 = 1,41.
+
+Hay que trasladar el objetivo al **centro** del intervalo para que sirva de algo:
+la incógnita relativa está en `[0,W)`, toda positiva, y identificar `d` con `-d`
+no dobla nada si el opuesto cae donde no pasa nadie. Centrando, la incógnita
+queda en `[-W/2, W/2]` y su valor absoluto en `[0, W/2]`.
+
+```
+sin negación, tabla de ~20 saltos    2.27
+con negación, tabla de ~20 saltos    1.99     1.14 veces
+sin negación, tabla de 32 saltos     2.33
+con negación, tabla de 32 saltos     1.69     1.38 veces
+```
+
+Las dos primeras líneas parecen decir que sólo vale un 14 %, y no es verdad: lo
+que frena ahí es el tamaño de la tabla de saltos del banco. En el #140 la tabla
+tiene 75 entradas, más del doble de las 32 con las que ya se mide 1,38.
+
+### Los ciclos estériles, que es donde está la dificultad
+
+Desde `P` se salta a `Q = P + S_h`; si al canonizar hay que darle la vuelta, se
+sigue en `-Q`, que tiene la **misma x** que `Q` y por tanto el mismo salto. Si
+ese salto coincide con el anterior, `-Q + S_h = -P`, que al canonizar vuelve a
+ser `P`: el canguro rebota entre dos puntos para siempre. Pasa una vez cada
+`2·njumps` pasos, así que no es raro.
+
+Tres cosas hicieron falta, y las tres se descubrieron midiendo:
+
+1. **El salto de escape no puede estar en la tabla.** Con `(h+1) % njumps` el
+   escape volvía al mismo ciclo con probabilidad `1/njumps`, y como es
+   determinista, al fallar una vez fallaba siempre. Medido entonces: **27.435
+   saltos por punto guardado**, cuando tocaban 64.
+2. **Una ventana, no sólo el paso anterior.** `ciclos.cpp` mide el reparto de
+   longitudes: a tamaño real, 3890 de 2, 84 de 3, 22 de 4, 4 de 5, ninguno mayor.
+   La ventana de 16 sobra, y esa prueba salta si algún día deja de sobrar.
+3. **Una red de seguridad.** La ventana caza los ciclos medidos, no puede
+   prometer que los caza todos, y un canguro atrapado deja `kg_run` sin salida:
+   el motor se cuelga. Le pasó a la prueba `semilla`, que va en 22 bits, donde la
+   tabla de saltos es corta y los ciclos largos más frecuentes. Ahora un canguro
+   que lleve 20 veces lo esperado sin dar un distinguido se vuelve a soltar —la
+   espera es geométrica, así que pasarse de 20 veces la media tiene probabilidad
+   e⁻²⁰— y el contador `rescatados` lo deja ver.
+
+El escape tiene que depender **sólo del punto**, nunca de por dónde se vino: si
+dos canguros que se han juntado escapan distinto, se separan y la colisión que
+ya tenían se pierde sin dejar rastro. Por eso se escapa siempre desde el menor de
+los puntos del ciclo.

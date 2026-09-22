@@ -131,7 +131,7 @@ int main(){
      */
     {
         /* Se fabrica a mano un fichero de version 2: una cabecera y una
-           entrada. No se usa dp_save porque dp_save ya escribe la 3. */
+           entrada. No se usa dp_save, que escribe la version de ahora. */
         auto escribe_v2=[&](const char *ruta,const uint8_t *pi,const uint8_t *pf){
             FILE *g=fopen(ruta,"wb");
             if(!g) return false;
@@ -190,6 +190,96 @@ int main(){
         f+=(l_gra!=0);
         kg_free(&c9);
         remove("/tmp/kg_v2_peq.dat"); remove("/tmp/kg_v2_gra.dat");
+    }
+
+    /* 8) Una tabla guardada SIN mapa de negacion se lee CON el, y al reves.
+     *
+     * El mapa de negacion traslada el objetivo al centro del intervalo, asi que
+     * las distancias de los salvajes pasan a medirse desde otro sitio: P' era
+     * P-a*G y P'' es P-(a+W/2)*G. Como P' = P'' + (W/2)*G, la conversion es
+     * exacta —sumar o restar W/2— y no hay que tirar el trabajo de nadie.
+     *
+     * Si la conversion estuviera mal, la tabla cargaria igual, el contador de
+     * puntos diria lo mismo y NADA resolveria. Otra vez el fallo sin sintoma.
+     * Se comprueba con la invariante: un salvaje tiene que estar en P''+d*G.
+     */
+    {
+        int antes=kg_negacion;
+
+        /* Guardar sin negacion. */
+        kg_negacion=0;
+        KangarooCtx cs; kg_setup(&cs,pub,ini,fin,7,18);
+        pthread_t th2;
+        struct B{KangarooCtx*c;}; static B br; br.c=&cs;
+        pthread_create(&th2,NULL,[](void*p)->void*{
+            B*x=(B*)p; kg_run(x->c,32,4321); return NULL;},&br);
+        struct timespec ts2={0,120*1000*1000}; nanosleep(&ts2,NULL);
+        cs.parar.store(1); pthread_join(th2,NULL);
+        uint64_t guardados=cs.tabla.guardados;
+        dp_save(&cs.tabla,"/tmp/kg_sin_neg.dat",pub,ini,fin,7,0);
+        kg_free(&cs);
+
+        /* Leerla con negacion: el contexto ya esta centrado. */
+        kg_negacion=1;
+        KangarooCtx cn; kg_setup(&cn,pub,ini,fin,7,18);
+        uint64_t leidas=dp_load(&cn.tabla,"/tmp/kg_sin_neg.dat",pub,ini,fin,7,NULL);
+        printf("%s  se lee una tabla de antes del mapa de negacion (%llu de %llu)\n",
+               (leidas>0&&leidas==guardados)?"OK ":"MAL",
+               (unsigned long long)leidas,(unsigned long long)guardados);
+        f+=!(leidas>0&&leidas==guardados);
+
+        /* Y sus salvajes tienen que cuadrar con el objetivo NUEVO. */
+        uint64_t sal=0, sal_ok=0, man=0, man_ok=0;
+        for(uint64_t i=0;i<=cn.tabla.mask;i++){
+            DP *sl=&cn.tabla.slots[i];
+            if(!sl->usado) continue;
+            JP P; kg_scalar_mul(&P,sl->dist,FIELD_GX,FIELD_GY);
+            int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
+            if(!sl->manso){
+                if(inf){ sal++; continue; }
+                fe_t dx,dy; kg_normalize(&P,dx,dy);
+                JP W2; jp_add_affine(&W2,&cn.objetivo,dx,dy); P=W2;
+                inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
+            }
+            if(inf){ if(sl->manso) man++; else sal++; continue; }
+            fe_t x,y; kg_normalize(&P,x,y);
+            int bien=(x[0]==sl->kx[0]&&x[1]==sl->kx[1]);
+            if(sl->manso){ man++; man_ok+=bien; } else { sal++; sal_ok+=bien; }
+        }
+        printf("%s  y las distancias quedan bien (mansos %llu/%llu, salvajes %llu/%llu)\n",
+               (man==man_ok&&sal==sal_ok&&sal>0)?"OK ":"MAL",
+               (unsigned long long)man_ok,(unsigned long long)man,
+               (unsigned long long)sal_ok,(unsigned long long)sal);
+        f+=!(man==man_ok&&sal==sal_ok&&sal>0);
+
+        /* Ida y vuelta: guardar con negacion y leer sin ella. */
+        dp_save(&cn.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,0);
+        kg_negacion=0;
+        KangarooCtx cv; kg_setup(&cv,pub,ini,fin,7,18);
+        uint64_t vuelta=dp_load(&cv.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,NULL);
+        uint64_t s2=0,s2ok=0;
+        for(uint64_t i=0;i<=cv.tabla.mask;i++){
+            DP *sl=&cv.tabla.slots[i];
+            if(!sl->usado||sl->manso) continue;
+            JP P; kg_scalar_mul(&P,sl->dist,FIELD_GX,FIELD_GY);
+            int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
+            if(inf){ s2++; continue; }
+            fe_t dx,dy; kg_normalize(&P,dx,dy);
+            JP W2; jp_add_affine(&W2,&cv.objetivo,dx,dy);
+            inf=1; for(int z=0;z<4;z++) if(W2.z[z]) inf=0;
+            if(inf){ s2++; continue; }
+            fe_t x,y; kg_normalize(&W2,x,y);
+            s2++; s2ok+=(x[0]==sl->kx[0]&&x[1]==sl->kx[1]);
+        }
+        printf("%s  y de vuelta tambien (salvajes %llu/%llu de %llu leidas)\n",
+               (s2>0&&s2==s2ok)?"OK ":"MAL",
+               (unsigned long long)s2ok,(unsigned long long)s2,
+               (unsigned long long)vuelta);
+        f+=!(s2>0&&s2==s2ok);
+
+        kg_free(&cn); kg_free(&cv);
+        remove("/tmp/kg_sin_neg.dat"); remove("/tmp/kg_con_neg.dat");
+        kg_negacion=antes;
     }
 
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");

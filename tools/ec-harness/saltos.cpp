@@ -45,9 +45,15 @@ static void todo_unos_be(uint8_t *be,int bits){   /* 2^(bits+1)-1 */
 typedef struct { KangarooCtx *c; int n_kang; uint64_t sem; } Arg;
 static void *anda(void *p){ Arg *a=(Arg*)p; kg_run(a->c,a->n_kang,a->sem); return NULL; }
 
-/* Comprueba la invariante sobre los puntos que hayan quedado en la tabla. */
+/* Comprueba la invariante sobre los puntos que hayan quedado en la tabla.
+ *
+ * Con mapa de negacion la invariante es otra: la posicion es eps*(base+dist*G)
+ * con eps a +1 o -1, y el eps NO se guarda. Pero un punto y su opuesto tienen la
+ * MISMA x —que es justo de donde sale la ganancia— asi que comparar la x vale
+ * igual sin saber el signo, y es lo que identifica un punto en la tabla. */
 static void prueba(int bits,const char *et){
-    printf("\n%s (intervalo de %d bits):\n",et,bits);
+    printf("\n%s (intervalo de %d bits%s):\n",et,bits,
+           kg_negacion?", con mapa de negacion":"");
     uint8_t ini[32],fin[32],pub[33];
     pot2_be(ini,bits); todo_unos_be(fin,bits);
 
@@ -133,7 +139,7 @@ static void prueba(int bits,const char *et){
  * asi que hay que probarlo con esas y no con las de un rango de juguete.
  */
 static void prueba_ida_y_vuelta(void){
-    printf("\n5. Una distancia de mas de 64 bits, por disco y por red:\n");
+    printf("\n7. Una distancia de mas de 64 bits, por disco y por red:\n");
     const int BITS=139, DB=6;
     uint8_t ini[32],fin[32],pub[33];
     pot2_be(ini,BITS); todo_unos_be(fin,BITS);
@@ -224,7 +230,7 @@ static void prueba_ida_y_vuelta(void){
  * asi que esto prueba la aritmetica sin gastar 2^70 operaciones.
  */
 static void prueba_resolver_grande(void){
-    printf("\n6. La resta que da la clave, con distancias de mas de 64 bits:\n");
+    printf("\n8. La resta que da la clave, con distancias de mas de 64 bits:\n");
     const int BITS=139, DB=6;
     uint8_t ini[32],fin[32],pub[33];
     pot2_be(ini,BITS); todo_unos_be(fin,BITS);
@@ -291,6 +297,13 @@ int main(){
     prueba(119,"2. Justo donde la tabla de saltos se topa");
     prueba(139,"3. Puzzle #140");
     prueba(154,"4. Puzzle #155");
+    /* Y lo mismo con mapa de negacion, que es otro camino del codigo entero:
+       otra invariante, otro traslado del objetivo y distancias que pueden ir
+       hacia atras. */
+    kg_negacion=1;
+    prueba(40, "5. Con negacion, rango pequeno (control)");
+    prueba(139,"6. Con negacion, puzzle #140");
+    kg_negacion=0;
     prueba_ida_y_vuelta();
     prueba_resolver_grande();
     printf("\n%s\n", fallos ? "HAY FALLOS" : "TODO CORRECTO");

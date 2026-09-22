@@ -124,16 +124,25 @@ static int cmp_d(const void *a,const void *b){
 
 /* Techo del coste con los valores por defecto del banco (28 bits, 64 canguros).
  *
- * Medido 2,40 +- 0,13, y sale identico desde una copia limpia en otra maquina:
- * esto cuenta operaciones, no segundos, asi que no depende de lo rapido que sea
- * el ordenador. El 2,9 deja cuatro veces el error de holgura.
+ * Medido 2,23 +- 0,13 con lo que trae kg_setup hoy (politica 2 y mapa de
+ * negacion), y sale identico desde una copia limpia en otra maquina: esto cuenta
+ * operaciones, no segundos, asi que no depende de lo rapido que sea el
+ * ordenador. El 2,7 deja tres veces y media el error de holgura.
  *
  * Lo que tiene que saltar es una vuelta a la politica de salida vieja, que en
  * esta misma configuracion da 4,16. */
-#define TECHO 2.9
+#define TECHO 2.7
 
+/* `negacion` se pone en el interruptor global ANTES de lanzar los hilos y no se
+ * toca mientras corren: kg_setup lo lee al construir cada contexto. Cada medida
+ * dice cual quiere, porque mezclar las dos en una misma cifra no diria nada —y
+ * ademas la politica 1, que ya es veinte veces peor, con negacion encima tarda
+ * tanto que el banco deja de terminar. */
 static Resultado medir(int bits,int n_kang,int dbits,int tandas,int politica,
-                       int shift,int soltar_muertos,uint64_t semilla){
+                       int shift,int soltar_muertos,uint64_t semilla,
+                       int negacion){
+    int neg_antes=kg_negacion;
+    kg_negacion=negacion;
     Resultado r; memset(&r,0,sizeof(r));
     r.tandas=tandas;
     double *cs=(double*)calloc(tandas,sizeof(double));
@@ -177,6 +186,7 @@ static Resultado medir(int bits,int n_kang,int dbits,int tandas,int politica,
     }
     for(int q=0;q<4;q++) r.cuartil[q]= n_c[q]? suma_c[q]/n_c[q] : 0;
     free(cs); free(pg);
+    kg_negacion=neg_antes;
     return r;
 }
 
@@ -206,7 +216,7 @@ int main(int argc,char **argv){
     char etiq[64];
 
     /* Lo que corre en el movil, tal cual sale de kg_setup. */
-    Resultado hoy=medir(bits,n_kang,dbits,tandas,-1,0,1,SEM);
+    Resultado hoy=medir(bits,n_kang,dbits,tandas,-1,0,1,SEM,kg_negacion);
     pinta("LA DE AHORA (kg_setup)",hoy);
     if(hoy.fallos) fallos++;
     if(hoy.media>TECHO){
@@ -216,7 +226,7 @@ int main(int argc,char **argv){
     }
     printf("\n");
 
-    Resultado base=medir(bits,n_kang,dbits,tandas,0,0,1,SEM);
+    Resultado base=medir(bits,n_kang,dbits,tandas,0,0,1,SEM,0);
     pinta("politica 0 (ancha)",base);
     if(base.fallos) fallos++;
     {
@@ -230,7 +240,7 @@ int main(int argc,char **argv){
                  : "plano: la perdida NO viene del solape");
     }
 
-    Resultado juntos=medir(bits,n_kang,dbits,tandas,1,0,1,SEM);
+    Resultado juntos=medir(bits,n_kang,dbits,tandas,1,0,1,SEM,0);
     pinta("politica 1 (juntos)",juntos);
     if(juntos.fallos) fallos++;
 
@@ -239,12 +249,32 @@ int main(int argc,char **argv){
     int shifts[]={0,1,2,3,4,6};
     int n_sh = barrido? (int)(sizeof(shifts)/sizeof(shifts[0])) : 3;
     for(int i=0;i<n_sh;i++){
-        Resultado r=medir(bits,n_kang,dbits,tandas,2,shifts[i],1,SEM);
+        Resultado r=medir(bits,n_kang,dbits,tandas,2,shifts[i],1,SEM,0);
         snprintf(etiq,sizeof(etiq),"politica 2 shift %d",shifts[i]);
         pinta(etiq,r);
         if(r.fallos) fallos++;
         if(!r.fallos && r.media>0 && r.media<mejor.media){ mejor=r; mejor_shift=shifts[i]; }
     }
+
+    /* Mapa de negacion. Se mide con la mejor politica de salida para no mezclar
+       dos cambios en una sola cifra. */
+    printf("\n");
+    Resultado ng=medir(bits,n_kang,dbits,tandas,
+                       mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 1, SEM, 1);
+    pinta("la mejor, con negacion",ng);
+    if(ng.fallos) fallos++;
+
+    /* Lo mismo pero con la tabla de saltos al azar, que tiene 32 entradas en vez
+       de las ~20 que pide un rango de 30 bits. Los ciclos esteriles aparecen una
+       vez cada 2*njumps pasos, asi que con mas saltos son mas raros y el escape
+       cuesta menos. Sirve para saber si la ganancia que se ve aqui esta frenada
+       por el tamano de juguete del banco: en el #140 la tabla tiene 75. */
+    kg_politica_saltos=1;
+    Resultado ng32=medir(bits,n_kang,dbits,tandas,
+                         mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 1, SEM, 1);
+    kg_politica_saltos=0;
+    pinta("negacion, tabla de 32",ng32);
+    if(ng32.fallos) fallos++;
 
     /* Saltos al azar frente a potencias de dos. La tabla de potencias de dos
        tiene la mitad de los saltos astronomicamente mas pequenos que la media,
@@ -253,7 +283,7 @@ int main(int argc,char **argv){
     printf("\n");
     kg_politica_saltos=1;
     Resultado az=medir(bits,n_kang,dbits,tandas,
-                       mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 1, SEM);
+                       mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 1, SEM, 0);
     kg_politica_saltos=0;
     pinta("la mejor, saltos al azar",az);
     if(az.fallos) fallos++;
@@ -263,7 +293,7 @@ int main(int argc,char **argv){
        nada. */
     printf("\n");
     Resultado sin=medir(bits,n_kang,dbits,tandas,
-                        mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 0, SEM);
+                        mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 0, SEM, 0);
     pinta("la mejor, SIN soltar muertos",sin);
     if(sin.fallos) fallos++;
 
@@ -285,6 +315,18 @@ int main(int argc,char **argv){
     }else{
         printf("  ninguna variante mejora la politica 0\n");
     }
+    if(ng.media>0 && mejor.media>0){
+        double e=sqrt(ng.error*ng.error+mejor.error*mejor.error);
+        double dif=mejor.media-ng.media;
+        printf("  mapa de negacion               %.2f (%.2f veces)  ->  %s\n",
+               ng.media, mejor.media/ng.media,
+               dif>2*e ? "de verdad" : (-dif>2*e ? "PEOR, de verdad"
+                                                 : "dentro del ruido"));
+    }
+    if(ng32.media>0 && az.media>0)
+        printf("  negacion con tabla de 32       %.2f (%.2f veces sobre %.2f,"
+               " que es la misma tabla sin negacion)\n",
+               ng32.media, az.media/ng32.media, az.media);
     if(az.media>0 && mejor.media>0){
         double e=sqrt(az.error*az.error+mejor.error*mejor.error);
         double dif=mejor.media-az.media;

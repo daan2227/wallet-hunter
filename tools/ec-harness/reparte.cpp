@@ -82,16 +82,24 @@ static void prueba_colision_cruzada(){
     unsigned long long a=1ULL<<23, b=(1ULL<<24)-1;
     unsigned long long kp=12345;              /* clave relativa al inicio */
     unsigned long long k=a+kp;                /* la clave de verdad */
-    unsigned long long e=777;                 /* distancia del salvaje */
-    unsigned long long d=kp+e;                /* la del manso */
+    unsigned long long d=kp+777;              /* distancia del manso */
 
-    /* El manso esta en d*G. El salvaje en objetivo + e*G = (kp+e)*G = d*G.
-       Mismo punto: eso es la colision. */
     uint8_t pub[33]; pub_de(k,pub);
     uint8_t ini[32],fin[32]; be_u64(ini,a); be_u64(fin,b);
 
     KangarooCtx c;
     if(!kg_setup(&c,pub,ini,fin,8,14)){ printf("MAL  setup\n"); fallos++; return; }
+
+    /* El manso esta en d*G y el salvaje en objetivo + e*G; para que sea el
+       MISMO punto hace falta objetivo = (d-e)*G.
+       El objetivo es P - desp*G, o sea (k-desp)*G, asi que d - e = kp - desp + a.
+       Sin mapa de negacion desp es a y sale e = 777 de toda la vida; con el,
+       desp es a + W/2 y el salvaje se mide desde el centro, asi que hay que
+       sumarle W/2. Se saca del propio contexto en vez de escribirlo aqui: una
+       prueba que lleva la convencion a mano deja de probar el motor y pasa a
+       probar lo que alguien creyo que hacia. */
+    unsigned long long e=777;
+    if(c.negacion) e += (b-a)/2;
 
     uint64_t kx[1][2]; x_de(d,kx[0]);
     uint8_t buf[KG_NET_CAB+KG_NET_ENT*4];

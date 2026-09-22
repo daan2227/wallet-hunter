@@ -5332,19 +5332,24 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         kgSegPrevios = prefs.getLong("kangaroo_seg_${pub.take(16)}", 0L)
         kgMuestraMs = 0L; kgMuestraOps = 0L
         recuperarMuestras()
-        // El trabajo que hace falta, en operaciones de grupo: 2,13 veces la raíz
+        // El trabajo que hace falta, en operaciones de grupo: 1,7 veces la raíz
         // del ancho del rango.
         //
-        // El 2,13 no es una estimación: lo mide tools/ec-harness/constante
-        // resolviendo logaritmos discretos de verdad y dividiendo entre √W, y el
-        // banco falla si el motor se sale del techo. Antes ponía 2,2 de memoria,
-        // que resultó ser casualmente parecido al valor bueno mientras el motor
-        // real costaba 4,16 — o sea que el "Estimado" de esta pantalla llevaba
-        // meses siendo el doble de optimista sin que nada lo dijera.
+        // No es una estimación: lo mide tools/ec-harness/constante resolviendo
+        // logaritmos discretos de verdad y dividiendo entre √W, y el banco falla
+        // si el motor se sale del techo. Antes ponía 2,2 de memoria, que resultó
+        // ser casualmente parecido al valor bueno mientras el motor real costaba
+        // 4,16 — o sea que el "Estimado" llevaba meses siendo el doble de
+        // optimista sin que nada lo dijera.
+        //
+        // El 1,7 sale de la medida con tabla de 32 saltos (1,69), que es la que
+        // corresponde a un rango grande: en el #140 la tabla tiene 75 entradas y
+        // los ciclos estériles del mapa de negación son aún más raros, así que si
+        // falla será por optimista de menos.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(ini, 16)
             val b = java.math.BigInteger(fin, 16)
-            2.13 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
+            1.7 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
         } catch (e: Exception) { 0.0 }
         lblEscaneadas?.text = "Operaciones"
         lblRestantes?.text = "Estimado"
