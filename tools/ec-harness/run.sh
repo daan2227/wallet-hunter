@@ -21,11 +21,12 @@ cd "$(dirname "$0")"
 # direcciones - el codificador de direcciones, mainnet y testnet
 # lote     - tamano de lote optimo del bucle de fuerza bruta
 # semilla  - dos aparatos no pueden salir por el mismo sitio
+# velocidad- saltos por segundo: el otro factor, que constante NO mide
 # ciclos   - cuanto miden los ciclos esteriles: dimensiona KG_VENTANA
 # orden    - aritmetica modulo el orden del grupo, atada a la curva
 # saltos   - punto y distancia avanzan a la par, tambien en rangos grandes
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos"
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
@@ -44,6 +45,7 @@ flags_de() {
 args_de() {
     case "$1" in
         constante) echo "28 64 5 120" ;;
+        velocidad) echo "139 512 1.5" ;;
         *)         echo "" ;;
     esac
 }
