@@ -5501,16 +5501,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
         if (!ok) {
-            /* El rango del puzzle N son N-1 bits, y kg_setup pide 4 como
-             * mínimo: por debajo de eso la tabla de saltos no tiene sentido.
-             * O sea que del #1 al #4 Kangaroo NO puede arrancar nunca — y son
-             * precisamente los primeros que uno prueba. Decir sólo "no se pudo"
-             * mandaría a buscar una avería que no existe. */
-            val anchoBits = puzzleSeleccionado - 1
-            tvPuzzleAtajo?.text = if (anchoBits in 1..3)
-                "El rango del #$puzzleSeleccionado es de $anchoBits bits y Kangaroo " +
-                "necesita al menos 4. Para uno tan pequeño usa el escáner: lo " +
-                "recorre entero al instante."
+            /* kangarooStart exige que el extremo superior del rango tenga al
+             * menos 8 bits (`if(bits<8) return JNI_FALSE` en hunter_jni.cpp).
+             * Para el puzzle N ese extremo es 2^N-1, o sea N bits: del #1 al #7
+             * Kangaroo NO puede arrancar nunca. Y son justo los primeros que uno
+             * prueba, así que decir sólo "no se pudo" manda a buscar una avería
+             * que no existe.
+             *
+             * El límite no es capricho: por debajo de ahí el criterio de punto
+             * distinguido (dbits, mínimo 6) sería más grande que el rango entero
+             * y los canguros no llegarían a apuntar nada. */
+            tvPuzzleAtajo?.text = if (puzzleSeleccionado in 1..7)
+                "Kangaroo necesita un rango de al menos 8 bits y el " +
+                "#$puzzleSeleccionado tiene $puzzleSeleccionado. Para uno tan " +
+                "pequeño usa «Iniciar puzzle»: lo recorre entero al instante."
             else "No se pudo arrancar la búsqueda."
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
