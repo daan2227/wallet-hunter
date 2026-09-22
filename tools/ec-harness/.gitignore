@@ -1,14 +1,15 @@
 # Los binarios se compilan al ejecutar run.sh. Son ELF de x86 y este proyecto
 # es Android: en el repositorio no le sirven a nadie, y pesan más que todo el
 # código fuente del banco de pruebas junto.
-vectores
-prim
-kang
-persist
-coste
-reparto
-hex
-campo
-reparte
-direcciones
-lote
+#
+# Antes esto era una lista de nombres, uno por prueba. Con una lista, añadir una
+# prueba y olvidarse de apuntarla mete el binario en el repositorio sin que
+# nadie lo vea — ya pasó con `semilla`, que acabó en el .gitignore de la raíz, y
+# otra vez con `constante`. Así que se ignora todo y se rescata lo que sí es
+# código fuente: una prueba nueva queda cubierta sola.
+*
+!.gitignore
+!*.cpp
+!*.py
+!*.sh
+!*.md
