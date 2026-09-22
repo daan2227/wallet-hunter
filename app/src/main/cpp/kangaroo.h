@@ -384,9 +384,19 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  *
  * O sea: las colisiones SI ocurren, lo que falla es cerrarlas. Eso apunta a
  * kg_resolver o a la identificacion de P con -P en la tabla, no al camino de
- * los canguros. Ahi es donde hay que mirar. La cuenta dice que los dos
- * candidatos que prueba kg_resolver (+d y -d) cubren los cuatro casos de signo,
- * asi que o la cuenta esta mal o hay algo que no cuadra con ella.
+ * los canguros.
+ *
+ * DESCARTADO (para no repetir el intento): que el eps se lleve mal. Era el
+ * sospechoso natural, porque la prueba `saltos` compara solo la x y P y -P
+ * tienen la MISMA x — o sea que un eps equivocado pasaria esa prueba y
+ * rompeia el resolver, que es justo el sintoma. Se comprobo a mano la
+ * invariante entera, x E y: posicion == eps*(base + dist*G). Cero descuadres
+ * en 20.000 pasos, con los dos rebanos. El eps esta bien.
+ *
+ * Asi que el camino es correcto, el signo es correcto, las colisiones ocurren
+ * y aun asi no se cierran. La cuenta dice que los dos candidatos que prueba
+ * kg_resolver (+d y -d) cubren los cuatro casos de signo. O la cuenta tiene un
+ * agujero o hay algo que no cuadra con ella, y no lo he encontrado.
  *
  * Mientras tanto queda apagado. */
 static int kg_negacion = 0;
