@@ -276,6 +276,16 @@ int main(int argc,char **argv){
     pinta("negacion, tabla de 32",ng32);
     if(ng32.fallos) fallos++;
 
+    /* Con el mapa de negacion el espacio esta doblado, asi que dos canguros del
+       mismo rebano se encuentran el doble de a menudo y `pegados` se dispara.
+       Volver a soltarlos deja de ser obviamente bueno —cada uno pierde su
+       rastro— asi que hay que volver a medirlo en ESTE regimen y no dar por
+       bueno lo que se midio en el otro. */
+    Resultado ngsm=medir(bits,n_kang,dbits,tandas,
+                         mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 0, SEM, 1);
+    pinta("negacion, SIN soltar muertos",ngsm);
+    if(ngsm.fallos) fallos++;
+
     /* Saltos al azar frente a potencias de dos. La tabla de potencias de dos
        tiene la mitad de los saltos astronomicamente mas pequenos que la media,
        que no es lo que supone el analisis. Se mide con la mejor politica de
@@ -327,6 +337,14 @@ int main(int argc,char **argv){
         printf("  negacion con tabla de 32       %.2f (%.2f veces sobre %.2f,"
                " que es la misma tabla sin negacion)\n",
                ng32.media, az.media/ng32.media, az.media);
+    if(ngsm.media>0 && ng.media>0){
+        double e=sqrt(ngsm.error*ngsm.error+ng.error*ng.error);
+        double dif=ngsm.media-ng.media;
+        printf("  con negacion, soltar muertos   %.2f veces  ->  %s\n",
+               ngsm.media/ng.media,
+               dif>2*e ? "de verdad" : (-dif>2*e ? "PEOR: mejor no soltarlos"
+                                                : "dentro del ruido"));
+    }
     if(az.media>0 && mejor.media>0){
         double e=sqrt(az.error*az.error+mejor.error*mejor.error);
         double dif=mejor.media-az.media;
