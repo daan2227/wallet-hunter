@@ -5479,7 +5479,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
         if (!ok) {
-            tvPuzzleAtajo?.text = "No se pudo arrancar la búsqueda."
+            /* El rango del puzzle N son N-1 bits, y kg_setup pide 4 como
+             * mínimo: por debajo de eso la tabla de saltos no tiene sentido.
+             * O sea que del #1 al #4 Kangaroo NO puede arrancar nunca — y son
+             * precisamente los primeros que uno prueba. Decir sólo "no se pudo"
+             * mandaría a buscar una avería que no existe. */
+            val anchoBits = puzzleSeleccionado - 1
+            tvPuzzleAtajo?.text = if (anchoBits in 1..3)
+                "El rango del #$puzzleSeleccionado es de $anchoBits bits y Kangaroo " +
+                "necesita al menos 4. Para uno tan pequeño usa el escáner: lo " +
+                "recorre entero al instante."
+            else "No se pudo arrancar la búsqueda."
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
         }
