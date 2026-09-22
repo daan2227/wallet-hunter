@@ -370,33 +370,31 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * `constante` barre dbits en vez de fijarlo.
  *
  * NO esta descartado como idea: el raiz(2) es real y se midio. Pero la causa
- * NO esta identificada, y conviene no inventarsela. Lo unico medido, con el
- * puzzle #40 y dbits 13, 12 millones de saltos:
+ * NO esta identificada. Lo medido, con el puzzle #40 y dbits 14, 14 millones
+ * de saltos en 5 segundos:
  *
- *     tabla: 84 entradas        (tocarian ~1.465)
- *     pegados: 4                (o sea, casi ninguna del mismo rebano)
+ *     tabla:       45 entradas   (tocarian ~855)
+ *     pegados:      4
+ *     rescatados:   0
+ *     kg_resolver:  0 llamadas
  *
- * Faltan ~1.380 puntos. Un distinguido solo deja de guardarse si encuentra la
- * misma x ya en la tabla; si es del mismo rebano cuenta como pegado —y apenas
- * los hay— asi que casi todos encontraron pareja DEL OTRO REBANO y no
- * resolvieron. Y cada uno de esos se come el punto que llega, porque dp_insert
- * avisa de la colision y no lo guarda.
+ * La ultima linea es la que manda: kg_resolver no se llama NUNCA, o sea que no
+ * hay colisiones que cerrar. El problema no esta en cerrarlas sino en que los
+ * canguros no estan apuntando puntos distinguidos: faltan unos 800 de 855.
  *
- * O sea: las colisiones SI ocurren, lo que falla es cerrarlas. Eso apunta a
- * kg_resolver o a la identificacion de P con -P en la tabla, no al camino de
- * los canguros.
+ * Y eso no cuadra con `rescatados: 0`, que dice que ningun canguro paso 20
+ * veces 2^dbits sin dar uno. Las dos cosas no pueden ser ciertas a la vez con
+ * la cuenta que yo hago, asi que hay algo en el bucle que no entiendo — y ahi
+ * es donde hay que mirar, no en el resolver.
  *
- * DESCARTADO (para no repetir el intento): que el eps se lleve mal. Era el
- * sospechoso natural, porque la prueba `saltos` compara solo la x y P y -P
- * tienen la MISMA x — o sea que un eps equivocado pasaria esa prueba y
- * rompeia el resolver, que es justo el sintoma. Se comprobo a mano la
- * invariante entera, x E y: posicion == eps*(base + dist*G). Cero descuadres
- * en 20.000 pasos, con los dos rebanos. El eps esta bien.
+ * DESCARTADO, para no repetir intentos:
  *
- * Asi que el camino es correcto, el signo es correcto, las colisiones ocurren
- * y aun asi no se cierran. La cuenta dice que los dos candidatos que prueba
- * kg_resolver (+d y -d) cubren los cuatro casos de signo. O la cuenta tiene un
- * agujero o hay algo que no cuadra con ella, y no lo he encontrado.
+ *  - Que el eps se lleve mal. Era el sospechoso natural, porque la prueba
+ *    `saltos` compara solo la x y P y -P tienen la MISMA x: un eps equivocado
+ *    pasaria esa prueba y rompeia el resolver. Comprobada a mano la invariante
+ *    entera, x E y: cero descuadres en 20.000 pasos con los dos rebanos.
+ *
+ *  - Que fallara al cerrar las colisiones. kg_resolver no llega a llamarse.
  *
  * Mientras tanto queda apagado. */
 static int kg_negacion = 0;
