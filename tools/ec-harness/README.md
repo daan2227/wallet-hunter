@@ -208,3 +208,56 @@ amontonados en W/2 obligan a un salvaje en k a recorrer |k − W/2| para llegar 
 ellos, y eso no lo reparte tener más canguros: todos caminan a la vez la misma
 distancia. Se queda medida porque un resultado negativo también es un banco: si
 algún día deja de ser mala, es que algo se ha roto.
+
+## El canguro está donde dice su distancia
+
+`saltos.cpp` comprueba la única invariante de la que depende todo lo demás: un
+manso está en `dist·G` y un salvaje en `P' + dist·G`. Si eso deja de cumplirse,
+el canguro sigue andando y sigue llenando la tabla, pero ninguno de sus puntos
+puede cerrar una colisión.
+
+Y **no se nota**. `kg_resolver` comprueba la clave contra el objetivo antes de
+cantarla, así que no sale una clave falsa: sale que no hay clave. La tabla crece,
+la pantalla cuenta millones de claves por segundo, los móviles calientan. Igual
+que si todo fuera bien.
+
+El fallo que trajo esta prueba: la tabla de saltos guardaba la longitud en un
+`uint64_t` y el salto *i* vale 2ⁱ, así que a partir de i=63 se guardaba **cero**
+—el punto se movía y la distancia no—. Con `KG_MAX_JUMPS` en 64, eso pasaba en
+todos los rangos de más de 118 bits: **#140, #145 y #155, los únicos para los que
+se usa Kangaroo**. Medido entonces en el #140: 15 de 145 mansos en su sitio.
+
+```sh
+g++ -O2 -o saltos saltos.cpp -lpthread && ./saltos
+```
+
+Va a 40 bits **como control** y a 119, 139 y 154, que es donde fallaba. El control
+es lo que distingue «el motor está roto» de «la prueba está rota». Comprueba
+además que en la tabla hay distancias de más de 64 bits: si no las hubiera, no
+estaría mirando el caso que falla y diría que todo bien igualmente.
+
+Y cubre el mismo tipo de fallo por los otros dos caminos: que una distancia
+grande sobreviva a guardar/recuperar y al ida y vuelta por red, y que la resta
+que da la clave (`kg_resolver`) funcione con distancias de verdad y no sólo con
+las de un rango de juguete.
+
+## Correrlo como lo corre CI
+
+Desde `cc9eda9` el banco se ejecuta en cada compilación, **antes** de instalar el
+NDK y cruzar Go: si el motor está roto, falla en un minuto en vez de después de
+montar el APK entero.
+
+El primer commit que lo activó se puso rojo al instante, y por algo real:
+`vectores.cpp` llevaba metida la ruta absoluta de una máquina concreta en un
+`#include`. Aquí esa ruta existía, así que la prueba salía verde sin probar nada
+fuera de un único ordenador del mundo.
+
+Para verlo antes de empujar, y sin gastar minutos de CI:
+
+```sh
+tools/desde-cero.sh
+```
+
+Exporta **sólo lo que sigue git** a un directorio temporal y corre el banco desde
+ahí. Correr desde otro sitio pilla las rutas absolutas; exportar sólo lo seguido
+pilla los ficheros que hacen falta y nadie subió.
