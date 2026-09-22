@@ -1721,10 +1721,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.util.Log.e("MainActivity",
                 "Tabla de puzzles: ${invalidas.size} direcciones inválidas: " +
                 invalidas.joinToString { "#${it.num}" })
-        val visiblePuzzles = puzzles.filter { p ->
-            BtcAddress.validate(p.addr, false) is BtcAddress.Result.Valid &&
-            !hiddenPuzzles.getBoolean("hidden_${p.num}", false)
-        }.toMutableList()
+        // Los que valen como objetivo, sin mirar todavia si tienen fondos.
+        val todosPuzzles = puzzles.filter {
+            BtcAddress.validate(it.addr, false) is BtcAddress.Result.Valid
+        }
+        // "Sin fondos" = alguien ya lo resolvio y se llevo el premio. La marca la
+        // pone la consulta de saldo, aqui solo se lee.
+        fun sinFondos(n: Int) = hiddenPuzzles.getBoolean("hidden_$n", false)
+
+        /* MODO PRUEBA: enseñar tambien los ya resueltos.
+         *
+         * Un puzzle resuelto no da dinero, pero da algo que ninguna prueba del
+         * banco puede dar: un objetivo REAL, con clave conocida y rango pequeño,
+         * que este movil puede llegar a encontrar de verdad. Es la unica forma
+         * de comprobar de punta a punta —motor, tabla, cluster y aviso— en el
+         * aparato de uno y no en un ordenador de escritorio.
+         *
+         * Viene apagado: lo normal es querer los que pagan. */
+        fun listaVisible(): List<PuzzleInfo> {
+            if (prefs.getBoolean("mostrar_sin_fondos", false)) return todosPuzzles
+            val conFondos = todosPuzzles.filter { !sinFondos(it.num) }
+            // Si se hubieran ocultado todos, mas vale enseñarlos que dejar la
+            // pestaña vacia y sin forma de salir de ahi.
+            return if (conFondos.isEmpty()) todosPuzzles else conFondos
+        }
+        var visiblePuzzles = listaVisible().toMutableList()
 
         // Track selected puzzle
         var selectedPuzzleIdx = 0
@@ -1732,6 +1753,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Container for chip rows
         val chipSection = pCard(0)
         chipSection.addView(sectionLabel("Seleccionar puzzle"))
+
+        // Interruptor de "enseñar tambien los ya resueltos". Se crea aqui para
+        // que quede en su sitio en la pantalla; lo que hace se le cuelga mas
+        // abajo, cuando ya existen las funciones que repintan los chips.
+        val btnSinFondos = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION
+            gravity = Gravity.CENTER
+            typeface = AppTheme.medium(context)
+            isClickable = true; isFocusable = true
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(10) }
+        }
+        fun pintarBotonSinFondos() {
+            val ver = prefs.getBoolean("mostrar_sin_fondos", false)
+            btnSinFondos.text = if (ver) "Ocultar los que ya no tienen fondos"
+                                else     "Mostrar también los ya resueltos (prueba)"
+            btnSinFondos.background = Ui.cardBg(AppTheme.R_CHIP,
+                if (ver) AppTheme.BG_ELEV else AppTheme.BG_CARD, this@MainActivity)
+            btnSinFondos.setTextColor(if (ver) AppTheme.WARN else AppTheme.TXT_SEC)
+        }
+        pintarBotonSinFondos()
+        chipSection.addView(btnSinFondos)
 
         // Horizontal scroll for group chips
         val groupScroll = android.widget.HorizontalScrollView(this).apply {
@@ -2476,7 +2522,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── BUILD CHIP GROUPS ─────────────────────────────────────────────
         // Group puzzles by ranges of 10
         val groupSize = 10
-        val groups = visiblePuzzles.chunked(groupSize)
+        var groups = visiblePuzzles.chunked(groupSize)
         var activeGroupIdx = 0
         val groupChips = mutableListOf<TextView>()
 
@@ -2505,7 +2551,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             tvBalResult.setTextColor(AppTheme.ACCENT)
                         }
                         bal == 0L -> {
+                            // La marca se pone siempre: es un hecho sobre el
+                            // puzzle, no una preferencia de quien mira.
                             hiddenPuzzles.edit().putBoolean("hidden_${p.num}", true).apply()
+                            // En modo prueba se ha elegido a proposito uno ya
+                            // resuelto. Esconderlo y saltar a otro seria pelearse
+                            // con lo que acaba de pedir el usuario.
+                            if (prefs.getBoolean("mostrar_sin_fondos", false)) {
+                                tvBalResult.text =
+                                    "Sin fondos — #${p.num} ya resuelto. Sirve de prueba: " +
+                                    "la clave existe y se puede encontrar."
+                                tvBalResult.setTextColor(AppTheme.WARN)
+                                return@runOnUiThread
+                            }
                             tvBalResult.text = "Sin fondos — #${p.num} ocultado"
                             tvBalResult.setTextColor(AppTheme.WARN)
                             // Ocultar chip visualmente
@@ -2543,14 +2601,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
                     background = Ui.cardBg(AppTheme.R_CHIP,
                         if (i == 0) AppTheme.TXT_PRI else AppTheme.BG_CARD, context)
-                    setTextColor(if (i == 0) AppTheme.BG_DEEP else AppTheme.TXT_SEC)
+                    // El numero del puzzle viaja en el tag para que al repintar
+                    // se pueda saber cual de ellos esta vacio. Sin esto, el
+                    // primer clic borraba la marca de todos los demas.
+                    tag = p.num
+                    setTextColor(when {
+                        i == 0            -> AppTheme.BG_DEEP
+                        sinFondos(p.num)  -> AppTheme.WARN
+                        else              -> AppTheme.TXT_SEC
+                    })
                     layoutParams = LinearLayout.LayoutParams(dp(68), dp(44)).apply { marginEnd = dp(8) }
                     isClickable = true; isFocusable = true
                     setOnClickListener {
                         for (j in 0 until indivRow.childCount) {
                             val c = indivRow.getChildAt(j) as? TextView ?: continue
                             c.background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_CARD, context)
-                            c.setTextColor(AppTheme.TXT_SEC)
+                            val n = c.tag as? Int
+                            c.setTextColor(
+                                if (n != null && sinFondos(n)) AppTheme.WARN
+                                else AppTheme.TXT_SEC)
                             c.typeface = AppTheme.medium(context)
                         }
                         background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.TXT_PRI, context)
@@ -2602,6 +2671,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         buildGroupChips()
         buildIndivChips(0)
+
+        btnSinFondos.setOnClickListener {
+            prefs.edit().putBoolean("mostrar_sin_fondos",
+                !prefs.getBoolean("mostrar_sin_fondos", false)).apply()
+            visiblePuzzles = listaVisible().toMutableList()
+            groups = visiblePuzzles.chunked(groupSize)
+            activeGroupIdx = 0
+            pintarBotonSinFondos()
+            buildGroupChips()
+            buildIndivChips(0)
+        }
 
         // Default puzzle setup
         val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
@@ -5429,11 +5509,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // -1 = no se pudo consultar. No se toca nada: se reintenta a
                 // las seis horas.
                 if (bal != 0L) return@runOnUiThread
-                if (!HunterEngine.kangarooRunning()) return@runOnUiThread
-                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-                prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
+                // La marca se pone siempre, corra o no la busqueda.
                 getSharedPreferences("hidden_puzzles", MODE_PRIVATE)
                     .edit().putBoolean("hidden_${p.num}", true).apply()
+                if (!HunterEngine.kangarooRunning()) return@runOnUiThread
+                /* MODO PRUEBA: no pararla.
+                 *
+                 * Esta comprobacion existe para no gastar dias de movil en un
+                 * puzzle que alguien acaba de vaciar. Pero si se ha encendido
+                 * "mostrar los ya resueltos" es justo lo contrario: se ha
+                 * elegido uno sin fondos A PROPOSITO, para ver si el motor lo
+                 * encuentra. Pararla a las seis horas seria tirar la prueba
+                 * abajo sin que se entendiera por que. */
+                if (prefs.getBoolean("mostrar_sin_fondos", false)) {
+                    tvPuzzleAtajo?.text = "El puzzle #${p.num} no tiene fondos —ya está " +
+                                          "resuelto— pero la búsqueda sigue: está elegido " +
+                                          "como prueba. Si aparece la clave, el motor funciona."
+                    tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
+                    return@runOnUiThread
+                }
+                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
                 btnKangaroo?.text = "Buscar con Kangaroo"
                 tvPuzzleAtajo?.text = "Búsqueda detenida: el puzzle #${p.num} ya no " +
                                       "tiene fondos, alguien lo ha resuelto. El trabajo " +
