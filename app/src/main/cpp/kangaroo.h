@@ -1382,6 +1382,14 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     /* Terrenos de la politica 2: los salvajes por [0, disp_s) y los mansos por
        [0, rango_m) con rango_m = W + disp_s, que es lo que hace falta para que
        el terreno de los salvajes quepa entero dentro del de los mansos. */
+    /* Cuanto puede estar un canguro sin dar un punto distinguido antes de darlo
+       por atrapado. 20 veces la media, que en una espera geometrica es e^-20.
+       Se calcula UNA vez y con cuidado: 20<<dbits desborda los 64 bits a partir
+       de dbits=59, y al desbordar no da un numero grande sino uno pequeno, con
+       lo que el motor se pondria a resoltar canguros sin parar y no produciria
+       nada. Justo el tipo de fallo que esta red viene a evitar. */
+    uint64_t tope_sin_dp = (c->dbits<58) ? (20ULL<<c->dbits) : ~0ULL;
+
     sc_t disp_s, rango_m;
     /* El terreno a cubrir: W normalmente, W/2 con mapa de negacion —el objetivo
        esta trasladado al centro, asi que la incognita en valor absoluto no pasa
@@ -1540,7 +1548,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             /* Red de seguridad: un canguro que lleva demasiado sin dar un
                distinguido no esta de mala suerte, esta atrapado. Ver
                Kangaroo.pasos_sin_dp. */
-            if(++K[i].pasos_sin_dp > (20ULL<<c->dbits)){
+            if(++K[i].pasos_sin_dp > tope_sin_dp){
                 c->rescatados.fetch_add(1);
                 soltar(i,K[i].manso);
                 continue;
