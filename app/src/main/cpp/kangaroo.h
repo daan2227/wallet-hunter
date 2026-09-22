@@ -305,8 +305,24 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * alguien por cambiar el formato—: se leen sus entradas de 49 bytes y se dan
  * por no enviadas, que provoca un ultimo reenvio y a partir de ahi ya se
  * guarda. */
-#define KG_VER   2u
+/* Version 3: la tabla se escribio con una tabla de saltos que SI cuadra.
+ *
+ * Hasta la 2, el salto i valia 2^i guardado en un uint64_t y a partir de i=63
+ * se quedaba en cero: el punto se movia y la distancia no. En rangos de mas de
+ * 118 bits —#140, #145 y #155, los unicos en los que se usa Kangaroo— eso
+ * envenenaba a casi todos los canguros en unas decenas de saltos, y la tabla se
+ * llenaba de entradas cuya distancia no dice donde esta el punto. No dan una
+ * clave falsa (kg_resolver la comprueba antes), dan que no hay clave.
+ *
+ * Esas entradas no sirven para nada y no hay forma de distinguir las buenas de
+ * las malas dentro del fichero, asi que en esos rangos se tira la tabla vieja.
+ * En rangos pequenos nunca hubo problema y se siguen leyendo.
+ */
+#define KG_VER   3u
 #define KG_VER_SIN_ENVIADO 1u
+#define KG_VER_CON_ENVIADO 2u
+/* A partir de este ancho de intervalo, la tabla de saltos vieja se topaba. */
+#define KG_BITS_SALTOS_ROTOS 118
 
 typedef struct {
     uint32_t magic, ver;
@@ -359,16 +375,28 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     if(fread(&c,sizeof(c),1,f)!=1){ fclose(f); return 0; }
     /* Todo tiene que cuadrar: otro puzzle, otro rango u otro criterio de
        distinguido hacen que las entradas no signifiquen lo mismo. */
-    /* Se aceptan las dos versiones. La 1 no guardaba la marca de "ya enviado";
+    /* Se aceptan las tres versiones. La 1 no guardaba la marca de "ya enviado";
        tirar la tabla de alguien por eso seria una faena mucho mayor que el
        ultimo reenvio que provoca. */
     if(c.magic!=KG_MAGIC ||
-       (c.ver!=KG_VER && c.ver!=KG_VER_SIN_ENVIADO) ||
+       (c.ver!=KG_VER && c.ver!=KG_VER_CON_ENVIADO && c.ver!=KG_VER_SIN_ENVIADO) ||
        c.dbits!=(uint32_t)dbits ||
        memcmp(c.pub,pub,33)!=0 || memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){
         fclose(f); return 0;
     }
-    int con_enviado = (c.ver==KG_VER);
+    /* Pero una tabla anterior a la 3 en un rango grande esta envenenada entera:
+       ver el comentario de KG_VER. Se tira. Es trabajo perdido de verdad —dias
+       de movil— y aun asi es lo correcto: lo que hay ahi dentro no puede
+       resolver nada, y guardarlo solo sirve para reenviarlo al master para
+       siempre. */
+    if(c.ver!=KG_VER){
+        sc_t a,b,ancho;
+        sc_from_be32(a,ini); sc_from_be32(b,fin);
+        if(sc_sub(ancho,b,a) && sc_bits(ancho)>KG_BITS_SALTOS_ROTOS){
+            fclose(f); return 0;
+        }
+    }
+    int con_enviado = (c.ver!=KG_VER_SIN_ENVIADO);
     uint64_t leidas=0;
     for(uint64_t i=0;i<c.n;i++){
         uint64_t kx[2]; sc_t d; uint8_t manso, env=0;
@@ -431,8 +459,17 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
     return 1;
 }
 
-/* ---------- Contexto de la busqueda ---------- */
-#define KG_MAX_JUMPS 64
+/* ---------- Contexto de la busqueda ----------
+ *
+ * Cuantos saltos distintos caben en la tabla. El motor quiere n tal que
+ * n - log2(n) = bits/2 - 1, o sea unos bits/2 + 6: para el #140 (139 bits)
+ * salen 76, para el #160 hacen falta 86.
+ *
+ * Estaba en 64, y eso topaba la tabla en TODOS los rangos a partir de 118 bits
+ * —#140, #145 y #155, que son justo los unicos para los que se usa Kangaroo—.
+ * 128 llega hasta rangos de 245 bits, que es mas de lo que hay. Cuesta 12 KB
+ * por contexto, uno por movil. */
+#define KG_MAX_JUMPS 128
 
 typedef struct {
     /* Objetivo, ya trasladado a [0,W]: P' = P - a*G */
@@ -446,7 +483,15 @@ typedef struct {
     /* Tabla de saltos: S[i] = 2^i * G, en afin */
     int      njumps;
     fe_t     jx[KG_MAX_JUMPS], jy[KG_MAX_JUMPS];
-    uint64_t jlen[KG_MAX_JUMPS];
+    /* La longitud de cada salto, del mismo tamano que la distancia que va
+     * sumando. Era uint64_t, y el salto i vale 2^i: a partir de i=63 no cabia y
+     * se guardaba CERO. El punto se movia 2^63*G y la distancia no se movia, asi
+     * que el canguro dejaba de estar donde decia su distancia — y como
+     * kg_resolver comprueba la clave antes de cantarla, eso no daba una clave
+     * falsa: daba que no hay clave, con la tabla llenandose igual y la UI
+     * contando millones de claves por segundo. Lo vigila
+     * tools/ec-harness/saltos. */
+    sc_t     jlen[KG_MAX_JUMPS];
 
     int      dbits;          /* un punto es distinguido si sus dbits bajos son 0 */
     uint64_t dmask;
@@ -652,7 +697,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         memset(S.z,0,32); S.z[0]=1;
         for(int i=0;i<n;i++){
             kg_normalize(&S,c->jx[i],c->jy[i]);
-            c->jlen[i]=(i<63)?(1ULL<<i):0;
+            sc_zero(c->jlen[i]); c->jlen[i][i/64]=1ULL<<(i%64);
             jp_dbl(&S,&S);
         }
     }
@@ -737,7 +782,18 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
  */
 
 #define KG_NET_MAGIC 0x5044474BU   /* "KGDP" */
-#define KG_NET_VER   1u
+/* Version 2: los puntos vienen de una tabla de saltos que cuadra.
+ *
+ * Se sube por lo mismo que KG_VER pasa a 3 (ver alli). Un aparato sin
+ * actualizar manda puntos cuya distancia no corresponde con el punto, y el
+ * master no tiene forma de distinguirlos de los buenos: entrarian en la tabla y
+ * se quedarian ahi ocupando sitio sin poder resolver nada.
+ *
+ * El precio es que un movil sin actualizar deja de contribuir y se le nota
+ * —"Puntos recibidos" se queda quieto—, que es justo lo que hay que ver. La
+ * alternativa era un cluster con buena pinta que no puede encontrar nada, que
+ * es de donde venimos. */
+#define KG_NET_VER   2u
 /* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
    struct, para que el relleno del compilador no forme parte del formato. */
 #define KG_NET_CAB   (4+4+33+32+32+4+4)
@@ -1083,7 +1139,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             fe_mul(y3,lam,t1);
             fe_sub(y3,y3,K[i].y);
             memcpy(K[i].x,x3,32); memcpy(K[i].y,y3,32);
-            sc_add_u64(K[i].dist,c->jlen[h]);
+            sc_add(K[i].dist,K[i].dist,c->jlen[h]);
         }
         c->saltos.fetch_add((long long)n_kang);
         if(c->encontrado.load()) break;

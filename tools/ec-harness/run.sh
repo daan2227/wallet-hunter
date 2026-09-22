@@ -21,8 +21,9 @@ cd "$(dirname "$0")"
 # direcciones - el codificador de direcciones, mainnet y testnet
 # lote     - tamano de lote optimo del bucle de fuerza bruta
 # semilla  - dos aparatos no pueden salir por el mismo sitio
+# saltos   - punto y distancia avanzan a la par, tambien en rangos grandes
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante"
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {

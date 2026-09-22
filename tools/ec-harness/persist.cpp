@@ -118,6 +118,80 @@ int main(){
         remove("/tmp/kg_test2.dat");
     }
 
+    /* 7) Una tabla de la version 2 se tira si el rango es grande.
+     *
+     * Hasta la version 2, la tabla de saltos guardaba el salto i en un uint64_t
+     * y a partir de i=63 valia CERO: el punto se movia y la distancia no. En
+     * rangos de mas de 118 bits eso envenenaba la tabla entera. No hay forma de
+     * mirar una entrada y saber si es buena, asi que hay que tirar el fichero.
+     *
+     * Tirar la tabla de alguien son dias de movil perdidos, asi que tiene que
+     * estar cubierto por las dos partes: que se tira cuando el rango es grande,
+     * y que NO se tira cuando es pequeno, donde nunca hubo problema.
+     */
+    {
+        /* Se fabrica a mano un fichero de version 2: una cabecera y una
+           entrada. No se usa dp_save porque dp_save ya escribe la 3. */
+        auto escribe_v2=[&](const char *ruta,const uint8_t *pi,const uint8_t *pf){
+            FILE *g=fopen(ruta,"wb");
+            if(!g) return false;
+            KgCab h; memset(&h,0,sizeof(h));
+            h.magic=KG_MAGIC; h.ver=KG_VER_CON_ENVIADO; h.dbits=7; h.ops=0; h.n=1;
+            memcpy(h.pub,pub,33); memcpy(h.ini,pi,32); memcpy(h.fin,pf,32);
+            fwrite(&h,sizeof(h),1,g);
+            uint64_t kx[2]={0x1111111111111111ULL,0x2222222222222222ULL};
+            sc_t d; sc_set_u64(d,4242);
+            uint8_t manso=1, env=0;
+            fwrite(kx,8,2,g); fwrite(d,8,4,g);
+            fwrite(&manso,1,1,g); fwrite(&env,1,1,g);
+            fclose(g);
+            return true;
+        };
+
+        /* Rango pequeno: se sigue leyendo. */
+        escribe_v2("/tmp/kg_v2_peq.dat",ini,fin);
+        KangarooCtx c8; kg_setup(&c8,pub,ini,fin,7,18);
+        uint64_t l_peq=dp_load(&c8.tabla,"/tmp/kg_v2_peq.dat",pub,ini,fin,7,NULL);
+        printf("%s  rango pequeno: la tabla de la version 2 se sigue leyendo (%llu)\n",
+               l_peq==1?"OK ":"MAL", (unsigned long long)l_peq);
+        f+=(l_peq!=1);
+        kg_free(&c8);
+
+        /* Rango grande: el del #140. */
+        uint8_t gi[32],gf[32];
+        memset(gi,0,32); gi[32-1-139/8]=(uint8_t)(1u<<(139%8));   /* 2^139 */
+        memset(gf,0,32); for(int i=0;i<=139;i++) gf[31-i/8]|=(uint8_t)(1u<<(i%8));
+        uint8_t gpub[33];
+        {   /* una publica cualquiera dentro de ese rango */
+            sc_t s; sc_from_be32(s,gi); sc_add_u64(s,7);
+            JP P; kg_scalar_mul(&P,s,FIELD_GX,FIELD_GY);
+            fe_t x,y; kg_normalize(&P,x,y);
+            gpub[0]=(y[0]&1)?3:2;
+            for(int w=0;w<4;w++) for(int bb=0;bb<8;bb++)
+                gpub[1+(3-w)*8+(7-bb)]=(uint8_t)(x[w]>>(bb*8));
+        }
+        FILE *g=fopen("/tmp/kg_v2_gra.dat","wb");
+        if(g){
+            KgCab h; memset(&h,0,sizeof(h));
+            h.magic=KG_MAGIC; h.ver=KG_VER_CON_ENVIADO; h.dbits=7; h.ops=0; h.n=1;
+            memcpy(h.pub,gpub,33); memcpy(h.ini,gi,32); memcpy(h.fin,gf,32);
+            fwrite(&h,sizeof(h),1,g);
+            uint64_t kx[2]={0x3333333333333333ULL,0x4444444444444444ULL};
+            sc_t d; sc_set_u64(d,4242);
+            uint8_t manso=1, env=0;
+            fwrite(kx,8,2,g); fwrite(d,8,4,g);
+            fwrite(&manso,1,1,g); fwrite(&env,1,1,g);
+            fclose(g);
+        }
+        KangarooCtx c9; kg_setup(&c9,gpub,gi,gf,7,18);
+        uint64_t l_gra=dp_load(&c9.tabla,"/tmp/kg_v2_gra.dat",gpub,gi,gf,7,NULL);
+        printf("%s  rango grande (#140): la tabla de la version 2 se tira (%llu)\n",
+               l_gra==0?"OK ":"MAL", (unsigned long long)l_gra);
+        f+=(l_gra!=0);
+        kg_free(&c9);
+        remove("/tmp/kg_v2_peq.dat"); remove("/tmp/kg_v2_gra.dat");
+    }
+
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");
     return f;
 }
