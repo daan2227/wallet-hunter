@@ -123,10 +123,13 @@ static int cmp_d(const void *a,const void *b){
 #define HILOS 4
 
 /* Techo del coste con los valores por defecto del banco (28 bits, 64 canguros).
- * Medido 2,3; se deja holgura para el ruido de 120 tandas y para que una maquina
- * mas lenta no lo tumbe —esto mide operaciones, no segundos, asi que la maquina
- * no deberia influir, pero el azar de las tandas si—. Lo que tiene que saltar es
- * una vuelta a la politica vieja, que daba 3,5. */
+ *
+ * Medido 2,40 +- 0,13, y sale identico desde una copia limpia en otra maquina:
+ * esto cuenta operaciones, no segundos, asi que no depende de lo rapido que sea
+ * el ordenador. El 2,9 deja cuatro veces el error de holgura.
+ *
+ * Lo que tiene que saltar es una vuelta a la politica de salida vieja, que en
+ * esta misma configuracion da 4,16. */
 #define TECHO 2.9
 
 static Resultado medir(int bits,int n_kang,int dbits,int tandas,int politica,
