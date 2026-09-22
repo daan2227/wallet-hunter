@@ -23,6 +23,31 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
+    # El banco de pruebas, ANTES de compilar nada.
+    #
+    # Compila las cabeceras REALES del motor (kangaroo.h, ec.h) como binarios de
+    # escritorio y las pone a prueba: logaritmos discretos con la respuesta
+    # conocida, la invariante de que un canguro está donde dice su distancia, el
+    # coste en raíces de W con un techo, el ida y vuelta de la tabla por disco y
+    # por red. Tarda un minuto.
+    #
+    # Estaba escrito y no lo ejecutaba nadie más que yo a mano, o sea que no
+    # vigilaba nada entre sesiones. Y lo que hay que vigilar es justo lo que se
+    # coló así: la tabla de saltos guardaba el salto 63 como cero, el motor no
+    # podía encontrar nada en el #140 y compilaba en verde igual.
+    #
+    # Va primero a propósito. Si el motor está roto esto falla en un minuto, en
+    # vez de después de cruzar Go y montar el APK entero — que con los minutos
+    # contados de un repositorio privado es la diferencia entre poder seguir
+    # compilando y no.
+    - name: Banco de pruebas del motor
+      run: |
+        # reparto mide PBKDF2 y direcciones usa el hash, los dos con OpenSSL.
+        # La imagen de ubuntu lo trae, pero si algun dia dejara de traerlo esto
+        # tumbaria la compilacion entera por una cabecera que falta.
+        sudo apt-get install -y libssl-dev 2>/dev/null || true
+        tools/ec-harness/run.sh
+
     - uses: actions/setup-java@v4
       with:
         java-version: '17'
