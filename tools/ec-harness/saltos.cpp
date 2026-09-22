@@ -1,6 +1,10 @@
-/* La invariante del canguro manso: esta SIEMPRE en dist*G.
+/* La invariante del canguro: esta SIEMPRE donde dice su distancia.
  *
- * Un manso sale de d*G y en cada salto avanza jx[h] en el punto y jlen[h] en la
+ * Un manso en dist*G, un salvaje en P' + dist*G. Son dos caminos distintos en
+ * el codigo —salen de sitios distintos y con repartos distintos— asi que se
+ * miran los dos.
+ *
+ * En cada salto avanza jx[h] en el punto y jlen[h] en la
  * distancia. Si las dos cosas no van a la par, el canguro sigue andando y
  * sigue dejando puntos distinguidos en la tabla, pero su distancia ya no dice
  * donde esta. Una colision suya da una resta que no es la clave.
@@ -21,6 +25,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pthread.h>
+#include <vector>
 #include "../../app/src/main/cpp/kangaroo.h"
 
 static int fallos=0;
@@ -77,24 +82,133 @@ static void prueba(int bits,const char *et){
     }
     c.parar.store(1); pthread_join(h,NULL);
 
-    uint64_t mansos=0, buenos=0;
+    uint64_t mansos=0, m_ok=0, salvajes=0, s_ok=0, dist_grande=0;
     for(uint64_t i=0;i<=c.tabla.mask;i++){
         DP *s=&c.tabla.slots[i];
-        if(!s->usado || !s->manso) continue;
-        mansos++;
-        /* dist*G tiene que dar el punto guardado. */
+        if(!s->usado) continue;
+        if(sc_bits(s->dist)>64) dist_grande++;
+
+        /* Manso: esta en dist*G.  Salvaje: esta en P' + dist*G.
+           Son dos caminos distintos en el codigo y hay que mirar los dos: el
+           salvaje sale de otro sitio y con otro reparto. */
         JP P; kg_scalar_mul(&P,s->dist,FIELD_GX,FIELD_GY);
+        if(!s->manso){
+            fe_t dx,dy;
+            int cero=1; for(int z=0;z<4;z++) if(P.z[z]) cero=0;
+            if(cero){ salvajes++; continue; }       /* dist=0: el propio P' */
+            kg_normalize(&P,dx,dy);
+            JP W; jp_add_affine(&W,&c.objetivo,dx,dy);
+            P=W;
+        }
         int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
-        if(inf) continue;
+        if(inf){ if(s->manso) mansos++; else salvajes++; continue; }
         fe_t x,y; kg_normalize(&P,x,y);
-        if(x[0]==s->kx[0] && x[1]==s->kx[1]) buenos++;
+        int bien = (x[0]==s->kx[0] && x[1]==s->kx[1]);
+        if(s->manso){ mansos++; m_ok+=bien; }
+        else        { salvajes++; s_ok+=bien; }
     }
-    printf("       %llu mansos en la tabla, %llu en dist*G\n",
-           (unsigned long long)mansos,(unsigned long long)buenos);
-    OK(mansos>0, "hay mansos que comprobar");
-    OK(mansos>0 && buenos==mansos,
+    printf("       mansos %llu/%llu en dist*G, salvajes %llu/%llu en P'+dist*G,"
+           " %llu distancias de mas de 64 bits\n",
+           (unsigned long long)m_ok,(unsigned long long)mansos,
+           (unsigned long long)s_ok,(unsigned long long)salvajes,
+           (unsigned long long)dist_grande);
+    OK(mansos>0 && salvajes>0, "hay de los dos rebanos que comprobar");
+    OK(mansos>0 && m_ok==mansos,
        "todos los mansos estan donde dice su distancia");
+    OK(salvajes>0 && s_ok==salvajes,
+       "todos los salvajes estan donde dice su distancia");
+    /* En un rango grande las distancias PASAN de 64 bits enseguida. Si no
+       apareciera ninguna, la prueba no estaria mirando lo que cree. */
+    if(bits>80)
+        OK(dist_grande>0, "y las distancias pasan de 64 bits, que es el caso que fallaba");
     kg_free(&c);
+}
+
+/* Una distancia grande tiene que sobrevivir al disco y al cable.
+ *
+ * Es el mismo tipo de fallo que el de jlen, por el otro lado: si el formato de
+ * guardado o el de red se quedara corto, la distancia llegaria truncada y el
+ * punto no. Otra vez una tabla llena de entradas que no pueden resolver nada,
+ * y otra vez sin sintoma. En el #140 las distancias pasan de 64 bits enseguida,
+ * asi que hay que probarlo con esas y no con las de un rango de juguete.
+ */
+static void prueba_ida_y_vuelta(void){
+    printf("\n5. Una distancia de mas de 64 bits, por disco y por red:\n");
+    const int BITS=139, DB=6;
+    uint8_t ini[32],fin[32],pub[33];
+    pot2_be(ini,BITS); todo_unos_be(fin,BITS);
+    {
+        sc_t s; sc_from_be32(s,ini); sc_add_u64(s,12345);
+        JP P; kg_scalar_mul(&P,s,FIELD_GX,FIELD_GY);
+        fe_t x,y; kg_normalize(&P,x,y);
+        pub[0]=(y[0]&1)?0x03:0x02;
+        for(int w=0;w<4;w++) for(int b=0;b<8;b++)
+            pub[1+(3-w)*8+(7-b)]=(uint8_t)(x[w]>>(b*8));
+    }
+    KangarooCtx c;
+    if(!kg_setup(&c,pub,ini,fin,DB,14)){ printf("  setup fallo\n"); fallos++; return; }
+    pthread_t h; Arg a={&c,32,0xBEEF};
+    pthread_create(&h,NULL,anda,&a);
+    for(int v=0; v<40000 && c.tabla.guardados<200; v++){
+        struct timespec ts={0,200000}; nanosleep(&ts,NULL);
+    }
+    c.parar.store(1); pthread_join(h,NULL);
+
+    /* Copia de lo que hay, para comparar contra ella. */
+    struct Ent { uint64_t kx[2]; sc_t dist; uint8_t manso; };
+    std::vector<Ent> antes;
+    uint64_t grandes=0;
+    for(uint64_t i=0;i<=c.tabla.mask;i++){
+        DP *s=&c.tabla.slots[i];
+        if(!s->usado) continue;
+        Ent e; e.kx[0]=s->kx[0]; e.kx[1]=s->kx[1];
+        sc_copy(e.dist,s->dist); e.manso=s->manso;
+        antes.push_back(e);
+        if(sc_bits(e.dist)>64) grandes++;
+    }
+    printf("       %zu puntos, %llu con la distancia por encima de 64 bits\n",
+           antes.size(),(unsigned long long)grandes);
+    OK(grandes>0, "hay distancias grandes que probar");
+
+    /* Busca una entrada en una tabla y compara la distancia entera. */
+    auto igual_en=[&](DPTable *t,const Ent &e){
+        uint64_t hh=(e.kx[0]^(e.kx[1]*0x9E3779B97F4A7C15ULL))&t->mask;
+        for(uint64_t j=0;j<=t->mask;j++){
+            DP *sl=&t->slots[(hh+j)&t->mask];
+            if(!sl->usado) return false;
+            if(sl->kx[0]==e.kx[0] && sl->kx[1]==e.kx[1])
+                return memcmp(sl->dist,e.dist,32)==0 && sl->manso==e.manso;
+        }
+        return false;
+    };
+
+    /* Disco. */
+    dp_save(&c.tabla,"/tmp/kg_saltos.dat",pub,ini,fin,DB,0);
+    KangarooCtx d; kg_setup(&d,pub,ini,fin,DB,14);
+    dp_load(&d.tabla,"/tmp/kg_saltos.dat",pub,ini,fin,DB,NULL);
+    uint64_t bien_disco=0;
+    for(size_t i=0;i<antes.size();i++) bien_disco+=igual_en(&d.tabla,antes[i]);
+    printf("       disco: %llu de %zu con la distancia intacta\n",
+           (unsigned long long)bien_disco,antes.size());
+    OK(bien_disco==antes.size(), "la distancia sobrevive a guardar y recuperar");
+
+    /* Red. El master no anda: lo unico que puede tener es lo que reciba. */
+    KangarooCtx m; kg_setup(&m,pub,ini,fin,DB,14);
+    std::vector<uint8_t> buf(kg_export_bytes(4096));
+    for(;;){
+        size_t n=kg_export(&c.tabla,pub,ini,fin,DB,buf.data(),buf.size(),512);
+        if(!n) break;
+        uint32_t met=0;
+        if(!kg_import(&m,pub,ini,fin,DB,buf.data(),n,&met)) break;
+    }
+    uint64_t bien_red=0;
+    for(size_t i=0;i<antes.size();i++) bien_red+=igual_en(&m.tabla,antes[i]);
+    printf("       red:   %llu de %zu con la distancia intacta\n",
+           (unsigned long long)bien_red,antes.size());
+    OK(bien_red==antes.size(), "la distancia sobrevive al ida y vuelta por red");
+
+    remove("/tmp/kg_saltos.dat");
+    kg_free(&c); kg_free(&d); kg_free(&m);
 }
 
 int main(){
@@ -107,6 +221,7 @@ int main(){
     prueba(119,"2. Justo donde la tabla de saltos se topa");
     prueba(139,"3. Puzzle #140");
     prueba(154,"4. Puzzle #155");
+    prueba_ida_y_vuelta();
     printf("\n%s\n", fallos ? "HAY FALLOS" : "TODO CORRECTO");
     return fallos?1:0;
 }
