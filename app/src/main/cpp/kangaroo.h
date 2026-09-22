@@ -350,8 +350,30 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  *
  * Va suelto por lo mismo que kg_politica_saltos: kg_setup tiene que saberlo
  * ANTES de construir nada, porque cambia a donde se traslada el objetivo. Se
- * copia al contexto en kg_setup y a partir de ahi se lee de ahi. */
-static int kg_negacion = 1;
+ * copia al contexto en kg_setup y a partir de ahi se lee de ahi.
+ *
+ * APAGADO. Estuvo encendido y NO ENCUENTRA LA CLAVE con el dbits que usa la
+ * app. Medido con el puzzle #40, misma clave, variando solo dbits:
+ *
+ *     dbits      5    8   10   12   13   14   15   16
+ *     con        OK   OK   OK   OK   NO   NO   NO   NO
+ *     sin        OK   OK   OK   OK   OK   OK   OK   OK
+ *
+ * A partir de 13 se queda dando vueltas sin dar con ella. El movil usa
+ * dbits = bits/4+4 con tope 28, o sea 14 en el #40 y 28 en el #140: justo el
+ * lado malo de esa raya en todos los casos reales.
+ *
+ * COMO SE COLO. tools/ec-harness/constante mide con dbits=5, que es donde
+ * funciona, asi que dio 1,38 veces mejor y se dio por bueno. La prueba medía
+ * el algoritmo en una configuracion que no es la que corre. Por eso ahora
+ * `resueltos` resuelve puzzles de verdad con la formula de dbits de la app, y
+ * `constante` barre dbits en vez de fijarlo.
+ *
+ * NO esta descartado como idea: el raiz(2) es real y se midio. Lo que falta es
+ * entender por que los ciclos esteriles lo rompen cuando hay muchos pasos entre
+ * puntos distinguidos —con dbits 14 son ~180 ciclos entre punto y punto, con 5
+ * es menos de uno— y arreglarlo antes de volver a encenderlo. */
+static int kg_negacion = 0;
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
 /* Version 2: cada entrada lleva ademas la marca de "ya enviado".

@@ -124,14 +124,17 @@ static int cmp_d(const void *a,const void *b){
 
 /* Techo del coste con los valores por defecto del banco (28 bits, 64 canguros).
  *
- * Medido 2,23 +- 0,13 con lo que trae kg_setup hoy (politica 2 y mapa de
- * negacion), y sale identico desde una copia limpia en otra maquina: esto cuenta
- * operaciones, no segundos, asi que no depende de lo rapido que sea el
- * ordenador. El 2,7 deja tres veces y media el error de holgura.
+ * OJO CON ESTA PRUEBA: mide con dbits=5, muy por debajo del que usa la app
+ * (bits/4+4, hasta 28). Eso no es inocente. El mapa de negacion daba aqui 1,38
+ * veces mejor y NO ENCUENTRA LA CLAVE con dbits>=13; se envio encendido por
+ * fiarse de este numero. Lo que decide si un cambio del motor sirve es
+ * `resueltos`, que resuelve puzzles de verdad con la formula real.
+ *
+ * Medido 2,40 +- 0,13 con lo que trae kg_setup hoy. El 2,7 deja holgura.
  *
  * Lo que tiene que saltar es una vuelta a la politica de salida vieja, que en
  * esta misma configuracion da 4,16. */
-#define TECHO 2.7
+#define TECHO 2.9
 
 /* `negacion` se pone en el interruptor global ANTES de lanzar los hilos y no se
  * toca mientras corren: kg_setup lo lee al construir cada contexto. Cada medida
@@ -332,6 +335,15 @@ int main(int argc,char **argv){
                ng.media, mejor.media/ng.media,
                dif>2*e ? "de verdad" : (-dif>2*e ? "PEOR, de verdad"
                                                  : "dentro del ruido"));
+        /* AVISO, y no es retorico. Esta prueba mide con dbits=%d, que es muy
+           inferior al que usa la app (bits/4+4, hasta 28). El mapa de negacion
+           daba 1,38 veces mejor AQUI y no encontraba la clave ALLI: a partir de
+           dbits 13 se queda dando vueltas. Se envio encendido por fiarse de
+           este numero. */
+        printf("    OJO: medido con dbits=%d. La app usa bits/4+4 (hasta 28) y\n"
+               "    el mapa de negacion se rompe a partir de 13. Lo que decide\n"
+               "    si un cambio sirve es la prueba `resueltos`, que resuelve\n"
+               "    puzzles de verdad con el dbits real.\n", dbits);
     }
     if(ng32.media>0 && az.media>0)
         printf("  negacion con tabla de 32       %.2f (%.2f veces sobre %.2f,"

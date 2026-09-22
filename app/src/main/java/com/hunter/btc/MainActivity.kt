@@ -5245,9 +5245,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val ritmo = HunterEngine.getWps().takeIf { it > 1000 } ?: 4_000_000.0
             val bits = (p.num - 1).coerceAtLeast(1)
             val clavesBrutas = Math.pow(2.0, bits.toDouble())
-            // 1,7 medido, no estimado: tools/ec-harness/constante. Ver el
+            // 2,4 medido, no estimado: tools/ec-harness/constante. Ver el
             // comentario de kgOpsEsperadas.
-            val opsKangaroo = 1.7 * Math.pow(2.0, bits / 2.0)
+            val opsKangaroo = 2.4 * Math.pow(2.0, bits / 2.0)
             fun humano(segundos: Double): String = when {
                 segundos < 90            -> "${segundos.toInt()} segundos"
                 segundos < 5400          -> "${(segundos / 60).toInt()} minutos"
@@ -5568,7 +5568,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         kgSegPrevios = prefs.getLong("kangaroo_seg_${pub.take(16)}", 0L)
         kgMuestraMs = 0L; kgMuestraOps = 0L
         recuperarMuestras()
-        // El trabajo que hace falta, en operaciones de grupo: 1,7 veces la raíz
+        // El trabajo que hace falta, en operaciones de grupo: 2,4 veces la raíz
         // del ancho del rango.
         //
         // No es una estimación: lo mide tools/ec-harness/constante resolviendo
@@ -5578,14 +5578,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // 4,16 — o sea que el "Estimado" llevaba meses siendo el doble de
         // optimista sin que nada lo dijera.
         //
-        // El 1,7 sale de la medida con tabla de 32 saltos (1,69), que es la que
-        // corresponde a un rango grande: en el #140 la tabla tiene 75 entradas y
-        // los ciclos estériles del mapa de negación son aún más raros, así que si
-        // falla será por optimista de menos.
+        // El 2,4 es lo medido SIN mapa de negación, que es como corre ahora: la
+        // negación daba 1,7 pero no encuentra la clave con el dbits real, así
+        // que está apagada. Ver el comentario de kg_negacion en kangaroo.h.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(ini, 16)
             val b = java.math.BigInteger(fin, 16)
-            1.7 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
+            2.4 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
         } catch (e: Exception) { 0.0 }
         lblEscaneadas?.text = "Operaciones"
         lblRestantes?.text = "Estimado"

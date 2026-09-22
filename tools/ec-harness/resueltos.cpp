@@ -168,7 +168,61 @@ int main(){
             mal_addr++;
         }
     }
-    int fallos=mal_hex+mal_pub+mal_addr+mal_rango;
+    /* ---- Y lo que de verdad va a pasar en el movil: RESOLVERLOS ----
+     *
+     * Comprobar que los datos cuadran no dice que el motor los encuentre. Estos
+     * son objetivos con respuesta conocida y rango pequeno, o sea que aqui se
+     * pueden resolver de verdad en segundos — que es justo lo que se le va a
+     * pedir al movil.
+     *
+     * dbits sale de la MISMA formula que usa kangarooStart (bits/4+4, minimo 6),
+     * para que esto pruebe la configuracion real y no una de laboratorio. */
+    printf("\n  Resolviendolos de verdad, con el dbits que usa la app:\n");
+    /* ESTA ES LA PRUEBA QUE FALTABA.
+     *
+     * `constante` mide el coste con dbits=5, y con ese valor el mapa de
+     * negacion salia 1,38 veces mejor. Con el dbits que usa la app —bits/4+4,
+     * o sea 14 en el #40 y 28 en el #140— NO ENCUENTRA LA CLAVE. Se envio
+     * encendido y el motor no podia dar con nada.
+     *
+     * La leccion no es "el mapa de negacion es malo": es que una prueba que
+     * mide el algoritmo en una configuracion distinta de la que corre no esta
+     * probando el motor, esta probando otro motor parecido. Por eso esto usa la
+     * misma formula que kangarooStart y resuelve de verdad. */
+    int mal_resuelto=0;
+    const int cuales[]={20,25,30,35,40};
+    for(size_t q=0;q<sizeof(cuales)/sizeof(cuales[0]);q++){
+        const Resuelto *r=NULL;
+        for(int i=0;i<N_TABLA;i++) if(TABLA[i].num==cuales[q]){ r=&TABLA[i]; break; }
+        if(!r) continue;
+        sc_t k; a_escalar(r->priv,k);
+
+        uint8_t ini[32],fin[32],pub33[33];
+        memset(ini,0,32); memset(fin,0,32);
+        int n=r->num;
+        ini[31-(n-1)/8] = (uint8_t)(1u<<((n-1)%8));
+        for(int b=0;b<n;b++) fin[31-b/8] |= (uint8_t)(1u<<(b%8));
+        JP P; kg_scalar_mul(&P,k,FIELD_GX,FIELD_GY);
+        fe_t x,y; kg_normalize(&P,x,y);
+        pub33[0]=(y[0]&1)?0x03:0x02;
+        for(int w=0;w<4;w++) for(int j=0;j<8;j++)
+            pub33[1+(3-w)*8+(7-j)]=(uint8_t)(x[w]>>(j*8));
+
+        int dbits=n/4+4; if(dbits<6) dbits=6; if(dbits>28) dbits=28;
+        KangarooCtx c;
+        if(!kg_setup(&c,pub33,ini,fin,dbits,18)){
+            printf("    MAL #%-3d kg_setup no acepta el rango\n",n); mal_resuelto++; continue;
+        }
+        kg_run(&c,256,0xC0FFEEULL + (uint64_t)n);
+        int ok = c.encontrado.load() && sc_cmp(c.k,k)==0;
+        printf("    %s #%-3d dbits %2d  %lld saltos%s\n", ok?"OK ":"MAL", n, dbits,
+               (long long)c.saltos.load(),
+               ok?"":"   <-- no la encontro o la encontro mal");
+        if(!ok) mal_resuelto++;
+        kg_free(&c);
+    }
+
+    int fallos=mal_hex+mal_pub+mal_addr+mal_rango+mal_resuelto;
     printf("  %s  %d entradas: %d claves no hex, %d publicas mal, %d direcciones mal,\n"
            "       %d fuera de su rango\n",
            fallos?"MAL":"OK ",N_TABLA,mal_hex,mal_pub,mal_addr,mal_rango);
