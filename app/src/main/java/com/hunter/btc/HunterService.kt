@@ -179,7 +179,13 @@ class HunterService : Service() {
         getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH,
             Notification.Builder(this, CHANNEL_MATCH)
                 .setContentTitle("WALLET ENCONTRADA ($count total)")
-                .setContentText(details.lines().firstOrNull()?.take(80) ?: "")
+                // lineSequence y no lines: lines() construye la lista ENTERA
+                // de lineas para quedarse con la primera. Con la lista de
+                // coincidencias acotada ya no puede ser enorme, pero esta
+                // funcion recibe una cadena de fuera y no tiene por que
+                // fiarse: aqui es donde murio la app, y la traza no decia
+                // nada del escaneo, solo StringsKt.lines().
+                .setContentText(details.lineSequence().firstOrNull()?.take(80) ?: "")
                 .setStyle(Notification.BigTextStyle().bigText(details.take(400)))
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentIntent(pi).setAutoCancel(true).build())

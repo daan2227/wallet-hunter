@@ -32,6 +32,7 @@
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
 #include "kangaroo.h"
+#include "coincidencias.h"
 #include "bloom.h"
 
 #include "sha256_ripemd160.h"
@@ -132,8 +133,7 @@ static int     g_has_target       = 0;
 
 static std::mutex               g_log_mutex;
 static std::deque<std::string>  g_log;
-static std::mutex               g_match_mutex;
-static std::vector<std::string> g_matches;
+static Coincidencias            g_matches;
 static std::mutex               g_addr_mutex;
 static std::deque<std::string>  g_recent_addrs;
 
@@ -627,12 +627,20 @@ static void save_match(const char *privhex, const char *addr, double btc, const 
         size_t sl=outpath.rfind('/');
         if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
     }
+    /* Primero a la lista, que es quien sabe si ya estaba.
+     *
+     * Lo de mirar si se repite no es cosmetico: el escaneo secuencial vuelve a
+     * empezar al terminar el rango, asi que con un rango pequeno encuentra la
+     * MISMA clave una y otra vez. Sin este filtro, cada vuelta anadia una
+     * entrada a la lista y una linea al fichero, y la app se quedaba sin
+     * memoria en minutos. Ver coincidencias.h. */
+    std::ostringstream full;full<<"MATCH|ADDR:"<<addr<<"|BTC:"<<btc<<"|WIF:"<<wif<<"|HEX:"<<privhex;
+    if(!coinc_add(&g_matches,full.str())) return;   /* ya estaba */
+
     FILE *fo=fopen(outpath.c_str(),"a");
     if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
     add_log(oss.str());
-    std::ostringstream full;full<<"MATCH|ADDR:"<<addr<<"|BTC:"<<btc<<"|WIF:"<<wif<<"|HEX:"<<privhex;
-    {std::lock_guard<std::mutex> lk(g_match_mutex);g_matches.push_back(full.str());}
 }
 
 /* =========================================================
@@ -1242,8 +1250,7 @@ Java_com_hunter_btc_HunterEngine_popLog(JNIEnv *env,jobject){
 
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
-    std::lock_guard<std::mutex> lk(g_match_mutex);
-    std::string all;for(auto &m:g_matches)all+=m+"\n";
+    std::string all=coinc_texto(&g_matches);
     return env->NewStringUTF(all.c_str());
 }
 
@@ -1330,9 +1337,7 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
 
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
-    std::lock_guard<std::mutex> lk(g_match_mutex);
-    if(g_matches.empty())return env->NewStringUTF("");
-    std::string s=g_matches.front();g_matches.erase(g_matches.begin());
+    std::string s=coinc_pop(&g_matches);
     return env->NewStringUTF(s.c_str());
 }
 
