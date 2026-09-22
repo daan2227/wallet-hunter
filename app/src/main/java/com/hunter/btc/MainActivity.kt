@@ -4527,6 +4527,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // (lastKnownRunning), para no reaccionar a una parada del usuario.
         val wasRunning = prefs.getBoolean("scan_was_running", false)
         val isNowRunning = HunterEngine.isRunning()
+        // Si el motor se ha parado porque ENCONTRÓ lo que buscaba, la búsqueda
+        // está terminada y la marca de "estaba corriendo" sobra. Esto va fuera
+        // del watchdog a propósito: con el watchdog apagado nadie la limpiaba y
+        // al reabrir la app, checkAndRestartScan ofrecía reanudar una búsqueda
+        // ya resuelta.
+        if (wasRunning && !isNowRunning &&
+            (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false })) {
+            prefs.edit().putBoolean("scan_was_running", false).apply()
+        }
         if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
             // Sin esto, tras perder el dataset —se va con la app al
             // desinstalar— el reintento entraría en el guardia de doToggle() y
@@ -6229,6 +6238,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val wasRunning = prefs.getBoolean("scan_was_running", false)
         if (!wasRunning) return
         if (HunterEngine.isRunning()) return // ya está corriendo
+        // Y no se ofrece reanudar lo que ya se encontró. Es un segundo cierre
+        // del mismo agujero: si por cualquier camino la marca se quedara
+        // puesta, aquí no se puede acabar preguntando si reanudar una búsqueda
+        // terminada.
+        if (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false }) {
+            prefs.edit().putBoolean("scan_was_running", false).apply()
+            return
+        }
 
         // El scan estaba activo pero fue matado — preguntar si reiniciar
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
