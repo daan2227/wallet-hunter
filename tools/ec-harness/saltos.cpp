@@ -45,7 +45,7 @@ static void todo_unos_be(uint8_t *be,int bits){   /* 2^(bits+1)-1 */
 typedef struct { KangarooCtx *c; int n_kang; uint64_t sem; } Arg;
 static void *anda(void *p){ Arg *a=(Arg*)p; kg_run(a->c,a->n_kang,a->sem); return NULL; }
 
-/* Comprueba la invariante sobre los mansos que hayan quedado en la tabla. */
+/* Comprueba la invariante sobre los puntos que hayan quedado en la tabla. */
 static void prueba(int bits,const char *et){
     printf("\n%s (intervalo de %d bits):\n",et,bits);
     uint8_t ini[32],fin[32],pub[33];
@@ -211,6 +211,76 @@ static void prueba_ida_y_vuelta(void){
     kg_free(&c); kg_free(&d); kg_free(&m);
 }
 
+/* La resta que da la clave, con distancias de verdad.
+ *
+ * kg_resolver es el ultimo paso de toda la busqueda: dos canguros de rebanos
+ * distintos en el mismo punto, y la clave es la resta de sus distancias. Las
+ * pruebas que lo tocan (reparte, kang) van a 24 y 36 bits, donde las distancias
+ * caben en una palabra de 64. En el #140 no caben — y este fichero existe
+ * precisamente porque ahi es donde estaba el fallo.
+ *
+ * No hace falta andar: se fabrica la colision. Un manso en d_m*G y un salvaje
+ * en P' + d_s*G con d_m - d_s = k - a caen en el MISMO punto por construccion,
+ * asi que esto prueba la aritmetica sin gastar 2^70 operaciones.
+ */
+static void prueba_resolver_grande(void){
+    printf("\n6. La resta que da la clave, con distancias de mas de 64 bits:\n");
+    const int BITS=139, DB=6;
+    uint8_t ini[32],fin[32],pub[33];
+    pot2_be(ini,BITS); todo_unos_be(fin,BITS);
+
+    /* k = a + 2^100 + 12345. La incognita relativa pasa de 64 bits, que es lo
+       que hay que probar. */
+    sc_t a_sc; sc_from_be32(a_sc,ini);
+    sc_t rel; sc_zero(rel); rel[1]=1ULL<<36; rel[0]=12345;     /* 2^100 + 12345 */
+    sc_t k_sc; sc_add(k_sc,a_sc,rel);
+    {
+        JP P; kg_scalar_mul(&P,k_sc,FIELD_GX,FIELD_GY);
+        fe_t x,y; kg_normalize(&P,x,y);
+        pub[0]=(y[0]&1)?0x03:0x02;
+        for(int w=0;w<4;w++) for(int b=0;b<8;b++)
+            pub[1+(3-w)*8+(7-b)]=(uint8_t)(x[w]>>(b*8));
+    }
+
+    KangarooCtx c;
+    if(!kg_setup(&c,pub,ini,fin,DB,12)){ printf("  setup fallo\n"); fallos++; return; }
+
+    /* d_s cualquiera, grande. d_m = d_s + (k-a). */
+    sc_t d_s; sc_zero(d_s); d_s[1]=1ULL<<26; d_s[0]=777;       /* 2^90 + 777 */
+    sc_t d_m; sc_add(d_m,d_s,rel);
+
+    /* Los dos puntos, que tienen que salir el mismo. */
+    uint64_t kx_m[2], kx_s[2];
+    {
+        JP T; kg_scalar_mul(&T,d_m,FIELD_GX,FIELD_GY);
+        fe_t x,y; kg_normalize(&T,x,y); kx_m[0]=x[0]; kx_m[1]=x[1];
+    }
+    {
+        JP S; kg_scalar_mul(&S,d_s,FIELD_GX,FIELD_GY);
+        fe_t sx,sy; kg_normalize(&S,sx,sy);
+        JP W; jp_add_affine(&W,&c.objetivo,sx,sy);
+        fe_t x,y; kg_normalize(&W,x,y); kx_s[0]=x[0]; kx_s[1]=x[1];
+    }
+    OK(kx_m[0]==kx_s[0] && kx_m[1]==kx_s[1],
+       "el manso y el salvaje caen en el mismo punto (la colision existe)");
+
+    /* Se meten como los mete kg_run. El segundo encuentra al primero. */
+    sc_t otro; int otro_manso, mismo=0;
+    dp_insert(&c.tabla,kx_m,d_m,1,otro,&otro_manso,&mismo);
+    int hay=dp_insert(&c.tabla,kx_s,d_s,0,otro,&otro_manso,&mismo);
+    OK(hay==1, "la tabla ve la colision");
+    if(hay) kg_resolver(&c,d_s,0,otro);
+
+    OK(c.encontrado.load()==1, "kg_resolver saca la clave");
+    OK(memcmp(c.k,k_sc,32)==0, "y es exactamente la que se puso");
+    if(c.encontrado.load() && memcmp(c.k,k_sc,32)!=0)
+        printf("       esperada 2^139+2^100+12345, salio otra cosa\n");
+    /* Y el contexto no ha dado un solo salto: la clave no puede venir de haber
+       buscado, solo de la resta. */
+    OK(c.saltos.load()==0, "sin dar un solo salto");
+    kg_free(&c);
+}
+
 int main(){
     setvbuf(stdout,NULL,_IONBF,0);
     printf("Los saltos mueven el punto y la distancia a la par\n");
@@ -222,6 +292,7 @@ int main(){
     prueba(139,"3. Puzzle #140");
     prueba(154,"4. Puzzle #155");
     prueba_ida_y_vuelta();
+    prueba_resolver_grande();
     printf("\n%s\n", fallos ? "HAY FALLOS" : "TODO CORRECTO");
     return fallos?1:0;
 }
