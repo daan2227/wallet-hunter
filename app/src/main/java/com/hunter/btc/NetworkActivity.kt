@@ -1210,14 +1210,19 @@ class NetworkActivity : AppCompatActivity() {
         }
         NetworkManager.onBlock = { block ->
             try {
-                if (!fijarObjetivo(block)) return@onBlock
-                HunterEngine.setRange(block.rangeStart, block.rangeEnd)
-                HunterEngine.setMode(1)
-                if (!HunterEngine.isRunning()) {
-                    val prefs = ajustes(app)
-                    HunterEngine.startHunting(
-                        prefs.getInt("puzzle_threads", 3) + 1,
-                        prefs.getInt("puzzle_cpu", 70) + 10)
+                // Un if y no un "return@onBlock": las etiquetas implicitas de
+                // Kotlin salen del NOMBRE DE LA FUNCION a la que se pasa la
+                // lambda, no de la propiedad a la que se asigna. onBlock es una
+                // propiedad, asi que esa etiqueta no existe y no compila.
+                if (fijarObjetivo(block)) {
+                    HunterEngine.setRange(block.rangeStart, block.rangeEnd)
+                    HunterEngine.setMode(1)
+                    if (!HunterEngine.isRunning()) {
+                        val prefs = ajustes(app)
+                        HunterEngine.startHunting(
+                            prefs.getInt("puzzle_threads", 3) + 1,
+                            prefs.getInt("puzzle_cpu", 70) + 10)
+                    }
                 }
             } catch (e: Throwable) {
                 android.util.Log.e("NetworkActivity", "onBlock: ${e.message}", e)
