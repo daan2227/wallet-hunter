@@ -369,10 +369,26 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * `resueltos` resuelve puzzles de verdad con la formula de dbits de la app, y
  * `constante` barre dbits en vez de fijarlo.
  *
- * NO esta descartado como idea: el raiz(2) es real y se midio. Lo que falta es
- * entender por que los ciclos esteriles lo rompen cuando hay muchos pasos entre
- * puntos distinguidos —con dbits 14 son ~180 ciclos entre punto y punto, con 5
- * es menos de uno— y arreglarlo antes de volver a encenderlo. */
+ * NO esta descartado como idea: el raiz(2) es real y se midio. Pero la causa
+ * NO esta identificada, y conviene no inventarsela. Lo unico medido, con el
+ * puzzle #40 y dbits 13, 12 millones de saltos:
+ *
+ *     tabla: 84 entradas        (tocarian ~1.465)
+ *     pegados: 4                (o sea, casi ninguna del mismo rebano)
+ *
+ * Faltan ~1.380 puntos. Un distinguido solo deja de guardarse si encuentra la
+ * misma x ya en la tabla; si es del mismo rebano cuenta como pegado —y apenas
+ * los hay— asi que casi todos encontraron pareja DEL OTRO REBANO y no
+ * resolvieron. Y cada uno de esos se come el punto que llega, porque dp_insert
+ * avisa de la colision y no lo guarda.
+ *
+ * O sea: las colisiones SI ocurren, lo que falla es cerrarlas. Eso apunta a
+ * kg_resolver o a la identificacion de P con -P en la tabla, no al camino de
+ * los canguros. Ahi es donde hay que mirar. La cuenta dice que los dos
+ * candidatos que prueba kg_resolver (+d y -d) cubren los cuatro casos de signo,
+ * asi que o la cuenta esta mal o hay algo que no cuadra con ella.
+ *
+ * Mientras tanto queda apagado. */
 static int kg_negacion = 0;
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
