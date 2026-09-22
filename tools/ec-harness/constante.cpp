@@ -243,6 +243,18 @@ int main(int argc,char **argv){
         if(!r.fallos && r.media>0 && r.media<mejor.media){ mejor=r; mejor_shift=shifts[i]; }
     }
 
+    /* Saltos al azar frente a potencias de dos. La tabla de potencias de dos
+       tiene la mitad de los saltos astronomicamente mas pequenos que la media,
+       que no es lo que supone el analisis. Se mide con la mejor politica de
+       salida para no mezclar dos cambios. */
+    printf("\n");
+    kg_politica_saltos=1;
+    Resultado az=medir(bits,n_kang,dbits,tandas,
+                       mejor_shift<0?0:2, mejor_shift<0?0:mejor_shift, 1, SEM);
+    kg_politica_saltos=0;
+    pinta("la mejor, saltos al azar",az);
+    if(az.fallos) fallos++;
+
     /* Cuanto vale volver a soltar al canguro pegado. Se apaga y se vuelve a
        medir: un arreglo cuyo numero no se mueve al quitarlo no esta arreglando
        nada. */
@@ -269,6 +281,13 @@ int main(int argc,char **argv){
                mejor.cuartil[0]>0? mejor.cuartil[3]/mejor.cuartil[0] : 0.0);
     }else{
         printf("  ninguna variante mejora la politica 0\n");
+    }
+    if(az.media>0 && mejor.media>0){
+        double e=sqrt(az.error*az.error+mejor.error*mejor.error);
+        double dif=mejor.media-az.media;
+        printf("  saltos al azar                 %.2f (%.2f veces)  ->  %s\n",
+               az.media, mejor.media/az.media,
+               (dif>2*e||-dif>2*e) ? "diferencia de verdad" : "dentro del ruido");
     }
     if(sin.media>0 && mejor.media>0){
         double e=sqrt(sin.error*sin.error+mejor.error*mejor.error);

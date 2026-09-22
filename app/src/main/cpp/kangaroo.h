@@ -482,6 +482,27 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
  * por contexto, uno por movil. */
 #define KG_MAX_JUMPS 128
 
+/* Como se construye la tabla de saltos. 0 = potencias de dos (lo de siempre),
+ * 1 = longitudes al azar sacadas de la clave publica.
+ *
+ * MEDIDO: 2,20 +- 0,05 al azar contra 2,18 +- 0,06 con potencias de dos. Lo
+ * mismo. Merecia la pena mirarlo porque con potencias de dos LA MITAD de los
+ * saltos son muchisimo mas cortos que la media —en el #140 la media es 2^69 y
+ * la mitad de los saltos mueven menos de 2^37—, que no es lo que supone el
+ * analisis de siempre. Pero da igual: una colision exige que dos canguros caigan
+ * en el MISMO punto, no cerca, asi que lo largo o corto que sea cada salto no
+ * cambia la probabilidad. Lo unico que importa es por donde se sueltan, que es
+ * lo que arregla politica_salida.
+ *
+ * Se queda como resultado negativo y se deja el interruptor: si un cambio futuro
+ * hiciera que la tabla de saltos SI importara, aqui se veria.
+ *
+ * Es un interruptor del BANCO, no un ajuste: se pone antes de kg_setup para
+ * medir una contra la otra con tools/ec-harness/constante. Va suelto y no
+ * dentro del contexto porque kg_setup construye la tabla, o sea que hay que
+ * saberlo antes de tener contexto. */
+static int kg_politica_saltos = 0;
+
 typedef struct {
     /* Objetivo, ya trasladado a [0,W]: P' = P - a*G */
     JP       objetivo;
@@ -575,8 +596,8 @@ typedef struct {
      * `pegados` cuenta esos pisotones y se duplican con cada shift, tal cual:
      *
      *    shift        0     1     2     3     4     6
-     *    coste     2,77  2,38  2,22  2,13  2,19  2,58     (256 canguros)
-     *    pegados    1,4   2,0   3,1   4,8   9,7  47,4
+     *    coste     2,74  2,38  2,27  2,18  2,23  2,66     (256 canguros, 400 tandas)
+     *    pegados    1,4   2,0   3,1   5,0  10,0  51,0
      *
      * El fondo es plano entre 1 y 4, asi que acertar el numero exacto vale poco:
      * lo que cuesta caro es quedarse en 0 o pasarse a 6. Con rebanos mas pequenos
@@ -685,25 +706,66 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     }
     c->objetivo_ok=1;
 
-    /* Tabla de saltos S[i] = 2^i * G.
-       El salto medio conviene que ronde raiz(W)/2: mas corto y los canguros
-       tardan en separarse, mas largo y se pasan de largo de la zona util.
-       Con potencias de dos la media de i=0..n-1 es (2^n - 1)/n, asi que hay
-       que resolver n - log2(n) = bits/2 - 1. Se hace por iteracion, que
-       converge en cuatro vueltas. */
-    double objetivo=(double)c->bits/2.0-1.0;
-    double nd=objetivo>1.0?objetivo:1.0;
-    for(int it=0;it<40;it++){
-        double l=0; double v=nd>1.0?nd:1.0;
-        while(v>=2.0){ v/=2.0; l+=1.0; }
-        l+=v-1.0;                       /* log2 aproximado, sobra de sobra */
-        nd=objetivo+l;
-    }
-    int n=(int)(nd+0.5);
-    if(n>KG_MAX_JUMPS) n=KG_MAX_JUMPS;
-    if(n<4) n=4;
-    c->njumps=n;
-    {
+    /* ---- Tabla de saltos ----
+     *
+     * TIENE QUE SALIR IGUAL EN TODOS LOS APARATOS DEL CLUSTER.
+     *
+     * El salto depende solo de donde esta el canguro. Si dos aparatos usaran
+     * tablas distintas, un manso de uno y un salvaje de otro podrian cruzarse
+     * en un punto y separarse en el salto siguiente sin que ninguno lo apunte:
+     * la colision solo se veria si cayera JUSTO en un punto distinguido, o sea
+     * una vez de cada 2^dbits. Con dbits 28 eso es tirar el reparto entero.
+     *
+     * Por eso la tabla se saca de cosas que los dos lados ya comparten —el
+     * ancho del rango, y en la politica 1 la clave publica— y nunca de un
+     * generador del aparato.
+     *
+     * El salto medio conviene que ronde raiz(W)/2: mas corto y los canguros
+     * tardan en separarse, mas largo y se pasan de largo de la zona util. */
+    if(kg_politica_saltos==1){
+        /* Longitudes al azar entre 1 y 2^(bits/2), o sea de media raiz(W)/2,
+           que es lo que se quiere. El azar sale de la clave publica con
+           splitmix64: es determinista y los dos lados del cluster tienen la
+           misma clave publica, asi que construyen la MISMA tabla. Con 32 saltos
+           basta para que el camino sea impredecible. */
+        int n=32; if(n>KG_MAX_JUMPS) n=KG_MAX_JUMPS;
+        c->njumps=n;
+        uint64_t s=0xA5A5A5A5DEADBEEFULL;
+        for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
+        int lb=c->bits/2; if(lb<2) lb=2; if(lb>250) lb=250;
+        for(int i=0;i<n;i++){
+            sc_zero(c->jlen[i]);
+            for(int w=0;w<4;w++){
+                s+=0x9E3779B97F4A7C15ULL;
+                uint64_t z=s;
+                z=(z^(z>>30))*0xBF58476D1CE4E5B9ULL;
+                z=(z^(z>>27))*0x94D049BB133111EBULL;
+                c->jlen[i][w]=z^(z>>31);
+            }
+            int top=(lb-1)/64, sh=(lb-1)%64;
+            for(int w=3;w>top;w--) c->jlen[i][w]=0;
+            if(sh<63) c->jlen[i][top]&=((1ULL<<(sh+1))-1);
+            if(sc_bits(c->jlen[i])==0) sc_set_u64(c->jlen[i],1);  /* 0*G no vale */
+            JP S; kg_scalar_mul(&S,c->jlen[i],FIELD_GX,FIELD_GY);
+            kg_normalize(&S,c->jx[i],c->jy[i]);
+        }
+    }else{
+        /* Potencias de dos: S[i] = 2^i * G, que se saca doblando y no cuesta
+           nada. La media de i=0..n-1 es (2^n - 1)/n, asi que hay que resolver
+           n - log2(n) = bits/2 - 1. Se hace por iteracion, que converge en
+           cuatro vueltas. */
+        double objetivo=(double)c->bits/2.0-1.0;
+        double nd=objetivo>1.0?objetivo:1.0;
+        for(int it=0;it<40;it++){
+            double l=0; double v=nd>1.0?nd:1.0;
+            while(v>=2.0){ v/=2.0; l+=1.0; }
+            l+=v-1.0;                       /* log2 aproximado, sobra de sobra */
+            nd=objetivo+l;
+        }
+        int n=(int)(nd+0.5);
+        if(n>KG_MAX_JUMPS) n=KG_MAX_JUMPS;
+        if(n<4) n=4;
+        c->njumps=n;
         JP S; memcpy(S.x,FIELD_GX,32); memcpy(S.y,FIELD_GY,32);
         memset(S.z,0,32); S.z[0]=1;
         for(int i=0;i<n;i++){

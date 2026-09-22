@@ -182,3 +182,29 @@ prueba de que la causa era la que se decía y no otra.
 El banco corre esta prueba pequeña (28 bits, 120 tandas, ~10 s) con un techo:
 si el coste de lo que trae `kg_setup` se pasa de 2,9, falla. Para comparar
 variantes se lanza a mano con más tandas y `barrido=1`.
+
+### Lo que se probó y NO sirvió
+
+Con potencias de dos, la mitad de los saltos son muchísimo más cortos que la
+media: en el #140 la media es 2⁶⁹ y la mitad de los saltos mueven menos de 2³⁷.
+Eso no es lo que supone el análisis estándar, así que parecía un sitio donde
+podía haber algo. Medido con longitudes al azar de la misma media:
+
+```
+potencias de dos   2.18 +- 0.06
+al azar            2.20 +- 0.05
+```
+
+Lo mismo. Y tiene explicación: una colisión exige que dos canguros caigan en el
+**mismo punto**, no cerca, así que lo largo o corto que sea cada salto no cambia
+la probabilidad. Lo único que importa es por dónde se sueltan.
+
+El interruptor (`kg_politica_saltos`) se queda puesto: si algún cambio futuro
+hiciera que la tabla de saltos sí importara, aquí se vería.
+
+La otra que no sirvió está en el propio código: `politica_salida = 1` (los dos
+rebaños juntos) mide **40·√W** con 256 canguros, veinte veces peor. Los mansos
+amontonados en W/2 obligan a un salvaje en k a recorrer |k − W/2| para llegar a
+ellos, y eso no lo reparte tener más canguros: todos caminan a la vez la misma
+distancia. Se queda medida porque un resultado negativo también es un banco: si
+algún día deja de ser mala, es que algo se ha roto.
