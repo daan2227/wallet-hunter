@@ -494,6 +494,21 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
        exactamente W/2 de diferencia, ni una mas. */
     int fichero_centrado = (c.ver==KG_VER);
     int motor_centrado   = kg_negacion?1:0;
+
+    /* PERO una tabla de la version 4 no se puede leer sin mapa de negacion.
+     *
+     * Ahi cada punto esta en eps*(base + d*G) con eps a +1 o -1, y el eps NO se
+     * guarda: al resolver se prueban los dos signos. Un motor sin negacion solo
+     * prueba uno, asi que de esas entradas interpretaria mal la mayoria.
+     *
+     * Y no es solo perder trabajo: cuando dp_insert encuentra una pareja del
+     * otro rebano avisa y NO GUARDA el punto que llega. O sea que una colision
+     * que no cuadra por el signo se come un punto bueno. Mezclar sale peor que
+     * no leer.
+     *
+     * El caso contrario —tabla vieja leida con negacion— si vale: esos puntos
+     * son todos eps=+1 y probar los dos signos los incluye. */
+    if(fichero_centrado && !motor_centrado){ fclose(f); return 0; }
     int con_enviado = (c.ver!=KG_VER_SIN_ENVIADO);
     uint64_t leidas=0;
     for(uint64_t i=0;i<c.n;i++){

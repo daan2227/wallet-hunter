@@ -252,31 +252,18 @@ int main(){
                (unsigned long long)sal_ok,(unsigned long long)sal);
         f+=!(man==man_ok&&sal==sal_ok&&sal>0);
 
-        /* Ida y vuelta: guardar con negacion y leer sin ella. */
+        /* Y al reves NO: una tabla escrita con negacion no se puede leer sin
+           ella, porque el signo de cada punto no se guarda y un motor sin
+           negacion solo prueba uno. Peor que perder trabajo: una colision que
+           no cuadra por el signo se COME un punto bueno, porque dp_insert avisa
+           de la pareja y no guarda el que llega. */
         dp_save(&cn.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,0);
         kg_negacion=0;
         KangarooCtx cv; kg_setup(&cv,pub,ini,fin,7,18);
         uint64_t vuelta=dp_load(&cv.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,NULL);
-        uint64_t s2=0,s2ok=0;
-        for(uint64_t i=0;i<=cv.tabla.mask;i++){
-            DP *sl=&cv.tabla.slots[i];
-            if(!sl->usado||sl->manso) continue;
-            JP P; kg_scalar_mul(&P,sl->dist,FIELD_GX,FIELD_GY);
-            int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
-            if(inf){ s2++; continue; }
-            fe_t dx,dy; kg_normalize(&P,dx,dy);
-            JP W2; jp_add_affine(&W2,&cv.objetivo,dx,dy);
-            inf=1; for(int z=0;z<4;z++) if(W2.z[z]) inf=0;
-            if(inf){ s2++; continue; }
-            fe_t x,y; kg_normalize(&W2,x,y);
-            s2++; s2ok+=(x[0]==sl->kx[0]&&x[1]==sl->kx[1]);
-        }
-        printf("%s  y de vuelta tambien (salvajes %llu/%llu de %llu leidas)\n",
-               (s2>0&&s2==s2ok)?"OK ":"MAL",
-               (unsigned long long)s2ok,(unsigned long long)s2,
-               (unsigned long long)vuelta);
-        f+=!(s2>0&&s2==s2ok);
-
+        printf("%s  una tabla con negacion NO se lee sin negacion (%llu leidas)\n",
+               vuelta==0?"OK ":"MAL",(unsigned long long)vuelta);
+        f+=(vuelta!=0);
         kg_free(&cn); kg_free(&cv);
         remove("/tmp/kg_sin_neg.dat"); remove("/tmp/kg_con_neg.dat");
         kg_negacion=antes;
