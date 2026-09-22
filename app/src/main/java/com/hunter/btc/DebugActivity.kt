@@ -334,12 +334,31 @@ class DebugActivity : AppCompatActivity() {
             val f = java.io.File(dir, name)
             if (f.exists() && f.length() > 0) {
                 sb.appendLine("=== $name ===")
-                sb.appendLine(f.readText().takeLast(800))
+                sb.appendLine(colaDe(f, 800))
             }
         }
 
         if (sb.isNotEmpty()) tv.text = sb.toString()
     }
+    /**
+     * Los últimos [n] caracteres de un fichero, sin leerlo entero.
+     *
+     * Antes era `f.readText().takeLast(800)`: cargaba el fichero COMPLETO en
+     * memoria para quedarse con el final. Estos ficheros los escribe la app con
+     * "append" y nada limita su tamaño, así que es la misma forma de morir que
+     * acaba de matarla con la lista de hallazgos —244 MB de 256—. Y aquí duele
+     * más: esta es la pantalla a la que se viene cuando algo ya ha fallado.
+     */
+    private fun colaDe(f: java.io.File, n: Int): String = try {
+        java.io.RandomAccessFile(f, "r").use { r ->
+            val desde = maxOf(0L, r.length() - n)
+            r.seek(desde)
+            val buf = ByteArray((r.length() - desde).toInt())
+            r.readFully(buf)
+            String(buf, Charsets.UTF_8)
+        }
+    } catch (e: Exception) { "" }
+
     private fun clearLogs() {
         File(filesDir, "puz_debug.txt").delete()
         File(filesDir, "crash_log.txt").delete()

@@ -6245,7 +6245,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val ext = getExternalFilesDir(null) ?: return
             val old = java.io.File(ext, "coincidencias.txt")
             if (!old.exists()) return
-            matchesFile().appendText(old.readText())
+            // Por trozos y no readText(): este fichero lo escribe el motor con
+            // "append" y nada limita su tamaño. Leerlo entero en memoria es el
+            // mismo patrón que acaba de matar la app con la lista de hallazgos
+            // —244 MB de 256— y aquí pasaría al ARRANCAR, que es peor.
+            old.inputStream().use { ent ->
+                java.io.FileOutputStream(matchesFile(), true).use { sal ->
+                    ent.copyTo(sal, 64 * 1024)
+                }
+            }
             old.delete()
             android.util.Log.i("MainActivity", "coincidencias.txt migrado a interno")
         } catch (e: Exception) {
