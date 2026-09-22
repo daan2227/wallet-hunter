@@ -139,3 +139,46 @@ g++ -O2 -o hex hex.cpp -lpthread && ./hex
 
 Cubre longitud impar y par, el prefijo `0x`, ceros a la izquierda, y los casos
 que deben rechazarse.
+
+## Cuánto cuesta Kangaroo
+
+`constante.cpp` mide **la cifra del motor**: cuántas operaciones de grupo cuesta
+resolver un logaritmo discreto, en unidades de √W. El doble de esa constante es
+el doble de días de móvil encendido.
+
+Estaba apuntada de memoria de una tanda a mano (*«3,4–4,6»*), que es lo mismo
+que no tener nada: sin punto de partida reproducible no se puede saber si un
+cambio mejora algo.
+
+```sh
+g++ -O2 -o constante constante.cpp -lpthread
+./constante 30 256 5 400 1      # bits, canguros, dbits, tandas, barrido
+```
+
+Lo importante no es la media, es **el reparto por cuartil de la posición de la
+clave dentro del rango**. Con el reparto de salida viejo salía así:
+
+```
+politica 0 (ancha)   4.16   cuartiles  1.75  1.99  3.00  9.89
+```
+
+El coste crecía con la posición de la clave. Eso no es ruido, es la firma de una
+causa concreta: los mansos salían por `[0,W)` y los salvajes por `[k,k+W)`, así
+que los dos rebaños solo se pisaban en `[k,W)` y un salvaje que saliera por
+encima de W no podía cruzarse jamás con el rastro de un manso —todos los saltos
+van hacia delante—. Sale `2/√(1−k/W)`, que promediado da 4. Medido: 4,16.
+
+La política 2 reparte a los mansos por `[0, W + W/8)` y a los salvajes por
+`[0, W/8)`, de forma que el terreno de los salvajes **cabe entero** dentro del
+de los mansos:
+
+```
+politica 2 shift 3   2.13   cuartiles  1.88  2.31  2.02  2.32
+```
+
+Plano, y 1,6–1,9 veces más barato. Que se aplane importa más que la media: es la
+prueba de que la causa era la que se decía y no otra.
+
+El banco corre esta prueba pequeña (28 bits, 120 tandas, ~10 s) con un techo:
+si el coste de lo que trae `kg_setup` se pasa de 2,9, falla. Para comparar
+variantes se lanza a mano con más tandas y `barrido=1`.

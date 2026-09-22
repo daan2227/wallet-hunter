@@ -21,7 +21,8 @@ cd "$(dirname "$0")"
 # direcciones - el codificador de direcciones, mainnet y testnet
 # lote     - tamano de lote optimo del bucle de fuerza bruta
 # semilla  - dos aparatos no pueden salir por el mismo sitio
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote"
+# constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
@@ -32,12 +33,25 @@ flags_de() {
     esac
 }
 
+# constante tarda lo que se le pida: son logaritmos discretos de verdad. Aqui
+# corre pequena (28 bits, 120 tandas, ~10 s) porque lo que tiene que hacer en
+# cada vuelta es avisar si el coste se ha disparado, no afinar decimales. Para
+# comparar variantes se lanza a mano con mas tandas:
+#     ./constante 30 256 5 400 1
+args_de() {
+    case "$1" in
+        constante) echo "28 64 5 120" ;;
+        *)         echo "" ;;
+    esac
+}
+
 fallos=0
 for t in $PRUEBAS; do
     # shellcheck disable=SC2046
     g++ -O2 -o "$t" "$t.cpp" $(flags_de "$t")
     printf '=== %s ===\n' "$t"
-    if ./"$t"; then :; else
+    # shellcheck disable=SC2086
+    if ./"$t" $(args_de "$t"); then :; else
         printf '*** %s FALLA ***\n' "$t"
         fallos=$((fallos+1))
     fi

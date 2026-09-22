@@ -123,6 +123,29 @@ static int sc_sub(sc_t r,const sc_t a,const sc_t b){
     }
     return borrow?0:1;
 }
+/* r = a >> s. Se usa para sacar fracciones del ancho del intervalo (W/2, W/4...)
+ * al repartir los puntos de salida. Solo en la preparacion. */
+static void sc_shr(sc_t r,const sc_t a,int s){
+    sc_t t; sc_copy(t,a);
+    if(s>=256){ sc_zero(r); return; }
+    int pal=s/64, bit=s%64;
+    for(int i=0;i<4;i++){
+        uint64_t v=0;
+        if(i+pal<4){
+            v=t[i+pal]>>bit;
+            /* El desplazamiento por 64 es comportamiento indefinido en C, no
+               cero: con bit==0 no hay nada que traer de la palabra de arriba. */
+            if(bit && i+pal+1<4) v|=t[i+pal+1]<<(64-bit);
+        }
+        r[i]=v;
+    }
+}
+/* Cuantos bits ocupa. 0 para el cero. */
+static int sc_bits(const sc_t a){
+    for(int w=3;w>=0;w--) for(int i=63;i>=0;i--)
+        if((a[w]>>i)&1) return w*64+i+1;
+    return 0;
+}
 static void sc_from_be32(sc_t r,const uint8_t *be){
     for(int i=0;i<4;i++){
         r[3-i]=0;
@@ -211,9 +234,21 @@ static void dp_free(DPTable *t){
 
 /* Inserta un distinguido.
  * Si ya habia otro canguro DEL OTRO REBANO en el mismo punto, devuelve 1 y deja
- * en `otro` su distancia: eso es la colision que resuelve el problema. */
+ * en `otro` su distancia: eso es la colision que resuelve el problema.
+ *
+ * `mismo` (puede ser NULL) sale a 1 cuando el punto ya estaba pero del MISMO
+ * rebano. Esa no es una colision util, pero tampoco es nada: significa que este
+ * canguro ha caido justo encima del rastro de otro de los suyos, y como el
+ * salto depende SOLO de donde se esta, a partir de ahi los dos van a recorrer
+ * exactamente el mismo camino para siempre. Uno de los dos sobra.
+ *
+ * Antes esto se miraba y se tiraba. El canguro pegado seguia saltando y
+ * gastando su parte del lote sin aportar una sola huella nueva, y sin dejar
+ * rastro en ningun contador: la UI seguia sumando saltos igual. Quien lo avisa
+ * es la tabla, que es el unico sitio donde se ve que el punto ya estaba. */
 static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
-                     sc_t otro,int *otro_manso){
+                     sc_t otro,int *otro_manso,int *mismo){
+    if(mismo) *mismo=0;
     pthread_mutex_lock(&t->mtx);
     uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&t->mask;
     int res=0;
@@ -235,6 +270,8 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
                que se juntan no dicen nada de k. */
             if(s->manso!=(uint8_t)manso){
                 sc_copy(otro,s->dist); *otro_manso=s->manso; res=1;
+            }else{
+                if(mismo) *mismo=1;
             }
             break;
         }
@@ -340,7 +377,9 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
         if(fread(&manso,1,1,f)!=1) break;
         if(con_enviado && fread(&env,1,1,f)!=1) break;
         sc_t basura; int bm;
-        dp_insert(t,kx,d,manso,basura,&bm);
+        /* NULL: aqui no hay canguro al que volver a soltar, se esta leyendo un
+           fichero. Repetido solo significa que ya estaba. */
+        dp_insert(t,kx,d,manso,basura,&bm,NULL);
         /* dp_insert no sabe de esto, asi que se busca el hueco donde ha
            quedado. Igual que hace kg_import con los que llegan por red. */
         if(env){
@@ -419,6 +458,11 @@ typedef struct {
     sc_t     k;              /* clave privada, ya sumado el inicio del rango */
 
     std::atomic<long long> saltos;   /* operaciones de grupo hechas, para la UI */
+    /* Cuantas veces un canguro ha caido encima del rastro de otro de su mismo
+     * rebano. Se cuenta aunque soltar_muertos este apagado: asi el numero mide
+     * el fenomeno y no el arreglo, y se puede ver si el arreglo tiene siquiera
+     * ocasion de hacer algo. */
+    std::atomic<long long> pegados;
     std::atomic<int>       parar;
     /* Porcentaje de CPU, 1..100. Kangaroo no tenia freno: el selector de
        potencia estaba puesto pero no hacia nada, y "Baja" calentaba el movil
@@ -434,14 +478,61 @@ typedef struct {
      *      un salvaje que arranque por encima de W no puede cruzarse jamas con
      *      el rastro de un manso.
      *
-     *   1  Rebanos juntos. Los mansos alrededor del centro del intervalo y los
-     *      salvajes alrededor de P, los dos con dispersion pequena. Asi la
-     *      distancia entre un manso y un salvaje esta acotada por W/2 en vez de
-     *      ser del orden de W, y los dos rebanos pisan el mismo terreno.
+     *      MEDIDO (tools/ec-harness/constante): 3,16*raiz(W) de media, y lo que
+     *      delata la causa es el reparto por cuartil — 2,60 / 2,40 / 2,74 /
+     *      4,91. El coste CRECE segun la clave esta mas arriba del rango, que
+     *      es justo lo que predice el solape: los dos rebanos solo coinciden en
+     *      [k,W), asi que sale 2/raiz(1-k/W).
      *
-     * Es un campo y no una constante para poder medir el uno contra el otro con
-     * el mismo banco antes de cambiar el que viene por defecto. */
+     *   1  Rebanos juntos. Los mansos alrededor del centro del intervalo y los
+     *      salvajes alrededor de P, los dos con dispersion pequena.
+     *
+     *      MEDIDO: 30,9*raiz(W). Diez veces peor, y en U: 53,9 / 13,2 / 12,8 /
+     *      43,7. Con los mansos amontonados en W/2, un salvaje en k tiene que
+     *      RECORRER |k-W/2| para llegar a ellos, y eso no lo reparte tener mas
+     *      canguros: los 64 caminan a la vez la misma distancia. Se queda como
+     *      resultado negativo, que tambien vale de banco: si un cambio futuro
+     *      hace que la 1 deje de ser mala, es que ha roto algo.
+     *
+     *   2  LA DE AHORA. Mansos por [0, W + W>>salvaje_shift), salvajes por
+     *      [0, W>>salvaje_shift). Lo unico que hace falta es que el terreno de
+     *      los salvajes quepa ENTERO dentro del de los mansos; entonces no hay
+     *      ningun salvaje condenado de salida y el coste deja de depender de
+     *      donde este la clave. Se ensancha el de los mansos en vez de mover a
+     *      los salvajes porque los salvajes cuelgan de P, que es justo lo que no
+     *      se sabe donde esta.
+     *
+     *      MEDIDO: 2,13*raiz(W) con 256 canguros, y el reparto por cuartil sale
+     *      PLANO (1,88 / 2,31 / 2,02 / 2,32). Que se aplane es mas importante
+     *      que la media: es la prueba de que la causa era la que se decia.
+     *
+     * Es un campo y no una constante para poder medir unas contra otras con el
+     * mismo banco antes de cambiar la que viene por defecto. Las tres siguen
+     * ahi y tools/ec-harness/constante las mide en cada vuelta. */
     int      politica_salida;
+    /* Solo para la politica 2: los salvajes se reparten por W>>salvaje_shift.
+     * 0 = tan ancho como el intervalo.
+     *
+     * POR QUE 3. Estrechar a los salvajes concentra las huellas utiles —el
+     * terreno de los mansos se acerca a W en vez de 2W— pero a partir de cierto
+     * punto los salvajes empiezan a pisarse ENTRE ELLOS, y eso se paga. El campo
+     * `pegados` cuenta esos pisotones y se duplican con cada shift, tal cual:
+     *
+     *    shift        0     1     2     3     4     6
+     *    coste     2,77  2,38  2,22  2,13  2,19  2,58     (256 canguros)
+     *    pegados    1,4   2,0   3,1   4,8   9,7  47,4
+     *
+     * El fondo es plano entre 1 y 4, asi que acertar el numero exacto vale poco:
+     * lo que cuesta caro es quedarse en 0 o pasarse a 6. Con rebanos mas pequenos
+     * el minimo se corre a 2 (16 y 64 canguros), pero la diferencia esta dentro
+     * del error de la medida. Se elige 3 porque es el minimo con el rebano
+     * grande, que es como corre en el movil. */
+    int      salvaje_shift;
+    /* 1 = volver a soltar al canguro que se ha pegado a otro de su rebano.
+     * Lo normal es 1. Esta puesto para poder MEDIR cuanto vale ese arreglo:
+     * un arreglo que no se puede apagar es un arreglo que no se puede medir, y
+     * entonces no se sabe si sigue haciendo algo. */
+    int      soltar_muertos;
 } KangarooCtx;
 
 /* Multiplicacion escalar sencilla (doblar y sumar). Solo se usa en la
@@ -524,8 +615,15 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
             c->objetivo_ok=1;
             c->dbits=dp_bits; c->dmask=0;
             if(!dp_init(&c->tabla,4)) return 0;
-            c->encontrado.store(1); c->saltos.store(0); c->parar.store(0);
+            c->encontrado.store(1); c->saltos.store(0); c->pegados.store(0);
+            c->parar.store(0);
             c->cpu_limite.store(100);
+            /* Aunque ya este resuelto, kg_run puede llamarse igual y suelta el
+               rebano ANTES de mirar si hay que parar. Si estos campos se quedan
+               sin poner, lee basura: un salvaje_shift negativo sale del array
+               en sc_shr. Salir por la puerta de atras no exime de dejar el
+               struct entero. */
+            c->politica_salida=0; c->salvaje_shift=0; c->soltar_muertos=1;
             return 1;
         }
     }
@@ -563,9 +661,12 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     if(!dp_init(&c->tabla,tabla_bits)) return 0;
     c->encontrado.store(0);
     c->saltos.store(0);
+    c->pegados.store(0);
     c->parar.store(0);
     c->cpu_limite.store(100);
-    c->politica_salida=0;
+    c->politica_salida=2;
+    c->salvaje_shift=3;
+    c->soltar_muertos=1;
     kg_normalize(&c->objetivo,c->obj_x,c->obj_y);
     return 1;
 }
@@ -742,7 +843,9 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
         int manso=p[48]?1:0;
 
         sc_t otro; int otro_manso;
-        if(dp_insert(&c->tabla,kx,d,manso,otro,&otro_manso)){
+        /* NULL: el canguro pegado es de OTRO aparato. Aqui no se le puede
+           soltar; ya lo hara el suyo cuando le toque. */
+        if(dp_insert(&c->tabla,kx,d,manso,otro,&otro_manso,NULL)){
             /* Colision. Puede ser contra un punto de este movil o contra otro
                que llego antes por la red: da igual, la cuenta es la misma. */
             kg_resolver(c,d,manso,otro);
@@ -816,6 +919,29 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         if(disp_bits > c->bits-2) disp_bits = c->bits-2;   /* nunca mas de W/4 */
         if(disp_bits < 1) disp_bits = 1;
     }
+    /* Terrenos de la politica 2: los salvajes por [0, disp_s) y los mansos por
+       [0, rango_m) con rango_m = W + disp_s, que es lo que hace falta para que
+       el terreno de los salvajes quepa entero dentro del de los mansos. */
+    sc_t disp_s, rango_m;
+    sc_shr(disp_s,c->ancho,c->salvaje_shift);
+    if(sc_bits(disp_s)==0) sc_set_u64(disp_s,1);
+    sc_add(rango_m,c->ancho,disp_s);
+    int bits_disp=sc_bits(disp_s), bits_rm=sc_bits(rango_m);
+
+    /* Un valor al azar en [0, lim), por rechazo. Como lim pasa de 2^(bits-1),
+       acierta mas de una vez de cada dos y la media son dos vueltas. Esto es
+       preparacion, no el bucle: se llama una vez por canguro. */
+    auto azar_bajo=[&](sc_t out,const sc_t lim,int lim_bits){
+        for(int intento=0;intento<64;intento++){
+            for(int j=0;j<4;j++) out[j]=NEXT();
+            int top=(lim_bits-1)/64, sh=(lim_bits-1)%64;
+            for(int j=3;j>top;j--) out[j]=0;
+            if(sh<63) out[top]&=((1ULL<<(sh+1))-1);
+            if(sc_cmp(out,lim)<0) return;
+        }
+        sc_zero(out); out[0]=1;      /* no deberia pasar nunca */
+    };
+
     /* Centro del intervalo, W/2: de ahi salen los mansos en la politica 1. */
     sc_t centro; sc_copy(centro,c->ancho);
     {
@@ -835,6 +961,15 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             for(int j=3;j>top;j--) d[j]=0;
             d[top] &= sh ? ((1ULL<<sh)-1) : 0ULL;
             if(manso) sc_add(d,d,centro);
+        }else if(c->politica_salida==2){
+            /* El manso cubre TODO el terreno donde puede caer un salvaje; el
+               salvaje se queda en su trozo colgando de P. No hay que centrar
+               nada ni restar: un manso en d_m y un salvaje en d_s que coincidan
+               siguen dando k = d_m - d_s, que es lo que resuelve kg_resolver.
+               Y como d_m llega hasta W + disp y d_s empieza en 0, la resta no
+               se queda nunca corta. */
+            if(manso) azar_bajo(d,rango_m,bits_rm);
+            else      azar_bajo(d,disp_s,bits_disp);
         }else{
             /* Politica 0, la de siempre: d al azar en todo [0,W). */
             int w=(c->bits+63)/64;
@@ -916,9 +1051,22 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             /* Punto distinguido: los dbits bajos de la x a cero. Se mira la
                posicion ACTUAL, antes de saltar. */
             if((K[i].x[0]&c->dmask)==0){
-                sc_t otro; int otro_manso;
-                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,otro,&otro_manso))
+                sc_t otro; int otro_manso, mismo=0;
+                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,
+                             otro,&otro_manso,&mismo))
                     kg_resolver(c,K[i].dist,K[i].manso,otro);
+                else if(mismo){
+                    c->pegados.fetch_add(1);
+                    if(c->soltar_muertos){
+                        /* Canguro muerto: va pegado a otro de su mismo rebano y
+                           a partir de aqui los dos caminos son el mismo. Se le
+                           suelta en otro sitio. Lo que se pierde son los saltos
+                           dados desde que se pegaron hasta este distinguido
+                           —unos 2^dbits como mucho—, no el resto. */
+                        soltar(i,K[i].manso);
+                        continue;
+                    }
+                }
             }
 
             /* Suma afin: lambda = (y2-y1)/(x2-x1), x3 = lambda^2-x1-x2,

@@ -278,51 +278,109 @@ static void prueba_un_trabajador(){
     kg_free(&master); kg_free(&trab);
 }
 
-/* ---- 5. Varios trabajadores: aqui SI resuelve el master ----
+/* ---- 5 y 6. Varios trabajadores: aqui SI resuelve el master ----
  *
  * Con varios, la mitad manso y la mitad salvaje de una misma colision caen en
  * aparatos distintos: ninguno de los dos la ve, y solo aparece al juntar las
  * tablas. Esto es lo que hace que repartir sirva para algo.
+ *
+ * UNA SOLA VUELTA NO DEMUESTRA NADA, Y ESTA PRUEBA LO APRENDIO A GOLPES.
+ *
+ * La primera colision del conjunto cae dentro de un mismo aparato o entre dos,
+ * y las dos cosas pasan mas o menos con la misma frecuencia. Si cae dentro de
+ * uno, ese trabajador la resuelve solo — y entonces el master NO puede repetir
+ * la cuenta, porque de esa pareja dp_insert no llego a guardar la segunda
+ * mitad y por tanto no se exporta nunca (es el limite de la prueba 4).
+ *
+ * O sea que "el master la resuelve" es cara o cruz. Con la semilla fija que
+ * habia aqui salia cara, y la prueba se dio por buena. Al mejorar el reparto de
+ * salida de los canguros (politica 2) la misma semilla empezo a salir cruz y la
+ * prueba se puso roja sin que nada estuviera roto. Repetirla seis veces tampoco
+ * servia de nada: con la semilla fija, las seis vueltas son LA MISMA TIRADA.
+ *
+ * Asi que se tira varias veces con semillas DISTINTAS y se mira el recuento:
+ *   - alguien la resuelve siempre (ni una vuelta puede quedar sin resolver);
+ *   - y el master la resuelve al menos una vez, que es lo que hay que
+ *     demostrar: que una colision repartida entre dos aparatos se cierra.
  */
+#define VUELTAS_MP 6
+
 static void prueba_master_pasivo(int n_trabajadores,const char *et){
     printf("\n%s:\n",et);
     unsigned long long a=1ULL<<27, b=(1ULL<<28)-1, k=a+123456789ULL%((1ULL<<27));
     const int DB=7, TB=16;
     uint8_t pub[33],ini[32],fin[32];
-    KangarooCtx master; monta(&master,a,b,k,pub,ini,fin,DB,TB);
-
-    KangarooCtx trab[4];
-    pthread_t hilo[4]; Arg arg[4];
-    for(int i=0;i<n_trabajadores;i++){
-        uint8_t p2[33],i2[32],f2[32];
-        monta(&trab[i],a,b,k,p2,i2,f2,DB,TB);
-        arg[i]=(Arg){&trab[i],128,(uint64_t)(0x1000+i*7919)};
-        pthread_create(&hilo[i],NULL,anda,&arg[i]);
-    }
-
     static uint8_t buf[1<<22];
-    int vueltas=0; uint64_t total=0;
-    while(!master.encontrado.load() && vueltas<20000){
+
+    int gana_master=0, gana_trab=0, sin_resolver=0, master_anduvo=0;
+    uint64_t total_puntos=0, mal_clave=0;
+
+    for(int v=0;v<VUELTAS_MP;v++){
+        KangarooCtx master; monta(&master,a,b,k,pub,ini,fin,DB,TB);
+        KangarooCtx trab[4];
+        pthread_t hilo[4]; Arg arg[4];
         for(int i=0;i<n_trabajadores;i++){
-            size_t n=kg_export(&trab[i].tabla,pub,ini,fin,DB,buf,sizeof(buf),512);
+            uint8_t p2[33],i2[32],f2[32];
+            monta(&trab[i],a,b,k,p2,i2,f2,DB,TB);
+            /* Semilla distinta en cada vuelta Y en cada trabajador. */
+            arg[i]=(Arg){&trab[i],128,
+                         (uint64_t)(0x1000+i*7919+v*104729)};
+            pthread_create(&hilo[i],NULL,anda,&arg[i]);
+        }
+
+        uint64_t total=0;
+        /* Recoger mientras quede alguien andando. Antes esto daba 20000 vueltas
+           de 200 us pasara lo que pasara: cuatro segundos de reloj por prueba,
+           casi todos sin nada que recoger. */
+        for(;;){
+            int vivos=0;
+            for(int i=0;i<n_trabajadores;i++){
+                size_t n=kg_export(&trab[i].tabla,pub,ini,fin,DB,buf,sizeof(buf),512);
+                if(n){ uint32_t met=0;
+                       if(kg_import(&master,pub,ini,fin,DB,buf,n,&met)) total+=met; }
+                if(!trab[i].encontrado.load()) vivos++;
+            }
+            if(master.encontrado.load() || !vivos) break;
+            struct timespec ts={0,200000}; nanosleep(&ts,NULL);
+        }
+        for(int i=0;i<n_trabajadores;i++) trab[i].parar.store(1);
+        for(int i=0;i<n_trabajadores;i++) pthread_join(hilo[i],NULL);
+        /* Un ultimo barrido: lo que quedara sin mandar cuando pararon. */
+        for(int i=0;i<n_trabajadores;i++){
+            size_t n=kg_export(&trab[i].tabla,pub,ini,fin,DB,buf,sizeof(buf),0);
             if(n){ uint32_t met=0;
                    if(kg_import(&master,pub,ini,fin,DB,buf,n,&met)) total+=met; }
         }
-        vueltas++;
-        struct timespec ts={0,200000}; nanosleep(&ts,NULL);
-    }
-    for(int i=0;i<n_trabajadores;i++) trab[i].parar.store(1);
-    for(int i=0;i<n_trabajadores;i++) pthread_join(hilo[i],NULL);
 
-    OK(master.saltos.load()==0, "el master no ha dado ni un salto");
-    OK(master.encontrado.load()==1, "el master resuelve con lo que recibe");
-    if(master.encontrado.load()){
-        int solo_bajo=(master.k[1]|master.k[2]|master.k[3])==0;
-        OK(solo_bajo && master.k[0]==k, "la clave es la correcta");
-        printf("       k=%llu, %llu puntos recibidos\n",k,(unsigned long long)total);
+        if(master.saltos.load()!=0) master_anduvo++;
+        total_puntos+=total;
+        if(master.encontrado.load()){
+            gana_master++;
+            int solo_bajo=(master.k[1]|master.k[2]|master.k[3])==0;
+            if(!solo_bajo || master.k[0]!=k) mal_clave++;
+        }else{
+            int alguno=0;
+            for(int i=0;i<n_trabajadores;i++){
+                if(trab[i].encontrado.load()){
+                    alguno=1;
+                    int solo_bajo=(trab[i].k[1]|trab[i].k[2]|trab[i].k[3])==0;
+                    if(!solo_bajo || trab[i].k[0]!=k) mal_clave++;
+                }
+            }
+            if(alguno) gana_trab++; else sin_resolver++;
+        }
+        kg_free(&master);
+        for(int i=0;i<n_trabajadores;i++) kg_free(&trab[i]);
     }
-    kg_free(&master);
-    for(int i=0;i<n_trabajadores;i++) kg_free(&trab[i]);
+
+    printf("       %d vueltas: master %d, trabajador %d, sin resolver %d"
+           " (%llu puntos al master)\n",
+           VUELTAS_MP,gana_master,gana_trab,sin_resolver,
+           (unsigned long long)total_puntos);
+    OK(master_anduvo==0, "el master no ha dado ni un salto");
+    OK(sin_resolver==0, "en todas las vueltas la resuelve alguien");
+    OK(gana_master>0, "y el master cierra por su cuenta colisiones repartidas");
+    OK(mal_clave==0, "todas las claves encontradas son la correcta");
 }
 
 int main(){
