@@ -1010,6 +1010,52 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
  *
  * La inversion por lotes ya estaba; lo que sobraba era convertir de ida y
  * vuelta entre las dos representaciones en cada paso. */
+/* ---------- Lo que queda por hacer: el mapa de negacion ----------
+ *
+ * Es la mejora grande que sigue sin estar, asi que conviene dejar la cuenta
+ * hecha y no tener que rehacerla: vale raiz(2) = 1,41 veces, o sea pasar de
+ * 2,18 a 1,54 raices de W.
+ *
+ * LA IDEA. En esta curva -P = (x, -y): un punto y su opuesto comparten la x.
+ * Como el salto se elige con la x, si cada canguro se queda siempre con el
+ * representante "canonico" de la pareja {P,-P} el espacio de busqueda se parte
+ * por la mitad, y el coste va con la raiz.
+ *
+ * LO QUE CUESTA, que es mas de lo que parece:
+ *
+ *  1. Las distancias pasan a ser mod n. Al cambiar P por -P hay que cambiar d
+ *     por -d, y sc_t no tiene signo. Hace falta el orden del grupo —que hoy no
+ *     esta en el fichero— y suma y resta moduladas en el bucle.
+ *
+ *  2. El salvaje no cumple la invariante. Un manso va por d*G y negarlo sigue
+ *     siendo un manso (-d)*G. Un salvaje va por P' + d*G, y su opuesto
+ *     -P' - d*G ya no tiene esa forma. Hay que llevar un signo aparte, con la
+ *     invariante Pos = e*(Base + d*G), y el salto pasa a ser d += e*jlen. No
+ *     hace falta guardar ese signo en la tabla: al resolver salen dos
+ *     candidatos, k = d_manso - d_salvaje y k = -d_manso - d_salvaje, y
+ *     kg_resolver YA comprueba la clave contra el objetivo antes de cantarla,
+ *     asi que se prueban los dos y se queda el que cuadre. Eso no cambia ni el
+ *     formato del fichero ni el de red.
+ *
+ *  3. LOS CICLOS ESTERILES, que es el problema de verdad. Sale de la propia
+ *     cuenta: desde Pos canonico se salta a Q = Pos + S_h. Si al canonizar hay
+ *     que darle la vuelta, el siguiente es -Q; pero -Q tiene la MISMA x que Q,
+ *     o sea el mismo salto h, y -Q + S_h = -Pos, que al canonizar vuelve a ser
+ *     Pos. O sea que CADA vez que la negacion actua —una de cada dos— el
+ *     canguro entra en un ciclo de dos y se queda ahi para siempre. Sin
+ *     tratarlo, el motor no anda: hay que detectarlo y escapar con otro salto.
+ *
+ *  4. Y el escape tiene que ser el MISMO en todos los aparatos y depender solo
+ *     del punto. Si depende de por donde venia el canguro, dos que se hayan
+ *     juntado pueden separarse en el escape y no llegar nunca al mismo
+ *     distinguido — que es justo el fallo que no deja rastro y que costo esta
+ *     semana encontrar en la tabla de saltos.
+ *
+ * Por eso no se hace de pasada. Cuando se haga: primero extender
+ * tools/ec-harness/saltos a la invariante con signo, y despues mirar
+ * tools/ec-harness/constante. Si los ciclos se estan comiendo la ganancia, el
+ * 1,54 no aparece y se ve en el acto. */
+
 typedef struct { fe_t x, y; sc_t dist; int manso; } Kangaroo;
 
 /* Suelta un rebano y lo hace saltar hasta que aparezca la solucion o se pare.
