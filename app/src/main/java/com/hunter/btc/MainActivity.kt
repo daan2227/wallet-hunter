@@ -5258,6 +5258,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 else                     -> "%.0f millones de años".format(segundos / 3.15e13)
             }
             runOnUiThread {
+                /* Si mientras tanto se ha elegido OTRO puzzle, esto ya no vale.
+                 *
+                 * Cada chip lanza su consulta y no todas tardan lo mismo: los
+                 * resueltos contestan al instante —la clave pública está en la
+                 * tabla— y los demás esperan a la red. Así que al ir pulsando
+                 * chips, una consulta lenta de un puzzle anterior aterriza
+                 * DESPUÉS y pisa la del actual. Si aquella no tenía clave
+                 * pública, deja puzzlePubHex vacío: el botón de Kangaroo
+                 * desaparece y, si aún se llega a pulsar, alternarKangaroo se
+                 * vuelve sin hacer nada.
+                 *
+                 * checkPuzzleBalance ya se guardaba de esto; esta no, y no se
+                 * notaba porque antes TODAS las consultas iban por la red y
+                 * tardaban parecido. */
+                if (puzzleSeleccionado != p.num) return@runOnUiThread
                 puzzleIniHex = p.start; puzzleFinHex = p.end
                 puzzlePubHex = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex ?: ""
                 // A preferencias EN CUANTO se sabe, no sólo al arrancar
@@ -5442,7 +5457,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             kgInicio = 0L
             return
         }
-        if (puzzlePubHex.length != 66) return
+        if (puzzlePubHex.length != 66) {
+            // Volverse en silencio deja el botón pulsado y la pantalla igual:
+            // no hay forma de saber si no ha hecho nada o si ha fallado.
+            tvPuzzleAtajo?.text = "Kangaroo necesita la clave pública y todavía no " +
+                                  "se tiene. Vuelve a tocar el puzzle para pedirla."
+            tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
+            return
+        }
         // Un hilo por núcleo menos uno, para que el móvil siga respondiendo.
         // Antes iban fijos: "núcleos - 1" hilos y 512 canguros, ignorando la
         // potencia y el tamaño de lote que tienes puestos justo debajo. Ahora
@@ -6064,8 +6086,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleProgressUpdater?.invoke(p.num, p.start, p.end)
         etTarget?.setText(p.addr)
         // p.btc ya viene con la unidad dentro ("7.9 BTC"), así que añadirla
-        // otra vez daba "7.9 BTC BTC".
-        tvPuzzleStatus?.text = "Puzzle #${p.num} — ${p.btc}"
+        // otra vez daba "7.9 BTC BTC". Los resueltos llevan "0", que a secas no
+        // dice nada: lo que hay que ver es que son objetivos de prueba.
+        tvPuzzleStatus?.text = if (p.clave.isNotEmpty())
+            "Puzzle #${p.num} — ya resuelto, sirve de prueba"
+        else "Puzzle #${p.num} — ${p.btc}"
         // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
         pendingBlockIdx = null
         currentBlockId = ""
