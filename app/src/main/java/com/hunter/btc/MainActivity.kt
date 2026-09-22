@@ -435,74 +435,175 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var recoveryEngine: RecoveryEngine? = null
     private val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
 
-    data class PuzzleInfo(val num: Int, val addr: String, val start: String, val end: String, val btc: String)
+    /**
+     * Un puzzle.
+     *
+     * @param pub clave pública comprimida, si se conoce. Los resueltos la tienen
+     *   porque gastar las monedas la publica; los que siguen en pie sólo la
+     *   revelan si su dirección ha gastado alguna vez, y eso lo averigua
+     *   [PubKeyFinder] por la red. Kangaroo NO puede trabajar sin ella.
+     * @param clave clave privada, sólo en los ya resueltos. Es lo que convierte
+     *   ese puzzle en una PRUEBA: si el motor la encuentra, se puede comparar
+     *   con la que ya se sabía y decir si acertó. Sin eso, "no ha encontrado
+     *   nada todavía" y "no puede encontrar nada" se ven igual.
+     */
+    data class PuzzleInfo(val num: Int, val addr: String, val start: String,
+                          val end: String, val btc: String,
+                          val pub: String = "", val clave: String = "")
     private val puzzles = listOf(
-        // Los 77 puzzles SIN RESOLVER, a 2026-09-16.
-        //
-        // La tabla anterior estaba mal de tres formas a la vez: doce entradas
-        // no eran ni direcciones de Bitcoin —dos llevaban una 'l', que no
-        // existe en Base58, y diez fallaban el checksum—, las direcciones que
-        // sí valían estaban en el número equivocado, y había trece puzzles ya
-        // resueltos ofreciéndose como objetivo.
+        // Los 160 puzzles, resueltos y sin resolver.
         //
         // Los RANGOS no se transcriben: se calculan. El puzzle N va de 2^(N-1)
         // a 2^N - 1 por definición, así que generarlos quita de en medio la
         // única parte donde un dedo puede equivocarse sin que se note.
         //
-        // Cada dirección está comprobada contra su checksum Base58Check antes
-        // de entrar aquí, y buildPuzzleTab vuelve a comprobarlas al arrancar.
+        // Los 83 RESUELTOS llevan además su clave privada y su clave pública, y
+        // no están copiados a mano: tools/ec-harness/resueltos deriva de cada
+        // clave privada la pública y de ahí la dirección, con el código del
+        // propio motor, y comprueba que las tres cuadran y que la clave cae en
+        // su rango. Esa prueba corre en cada compilación.
+        //
+        // Hace falta ese cuidado porque esta tabla ya se equivocó una vez: doce
+        // entradas que ni siquiera eran direcciones de Bitcoin, las válidas en
+        // el número equivocado, y trece puzzles ya resueltos ofreciéndose como
+        // objetivo. Una dirección mal copiada da una búsqueda que no puede
+        // terminar nunca y que por fuera se ve igual que una que aún no ha
+        // terminado.
+        PuzzleInfo(1, "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH", "1", "1", "0", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", "1"),
+        PuzzleInfo(2, "1CUNEBjYrCn2y1SdiUMohaKUi4wpP326Lb", "2", "3", "0", "02f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9", "3"),
+        PuzzleInfo(3, "19ZewH8Kk1PDbSNdJ97FP4EiCjTRaZMZQA", "4", "7", "0", "025cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc", "7"),
+        PuzzleInfo(4, "1EhqbyUMvvs7BfL8goY6qcPbD6YKfPqb7e", "8", "f", "0", "022f01e5e15cca351daff3843fb70f3c2f0a1bdd05e5af888a67784ef3e10a2a01", "8"),
+        PuzzleInfo(5, "1E6NuFjCi27W5zoXg8TRdcSRq84zJeBW3k", "10", "1f", "0", "02352bbf4a4cdd12564f93fa332ce333301d9ad40271f8107181340aef25be59d5", "15"),
+        PuzzleInfo(6, "1PitScNLyp2HCygzadCh7FveTnfmpPbfp8", "20", "3f", "0", "03f2dac991cc4ce4b9ea44887e5c7c0bce58c80074ab9d4dbaeb28531b7739f530", "31"),
+        PuzzleInfo(7, "1McVt1vMtCC7yn5b9wgX1833yCcLXzueeC", "40", "7f", "0", "0296516a8f65774275278d0d7420a88df0ac44bd64c7bae07c3fe397c5b3300b23", "4c"),
+        PuzzleInfo(8, "1M92tSqNmQLYw33fuBvjmeadirh1ysMBxK", "80", "ff", "0", "0308bc89c2f919ed158885c35600844d49890905c79b357322609c45706ce6b514", "e0"),
+        PuzzleInfo(9, "1CQFwcjw1dwhtkVWBttNLDtqL7ivBonGPV", "100", "1ff", "0", "0243601d61c836387485e9514ab5c8924dd2cfd466af34ac95002727e1659d60f7", "1d3"),
+        PuzzleInfo(10, "1LeBZP5QCwwgXRtmVUvTVrraqPUokyLHqe", "200", "3ff", "0", "03a7a4c30291ac1db24b4ab00c442aa832f7794b5a0959bec6e8d7fee802289dcd", "202"),
+        PuzzleInfo(11, "1PgQVLmst3Z314JrQn5TNiys8Hc38TcXJu", "400", "7ff", "0", "038b05b0603abd75b0c57489e451f811e1afe54a8715045cdf4888333f3ebc6e8b", "483"),
+        PuzzleInfo(12, "1DBaumZxUkM4qMQRt2LVWyFJq5kDtSZQot", "800", "fff", "0", "038b00fcbfc1a203f44bf123fc7f4c91c10a85c8eae9187f9d22242b4600ce781c", "a7b"),
+        PuzzleInfo(13, "1Pie8JkxBT6MGPz9Nvi3fsPkr2D8q3GBc1", "1000", "1fff", "0", "03aadaaab1db8d5d450b511789c37e7cfeb0eb8b3e61a57a34166c5edc9a4b869d", "1460"),
+        PuzzleInfo(14, "1ErZWg5cFCe4Vw5BzgfzB74VNLaXEiEkhk", "2000", "3fff", "0", "03b4f1de58b8b41afe9fd4e5ffbdafaeab86c5db4769c15d6e6011ae7351e54759", "2930"),
+        PuzzleInfo(15, "1QCbW9HWnwQWiQqVo5exhAnmfqKRrCRsvW", "4000", "7fff", "0", "02fea58ffcf49566f6e9e9350cf5bca2861312f422966e8db16094beb14dc3df2c", "68f3"),
+        PuzzleInfo(16, "1BDyrQ6WoF8VN3g9SAS1iKZcPzFfnDVieY", "8000", "ffff", "0", "029d8c5d35231d75eb87fd2c5f05f65281ed9573dc41853288c62ee94eb2590b7a", "c936"),
+        PuzzleInfo(17, "1HduPEXZRdG26SUT5Yk83mLkPyjnZuJ7Bm", "10000", "1ffff", "0", "033f688bae8321b8e02b7e6c0a55c2515fb25ab97d85fda842449f7bfa04e128c3", "1764f"),
+        PuzzleInfo(18, "1GnNTmTVLZiqQfLbAdp9DVdicEnB5GoERE", "20000", "3ffff", "0", "020ce4a3291b19d2e1a7bf73ee87d30a6bdbc72b20771e7dfff40d0db755cd4af1", "3080d"),
+        PuzzleInfo(19, "1NWmZRpHH4XSPwsW6dsS3nrNWfL1yrJj4w", "40000", "7ffff", "0", "0385663c8b2f90659e1ccab201694f4f8ec24b3749cfe5030c7c3646a709408e19", "5749f"),
+        PuzzleInfo(20, "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum", "80000", "fffff", "0", "033c4a45cbd643ff97d77f41ea37e843648d50fd894b864b0d52febc62f6454f7c", "d2c55"),
+        PuzzleInfo(21, "14oFNXucftsHiUMY8uctg6N487riuyXs4h", "100000", "1fffff", "0", "031a746c78f72754e0be046186df8a20cdce5c79b2eda76013c647af08d306e49e", "1ba534"),
+        PuzzleInfo(22, "1CfZWK1QTQE3eS9qn61dQjV89KDjZzfNcv", "200000", "3fffff", "0", "023ed96b524db5ff4fe007ce730366052b7c511dc566227d929070b9ce917abb43", "2de40f"),
+        PuzzleInfo(23, "1L2GM8eE7mJWLdo3HZS6su1832NX2txaac", "400000", "7fffff", "0", "03f82710361b8b81bdedb16994f30c80db522450a93e8e87eeb07f7903cf28d04b", "556e52"),
+        PuzzleInfo(24, "1rSnXMr63jdCuegJFuidJqWxUPV7AtUf7", "800000", "ffffff", "0", "036ea839d22847ee1dce3bfc5b11f6cf785b0682db58c35b63d1342eb221c3490c", "dc2a04"),
+        PuzzleInfo(25, "15JhYXn6Mx3oF4Y7PcTAv2wVVAuCFFQNiP", "1000000", "1ffffff", "0", "03057fbea3a2623382628dde556b2a0698e32428d3cd225f3bd034dca82dd7455a", "1fa5ee5"),
+        PuzzleInfo(26, "1JVnST957hGztonaWK6FougdtjxzHzRMMg", "2000000", "3ffffff", "0", "024e4f50a2a3eccdb368988ae37cd4b611697b26b29696e42e06d71368b4f3840f", "340326e"),
+        PuzzleInfo(27, "128z5d7nN7PkCuX5qoA4Ys6pmxUYnEy86k", "4000000", "7ffffff", "0", "031a864bae3922f351f1b57cfdd827c25b7e093cb9c88a72c1cd893d9f90f44ece", "6ac3875"),
+        PuzzleInfo(28, "12jbtzBb54r97TCwW3G1gCFoumpckRAPdY", "8000000", "fffffff", "0", "03e9e661838a96a65331637e2a3e948dc0756e5009e7cb5c36664d9b72dd18c0a7", "d916ce8"),
+        PuzzleInfo(29, "19EEC52krRUK1RkUAEZmQdjTyHT7Gp1TYT", "10000000", "1fffffff", "0", "026caad634382d34691e3bef43ed4a124d8909a8a3362f91f1d20abaaf7e917b36", "17e2551e"),
+        PuzzleInfo(30, "1LHtnpd8nU5VHEMkG2TMYYNUjjLc992bps", "20000000", "3fffffff", "0", "030d282cf2ff536d2c42f105d0b8588821a915dc3f9a05bd98bb23af67a2e92a5b", "3d94cd64"),
+        PuzzleInfo(31, "1LhE6sCTuGae42Axu1L1ZB7L96yi9irEBE", "40000000", "7fffffff", "0", "0387dc70db1806cd9a9a76637412ec11dd998be666584849b3185f7f9313c8fd28", "7d4fe747"),
+        PuzzleInfo(32, "1FRoHA9xewq7DjrZ1psWJVeTer8gHRqEvR", "80000000", "ffffffff", "0", "0209c58240e50e3ba3f833c82655e8725c037a2294e14cf5d73a5df8d56159de69", "b862a62e"),
+        PuzzleInfo(33, "187swFMjz1G54ycVU56B7jZFHFTNVQFDiu", "100000000", "1ffffffff", "0", "03a355aa5e2e09dd44bb46a4722e9336e9e3ee4ee4e7b7a0cf5785b283bf2ab579", "1a96ca8d8"),
+        PuzzleInfo(34, "1PWABE7oUahG2AFFQhhvViQovnCr4rEv7Q", "200000000", "3ffffffff", "0", "033cdd9d6d97cbfe7c26f902faf6a435780fe652e159ec953650ec7b1004082790", "34a65911d"),
+        PuzzleInfo(35, "1PWCx5fovoEaoBowAvF5k91m2Xat9bMgwb", "400000000", "7ffffffff", "0", "02f6a8148a62320e149cb15c544fe8a25ab483a0095d2280d03b8a00a7feada13d", "4aed21170"),
+        PuzzleInfo(36, "1Be2UF9NLfyLFbtm3TCbmuocc9N1Kduci1", "800000000", "fffffffff", "0", "02b3e772216695845fa9dda419fb5daca28154d8aa59ea302f05e916635e47b9f6", "9de820a7c"),
+        PuzzleInfo(37, "14iXhn8bGajVWegZHJ18vJLHhntcpL4dex", "1000000000", "1fffffffff", "0", "027d2c03c3ef0aec70f2c7e1e75454a5dfdd0e1adea670c1b3a4643c48ad0f1255", "1757756a93"),
+        PuzzleInfo(38, "1HBtApAFA9B2YZw3G2YKSMCtb3dVnjuNe2", "2000000000", "3fffffffff", "0", "03c060e1e3771cbeccb38e119c2414702f3f5181a89652538851d2e3886bdd70c6", "22382facd0"),
+        PuzzleInfo(39, "122AJhKLEfkFBaGAd84pLp1kfE7xK3GdT8", "4000000000", "7fffffffff", "0", "022d77cd1467019a6bf28f7375d0949ce30e6b5815c2758b98a74c2700bc006543", "4b5f8303e9"),
+        PuzzleInfo(40, "1EeAxcprB2PpCnr34VfZdFrkUWuxyiNEFv", "8000000000", "ffffffffff", "0", "03a2efa402fd5268400c77c20e574ba86409ededee7c4020e4b9f0edbee53de0d4", "e9ae4933d6"),
+        PuzzleInfo(41, "1L5sU9qvJeuwQUdt4y1eiLmquFxKjtHr3E", "10000000000", "1ffffffffff", "0", "03b357e68437da273dcf995a474a524439faad86fc9effc300183f714b0903468b", "153869acc5b"),
+        PuzzleInfo(42, "1E32GPWgDyeyQac4aJxm9HVoLrrEYPnM4N", "20000000000", "3ffffffffff", "0", "03eec88385be9da803a0d6579798d977a5d0c7f80917dab49cb73c9e3927142cb6", "2a221c58d8f"),
+        PuzzleInfo(43, "1PiFuqGpG8yGM5v6rNHWS3TjsG6awgEGA1", "40000000000", "7ffffffffff", "0", "02a631f9ba0f28511614904df80d7f97a4f43f02249c8909dac92276ccf0bcdaed", "6bd3b27c591"),
+        PuzzleInfo(44, "1CkR2uS7LmFwc3T2jV8C1BhWb5mQaoxedF", "80000000000", "fffffffffff", "0", "025e466e97ed0e7910d3d90ceb0332df48ddf67d456b9e7303b50a3d89de357336", "e02b35a358f"),
+        PuzzleInfo(45, "1NtiLNGegHWE3Mp9g2JPkgx6wUg4TW7bbk", "100000000000", "1fffffffffff", "0", "026ecabd2d22fdb737be21975ce9a694e108eb94f3649c586cc7461c8abf5da71a", "122fca143c05"),
+        PuzzleInfo(46, "1F3JRMWudBaj48EhwcHDdpeuy2jwACNxjP", "200000000000", "3fffffffffff", "0", "03fd5487722d2576cb6d7081426b66a3e2986c1ce8358d479063fb5f2bb6dd5849", "2ec18388d544"),
+        PuzzleInfo(47, "1Pd8VvT49sHKsmqrQiP61RsVwmXCZ6ay7Z", "400000000000", "7fffffffffff", "0", "023a12bd3caf0b0f77bf4eea8e7a40dbe27932bf80b19ac72f5f5a64925a594196", "6cd610b53cba"),
+        PuzzleInfo(48, "1DFYhaB2J9q1LLZJWKTnscPWos9VBqDHzv", "800000000000", "ffffffffffff", "0", "0291bee5cf4b14c291c650732faa166040e4c18a14731f9a930c1e87d3ec12debb", "ade6d7ce3b9b"),
+        PuzzleInfo(49, "12CiUhYVTTH33w3SPUBqcpMoqnApAV4WCF", "1000000000000", "1ffffffffffff", "0", "02591d682c3da4a2a698633bf5751738b67c343285ebdc3492645cb44658911484", "174176b015f4d"),
+        PuzzleInfo(50, "1MEzite4ReNuWaL5Ds17ePKt2dCxWEofwk", "2000000000000", "3ffffffffffff", "0", "03f46f41027bbf44fafd6b059091b900dad41e6845b2241dc3254c7cdd3c5a16c6", "22bd43c2e9354"),
+        PuzzleInfo(51, "1NpnQyZ7x24ud82b7WiRNvPm6N8bqGQnaS", "4000000000000", "7ffffffffffff", "0", "028c6c67bef9e9eebe6a513272e50c230f0f91ed560c37bc9b033241ff6c3be78f", "75070a1a009d4"),
+        PuzzleInfo(52, "15z9c9sVpu6fwNiK7dMAFgMYSK4GqsGZim", "8000000000000", "fffffffffffff", "0", "0374c33bd548ef02667d61341892134fcf216640bc2201ae61928cd0874f6314a7", "efae164cb9e3c"),
+        PuzzleInfo(53, "15K1YKJMiJ4fpesTVUcByoz334rHmknxmT", "10000000000000", "1fffffffffffff", "0", "020faaf5f3afe58300a335874c80681cf66933e2a7aeb28387c0d28bb048bc6349", "180788e47e326c"),
+        PuzzleInfo(54, "1KYUv7nSvXx4642TKeuC2SNdTk326uUpFy", "20000000000000", "3fffffffffffff", "0", "034af4b81f8c450c2c870ce1df184aff1297e5fcd54944d98d81e1a545ffb22596", "236fb6d5ad1f43"),
+        PuzzleInfo(55, "1LzhS3k3e9Ub8i2W1V8xQFdB8n2MYCHPCa", "40000000000000", "7fffffffffffff", "0", "0385a30d8413af4f8f9e6312400f2d194fe14f02e719b24c3f83bf1fd233a8f963", "6abe1f9b67e114"),
+        PuzzleInfo(56, "17aPYR1m6pVAacXg1PTDDU7XafvK1dxvhi", "80000000000000", "ffffffffffffff", "0", "033f2db2074e3217b3e5ee305301eeebb1160c4fa1e993ee280112f6348637999a", "9d18b63ac4ffdf"),
+        PuzzleInfo(57, "15c9mPGLku1HuW9LRtBf4jcHVpBUt8txKz", "100000000000000", "1ffffffffffffff", "0", "02a521a07e98f78b03fc1e039bc3a51408cd73119b5eb116e583fe57dc8db07aea", "1eb25c90795d61c"),
+        PuzzleInfo(58, "1Dn8NF8qDyyfHMktmuoQLGyjWmZXgvosXf", "200000000000000", "3ffffffffffffff", "0", "0311569442e870326ceec0de24eb5478c19e146ecd9d15e4666440f2f638875f42", "2c675b852189a21"),
+        PuzzleInfo(59, "1HAX2n9Uruu9YDt4cqRgYcvtGvZj1rbUyt", "400000000000000", "7ffffffffffffff", "0", "0241267d2d7ee1a8e76f8d1546d0d30aefb2892d231cee0dde7776daf9f8021485", "7496cbb87cab44f"),
+        PuzzleInfo(60, "1Kn5h2qpgw9mWE5jKpk8PP4qvvJ1QVy8su", "800000000000000", "fffffffffffffff", "0", "0348e843dc5b1bd246e6309b4924b81543d02b16c8083df973a89ce2c7eb89a10d", "fc07a1825367bbe"),
+        PuzzleInfo(61, "1AVJKwzs9AskraJLGHAZPiaZcrpDr1U6AB", "1000000000000000", "1fffffffffffffff", "0", "0249a43860d115143c35c09454863d6f82a95e47c1162fb9b2ebe0186eb26f453f", "13c96a3742f64906"),
+        PuzzleInfo(62, "1Me6EfpwZK5kQziBwBfvLiHjaPGxCKLoJi", "2000000000000000", "3fffffffffffffff", "0", "03231a67e424caf7d01a00d5cd49b0464942255b8e48766f96602bdfa4ea14fea8", "363d541eb611abee"),
+        PuzzleInfo(63, "1NpYjtLira16LfGbGwZJ5JbDPh3ai9bjf4", "4000000000000000", "7fffffffffffffff", "0", "0365ec2994b8cc0a20d40dd69edfe55ca32a54bcbbaa6b0ddcff36049301a54579", "7cce5efdaccf6808"),
+        PuzzleInfo(64, "16jY7qLJnxb7CHZyqBP8qca9d51gAjyXQN", "8000000000000000", "ffffffffffffffff", "0", "03100611c54dfef604163b8358f7b7fac13ce478e02cb224ae16d45526b25d9d4d", "f7051f27b09112d4"),
+        PuzzleInfo(65, "18ZMbwUFLMHoZBbfpCjUJQTCMCbktshgpe", "10000000000000000", "1ffffffffffffffff", "0", "0230210c23b1a047bc9bdbb13448e67deddc108946de6de639bcc75d47c0216b1b", "1a838b13505b26867"),
+        PuzzleInfo(66, "13zb1hQbWVsc2S7ZTZnP2G4undNNpdh5so", "20000000000000000", "3ffffffffffffffff", "0", "024ee2be2d4e9f92d2f5a4a03058617dc45befe22938feed5b7a6b7282dd74cbdd", "2832ed74f2b5e35ee"),
+        PuzzleInfo(67, "1BY8GQbnueYofwSuFAT3USAhGjPrkxDdW9", "40000000000000000", "7ffffffffffffffff", "0", "0212209f5ec514a1580a2937bd833979d933199fc230e204c6cdc58872b7d46f75", "730fc235c1942c1ae"),
+        PuzzleInfo(68, "1MVDYgVaSN6iKKEsbzRUAYFrYJadLYZvvZ", "80000000000000000", "fffffffffffffffff", "0", "031fe02f1d740637a7127cdfe8a77a8a0cfc6435f85e7ec3282cb6243c0a93ba1b", "bebb3940cd0fc1491"),
+        PuzzleInfo(69, "19vkiEajfhuZ8bs8Zu2jgmC6oqZbWqhxhG", "100000000000000000", "1fffffffffffffffff", "0", "024babadccc6cfd5f0e5e7fd2a50aa7d677ce0aa16fdce26a0d0882eed03e7ba53", "101d83275fb2bc7e0c"),
+        PuzzleInfo(70, "19YZECXj3SxEZMoUeJ1yiPsw8xANe7M7QR", "200000000000000000", "3fffffffffffffffff", "0", "0290e6900a58d33393bc1097b5aed31f2e4e7cbd3e5466af958665bc0121248483", "349b84b6431a6c4ef1"),
         PuzzleInfo(71, "1PWo3JeB9jrGwfHDNpdGK54CRas7fsVzXU", "400000000000000000", "7fffffffffffffffff", "7.10099385 BTC"),
         PuzzleInfo(72, "1JTK7s9YVYywfm5XUH7RNhHJH1LshCaRFR", "800000000000000000", "ffffffffffffffffff", "7.20003779 BTC"),
         PuzzleInfo(73, "12VVRNPi4SJqUTsp6FmqDqY5sGosDtysn4", "1000000000000000000", "1ffffffffffffffffff", "7.30003777 BTC"),
         PuzzleInfo(74, "1FWGcVDK3JGzCC3WtkYetULPszMaK2Jksv", "2000000000000000000", "3ffffffffffffffffff", "7.40003777 BTC"),
+        PuzzleInfo(75, "1J36UjUByGroXcCvmj13U6uwaVv9caEeAt", "4000000000000000000", "7ffffffffffffffffff", "0", "03726b574f193e374686d8e12bc6e4142adeb06770e0a2856f5e4ad89f66044755", "4c5ce114686a1336e07"),
         PuzzleInfo(76, "1DJh2eHFYQfACPmrvpyWc8MSTYKh7w9eRF", "8000000000000000000", "fffffffffffffffffff", "7.6 BTC"),
         PuzzleInfo(77, "1Bxk4CQdqL9p22JEtDfdXMsng1XacifUtE", "10000000000000000000", "1fffffffffffffffffff", "7.70001826 BTC"),
         PuzzleInfo(78, "15qF6X51huDjqTmF9BJgxXdt1xcj46Jmhb", "20000000000000000000", "3fffffffffffffffffff", "7.8 BTC"),
         PuzzleInfo(79, "1ARk8HWJMn8js8tQmGUJeQHjSE7KRkn2t8", "40000000000000000000", "7fffffffffffffffffff", "7.9 BTC"),
+        PuzzleInfo(80, "1BCf6rHUW6m3iH2ptsvnjgLruAiPQQepLe", "80000000000000000000", "ffffffffffffffffffff", "0", "037e1238f7b1ce757df94faa9a2eb261bf0aeb9f84dbf81212104e78931c2a19dc", "ea1a5c66dcc11b5ad180"),
         PuzzleInfo(81, "15qsCm78whspNQFydGJQk5rexzxTQopnHZ", "100000000000000000000", "1ffffffffffffffffffff", "8.1 BTC"),
         PuzzleInfo(82, "13zYrYhhJxp6Ui1VV7pqa5WDhNWM45ARAC", "200000000000000000000", "3ffffffffffffffffffff", "8.2 BTC"),
         PuzzleInfo(83, "14MdEb4eFcT3MVG5sPFG4jGLuHJSnt1Dk2", "400000000000000000000", "7ffffffffffffffffffff", "8.30000546 BTC"),
         PuzzleInfo(84, "1CMq3SvFcVEcpLMuuH8PUcNiqsK1oicG2D", "800000000000000000000", "fffffffffffffffffffff", "8.4 BTC"),
+        PuzzleInfo(85, "1Kh22PvXERd2xpTQk3ur6pPEqFeckCJfAr", "1000000000000000000000", "1fffffffffffffffffffff", "0", "0329c4574a4fd8c810b7e42a4b398882b381bcd85e40c6883712912d167c83e73a", "11720c4f018d51b8cebba8"),
         PuzzleInfo(86, "1K3x5L6G57Y494fDqBfrojD28UJv4s5JcK", "2000000000000000000000", "3fffffffffffffffffffff", "8.6 BTC"),
         PuzzleInfo(87, "1PxH3K1Shdjb7gSEoTX7UPDZ6SH4qGPrvq", "4000000000000000000000", "7fffffffffffffffffffff", "8.7 BTC"),
         PuzzleInfo(88, "16AbnZjZZipwHMkYKBSfswGWKDmXHjEpSf", "8000000000000000000000", "ffffffffffffffffffffff", "8.8 BTC"),
         PuzzleInfo(89, "19QciEHbGVNY4hrhfKXmcBBCrJSBZ6TaVt", "10000000000000000000000", "1ffffffffffffffffffffff", "8.9 BTC"),
+        PuzzleInfo(90, "1L12FHH2FHjvTviyanuiFVfmzCy46RRATU", "20000000000000000000000", "3ffffffffffffffffffffff", "0", "035c38bd9ae4b10e8a250857006f3cfd98ab15a6196d9f4dfd25bc7ecc77d788d5", "2ce00bb2136a445c71e85bf"),
         PuzzleInfo(91, "1EzVHtmbN4fs4MiNk3ppEnKKhsmXYJ4s74", "40000000000000000000000", "7ffffffffffffffffffffff", "9.1 BTC"),
         PuzzleInfo(92, "1AE8NzzgKE7Yhz7BWtAcAAxiFMbPo82NB5", "80000000000000000000000", "fffffffffffffffffffffff", "9.2 BTC"),
         PuzzleInfo(93, "17Q7tuG2JwFFU9rXVj3uZqRtioH3mx2Jad", "100000000000000000000000", "1fffffffffffffffffffffff", "9.3 BTC"),
         PuzzleInfo(94, "1K6xGMUbs6ZTXBnhw1pippqwK6wjBWtNpL", "200000000000000000000000", "3fffffffffffffffffffffff", "9.4 BTC"),
+        PuzzleInfo(95, "19eVSDuizydXxhohGh8Ki9WY9KsHdSwoQC", "400000000000000000000000", "7fffffffffffffffffffffff", "0", "02967a5905d6f3b420959a02789f96ab4c3223a2c4d2762f817b7895c5bc88a045", "527a792b183c7f64a0e8b1f4"),
         PuzzleInfo(96, "15ANYzzCp5BFHcCnVFzXqyibpzgPLWaD8b", "800000000000000000000000", "ffffffffffffffffffffffff", "9.6 BTC"),
         PuzzleInfo(97, "18ywPwj39nGjqBrQJSzZVq2izR12MDpDr8", "1000000000000000000000000", "1ffffffffffffffffffffffff", "9.7 BTC"),
         PuzzleInfo(98, "1CaBVPrwUxbQYYswu32w7Mj4HR4maNoJSX", "2000000000000000000000000", "3ffffffffffffffffffffffff", "9.8 BTC"),
         PuzzleInfo(99, "1JWnE6p6UN7ZJBN7TtcbNDoRcjFtuDWoNL", "4000000000000000000000000", "7ffffffffffffffffffffffff", "9.91257338 BTC"),
+        PuzzleInfo(100, "1KCgMv8fo2TPBpddVi9jqmMmcne9uSNJ5F", "8000000000000000000000000", "fffffffffffffffffffffffff", "0", "03d2063d40402f030d4cc71331468827aa41a8a09bd6fd801ba77fb64f8e67e617", "af55fc59c335c8ec67ed24826"),
         PuzzleInfo(101, "1CKCVdbDJasYmhswB6HKZHEAnNaDpK7W4n", "10000000000000000000000000", "1fffffffffffffffffffffffff", "10.1 BTC"),
         PuzzleInfo(102, "1PXv28YxmYMaB8zxrKeZBW8dt2HK7RkRPX", "20000000000000000000000000", "3fffffffffffffffffffffffff", "10.2 BTC"),
         PuzzleInfo(103, "1AcAmB6jmtU6AiEcXkmiNE9TNVPsj9DULf", "40000000000000000000000000", "7fffffffffffffffffffffffff", "10.3 BTC"),
         PuzzleInfo(104, "1EQJvpsmhazYCcKX5Au6AZmZKRnzarMVZu", "80000000000000000000000000", "ffffffffffffffffffffffffff", "10.400016 BTC"),
+        PuzzleInfo(105, "1CMjscKB3QW7SDyQ4c3C3DEUHiHRhiZVib", "100000000000000000000000000", "1ffffffffffffffffffffffffff", "0", "03bcf7ce887ffca5e62c9cabbdb7ffa71dc183c52c04ff4ee5ee82e0c55c39d77b", "16f14fc2054cd87ee6396b33df3"),
         PuzzleInfo(106, "18KsfuHuzQaBTNLASyj15hy4LuqPUo1FNB", "200000000000000000000000000", "3ffffffffffffffffffffffffff", "10.6 BTC"),
         PuzzleInfo(107, "15EJFC5ZTs9nhsdvSUeBXjLAuYq3SWaxTc", "400000000000000000000000000", "7ffffffffffffffffffffffffff", "10.7 BTC"),
         PuzzleInfo(108, "1HB1iKUqeffnVsvQsbpC6dNi1XKbyNuqao", "800000000000000000000000000", "fffffffffffffffffffffffffff", "10.8 BTC"),
         PuzzleInfo(109, "1GvgAXVCbA8FBjXfWiAms4ytFeJcKsoyhL", "1000000000000000000000000000", "1fffffffffffffffffffffffffff", "10.9 BTC"),
+        PuzzleInfo(110, "12JzYkkN76xkwvcPT6AWKZtGX6w2LAgsJg", "2000000000000000000000000000", "3fffffffffffffffffffffffffff", "0", "0309976ba5570966bf889196b7fdf5a0f9a1e9ab340556ec29f8bb60599616167d", "35c0d7234df7deb0f20cf7062444"),
         PuzzleInfo(111, "1824ZJQ7nKJ9QFTRBqn7z7dHV5EGpzUpH3", "4000000000000000000000000000", "7fffffffffffffffffffffffffff", "11.1001 BTC"),
         PuzzleInfo(112, "18A7NA9FTsnJxWgkoFfPAFbQzuQxpRtCos", "8000000000000000000000000000", "ffffffffffffffffffffffffffff", "11.2 BTC"),
         PuzzleInfo(113, "1NeGn21dUDDeqFQ63xb2SpgUuXuBLA4WT4", "10000000000000000000000000000", "1ffffffffffffffffffffffffffff", "11.3 BTC"),
         PuzzleInfo(114, "174SNxfqpdMGYy5YQcfLbSTK3MRNZEePoy", "20000000000000000000000000000", "3ffffffffffffffffffffffffffff", "11.4 BTC"),
+        PuzzleInfo(115, "1NLbHuJebVwUZ1XqDjsAyfTRUPwDQbemfv", "40000000000000000000000000000", "7ffffffffffffffffffffffffffff", "0", "0248d313b0398d4923cdca73b8cfa6532b91b96703902fc8b32fd438a3b7cd7f55", "60f4d11574f5deee49961d9609ac6"),
         PuzzleInfo(116, "1MnJ6hdhvK37VLmqcdEwqC3iFxyWH2PHUV", "80000000000000000000000000000", "fffffffffffffffffffffffffffff", "11.6 BTC"),
         PuzzleInfo(117, "1KNRfGWw7Q9Rmwsc6NT5zsdvEb9M2Wkj5Z", "100000000000000000000000000000", "1fffffffffffffffffffffffffffff", "11.7 BTC"),
         PuzzleInfo(118, "1PJZPzvGX19a7twf5HyD2VvNiPdHLzm9F6", "200000000000000000000000000000", "3fffffffffffffffffffffffffffff", "11.80000661 BTC"),
         PuzzleInfo(119, "1GuBBhf61rnvRe4K8zu8vdQB3kHzwFqSy7", "400000000000000000000000000000", "7fffffffffffffffffffffffffffff", "11.9 BTC"),
+        PuzzleInfo(120, "17s2b9ksz5y7abUm92cHwG8jEPCzK3dLnT", "800000000000000000000000000000", "ffffffffffffffffffffffffffffff", "0", "02ceb6cbbcdbdf5ef7150682150f4ce2c6f4807b349827dcdbdd1f2efa885a2630", "b10f22572c497a836ea187f2e1fc23"),
         PuzzleInfo(121, "1GDSuiThEV64c166LUFC9uDcVdGjqkxKyh", "1000000000000000000000000000000", "1ffffffffffffffffffffffffffffff", "12.1 BTC"),
         PuzzleInfo(122, "1Me3ASYt5JCTAK2XaC32RMeH34PdprrfDx", "2000000000000000000000000000000", "3ffffffffffffffffffffffffffffff", "12.2 BTC"),
         PuzzleInfo(123, "1CdufMQL892A69KXgv6UNBD17ywWqYpKut", "4000000000000000000000000000000", "7ffffffffffffffffffffffffffffff", "12.3 BTC"),
         PuzzleInfo(124, "1BkkGsX9ZM6iwL3zbqs7HWBV7SvosR6m8N", "8000000000000000000000000000000", "fffffffffffffffffffffffffffffff", "12.4 BTC"),
+        PuzzleInfo(125, "1PXAyUB8ZoH3WD8n5zoAthYjN15yN5CVq5", "10000000000000000000000000000000", "1fffffffffffffffffffffffffffffff", "0", "0233709eb11e0d4439a729f21c2c443dedb727528229713f0065721ba8fa46f00e", "1c533b6bb7f0804e09960225e44877ac"),
         PuzzleInfo(126, "1AWCLZAjKbV1P7AHvaPNCKiB7ZWVDMxFiz", "20000000000000000000000000000000", "3fffffffffffffffffffffffffffffff", "12.6 BTC"),
         PuzzleInfo(127, "1G6EFyBRU86sThN3SSt3GrHu1sA7w7nzi4", "40000000000000000000000000000000", "7fffffffffffffffffffffffffffffff", "12.7 BTC"),
         PuzzleInfo(128, "1MZ2L1gFrCtkkn6DnTT2e4PFUTHw9gNwaj", "80000000000000000000000000000000", "ffffffffffffffffffffffffffffffff", "12.8 BTC"),
         PuzzleInfo(129, "1Hz3uv3nNZzBVMXLGadCucgjiCs5W9vaGz", "100000000000000000000000000000000", "1ffffffffffffffffffffffffffffffff", "12.9 BTC"),
+        PuzzleInfo(130, "1Fo65aKq8s8iquMt6weF1rku1moWVEd5Ua", "200000000000000000000000000000000", "3ffffffffffffffffffffffffffffffff", "0", "03633cbe3ec02b9401c5effa144c5b4d22f87940259634858fc7e59b1c09937852", "33e7665705359f04f28b88cf897c603c9"),
         PuzzleInfo(131, "16zRPnT8znwq42q7XeMkZUhb1bKqgRogyy", "400000000000000000000000000000000", "7ffffffffffffffffffffffffffffffff", "13.1 BTC"),
         PuzzleInfo(132, "1KrU4dHE5WrW8rhWDsTRjR21r8t3dsrS3R", "800000000000000000000000000000000", "fffffffffffffffffffffffffffffffff", "13.2 BTC"),
         PuzzleInfo(133, "17uDfp5r4n441xkgLFmhNoSW1KWp6xVLD", "1000000000000000000000000000000000", "1fffffffffffffffffffffffffffffffff", "13.3 BTC"),
         PuzzleInfo(134, "13A3JrvXmvg5w9XGvyyR4JEJqiLz8ZySY3", "2000000000000000000000000000000000", "3fffffffffffffffffffffffffffffffff", "13.4 BTC"),
+        PuzzleInfo(135, "16RGFo6hjq9ym6Pj7N5H7L1NR1rVPJyw2v", "4000000000000000000000000000000000", "7fffffffffffffffffffffffffffffffff", "0", "02145d2611c823a396ef6712ce0f712f09b9b4f3135e3e0aa3230fb9b6d08d1e16", "6d9392a16883f90903d5f78da57af07eb2"),
         PuzzleInfo(136, "1UDHPdovvR985NrWSkdWQDEQ1xuRiTALq", "8000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffff", "13.6 BTC"),
         PuzzleInfo(137, "15nf31J46iLuK1ZkTnqHo7WgN5cARFK3RA", "10000000000000000000000000000000000", "1ffffffffffffffffffffffffffffffffff", "13.7 BTC"),
         PuzzleInfo(138, "1Ab4vzG6wEQBDNQM1B2bvUz4fqXXdFk2WT", "20000000000000000000000000000000000", "3ffffffffffffffffffffffffffffffffff", "13.8 BTC"),
@@ -1727,7 +1828,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         // "Sin fondos" = alguien ya lo resolvio y se llevo el premio. La marca la
         // pone la consulta de saldo, aqui solo se lee.
-        fun sinFondos(n: Int) = hiddenPuzzles.getBoolean("hidden_$n", false)
+        // Un puzzle del que se conoce la clave esta resuelto por definicion: no
+        // hace falta preguntarle el saldo a nadie para saber que no paga.
+        val resueltos = todosPuzzles.filter { it.clave.isNotEmpty() }.map { it.num }.toSet()
+        fun sinFondos(n: Int) =
+            n in resueltos || hiddenPuzzles.getBoolean("hidden_$n", false)
 
         /* MODO PRUEBA: enseñar tambien los ya resueltos.
          *
@@ -5127,14 +5232,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tv.text = "Comprobando si la clave pública está publicada…"
         tv.setTextColor(AppTheme.TXT_SEC)
         Thread {
-            val r = try { PubKeyFinder.buscar(this@MainActivity, p.addr, false) }
-                    catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
+            // Los puzzles ya resueltos traen la clave pública en la tabla —
+            // gastar las monedas la publica— y está comprobada contra la clave
+            // privada por tools/ec-harness/resueltos. Salir a la red a buscar
+            // algo que ya se tiene sólo añade una forma de fallar.
+            val r = if (p.pub.length == 66)
+                        PubKeyFinder.Resultado.Encontrada(p.pub, "")
+                    else try { PubKeyFinder.buscar(this@MainActivity, p.addr, false) }
+                         catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
             // Ritmo medido del propio motor si está corriendo; si no, un valor
             // del orden del que da este móvil, para no prometer de más.
             val ritmo = HunterEngine.getWps().takeIf { it > 1000 } ?: 4_000_000.0
             val bits = (p.num - 1).coerceAtLeast(1)
             val clavesBrutas = Math.pow(2.0, bits.toDouble())
-            val opsKangaroo = 2.2 * Math.pow(2.0, bits / 2.0)
+            // 1,7 medido, no estimado: tools/ec-harness/constante. Ver el
+            // comentario de kgOpsEsperadas.
+            val opsKangaroo = 1.7 * Math.pow(2.0, bits / 2.0)
             fun humano(segundos: Double): String = when {
                 segundos < 90            -> "${segundos.toInt()} segundos"
                 segundos < 5400          -> "${(segundos / 60).toInt()} minutos"
@@ -5163,10 +5276,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     else android.view.View.GONE
                 when (r) {
                     is PubKeyFinder.Resultado.Encontrada -> {
-                        tv.text = "Clave pública publicada — admite Kangaroo.\n" +
-                                  "Fuerza bruta: ${humano(clavesBrutas / ritmo)}. " +
-                                  "Con Kangaroo: ${humano(opsKangaroo / ritmo)}."
-                        tv.setTextColor(AppTheme.ACCENT)
+                        tv.text = if (p.clave.isNotEmpty())
+                            "PRUEBA — #${p.num} ya está resuelto y su clave se conoce, " +
+                            "así que aquí no hay premio: sirve para comprobar que el " +
+                            "motor la encuentra.\nCon Kangaroo: " +
+                            "${humano(opsKangaroo / ritmo)}."
+                        else
+                            "Clave pública publicada — admite Kangaroo.\n" +
+                            "Fuerza bruta: ${humano(clavesBrutas / ritmo)}. " +
+                            "Con Kangaroo: ${humano(opsKangaroo / ritmo)}."
+                        tv.setTextColor(
+                            if (p.clave.isNotEmpty()) AppTheme.WARN else AppTheme.ACCENT)
                     }
                     PubKeyFinder.Resultado.NoRevelada -> {
                         tv.text = "Esta dirección no ha gastado nunca, así que su clave " +
@@ -5641,8 +5761,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Buscar con Kangaroo"
-            tv.text = "CLAVE ENCONTRADA\n$clave\nGuardada en el baúl de hallazgos."
-            tv.setTextColor(AppTheme.ACCENT)
+            /* Si el puzzle era uno de los resueltos, la respuesta se sabía de
+             * antemano: se puede COMPARAR. Eso es lo que convierte la búsqueda
+             * en una prueba de verdad del motor entero —saltos, tabla, colisión
+             * y resta— sobre este aparato y no sobre un banco de pruebas.
+             *
+             * Y si no coincidiera, hay que decirlo alto: significaría que el
+             * motor canta una clave que no es, que es mucho peor que no
+             * encontrar ninguna. */
+            val esperada = puzzles.firstOrNull { it.num == puzzleSeleccionado }
+                                  ?.clave?.lowercase()?.padStart(64, '0')
+            tv.text = when {
+                esperada.isNullOrEmpty() ->
+                    "CLAVE ENCONTRADA\n$clave\nGuardada en el baúl de hallazgos."
+                esperada == clave.lowercase() ->
+                    "PRUEBA SUPERADA — #$puzzleSeleccionado\n$clave\n" +
+                    "Coincide con la clave conocida: el motor funciona de punta a punta."
+                else ->
+                    "MAL — #$puzzleSeleccionado\nencontrada: $clave\n" +
+                    "esperada:  $esperada\nEl motor ha cantado una clave que no es."
+            }
+            tv.setTextColor(
+                if (!esperada.isNullOrEmpty() && esperada != clave.lowercase())
+                    AppTheme.RED else AppTheme.ACCENT)
             return
         }
         if (!HunterEngine.kangarooRunning()) {
