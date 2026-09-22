@@ -4532,7 +4532,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // desinstalar— el reintento entraría en el guardia de doToggle() y
             // sacaría un diálogo cada dos segundos sin que nadie lo hubiera
             // pedido. Si no hay con qué comparar, no hay nada que reanudar.
-            if (!engineHasSomethingToMatch()) {
+            if (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false }) {
+                // Se ha parado porque ha ENCONTRADO lo que buscaba. Relanzar
+                // aquí sería volver a buscar algo que ya está, que es justo lo
+                // que hacía antes de que el motor supiera pararse: con el
+                // puzzle #1 salían cientos de miles de "PUZZLE SOLVED" de la
+                // misma clave.
+                prefs.edit().putBoolean("scan_was_running", false).apply()
+            } else if (!engineHasSomethingToMatch()) {
                 prefs.edit().putBoolean("scan_was_running", false).apply()
             } else {
                 watchdogRestarts++

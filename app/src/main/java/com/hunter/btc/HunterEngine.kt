@@ -141,6 +141,15 @@ object HunterEngine {
     /** Operaciones de grupo hechas: es lo que se compara con raíz(W). */
     external fun kangarooOps(): Long
     external fun kangarooRunning(): Boolean
+    /**
+     * ¿Ha aparecido ya el objetivo único?
+     *
+     * En modo puzzle hay UNA dirección que buscar, así que encontrarla es el
+     * final del trabajo y el motor se para solo. Esto distingue esa parada de
+     * una inesperada, que es lo que el watchdog necesita saber para no volver a
+     * lanzar una búsqueda ya terminada.
+     */
+    external fun objetivoHallado(): Boolean
     /** Clave privada en hex de 64 caracteres, o "" si todavía no está. */
     external fun kangarooResult(): String
     /** Guarda el trabajo ahora mismo. Android puede matar la app sin avisar. */

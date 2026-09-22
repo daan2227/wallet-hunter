@@ -130,6 +130,8 @@ static uint8_t g_last_key[32]     = {0};
 static std::mutex g_last_key_mutex;
 static uint8_t g_target_h160[20]  = {0};
 static int     g_has_target       = 0;
+/* El objetivo unico ya ha aparecido. Ver por que existe donde se pone. */
+static std::atomic<int> g_objetivo_hallado{0};
 
 static std::mutex               g_log_mutex;
 static std::deque<std::string>  g_log;
@@ -767,6 +769,19 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
         save_match(pkhex,addr,btc,wif,extra);
         add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
+        /* SE ACABO.
+         *
+         * Con un objetivo unico —que es lo que hay en modo puzzle— encontrarlo
+         * es el final del trabajo. Antes no paraba nadie: el escaneo secuencial
+         * llega al final del rango, vuelve a empezar, y encuentra la MISMA clave
+         * otra vez. Con el puzzle #1, que tiene una sola clave, eso son cientos
+         * de miles de "PUZZLE SOLVED" por minuto y el movil calentando para
+         * nada. Visto en pantalla: 409.494 coincidencias de la misma clave.
+         *
+         * Con un CSV cargado es al reves —hay muchas direcciones y encontrar una
+         * no agota la lista— asi que solo se para cuando el objetivo es unico. */
+        g_objetivo_hallado.store(1);
+        g_stop.store(true);
     }
 }
 
@@ -872,6 +887,9 @@ static void *worker_rawkey_fn(void *arg){
                 char extra[128]; snprintf(extra,sizeof(extra),"RAW:%s",pkhex);
                 save_match(pkhex,addr,0.0,wif,extra);
                 add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
+                /* Igual que en modo puzzle: con objetivo unico, encontrarlo es
+                   el final. Con CSV no, que hay muchas direcciones. */
+                if(g_has_target){ g_objetivo_hallado.store(1); g_stop.store(true); }
             }
         }, &rctx);
 
@@ -1153,6 +1171,7 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
+    g_objetivo_hallado.store(0);
     g_last_count=0;g_last_wps_t=time(nullptr);
     g_start_time=time(nullptr);g_running.store(true);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
@@ -1246,6 +1265,17 @@ Java_com_hunter_btc_HunterEngine_popLog(JNIEnv *env,jobject){
     if(g_log.empty())return env->NewStringUTF("");
     std::string s=g_log.front();g_log.pop_front();
     return env->NewStringUTF(s.c_str());
+}
+
+/* ¿Ha aparecido ya el objetivo unico?
+ *
+ * Sirve para distinguir "el motor se ha parado solo porque ha terminado" de
+ * "el motor se ha parado y no se sabe por que", que es lo que mira el watchdog
+ * para decidir si relanzar. Sin esto, encontrar la clave y que el watchdog la
+ * vuelva a buscar es lo mismo desde fuera. */
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_objetivoHallado(JNIEnv *,jobject){
+    return (jboolean)(g_objetivo_hallado.load()!=0);
 }
 
 JNIEXPORT jstring JNICALL
