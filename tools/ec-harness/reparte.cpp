@@ -303,7 +303,12 @@ static void prueba_un_trabajador(){
  *   - y el master la resuelve al menos una vez, que es lo que hay que
  *     demostrar: que una colision repartida entre dos aparatos se cierra.
  */
-#define VUELTAS_MP 6
+/* 24 y no 6. Con dos trabajadores el master gana una de cada dos, asi que con 6
+ * vueltas la prueba se pondria roja ella sola una vez de cada 64: un 1,6 % de
+ * las compilaciones, sin que nada estuviera mal. Una prueba que falla sola
+ * ensena a no mirar el rojo, que es peor que no tenerla. Con 24 la probabilidad
+ * baja a una entre 16 millones, y la prueba entera tarda un segundo. */
+#define VUELTAS_MP 24
 
 static void prueba_master_pasivo(int n_trabajadores,const char *et){
     printf("\n%s:\n",et);
@@ -379,7 +384,11 @@ static void prueba_master_pasivo(int n_trabajadores,const char *et){
            (unsigned long long)total_puntos);
     OK(master_anduvo==0, "el master no ha dado ni un salto");
     OK(sin_resolver==0, "en todas las vueltas la resuelve alguien");
-    OK(gana_master>0, "y el master cierra por su cuenta colisiones repartidas");
+    /* No "al menos una": al menos un cuarto. Con dos trabajadores la mitad de
+       las colisiones son cruzadas y con tres, dos tercios, asi que un cuarto
+       sobra por abajo y aun asi salta si el reparto se degrada de verdad. */
+    OK(gana_master*4>=VUELTAS_MP,
+       "y el master cierra por su cuenta al menos un cuarto de ellas");
     OK(mal_clave==0, "todas las claves encontradas son la correcta");
 }
 
