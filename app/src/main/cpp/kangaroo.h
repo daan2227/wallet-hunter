@@ -212,6 +212,17 @@ typedef struct {
     uint8_t  enviado;
 } DP;
 
+/* El tamano de este struct decide cuanta RAM reserva la tabla, y quien hace esa
+ * cuenta es HunterEngine.topeTablaBits() en Kotlin, que lleva el 56 escrito a
+ * mano porque desde alli no se puede preguntar. Si aqui se anade un campo y el
+ * struct crece, el movil reservaria mas de lo que cree y Android mataria la app
+ * por memoria, sin que nada dijera por que.
+ *
+ * Asi que se sujeta aqui: si esto salta, hay que cambiar el 56 de
+ * topeTablaBits() y su comentario. */
+static_assert(sizeof(DP)==56,
+    "sizeof(DP) ha cambiado: actualiza HunterEngine.topeTablaBits() en Kotlin");
+
 typedef struct {
     DP      *slots;
     uint64_t mask;      /* capacidad-1, capacidad potencia de dos */

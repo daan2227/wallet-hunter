@@ -5332,11 +5332,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         kgSegPrevios = prefs.getLong("kangaroo_seg_${pub.take(16)}", 0L)
         kgMuestraMs = 0L; kgMuestraOps = 0L
         recuperarMuestras()
-        // El trabajo que hace falta: ~2,2 veces la raíz del ancho del rango.
+        // El trabajo que hace falta, en operaciones de grupo: 2,13 veces la raíz
+        // del ancho del rango.
+        //
+        // El 2,13 no es una estimación: lo mide tools/ec-harness/constante
+        // resolviendo logaritmos discretos de verdad y dividiendo entre √W, y el
+        // banco falla si el motor se sale del techo. Antes ponía 2,2 de memoria,
+        // que resultó ser casualmente parecido al valor bueno mientras el motor
+        // real costaba 4,16 — o sea que el "Estimado" de esta pantalla llevaba
+        // meses siendo el doble de optimista sin que nada lo dijera.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(ini, 16)
             val b = java.math.BigInteger(fin, 16)
-            2.2 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
+            2.13 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
         } catch (e: Exception) { 0.0 }
         lblEscaneadas?.text = "Operaciones"
         lblRestantes?.text = "Estimado"

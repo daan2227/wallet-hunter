@@ -115,7 +115,9 @@ object HunterEngine {
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.
      *
-     * Cada hueco son 56 bytes, así que 2^22 son 235 MB. Se reserva como mucho el
+     * Cada hueco son 56 bytes — `sizeof(DP)` en kangaroo.h, donde hay un
+     * `static_assert` que salta si cambia para que nadie tenga que acordarse de
+     * venir aquí —, así que 2^22 son 235 MB. Se reserva como mucho el
      * 4 % de la RAM total: en un móvil de 8 GB eso da el tope de 2^22, y en uno
      * de 3 GB baja solo a 2^21. El 4 % es un juicio, no una medida: por encima
      * empieza a ser probable que Android mate la app por memoria, y una app
