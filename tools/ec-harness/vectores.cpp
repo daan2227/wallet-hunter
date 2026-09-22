@@ -1,7 +1,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include "/home/user/wallet-hunter/app/src/main/cpp/jac_batch.h"
+#include "../../app/src/main/cpp/jac_batch.h"
 
 static void to_limbs(const char*hex, fe_t o){
     uint8_t b[32]; for(int i=0;i<32;i++){unsigned v;sscanf(hex+i*2,"%2x",&v);b[i]=v;}

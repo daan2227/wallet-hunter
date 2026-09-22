@@ -1,7 +1,15 @@
 #!/bin/bash
+# Se ejecuta desde su propio directorio: antes llevaba la ruta absoluta de una
+# maquina concreta metida dentro y no funcionaba en ninguna otra. Lo mismo le
+# pasaba a tools/ec-harness/vectores.cpp, y ahi no se vio hasta que CI empezo a
+# correr el banco.
+cd "$(dirname "$0")"
+RAIZ=$(cd ../.. && pwd)
+export RAIZ
 python3 - <<'PY'
 import re
-src=open('/home/user/wallet-hunter/app/src/main/cpp/hunter_jni.cpp').read()
+import os
+src=open(os.environ['RAIZ']+'/app/src/main/cpp/hunter_jni.cpp').read()
 end=src.index('extern "C" JNIEXPORT jstring JNICALL\nJava_com_hunter_btc_HunterEngine_buildAndSignTx')
 b=src[:end]
 for bad in ['#include <jni.h>','#include <android/log.h>','#include <sys/mman.h>','#include <sys/syscall.h>','#include <sched.h>']:
@@ -23,4 +31,4 @@ while True:
 b=''.join(out).replace('extern "C" {','extern "C" { }',1)
 open('sign_core.cpp','w').write(b+'\n#include <iostream>\nint main(){std::string r,l;while(std::getline(std::cin,l))r+=l;std::string o=build_and_sign_tx(r);std::cout<<o<<std::endl;return o.rfind("ERROR",0)==0?1:0;}\n')
 PY
-g++ -std=c++17 -O1 -o signer sign_core.cpp secp.o pre1.o pre2.o -Isecp256k1/include -I. -I/home/user/wallet-hunter/app/src/main/cpp -lcrypto -lpthread 2>&1 | grep "error:" | head -3
+g++ -std=c++17 -O1 -o signer sign_core.cpp secp.o pre1.o pre2.o -Isecp256k1/include -I. -I"$RAIZ/app/src/main/cpp" -lcrypto -lpthread 2>&1 | grep "error:" | head -3
