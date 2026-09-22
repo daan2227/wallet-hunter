@@ -265,7 +265,16 @@ class HunterService : Service() {
                     .notify(NOTIF_FG, buildFgNotif("BTC Hunter en espera", "CSV cargado, listo para iniciar"))
             }
 
-            // Detectar nuevo match
+            // Detectar nuevo match.
+            //
+            // El motor pone su contador a CERO en cada arranque, asi que `found`
+            // BAJA al empezar otra busqueda. lastFound era una marca de maximo
+            // historico que no se reiniciaba nunca, y el efecto es que solo
+            // avisaba el PRIMER hallazgo de la vida de la app: en el segundo
+            // puzzle, found valia 1 y lastFound tambien, asi que "1 > 1" era
+            // falso y no sonaba nada. Con treinta puzzles seguidos, veintinueve
+            // en silencio.
+            if (found < lastFound) lastFound = found
             if (found > lastFound) {
                 lastFound = found
                 val detalles = HunterEngine.getMatches()

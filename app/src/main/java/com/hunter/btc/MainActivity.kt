@@ -4368,11 +4368,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             sessionStartCount = try { HunterEngine.getCount() } catch (e: Throwable) { 0L }
         }
         if (!running) sessionStartTime = 0L
-        tvScanState?.text =
-            if (running) "Buscando · ${formatElapsed(sessionStartTime)}" else "En espera"
-        tvScanState?.setTextColor(if (running) AppTheme.ACCENT else AppTheme.TXT_SEC)
+        // "En espera" vale para una búsqueda parada, pero no para una que ha
+        // TERMINADO porque encontró lo que buscaba. Sin distinguirlo, el único
+        // rastro de un hallazgo era una línea más en el baúl.
+        val hallado = !running &&
+            (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false })
+        tvScanState?.text = when {
+            running -> "Buscando · ${formatElapsed(sessionStartTime)}"
+            hallado -> "¡CLAVE ENCONTRADA! — mírala en el baúl"
+            else    -> "En espera"
+        }
+        tvScanState?.setTextColor(
+            if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_SEC)
         (scanStateDot?.background as? android.graphics.drawable.GradientDrawable)
-            ?.setColor(if (running) AppTheme.ACCENT else AppTheme.TXT_MUTED)
+            ?.setColor(if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_MUTED)
     }
 
     /** Resumen de las filas de ajuste, con el valor que tienen ahora mismo. */

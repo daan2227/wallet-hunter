@@ -132,6 +132,10 @@ static uint8_t g_target_h160[20]  = {0};
 static int     g_has_target       = 0;
 /* El objetivo unico ya ha aparecido. Ver por que existe donde se pone. */
 static std::atomic<int> g_objetivo_hallado{0};
+/* Para el motor entero: avisa a los hilos, los recoge y baja g_running. Se
+ * declara aqui porque se usa desde los buscadores, que van mas arriba que su
+ * definicion. */
+static void parar_motor();
 
 static std::mutex               g_log_mutex;
 static std::deque<std::string>  g_log;
@@ -781,7 +785,7 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
          * Con un CSV cargado es al reves —hay muchas direcciones y encontrar una
          * no agota la lista— asi que solo se para cuando el objetivo es unico. */
         g_objetivo_hallado.store(1);
-        g_stop.store(true);
+        parar_motor();
     }
 }
 
@@ -889,7 +893,7 @@ static void *worker_rawkey_fn(void *arg){
                 add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
                 /* Igual que en modo puzzle: con objetivo unico, encontrarlo es
                    el final. Con CSV no, que hay muchas direcciones. */
-                if(g_has_target){ g_objetivo_hallado.store(1); g_stop.store(true); }
+                if(g_has_target){ g_objetivo_hallado.store(1); parar_motor(); }
             }
         }, &rctx);
 
@@ -1185,8 +1189,17 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
 }
 
-JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
+/* Parar de verdad.
+ *
+ * Poner g_stop a mano NO basta: los hilos salen del bucle, si, pero nadie los
+ * recoge y g_running se queda en true. Desde fuera eso se ve como un motor que
+ * ha dejado de trabajar y sigue diciendo que trabaja: el boton se queda en
+ * rojo y el reloj corriendo. Paso de verdad al hacer que el motor se parara
+ * solo al encontrar el objetivo.
+ *
+ * Esta es la secuencia entera, y la usan los dos sitios que paran: el boton y
+ * el hallazgo del objetivo. */
+static void parar_motor(){
     if(!g_running.load())return;
     /* Idempotente: si ya se está parando, no montar otro joiner. */
     bool expected=false;
@@ -1198,6 +1211,11 @@ Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
         g_stopping.store(false);
         add_log("Stopped | total:"+std::to_string(g_count.load())+" | matches:"+std::to_string(g_found.load()));
     }).detach();
+}
+
+JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_stopHunting(JNIEnv *,jobject){
+    parar_motor();
 }
 
 /* ¿Hay una parada en curso? La UI lo usa para no aceptar pulsaciones mientras
