@@ -2903,52 +2903,76 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
-    private fun showBackupDialog() {
-        val root = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(64, 32, 64, 16)
-        }
-        val etPin = android.widget.EditText(this).apply {
-            hint = "Enter your PIN"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(AppTheme.TXT_PRI)
-            setHintTextColor(AppTheme.TXT_MUTED)
-        }
-        root.addView(android.widget.TextView(this).apply {
-            text = "PIN to encrypt the backup:"
-            setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
-            typeface = AppTheme.body(context)
-            setPadding(0, 0, 0, dp(10))
-        })
-        root.addView(etPin)
+    /** Campo de contraseña con el aspecto de la app. */
+    private fun campoSecreto(pista: String) = Ui.input(this, pista).apply {
+        inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                    android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(10) }
+    }
 
-        AlertDialog.Builder(this)
+    /**
+     * Crea una copia con su PROPIA contraseña.
+     *
+     * Antes se cifraba con el PIN de 6 dígitos: un millón de posibilidades,
+     * que un ordenador prueba en horas si consigue el fichero. Y este fichero
+     * se comparte, se sube a la nube, se manda por correo. Ver
+     * WalletManager.cifrarCopia.
+     */
+    private fun showBackupDialog() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), dp(4))
+        }
+        root.addView(TextView(this).apply {
+            text = "A password only for this backup, of at least " +
+                   "${WalletManager.MIN_CONTRASENA_COPIA} characters. Not your PIN: " +
+                   "the file leaves the phone, and a 6-digit PIN is guessed in hours.\n\n" +
+                   "Write it down. Without it the backup cannot be opened."
+            setTextColor(AppTheme.TXT_SEC); textSize = AppTheme.SP_BODY
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
+        })
+        val et1 = campoSecreto("Password")
+        val et2 = campoSecreto("Repeat the password")
+        root.addView(et1); root.addView(et2)
+
+        val d = AlertDialog.Builder(this)
             .setTitle("New backup")
             .setView(root)
-            .setPositiveButton("Create") { _, _ ->
-                val pin = etPin.text.toString()
-                if (pin.length < 4) {
-                    android.widget.Toast.makeText(this, "PIN too short", android.widget.Toast.LENGTH_SHORT).show()
-                    return@setPositiveButton
-                }
-                // Antes se lanzaba el selector de compartir aquí mismo: si lo
-                // cerrabas, la copia quedaba en un directorio interno del que
-                // nada volvía a hablar. Ahora se guarda en el baúl y desde ahí
-                // se comparte, se mira o se restaura.
-                val file = WalletManager.exportBackup(this, pin)
-                if (file != null) {
-                    android.widget.Toast.makeText(this,
-                        "Backup saved to the vault", android.widget.Toast.LENGTH_SHORT).show()
-                    showBackupVault()
-                } else {
-                    android.widget.Toast.makeText(this,
-                        "Nothing to export: no wallets, no WIFs, no finds",
-                        android.widget.Toast.LENGTH_SHORT).show()
+            .setPositiveButton("Create", null)
+            .setNegativeButton("Cancel", null)
+            .create()
+        d.setOnShowListener {
+            // El botón no cierra el diálogo si algo falla: se corrige aquí mismo.
+            d.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val p1 = et1.text.toString(); val p2 = et2.text.toString()
+                when {
+                    p1.length < WalletManager.MIN_CONTRASENA_COPIA ->
+                        et1.error = "At least ${WalletManager.MIN_CONTRASENA_COPIA} characters"
+                    p1.all { it.isDigit() } && p1.length < 16 ->
+                        et1.error = "Only digits is too easy to guess: add letters"
+                    p1 != p2 -> et2.error = "They do not match"
+                    else -> {
+                        d.dismiss()
+                        Toast.makeText(this, "Encrypting the backup…", Toast.LENGTH_SHORT).show()
+                        Thread {
+                            val file = try { WalletManager.exportBackup(this, p1) } catch (e: Exception) { null }
+                            runOnUiThread {
+                                if (file != null) {
+                                    Toast.makeText(this, "Backup saved to the vault", Toast.LENGTH_SHORT).show()
+                                    showBackupVault()
+                                } else {
+                                    Toast.makeText(this, "Nothing to export: no wallets, no WIFs, no finds",
+                                        Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }.start()
+                    }
                 }
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+        }
+        d.show()
     }
 
     // ── Baúl de copias ────────────────────────────────────────────────────────
@@ -2962,7 +2986,7 @@ class WalletActivity : FragmentActivity() {
         if (copias.isEmpty()) {
             b.setMessage("No backup yet.\n\nA backup holds the seeds, " +
                          "the WIFs, the watchers and the vault finds, encrypted with " +
-                         "your PIN. The ${BackupStore.MAX_KEPT} most recent ones are kept.")
+                         "a password of its own. The ${BackupStore.MAX_KEPT} most recent ones are kept.")
         } else {
             val items = copias.map {
                 "${BackupStore.humanDate(it.createdAt)}  ·  ${BackupStore.humanSize(it.bytes)}"
@@ -2992,8 +3016,8 @@ class WalletActivity : FragmentActivity() {
                         android.widget.Toast.makeText(this, "Could not share: ${e.message}",
                             android.widget.Toast.LENGTH_LONG).show()
                     }
-                    1 -> askPinFor("View contents") { pin -> inspectBackupFile(info, pin) }
-                    2 -> askPinFor("Restore backup") { pin -> restoreFromVault(info, pin) }
+                    1 -> askPinFor("View contents", info.file.readBytes()) { pin -> inspectBackupFile(info, pin) }
+                    2 -> askPinFor("Restore backup", info.file.readBytes()) { pin -> restoreFromVault(info, pin) }
                     3 -> confirmDeleteBackup(info)
                 }
             }
@@ -3001,109 +3025,124 @@ class WalletActivity : FragmentActivity() {
             .show()
     }
 
-    /** Pide el PIN con el que se cifró la copia. */
-    private fun askPinFor(titulo: String, onPin: (String) -> Unit) {
-        val root = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(64, 32, 64, 16)
+    /**
+     * Pide la contraseña de una copia. Las de antes de la contraseña propia
+     * se abren con el PIN que hubiera cuando se crearon: se mira el fichero
+     * para decir cuál de las dos toca.
+     */
+    private fun askPinFor(titulo: String, data: ByteArray, onPin: (String) -> Unit) {
+        val conPin = WalletManager.copiaConPin(data)
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), dp(4))
         }
-        val etPin = android.widget.EditText(this).apply {
-            hint = "Backup PIN"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(AppTheme.TXT_PRI)
-            setHintTextColor(AppTheme.TXT_MUTED)
-        }
-        root.addView(android.widget.TextView(this).apply {
-            // Una copia vieja se abre con el PIN que tuvieras entonces: la clave
-            // se deriva del PIN en el momento de crearla, no del PIN actual.
-            text = "The PIN this backup was created with:"
-            setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
-            typeface = AppTheme.body(context)
-            setPadding(0, 0, 0, dp(10))
+        root.addView(TextView(this).apply {
+            text = if (conPin) "An old backup: it opens with the PIN you had when you created it."
+                   else "The password of this backup."
+            setTextColor(AppTheme.TXT_SEC); textSize = AppTheme.SP_BODY
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
         })
-        root.addView(etPin)
+        val et = campoSecreto(if (conPin) "PIN of the backup" else "Password").apply {
+            if (conPin) inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                                    android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
+        }
+        root.addView(et)
         AlertDialog.Builder(this)
             .setTitle(titulo)
             .setView(root)
-            .setPositiveButton("OK") { _, _ -> onPin(etPin.text.toString()) }
+            .setPositiveButton("OK") { _, _ -> onPin(et.text.toString()) }
             .setNegativeButton("Cancel", null)
             .show()
+    }
+
+    /**
+     * Descifra en segundo plano: 600 000 vueltas de PBKDF2 son un par de
+     * segundos en un móvil, y en el hilo principal congelaban la pantalla.
+     */
+    private fun abrirCopia(secreto: String, data: ByteArray,
+                           listo: (WalletManager.BackupSummary?) -> Unit) {
+        Toast.makeText(this, "Opening the backup…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val r = try { WalletManager.inspectBackup(secreto, data) } catch (e: Exception) { null }
+            runOnUiThread { if (!isFinishing) listo(r) }
+        }.start()
     }
 
     /** Descifra y enseña qué trae la copia, sin mostrar ningún secreto. */
     private fun inspectBackupFile(info: BackupStore.Info, pin: String) {
-        val resumen = try {
-            WalletManager.inspectBackup(pin, info.file.readBytes())
-        } catch (e: Exception) { null }
-
-        if (resumen == null) {
-            AlertDialog.Builder(this)
-                .setTitle("Could not open it")
-                .setMessage("Wrong PIN, or the file is not a valid backup.\n\n" +
-                            "Remember a backup opens with the PIN you had when " +
-                            "you created it.")
-                .setPositiveButton("Got it", null)
-                .show()
-            return
-        }
-
-        val detalle = buildString {
-            appendLine("Created: ${BackupStore.humanDate(resumen.createdAt)}")
-            appendLine("Format: v${resumen.version}")
-            appendLine("Size: ${BackupStore.humanSize(info.bytes)}")
-            appendLine()
-            appendLine("Main seed: ${if (resumen.hasMainSeed) "yes" else "no"}")
-            appendLine("Wallets: ${resumen.wallets}")
-            appendLine("WIF keys: ${resumen.wifs}")
-            appendLine("Watch-only: ${resumen.watchers}")
-            appendLine("Finds: ${resumen.matches}")
-            if (resumen.version < 2) {
-                appendLine()
-                appendLine("Old backup: wallets only. The main seed, " +
-                           "the WIFs, the watchers and the finds were not stored.")
+        abrirCopia(pin, info.file.readBytes()) { resumen ->
+            if (resumen == null) {
+                AlertDialog.Builder(this)
+                    .setTitle("Could not open it")
+                    .setMessage("Wrong password, or the file is not a valid backup.")
+                    .setPositiveButton("Got it", null)
+                    .show()
+                return@abrirCopia
             }
+            val detalle = buildString {
+                appendLine("Created: ${BackupStore.humanDate(resumen.createdAt)}")
+                appendLine("Format: v${resumen.version}")
+                appendLine("Size: ${BackupStore.humanSize(info.bytes)}")
+                appendLine()
+                appendLine("Main seed: ${if (resumen.hasMainSeed) "yes" else "no"}")
+                appendLine("Wallets: ${resumen.wallets}")
+                appendLine("WIF keys: ${resumen.wifs}")
+                appendLine("Watch-only: ${resumen.watchers}")
+                appendLine("Finds: ${resumen.matches}")
+                if (resumen.version < 2) {
+                    appendLine()
+                    appendLine("Old backup: wallets only. The main seed, " +
+                               "the WIFs, the watchers and the finds were not stored.")
+                }
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Backup contents")
+                .setMessage(detalle)
+                .setPositiveButton("Restore") { _, _ -> restoreFromVault(info, pin) }
+                .setNegativeButton("Close", null)
+                .show()
         }
-        AlertDialog.Builder(this)
-            .setTitle("Backup contents")
-            .setMessage(detalle)
-            .setPositiveButton("Restore") { _, _ -> restoreFromVault(info, pin) }
-            .setNegativeButton("Close", null)
-            .show()
     }
 
     /** Restaura sin pasar por el selector de ficheros. Añade, no reemplaza. */
     private fun restoreFromVault(info: BackupStore.Info, pin: String) {
-        val resumen = try {
-            WalletManager.inspectBackup(pin, info.file.readBytes())
-        } catch (e: Exception) { null }
-        if (resumen == null) {
-            android.widget.Toast.makeText(this, "Wrong PIN or invalid backup",
-                android.widget.Toast.LENGTH_SHORT).show()
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Restore this backup?")
-            .setMessage("It will be added to what you have: ${resumen.wallets} wallet(s), " +
-                        "${resumen.wifs} WIF, ${resumen.watchers} watch-only and " +
-                        "${resumen.matches} find(s).\n\n" +
-                        (if (resumen.hasMainSeed)
-                            "The main seed in the backup REPLACES the current one. "
-                         else "") +
-                        "If the current one is in no backup, save it first.")
-            .setPositiveButton("Restore") { _, _ ->
-                val count = WalletManager.importBackup(this, pin, info.file.readBytes())
-                if (count >= 0) {
-                    android.widget.Toast.makeText(this,
-                        "$count item(s) restored", android.widget.Toast.LENGTH_SHORT).show()
-                    buildUI()
-                } else {
-                    android.widget.Toast.makeText(this,
-                        "Restore failed", android.widget.Toast.LENGTH_SHORT).show()
-                }
+        confirmarRestaurar(pin, info.file.readBytes())
+    }
+
+    /** Enseña qué se va a añadir y, si se confirma, lo restaura. */
+    private fun confirmarRestaurar(pin: String, data: ByteArray) {
+        abrirCopia(pin, data) { resumen ->
+            if (resumen == null) {
+                Toast.makeText(this, "Wrong password or invalid backup", Toast.LENGTH_SHORT).show()
+                return@abrirCopia
             }
-            .setNegativeButton("Cancel", null)
-            .show()
+            AlertDialog.Builder(this)
+                .setTitle("Restore this backup?")
+                // Ya no sustituye nada: la seed principal de la copia va al
+                // lado de la que haya (WalletManager.agregarSeed). El aviso
+                // de antes decía lo contrario.
+                .setMessage("It will be added to what you have: ${resumen.wallets} wallet(s), " +
+                            "${resumen.wifs} WIF, ${resumen.watchers} watch-only and " +
+                            "${resumen.matches} find(s)." +
+                            (if (resumen.hasMainSeed) " Its main seed goes next to yours, " +
+                                                      "without replacing it." else "") +
+                            " Nothing you have is deleted.")
+                .setPositiveButton("Restore") { _, _ ->
+                    Thread {
+                        val count = WalletManager.importBackup(this, pin, data)
+                        runOnUiThread {
+                            if (count >= 0) {
+                                Toast.makeText(this, "$count item(s) restored", Toast.LENGTH_SHORT).show()
+                                buildUI()
+                            } else {
+                                Toast.makeText(this, "Restore failed", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }.start()
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
     }
 
     private fun confirmDeleteBackup(info: BackupStore.Info) {
@@ -3131,45 +3170,12 @@ class WalletActivity : FragmentActivity() {
     }
 
     private fun doRestore(uri: android.net.Uri) {
-        val root = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(64, 32, 64, 16)
+        val data = try { contentResolver.openInputStream(uri)?.use { it.readBytes() } } catch (e: Exception) { null }
+        if (data == null) {
+            Toast.makeText(this, "Could not read the file", Toast.LENGTH_SHORT).show()
+            return
         }
-        val etPin = android.widget.EditText(this).apply {
-            hint = "Backup PIN"
-            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                        android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
-            setTextColor(AppTheme.TXT_PRI)
-        }
-        root.addView(android.widget.TextView(this).apply {
-            text = "The PIN the backup was created with:"
-            setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
-            typeface = AppTheme.body(context)
-            setPadding(0, 0, 0, dp(10))
-        })
-        root.addView(etPin)
-
-        AlertDialog.Builder(this)
-            .setTitle("Restore backup")
-            .setView(root)
-            .setPositiveButton("Restore") { _, _ ->
-                val pin = etPin.text.toString()
-                val data = contentResolver.openInputStream(uri)?.readBytes() ?: return@setPositiveButton
-                val count = WalletManager.importBackup(this, pin, data)
-                if (count >= 0) {
-                    // Cuenta wallets, seed principal, WIF, watchers y hallazgos:
-                    // decir "wallet(s)" a secas confundía cuando el backup
-                    // traía sobre todo claves sueltas.
-                    android.widget.Toast.makeText(this,
-                        "$count item(s) restored", android.widget.Toast.LENGTH_SHORT).show()
-                    buildUI()
-                } else {
-                    android.widget.Toast.makeText(this,
-                        "Error: wrong PIN or invalid file", android.widget.Toast.LENGTH_SHORT).show()
-                }
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+        askPinFor("Restore backup", data) { pin -> confirmarRestaurar(pin, data) }
     }
 
 

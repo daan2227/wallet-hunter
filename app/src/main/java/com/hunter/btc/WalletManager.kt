@@ -576,6 +576,7 @@ object WalletManager {
      * que un acierto se perdía al desinstalar.
      */
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
+        // "pin" es ya la contraseña de la copia: ver cifrarCopia.
         return try {
             // Recoge lo que el motor no haya podido entregar al baúl todavía,
             // para que un acierto reciente no se quede fuera del backup.
@@ -625,22 +626,7 @@ object WalletManager {
                 if (ors.isNotEmpty()) put("origins", org.json.JSONObject(ors))
             }.toString()
 
-            // Derivar clave del PIN con PBKDF2
-            val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-            val key  = deriveKeyFromPin(pin, salt)
-
-            // Cifrar con AES/GCM
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
-            val encrypted = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
-
-            // Formato: [4 salt_len][salt][4 iv_len][iv][encrypted]
-            val out = java.io.ByteArrayOutputStream()
-            val dos = java.io.DataOutputStream(out)
-            dos.writeInt(salt.size);      dos.write(salt)
-            dos.writeInt(cipher.iv.size); dos.write(cipher.iv)
-            dos.write(encrypted)
-            dos.flush()
+            val bytes = cifrarCopia(pin, json)
 
             // Almacenamiento interno, no externo: el fichero lleva todas las
             // seeds y solo lo protege la contraseña. Se comparte vía FileProvider,
@@ -650,7 +636,7 @@ object WalletManager {
             // Ahora las gestiona BackupStore, que conserva las más recientes.
             val dir = BackupStore.dir(ctx)
             val file = java.io.File(dir, "wh_backup_${System.currentTimeMillis()}${BackupStore.EXT}")
-            file.writeBytes(out.toByteArray())
+            file.writeBytes(bytes)
             BackupStore.prune(ctx)
             file
         } catch (e: Exception) { null }
@@ -658,19 +644,7 @@ object WalletManager {
 
     fun importBackup(ctx: Context, pin: String, data: ByteArray): Int {
         return try {
-            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
-            val saltLen = dis.readInt()
-            val salt    = ByteArray(saltLen).also { dis.readFully(it) }
-            val ivLen   = dis.readInt()
-            val iv      = ByteArray(ivLen).also { dis.readFully(it) }
-            val enc     = dis.readBytes()
-
-            val key = deriveKeyFromPin(pin, salt)
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, key,
-                javax.crypto.spec.GCMParameterSpec(128, iv))
-            val json = String(cipher.doFinal(enc), Charsets.UTF_8)
-
+            val json = descifrarCopia(pin, data)
             val root  = org.json.JSONObject(json)
             var count = 0
 
@@ -762,15 +736,7 @@ object WalletManager {
      */
     fun inspectBackup(pin: String, data: ByteArray): BackupSummary? {
         return try {
-            val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
-            val salt = ByteArray(dis.readInt()).also { dis.readFully(it) }
-            val iv   = ByteArray(dis.readInt()).also { dis.readFully(it) }
-            val enc  = dis.readBytes()
-
-            val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(javax.crypto.Cipher.DECRYPT_MODE, deriveKeyFromPin(pin, salt),
-                javax.crypto.spec.GCMParameterSpec(128, iv))
-            val root = org.json.JSONObject(String(cipher.doFinal(enc), Charsets.UTF_8))
+            val root = org.json.JSONObject(descifrarCopia(pin, data))
 
             BackupSummary(
                 version     = root.optInt("version", 1),
@@ -784,12 +750,66 @@ object WalletManager {
         } catch (e: Exception) { null }
     }
 
-    private fun deriveKeyFromPin(pin: String, salt: ByteArray): javax.crypto.SecretKey {
+    // ── Cifrado de las copias ────────────────────────────────────────────
+    //
+    // Las copias se cifraban con el PIN de 6 dígitos y 100 000 vueltas de
+    // PBKDF2. Un millón de PIN posibles por 100 000 vueltas cada uno es poco
+    // para un ordenador: quien consiguiera el fichero —y es un fichero que se
+    // comparte, se sube a la nube, se manda por correo— sacaba el PIN en
+    // horas, y con él todas las seeds y el baúl.
+    //
+    // Ahora la copia lleva su propia contraseña, larga, y 600 000 vueltas (lo
+    // que recomienda OWASP para PBKDF2-SHA256). El formato nuevo empieza por
+    // "WHB2" y dice cuántas vueltas usa, para poder subirlas sin romper nada.
+    // Las copias de antes, sin esa marca, se siguen abriendo con su PIN.
+
+    private val MAGIA_COPIA = "WHB2".toByteArray(Charsets.US_ASCII)
+    private const val VUELTAS_COPIA = 600_000
+    private const val VUELTAS_COPIA_V1 = 100_000
+
+    /** Longitud mínima de la contraseña de una copia nueva. */
+    const val MIN_CONTRASENA_COPIA = 10
+
+    private fun claveCopia(secreto: String, salt: ByteArray, vueltas: Int): javax.crypto.SecretKey {
         val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-        val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, 100_000, 256)
-        val tmp  = factory.generateSecret(spec)
-        return javax.crypto.spec.SecretKeySpec(tmp.encoded, "AES")
+        val spec = javax.crypto.spec.PBEKeySpec(secreto.toCharArray(), salt, vueltas, 256)
+        return javax.crypto.spec.SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
     }
+
+    /** [WHB2][vueltas][salt][iv][cifrado], cada trozo con su longitud delante. */
+    private fun cifrarCopia(secreto: String, json: String): ByteArray {
+        val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, claveCopia(secreto, salt, VUELTAS_COPIA))
+        val enc = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
+        val out = java.io.ByteArrayOutputStream()
+        java.io.DataOutputStream(out).apply {
+            write(MAGIA_COPIA); writeInt(VUELTAS_COPIA)
+            writeInt(salt.size); write(salt)
+            writeInt(cipher.iv.size); write(cipher.iv)
+            write(enc); flush()
+        }
+        return out.toByteArray()
+    }
+
+    /** El JSON de dentro. Lanza excepción si la contraseña no es o el fichero no vale. */
+    private fun descifrarCopia(secreto: String, data: ByteArray): String {
+        val nueva = data.size > 8 && data.copyOfRange(0, 4).contentEquals(MAGIA_COPIA)
+        val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
+        val vueltas = if (nueva) { dis.skipBytes(4); dis.readInt() } else VUELTAS_COPIA_V1
+        require(vueltas in 1..10_000_000)
+        val salt = ByteArray(dis.readInt()).also { dis.readFully(it) }
+        val iv   = ByteArray(dis.readInt()).also { dis.readFully(it) }
+        val enc  = dis.readBytes()
+        val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, claveCopia(secreto, salt, vueltas),
+            javax.crypto.spec.GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(enc), Charsets.UTF_8)
+    }
+
+    /** ¿Es del formato viejo, cifrado con el PIN? */
+    fun copiaConPin(data: ByteArray): Boolean =
+        !(data.size > 8 && data.copyOfRange(0, 4).contentEquals(MAGIA_COPIA))
 
 
 }
