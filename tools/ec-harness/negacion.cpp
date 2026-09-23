@@ -9,7 +9,12 @@
  *   - kg_resolver. Instrumentado: se llamaba CERO veces, o sea que no es que
  *     cerrara mal una colision, es que no habia colision que cerrar.
  *
- * Y una tercera, que era mia y tambien hay que descartarla aqui: ciclos mas
+ * RESULTADO (ver el README): la causa sigue sin aislarse. El intento de
+ * arreglo —conservar la ventana al escapar y variar el salto de escape— se
+ * RETIRO porque dejaba `constante` sin terminar. Aqui queda lo que si sirve:
+ * la medida.
+ *
+ * Y una tercera hipotesis, que era mia y tambien se descarta aqui: ciclos mas
  * largos que KG_VENTANA. El reparto de longitudes ya esta medido en `ciclos`
  * —maximo 6 con njumps=75— asi que una ventana de 16 deberia sobrar. Si esta
  * prueba dice que `rescatados` sube con dbits, la ventana no da abasto y la

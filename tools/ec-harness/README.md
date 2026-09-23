@@ -310,57 +310,54 @@ Tres cosas hicieron falta, y las tres se descubrieron midiendo:
    espera es geométrica, así que pasarse de 20 veces la media tiene probabilidad
    e⁻²⁰— y el contador `rescatados` lo deja ver.
 
-4. **La ventana NO se puede borrar al escapar**, que es lo que hacía y estaba
-   mal. Al escapar de `P` el canguro olvidaba que había estado en `P`, así que
-   cuando el camino nuevo lo devolvía a `P` no había forma de verlo: volvía a
-   caer en el mismo ciclo, volvía a escapar por el mismo sitio, y vuelta a
-   empezar **para siempre**. Medido con `negacion.cpp`: la **mitad** de los
-   escapes salían del mismo punto que el anterior. Conservando la ventana, la
-   vuelta a `P` se ve como lo que es —un ciclo más largo— y se sale por otro
-   salto, porque ahora hay `KG_NESC` saltos de escape y el que toca lo elige la
-   **longitud** del ciclo. La longitud y el punto mínimo los ve igual cualquier
-   canguro que caiga en ese ciclo, así que el escape sigue siendo el mismo para
-   todos y dos que se hayan juntado no se separan.
+4. **Escapar del ciclo no basta: hay que ver si el escape vuelve.** Medido con
+   `negacion.cpp`, la **mitad** de los escapes salían del mismo punto que el
+   anterior. Al escapar de `P` el canguro olvida que estuvo en `P` —la ventana
+   se borra— así que cuando el camino nuevo lo devuelve allí no hay forma de
+   verlo: vuelve a caer en el mismo ciclo, vuelve a escapar por el mismo sitio
+   —el escape TIENE que ser determinista— y otra vez, para siempre. Andando,
+   contando saltos y sin dar un distinguido en su vida.
 
 El escape tiene que depender **sólo del punto**, nunca de por dónde se vino: si
 dos canguros que se han juntado escapan distinto, se separan y la colisión que
 ya tenían se pierde sin dejar rastro. Por eso se escapa siempre desde el menor de
 los puntos del ciclo.
 
-### Lo que todavía NO está resuelto
+### El mapa de negación sigue apagado, y un intento de arreglo que se retiró
 
-El mapa de negación **sigue apagado** (`kg_negacion = 0`). Lo de arriba lo mejora
-mucho y no lo arregla del todo.
+`kg_negacion = 0`. Lo de arriba está diagnosticado y **no** arreglado.
 
-Lo primero que hubo que tirar fue el marco del problema. "Se rompe a partir de
-dbits 13" era falso: lo que decide no es `dbits` sino los **pasos por canguro**,
-y `dbits` sólo cambia cuánto dura la corrida antes de agotar el presupuesto. Por
-eso las dos investigaciones anteriores buscaron donde no era.
+Lo primero que hubo que tirar fue el enunciado. "Se rompe a partir de dbits 13"
+era falso: lo que decide no es `dbits` sino los **pasos por canguro**, y `dbits`
+sólo cambia cuánto dura la corrida antes de agotar el presupuesto. Por eso las
+investigaciones anteriores buscaron donde no era.
 
-Lo que mide `negacion.cpp`, en un rango de 28 bits con 16 canguros:
+Lo que se sabe de la trampa, todo medido con `negacion.cpp`:
 
-```
-                        antes           después
-escapes repetidos       ~50 %           0,6 - 16 %
-dbits 12, resuelve      0/3             3/3   (4,65·raíz(W) contra 8,99 sin negación)
-dbits >= 13, resuelve   0/3             0/3
-```
-
-Queda una trampa permanente que no está identificada. Tres cosas que ya se saben
-de ella, todas medidas:
-
-- **No son escapes repetidos.** Subir la ventana a 128 deja los repetidos en
-  0,6 % y `dbits >= 13` sigue sin resolver. El contador de repetidos mide poco:
-  un canguro que da vueltas a un atractor grande escapa por puntos distintos
-  cada vez y nunca parece que repita.
 - **Los canguros están atrapados de verdad, no lentos.** Bajando la red de
-  seguridad de `20·2^dbits` a `3·2^dbits`, `dbits` 12 pasa de 0/3 a 3/3 con 20
-  rescates. Por encima de 13 la red no llega a saltar nunca, porque su umbral es
-  mayor que lo que un canguro llega a andar.
+  seguridad de `20·2^dbits` a `3·2^dbits` (`-DKG_FACTOR_SIN_DP=3ULL`), `dbits`
+  12 pasa de 0/3 a 3/3 con 20 rescates. Por encima de 13 la red no llega a
+  saltar nunca, porque su umbral es mayor que lo que un canguro llega a andar.
 - **Depende de cuántos escapes hay entre dos distinguidos.** Con 44 bits y
   `dbits` 8 —unos 5 escapes por distinguido— el rendimiento es 0,92 de lo
-  esperado, o sea sano. Con 28 bits y `dbits` 12 —unos 120— es 0,02.
+  esperado, sano. Con 28 bits y `dbits` 12 —unos 120— es 0,02.
 
-O sea que cada escape tiene todavía una probabilidad pequeña, del orden del 1 %,
-de dejar al canguro dando vueltas. Con pocos escapes por distinguido no se nota;
-con muchos, se muere el rebaño entero.
+**El intento que se retiró.** Conservar la ventana al escapar, más varios saltos
+de escape elegidos por la longitud del ciclo. Bajaba los escapes repetidos del
+50 % al 0,6 % y hacía que `dbits` 12 resolviera 3/3 a 4,65·raíz(W) contra 8,99
+sin negación. Pero dejaba `constante` **sin terminar** en la variante "negación,
+SIN soltar muertos": con la ventana sin borrar, la detección puede casar con un
+punto de ANTES del escape —es un regreso de verdad, pero esas casillas no están
+todas en un mismo ciclo—, así que el mínimo de ellas puede ser un punto al que el
+canguro ya no vuelve, `esc_act` se queda a 1 para siempre y el escape no se
+dispara nunca. Una trampa cambiada por otra.
+
+Restaurar sólo el borrado de la ventana **tampoco** bastó: seguía sin terminar.
+O sea que la causa del cuelgue no está aislada, y por eso se revirtió el cambio
+entero del motor y se quedaron sólo los contadores (`escapes`, `escapes_repe`) y
+los dos macros que el banco varía con `-D`.
+
+Para arreglarlo de verdad hace falta separar dos cosas que hoy son la misma: la
+**ventana de detección**, que tiene que contener sólo puntos posteriores al
+último escape, y la **memoria de por dónde se escapó**, que tiene que sobrevivir
+al escape. Eso está sin hacer.
