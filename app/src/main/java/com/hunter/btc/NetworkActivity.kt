@@ -91,30 +91,16 @@ class NetworkActivity : AppCompatActivity() {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(BG)
-            setPadding(dp(16), dp(16), dp(16), dp(32))
+            // El mismo margen lateral que las demás pestañas: ahora es una de
+            // ellas, y 16 frente a 22 se notaba al cambiar.
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(32))
         }
 
-        // Header con botón back
-        val headerRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(4))
-        }
-        headerRow.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_back)
-            setColorFilter(AppTheme.TXT_PRI)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            isClickable = true; isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44)).apply { marginEnd = dp(10) }
-            setOnClickListener { finish() }
-        })
-        headerRow.addView(TextView(this).apply {
-            text = "Multi-device network"
-            textSize = 20f; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        root.addView(headerRow)
+        // Aquí había una flecha de volver y el título "Multi-device network".
+        // Ahora esta pantalla ES la pestaña Cluster: se llega y se sale por la
+        // barra de abajo, la flecha sobra, y el título se llama como su pestaña
+        // para que no parezca que se ha ido a otro sitio.
+        root.addView(Ui.pageTitle(this, "Cluster", lados = false))
         root.addView(TextView(this).apply {
             text = "Shares the work between several phones on the same network."
             textSize = AppTheme.SP_BODY; setTextColor(MUTED)
@@ -348,7 +334,32 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvLog)
         scroll.addView(root)
-        setContentView(scroll)
+
+        // La barra de pestañas, con Cluster marcado. Las otras cuatro son
+        // páginas de MainActivity, que está debajo: se vuelve a ella pidiendo
+        // la pestaña, y CLEAR_TOP|SINGLE_TOP hace que reciba la petición en
+        // onNewIntent en vez de crear otra MainActivity encima. Sin animación,
+        // para que se sienta como cambiar de pestaña y no como volver atrás.
+        val barra = BottomBar(this, BottomBar.CLUSTER) { tab ->
+            if (tab != BottomBar.CLUSTER) {
+                startActivity(android.content.Intent(this, MainActivity::class.java)
+                    .addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                              android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(BottomBar.EXTRA_TAB, tab))
+                finish()
+                overridePendingTransition(0, 0)
+            }
+        }
+        val pantalla = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(BG)
+        }
+        pantalla.addView(scroll, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        pantalla.addView(barra.vista, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT))
+        setContentView(pantalla)
 
         // Restaurar estado UI si red sigue activa
         if (NetworkManager.isRunning.get()) {

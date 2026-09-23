@@ -115,7 +115,14 @@ object AppTheme {
     const val SP_HERO    = 58f   // la cifra del escáner, que domina su pantalla
     const val SP_DISPLAY = 44f   // la cifra protagonista
     const val SP_FIGURE  = 22f   // cifras de apoyo (tarjetas de estadística)
-    const val SP_TITLE   = 17f   // título de pantalla o de sección
+    /**
+     * Título de página. Con la barra de pestañas abajo ya no hay cabecera
+     * que diga dónde estás, así que lo dice la propia página, y a un tamaño
+     * que se lee de un vistazo: el de sección (17) se confundía con los
+     * rótulos de las tarjetas de debajo.
+     */
+    const val SP_PAGE    = 28f
+    const val SP_TITLE   = 17f   // título de sección
     const val SP_BODY    = 14f   // texto normal, etiquetas de fila
     const val SP_CAPTION = 12f   // secundario, unidades, pies
     const val SP_MICRO   = 11f   // sólo para datos densos: direcciones, hex

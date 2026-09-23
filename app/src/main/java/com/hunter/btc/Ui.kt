@@ -86,6 +86,43 @@ object Ui {
     }
 
     /** Un icono del juego de trazo, teñido. */
+    /**
+     * El título grande de arriba de cada página.
+     *
+     * Las páginas no llevan todas el mismo relleno —unas lo ponen en el
+     * contenedor y otras en cada hijo—, así que el margen lateral lo pide quien
+     * llama: `lados = true` cuando la página NO tiene relleno propio.
+     */
+    fun pageTitle(ctx: Context, text: String, lados: Boolean) = TextView(ctx).apply {
+        this.text = text
+        textSize = AppTheme.SP_PAGE
+        setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.display(ctx)
+        letterSpacing = -0.02f
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+            val l = if (lados) dp(ctx, AppTheme.PAD_SIDE) else 0
+            setMargins(l, dp(ctx, 24), l, dp(ctx, 14))
+        }
+    }
+
+    /**
+     * El efecto de toque de una fila o una celda: una onda del color del
+     * texto al 12 %. Va en `foreground` para no pisar el fondo de la tarjeta.
+     *
+     * Sin ella, tocar una fila no daba ninguna señal hasta que se abría lo
+     * siguiente, y en un móvil lento eso es medio segundo preguntándose si el
+     * toque ha entrado.
+     */
+    fun toque(): android.graphics.drawable.RippleDrawable {
+        val onda = (AppTheme.TXT_PRI and 0x00FFFFFF) or (0x1F shl 24)
+        return android.graphics.drawable.RippleDrawable(
+            android.content.res.ColorStateList.valueOf(onda), null,
+            android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
+    }
+
     fun icon(ctx: Context, res: Int, size: Int = 20, tint: Int = AppTheme.TXT_SEC) =
         ImageView(ctx).apply {
             setImageResource(res)

@@ -157,7 +157,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── Tema ──────────────────────────────────────────────────────────────────
     private val BG_DEEP   get() = AppTheme.BG_DEEP
-    private val BG_PANEL  get() = AppTheme.BG_PANEL
     private val BG_CARD   get() = AppTheme.BG_CARD
     private val BG_ELEV   get() = AppTheme.BG_ELEV
     private val AMBER     get() = AppTheme.AMBER
@@ -169,20 +168,103 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val BORDER_C  get() = AppTheme.BORDER_C
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
-    // ── Tab system ────────────────────────────────────────────────────────────
-    private var tabPages:    List<android.view.View>          = emptyList()
-    private var contentFrame: android.widget.FrameLayout?     = null
-    private var drawerOpen:   Boolean                         = false
-    private var drawerView:   android.view.View?              = null
-    private var overlayView:  android.view.View?              = null
+    // ── Páginas y barra de pestañas ─────────────────────────────────────────
+    //
+    // Posiciones FIJAS. Antes la lista se hacía con listOfNotNull(...), así que
+    // si una página no se podía montar —Puzzle tiene su propio try/catch para
+    // eso— las de detrás se corrían un puesto: tocar "Wallet" enseñaba
+    // Recovery. Ahora una página que falta deja su hueco y las demás siguen
+    // donde estaban.
+    private val PAG_SCANNER  = 0
+    private val PAG_PUZZLE   = 1
+    private val PAG_WALLET   = 2
+    private val PAG_RECOVERY = 3
+    private val PAG_MORE     = 4
+    private var tabPages: List<android.view.View?> = emptyList()
+    private var barra: BottomBar? = null
+    private var paginaActual = PAG_SCANNER
+
     private fun goTab(idx: Int) {
-        tvHeaderTitle?.text = when (idx) {
-            0 -> "Scanner"; 1 -> "Puzzle"; 2 -> "Wallet"; else -> "Recover seed"
-        }
         tabPages.forEachIndexed { i, v ->
-            v.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
+            v?.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
         }
-        updateDrawerSelection(idx)
+        paginaActual = idx
+        // Recovery no tiene pestaña propia: se entra desde More, así que es
+        // More la que se queda marcada. Si no, la barra no marcaría ninguna y
+        // no se sabría dónde se está.
+        barra?.seleccionar(when (idx) {
+            PAG_PUZZLE -> BottomBar.PUZZLE
+            PAG_WALLET -> BottomBar.WALLET
+            PAG_RECOVERY, PAG_MORE -> BottomBar.MORE
+            else -> BottomBar.SCANNER
+        })
+    }
+
+    /**
+     * Lo que hace tocar una pestaña.
+     *
+     * Wallet sigue pidiendo el PIN si la sesión está cerrada, igual que lo
+     * pedía desde el menú. Cluster no es una página de aquí sino su propia
+     * pantalla, NetworkActivity, que lleva la misma barra con Cluster marcado:
+     * se abre sin animación para que se sienta como cambiar de pestaña y no
+     * como entrar en otra sección.
+     */
+    private fun pestana(tab: Int) {
+        when (tab) {
+            BottomBar.SCANNER -> goTab(PAG_SCANNER)
+            BottomBar.PUZZLE  -> goTab(PAG_PUZZLE)
+            BottomBar.WALLET  -> {
+                if (WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid())
+                    PinAuthHelper.show(this) { ok -> if (ok) goTab(PAG_WALLET) }
+                else goTab(PAG_WALLET)
+            }
+            BottomBar.CLUSTER -> {
+                startActivity(Intent(this, NetworkActivity::class.java))
+                overridePendingTransition(0, 0)
+            }
+            BottomBar.MORE -> goTab(PAG_MORE)
+        }
+    }
+
+    /**
+     * Otra pantalla ha pedido una pestaña: NetworkActivity, cuando desde
+     * Cluster se toca Scanner, Puzzle, Wallet o More. Pasa por [pestana] para
+     * que Wallet pida el PIN igual que si se hubiera tocado aquí.
+     *
+     * Se quita el extra después de usarlo. Si no, un recreate() —el cambio de
+     * tema— reutiliza el mismo Intent y volvería a saltar a esa pestaña.
+     */
+    private fun abrirPestanaPedida(i: Intent?) {
+        val tab = i?.getIntExtra(BottomBar.EXTRA_TAB, -1) ?: -1
+        if (tab < 0) return
+        i?.removeExtra(BottomBar.EXTRA_TAB)
+        pestana(tab)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        abrirPestanaPedida(intent)
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // El cambio de tema hace recreate(): sin esto, tocar "Appearance" en
+        // More te devolvía al Scanner.
+        outState.putInt("pagina", paginaActual)
+    }
+
+    /**
+     * Atrás: de Recovery a More, que es de donde se entra; de cualquier otra
+     * pestaña al Scanner; y desde el Scanner, salir. Es lo que hacen las apps
+     * con pestañas abajo. Sin esto, atrás desde Puzzle cerraba la app entera.
+     */
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        when (paginaActual) {
+            PAG_RECOVERY -> goTab(PAG_MORE)
+            PAG_SCANNER  -> super.onBackPressed()
+            else         -> goTab(PAG_SCANNER)
+        }
     }
 
     // ── Variables ─────────────────────────────────────────────────────────────
@@ -247,7 +329,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      *  con el contador de operaciones, que también es acumulado. */
     private var kgSegPrevios = 0L
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
-    private var tvHeaderTitle: TextView? = null
     private var sbThreads: SeekBar? = null
     private var sbCpu: SeekBar? = null
     // Puzzle tiene sus propios sliders independientes
@@ -654,6 +735,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         var puzzleScroll: ScrollView? = null
         var walletScroll: ScrollView? = null
         var recoveryScroll: ScrollView? = null
+        var moreScroll: ScrollView? = null
         // Qué pestaña se está montando. Antes esto se decía con un Toast por
         // pestaña —cuatro avisos encadenados en cada arranque, que el usuario
         // ve SIEMPRE aunque no falle nada—. Lo que hacía falta de verdad era
@@ -675,6 +757,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             walletScroll = buildWalletTab()
             fase = "recovery"
             recoveryScroll = buildRecoveryTab()
+            fase = "more"
+            moreScroll = buildMoreTab()
 
         // Throwable y no Exception. Esto no es puntillismo: un
         // UnsatisfiedLinkError —la librería nativa que no carga— es un Error, no
@@ -700,21 +784,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         puzzleScroll?.let { cf.addView(it) }
         walletScroll?.let { cf.addView(it) }
         recoveryScroll?.let { cf.addView(it) }
-        contentFrame = cf
+        moreScroll?.let { cf.addView(it) }
 
-        // ── Header + Drawer ───────────────────────────────────────────────────
-        val header = buildHeader()
-        root.addView(header)
-
-        val drawerLayout = buildDrawerLayout()
-        root.addView(drawerLayout, LinearLayout.LayoutParams(
+        // ── Contenido y barra de pestañas ─────────────────────────────────────
+        //
+        // Aquí iban una cabecera con el menú de hamburguesa y el cajón lateral.
+        // Las siete secciones vivían detrás de ese icono: no se veía dónde
+        // estabas hasta abrirlo y cambiar costaba dos toques. Ahora el título
+        // lo pone cada página y la navegación va abajo, siempre a la vista.
+        root.addView(cf, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+        ))
+        val bb = BottomBar(this, BottomBar.SCANNER) { tab -> pestana(tab) }
+        barra = bb
+        root.addView(bb.vista, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
         setContentView(root)
 
-        tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
-        goTab(0)
+        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll, moreScroll)
+        goTab(savedState?.getInt("pagina", PAG_SCANNER) ?: PAG_SCANNER)
+        abrirPestanaPedida(intent)
 
         // El motor escribe coincidencias.txt con los WIF en claro. Sin esto los
         // deja junto al CSV, normalmente en almacenamiento externo.
@@ -762,345 +854,152 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
 
-    // ── HEADER ───────────────────────────────────────────────────────────────────
-    private fun buildHeader(): LinearLayout {
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+    // ── MORE ─────────────────────────────────────────────────────────────────
+    /**
+     * Lo que se usa menos: Recovery, History, Debug y el tema.
+     *
+     * Estaba todo en el menú lateral, mezclado con las secciones de todos los
+     * días. Aquí va agrupado —herramientas por un lado, la app por otro— y
+     * cada fila dice para qué sirve, que en el menú no lo decía.
+     */
+    private fun buildMoreTab(): ScrollView {
+        val scroll = ScrollView(this).apply {
             setBackgroundColor(AppTheme.BG_DEEP)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
-            )
-            setPadding(dp(16), 0, dp(16), 0)
-            elevation = dp(4).toFloat()
-        }
-
-        // El símbolo iba dentro de una cajita con borde, en monoespaciada, al
-        // lado de un rótulo del mismo tamaño: dos elementos compitiendo por ser
-        // el título. La caja sobra — el glifo en el acento ya identifica.
-        header.addView(TextView(this).apply {
-            text = "\u20BF"
-            textSize = 15f
-            setTextColor(AppTheme.ON_ACCENT)
-            typeface = AppTheme.display(context)
-            gravity = Gravity.CENTER
-            background = Ui.cardBg(9, AppTheme.ACCENT, context)
-            layoutParams = LinearLayout.LayoutParams(dp(30), dp(30)).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-            }
-        })
-
-        // El título decía "Wallet Hunter" en las cuatro pestañas, así que no
-        // decía dónde estabas.
-        tvHeaderTitle = TextView(this).apply {
-            text = "Scanner"
-            textSize = AppTheme.SP_TITLE
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.01f
-            setTextColor(AppTheme.TXT_PRI)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-                it.marginStart = dp(12)
-            }
-        }
-        header.addView(tvHeaderTitle)
-
-
-
-        // Las tres barras se dibujaban con tres Views de 16x2dp dentro de un
-        // botón con borde. Es un icono: ic_menu lo dibuja con el mismo trazo
-        // que los demás, y sin caja alrededor.
-        val menu = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-                it.marginEnd = -dp(8)   // el icono ya trae aire; alinea el trazo
-            }
-            isClickable = true
-            isFocusable = true
-            setOnClickListener { toggleDrawer() }
-            addView(Ui.icon(this@MainActivity, R.drawable.ic_menu, 22, AppTheme.TXT_PRI))
-        }
-        header.addView(menu)
-
-        return header
-    }
-
-    // ── DRAWER ───────────────────────────────────────────────────────────────────
-    private fun buildDrawerLayout(): FrameLayout {
-        val ACCENT = AppTheme.ACCENT
-        val frame = FrameLayout(this)
-
-        // Content frame (tabs go here)
-        val cf = contentFrame ?: FrameLayout(this).also { contentFrame = it }
-        frame.addView(cf, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-
-        // Overlay
-        val overlay = android.view.View(this).apply {
-            setBackgroundColor(0xB3000000.toInt())
-            alpha = 0f
             visibility = android.view.View.GONE
-            setOnClickListener { closeDrawer() }
-        }
-        overlayView = overlay
-        frame.addView(overlay, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT,
-            FrameLayout.LayoutParams.MATCH_PARENT
-        ))
-
-        // Drawer panel
-        val drawerWidth = (resources.displayMetrics.widthPixels * 0.72f).toInt()
-        val drawer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(AppTheme.BG_PANEL)
-            translationX = -drawerWidth.toFloat()
-            elevation = dp(16).toFloat()
-        }
-        drawerView = drawer
-        frame.addView(drawer, FrameLayout.LayoutParams(drawerWidth, FrameLayout.LayoutParams.MATCH_PARENT))
-
-        // Drawer header
-        val drawerHeader = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(20))
-        }
-        val dTitle = TextView(this).apply {
-            text = android.text.SpannableString("WalletHunter").also { sp ->
-                sp.setSpan(
-                    android.text.style.ForegroundColorSpan(ACCENT),
-                    6, 12,
-                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
-                )
-            }
-            textSize = 20f
-            typeface = AppTheme.title(context)
-            setTextColor(AppTheme.TXT_PRI)
-        }
-        val dSub = TextView(this).apply {
-            text = "com.hunter.btc · ARM64"
-            textSize = AppTheme.SP_MICRO
-            typeface = Typeface.MONOSPACE   // es un identificador, va monoespaciado
-            setTextColor(AppTheme.TXT_MUTED)
-            setPadding(0, dp(5), 0, 0)
-        }
-        drawerHeader.addView(dTitle)
-        drawerHeader.addView(dSub)
-
-        // Divider
-        val divider = android.view.View(this).apply {
-            setBackgroundColor(AppTheme.BORDER_C)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
-        drawer.addView(drawerHeader)
-        drawer.addView(divider)
-
-        // Nav items
-        val navContainer = LinearLayout(this).apply {
+        val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), dp(16), dp(12), dp(16))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
-            )
+            setBackgroundColor(AppTheme.BG_DEEP)
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(32))
         }
+        page.addView(Ui.pageTitle(this, "More", lados = false))
 
-        // El icono era un emoji dentro de un TextView, así que lo dibujaba la
-        // fuente del sistema: distinto en cada móvil, en color, y sin poder
-        // teñirlo para marcar la pestaña activa.
-        data class NavItem(val icon: Int, val label: String, val idx: Int, val special: Boolean = false)
-        val items = listOf(
-            NavItem(R.drawable.ic_scan,     "Scanner",  0),
-            NavItem(R.drawable.ic_puzzle,   "Puzzle",   1),
-            NavItem(R.drawable.ic_wallet,   "Wallet",  2),
-            NavItem(R.drawable.ic_recovery, "Recovery", 3),
-            NavItem(R.drawable.ic_stats,    "History", -3, true),
-            NavItem(R.drawable.ic_network,  "Cluster",  -1, true),
-            NavItem(R.drawable.ic_debug,    "Debug",    -2, true)
-        )
-
-        items.forEach { item ->
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(14), dp(12), dp(14), dp(12))
+        fun grupo(titulo: String): LinearLayout {
+            page.addView(TextView(this).apply {
+                text = titulo
+                textSize = AppTheme.SP_CAPTION + 1f
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
-                ).also { it.setMargins(0, 0, 0, dp(4)) }
-                isClickable = true
-                isFocusable = true
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                    setColor(if (item.idx == 0) AppTheme.BG_ELEV else android.graphics.Color.TRANSPARENT)
-                }
-                tag = "nav_${item.idx}"
-                setOnClickListener {
-                    when {
-                        item.idx == -3 -> {
-                            startActivity(android.content.Intent(this@MainActivity, StatsActivity::class.java))
-                            closeDrawer()
-                        }
-                        item.idx == -1 -> {
-                            startActivity(android.content.Intent(this@MainActivity, NetworkActivity::class.java))
-                            closeDrawer()
-                        }
-                        item.idx == -2 -> {
-                            startActivity(android.content.Intent(this@MainActivity, DebugActivity::class.java))
-                            closeDrawer()
-                        }
-                        item.idx == 2 -> {
-                            if (WalletManager.hasPin(this@MainActivity) && !PinAuthHelper.isSessionValid()) {
-                                PinAuthHelper.show(this@MainActivity) { ok -> if (ok) { goTab(2); closeDrawer() } }
-                            } else { goTab(item.idx); closeDrawer() }
-                        }
-                        else -> { goTab(item.idx); closeDrawer() }
-                    }
-                }
+                ).apply { setMargins(dp(4), dp(6), 0, dp(8)) }
+            })
+            val caja = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = Ui.cardBg(AppTheme.R_CARD + 2, AppTheme.BG_CARD, context)
+                // Para que el toque de la primera y la última fila no se salga
+                // de las esquinas redondeadas.
+                clipToOutline = true
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(20) }
             }
-
-            val iconTv = android.widget.ImageView(this).apply {
-                setImageResource(item.icon)
-                // Se tiñe para poder marcar la pestaña activa, que con el emoji
-                // era imposible.
-                setColorFilter(if (item.idx == 0) AppTheme.ACCENT else AppTheme.TXT_SEC)
-                layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).also {
-                    it.gravity = Gravity.CENTER_VERTICAL
-                }
-            }
-            val labelTv = TextView(this).apply {
-                text = item.label
-                textSize = AppTheme.SP_BODY
-                typeface = if (item.idx == 0) AppTheme.bold(context) else AppTheme.medium(context)
-                setTextColor(if (item.idx == 0) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
-                    it.gravity = Gravity.CENTER_VERTICAL
-                    it.marginStart = dp(14)
-                }
-            }
-            row.addView(iconTv)
-            row.addView(labelTv)
-            navContainer.addView(row)
+            page.addView(caja)
+            return caja
         }
 
-        drawer.addView(navContainer)
+        fun fila(caja: LinearLayout, icono: Int, titulo: String, detalle: String?,
+                 valor: String?, accion: () -> Unit) {
+            if (caja.childCount > 0) caja.addView(android.view.View(this).apply {
+                setBackgroundColor(AppTheme.BG_ELEV)
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1
+                ).apply { marginStart = dp(70) }
+            })
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                minimumHeight = dp(64)
+                setPadding(dp(16), dp(12), dp(14), dp(12))
+                isClickable = true; isFocusable = true
+                foreground = Ui.toque()
+                contentDescription = if (detalle != null) "$titulo. $detalle" else titulo
+                setOnClickListener { accion() }
+            }
+            row.addView(FrameLayout(this).apply {
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                addView(android.widget.ImageView(this@MainActivity).apply {
+                    setImageResource(icono)
+                    setColorFilter(AppTheme.TXT_PRI)
+                    layoutParams = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+                })
+            })
+            val textos = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(14) }
+            }
+            textos.addView(TextView(this).apply {
+                text = titulo
+                textSize = AppTheme.SP_BODY + 2f
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.bold(context)
+            })
+            if (detalle != null) textos.addView(TextView(this).apply {
+                text = detalle
+                textSize = AppTheme.SP_CAPTION + 1f
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(0, dp(2), 0, 0)
+            })
+            row.addView(textos)
+            if (valor != null) row.addView(TextView(this).apply {
+                text = valor
+                textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context)
+                setPadding(0, 0, dp(6), 0)
+            })
+            row.addView(Ui.icon(this, R.drawable.ic_chevron, 18, AppTheme.TXT_SEC))
+            caja.addView(row)
+        }
 
+        val tools = grupo("Tools")
+        fila(tools, R.drawable.ic_recovery, "Recovery",
+             "Recover a seed with missing words", null) { goTab(PAG_RECOVERY) }
+        fila(tools, R.drawable.ic_stats, "History",
+             "Sessions and keys checked", null) {
+            startActivity(Intent(this, StatsActivity::class.java))
+        }
+
+        val app = grupo("App")
         /* Tema claro / oscuro.
          *
          * La paleta clara estaba ENTERA en AppTheme —fondos, textos, bordes— y
          * AppTheme.toggle() no lo llamaba nadie: no habia forma de llegar a
          * ella. Un tema que existe y no se puede elegir es lo mismo que no
-         * tenerlo.
+         * tenerlo. Estaba en el menu lateral; con el menu fuera, vive aqui.
          *
          * Hace falta recrear la pantalla: los colores se leen al construir cada
-         * vista, asi que las que ya estan puestas no cambian solas. */
-        val temaRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).also { it.setMargins(0, dp(4), 0, dp(4)) }
-            isClickable = true; isFocusable = true
-            background = android.graphics.drawable.GradientDrawable().apply {
-                cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                setColor(android.graphics.Color.TRANSPARENT)
-            }
-            setOnClickListener {
-                AppTheme.toggle(this@MainActivity)
-                recreate()
-            }
+         * vista, asi que las que ya estan puestas no cambian solas. La pagina
+         * se conserva por onSaveInstanceState, asi que se vuelve a More. */
+        fila(app, R.drawable.ic_gear, "Appearance", null,
+             if (AppTheme.isDark) "Dark" else "Light") {
+            AppTheme.toggle(this)
+            recreate()
         }
-        temaRow.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_gear)
-            setColorFilter(AppTheme.TXT_SEC)
-            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-            }
-        })
-        temaRow.addView(TextView(this).apply {
-            text = if (AppTheme.isDark) "Light theme" else "Dark theme"
-            textSize = AppTheme.SP_BODY
-            typeface = AppTheme.medium(context)
-            setTextColor(AppTheme.TXT_SEC)
-            layoutParams = LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
-                it.gravity = Gravity.CENTER_VERTICAL
-                it.marginStart = dp(14)
-            }
-        })
-        drawer.addView(temaRow)
+        fila(app, R.drawable.ic_debug, "Debug", "Engine log and files", null) {
+            startActivity(Intent(this, DebugActivity::class.java))
+        }
 
-        // Drawer footer
-        val footerDiv = android.view.View(this).apply {
-            setBackgroundColor(AppTheme.BORDER_C)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
-        }
-        val footer = TextView(this).apply {
+        page.addView(TextView(this).apply {
             text = "v2.4 · Wallet Hunter"
-            textSize = AppTheme.SP_MICRO
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
-            setTextColor(AppTheme.TXT_MUTED)
             gravity = Gravity.CENTER
-            setPadding(0, dp(16), 0, dp(24))
-        }
-        drawer.addView(footerDiv)
-        drawer.addView(footer)
+            setPadding(0, dp(8), 0, 0)
+        })
 
-        return frame
-    }
-
-    // ── DRAWER CONTROLS ──────────────────────────────────────────────────────────
-    private fun toggleDrawer() {
-        if (drawerOpen) closeDrawer() else openDrawer()
-    }
-
-    private fun openDrawer() {
-        val d = drawerView ?: return
-        val o = overlayView ?: return
-        drawerOpen = true
-        o.visibility = android.view.View.VISIBLE
-        d.animate().translationX(0f).setDuration(300)
-            .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-        o.animate().alpha(1f).setDuration(300).start()
-    }
-
-    fun closeDrawer() {
-        val d = drawerView ?: return
-        val o = overlayView ?: return
-        drawerOpen = false
-        val w = (resources.displayMetrics.widthPixels * 0.72f)
-        d.animate().translationX(-w).setDuration(280)
-            .setInterpolator(android.view.animation.AccelerateInterpolator()).start()
-        o.animate().alpha(0f).setDuration(280).withEndAction {
-            o.visibility = android.view.View.GONE
-        }.start()
-    }
-
-    private fun updateDrawerSelection(idx: Int) {
-        val drawer = drawerView as? LinearLayout ?: return
-        // Find navContainer (3rd child: header, divider, navContainer)
-        val navContainer = drawer.getChildAt(2) as? LinearLayout ?: return
-        for (i in 0 until navContainer.childCount) {
-            val row = navContainer.getChildAt(i) as? LinearLayout ?: continue
-            val tag = row.tag as? String ?: continue
-            val rowIdx = tag.removePrefix("nav_").toIntOrNull() ?: continue
-            val isActive = rowIdx == idx
-            val bg = row.background as? android.graphics.drawable.GradientDrawable
-            bg?.setColor(if (isActive) AppTheme.BG_ELEV else android.graphics.Color.TRANSPARENT)
-            val label = row.getChildAt(1) as? TextView
-            label?.setTextColor(if (isActive) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
-            label?.typeface =
-                if (isActive) AppTheme.bold(this) else AppTheme.medium(this)
-            // El icono acompaña al rótulo. Con el emoji no se podía: lo pintaba
-            // la fuente del sistema con sus propios colores.
-            (row.getChildAt(0) as? android.widget.ImageView)
-                ?.setColorFilter(if (isActive) AppTheme.ACCENT else AppTheme.TXT_SEC)
-        }
+        scroll.addView(page)
+        return scroll
     }
 
     // ── BUILD SCAN TAB ────────────────────────────────────────────────────────
@@ -1156,7 +1055,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvScanState = stateLabel
         scanStateDot = statusDot
         statusRow.addView(statusDot); statusRow.addView(stateLabel)
-        page.addView(side(statusRow, top = 6, bottom = 18))
+        // El título lo decía la cabecera, que ya no existe: ahora lo dice la
+        // página, como todas.
+        page.addView(Ui.pageTitle(this, "Scanner", lados = true))
+        page.addView(side(statusRow, top = 0, bottom = 18))
 
         // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
         val speedRow = LinearLayout(this).apply {
@@ -1807,7 +1709,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setBackgroundColor(AppTheme.BG_DEEP)
             // El margen lateral lo ponen ahora las tarjetas, no la página: así
             // una tarjeta mide lo mismo aquí que en la pestaña de escaneo.
-            setPadding(0, dp(8), 0, dp(80))
+            setPadding(0, 0, 0, dp(80))
         }
 
         // ── HELPERS ───────────────────────────────────────────────────────
@@ -1825,17 +1727,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Ui.section(this, icon, title, build)
 
         // ── CABECERA ──────────────────────────────────────────────────────
-        page.addView(TextView(this).apply {
-            text = "Puzzle"
-            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.01f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), dp(16))
-            }
-        })
+        page.addView(Ui.pageTitle(this, "Puzzle", lados = true))
         // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
         // lista de puzzles lo que hace la lista de puzzles.
 
@@ -2906,8 +2798,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val page = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(80))
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(80))
         }
+        // El título lo decía la cabecera, que ya no existe.
+        page.addView(Ui.pageTitle(this, "Wallet", lados = false))
 
         // ── SALDO ─────────────────────────────────────────────────────────
         //
@@ -3292,7 +3186,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val recoveryPage = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(80))
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(80))
         }
 
         // ── HELPER ────────────────────────────────────────────────────────
@@ -3321,16 +3215,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         // ── CABECERA ──────────────────────────────────────────────────────
-        recoveryPage.addView(TextView(this).apply {
-            text = "Recover seed"
-            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.01f
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        })
+        recoveryPage.addView(Ui.pageTitle(this, "Recover seed", lados = false))
         // El subtítulo repetía el título en otras palabras. En su lugar, lo que
         // de verdad hay que saber para usar la pantalla.
         recoveryPage.addView(TextView(this).apply {

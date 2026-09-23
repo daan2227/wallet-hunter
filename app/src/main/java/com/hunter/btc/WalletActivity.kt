@@ -537,7 +537,14 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(18) }
             isClickable = true; isFocusable = true
             setOnClickListener {
-                startActivity(Intent(this@WalletActivity, MainActivity::class.java))
+                // Sin banderas esto creaba una SEGUNDA MainActivity encima de
+                // la que ya había debajo —singleTop sólo evita el duplicado si
+                // la de debajo está arriba del todo, y aquí arriba estaba esta—.
+                // Dos pantallas principales con sus relojes de refresco
+                // corriendo a la vez, y "atrás" llevaba de una a la otra.
+                startActivity(Intent(this@WalletActivity, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(BottomBar.EXTRA_TAB, BottomBar.SCANNER))
                 finish()
             }
         })
