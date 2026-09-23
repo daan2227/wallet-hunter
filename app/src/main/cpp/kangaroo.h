@@ -396,7 +396,38 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  *
  *  - Que fallara al cerrar las colisiones. kg_resolver no llega a llamarse.
  *
- * Mientras tanto queda apagado. */
+ * LA CAUSA, ENCONTRADA (con tools/ec-harness/negacion y una traza de un
+ * canguro paso a paso):
+ *
+ * Con el mapa de negacion el canguro NO AVANZA. Canonizar le da la vuelta al
+ * punto una de cada dos veces, y cada vuelta cambia el signo con el que suma
+ * los saltos siguientes. La distancia deja de crecer y hace un paseo al azar
+ * de un lado a otro: en la traza, 60 pasos despues seguia en 606 millones,
+ * mas o menos donde empezo. Un paseo al azar con una tabla fija de saltos
+ * vuelve una y otra vez a puntos por los que ya paso, y como el camino es
+ * determinista, volver a un punto es entrar en un ciclo. Medido con el #36
+ * y dbits 14: un escape cada 4,6 saltos, y el 97 % de los ciclos aparecen
+ * en los 16 pasos siguientes a otro escape. Los ciclos mas largos que la
+ * ventana no se ven, el canguro repite los mismos distinguidos (que no
+ * cuentan) y la tabla se queda en 17 puntos donde tocaban 244.
+ *
+ * Con dbits bajo "funcionaba" porque cada canguro da un distinguido antes de
+ * volver sobre sus pasos, y la red de seguridad (20 * 2^dbits pasos) los
+ * vuelve a soltar a menudo. Con dbits alto esa red tarda demasiado.
+ *
+ * Probado y NO basta: un salto de escape grande en vez de 3. Baja las
+ * recaidas en el mismo ciclo del 45 % al 6 % y resuelve con dbits 12, pero
+ * con 13 y mas sigue sin encontrar: el problema no es el escape, es que el
+ * paseo no avanza.
+ *
+ * O sea que no es un fallo que arreglar: Kangaroo necesita canguros que vayan
+ * hacia delante, y el mapa de negacion se lo quita. Para usar la simetria en
+ * un intervalo hace falta OTRO algoritmo —Gaudry-Schost con negacion
+ * (Galbraith y Ruprai, 2010), unas 1,36 raices de W—, con otra tabla y otra
+ * forma de repartir el trabajo entre aparatos. Es un motor nuevo, no un
+ * interruptor.
+ *
+ * Queda apagado, y ahora se sabe por que. */
 static int kg_negacion = 0;
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */

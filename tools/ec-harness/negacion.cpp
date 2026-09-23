@@ -9,7 +9,12 @@
  *   - kg_resolver. Instrumentado: se llamaba CERO veces, o sea que no es que
  *     cerrara mal una colision, es que no habia colision que cerrar.
  *
- * RESULTADO (ver el README): la causa sigue sin aislarse. El intento de
+ * CAUSA ENCONTRADA: con negacion el canguro no avanza, hace un paseo al azar
+ * y vuelve a sus propios puntos (ciclos). Ver el comentario de kg_negacion en
+ * kangaroo.h. La columna %repe y la "vida del rebano" de aqui abajo son las
+ * que lo delatan.
+ *
+ * RESULTADO anterior (ver el README): la causa sigue sin aislarse. El intento de
  * arreglo —conservar la ventana al escapar y variar el salto de escape— se
  * RETIRO porque dejaba `constante` sin terminar. Aqui queda lo que si sirve:
  * la medida.
