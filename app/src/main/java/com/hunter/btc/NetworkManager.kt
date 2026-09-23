@@ -520,7 +520,7 @@ object NetworkManager {
                 // reanudar, que es la mitad inútil de un botón.
                 "PING" -> {
                     workers[workerId]?.let {
-                        it.status = if (it.pausado) "pausado" else "esperando"
+                        it.status = if (it.pausado) "paused" else "waiting"
                         notifyWorkers()
                     }
                     writer.println(JSONObject().apply {
@@ -559,7 +559,7 @@ object NetworkManager {
                         // Estaba quedandose en "idle" con el worker trabajando a
                         // 1,7 M/s: status sólo se tocaba al recibir puntos, que
                         // es cosa de Kangaroo. En modo bloques nunca cambiaba.
-                        if (it.status == "idle" && speed > 0) it.status = "trabajando"
+                        if (it.status == "idle" && speed > 0) it.status = "working"
                     }
                     notifyWorkers()
                     // La orden de pausa TAMBIÉN por aquí.
@@ -831,7 +831,7 @@ object NetworkManager {
         this.masterIp = masterIp.trim()
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = token.trim().uppercase()
-        log("Worker iniciando → Master: $masterIp")
+        log("Worker starting → Master: $masterIp")
 
         // Se intenta varias veces, espaciando. Antes era UN solo intento: si
         // pulsabas "Conectar" antes de que el maestro terminara de arrancar
