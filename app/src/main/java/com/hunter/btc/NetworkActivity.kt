@@ -99,14 +99,14 @@ class NetworkActivity : AppCompatActivity() {
             setOnClickListener { finish() }
         })
         headerRow.addView(TextView(this).apply {
-            text = "Red multi-dispositivo"
+            text = "Multi-device network"
             textSize = 20f; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(headerRow)
         root.addView(TextView(this).apply {
-            text = "Reparte el trabajo entre varios móviles de la misma red."
+            text = "Shares the work between several phones on the same network."
             textSize = AppTheme.SP_BODY; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             setPadding(0, dp(2), 0, dp(20))
@@ -125,7 +125,7 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(tvIp)
 
-        root.addView(sectionLabel("Como maestro"))
+        root.addView(sectionLabel("As master"))
         // QUE se va a repartir, y donde se cambia.
         //
         // El maestro coge el puzzle que este elegido en la pantalla de Puzzle
@@ -143,12 +143,12 @@ class NetworkActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dp(10))
         }
         root.addView(tvQueReparte)
-        btnMaster = actionButton("Iniciar como maestro", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
+        btnMaster = actionButton("Start as master", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
             it.setOnClickListener { startAsMaster() }
             root.addView(it)
         }
 
-        root.addView(sectionLabel("Como trabajador"))
+        root.addView(sectionLabel("As worker"))
         // ── Tailscale ─────────────────────────────────────────────────────
         // Va aquí, encima del campo de la dirección, porque es lo que decide
         // QUÉ se escribe en él. Con el CGNAT de la operadora delante no hay
@@ -157,7 +157,7 @@ class NetworkActivity : AppCompatActivity() {
         // un cluster que salga de la WiFi esto no es un extra: es el camino.
         root.addView(sectionLabel("Tailscale"))
         tvTailscale = TextView(this).apply {
-            text = "Comprobando..."
+            text = "Checking..."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
@@ -176,10 +176,10 @@ class NetworkActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(8) }
         }
-        btnTsAbrir = actionButton("Abrir Tailscale", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
+        btnTsAbrir = actionButton("Open Tailscale", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
             it.setOnClickListener {
                 if (!Tailscale.abrir(this)) Toast.makeText(this,
-                    "No se ha podido abrir Tailscale ni su ficha en la tienda",
+                    "Could not open Tailscale nor its store page",
                     Toast.LENGTH_LONG).show()
             }
             (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
@@ -187,7 +187,7 @@ class NetworkActivity : AppCompatActivity() {
             }
             filaTs.addView(it)
         }
-        actionButton("Elegir aparato", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+        actionButton("Pick a device", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
             it.setOnClickListener { elegirDeTailnet() }
             (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
                 lp.width = 0; lp.weight = 1f
@@ -199,7 +199,7 @@ class NetworkActivity : AppCompatActivity() {
         // El nodo empotrado. Sólo aparece si esta compilación lo lleva —
         // libtailscale.so es opcional— para no ofrecer un botón que no puede
         // hacer nada.
-        btnNodoPropio = actionButton("Usar nodo propio", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+        btnNodoPropio = actionButton("Use built-in node", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
             it.visibility = android.view.View.GONE
             it.setOnClickListener { alternarNodoPropio() }
             root.addView(it)
@@ -211,7 +211,7 @@ class NetworkActivity : AppCompatActivity() {
             // también vale, pero el nombre se teclea sin equivocarse y no
             // cambia. El campo nunca ha validado nada, así que ya aceptaba
             // nombres — sólo que nada lo decía.
-            text = "Dirección o nombre del maestro"
+            text = "Master address or name"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(10), 0, dp(6))
@@ -231,13 +231,13 @@ class NetworkActivity : AppCompatActivity() {
         root.addView(etMasterIp)
 
         root.addView(TextView(this).apply {
-            text = "Código de acceso (lo enseña el maestro)"
+            text = "Access code (the master shows it)"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(10), 0, dp(6))
         })
         etCode = EditText(this).apply {
-            hint = "Ej. K7M2PQRT"
+            hint = "E.g. K7M2PQRT"
             setTextColor(TXT); setHintTextColor(MUTED)
             textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
             filters = arrayOf(android.text.InputFilter.AllCaps(),
@@ -252,25 +252,25 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(etCode)
 
-        actionButton("Buscar maestros en la red", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
+        actionButton("Find masters on the network", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
             it.setOnClickListener { discoverMasters() }
             root.addView(it)
         }
 
-        btnWorker = actionButton("Conectar como trabajador", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
+        btnWorker = actionButton("Connect as worker", AppTheme.ACCENT, AppTheme.BG_DEEP).also {
             it.setOnClickListener { startAsWorker() }
             root.addView(it)
         }
 
-        btnStop = actionButton("Detener la red", AppTheme.BG_ELEV, AppTheme.RED).also {
+        btnStop = actionButton("Stop the network", AppTheme.BG_ELEV, AppTheme.RED).also {
             it.visibility = android.view.View.GONE
             it.setOnClickListener { stopNetwork() }
             root.addView(it)
         }
 
-        tvWorkersLbl = sectionLabel("Trabajadores conectados").also { root.addView(it) }
+        tvWorkersLbl = sectionLabel("Connected workers").also { root.addView(it) }
         tvWorkers = TextView(this).apply {
-            text = "Ninguno todavía"
+            text = "None yet"
             textSize = AppTheme.SP_BODY; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
@@ -308,14 +308,14 @@ class NetworkActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(12) }
         }
-        actionButton("Pausar todos", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
+        actionButton("Pause all", AppTheme.BG_ELEV, AppTheme.TXT_PRI).also {
             it.setOnClickListener { mandarATodos(true) }
             (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
                 lp.width = 0; lp.weight = 1f; lp.marginEnd = dp(8)
             }
             filaMando?.addView(it)
         }
-        actionButton("Reanudar todos", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
+        actionButton("Resume all", AppTheme.BG_ELEV, AppTheme.ACCENT).also {
             it.setOnClickListener { mandarATodos(false) }
             (it.layoutParams as LinearLayout.LayoutParams).let { lp ->
                 lp.width = 0; lp.weight = 1f
@@ -324,7 +324,7 @@ class NetworkActivity : AppCompatActivity() {
         }
         root.addView(filaMando)
 
-        root.addView(sectionLabel("Registro"))
+        root.addView(sectionLabel("Log"))
         tvLog = TextView(this).apply {
             text = ""
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
@@ -345,11 +345,11 @@ class NetworkActivity : AppCompatActivity() {
             if (NetworkManager.isMaster) {
                 btnMaster?.isEnabled = false
                 btnStop?.visibility = android.view.View.VISIBLE
-                tvLog?.text = "Master activo en ${NetworkManager.getLocalIp(this)}"
+                tvLog?.text = "Master running at ${NetworkManager.getLocalIp(this)}"
             } else if (NetworkManager.isWorker) {
                 btnWorker?.isEnabled = false
                 btnStop?.visibility = android.view.View.VISIBLE
-                tvLog?.text = "Worker activo"
+                tvLog?.text = "Worker running"
             }
         }
 
@@ -372,7 +372,7 @@ class NetworkActivity : AppCompatActivity() {
                 // lo que hace falta: esa tarjeta es lo que miras ANTES de
                 // arrancar nada —para saber qué dirección teclear, y para
                 // encender el nodo propio—. Con la red parada nunca se pintaba,
-                // así que se quedaba en "Comprobando..." para siempre y el botón
+                // así que se quedaba en "Checking..." para siempre y el botón
                 // del nodo no llegaba a aparecer nunca.
                 //
                 // No cuesta: mirar las interfaces no hace red.
@@ -398,9 +398,9 @@ class NetworkActivity : AppCompatActivity() {
     }
 
     private fun haceCuanto(ms: Long): String {
-        if (ms == 0L) return "nunca"
+        if (ms == 0L) return "never"
         val s = (System.currentTimeMillis() - ms) / 1000
-        return if (s < 60) "hace ${s}s" else "hace ${s / 60}min"
+        return if (s < 60) "${s}s ago" else "${s / 60}min ago"
     }
 
     /** El estado del cluster, distinto según este móvil sea maestro o
@@ -427,30 +427,30 @@ class NetworkActivity : AppCompatActivity() {
     private fun alternarNodoPropio() {
         if (NetworkManager.usarTsnet || TsNet.arrancado) {
             AlertDialog.Builder(this)
-                .setTitle("Apagar el nodo propio")
-                .setMessage("El cluster volverá a hablar por la red normal, que " +
-                            "sólo llega si los dos móviles están en la misma WiFi.")
+                .setTitle("Turn off the built-in node")
+                .setMessage("The cluster will go back to the plain network, which " +
+                            "only works if both phones are on the same WiFi.")
                 // El transporte se apaga AQUÍ, en el acto: lo demás va a un hilo
                 // porque cerrar el nodo para el servidor de Go y borrar la
                 // identidad toca disco, y las dos cosas desde el hilo de la
                 // pantalla la congelan.
-                .setPositiveButton("Apagar") { _, _ ->
+                .setPositiveButton("Turn off") { _, _ ->
                     NetworkManager.activarTsnet(false)
                     Thread { try { TsNet.parar() } catch (e: Throwable) {} }
                         .apply { isDaemon = true }.start()
                     pintarTailscale()
                 }
-                .setNeutralButton("Dar de baja este nodo") { _, _ ->
+                .setNeutralButton("Remove this node") { _, _ ->
                     // Borra también la identidad: dejar la marca a false con los
                     // ficheros ahí daría un nodo duplicado en el tailnet.
                     NetworkManager.activarTsnet(false)
                     val app = applicationContext
                     Thread { try { TsNet.olvidarNodo(app) } catch (e: Throwable) {} }
                         .apply { isDaemon = true }.start()
-                    Toast.makeText(this, "Nodo dado de baja", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Node removed", Toast.LENGTH_SHORT).show()
                     pintarTailscale()
                 }
-                .setNegativeButton("Cancelar", null)
+                .setNegativeButton("Cancel", null)
                 .show()
             return
         }
@@ -466,27 +466,27 @@ class NetworkActivity : AppCompatActivity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
         }
         AlertDialog.Builder(this)
-            .setTitle("Dar de alta este móvil")
+            .setTitle("Register this phone")
             .setMessage(
-                "La app tendrá su PROPIO nodo en tu tailnet, sin necesidad de la " +
-                "app de Tailscale y sin enrutar el móvil entero.\n\n" +
-                "Hace falta una clave de alta, que se saca en login.tailscale.com " +
+                "The app will have its OWN node on your tailnet, with no need for the " +
+                "Tailscale app and without routing the whole phone.\n\n" +
+                "An auth key is needed, which you get at login.tailscale.com " +
                 "→ Settings → Keys → Generate auth key.\n\n" +
-                "Sólo se usa esta vez: después la identidad queda guardada en la " +
-                "app y la clave no se conserva.")
+                "Used only this once: afterwards the identity is stored in the " +
+                "app and the key is not kept.")
             .setView(campo)
-            .setPositiveButton("Dar de alta") { _, _ ->
+            .setPositiveButton("Register") { _, _ ->
                 val k = campo.text?.toString()?.trim() ?: ""
                 if (k.isEmpty()) return@setPositiveButton
                 encenderNodo(k)
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun encenderNodo(clave: String) {
-        tvTailscale?.text = "Levantando el nodo propio...\n\n" +
-                            "La primera vez puede tardar un rato."
+        tvTailscale?.text = "Bringing up the built-in node...\n\n" +
+                            "The first time can take a while."
         btnNodoPropio?.isEnabled = false
         val nombre = android.os.Build.MODEL.replace(" ", "-").lowercase()
         TsNet.arrancarEnHilo(this, clave, nombre) { ok, msg ->
@@ -496,12 +496,12 @@ class NetworkActivity : AppCompatActivity() {
                     // Sólo se enciende el transporte si el nodo está arriba de
                     // verdad. activarTsnet lo vuelve a comprobar por su cuenta.
                     if (NetworkManager.activarTsnet(true))
-                        Toast.makeText(this, "Nodo propio en marcha",
+                        Toast.makeText(this, "Built-in node running",
                                        Toast.LENGTH_SHORT).show()
                 } else {
                     AlertDialog.Builder(this)
-                        .setTitle("No se pudo levantar el nodo")
-                        .setMessage(msg.ifEmpty { "Sin detalle" })
+                        .setTitle("Could not bring up the node")
+                        .setMessage(msg.ifEmpty { "No detail" })
                         .setPositiveButton("OK", null)
                         .show()
                 }
@@ -521,76 +521,76 @@ class NetworkActivity : AppCompatActivity() {
         // aquí, no hay forma de saber que eso fue un fallo y no un despiste.
         if (hayNodo && TsNet.murioLevantando(this)) {
             val motivo = TsNet.motivoUltimaMuerte(this)
-            tvTailscale?.text = "LA APP MURIÓ levantando el nodo propio.\n\n" +
-                "No es un error que se pueda capturar: el fallo ocurre dentro del " +
-                "código de Go y se lleva el proceso entero por delante, por eso " +
-                "la app se cerró y volviste al escáner." +
-                (if (motivo.isNotEmpty()) "\n\nEl sistema dice: $motivo" else "") +
+            tvTailscale?.text = "THE APP DIED bringing up the built-in node.\n\n" +
+                "This is not a catchable error: the failure happens inside the " +
+                "Go code and takes the whole process down with it, which is why " +
+                "the app closed and you came back to the scanner." +
+                (if (motivo.isNotEmpty()) "\n\nThe system says: $motivo" else "") +
                 // Lo ultimo que escribio Go antes de morir. Suele ser la linea
                 // que explica el fallo, y sin esto habria que conectar un
                 // ordenador por adb para verla.
                 (TsNet.registro(this).let {
-                    if (it.isEmpty()) "" else "\n\nÚltimo registro de tsnet:\n$it"
+                    if (it.isEmpty()) "" else "\n\nLast tsnet log:\n$it"
                 }) +
-                "\n\nEl cluster por la red normal sigue funcionando. Toca aquí " +
-                "para olvidar este aviso."
+                "\n\nThe cluster over the plain network still works. Tap here " +
+                "to dismiss this warning."
             tvTailscale?.setOnClickListener {
                 TsNet.olvidarIntento(this); pintarTailscale()
             }
             btnNodoPropio?.visibility = android.view.View.VISIBLE
-            btnNodoPropio?.text = "Reintentar el nodo propio"
+            btnNodoPropio?.text = "Retry the built-in node"
             return
         }
         tvTailscale?.setOnClickListener(null)
         btnNodoPropio?.visibility =
             if (hayNodo) android.view.View.VISIBLE else android.view.View.GONE
         btnNodoPropio?.text =
-            if (NetworkManager.usarTsnet) "Apagar el nodo propio" else "Usar nodo propio"
+            if (NetworkManager.usarTsnet) "Turn off the built-in node" else "Use built-in node"
 
         // El nodo propio manda sobre lo demás: si está en marcha, es por donde
         // va el cluster, y enseñar el estado de la app de Tailscale ahí sería
         // hablar de otra cosa.
         if (NetworkManager.usarTsnet) {
             val dirs = try { TsNet.direcciones() } catch (e: Throwable) { "" }
-            tvTailscale?.text = "Nodo propio en marcha.\n" +
-                (if (dirs.isNotEmpty()) "Direcciones: $dirs\n" else "") +
-                "\nEl cluster va por aquí: atraviesa el CGNAT de la operadora y " +
-                "va cifrado, sin la app de Tailscale y sin enrutar el móvil entero."
+            tvTailscale?.text = "Built-in node running.\n" +
+                (if (dirs.isNotEmpty()) "Addresses: $dirs\n" else "") +
+                "\nThe cluster goes through here: it gets past the carrier CGNAT and " +
+                "is encrypted, with no Tailscale app and without routing the whole phone."
             return
         }
         if (TsNet.arrancando) {
-            tvTailscale?.text = "Levantando el nodo propio...\n\n" +
-                                "La primera vez puede tardar un rato."
+            tvTailscale?.text = "Bringing up the built-in node...\n\n" +
+                                "The first time can take a while."
             return
         }
 
         val ts = Tailscale.estado()
-        btnTsAbrir?.text = if (Tailscale.instalado(this)) "Abrir Tailscale"
-                           else "Instalar Tailscale"
+        btnTsAbrir?.text = if (Tailscale.instalado(this)) "Open Tailscale"
+                           else "Install Tailscale"
         // Decir SIEMPRE si el nodo propio está o no. Callárselo es lo que hace
         // que la pantalla parezca estar pidiendo la app de Tailscale cuando se
         // supone que va integrada: sin esta línea, el botón simplemente no
         // aparece y no hay forma de saber si es que no está o es que falla.
         val notaNodo = if (hayNodo)
-            "\n\nEste móvil PUEDE ser su propio nodo, sin instalar Tailscale: " +
-            "dale a «Usar nodo propio» aquí abajo."
+            "\n\nThis phone CAN be its own node, without installing Tailscale: " +
+            "press \u0027Use built-in node\u0027 below."
         else
-            "\n\nEl nodo propio no está disponible, así que hace falta la app de " +
+            "\n\nThe built-in node is not available, so the Tailscale app is " +
             "Tailscale." +
             // El motivo, si se sabe. Sin esto lo único que queda es "no está
             // disponible", que no da un solo dato con el que averiguar nada. El
             // mensaje del enlazador suele decir exactamente qué pasa.
-            (TsNet.errorCarga.let { if (it.isEmpty()) "" else "\n\nMotivo: $it" })
+            (TsNet.errorCarga.let { if (it.isEmpty()) "" else "\n\nReason: $it" })
         if (!ts.activo) {
             miNombreTs = ""; nombreTsPedido = false
             tvTailscale?.text = (if (Tailscale.instalado(this))
-                "Tailscale instalado pero sin conectar.\n\n" +
-                "Ábrelo y activa el interruptor. Mientras esté apagado, los dos " +
-                "móviles sólo se ven si están en la misma WiFi."
+                "Tailscale installed but not connected.\n\n" +
+                "Open it and flip the switch. While it is off, the two " +
+                "phones only see each other on the same WiFi."
             else
-                "La app de Tailscale no está instalada.\n\n" +
-                "Hace falta para que los móviles se vean fuera de la misma WiFi: " +
-                "tu operadora usa CGNAT y no hay puerto que abrir que lo arregle."
+                "The Tailscale app is not installed.\n\n" +
+                "It is needed for the phones to see each other outside the same WiFi: " +
+                "your carrier uses CGNAT and no port forwarding can fix that."
             ) + notaNodo
             return
         }
@@ -602,41 +602,41 @@ class NetworkActivity : AppCompatActivity() {
             }.apply { isDaemon = true }.start()
         }
         val comoMeLlamo = if (miNombreTs.isNotEmpty())
-            "\nNombre: $miNombreTs   ← esto es lo que conviene dar al otro móvil"
+            "\nName: $miNombreTs   ← this is what to give the other phone"
         else ""
-        tvTailscale?.text = "Conectado por la app de Tailscale.\n" +
-            "Dirección: ${ts.direccion}$comoMeLlamo\n\n" +
-            "Funciona igual desde cualquier red y va cifrado de punta a punta." +
+        tvTailscale?.text = "Connected through the Tailscale app.\n" +
+            "Address: ${ts.direccion}$comoMeLlamo\n\n" +
+            "Works the same from any network and is encrypted end to end." +
             notaNodo
     }
 
     /**
      * Elegir el maestro de entre los aparatos del tailnet, sin teclear nada.
      *
-     * "Buscar maestros en la red" no sirve aquí y no puede servir: va por
+     * "Find masters on the network" no sirve aquí y no puede servir: va por
      * difusión UDP y la difusión no cruza VPNs. Lo que sí hay es la API de
      * Tailscale, que es HTTPS normal.
      */
     private fun elegirDeTailnet() {
         val k = Tailscale.clave(this)
         if (k.isEmpty()) { pedirClaveTailscale(); return }
-        Toast.makeText(this, "Consultando tu tailnet...", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Querying your tailnet...", Toast.LENGTH_SHORT).show()
         Thread {
             try {
                 val lista = Tailscale.aparatos(k)
                 runOnUiThread {
                     if (lista.isEmpty()) {
-                        Toast.makeText(this, "Tu tailnet no tiene aparatos",
+                        Toast.makeText(this, "Your tailnet has no devices",
                                        Toast.LENGTH_LONG).show()
                         return@runOnUiThread
                     }
                     val etiquetas = lista.map {
                         "${it.nombre}  ${it.direccion}" +
                         (if (it.so.isNotEmpty()) "  (${it.so})" else "") +
-                        (if (!it.enLinea) "  · desconectado" else "")
+                        (if (!it.enLinea) "  · offline" else "")
                     }.toTypedArray()
                     AlertDialog.Builder(this)
-                        .setTitle("¿Cuál es el maestro?")
+                        .setTitle("Which one is the master?")
                         .setItems(etiquetas) { _, i ->
                             // El nombre antes que la dirección: la dirección de
                             // Tailscale es estable, pero si algún día cambia el
@@ -645,10 +645,10 @@ class NetworkActivity : AppCompatActivity() {
                             etMasterIp?.setText(
                                 if (a.nombre.isNotEmpty()) a.nombre else a.direccion)
                         }
-                        .setNegativeButton("Cerrar", null)
-                        .setNeutralButton("Olvidar mi clave") { _, _ ->
+                        .setNegativeButton("Close", null)
+                        .setNeutralButton("Forget my key") { _, _ ->
                             Tailscale.olvidarClave(this)
-                            Toast.makeText(this, "Clave borrada", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Key deleted", Toast.LENGTH_SHORT).show()
                         }
                         .show()
                 }
@@ -657,8 +657,8 @@ class NetworkActivity : AppCompatActivity() {
                 // tal cual, incluido el caso de la clave caducada.
                 runOnUiThread {
                     AlertDialog.Builder(this)
-                        .setTitle("No se ha podido consultar")
-                        .setMessage(e.message ?: "Error desconocido")
+                        .setTitle("Could not query")
+                        .setMessage(e.message ?: "Unknown error")
                         .setPositiveButton("OK", null)
                         .show()
                 }
@@ -676,52 +676,52 @@ class NetworkActivity : AppCompatActivity() {
             setPadding(dp(14), dp(14), dp(14), dp(14))
         }
         AlertDialog.Builder(this)
-            .setTitle("Clave de API de Tailscale")
+            .setTitle("Tailscale API key")
             .setMessage(
-                "Para listar tus aparatos hace falta una clave de API.\n\n" +
-                "Se saca en login.tailscale.com → Settings → Keys → Generate " +
+                "Listing your devices needs an API key.\n\n" +
+                "Get it at login.tailscale.com → Settings → Keys → Generate " +
                 "API key.\n\n" +
-                "AVISO: esa clave permite LEER el inventario de tu tailnet " +
-                "—nombres, direcciones, sistemas— a quien la tenga. Se guarda " +
-                "sólo en este móvil y caduca a los 90 días.\n\n" +
-                "No hace falta para usar el cluster: también puedes escribir la " +
-                "dirección o el nombre del maestro a mano.")
+                "WARNING: that key lets anyone who has it READ your tailnet inventory " +
+                "—names, addresses, systems—. It is stored " +
+                "only on this phone and expires in 90 days.\n\n" +
+                "It is not needed to use the cluster: you can also type the " +
+                "master address or name by hand.")
             .setView(campo)
-            .setPositiveButton("Guardar") { _, _ ->
+            .setPositiveButton("Save") { _, _ ->
                 val k = campo.text?.toString()?.trim() ?: ""
                 if (k.isEmpty()) return@setPositiveButton
                 Tailscale.guardarClave(this, k)
                 elegirDeTailnet()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun pintarEstado() {
         pintarTailscale()
         if (NetworkManager.isWorker) {
-            tvWorkersLbl?.text = "Este móvil"
+            tvWorkersLbl?.text = "This phone"
             filaMando?.visibility = android.view.View.GONE
             val env = NetworkManager.puntosEnviados.get()
             // Una pausa mandada desde el maestro tiene que decirse aquí. Si no,
             // el dueño de este móvil ve que se ha parado y no sabe por qué: lo
             // primero que piensa es que se ha roto.
             tvWorkers?.text = if (NetworkManager.pausadoPorMaestro)
-                "EN PAUSA\n" +
-                "El maestro (${NetworkManager.masterIp}) ha mandado parar.\n" +
-                "El trabajo está guardado y sigue desde ahí cuando mande seguir.\n\n" +
-                "Puntos enviados antes de parar: $env"
+                "PAUSED\n" +
+                "The master (${NetworkManager.masterIp}) asked to stop.\n" +
+                "The work is saved and resumes from there when it asks to continue.\n\n" +
+                "Points sent before stopping: $env"
             else
-                "Trabajando para ${NetworkManager.masterIp}\n" +
-                "Puntos enviados: $env\n" +
-                "Último envío: ${haceCuanto(NetworkManager.ultimoEnvioMs)}" +
+                "Working for ${NetworkManager.masterIp}\n" +
+                "Points sent: $env\n" +
+                "Last send: ${haceCuanto(NetworkManager.ultimoEnvioMs)}" +
                 (if (env == 0L)
-                    "\n\nEl primer envío tarda hasta 20 s, y sólo va cuando hay " +
-                    "puntos nuevos que mandar."
+                    "\n\nThe first send takes up to 20 s, and only happens when there are " +
+                    "new points to send."
                  else "")
             return
         }
-        tvWorkersLbl?.text = "Trabajadores conectados"
+        tvWorkersLbl?.text = "Connected workers"
         val list = NetworkManager.listaWorkers()
         // Los mandos, en LOS DOS modos. Estaban sólo en Kangaroo, y era
         // coherente mientras la pausa tampoco llegaba en modo bloques; ahora que
@@ -745,16 +745,16 @@ class NetworkActivity : AppCompatActivity() {
             val tope = try { HunterEngine.kangarooTope() } catch (e: Throwable) { 0L }
             val tabla = if (tope > 0) {
                 val pct = guardados * 100.0 / tope
-                "Tabla: $guardados de $tope (${"%.1f".format(pct)} %)" +
-                (if (guardados >= tope) "  ¡LLENA, no se guarda nada nuevo!"
-                 else if (pct >= 80) "  se está llenando" else "") + "\n"
+                "Table: $guardados of $tope (${"%.1f".format(pct)} %)" +
+                (if (guardados >= tope) "  FULL, nothing new is stored!"
+                 else if (pct >= 80) "  filling up" else "") + "\n"
             } else ""
-            "Puntos recibidos: ${NetworkManager.puntosRecibidos.get()}\n" +
-            (if (hilos > 0) "Este móvil: buscando con $hilos hilos\n"
-             else "Este móvil: sólo recoge, no busca\n") + tabla + "\n"
+            "Points received: ${NetworkManager.puntosRecibidos.get()}\n" +
+            (if (hilos > 0) "This phone: searching with $hilos threads\n"
+             else "This phone: only collecting, not searching\n") + tabla + "\n"
         } else ""
-        tvWorkers?.text = cab + (if (list.isEmpty()) "Ningún trabajador todavía"
-                                 else "${list.size} trabajador(es)")
+        tvWorkers?.text = cab + (if (list.isEmpty()) "No workers yet"
+                                 else "${list.size} worker(s)")
         pintarFilasDeWorkers(list)
     }
 
@@ -777,9 +777,9 @@ class NetworkActivity : AppCompatActivity() {
     private fun fijarObjetivo(block: NetworkManager.NetBlock): Boolean {
         val a = block.addr.trim()
         if (a.isEmpty()) {
-            val m = "El maestro no ha mandado la direccion del puzzle #${block.puzzleNum}. " +
-                    "No se arranca: sin ella la busqueda no puede encontrar nada. " +
-                    "Actualiza la app del maestro."
+            val m = "The master did not send the address for puzzle #${block.puzzleNum}. " +
+                    "Not starting: without it the search cannot find anything. " +
+                    "Update the app on the master."
             android.util.Log.w("NetworkActivity", m)
             runOnUiThread { tvLog?.text = "${tvLog?.text}\n$m" }
             return false
@@ -787,7 +787,7 @@ class NetworkActivity : AppCompatActivity() {
         try {
             HunterEngine.setTarget(a)
             if (!HunterEngine.hasTarget()) {
-                val m = "Direccion invalida del maestro: $a. No se arranca."
+                val m = "Invalid address from the master: $a. Not starting."
                 android.util.Log.w("NetworkActivity", m)
                 runOnUiThread { tvLog?.text = "${tvLog?.text}\n$m" }
                 return false
@@ -809,9 +809,9 @@ class NetworkActivity : AppCompatActivity() {
         val conKangaroo = pub.length == 66 && kIni == ini &&
                           kFin == (p.getString("current_range_end", "") ?: "")
         tvQueReparte?.text =
-            "Repartirá el puzzle #$num" +
-            (if (conKangaroo) " con Kangaroo." else " por bloques.") +
-            "\nPara cambiarlo, elige otro en la pantalla Puzzle antes de iniciar."
+            "Will share puzzle #$num" +
+            (if (conKangaroo) " with Kangaroo." else " in blocks.") +
+            "\nTo change it, pick another on the Puzzle screen before starting."
     }
 
     private fun pintarFilasDeWorkers(list: List<NetworkManager.NetWorker>) {
@@ -833,7 +833,7 @@ class NetworkActivity : AppCompatActivity() {
             // que dijo el trabajador: entre que se pulsa el botón y llega la
             // orden pasan hasta treinta segundos, y durante ese rato la lista
             // diría "trabajando" con la pausa ya pedida.
-            val est = if (w.pausado) "en pausa" else w.status
+            val est = if (w.pausado) "paused" else w.status
             fila.addView(TextView(this).apply {
                 text = "${w.device}\n${velocidad(w.speed)} · $est · ${haceCuanto(w.vistoMs)}"
                 textSize = AppTheme.SP_CAPTION
@@ -854,8 +854,8 @@ class NetworkActivity : AppCompatActivity() {
                     val nuevo = !w.pausado
                     NetworkManager.mandarPausa(w.id, nuevo)
                     Toast.makeText(this@NetworkActivity,
-                        if (nuevo) "${w.device} parará en unos segundos"
-                        else "${w.device} seguirá en unos segundos",
+                        if (nuevo) "${w.device} will stop in a few seconds"
+                        else "${w.device} will continue in a few seconds",
                         Toast.LENGTH_SHORT).show()
                     pintarEstado()
                 }
@@ -884,13 +884,13 @@ class NetworkActivity : AppCompatActivity() {
         val addr = prefs.getString("current_puzzle_addr", "") ?: ""
         if (!conKangaroo && addr.isEmpty()) {
             AlertDialog.Builder(this)
-                .setTitle("Falta la direccion del puzzle")
-                .setMessage("Abre la pantalla Puzzle y elige el puzzle #$puzzleNum " +
-                            "una vez. Asi queda guardada la direccion contra la " +
-                            "que tienen que comparar los trabajadores.\n\n" +
-                            "Sin ella repartirias trabajo que no puede encontrar " +
-                            "nada.")
-                .setPositiveButton("Entendido", null)
+                .setTitle("The puzzle address is missing")
+                .setMessage("Open the Puzzle screen and pick puzzle #$puzzleNum " +
+                            "once. That stores the address the workers " +
+                            "have to compare against.\n\n" +
+                            "Without it you would share work that cannot find " +
+                            "anything.")
+                .setPositiveButton("Got it", null)
                 .show()
             return
         }
@@ -926,14 +926,14 @@ class NetworkActivity : AppCompatActivity() {
         val ip = NetworkManager.getLocalIp(this)
         val code = NetworkManager.authToken
         tvIp?.text = textoDeMisDirecciones()
-        tvLog?.text = "✓ Master iniciado\nIP: $ip\nCódigo: $code\n" +
-                      "Puzzle #$puzzleNum\nRango: ${rangeStart.take(12)}..."
+        tvLog?.text = "✓ Master started\nIP: $ip\nCode: $code\n" +
+                      "Puzzle #$puzzleNum\nRange: ${rangeStart.take(12)}..."
         val aviso = if (conKangaroo)
-            "\n\nReparto de Kangaroo: todos los aparatos al mismo rango, " +
-            "porque partirlo empeoraría la búsqueda.\n\n" +
-            "AVISO: lo que viaja entre los móviles permite reconstruir la " +
-            "clave privada, y viaja SIN CIFRAR. En tu propia WiFi es una cosa; " +
-            "si lo sacas a Internet, cualquiera por el camino ve lo mismo que tú."
+            "\n\nKangaroo sharing: every device on the same range, " +
+            "because splitting it would make the search worse.\n\n" +
+            "WARNING: what travels between the phones allows the private key " +
+            "to be rebuilt, and it travels UNENCRYPTED. On your own WiFi that is one thing; " +
+            "out on the Internet, anyone along the way sees the same as you."
         else ""
         // Todas, no sólo la primera IPv4: desde fuera de la WiFi la que sirve es
         // la IPv6, y sin verla no hay forma de saber qué teclear en el otro.
@@ -950,12 +950,12 @@ class NetworkActivity : AppCompatActivity() {
                 .joinToString("\n") { "  ${it.first}  ${it.second}" }
         // El código hay que teclearlo en cada worker; sin él no se aceptan.
         AlertDialog.Builder(this)
-            .setTitle("Master activo")
-            .setMessage("Direcciones de este móvil:\n$dirs\n\n" +
-                        "Código de acceso:\n\n        $code\n\n" +
-                        "Introduce la dirección y este código en cada worker. " +
-                        "Sin el código, ningún dispositivo de la red puede " +
-                        "conectarse." + aviso)
+            .setTitle("Master running")
+            .setMessage("Addresses of this phone:\n$dirs\n\n" +
+                        "Access code:\n\n        $code\n\n" +
+                        "Enter the address and this code on each worker. " +
+                        "Without the code, no device on the network can " +
+                        "connect." + aviso)
             .setPositiveButton("OK", null)
             .show()
     }
@@ -963,12 +963,12 @@ class NetworkActivity : AppCompatActivity() {
     private fun startAsWorker() {
         val ip = etMasterIp?.text?.toString()?.trim() ?: ""
         if (ip.isEmpty()) {
-            Toast.makeText(this, "Ingresa la IP del Master", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Enter the master IP", Toast.LENGTH_SHORT).show()
             return
         }
         val code = etCode?.text?.toString()?.trim() ?: ""
         if (code.isEmpty()) {
-            Toast.makeText(this, "Ingresa el código que muestra el Master", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Enter the code shown by the master", Toast.LENGTH_SHORT).show()
             return
         }
         NetworkManager.onBlock = { block ->
@@ -994,7 +994,7 @@ class NetworkActivity : AppCompatActivity() {
                     }
                 }
                 val log = tvLog?.text?.toString() ?: ""
-                tvLog?.text = "$log\n▶ Bloque #${block.blockId}\n  ${block.rangeStart.take(16)}..."
+                tvLog?.text = "$log\n▶ Block #${block.blockId}\n  ${block.rangeStart.take(16)}..."
             }
         }
         // Encargo de Kangaroo. Aquí NO hay bloque: el rango es el entero y lo
@@ -1006,17 +1006,17 @@ class NetworkActivity : AppCompatActivity() {
                 val ok = arrancarKangarooDeRed(this, pub, ini, fin, pz)
                 tvLog?.text = if (ok)
                     "${tvLog?.text}\n▶ Kangaroo puzzle #$pz\n" +
-                    "  rango completo (en Kangaroo partirlo empeora la búsqueda)\n" +
-                    "  los puntos se mandan al master cada 20 s"
-                else "${tvLog?.text}\nNo se pudo arrancar Kangaroo"
+                    "  full range (splitting it makes Kangaroo worse)\n" +
+                    "  points are sent to the master every 20 s"
+                else "${tvLog?.text}\nCould not start Kangaroo"
             }
         }
         // El master avisa cuando el puzzle se queda sin fondos: alguien lo ha
         // resuelto mientras buscábamos. El bucle ya ha parado la búsqueda.
         NetworkManager.onPuzzleAgotado = {
             runOnUiThread {
-                tvLog?.text = "${tvLog?.text}\n\nBúsqueda detenida: el puzzle ya no " +
-                              "tiene fondos.\nAlguien lo ha resuelto. El trabajo queda guardado."
+                tvLog?.text = "${tvLog?.text}\n\nSearch stopped: the puzzle no longer " +
+                              "has funds.\nSomebody solved it. The work is saved."
             }
         }
         // Con el contexto: es lo que deja la sesión guardada en disco para que
@@ -1024,7 +1024,7 @@ class NetworkActivity : AppCompatActivity() {
         NetworkManager.startWorker(ip, code, this)
         btnWorker?.isEnabled = false
         btnStop?.visibility = android.view.View.VISIBLE
-        tvLog?.text = "Conectando a master $ip..."
+        tvLog?.text = "Connecting to master $ip..."
     }
 
     /**
@@ -1055,23 +1055,23 @@ class NetworkActivity : AppCompatActivity() {
             MatchVault.add(this, MatchVault.Entry(
                 ts = System.currentTimeMillis(), source = "kangaroo",
                 addr = "", wif = "", privHex = claveHex, btc = 0.0,
-                extra = "PUZZLE kangaroo (red, desde $dispositivo)", checkedTs = 0L))
+                extra = "PUZZLE kangaroo (network, from $dispositivo)", checkedTs = 0L))
         } catch (e: Exception) {
-            android.util.Log.e("NetworkActivity", "no se pudo guardar: ${e.message}", e)
+            android.util.Log.e("NetworkActivity", "could not save: ${e.message}", e)
         }
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-        tvLog?.text = "${tvLog?.text}\n\nCLAVE ENCONTRADA en $dispositivo\n$claveHex\n" +
-                      "Guardada en el baúl de hallazgos."
+        tvLog?.text = "${tvLog?.text}\n\nKEY FOUND on $dispositivo\n$claveHex\n" +
+                      "Saved to the finds vault."
         AlertDialog.Builder(this)
-            .setTitle("Clave encontrada")
-            .setMessage("La ha encontrado $dispositivo:\n\n$claveHex\n\n" +
-                        "Está guardada en el baúl de hallazgos.")
+            .setTitle("Key found")
+            .setMessage("$dispositivo found it:\n\n$claveHex\n\n" +
+                        "It is saved in the finds vault.")
             .setPositiveButton("OK", null)
             .show()
     }
 
     private fun discoverMasters() {
-        tvLog?.text = "Buscando masters en esta WiFi..."
+        tvLog?.text = "Looking for masters on this WiFi..."
         NetworkManager.discoverMasters(this, onFound = { ip, device ->
             runOnUiThread {
                 etMasterIp?.setText(ip)
@@ -1085,12 +1085,12 @@ class NetworkActivity : AppCompatActivity() {
             // datos móviles. Quedarse esperando algo imposible sin que nada lo
             // diga es peor que no tener el botón.
             if (n == 0) runOnUiThread {
-                tvLog?.text = "No se ha encontrado ningún maestro en esta WiFi.\n\n" +
-                    "Esta búsqueda sólo ve aparatos de la MISMA red: no cruza " +
-                    "routers, ni VPN, ni datos móviles.\n\n" +
-                    "Si el maestro está en otra red o al otro lado de una VPN, " +
-                    "escribe su dirección a mano arriba — la enseña él en su " +
-                    "propia pantalla."
+                tvLog?.text = "No master was found on this WiFi.\n\n" +
+                    "This search only sees devices on the SAME network: it does not cross " +
+                    "routers, VPNs or mobile data.\n\n" +
+                    "If the master is on another network or behind a VPN, " +
+                    "type its address by hand above — it shows it on its own " +
+                    "own screen."
             }
         })
     }
@@ -1100,7 +1100,7 @@ class NetworkActivity : AppCompatActivity() {
         btnMaster?.isEnabled = true
         btnWorker?.isEnabled = true
         btnStop?.visibility = android.view.View.GONE
-        tvWorkers?.text = "Ninguno todavía"
+        tvWorkers?.text = "None yet"
     }
 
     private fun sectionLabel(text: String) = TextView(this).apply {
@@ -1142,37 +1142,37 @@ class NetworkActivity : AppCompatActivity() {
         if (NetworkManager.usarTsnet) {
             val ts = try { TsNet.direcciones() } catch (e: Throwable) { "" }
             if (ts.isNotEmpty()) {
-                return "Dirección en tu tailnet (la que vale desde cualquier red):\n" +
+                return "Address on your tailnet (the one that works from any network):\n" +
                        "  " + ts.split(",").joinToString("\n  ") { it.trim() } +
-                       "\n\nY en esta WiFi:\n" +
+                       "\n\nAnd on this WiFi:\n" +
                        NetworkManager.direccionesLocales()
                            .joinToString("\n") { "  ${it.first}  ${it.second}" }
             }
         }
         val d = NetworkManager.direccionesLocales()
-        if (d.isEmpty()) return "Sin red"
+        if (d.isEmpty()) return "No network"
         if (d.size == 1) return "IP: ${d[0].second}"
         val hayVpn = d.any { it.second.contains("VPN") }
-        return "Direcciones de este móvil:\n" +
+        return "Addresses of this phone:\n" +
                d.joinToString("\n") { "  ${it.first}  ${it.second}" } +
                if (hayVpn)
-                   "\n\nUsa la de la VPN: funciona igual desde cualquier red, " +
-                   "sin abrir puertos."
+                   "\n\nUse the VPN one: it works the same from any network, " +
+                   "with no ports to open."
                else
-                   "\n\nEn la misma WiFi se usa la IPv4. Desde fuera hace falta " +
-                   "la IPv6, abrir el puerto en el router, o una VPN."
+                   "\n\nOn the same WiFi the IPv4 one is used. From outside you need " +
+                   "the IPv6 one, a forwarded port on the router, or a VPN."
     }
 
     private fun mandarATodos(pausar: Boolean) {
         val n = NetworkManager.mandarPausaATodos(pausar)
         if (n == 0) {
-            Toast.makeText(this, "No hay trabajadores conectados",
+            Toast.makeText(this, "No workers connected",
                            Toast.LENGTH_SHORT).show()
             return
         }
         Toast.makeText(this,
-            if (pausar) "$n trabajador(es) pararán en unos segundos"
-            else "$n trabajador(es) seguirán en unos segundos",
+            if (pausar) "$n worker(s) will stop in a few seconds"
+            else "$n worker(s) will continue in a few seconds",
             Toast.LENGTH_SHORT).show()
         pintarEstado()
     }

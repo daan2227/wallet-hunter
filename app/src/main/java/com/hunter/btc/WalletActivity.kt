@@ -46,11 +46,11 @@ class WalletActivity : FragmentActivity() {
     /** Traduce una excepción de red al idioma de alguien que no la ha escrito. */
     private fun motivo(e: Exception): String = when {
         e is java.net.UnknownHostException ->
-            "Sin conexión: no se pudo resolver el servidor."
+            "No connection: could not resolve the server."
         e is java.net.SocketTimeoutException || e is java.net.ConnectException ->
-            "Ningún servidor respondió. Revisa la conexión y vuelve a intentarlo."
+            "No server answered. Check your connection and try again."
         e.message?.contains("failed to connect", true) == true ->
-            "No se pudo conectar. Revisa la conexión."
+            "Could not connect. Check your connection."
         else -> e.message ?: e.javaClass.simpleName
     }
     private fun cardBg() = GradientDrawable().apply {
@@ -255,7 +255,7 @@ class WalletActivity : FragmentActivity() {
 
         // Title
         sheet.addView(TextView(this).apply {
-            text = if (isSetup) "Elige un PIN" else "Introduce el PIN"
+            text = if (isSetup) "Choose a PIN" else "Enter the PIN"
             textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
             typeface = AppTheme.title(context)
             gravity = Gravity.CENTER; setPadding(0, 0, 0, dp(24))
@@ -280,7 +280,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(pinDisplay)
 
         val tvStatus = TextView(this).apply {
-            text = if (isSetup) "Seis cifras" else ""
+            text = if (isSetup) "Six digits" else ""
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = Gravity.CENTER
@@ -357,7 +357,7 @@ class WalletActivity : FragmentActivity() {
 
         // Cancel button
         val btnCancel = Button(this).apply {
-            text = "Cancelar"
+            text = "Cancel"
             textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
             typeface = AppTheme.medium(context)
             isAllCaps = false
@@ -428,7 +428,7 @@ class WalletActivity : FragmentActivity() {
                     val obj = try {
                         JSONObject(raw)
                     } catch (e: Exception) {
-                        android.util.Log.e("WalletActivity", "deriveWallet devolvió JSON inválido: ${e.message}")
+                        android.util.Log.e("WalletActivity", "deriveWallet returned invalid JSON: ${e.message}")
                         val salvaged = JSONObject()
                         Regex("\"([a-z0-9_]+)\"\\s*:\\s*\"?([a-zA-Z0-9]+)\"?")
                             .findAll(raw)
@@ -436,7 +436,7 @@ class WalletActivity : FragmentActivity() {
                         if (salvaged.length() == 0) throw e
                         runOnUiThread {
                             Toast.makeText(this@WalletActivity,
-                                "Aviso: respuesta del motor mal formada, se recuperaron ${salvaged.length()} direcciones",
+                                "Warning: malformed engine response, ${salvaged.length()} addresses recovered",
                                 Toast.LENGTH_LONG).show()
                         }
                         salvaged
@@ -462,7 +462,7 @@ class WalletActivity : FragmentActivity() {
                     android.util.Log.e("WalletActivity", "deriveWallet: ${e.message}", e)
                     runOnUiThread {
                         Toast.makeText(this@WalletActivity,
-                            "No se pudieron derivar las direcciones: ${e.message}",
+                            "Could not derive the addresses: ${e.message}",
                             Toast.LENGTH_LONG).show()
                         buildUI()
                     }
@@ -494,7 +494,7 @@ class WalletActivity : FragmentActivity() {
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = currentWalletName.ifEmpty { "Cartera" }
+            text = currentWalletName.ifEmpty { "Wallet" }
             textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
@@ -529,7 +529,7 @@ class WalletActivity : FragmentActivity() {
             setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(18))
         }
         val tabBtns = mutableListOf<Button>()
-        listOf("Saldo","Historial","Enviar","Recibir").forEachIndexed { i, name ->
+        listOf("Balance","History","Send","Receive").forEachIndexed { i, name ->
             val btn = Button(this).apply {
                 text = name; textSize = AppTheme.SP_CAPTION + 1f
                 isAllCaps = false
@@ -609,9 +609,9 @@ class WalletActivity : FragmentActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        actionBar?.addView(actionBtn("Enviar", R.drawable.ic_send, primary = false, last = false)
+        actionBar?.addView(actionBtn("Send", R.drawable.ic_send, primary = false, last = false)
             .apply { setOnClickListener { tabBtns[2].performClick() } })
-        actionBar?.addView(actionBtn("Recibir", R.drawable.ic_receive, primary = true, last = true)
+        actionBar?.addView(actionBtn("Receive", R.drawable.ic_receive, primary = true, last = true)
             .apply { setOnClickListener { tabBtns[3].performClick() } })
         root.addView(actionBar)
 
@@ -655,7 +655,7 @@ class WalletActivity : FragmentActivity() {
             var fallosSeguidos = 0
             addresses.forEach { (k, addr) ->
                 val label = if (k == "wif_0") currentWalletName else (labelMap[k] ?: k)
-                if (addr.isEmpty()) { rows.add(BalanceRow("Error", "dirección vacía", -1L, "")); return@forEach }
+                if (addr.isEmpty()) { rows.add(BalanceRow("Error", "empty address", -1L, "")); return@forEach }
                 if (sinRed) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
 
                 val res = BalanceLookup.query(addr, isTestnet)
@@ -716,7 +716,7 @@ class WalletActivity : FragmentActivity() {
                         if (r.sat <= 0L) continue   // cambio ya gastado: no ensuciar la lista
                         if (r.source == "electrum") usedFallback = true
                         totalSat += r.sat
-                        rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} cambio [${f.index}]",
+                        rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} change [${f.index}]",
                                             f.addr, r.sat, r.source))
                     }
                 }
@@ -745,12 +745,12 @@ class WalletActivity : FragmentActivity() {
                     tvTotal.text = if (balanceVisible) btcText else "********"
                     tvFiat.text  = if (balanceVisible) fiatText else "******"
                 }
-                // Un fallo de red se decía antes fila a fila ("sin respuesta"
+                // Un fallo de red se decía antes fila a fila ("no answer"
                 // doce veces) sin explicar nunca que el problema era el mismo.
                 if (huboFallo) {
                     ll.addView(TextView(this).apply {
-                        text = "No se pudo consultar la cadena. Lo que ves puede estar " +
-                               "desactualizado; vuelve a entrar cuando tengas conexión."
+                        text = "Could not query the chain. What you see may be " +
+                               "out of date; come back when you have a connection."
                         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                         typeface = AppTheme.body(context)
                         setLineSpacing(0f, 1.4f)
@@ -758,7 +758,7 @@ class WalletActivity : FragmentActivity() {
                     })
                 } else if (usedFallback) {
                     ll.addView(TextView(this).apply {
-                        text = "Las APIs web no respondieron; el saldo viene de Electrum"
+                        text = "The web APIs did not answer; the balance comes from Electrum"
                         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                         typeface = AppTheme.body(context)
                         setPadding(0, dp(10), 0, 0)
@@ -780,7 +780,7 @@ class WalletActivity : FragmentActivity() {
                         setPadding(0, dp(3), 0, dp(7))
                     })
                     card.addView(TextView(this).apply {
-                        text = (if (bal < 0) "sin respuesta" else "%.8f BTC".format(bal / 1e8)) +
+                        text = (if (bal < 0) "no answer" else "%.8f BTC".format(bal / 1e8)) +
                                (if (src == "electrum") "  · electrum" else "")
                         textSize = AppTheme.SP_BODY
                         setTextColor(when { bal > 0 -> GREEN; bal == 0L -> TXT_SEC; else -> RED })
@@ -798,7 +798,7 @@ class WalletActivity : FragmentActivity() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val tvHead = TextView(this).apply {
-            text = "Cargando…"; textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+            text = "Loading…"; textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, dp(12), 0, dp(8))
         }
@@ -810,7 +810,7 @@ class WalletActivity : FragmentActivity() {
         // derivación asíncrona haya terminado.
         val queryAddrs = addresses.values.toList()
         if (queryAddrs.isEmpty()) {
-            tvHead.text = "Sin direcciones que consultar todavía"
+            tvHead.text = "No addresses to check yet"
             tvHead.setTextColor(AppTheme.WARN)
             return
         }
@@ -824,18 +824,18 @@ class WalletActivity : FragmentActivity() {
                     val hist = ElectrumClient.getHistory(queryAddrs[0], isTestnet)
                     runOnUiThread {
                         tvHead.text = if (hist.isEmpty())
-                            "No se pudo consultar el historial. Revisa la conexión."
-                        else "${hist.size} transacciones · el detalle necesita mempool.space"
+                            "Could not fetch the history. Check your connection."
+                        else "${hist.size} transactions · details need mempool.space"
                         tvHead.setTextColor(AppTheme.WARN)
                     }
                     return@Thread
                 }
                 val arr = JSONArray(cuerpo)
                 runOnUiThread {
-                    tvHead.text = "${arr.length()} transacciones · ${queryAddrs[0].take(14)}…"
+                    tvHead.text = "${arr.length()} transactions · ${queryAddrs[0].take(14)}…"
                     if (arr.length() == 0) {
                         ll.addView(TextView(this).apply {
-                            text = "Ninguna transacción todavía"
+                            text = "No transactions yet"
                             setTextColor(TXT_SEC); textSize = AppTheme.SP_BODY
                             typeface = AppTheme.body(context)
                         })
@@ -873,7 +873,7 @@ class WalletActivity : FragmentActivity() {
                                 java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
                                     .format(java.util.Date(blockTime*1000))
                             else ""
-                            text = (if (confirmed) "Confirmada" else "Pendiente") +
+                            text = (if (confirmed) "Confirmed" else "Pending") +
                                    (if (fecha.isNotEmpty()) " · $fecha" else "")
                             textSize = AppTheme.SP_CAPTION
                             setTextColor(if (confirmed) TXT_SEC else AppTheme.WARN)
@@ -884,24 +884,24 @@ class WalletActivity : FragmentActivity() {
                         card.isClickable = true
                         card.setOnClickListener {
                             val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(AppTheme.R_CARD).toFloat()}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
-                            sheet.addView(TextView(this).apply{text="Transacción";textSize=AppTheme.SP_TITLE;setTextColor(TXT_PRI);typeface=AppTheme.title(context);setPadding(0,0,0,dp(18))})
+                            sheet.addView(TextView(this).apply{text="Transaction";textSize=AppTheme.SP_TITLE;setTextColor(TXT_PRI);typeface=AppTheme.title(context);setPadding(0,0,0,dp(18))})
                             fun row(k:String,v:String,vc:Int=TXT_PRI){
                                 val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
                                 r.addView(TextView(this).apply{text=k;textSize=AppTheme.SP_CAPTION;setTextColor(TXT_SEC);typeface=AppTheme.medium(context);setPadding(0,0,0,dp(5))})
                                 val tv=TextView(this).apply{text=v;textSize=AppTheme.SP_CAPTION;setTextColor(vc);typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};setPadding(dp(14),dp(12),dp(14),dp(12))}
                                 r.addView(tv);sheet.addView(r)
-                                tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copiado",Toast.LENGTH_SHORT).show();true}
+                                tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
                             }
-                            row("Identificador", txidCopy)
-                            row("Estado", if(confirmedCopy)"Confirmada" else "Pendiente", if(confirmedCopy)GREEN else AppTheme.WARN)
-                            if(receivedCopy>0) row("Recibido","%.8f BTC".format(receivedCopy/1e8),GREEN)
-                            if(blockTimeCopy>0) row("Fecha",java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date(blockTimeCopy*1000)))
+                            row("Transaction ID", txidCopy)
+                            row("Status", if(confirmedCopy)"Confirmed" else "Pending", if(confirmedCopy)GREEN else AppTheme.WARN)
+                            if(receivedCopy>0) row("Received","%.8f BTC".format(receivedCopy/1e8),GREEN)
+                            if(blockTimeCopy>0) row("Date",java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date(blockTimeCopy*1000)))
                             val voutArr=txCopy.getJSONArray("vout")
                             var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
-                            row("Total de salida","%.8f BTC".format(totalOut/1e8))
+                            row("Total out","%.8f BTC".format(totalOut/1e8))
                             val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
-                            val btnExplorer=android.widget.Button(this).apply{text="Ver en el explorador";textSize=AppTheme.SP_BODY;setTextColor(BG_DEEP);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
-                            val btnClose=android.widget.Button(this).apply{text="Cerrar";textSize=AppTheme.SP_BODY;setTextColor(TXT_PRI);typeface=AppTheme.medium(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}
+                            val btnExplorer=android.widget.Button(this).apply{text="View in the explorer";textSize=AppTheme.SP_BODY;setTextColor(BG_DEEP);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
+                            val btnClose=android.widget.Button(this).apply{text="Close";textSize=AppTheme.SP_BODY;setTextColor(TXT_PRI);typeface=AppTheme.medium(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}
                             btnRow.addView(btnExplorer);btnRow.addView(btnClose);sheet.addView(btnRow)
                             val txDlg=AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
                             txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
@@ -940,7 +940,7 @@ class WalletActivity : FragmentActivity() {
         val keys = addresses.keys.toList()
         if (keys.isEmpty()) {
             ll.addView(TextView(this).apply {
-                text = "Todavía no hay direcciones de las que enviar."
+                text = "There are no addresses to send from yet."
                 textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
                 typeface = AppTheme.body(context)
                 setPadding(dp(AppTheme.PAD_SIDE), dp(24), dp(AppTheme.PAD_SIDE), 0)
@@ -964,7 +964,7 @@ class WalletActivity : FragmentActivity() {
 
         /* ── IMPORTE ───────────────────────────────────────────────────── */
         val amountBlock = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        amountBlock.addView(cap("Importe"))
+        amountBlock.addView(cap("Amount"))
 
         val amountRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -1008,16 +1008,16 @@ class WalletActivity : FragmentActivity() {
             ).apply { topMargin = dp(10) }
         }
         val tvFromBal = TextView(this).apply {
-            text = "Consultando el saldo…"
+            text = "Checking the balance…"
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        // "Todo" vacía la dirección entera. No pone el saldo tal cual: hay que
+        // "All" vacía la dirección entera. No pone el saldo tal cual: hay que
         // dejar la comisión dentro, y eso sólo se sabe al seleccionar monedas,
         // así que resta una estimación y doSend ajusta el resto.
         val chipMax = TextView(this).apply {
-            text = "Todo"
+            text = "All"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
             typeface = AppTheme.bold(context)
             background = GradientDrawable().apply {
@@ -1051,7 +1051,7 @@ class WalletActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        fromCol.addView(cap("Sale de").apply { textSize = AppTheme.SP_MICRO })
+        fromCol.addView(cap("From").apply { textSize = AppTheme.SP_MICRO })
         val tvFromAddr = TextView(this).apply {
             textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
             typeface = Typeface.MONOSPACE   // es una dirección
@@ -1077,7 +1077,7 @@ class WalletActivity : FragmentActivity() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        toHead.addView(cap("Va a").apply {
+        toHead.addView(cap("Goes to").apply {
             textSize = AppTheme.SP_MICRO
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
@@ -1110,12 +1110,12 @@ class WalletActivity : FragmentActivity() {
         ll.addView(side(toCard, bottom = 20))
 
         /* ── COMISIÓN ──────────────────────────────────────────────────── */
-        ll.addView(side(cap("Comisión"), bottom = 10))
+        ll.addView(side(cap("Fee"), bottom = 10))
 
         // -1 = automática. Se mantiene el contrato de doSend: quien decide es
         // la red salvo que aquí se elija otra cosa.
         var feeRate = -1
-        val feeNames = listOf("Lenta", "Normal", "Rápida")
+        val feeNames = listOf("Slow", "Normal", "Fast")
         val feeRates = intArrayOf(-1, -1, -1)
         val feePills = mutableListOf<LinearLayout>()
         val feeEtas  = mutableListOf<TextView>()
@@ -1153,7 +1153,7 @@ class WalletActivity : FragmentActivity() {
         fun refreshTotals() {
             val fee = estimateFeeSat()
             val amt = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
-            tvFeeLine.text = if (fee < 0) "la que recomiende la red"
+            tvFeeLine.text = if (fee < 0) "whatever the network suggests"
                              else "≈ %,d sat".format(fee)
             tvTotal.text = if (amt <= 0) "—"
                            else "%.8f".format(amt + (if (fee > 0) fee / 1e8 else 0.0))
@@ -1239,23 +1239,23 @@ class WalletActivity : FragmentActivity() {
             ).apply { marginStart = dp(17); marginEnd = dp(17) }
         }
 
-        infoCard.addView(infoRow(R.drawable.ic_send, TXT_SEC, "Comisión", null, tvFeeLine))
+        infoCard.addView(infoRow(R.drawable.ic_send, TXT_SEC, "Fee", null, tvFeeLine))
         infoCard.addView(sep())
         infoCard.addView(infoRow(R.drawable.ic_refresh, AppTheme.ACCENT,
-            "El cambio vuelve a una dirección tuya", "No se queda en la comisión", null))
+            "Change goes back to an address of yours", "It is not left as fee", null))
         infoCard.addView(sep())
         infoCard.addView(infoRow(R.drawable.ic_clock, TXT_SEC,
-            "Podrás subir la comisión después", "Se envía como reemplazable (RBF)", null))
+            "You can raise the fee later", "Sent as replaceable (RBF)", null))
         infoCard.addView(sep())
 
         // Coin Control estaba suelto como un botón más; es un detalle de esta
         // misma lista: de qué monedas sale.
         val tvCoinCtl = TextView(this).apply {
-            text = "automático"
+            text = "automatic"
             textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
             typeface = AppTheme.medium(context)
         }
-        val rowCoinCtl = infoRow(R.drawable.ic_wallet, TXT_SEC, "Monedas que se gastan", null, tvCoinCtl)
+        val rowCoinCtl = infoRow(R.drawable.ic_wallet, TXT_SEC, "Coins being spent", null, tvCoinCtl)
         rowCoinCtl.addView(android.widget.ImageView(this).apply {
             setImageResource(R.drawable.ic_chevron)
             setColorFilter(AppTheme.TXT_MUTED)
@@ -1272,7 +1272,7 @@ class WalletActivity : FragmentActivity() {
             setPadding(dp(2), 0, dp(2), dp(14))
         }
         totalRow.addView(TextView(this).apply {
-            text = "Total a descontar"
+            text = "Total to deduct"
             textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -1305,7 +1305,7 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(10) }
         })
         btnSend.addView(TextView(this).apply {
-            text = "Revisar envío"
+            text = "Review the send"
             textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.BG_DEEP)
             typeface = AppTheme.bold(context)
         })
@@ -1325,13 +1325,13 @@ class WalletActivity : FragmentActivity() {
         fun loadFromBalance() {
             val addr = addresses[keys[fromIdx]] ?: return
             fromSat = -1L
-            tvFromBal.text = "Consultando el saldo…"
+            tvFromBal.text = "Checking the balance…"
             Thread {
                 val res = BalanceLookup.query(addr, isTestnet)
                 runOnUiThread {
                     fromSat = res?.sat ?: -1L
-                    tvFromBal.text = if (fromSat < 0) "No se pudo consultar el saldo"
-                                     else "Disponible %.8f BTC".format(fromSat / 1e8)
+                    tvFromBal.text = if (fromSat < 0) "Could not check the balance"
+                                     else "Available %.8f BTC".format(fromSat / 1e8)
                 }
             }.start()
         }
@@ -1346,7 +1346,7 @@ class WalletActivity : FragmentActivity() {
             }
             tvFromAddr.text = addresses[k] ?: ""
             selectedUtxos.clear()
-            tvCoinCtl.text = "automático"
+            tvCoinCtl.text = "automatic"
             loadFromBalance()
             refreshTotals()
         }
@@ -1357,20 +1357,20 @@ class WalletActivity : FragmentActivity() {
                 "${labelMap[k] ?: k}\n${(addresses[k] ?: "").take(22)}…"
             }.toTypedArray()
             AlertDialog.Builder(this)
-                .setTitle("¿De qué dirección sale?")
+                .setTitle("Which address does it come from?")
                 .setItems(items) { _, i -> fromIdx = i; paintFrom() }
                 .show()
         }
 
         chipMax.setOnClickListener {
             if (fromSat <= 0) {
-                tvStatus.text = "Todavía no se sabe el saldo de esa dirección."
+                tvStatus.text = "The balance of that address is not known yet."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             val fee = estimateFeeSat().coerceAtLeast(0L)
             val max = fromSat - fee
             if (max <= CoinSelector.DUST) {
-                tvStatus.text = "El saldo no cubre ni la comisión."
+                tvStatus.text = "The balance does not even cover the fee."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             etAmt.setText("%.8f".format(max / 1e8))
@@ -1385,11 +1385,11 @@ class WalletActivity : FragmentActivity() {
                 when (val r = BtcAddress.validate(a, isTestnet)) {
                     is BtcAddress.Result.Valid -> {
                         tvToCheck.text = when (r.info.type) {
-                            BtcAddress.Type.P2TR   -> "Taproot, válida"
-                            BtcAddress.Type.P2WPKH -> "SegWit, válida"
-                            BtcAddress.Type.P2WSH  -> "SegWit script, válida"
-                            BtcAddress.Type.P2SH   -> "P2SH, válida"
-                            BtcAddress.Type.P2PKH  -> "Legacy, válida"
+                            BtcAddress.Type.P2TR   -> "Taproot, valid"
+                            BtcAddress.Type.P2WPKH -> "SegWit, valid"
+                            BtcAddress.Type.P2WSH  -> "SegWit script, valid"
+                            BtcAddress.Type.P2SH   -> "P2SH, valid"
+                            BtcAddress.Type.P2PKH  -> "Legacy, valid"
                         }
                         tvToCheck.setTextColor(AppTheme.ACCENT)
                     }
@@ -1416,7 +1416,7 @@ class WalletActivity : FragmentActivity() {
             val f = ChainInfo.fees(isTestnet)
             runOnUiThread {
                 if (f == null) {
-                    feeEtas.forEach { it.text = "sin datos" }
+                    feeEtas.forEach { it.text = "no data" }
                 } else {
                     feeRates[0] = f.economy; feeRates[1] = f.halfHour; feeRates[2] = f.fastest
                     listOf("~2 h" to f.economy, "~30 min" to f.halfHour, "~10 min" to f.fastest)
@@ -1430,21 +1430,21 @@ class WalletActivity : FragmentActivity() {
         /* ── MONEDAS (Coin Control) ────────────────────────────────────── */
         rowCoinCtl.setOnClickListener {
             val fromAddr = addresses[keys[fromIdx]] ?: return@setOnClickListener
-            tvStatus.text = "Consultando las monedas disponibles…"
+            tvStatus.text = "Checking the available coins…"
             tvStatus.setTextColor(TXT_SEC)
             Thread {
                 try {
                     val lista = ChainInfo.utxos(fromAddr, isTestnet)
                     if (lista == null) {
                         runOnUiThread {
-                            tvStatus.text = "No se pudo consultar la cadena. Revisa la conexión."
+                            tvStatus.text = "Could not query the chain. Check your connection."
                             tvStatus.setTextColor(RED)
                         }
                         return@Thread
                     }
                     if (lista.isEmpty()) {
                         runOnUiThread {
-                            tvStatus.text = "Esa dirección no tiene monedas que gastar."
+                            tvStatus.text = "That address has no coins to spend."
                             tvStatus.setTextColor(AppTheme.WARN)
                         }
                         return@Thread
@@ -1460,21 +1460,21 @@ class WalletActivity : FragmentActivity() {
                         selectedUtxos.clear()
                         for (i in 0 until utxos.length()) selectedUtxos.add(utxos.getJSONObject(i))
                         AlertDialog.Builder(this)
-                            .setTitle("¿Qué monedas se gastan?")
+                            .setTitle("Which coins are spent?")
                             .setMultiChoiceItems(items, checked) { _, idx, isChecked ->
                                 val u = utxos.getJSONObject(idx)
                                 if (isChecked) { if (!selectedUtxos.contains(u)) selectedUtxos.add(u) }
                                 else selectedUtxos.remove(u)
                             }
-                            .setPositiveButton("Usar éstas") { _, _ ->
-                                tvCoinCtl.text = if (selectedUtxos.isEmpty()) "automático"
+                            .setPositiveButton("Use these") { _, _ ->
+                                tvCoinCtl.text = if (selectedUtxos.isEmpty()) "automatic"
                                     else "%d · %.8f BTC".format(selectedUtxos.size,
                                         selectedUtxos.sumOf { it.getLong("value") } / 1e8)
                             }
-                            .setNeutralButton("Automático") { _, _ ->
-                                selectedUtxos.clear(); tvCoinCtl.text = "automático"
+                            .setNeutralButton("Automatic") { _, _ ->
+                                selectedUtxos.clear(); tvCoinCtl.text = "automatic"
                             }
-                            .setNegativeButton("Cancelar", null)
+                            .setNegativeButton("Cancel", null)
                             .show()
                     }
                 } catch (e: Exception) {
@@ -1490,16 +1490,16 @@ class WalletActivity : FragmentActivity() {
             val fromKey = keys.getOrNull(fromIdx) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
             if (toAddr.isEmpty()) {
-                tvStatus.text = "Falta la dirección de destino."
+                tvStatus.text = "The destination address is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             if (amtBtc <= 0) {
-                tvStatus.text = "Falta el importe."
+                tvStatus.text = "The amount is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             val check = BtcAddress.validate(toAddr, isTestnet)
             if (check is BtcAddress.Result.Invalid) {
-                tvStatus.text = "Dirección inválida: ${check.reason}"
+                tvStatus.text = "Invalid address: ${check.reason}"
                 tvStatus.setTextColor(RED); return@setOnClickListener
             }
             val addrType = (check as BtcAddress.Result.Valid).info.type
@@ -1514,7 +1514,7 @@ class WalletActivity : FragmentActivity() {
     private fun doSend(toAddr: String, amtBtc: Double, feeRateManual: Int,
                        fromKey: String, fromAddr: String,
                        tvStatus: TextView, btnSend: View, addrType: String = "") {
-            tvStatus.text = "Preparando el envío…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
+            tvStatus.text = "Preparing the send…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
                     // Iba directo a mempool.space sin respaldo. Hay redes e ISP
@@ -1523,7 +1523,7 @@ class WalletActivity : FragmentActivity() {
                     val lista = ChainInfo.utxos(fromAddr, isTestnet)
                     if (lista == null) {
                         runOnUiThread {
-                            tvStatus.text = "No se pudo consultar la cadena. Revisa la conexión."
+                            tvStatus.text = "Could not query the chain. Check your connection."
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }; return@Thread
                     }
@@ -1531,7 +1531,7 @@ class WalletActivity : FragmentActivity() {
                     // distinto de "no hubo respuesta".
                     if (lista.isEmpty()) {
                         runOnUiThread {
-                            tvStatus.text = "Esa dirección no tiene monedas que gastar."
+                            tvStatus.text = "That address has no coins to spend."
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }; return@Thread
                     }
@@ -1549,7 +1549,7 @@ class WalletActivity : FragmentActivity() {
                                 }
                             }
                         else (0 until fetched.length()).map { fetched.getJSONObject(it) }
-                    if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "Ningún UTXO seleccionado sigue disponible"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "None of the selected UTXOs is still available"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
 
                     val amtSat = (amtBtc * 1e8).toLong()
 
@@ -1565,9 +1565,9 @@ class WalletActivity : FragmentActivity() {
                         else              -> 5L
                     }
                     val fuenteTarifa = when {
-                        feeRateManual > 0 -> "la que pusiste"
-                        red != null       -> "recomendada, ~30 min"
-                        else              -> "respaldo: no se pudo consultar"
+                        feeRateManual > 0 -> "the one you set"
+                        red != null       -> "recommended, ~30 min"
+                        else              -> "fallback: could not query"
                     }
 
                     // El tamaño de un input depende del tipo: ~148 vB en P2PKH,
@@ -1582,13 +1582,13 @@ class WalletActivity : FragmentActivity() {
                         val vs = inVBytes * chosen.size + outVBytes + chgVBytes + 11
                         val f  = feeRate * vs
                         val tin = chosen.sumOf { it.getLong("value") }
-                        CoinSelector.Plan(chosen, f, (tin - amtSat - f).coerceAtLeast(0L), vs, "elegidas a mano")
+                        CoinSelector.Plan(chosen, f, (tin - amtSat - f).coerceAtLeast(0L), vs, "hand-picked")
                     } else {
                         CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes)
                     }
                     if (plan == null || plan.chosen.isEmpty()) {
                         runOnUiThread {
-                            tvStatus.text = "Saldo insuficiente para el importe más la comisión"
+                            tvStatus.text = "Not enough balance for the amount plus the fee"
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }
                         return@Thread
@@ -1605,7 +1605,7 @@ class WalletActivity : FragmentActivity() {
                     }
                     if (totalIn < amtSat + feeSat) {
                         runOnUiThread {
-                            tvStatus.text = "Saldo insuficiente: hay $totalIn sat, hacen falta ${amtSat + feeSat}"
+                            tvStatus.text = "Not enough funds: $totalIn sat available, ${amtSat + feeSat} needed"
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }
                         return@Thread
@@ -1627,7 +1627,7 @@ class WalletActivity : FragmentActivity() {
                         fromKey.startsWith("p2tr")   -> "m/86'/0'/0'/0/$addrIdx"
                         else -> {
                             runOnUiThread {
-                                tvStatus.text = "Tipo de dirección no soportado: $fromKey"
+                                tvStatus.text = "Unsupported address type: $fromKey"
                                 tvStatus.setTextColor(RED); btnSend.isEnabled = true
                             }
                             return@Thread
@@ -1652,8 +1652,8 @@ class WalletActivity : FragmentActivity() {
                                      else HdScanner.nextChangePath(mnemonic, purpose, isTestnet)
                     runOnUiThread {
                         tvStatus.text = if (changePath != null)
-                            "Cambio a dirección nueva (${changePath.substringAfterLast('/')})"
-                        else "Cambio a la dirección de origen (no se pudo consultar la rama)"
+                            "Change to a new address (${changePath.substringAfterLast('/')})"
+                        else "Change back to the source address (could not query the branch)"
                         tvStatus.setTextColor(TXT_SEC)
                     }
 
@@ -1687,53 +1687,53 @@ class WalletActivity : FragmentActivity() {
                     // y eso depende de cuántas entradas hagan falta.
                     val totalSat = amtSat + feeSat
                     val resumen = buildString {
-                        appendLine("Enviar %.8f BTC".format(amtBtc))
-                        appendLine("a $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
+                        appendLine("Send %.8f BTC".format(amtBtc))
+                        appendLine("to $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
                         appendLine()
-                        appendLine("Comisión   %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
-                        appendLine("Tamaño     ~%d vB con %d entrada(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
+                        appendLine("Fee        %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
+                        appendLine("Size       ~%d vB with %d input(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
                         appendLine("TOTAL      %.8f BTC".format(totalSat / 1e8))
                         appendLine()
                         appendLine(if (plan.changeSat == 0L)
-                            "Sin salida de cambio: el sobrante va a la comisión."
+                            "No change output: the remainder goes to the fee."
                         else if (changePath != null)
-                            "Cambio %.8f BTC a una dirección nueva (%s).".format(plan.changeSat / 1e8, changePath.substringAfterLast('/'))
+                            "Change %.8f BTC to a new address (%s).".format(plan.changeSat / 1e8, changePath.substringAfterLast('/'))
                         else
-                            "Cambio %.8f BTC a la dirección de origen: no se pudo consultar la rama.".format(plan.changeSat / 1e8))
+                            "Change %.8f BTC to the source address: could not query the branch.".format(plan.changeSat / 1e8))
                         appendLine()
-                        appendLine("Se envía como reemplazable: podrás subir la comisión si se atasca.")
+                        appendLine("Sent as replaceable: you can raise the fee if it gets stuck.")
                         appendLine()
-                        append("Una transacción de Bitcoin NO se puede deshacer.")
+                        append("A Bitcoin transaction CANNOT be undone.")
                     }
                     val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                     runOnUiThread {
                         AlertDialog.Builder(this)
-                            .setTitle("Revisar envío")
+                            .setTitle("Review the send")
                             .setMessage(resumen)
                             .setCancelable(false)
-                            .setNegativeButton("Cancelar") { _, _ -> seguir.offer(false) }
-                            .setPositiveButton("Enviar")   { _, _ -> seguir.offer(true) }
+                            .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
+                            .setPositiveButton("Send")   { _, _ -> seguir.offer(true) }
                             .show()
                     }
                     if (!seguir.take()) {
                         runOnUiThread {
-                            tvStatus.text = "Envío cancelado"; tvStatus.setTextColor(TXT_SEC)
+                            tvStatus.text = "Send cancelled"; tvStatus.setTextColor(TXT_SEC)
                             btnSend.isEnabled = true
                         }
                         return@Thread
                     }
 
-                    runOnUiThread { tvStatus.text = "Firmando…"; tvStatus.setTextColor(TXT_SEC) }
+                    runOnUiThread { tvStatus.text = "Signing…"; tvStatus.setTextColor(TXT_SEC) }
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
-                    runOnUiThread { tvStatus.text = "Difundiendo…"; tvStatus.setTextColor(TXT_SEC) }
+                    runOnUiThread { tvStatus.text = "Broadcasting…"; tvStatus.setTextColor(TXT_SEC) }
                     // Difundir también tenía un único camino. Si la firma salió
                     // bien y no se puede difundir, la transacción se pierde sin
                     // más: mejor que lo intenten los dos.
                     val resp = ChainInfo.broadcast(rawTx, isTestnet)
                     val ok = !resp.startsWith("ERROR")
                     runOnUiThread {
-                        tvStatus.text = if (ok) "Enviada.\nIdentificador: $resp"
+                        tvStatus.text = if (ok) "Sent.\nTransaction ID: $resp"
                                         else resp.removePrefix("ERROR: ")
                         tvStatus.setTextColor(if (ok) GREEN else RED)
                         btnSend.isEnabled = true
@@ -1775,7 +1775,7 @@ class WalletActivity : FragmentActivity() {
         val keys = addresses.keys.toList()
         if (keys.isEmpty()) {
             ll.addView(side(TextView(this).apply {
-                text = "Todavía no hay direcciones que enseñar."
+                text = "There are no addresses to show yet."
                 textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
                 typeface = AppTheme.body(context)
             }, top = 24))
@@ -1792,7 +1792,7 @@ class WalletActivity : FragmentActivity() {
         ).mapNotNull { g -> keys.firstOrNull { it.startsWith(g.clave) }?.let { g to it } }
         // Una cartera de sólo observación o de WIF puede no encajar en ninguno:
         // en ese caso se enseña lo que haya, sin selector.
-        val efectivos = grupos.ifEmpty { listOf(Grupo(labelMap[keys[0]] ?: "Dirección", keys[0]) to keys[0]) }
+        val efectivos = grupos.ifEmpty { listOf(Grupo(labelMap[keys[0]] ?: "Address", keys[0]) to keys[0]) }
         var tipoSel = 0
 
         val tipoRow = LinearLayout(this).apply {
@@ -1834,13 +1834,13 @@ class WalletActivity : FragmentActivity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         addrHead.addView(TextView(this).apply {
-            text = "Tu dirección"
+            text = "Your address"
             textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         val tvEstreno = TextView(this).apply {
-            text = "comprobando…"
+            text = "checking…"
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.bold(context)
         }
@@ -1881,8 +1881,8 @@ class WalletActivity : FragmentActivity() {
                     typeface = if (primary) AppTheme.bold(context) else AppTheme.medium(context)
                 })
             }
-        val btnCopiar    = accion("Copiar", R.drawable.ic_copy, primary = true, last = false)
-        val btnCompartir = accion("Compartir", R.drawable.ic_send, primary = false, last = true)
+        val btnCopiar    = accion("Copy", R.drawable.ic_copy, primary = true, last = false)
+        val btnCompartir = accion("Share", R.drawable.ic_send, primary = false, last = true)
         val accionesRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             addView(btnCopiar); addView(btnCompartir)
@@ -1904,13 +1904,13 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         notaCol.addView(TextView(this).apply {
-            text = "Conviene usar una dirección nueva en cada cobro"
+            text = "Best to use a new address for each payment"
             textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.body(context)
         })
         notaCol.addView(TextView(this).apply {
-            text = "Las anteriores siguen siendo tuyas y se ven en Saldo. " +
-                   "Reutilizar una deja tu historial a la vista de cualquiera."
+            text = "The previous ones are still yours and show up in Balance. " +
+                   "Reusing one leaves your history in plain sight."
             textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setLineSpacing(0f, 1.55f)
@@ -1973,7 +1973,7 @@ class WalletActivity : FragmentActivity() {
             }.start()
             // "Sin estrenar" no es decorativo: si ya ha recibido algo, decirlo
             // aquí es lo único que evita reutilizarla sin querer.
-            tvEstreno.text = "comprobando…"
+            tvEstreno.text = "checking…"
             tvEstreno.setTextColor(AppTheme.TXT_MUTED)
             Thread {
                 val r = BalanceLookup.query(addr, isTestnet)
@@ -1981,8 +1981,8 @@ class WalletActivity : FragmentActivity() {
                     if (addrActual != addr) return@runOnUiThread
                     when {
                         r == null     -> { tvEstreno.text = ""; }
-                        r.sat > 0L    -> { tvEstreno.text = "ya tiene fondos"; tvEstreno.setTextColor(AppTheme.WARN) }
-                        else          -> { tvEstreno.text = "sin estrenar";    tvEstreno.setTextColor(AppTheme.ACCENT) }
+                        r.sat > 0L    -> { tvEstreno.text = "already has funds"; tvEstreno.setTextColor(AppTheme.WARN) }
+                        else          -> { tvEstreno.text = "unused";    tvEstreno.setTextColor(AppTheme.ACCENT) }
                     }
                 }
             }.start()
@@ -2019,8 +2019,8 @@ class WalletActivity : FragmentActivity() {
 
         btnCopiar.setOnClickListener {
             (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText("Dirección Bitcoin", addrActual))
-            Toast.makeText(this, "Dirección copiada", Toast.LENGTH_SHORT).show()
+                .setPrimaryClip(android.content.ClipData.newPlainText("Bitcoin address", addrActual))
+            Toast.makeText(this, "Address copied", Toast.LENGTH_SHORT).show()
         }
         btnCompartir.setOnClickListener {
             // Sólo la dirección: nada de claves. Va como texto plano para que
@@ -2028,7 +2028,7 @@ class WalletActivity : FragmentActivity() {
             startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_TEXT, addrActual)
-            }, "Compartir la dirección"))
+            }, "Share the address"))
         }
     }
 
@@ -2074,7 +2074,7 @@ class WalletActivity : FragmentActivity() {
         scroll.addView(sheet)
 
         sheet.addView(TextView(this).apply {
-            text = "Elegir cartera"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
+            text = "Pick a wallet"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
             typeface = AppTheme.title(context)
             setPadding(0, 0, 0, dp(18))
         })
@@ -2106,7 +2106,7 @@ class WalletActivity : FragmentActivity() {
         var selectorDlg: AlertDialog? = null
 
         if (hasSeed) {
-            walletCard("Cartera principal", "Semilla BIP39, derivación HD", TXT_PRI) {
+            walletCard("Main wallet", "BIP39 seed, HD derivation", TXT_PRI) {
                 selectorDlg?.dismiss()
                 switchToWallet {
                     authenticate {
@@ -2179,9 +2179,9 @@ class WalletActivity : FragmentActivity() {
                 if (!last) marginEnd = dp(6)
             }
         }
-        val btnNew   = addBtn("Semilla")
-        val btnWif   = addBtn("Clave WIF")
-        val btnWatch = addBtn("Observar", last = true)
+        val btnNew   = addBtn("Seed")
+        val btnWif   = addBtn("WIF key")
+        val btnWatch = addBtn("Watch", last = true)
         btnRow.addView(btnNew); btnRow.addView(btnWif); btnRow.addView(btnWatch)
         sheet.addView(btnRow)
 
@@ -2212,12 +2212,12 @@ class WalletActivity : FragmentActivity() {
             setPadding(dp(22), dp(22), dp(22), dp(24))
         }
         sheet.addView(TextView(this).apply {
-            text = "Importar una clave WIF"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
+            text = "Import a WIF key"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
             typeface = AppTheme.title(context)
             setPadding(0,0,0,dp(6))
         })
         sheet.addView(TextView(this).apply {
-            text = "Pega la clave privada en formato WIF. Empieza por 5, K o L."
+            text = "Paste the private key in WIF format. It starts with 5, K or L."
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(18)); setLineSpacing(0f, 1.3f)
@@ -2233,7 +2233,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(etWif)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnImport = Button(this).apply {
-            text = "Importar"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2241,7 +2241,7 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
-            text = "Cancelar"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            text = "Cancel"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.medium(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2278,12 +2278,12 @@ class WalletActivity : FragmentActivity() {
 
     private fun showMenu() {
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Baúl de copias","Restaurar desde archivo","Delete wallet","Cancel")) { _, pos ->
+            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Backup vault","Restore from file","Delete wallet","Cancel")) { _, pos ->
                 when (pos) {
                     0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
                         val msg = if (isWifMode) "WIF: $wifKey" else mnemonic
-                        AlertDialog.Builder(this).setTitle("No se la enseñes a nadie").setMessage(msg).setPositiveButton("Entendido", null).show()
+                        AlertDialog.Builder(this).setTitle("Do not show it to anyone").setMessage(msg).setPositiveButton("Got it", null).show()
                     }
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> {
@@ -2295,14 +2295,14 @@ class WalletActivity : FragmentActivity() {
                         // pero seguías viendo —y usando— las de mainnet.
                         loadAddresses()
                         Toast.makeText(this,
-                            if (isTestnet) "Red de pruebas activada — direcciones recargadas"
-                            else "Red principal — direcciones recargadas",
+                            if (isTestnet) "Testnet enabled — addresses reloaded"
+                            else "Mainnet — addresses reloaded",
                             Toast.LENGTH_SHORT).show()
                     }
                     4 -> showBackupVault()
                     5 -> showRestoreDialog()
-                    6 -> AlertDialog.Builder(this).setTitle("¿Borrar la cartera?").setMessage("Asegúrate de tener una copia de la clave: esto no se puede deshacer.")
-                            .setPositiveButton("Borrar") { _, _ ->
+                    6 -> AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage("Make sure you have a copy of the key: this cannot be undone.")
+                            .setPositiveButton("Delete") { _, _ ->
                                 when {
                                     isWifMode && wifAddr.isNotEmpty() -> {
                                         /* Borrar WIF o Watcher */
@@ -2318,7 +2318,7 @@ class WalletActivity : FragmentActivity() {
                                 }
                                 finish()
                             }
-                            .setNegativeButton("Cancelar", null).show()
+                            .setNegativeButton("Cancel", null).show()
                 }
             }.show()
     }
@@ -2336,24 +2336,24 @@ class WalletActivity : FragmentActivity() {
         }
         scroll.addView(layout)
         layout.addView(TextView(this).apply {
-            text = "Importar una cartera"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
+            text = "Import a wallet"; textSize = AppTheme.SP_TITLE; setTextColor(TXT_PRI)
             typeface = AppTheme.title(context)
             setPadding(0, 0, 0, dp(6))
         })
         layout.addView(TextView(this).apply {
-            text = "Escribe las 12 o 24 palabras de tu semilla BIP39."
+            text = "Type the 12 or 24 words of your BIP39 seed."
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(22)); setLineSpacing(0f, 1.3f)
         })
         val tvCount = TextView(this).apply {
-            text = "0 / 24 palabras"; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            text = "0 / 24 words"; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.medium(context)
             gravity = Gravity.END; setPadding(0, 0, 0, dp(4))
         }
         layout.addView(tvCount)
         val etSeed = EditText(this).apply {
-            hint = "palabra1 palabra2 palabra3 …"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            hint = "word1 word2 word3 …"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
             background = GradientDrawable().apply {
                 setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
@@ -2404,7 +2404,7 @@ class WalletActivity : FragmentActivity() {
                 val txt = s.toString()
                 val words = txt.trim().split(" +".toRegex()).filter { it.isNotEmpty() }
                 val cnt = words.size
-                tvCount.text = "$cnt / 24 palabras"
+                tvCount.text = "$cnt / 24 words"
                 tvCount.setTextColor(when { cnt == 12 || cnt == 24 -> GREEN; cnt > 24 -> RED; else -> TXT_MUTED })
                 val lastWord = if (txt.endsWith(" ")) "" else words.lastOrNull() ?: ""
                 updateSuggestions(lastWord)
@@ -2418,13 +2418,13 @@ class WalletActivity : FragmentActivity() {
         })
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
         val btnNext = Button(this).apply {
-            text = "Importar"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
             typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
-            text = "Cancelar"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            text = "Cancel"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
@@ -2495,7 +2495,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(etAddr); sheet.addView(etLabel)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnAdd = Button(this).apply {
-            text = "Observar"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Watch"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2503,7 +2503,7 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply { marginEnd = dp(8) }
         }
         val btnCancel = Button(this).apply {
-            text = "Cancelar"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            text = "Cancel"; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.medium(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2540,14 +2540,14 @@ class WalletActivity : FragmentActivity() {
             setPadding(64, 32, 64, 16)
         }
         val etPin = android.widget.EditText(this).apply {
-            hint = "Ingresa tu PIN"
+            hint = "Enter your PIN"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
             setTextColor(AppTheme.TXT_PRI)
             setHintTextColor(AppTheme.TXT_MUTED)
         }
         root.addView(android.widget.TextView(this).apply {
-            text = "PIN para cifrar el backup:"
+            text = "PIN to encrypt the backup:"
             setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(10))
@@ -2555,12 +2555,12 @@ class WalletActivity : FragmentActivity() {
         root.addView(etPin)
 
         AlertDialog.Builder(this)
-            .setTitle("Nueva copia de seguridad")
+            .setTitle("New backup")
             .setView(root)
-            .setPositiveButton("Crear") { _, _ ->
+            .setPositiveButton("Create") { _, _ ->
                 val pin = etPin.text.toString()
                 if (pin.length < 4) {
-                    android.widget.Toast.makeText(this, "PIN muy corto", android.widget.Toast.LENGTH_SHORT).show()
+                    android.widget.Toast.makeText(this, "PIN too short", android.widget.Toast.LENGTH_SHORT).show()
                     return@setPositiveButton
                 }
                 // Antes se lanzaba el selector de compartir aquí mismo: si lo
@@ -2570,15 +2570,15 @@ class WalletActivity : FragmentActivity() {
                 val file = WalletManager.exportBackup(this, pin)
                 if (file != null) {
                     android.widget.Toast.makeText(this,
-                        "Copia guardada en el baúl", android.widget.Toast.LENGTH_SHORT).show()
+                        "Backup saved to the vault", android.widget.Toast.LENGTH_SHORT).show()
                     showBackupVault()
                 } else {
                     android.widget.Toast.makeText(this,
-                        "No hay nada que exportar: ni wallets, ni WIF, ni hallazgos",
+                        "Nothing to export: no wallets, no WIFs, no finds",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -2588,12 +2588,12 @@ class WalletActivity : FragmentActivity() {
     private fun showBackupVault() {
         val copias = BackupStore.list(this)
         val b = AlertDialog.Builder(this)
-            .setTitle("Baúl de copias (${copias.size}/${BackupStore.MAX_KEPT})")
+            .setTitle("Backup vault (${copias.size}/${BackupStore.MAX_KEPT})")
 
         if (copias.isEmpty()) {
-            b.setMessage("Todavía no hay ninguna copia.\n\nUna copia lleva las seeds, " +
-                         "los WIF, los watchers y los hallazgos del baúl, cifrados con " +
-                         "tu PIN. Se conservan las ${BackupStore.MAX_KEPT} más recientes.")
+            b.setMessage("No backup yet.\n\nA backup holds the seeds, " +
+                         "the WIFs, the watchers and the vault finds, encrypted with " +
+                         "your PIN. The ${BackupStore.MAX_KEPT} most recent ones are kept.")
         } else {
             val items = copias.map {
                 "${BackupStore.humanDate(it.createdAt)}  ·  ${BackupStore.humanSize(it.bytes)}"
@@ -2601,18 +2601,18 @@ class WalletActivity : FragmentActivity() {
             b.setItems(items) { _, i -> showBackupActions(copias[i]) }
         }
 
-        b.setPositiveButton("Crear copia") { _, _ -> showBackupDialog() }
-            .setNegativeButton("Cerrar", null)
+        b.setPositiveButton("Create backup") { _, _ -> showBackupDialog() }
+            .setNegativeButton("Close", null)
             .show()
     }
 
     /** Qué hacer con una copia concreta. */
     private fun showBackupActions(info: BackupStore.Info) {
         val acciones = arrayOf(
-            "Compartir",
-            "Ver contenido",
-            "Restaurar esta copia",
-            "Borrar")
+            "Share",
+            "View contents",
+            "Restore this backup",
+            "Delete")
         AlertDialog.Builder(this)
             .setTitle(BackupStore.humanDate(info.createdAt))
             .setItems(acciones) { _, which ->
@@ -2620,15 +2620,15 @@ class WalletActivity : FragmentActivity() {
                     0 -> try {
                         startActivity(BackupStore.shareIntent(this, info.file))
                     } catch (e: Exception) {
-                        android.widget.Toast.makeText(this, "No se pudo compartir: ${e.message}",
+                        android.widget.Toast.makeText(this, "Could not share: ${e.message}",
                             android.widget.Toast.LENGTH_LONG).show()
                     }
-                    1 -> askPinFor("Ver contenido") { pin -> inspectBackupFile(info, pin) }
-                    2 -> askPinFor("Restaurar copia") { pin -> restoreFromVault(info, pin) }
+                    1 -> askPinFor("View contents") { pin -> inspectBackupFile(info, pin) }
+                    2 -> askPinFor("Restore backup") { pin -> restoreFromVault(info, pin) }
                     3 -> confirmDeleteBackup(info)
                 }
             }
-            .setNegativeButton("Cerrar", null)
+            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -2639,7 +2639,7 @@ class WalletActivity : FragmentActivity() {
             setPadding(64, 32, 64, 16)
         }
         val etPin = android.widget.EditText(this).apply {
-            hint = "PIN de la copia"
+            hint = "Backup PIN"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
             setTextColor(AppTheme.TXT_PRI)
@@ -2648,7 +2648,7 @@ class WalletActivity : FragmentActivity() {
         root.addView(android.widget.TextView(this).apply {
             // Una copia vieja se abre con el PIN que tuvieras entonces: la clave
             // se deriva del PIN en el momento de crearla, no del PIN actual.
-            text = "PIN con el que se creó esta copia:"
+            text = "The PIN this backup was created with:"
             setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(10))
@@ -2658,7 +2658,7 @@ class WalletActivity : FragmentActivity() {
             .setTitle(titulo)
             .setView(root)
             .setPositiveButton("OK") { _, _ -> onPin(etPin.text.toString()) }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -2670,36 +2670,36 @@ class WalletActivity : FragmentActivity() {
 
         if (resumen == null) {
             AlertDialog.Builder(this)
-                .setTitle("No se pudo abrir")
-                .setMessage("PIN incorrecto, o el fichero no es una copia válida.\n\n" +
-                            "Recuerda que una copia se abre con el PIN que tenías cuando " +
-                            "la creaste.")
-                .setPositiveButton("Entendido", null)
+                .setTitle("Could not open it")
+                .setMessage("Wrong PIN, or the file is not a valid backup.\n\n" +
+                            "Remember a backup opens with the PIN you had when " +
+                            "you created it.")
+                .setPositiveButton("Got it", null)
                 .show()
             return
         }
 
         val detalle = buildString {
-            appendLine("Creada: ${BackupStore.humanDate(resumen.createdAt)}")
-            appendLine("Formato: v${resumen.version}")
-            appendLine("Tamaño: ${BackupStore.humanSize(info.bytes)}")
+            appendLine("Created: ${BackupStore.humanDate(resumen.createdAt)}")
+            appendLine("Format: v${resumen.version}")
+            appendLine("Size: ${BackupStore.humanSize(info.bytes)}")
             appendLine()
-            appendLine("Seed principal: ${if (resumen.hasMainSeed) "sí" else "no"}")
+            appendLine("Main seed: ${if (resumen.hasMainSeed) "yes" else "no"}")
             appendLine("Wallets: ${resumen.wallets}")
-            appendLine("Claves WIF: ${resumen.wifs}")
+            appendLine("WIF keys: ${resumen.wifs}")
             appendLine("Watch-only: ${resumen.watchers}")
-            appendLine("Hallazgos: ${resumen.matches}")
+            appendLine("Finds: ${resumen.matches}")
             if (resumen.version < 2) {
                 appendLine()
-                appendLine("Copia antigua: sólo trae wallets. La seed principal, " +
-                           "los WIF, los watchers y los hallazgos no se guardaban.")
+                appendLine("Old backup: wallets only. The main seed, " +
+                           "the WIFs, the watchers and the finds were not stored.")
             }
         }
         AlertDialog.Builder(this)
-            .setTitle("Contenido de la copia")
+            .setTitle("Backup contents")
             .setMessage(detalle)
-            .setPositiveButton("Restaurar") { _, _ -> restoreFromVault(info, pin) }
-            .setNegativeButton("Cerrar", null)
+            .setPositiveButton("Restore") { _, _ -> restoreFromVault(info, pin) }
+            .setNegativeButton("Close", null)
             .show()
     }
 
@@ -2709,47 +2709,47 @@ class WalletActivity : FragmentActivity() {
             WalletManager.inspectBackup(pin, info.file.readBytes())
         } catch (e: Exception) { null }
         if (resumen == null) {
-            android.widget.Toast.makeText(this, "PIN incorrecto o copia inválida",
+            android.widget.Toast.makeText(this, "Wrong PIN or invalid backup",
                 android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         AlertDialog.Builder(this)
-            .setTitle("¿Restaurar esta copia?")
-            .setMessage("Se añadirá a lo que ya tienes: ${resumen.wallets} wallet(s), " +
-                        "${resumen.wifs} WIF, ${resumen.watchers} watch-only y " +
-                        "${resumen.matches} hallazgo(s).\n\n" +
+            .setTitle("Restore this backup?")
+            .setMessage("It will be added to what you have: ${resumen.wallets} wallet(s), " +
+                        "${resumen.wifs} WIF, ${resumen.watchers} watch-only and " +
+                        "${resumen.matches} find(s).\n\n" +
                         (if (resumen.hasMainSeed)
-                            "La seed principal de la copia SUSTITUYE a la actual. "
+                            "The main seed in the backup REPLACES the current one. "
                          else "") +
-                        "Si la actual no está en ninguna copia, guárdala antes.")
-            .setPositiveButton("Restaurar") { _, _ ->
+                        "If the current one is in no backup, save it first.")
+            .setPositiveButton("Restore") { _, _ ->
                 val count = WalletManager.importBackup(this, pin, info.file.readBytes())
                 if (count >= 0) {
                     android.widget.Toast.makeText(this,
-                        "$count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
+                        "$count item(s) restored", android.widget.Toast.LENGTH_SHORT).show()
                     buildUI()
                 } else {
                     android.widget.Toast.makeText(this,
-                        "Error al restaurar", android.widget.Toast.LENGTH_SHORT).show()
+                        "Restore failed", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
     private fun confirmDeleteBackup(info: BackupStore.Info) {
         AlertDialog.Builder(this)
-            .setTitle("¿Borrar esta copia?")
+            .setTitle("Delete this backup?")
             .setMessage("${BackupStore.humanDate(info.createdAt)}\n\n" +
-                        "No se puede deshacer. Si es la única que tiene tus seeds, " +
-                        "se van con ella.")
-            .setPositiveButton("Borrar") { _, _ ->
+                        "It cannot be undone. If it is the only one holding your seeds, " +
+                        "they go with it.")
+            .setPositiveButton("Delete") { _, _ ->
                 BackupStore.delete(this, info.file)
-                android.widget.Toast.makeText(this, "Copia borrada",
+                android.widget.Toast.makeText(this, "Backup deleted",
                     android.widget.Toast.LENGTH_SHORT).show()
                 showBackupVault()
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
@@ -2767,13 +2767,13 @@ class WalletActivity : FragmentActivity() {
             setPadding(64, 32, 64, 16)
         }
         val etPin = android.widget.EditText(this).apply {
-            hint = "PIN del backup"
+            hint = "Backup PIN"
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or
                         android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD
             setTextColor(AppTheme.TXT_PRI)
         }
         root.addView(android.widget.TextView(this).apply {
-            text = "PIN usado al crear el backup:"
+            text = "The PIN the backup was created with:"
             setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(10))
@@ -2781,9 +2781,9 @@ class WalletActivity : FragmentActivity() {
         root.addView(etPin)
 
         AlertDialog.Builder(this)
-            .setTitle("Restaurar copia")
+            .setTitle("Restore backup")
             .setView(root)
-            .setPositiveButton("Restaurar") { _, _ ->
+            .setPositiveButton("Restore") { _, _ ->
                 val pin = etPin.text.toString()
                 val data = contentResolver.openInputStream(uri)?.readBytes() ?: return@setPositiveButton
                 val count = WalletManager.importBackup(this, pin, data)
@@ -2792,14 +2792,14 @@ class WalletActivity : FragmentActivity() {
                     // decir "wallet(s)" a secas confundía cuando el backup
                     // traía sobre todo claves sueltas.
                     android.widget.Toast.makeText(this,
-                        "$count elemento(s) restaurados", android.widget.Toast.LENGTH_SHORT).show()
+                        "$count item(s) restored", android.widget.Toast.LENGTH_SHORT).show()
                     buildUI()
                 } else {
                     android.widget.Toast.makeText(this,
-                        "Error: PIN incorrecto o archivo inválido", android.widget.Toast.LENGTH_SHORT).show()
+                        "Error: wrong PIN or invalid file", android.widget.Toast.LENGTH_SHORT).show()
                 }
             }
-            .setNegativeButton("Cancelar", null)
+            .setNegativeButton("Cancel", null)
             .show()
     }
 
