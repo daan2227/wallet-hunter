@@ -28,7 +28,7 @@ object BalanceLookup {
      */
     fun fromMempool(addr: String, testnet: Boolean = false): Long {
         val js = ChainApi.get("/address/$addr", testnet)
-            ?: throw java.io.IOException("ninguna API web respondió")
+            ?: throw java.io.IOException("no web API answered")
         // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia. La
         // respuesta trae esos campos en chain_stats y en mempool_stats, así que
         // el resultado dependía del orden que emitiera la API.
@@ -60,7 +60,7 @@ object BalanceLookup {
                 return txs("chain_stats") + txs("mempool_stats") > 0
             }
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "isUsed por web falló en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "isUsed via web failed on $addr: ${e.message}")
         }
         // Electrum no da el número de transacciones directamente, pero su
         // historial sí: si tiene alguna entrada, la dirección se ha usado.
@@ -68,7 +68,7 @@ object BalanceLookup {
             ElectrumClient.getHistory(addr, testnet).takeIf { it.isNotEmpty() }?.let { true }
                 ?: if (ElectrumClient.getBalance(addr, testnet) != null) false else null
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "isUsed por Electrum falló en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "isUsed via Electrum failed on $addr: ${e.message}")
             null
         }
     }
@@ -82,13 +82,13 @@ object BalanceLookup {
         try {
             return Result(fromMempool(addr, testnet), "")
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "APIs web fallaron en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "web APIs failed on $addr: ${e.message}")
         }
         return try {
             val eb = ElectrumClient.getBalance(addr, testnet)
             if (eb != null) Result(eb.confirmed + eb.unconfirmed, "electrum") else null
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "electrum falló en $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "electrum failed on $addr: ${e.message}")
             null
         }
     }

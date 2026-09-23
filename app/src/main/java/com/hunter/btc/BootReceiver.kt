@@ -33,7 +33,7 @@ class BootReceiver : BroadcastReceiver() {
         val svc = Intent(c, HunterService::class.java)
         try { c.startForegroundService(svc) } catch (e: Exception) {
             try { c.startService(svc) } catch (e2: Exception) {
-                android.util.Log.e("BootReceiver", "no se pudo arrancar: ${e2.message}")
+                android.util.Log.e("BootReceiver", "could not start: ${e2.message}")
             }
         }
     }

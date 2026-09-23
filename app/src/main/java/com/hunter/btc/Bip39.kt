@@ -36,14 +36,14 @@ object Bip39 {
 
         if (words.size !in VALID_LENGTHS) {
             return Result.Invalid(
-                if (words.size < 12) "Faltan palabras: ${words.size} de 12"
-                else "Longitud inválida (${words.size}). Debe ser 12, 15, 18, 21 o 24")
+                if (words.size < 12) "Missing words: ${words.size} of 12"
+                else "Invalid length (${words.size}). It must be 12, 15, 18, 21 or 24")
         }
 
         val idx = ArrayList<Int>(words.size)
         words.forEachIndexed { i, w ->
             val p = index[w]
-                ?: return Result.Invalid("La palabra ${i + 1} no es BIP39: \"$w\"")
+                ?: return Result.Invalid("Word ${i + 1} is not in the BIP39 list: \"$w\"")
             idx.add(p)
         }
 
@@ -51,7 +51,7 @@ object Bip39 {
         val totalBits = words.size * 11
         val csBits    = totalBits / 33
         val entBits   = totalBits - csBits
-        if (entBits % 8 != 0) return Result.Invalid("Longitud inválida")
+        if (entBits % 8 != 0) return Result.Invalid("Invalid length")
 
         val ent = ByteArray(entBits / 8)
         var bit = 0
@@ -72,6 +72,6 @@ object Bip39 {
         val want = (hash[0].toInt() and 0xff) ushr (8 - csBits)
 
         return if (got == want) Result.Valid
-        else Result.Invalid("Checksum incorrecto: revisa las palabras, alguna está mal")
+        else Result.Invalid("Wrong checksum: check the words, one of them is off")
     }
 }

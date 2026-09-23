@@ -155,7 +155,7 @@ object NetworkManager {
     private fun abrirCanal(destino: String, puerto: Int = TCP_PORT): Canal {
         if (usarTsnet) {
             val c = TsNet.conectar("$destino:$puerto")
-                ?: throw IOException("tsnet no pudo conectar con $destino" +
+                ?: throw IOException("tsnet could not connect to $destino" +
                                      (TsNet.ultimoFallo().let { if (it.isEmpty()) "" else ": $it" }))
             return Canal(BufferedReader(InputStreamReader(c.entrada)),
                          PrintWriter(c.salida, true),
@@ -179,7 +179,7 @@ object NetworkManager {
         if (usarTsnet) {
             val l = TsNet.escuchar(TCP_PORT)
             if (l < 0) throw IOException(
-                "tsnet no pudo escuchar en $TCP_PORT" +
+                "tsnet could not listen on $TCP_PORT" +
                 (TsNet.ultimoFallo().let { if (it.isEmpty()) "" else ": $it" }))
             return object : Escuchador {
                 override fun aceptar(): Canal? {
@@ -322,7 +322,7 @@ object NetworkManager {
     fun marcarPuzzleVacio() {
         if (!puzzleVacio) {
             puzzleVacio = true
-            log("El puzzle ya no tiene fondos: se avisará a los workers")
+            log("The puzzle has no funds left: the workers will be told")
         }
     }
 
@@ -391,26 +391,26 @@ object NetworkManager {
         puntosRecibidos.set(0)
         deviceId = android.os.Build.MODEL.replace(" ", "_")
         authToken = generateToken()
-        log("Master iniciado — Puzzle #$puzzleNum (${if (m == Modo.KANGAROO) "Kangaroo" else "bloques"})")
-        log("Código de acceso: $authToken")
+        log("Master started — Puzzle #$puzzleNum (${if (m == Modo.KANGAROO) "Kangaroo" else "blocks"})")
+        log("Access code: $authToken")
         if (m == Modo.KANGAROO)
-            log("Todos al mismo rango: $rangeStart → $rangeEnd")
+            log("Everyone on the same range: $rangeStart → $rangeEnd")
         else
-            log("Rango: $rangeStart → $rangeEnd")
+            log("Range: $rangeStart → $rangeEnd")
 
         // Servidor
         executor.submit {
             try {
                 val esc = abrirEscuchador()
                 escuchador = esc
-                log("Escuchando en puerto $TCP_PORT" +
-                    (if (usarTsnet) " (por tsnet)" else ""))
+                log("Listening on port $TCP_PORT" +
+                    (if (usarTsnet) " (via tsnet)" else ""))
                 while (isRunning.get()) {
                     val c = esc.aceptar() ?: break
                     executor.submit { handleWorkerConnection(c) }
                 }
             } catch (e: Exception) {
-                if (isRunning.get()) log("Error servidor: ${e.message}")
+                if (isRunning.get()) log("Server error: ${e.message}")
             }
         }
 
@@ -431,12 +431,12 @@ object NetworkManager {
 
             // Sin esto cualquiera en la red local podía operar el protocolo.
             if (!tokenMatches(msg.optString("auth", null))) {
-                log("Conexión rechazada de $workerId (código inválido)")
+                log("Connection from $workerId refused (wrong code)")
                 writer.println(JSONObject().put("type", "AUTH_FAIL").toString())
                 return
             }
             if (workers.size >= MAX_WORKERS && !workers.containsKey(workerId)) {
-                log("Worker $workerId rechazado: límite de $MAX_WORKERS alcanzado")
+                log("Worker $workerId refused: the limit of $MAX_WORKERS is reached")
                 return
             }
 
@@ -447,7 +447,7 @@ object NetworkManager {
                     val device = msg.optString("device", workerId)
                     val worker = NetWorker(workerId, workerId, device)
                     workers[workerId] = worker
-                    log("Worker conectado: $device ($workerId)")
+                    log("Worker connected: $device ($workerId)")
                     notifyWorkers()
 
                     if (modo == Modo.KANGAROO) {
@@ -462,7 +462,7 @@ object NetworkManager {
                             put("end",    rangeEnd)
                             put("puzzle", puzzleNum)
                         }.toString())
-                        log("Encargo Kangaroo enviado a $device (rango completo)")
+                        log("Kangaroo job sent to $device (full range)")
                     } else {
                         // Asignar bloque
                         val block = nextBlock(workerId, puzzleNum, rangeStart, rangeEnd)
@@ -475,7 +475,7 @@ object NetworkManager {
                             put("puzzle", block.puzzleNum)
                             put("addr",  jobAddr)
                         }.toString())
-                        log("Bloque ${block.blockId} asignado a $device")
+                        log("Block ${block.blockId} assigned to $device")
                     }
                 }
                 "DP" -> {
@@ -504,9 +504,9 @@ object NetworkManager {
                             puntosRecibidos.addAndGet(n.toLong())
                             workers[workerId]?.status = "kangaroo"
                         }
-                        n == -3 -> log("A $workerId se le dice que pare: el puzzle ya no tiene fondos")
-                        n == -2 -> log("Puntos de $workerId en espera: aquí no hay búsqueda en marcha")
-                        else    -> log("Puntos rechazados de $workerId (otro puzzle o mensaje roto)")
+                        n == -3 -> log("$workerId is told to stop: the puzzle has no funds left")
+                        n == -2 -> log("Points from $workerId on hold: no search is running here")
+                        else    -> log("Points from $workerId rejected (another puzzle, or a broken message)")
                     }
                     writer.println(JSONObject().apply {
                         put("type", "DP_OK"); put("n", n)
@@ -546,10 +546,10 @@ object NetworkManager {
                     val clave = msg.optString("key", "").trim().lowercase()
                     val dev = workers[workerId]?.device ?: workerId
                     if (clave.length == 64 && clave.all { it in "0123456789abcdef" }) {
-                        log("CLAVE ENCONTRADA por $dev")
+                        log("KEY FOUND by $dev")
                         onClave?.invoke(dev, clave)
                     } else {
-                        log("Aviso de clave inválido de $workerId")
+                        log("Invalid key notice from $workerId")
                     }
                 }
                 "PROGRESS" -> {
@@ -577,7 +577,7 @@ object NetworkManager {
                 }
                 "DONE" -> {
                     val blockId = msg.optString("block_id")
-                    log("Bloque $blockId completado por $workerId")
+                    log("Block $blockId completed by $workerId")
                     assignedBlocks.remove(workerId)
                     workers[workerId]?.status = "idle"
                     // Registrar bloque globalmente
@@ -603,18 +603,18 @@ object NetworkManager {
                         put("puzzle", puzzleNum)
                     }
                     writer.println(syncData.toString())
-                    log("Sync enviado a $workerId: ${globalScannedBlocks.size} bloques")
+                    log("Sync sent to $workerId: ${globalScannedBlocks.size} blocks")
                 }
                 "MATCH" -> {
                     // Sólo se notifica la dirección. La clave privada NUNCA viaja
                     // por la red: se queda en el dispositivo que la encontró.
                     val addr = msg.optString("addr")
-                    log("Coincidencia de ${workers[workerId]?.device}: $addr")
-                    onLog?.invoke("Coincidencia en ${workers[workerId]?.device ?: workerId}: $addr")
+                    log("Match from ${workers[workerId]?.device}: $addr")
+                    onLog?.invoke("Match on ${workers[workerId]?.device ?: workerId}: $addr")
                 }
             }
         } catch (e: Exception) {
-            log("Error con worker $workerId: ${e.message}")
+            log("Error with worker $workerId: ${e.message}")
             workers.remove(workerId)
             notifyWorkers()
         } finally {
@@ -814,10 +814,10 @@ object NetworkManager {
         if (onKangaroo == null) onKangaroo = { pub, ini, fin, _ ->
             try { arrancarMotorKangaroo(app, pub, ini, fin) }
             catch (e: Throwable) {
-                android.util.Log.e("NetworkManager", "reanudar: ${e.message}", e)
+                android.util.Log.e("NetworkManager", "resume: ${e.message}", e)
             }
         }
-        log("Reanudando como trabajador de $ip tras reiniciarse la app")
+        log("Resuming as a worker of $ip after the app restarted")
         startWorker(ip, tk, app)
         return true
     }
@@ -843,7 +843,7 @@ object NetworkManager {
           while (isRunning.get() && isWorker && intento < 5) {
             if (intento > 0) {
                 val espera = intento * 3000L
-                log("Reintentando en ${espera / 1000} s… (intento ${intento + 1} de 5)")
+                log("Retrying in ${espera / 1000} s… (attempt ${intento + 1} of 5)")
                 try { Thread.sleep(espera) } catch (e: InterruptedException) {
                     Thread.currentThread().interrupt(); return@submit }
             }
@@ -864,7 +864,7 @@ object NetworkManager {
                 // Recibir bloque
                 val response = JSONObject(readLineLimited(reader) ?: return@submit)
                 if (response.optString("type") == "AUTH_FAIL") {
-                    log("Código de acceso incorrecto")
+                    log("Wrong access code")
                     isRunning.set(false); isWorker = false
                     return@submit
                 }
@@ -877,7 +877,7 @@ object NetworkManager {
                         // propios bloques y salía siempre casi a cero por mucho
                         // que llevara hecho el cluster entero.
                         syncWithMaster(masterIp) { n ->
-                            if (n > 0) log("Sincronizados $n bloques ya barridos")
+                            if (n > 0) log("$n already-swept blocks synced")
                         }
                         val block = NetBlock(
                             blockId    = response.getString("block_id"),
@@ -886,8 +886,8 @@ object NetworkManager {
                             puzzleNum  = response.getInt("puzzle"),
                             addr       = response.optString("addr", "")
                         )
-                        log("Bloque recibido: #${block.blockId}")
-                        log("Rango: ${block.rangeStart} → ${block.rangeEnd}")
+                        log("Block received: #${block.blockId}")
+                        log("Range: ${block.rangeStart} → ${block.rangeEnd}")
                         ultimoBloque = block
                         onBlock?.invoke(block)
                     }
@@ -901,7 +901,7 @@ object NetworkManager {
                         // arrancar solo, y "reanudar" no tendría con qué.
                         jobPub = pub; jobIni = ini; jobFin = fin; jobPuzzle = pz
                         pausadoPorMaestro = false
-                        log("Encargo Kangaroo: puzzle #$pz, rango completo")
+                        log("Kangaroo job: puzzle #$pz, full range")
                         onKangaroo?.invoke(pub, ini, fin, pz)
                         arrancarBucleReparto()
                     }
@@ -910,12 +910,12 @@ object NetworkManager {
                 canal.close()
                 return@submit                 // registrado: no hay que reintentar
             } catch (e: Exception) {
-                log("No se pudo conectar con el maestro: ${e.message}")
+                log("Could not connect to the master: ${e.message}")
             }
           }
           if (isRunning.get() && isWorker)
-              log("El maestro no responde. Comprueba la IP, el código y que " +
-                  "los dos móviles estén en la misma WiFi.")
+              log("The master does not answer. Check the IP, the code, and that " +
+                  "both phones are on the same WiFi.")
         }
     }
 
@@ -975,12 +975,12 @@ object NetworkManager {
                 try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
                 try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() }
                 catch (e: Throwable) {}
-                log("El maestro ha mandado parar. El trabajo queda guardado.")
+                log("The master asked to stop. The work is saved.")
             }
             "sigue" -> {
                 if (!pausadoPorMaestro) return
                 pausadoPorMaestro = false
-                log("El maestro ha mandado seguir.")
+                log("The master asked to continue.")
                 // Arrancar el motor no es cosa de aquí: lo hacen las pantallas,
                 // que son las que saben de hilos, CPU y afinidad de núcleos. Se
                 // reanuda lo que hubiera: Kangaroo si había encargo, y si no el
@@ -1049,7 +1049,7 @@ object NetworkManager {
             try {
                 while (isRunning.get() && isWorker && modo == Modo.KANGAROO) {
                     if (puzzleResuelto) {
-                        log("El puzzle ya no tiene fondos: se detiene la búsqueda")
+                        log("The puzzle has no funds left: the search stops")
                         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
                         onPuzzleAgotado?.invoke()
                         break
@@ -1069,8 +1069,8 @@ object NetworkManager {
                                 if (enviarPuntos(pendiente!!)) {
                                     pendiente = null
                                     if (atascoAvisado)
-                                        log("El bloque atascado ha entrado. " +
-                                            "Se vuelve a repartir con normalidad.")
+                                        log("The stuck block got through. " +
+                                            "Sharing is back to normal.")
                                     atascoDesde = 0L; atascoAvisado = false
                                 }
                             }
@@ -1094,9 +1094,9 @@ object NetworkManager {
                                 if (atascoDesde == 0L) atascoDesde = ahora
                                 else if (!atascoAvisado && ahora - atascoDesde > 300_000L) {
                                     atascoAvisado = true
-                                    log("Llevo 5 min sin poder entregar un bloque de " +
-                                        "puntos. Mientras siga atascado este móvil " +
-                                        "busca pero NO aporta al cluster.")
+                                    log("For 5 min now a block of points could not be " +
+                                        "delivered. While it stays stuck this phone " +
+                                        "searches but does NOT contribute to the cluster.")
                                 }
                             }
                         }
@@ -1106,10 +1106,10 @@ object NetworkManager {
                         // nada lo indicara: creías que estabas en un cluster y
                         // llevabas horas solo.
                         if (fallosSeguidos == 3 && antes < 3)
-                            log("El maestro lleva un minuto sin responder. Se sigue " +
-                                "buscando aquí y los puntos se guardan para cuando vuelva.")
+                            log("The master has not answered for a minute. The search " +
+                                "goes on here and the points are kept until it comes back.")
                         if (antes >= 3 && fallosSeguidos == 0)
-                            log("El maestro ha vuelto.")
+                            log("The master is back.")
 
                         // 3) ¿La hemos encontrado aquí? El master no puede
                         //    deducirlo de la tabla (ver el mensaje "KEY"), así
@@ -1119,7 +1119,7 @@ object NetworkManager {
                             if (k.length == 64) { avisarClave(k); avisada = true }
                         }
                     } catch (e: Throwable) {
-                        log("Reparto: ${e.message}")
+                        log("Sharing: ${e.message}")
                     }
                     Thread.sleep(REPARTO_MS)
                 }
@@ -1172,17 +1172,17 @@ object NetworkManager {
                         // hay que guardarlos y volver a intentarlo, porque el
                         // motor ya los dio por enviados y no pueden volver a
                         // salir.
-                        -2 -> { log("El master no está buscando ahora; se reintenta"); false }
+                        -2 -> { log("The master is not searching right now; will retry"); false }
                         // Rechazado por contenido: otro puzzle o mensaje roto.
                         // Reintentarlo no lo va a arreglar, así que se descarta
                         // para no atascar el bucle con algo que no entrará nunca.
-                        -1 -> { log("El master ha rechazado los puntos: ¿otro puzzle?"); true }
+                        -1 -> { log("The master rejected the points: another puzzle?"); true }
                         else -> { fallosSeguidos = 0
                                   if (n > 0) {
                                       puntosEnviados.addAndGet(n.toLong())
                                       ultimoEnvioMs = System.currentTimeMillis()
                                   }
-                                  android.util.Log.d("NetworkManager","$n puntos aceptados"); true }
+                                  android.util.Log.d("NetworkManager","$n points accepted"); true }
                     }
                 }
             }
@@ -1191,7 +1191,7 @@ object NetworkManager {
             // Sólo se escribe el primero: si no, con el maestro caído el
             // registro se llena de la misma línea cada veinte segundos.
             if (fallosSeguidos == 1)
-                log("No se pudieron mandar los puntos, se reintenta: ${e.message}")
+                log("Could not send the points, will retry: ${e.message}")
             false
         }
     }
@@ -1209,9 +1209,9 @@ object NetworkManager {
                     put("auth", authToken)
                 }.toString())
             }
-            log("Clave comunicada al master")
+            log("Key reported to the master")
         } catch (e: Exception) {
-            log("No se pudo avisar de la clave: ${e.message}")
+            log("Could not report the key: ${e.message}")
         }
     }
 
@@ -1396,7 +1396,7 @@ object NetworkManager {
                     // tres o cuatro direcciones y sólo UNA sirve para que te
                     // llamen desde fuera; sin decir cuál, la lista informa poco
                     // más que enseñar la primera.
-                    val nota = if (esVpn(iface.name, txt)) "  ← la de la VPN" else ""
+                    val nota = if (esVpn(iface.name, txt)) "  ← the VPN one" else ""
                     out.add(tipo to "$txt  (${iface.name})$nota")
                 }
             }
@@ -1467,7 +1467,7 @@ object NetworkManager {
                         count++
                     }
                     val puzzleNum = resp.optInt("puzzle", 71)
-                    log("Sync recibido: $count bloques del puzzle #$puzzleNum")
+                    log("Sync received: $count blocks of puzzle #$puzzleNum")
                     onComplete(count)
                 }
                 canal.close()
@@ -1490,8 +1490,8 @@ object NetworkManager {
             val done  = globalScannedBlocks.size
             val pct   = java.math.BigDecimal(done).multiply(java.math.BigDecimal(100))
                             .divide(java.math.BigDecimal(total), 10, java.math.RoundingMode.HALF_UP)
-            "Global: $done/$total bloques (%s%%)".format(pct.toPlainString())
-        } catch (e: Exception) { "Global: ${globalScannedBlocks.size} bloques" }
+            "Global: $done/$total blocks (%s%%)".format(pct.toPlainString())
+        } catch (e: Exception) { "Global: ${globalScannedBlocks.size} blocks" }
     }
 
     fun stop() {
@@ -1518,7 +1518,7 @@ object NetworkManager {
         escuchador = null
         workers.clear()
         assignedBlocks.clear()
-        log("Red detenida")
+        log("Network stopped")
     }
 
     private fun log(msg: String) {
@@ -1537,7 +1537,7 @@ object NetworkManager {
         val ahora = System.currentTimeMillis()
         workers.entries.removeAll { ahora - it.value.vistoMs > CADUCA_MS }
         for (w in workers.values)
-            if (ahora - w.vistoMs > MUDO_MS) w.status = "sin noticias"
+            if (ahora - w.vistoMs > MUDO_MS) w.status = "no news"
         return workers.values.toList()
     }
 
@@ -1575,8 +1575,8 @@ object NetworkManager {
         val w = workers[workerId] ?: return false
         if (w.pausado == pausado) return true
         w.pausado = pausado
-        log(if (pausado) "Se le pide a ${w.device} que pare"
-            else "Se le pide a ${w.device} que siga")
+        log(if (pausado) "${w.device} is asked to stop"
+            else "${w.device} is asked to continue")
         notifyWorkers()
         return true
     }
@@ -1586,8 +1586,8 @@ object NetworkManager {
         val lista = listaWorkers()
         lista.forEach { it.pausado = pausado }
         if (lista.isNotEmpty()) {
-            log(if (pausado) "Se les pide a ${lista.size} trabajador(es) que paren"
-                else "Se les pide a ${lista.size} trabajador(es) que sigan")
+            log(if (pausado) "${lista.size} worker(s) asked to stop"
+                else "${lista.size} worker(s) asked to continue")
             notifyWorkers()
         }
         return lista.size

@@ -69,7 +69,7 @@ object BackupStore {
                 putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Backup")
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
-            "Compartir copia de seguridad")
+            "Share backup")
     }
 
     fun humanSize(bytes: Long): String = when {

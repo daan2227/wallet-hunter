@@ -67,7 +67,7 @@ object TsNet {
             System.loadLibrary("tsbridge"); errorCarga = ""; true
         } catch (t: Throwable) {
             errorCarga = "${t.javaClass.simpleName}: ${t.message ?: "sin detalle"}"
-            android.util.Log.w("TsNet", "libtsbridge no se pudo cargar: $errorCarga")
+            android.util.Log.w("TsNet", "libtsbridge could not be loaded: $errorCarga")
             false
         }
         cargada = ok
@@ -282,18 +282,18 @@ object TsNet {
             val e = l[0]
             val que = when (e.reason) {
                 android.app.ApplicationExitInfo.REASON_CRASH_NATIVE ->
-                    "fallo NATIVO (el código de Go o C reventó)"
+                    "NATIVE crash (the Go or C code blew up)"
                 android.app.ApplicationExitInfo.REASON_CRASH ->
-                    "excepción de Java sin capturar"
+                    "uncaught Java exception"
                 android.app.ApplicationExitInfo.REASON_LOW_MEMORY ->
-                    "el sistema lo mató por falta de memoria"
+                    "the system killed it for lack of memory"
                 android.app.ApplicationExitInfo.REASON_SIGNALED ->
-                    "recibió una señal (${e.status})"
+                    "it got a signal (${e.status})"
                 android.app.ApplicationExitInfo.REASON_ANR ->
-                    "se quedó colgado (ANR)"
+                    "it hung (ANR)"
                 android.app.ApplicationExitInfo.REASON_USER_REQUESTED ->
-                    "lo cerraste tú"
-                else -> "motivo ${e.reason}"
+                    "you closed it"
+                else -> "reason ${e.reason}"
             }
             val desc = e.description?.takeIf { it.isNotBlank() }?.let { ": $it" } ?: ""
             "$que$desc"
@@ -359,9 +359,9 @@ object TsNet {
      */
     fun arrancarEnHilo(ctx: Context, clave: String, nombre: String,
                        onFin: (Boolean, String) -> Unit) {
-        if (!disponible()) { onFin(false, "Esta versión no lleva tsnet dentro"); return }
+        if (!disponible()) { onFin(false, "This build does not include tsnet"); return }
         if (arrancado)     { onFin(true, "");  return }
-        if (arrancando)    { onFin(false, "Ya se está arrancando"); return }
+        if (arrancando)    { onFin(false, "It is already starting"); return }
         arrancando = true
         val dir = carpetaEstado(ctx)
         Thread({
@@ -369,14 +369,14 @@ object TsNet {
             // con "netlinkrib: permission denied". Va aquí y no en el hilo de
             // la pantalla porque enumerar interfaces puede tardar un poco.
             val n = refrescarInterfaces()
-            android.util.Log.i("TsNet", "interfaces pasadas a tsnet: $n")
+            android.util.Log.i("TsNet", "interfaces handed to tsnet: $n")
             // La miga de pan, justo antes de entrar en Go. Si la app muere ahí
             // dentro no se ejecuta nada más, así que este fichero se queda — y
             // al arrancar de nuevo sabremos dónde murió.
             try { ficheroIntento(ctx).writeText("${System.currentTimeMillis()}") }
             catch (t: Throwable) {}
             val e = try { arrancar(clave.trim(), nombre, dir) }
-                    catch (t: Throwable) { t.message ?: "error desconocido" }
+                    catch (t: Throwable) { t.message ?: "unknown error" }
             // Vivo: se borra. Que siga existiendo sólo puede significar muerte.
             olvidarIntento(ctx)
             arrancando = false

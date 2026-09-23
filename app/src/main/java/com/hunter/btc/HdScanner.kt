@@ -50,7 +50,7 @@ object HdScanner {
                 if (a.isEmpty()) null else o.optInt("i", -1) to a
             }
         } catch (e: Exception) {
-            android.util.Log.e("HdScanner", "deriveAddresses falló: ${e.message}")
+            android.util.Log.e("HdScanner", "deriveAddresses failed: ${e.message}")
             emptyList()
         }
 

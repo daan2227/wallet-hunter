@@ -71,7 +71,7 @@ object Tailscale {
                 }
             }
         } catch (e: Exception) {
-            android.util.Log.w("Tailscale", "estado: ${e.message}")
+            android.util.Log.w("Tailscale", "status: ${e.message}")
         }
         return Estado(false, "")
     }
@@ -184,7 +184,7 @@ object Tailscale {
      *   dice qué hacer.
      */
     fun aparatos(apiKey: String): List<Aparato> {
-        if (apiKey.isBlank()) throw java.io.IOException("No hay clave de API")
+        if (apiKey.isBlank()) throw java.io.IOException("There is no API key")
         val url = java.net.URL("https://api.tailscale.com/api/v2/tailnet/-/devices")
         val c = url.openConnection() as java.net.HttpURLConnection
         try {
@@ -195,14 +195,14 @@ object Tailscale {
             val cod = c.responseCode
             if (cod == 401 || cod == 403)
                 throw java.io.IOException(
-                    "Tailscale rechaza la clave. Puede haber caducado —duran 90 " +
-                    "días— o estar mal copiada. Saca otra en login.tailscale.com " +
+                    "Tailscale rejects the key. It may have expired —they last 90 " +
+                    "days— or been copied wrong. Get another at login.tailscale.com " +
                     "→ Settings → Keys.")
             if (cod != 200)
-                throw java.io.IOException("Tailscale ha respondido $cod")
+                throw java.io.IOException("Tailscale answered $cod")
             val txt = c.inputStream.bufferedReader().use { it.readText() }
             val arr = JSONObject(txt).optJSONArray("devices")
-                ?: throw java.io.IOException("Respuesta de Tailscale sin lista de aparatos")
+                ?: throw java.io.IOException("Tailscale answered without a device list")
             val out = ArrayList<Aparato>()
             for (i in 0 until arr.length()) {
                 val d = arr.optJSONObject(i) ?: continue

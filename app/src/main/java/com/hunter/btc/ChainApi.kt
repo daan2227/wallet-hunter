@@ -79,7 +79,7 @@ object ChainApi {
                 preferido = idx
                 return cuerpo
             } catch (e: Exception) {
-                android.util.Log.w("ChainApi", "$host$ruta falló: ${e.message}")
+                android.util.Log.w("ChainApi", "$host$ruta failed: ${e.message}")
             }
         }
         return null
@@ -128,7 +128,7 @@ object ChainApi {
                 if (code == 200 && cuerpo.length == 64) return Envio.Ok(cuerpo)
                 if (cuerpo.isNotEmpty()) { huboRechazo = cuerpo; break }
             } catch (e: Exception) {
-                android.util.Log.w("ChainApi", "broadcast por $host falló: ${e.message}")
+                android.util.Log.w("ChainApi", "broadcast via $host failed: ${e.message}")
             }
         }
         huboRechazo?.let { return Envio.Rechazada(it) }

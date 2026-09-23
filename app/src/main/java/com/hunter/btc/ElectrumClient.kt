@@ -44,7 +44,7 @@ object ElectrumClient {
                     when (val t = BtcAddress.validate(addr, testnet = true)) {
                         is BtcAddress.Result.Valid -> t.info
                         is BtcAddress.Result.Invalid -> {
-                            Log.w("Electrum", "Dirección inválida: ${t.reason}")
+                            Log.w("Electrum", "Invalid address: ${t.reason}")
                             return null
                         }
                     }
@@ -208,10 +208,10 @@ object ElectrumClient {
             } catch (e: java.io.IOException) {
                 // Rechazo del nodo, no fallo de conexión: no sirve reintentar en
                 // otro servidor, porque todos van a decir lo mismo.
-                Log.w("Electrum", "$host rechazó: ${e.message}")
+                Log.w("Electrum", "$host rejected it: ${e.message}")
                 return "ERROR: ${e.message}"
             } catch (e: Exception) {
-                Log.w("Electrum", "$host:$port falló: ${e.message}")
+                Log.w("Electrum", "$host:$port failed: ${e.message}")
             }
         }
         return null
@@ -232,7 +232,7 @@ object ElectrumClient {
                 }
                 if (result != null) { Log.d("Electrum", "OK: $host"); return result }
             } catch (e: Exception) {
-                Log.w("Electrum", "$host:$port falló: ${e.message}")
+                Log.w("Electrum", "$host:$port failed: ${e.message}")
             }
         }
         return null

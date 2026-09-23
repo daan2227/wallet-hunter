@@ -70,7 +70,7 @@ object MatchVault {
             val json = String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8)
             fromJson(JSONArray(json))
         } catch (e: Exception) {
-            android.util.Log.e("MatchVault", "no se pudo abrir el baúl: ${e.javaClass.simpleName}")
+            android.util.Log.e("MatchVault", "could not open the vault: ${e.javaClass.simpleName}")
             emptyList()
         }
     }
@@ -266,7 +266,7 @@ object MatchVault {
             if (parsed.isNotEmpty() && count(ctx) > 0) f.delete()
             added
         } catch (e: Exception) {
-            android.util.Log.e("MatchVault", "ingesta falló: ${e.message}")
+            android.util.Log.e("MatchVault", "ingest failed: ${e.message}")
             0
         }
     }

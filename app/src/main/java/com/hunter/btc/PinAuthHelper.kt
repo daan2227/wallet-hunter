@@ -108,7 +108,7 @@ object PinAuthHelper {
         })
 
         val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Elige tu clave" else "Introduce tu clave"
+            text = if (isSetup) "Pick your code" else "Enter your code"
             textSize = 21f; setTextColor(TXT)
             typeface = AppTheme.title(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
@@ -119,7 +119,7 @@ object PinAuthHelper {
         }
         body.addView(tvLabel)
         body.addView(android.widget.TextView(activity).apply {
-            text = "Seis dígitos"
+            text = "Six digits"
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER
@@ -164,9 +164,9 @@ object PinAuthHelper {
 
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
-                "Apúntalo donde no se te pierda:\nsin él no puedes abrir la cartera."
-            else if (autoBiometric) "Introduce el código o usa la huella"
-            else "Introduce el código"
+                "Write it down where you will not lose it:\nwithout it you cannot open the wallet."
+            else if (autoBiometric) "Enter the code or use your fingerprint"
+            else "Enter the code"
             textSize = AppTheme.SP_BODY; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             setLineSpacing(0f, 1.35f)
@@ -220,8 +220,8 @@ object PinAuthHelper {
                 if (isSetup) {
                     if (firstPin.isEmpty()) {
                         firstPin = pin.toString(); pin.clear(); updateDots()
-                        tvLabel.text = "Repítelo"
-                        tvHint.text = "Escribe el mismo código otra vez"
+                        tvLabel.text = "Again"
+                        tvHint.text = "Type the same code again"
                         tvHint.setTextColor(MUTED)
                     } else if (firstPin == pin.toString()) {
                         WalletManager.savePin(activity, pin.toString())
@@ -229,7 +229,7 @@ object PinAuthHelper {
                     } else {
                         firstPin = ""; shakeAndClear()
                         tvLabel.text = "Try again"
-                        tvHint.text = "No coinciden"
+                        tvHint.text = "They do not match"
                         tvHint.setTextColor(RED)
                     }
                 } else {
@@ -237,7 +237,7 @@ object PinAuthHelper {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Código incorrecto. Inténtalo otra vez."
+                        tvHint.text = "Wrong code. Try again."
                         tvHint.setTextColor(RED)
                     }
                 }
@@ -347,7 +347,7 @@ object PinAuthHelper {
         keypadContainer.addView(keypad)
         keypadWrap.addView(keypadContainer)
         keypadWrap.addView(android.widget.TextView(activity).apply {
-            text = "La clave no sale de este dispositivo"
+            text = "The code never leaves this phone"
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
             typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER

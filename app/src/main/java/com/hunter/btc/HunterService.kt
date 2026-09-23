@@ -68,10 +68,10 @@ class HunterService : Service() {
                         } catch (e: Throwable) {}
                         getSystemService(NotificationManager::class.java)
                             .notify(NOTIF_FG, buildFgNotif(
-                                "En pausa: batería baja",
-                                "Batería al ${batteryLevel}%. " +
-                                if (kang) "El trabajo de Kangaroo queda guardado."
-                                else "Recarga y reinicia."
+                                "Paused: battery low",
+                                "Battery at ${batteryLevel}%. " +
+                                if (kang) "The Kangaroo work is saved."
+                                else "Charge it and start again."
                             ))
                     }
                 }
@@ -84,7 +84,7 @@ class HunterService : Service() {
         instance = this
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        startForeground(NOTIF_FG, buildFgNotif("BTC Hunter activo", "Iniciando..."))
+        startForeground(NOTIF_FG, buildFgNotif("BTC Hunter running", "Starting..."))
         // WakeLock para mantener CPU activo con pantalla apagada
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         wakeLock = pm.newWakeLock(
@@ -125,14 +125,14 @@ class HunterService : Service() {
                 if (pub.length == 66 && ini.isNotEmpty() && fin.isNotEmpty()) {
                     val ok = NetworkManager.arrancarMotorKangaroo(this, pub, ini, fin)
                     android.util.Log.i("HunterService",
-                        "Kangaroo relanzado tras morir la app: $ok")
+                        "Kangaroo restarted after the app died: $ok")
                 }
             }
             // 2) El sitio en el cluster. Va después: si sólo se recupera la
             //    búsqueda, el móvil trabaja pero para nadie.
             NetworkManager.reanudarSesionDeWorker(this)
         } catch (e: Throwable) {
-            android.util.Log.e("HunterService", "recuperar: ${e.message}", e)
+            android.util.Log.e("HunterService", "recover: ${e.message}", e)
         }
     }
 
@@ -156,14 +156,14 @@ class HunterService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val nm = getSystemService(NotificationManager::class.java)
             nm.createNotificationChannel(NotificationChannel(CHANNEL_FG,
-                "Hunter activo", NotificationManager.IMPORTANCE_LOW).apply {
+                "Hunter running", NotificationManager.IMPORTANCE_LOW).apply {
                 setSound(null, null); enableVibration(false)
             })
             val alarmAttr = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_ALARM)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
             nm.createNotificationChannel(NotificationChannel(CHANNEL_MATCH,
-                "Match encontrado", NotificationManager.IMPORTANCE_HIGH).apply {
+                "Match found", NotificationManager.IMPORTANCE_HIGH).apply {
                 enableLights(true); lightColor = Color.YELLOW
                 enableVibration(true)
                 vibrationPattern = longArrayOf(0,300,150,300,150,300)
@@ -178,7 +178,7 @@ class HunterService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH,
             Notification.Builder(this, CHANNEL_MATCH)
-                .setContentTitle("WALLET ENCONTRADA ($count total)")
+                .setContentTitle("WALLET FOUND ($count total)")
                 // lineSequence y no lines: lines() construye la lista ENTERA
                 // de lineas para quedarse con la primera. Con la lista de
                 // coincidencias acotada ya no puede ser enorme, pero esta
@@ -245,24 +245,24 @@ class HunterService : Service() {
                 // es justo lo contrario de lo que pasa.
                 val hilos = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }
                 val vStr = when {
-                    hilos == 0    -> "recogiendo del cluster"
-                    porSeg >= 1e6 -> "${"%.2f".format(porSeg/1e6)}M saltos/s"
-                    else          -> "${"%.0f".format(porSeg)} saltos/s"
+                    hilos == 0    -> "collecting from the cluster"
+                    porSeg >= 1e6 -> "${"%.2f".format(porSeg/1e6)}M jumps/s"
+                    else          -> "${"%.0f".format(porSeg)} jumps/s"
                 }
                 if (hilos == 0) ultimaVel = 0.0
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(
                         "Kangaroo · $vStr",
-                        "$pts puntos · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
+                        "$pts points · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
             } else if (running) {
                 ultimaVel = wps
-                val title = "BTC Hunter · $wStr · $found coincidencias"
+                val title = "BTC Hunter · $wStr · $found matches"
                 val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(title, text))
             } else if (loaded) {
                 getSystemService(NotificationManager::class.java)
-                    .notify(NOTIF_FG, buildFgNotif("BTC Hunter en espera", "CSV cargado, listo para iniciar"))
+                    .notify(NOTIF_FG, buildFgNotif("BTC Hunter idle", "CSV loaded, ready to start"))
             }
 
             // Detectar nuevo match.

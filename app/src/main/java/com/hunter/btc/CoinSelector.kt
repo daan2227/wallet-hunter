@@ -62,7 +62,7 @@ object CoinSelector {
         if (best != null) {
             // El sobrante va a la comisión: crear una salida de polvo costaría
             // más de lo que vale.
-            return Plan(listOf(best), feeNoChange + bestLeft, 0L, vsNoChange, "sin cambio")
+            return Plan(listOf(best), feeNoChange + bestLeft, 0L, vsNoChange, "no change")
         }
 
         // 2) una sola entrada, la más pequeña que cubra
@@ -71,7 +71,7 @@ object CoinSelector {
         val fits = utxos.filter { value(it) >= amountSat + feeOne + DUST }
         if (fits.isNotEmpty()) {
             val u = fits.minByOrNull { value(it) }!!
-            return Plan(listOf(u), feeOne, value(u) - amountSat - feeOne, vsOne, "una entrada")
+            return Plan(listOf(u), feeOne, value(u) - amountSat - feeOne, vsOne, "one input")
         }
 
         // 3) acumular de mayor a menor
@@ -83,11 +83,11 @@ object CoinSelector {
             val fee = feeRate * vs
             if (total < amountSat + fee) continue
             val change = total - amountSat - fee
-            if (change > DUST) return Plan(acc.toList(), fee, change, vs, "varias entradas")
+            if (change > DUST) return Plan(acc.toList(), fee, change, vs, "several inputs")
             // El cambio sería polvo: probar a soltarlo como comisión.
             val vs2 = vsize(acc.size, false)
             if (total >= amountSat + feeRate * vs2)
-                return Plan(acc.toList(), total - amountSat, 0L, vs2, "sin cambio")
+                return Plan(acc.toList(), total - amountSat, 0L, vs2, "no change")
             // Si no llega ni así, seguir sumando entradas.
         }
         return null

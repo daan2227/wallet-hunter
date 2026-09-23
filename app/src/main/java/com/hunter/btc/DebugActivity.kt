@@ -86,10 +86,10 @@ class DebugActivity : AppCompatActivity() {
 
         // ── LIVE ENGINE LOG ───────────────────────────────────────────────
         val liveCard = card()
-        liveCard.addView(label("ENGINE LOG (TIEMPO REAL)"))
+        liveCard.addView(label("ENGINE LOG (LIVE)"))
 
         val tvLive = TextView(this).apply {
-            text = "Sin logs aun... Inicia un scan o puzzle para ver actividad."
+            text = "No logs yet... Start a scan or a puzzle to see activity."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = Typeface.MONOSPACE   // son datos del sistema
             background = GradientDrawable().apply {
@@ -131,27 +131,27 @@ class DebugActivity : AppCompatActivity() {
             setOnClickListener { click() }
         }
 
-        logBtnRow.addView(actionBtn("Refrescar", ACCENT) {
+        logBtnRow.addView(actionBtn("Refresh", ACCENT) {
             startLogRefresh()
         })
-        logBtnRow.addView(actionBtn("Parar", AppTheme.TXT_SEC) {
+        logBtnRow.addView(actionBtn("Stop", AppTheme.TXT_SEC) {
             stopLogRefresh()
         })
-        logBtnRow.addView(actionBtn("Copiar", ACCENT2) {
+        logBtnRow.addView(actionBtn("Copy", ACCENT2) {
             val cm = getSystemService(android.content.ClipboardManager::class.java)
             cm.setPrimaryClip(android.content.ClipData.newPlainText("log", tvLive.text))
-            android.widget.Toast.makeText(this, "Log copiado", android.widget.Toast.LENGTH_SHORT).show()
+            android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show()
         })
-        logBtnRow.addView(actionBtn("Limpiar", RED) {
+        logBtnRow.addView(actionBtn("Clear", RED) {
             clearLogs()
-            tvLive.text = "Logs limpiados."
+            tvLive.text = "Logs cleared."
         })
         liveCard.addView(logBtnRow)
         root.addView(liveCard)
 
         // ── ENGINE STATS ──────────────────────────────────────────────────
         val statsCard = card()
-        statsCard.addView(label("ESTADO DEL ENGINE"))
+        statsCard.addView(label("ENGINE STATUS"))
 
         fun statRow(lbl: String, value: String, color: Int = TXT): LinearLayout {
             return LinearLayout(this).apply {
@@ -175,16 +175,16 @@ class DebugActivity : AppCompatActivity() {
 
         statsCard.addView(statRow("Engine running", if (HunterEngine.isRunning()) "SÍ" else "NO",
             if (HunterEngine.isRunning()) ACCENT else MUTED))
-        statsCard.addView(statRow("CSV cargado", if (HunterEngine.isCsvLoaded()) "SÍ" else "NO",
+        statsCard.addView(statRow("CSV loaded", if (HunterEngine.isCsvLoaded()) "SÍ" else "NO",
             if (HunterEngine.isCsvLoaded()) ACCENT else RED))
-        statsCard.addView(statRow("Velocidad", "${HunterEngine.getWps()} k/s", ACCENT))
-        statsCard.addView(statRow("Keys escaneadas", HunterEngine.getCount().toString()))
+        statsCard.addView(statRow("Speed", "${HunterEngine.getWps()} k/s", ACCENT))
+        statsCard.addView(statRow("Keys scanned", HunterEngine.getCount().toString()))
         statsCard.addView(statRow("Matches", HunterEngine.getFound().toString(), ACCENT))
         root.addView(statsCard)
 
         // ── ARCHIVOS DE LOG ───────────────────────────────────────────────
         val filesCard = card()
-        filesCard.addView(label("ARCHIVOS DE LOG"))
+        filesCard.addView(label("LOG FILES"))
 
         // coincidencias.txt vive ahora en almacenamiento interno; el externo se
         // deja listado sólo para poder borrar restos de versiones anteriores.
@@ -233,7 +233,7 @@ class DebugActivity : AppCompatActivity() {
                 }
             } else {
                 row.addView(TextView(this).apply {
-                    text = "no existe"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+                    text = "does not exist"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
                     typeface = AppTheme.body(context)
                 })
             }
@@ -243,9 +243,9 @@ class DebugActivity : AppCompatActivity() {
 
         // ── ENGINE LOG BUFFER ─────────────────────────────────────────────
         val engLogCard = card()
-        engLogCard.addView(label("LOG BUFFER DEL ENGINE"))
+        engLogCard.addView(label("ENGINE LOG BUFFER"))
         val tvEngLog = TextView(this).apply {
-            text = HunterEngine.popLog().ifEmpty { "Sin logs en buffer" }
+            text = HunterEngine.popLog().ifEmpty { "No logs in the buffer" }
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
             typeface = Typeface.MONOSPACE   // es un registro
             background = GradientDrawable().apply {
@@ -258,14 +258,14 @@ class DebugActivity : AppCompatActivity() {
             movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
         }
         engLogCard.addView(tvEngLog)
-        engLogCard.addView(actionBtn("Refrescar registro", ACCENT2) {
+        engLogCard.addView(actionBtn("Refresh log", ACCENT2) {
             val logs = buildString {
                 repeat(20) {
                     val l = HunterEngine.popLog()
                     if (l.isNotEmpty()) appendLine(l)
                 }
             }
-            tvEngLog.text = logs.ifEmpty { "Buffer vacío" }
+            tvEngLog.text = logs.ifEmpty { "Empty buffer" }
         })
         root.addView(engLogCard)
 
@@ -301,12 +301,12 @@ class DebugActivity : AppCompatActivity() {
         val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
         val maxMb = rt.maxMemory() / 1048576
         val prefs = getSharedPreferences("hunt_prefs", MODE_PRIVATE)
-        sb.appendLine("=== SISTEMA ===")
-        sb.appendLine("RAM: ${usedMb}MB usado / ${maxMb}MB max")
-        sb.appendLine("Scan activo: ${prefs.getBoolean("scan_was_running", false)}")
+        sb.appendLine("=== SYSTEM ===")
+        sb.appendLine("RAM: ${usedMb}MB used / ${maxMb}MB max")
+        sb.appendLine("Scan running: ${prefs.getBoolean("scan_was_running", false)}")
         sb.appendLine("Watchdog: ${if (prefs.getBoolean("watchdog", false)) "ON" else "OFF"}")
         val modeStr = when(prefs.getInt("scan_mode", 0)) { 0 -> "BIP39"; 2 -> "RAWKEY"; else -> "PUZZLE" }
-        sb.appendLine("Modo: $modeStr")
+        sb.appendLine("Mode: $modeStr")
         try {
             val t = java.io.File("/sys/class/thermal/thermal_zone0/temp")
             if (t.exists()) sb.appendLine("CPU Temp: ${(t.readText().trim().toIntOrNull() ?: 0)/1000}C")
@@ -326,7 +326,7 @@ class DebugActivity : AppCompatActivity() {
         try {
             val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "30", "AndroidRuntime:E", "*:S"))
             val lines = java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).readLines()
-            if (lines.isNotEmpty()) { sb.appendLine("=== ERRORES ==="); sb.appendLine(lines.joinToString("\n")) }
+            if (lines.isNotEmpty()) { sb.appendLine("=== ERRORS ==="); sb.appendLine(lines.joinToString("\n")) }
         } catch (e: Exception) {}
 
         // Archivos de log

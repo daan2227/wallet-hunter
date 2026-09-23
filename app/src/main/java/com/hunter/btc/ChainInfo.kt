@@ -44,7 +44,7 @@ object ChainInfo {
         // Sólo mempool.space tiene /v1/fees/recommended; Esplora a secas no.
         // Si ese host no va, se cae a Electrum, que estima por bloques.
         val o = JSONObject(ChainApi.get("/v1/fees/recommended", testnet)
-            ?: throw java.io.IOException("sin respuesta"))
+            ?: throw java.io.IOException("no answer"))
         Fees(
             fastest  = o.optInt("fastestFee", 0),
             halfHour = o.optInt("halfHourFee", 0),
@@ -53,7 +53,7 @@ object ChainInfo {
             minimum  = o.optInt("minimumFee", 1)
         ).takeIf { it.fastest > 0 && it.hour > 0 }
     } catch (e: Exception) {
-        android.util.Log.w("ChainInfo", "fees por mempool.space falló: ${e.message}"); null
+        android.util.Log.w("ChainInfo", "fees via mempool.space failed: ${e.message}"); null
     }
 
     /**
@@ -75,7 +75,7 @@ object ChainInfo {
             Fees(fastest = r, halfHour = m, hour = m, economy = l, minimum = 1)
         }
     } catch (e: Exception) {
-        android.util.Log.w("ChainInfo", "fees por Electrum falló: ${e.message}"); null
+        android.util.Log.w("ChainInfo", "fees via Electrum failed: ${e.message}"); null
     }
 
     /**
@@ -91,7 +91,7 @@ object ChainInfo {
                 val arr = org.json.JSONArray(txt)
                 return (0 until arr.length()).map { arr.getJSONObject(it) }
             } catch (e: Exception) {
-                android.util.Log.w("ChainInfo", "utxos: respuesta ilegible: ${e.message}")
+                android.util.Log.w("ChainInfo", "utxos: unreadable answer: ${e.message}")
             }
         }
         return ElectrumClient.listUnspent(addr, testnet)
@@ -115,8 +115,8 @@ object ChainInfo {
         }
         val porElectrum = ElectrumClient.broadcast(rawHex, testnet)
         return porElectrum
-            ?: "ERROR: no se pudo contactar con ningún nodo para difundirla. " +
-               "Revisa la conexión: la transacción está firmada y puedes reintentarlo."
+            ?: "ERROR: no node could be reached to broadcast it. " +
+               "Check your connection: the transaction is signed and you can try again."
     }
 
     /**

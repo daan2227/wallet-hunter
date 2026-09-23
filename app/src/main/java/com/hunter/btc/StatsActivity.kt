@@ -140,8 +140,8 @@ class StatsActivity : Activity() {
         }
 
         fun formatKeys(k: Long): Pair<String, String> = when {
-            k >= 1_000_000_000_000L -> "%.2f".format(k / 1e12).replace('.', ',') to "billones"
-            k >= 1_000_000_000L     -> "%.2f".format(k / 1e9).replace('.', ',')  to "mil M"
+            k >= 1_000_000_000_000L -> "%.2f".format(k / 1e12).replace('.', ',') to "T"
+            k >= 1_000_000_000L     -> "%.2f".format(k / 1e9).replace('.', ',')  to "B"
             k >= 1_000_000L         -> "%.1f".format(k / 1e6).replace('.', ',')  to "M"
             k >= 1_000L             -> "%.1f".format(k / 1e3).replace('.', ',')  to "K"
             else                    -> k.toString() to ""
@@ -169,7 +169,7 @@ class StatsActivity : Activity() {
             setOnClickListener { finish() }
         })
         header.addView(TextView(this).apply {
-            text = "Historial"; textSize = AppTheme.SP_TITLE; setTextColor(TXT)
+            text = "History"; textSize = AppTheme.SP_TITLE; setTextColor(TXT)
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
         })
@@ -184,7 +184,7 @@ class StatsActivity : Activity() {
         // rotulada "TOTALES GLOBALES": cuatro datos del mismo peso, ninguno
         // destacado. El total de claves revisadas es la cifra de la pantalla;
         // el resto cabe en una línea debajo.
-        root.addView(side(cap("Claves revisadas en total"), top = 6))
+        root.addView(side(cap("Keys checked in total"), top = 6))
         val (tk, tu) = formatKeys(totalKeys)
         val totalRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -205,8 +205,8 @@ class StatsActivity : Activity() {
         })
         root.addView(side(totalRow, top = 8))
         root.addView(side(TextView(this).apply {
-            text = "${sessions.size} sesiones · " +
-                   if (totalMatches > 0) "$totalMatches hallazgo(s)" else "ningún hallazgo todavía"
+            text = "${sessions.size} sessions · " +
+                   if (totalMatches > 0) "$totalMatches find(s)" else "no finds yet"
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
             typeface = AppTheme.body(context)
         }, top = 8, bottom = 24))
@@ -234,16 +234,16 @@ class StatsActivity : Activity() {
             isBaselineAligned = true
         }
         chartHead.addView(TextView(this).apply {
-            text = "Últimos 14 días"; textSize = AppTheme.SP_BODY; setTextColor(TXT)
+            text = "Last 14 days"; textSize = AppTheme.SP_BODY; setTextColor(TXT)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         chartHead.addView(TextView(this).apply {
             text = when (diasSinBuscar) {
-                0    -> "hoy has buscado"
+                0    -> "you searched today"
                 1    -> "1 día sin buscar"
-                14   -> "sin actividad"
-                else -> "$diasSinBuscar días sin buscar"
+                14   -> "no activity"
+                else -> "$diasSinBuscar days without searching"
             }
             textSize = AppTheme.SP_MICRO; setTextColor(MUTED)
             typeface = AppTheme.body(context)
@@ -257,14 +257,14 @@ class StatsActivity : Activity() {
         root.addView(side(chartCard, bottom = 20))
 
         // ── SESIONES ──────────────────────────────────────────────────────
-        root.addView(side(cap("Sesiones"), bottom = 10))
+        root.addView(side(cap("Sessions"), bottom = 10))
         val histCard = card()
         val df = SimpleDateFormat("d MMM", Locale.getDefault())
         val hf = SimpleDateFormat("HH:mm", Locale.getDefault())
 
         if (sessions.isEmpty()) {
             histCard.addView(TextView(this).apply {
-                text = "Todavía no hay ninguna. Arranca un escaneo y aparecerá aquí."
+                text = "None yet. Start a scan and it will show up here."
                 textSize = AppTheme.SP_BODY; setTextColor(MUTED)
                 typeface = AppTheme.body(context)
                 setPadding(dp(17), dp(20), dp(17), dp(20))
@@ -307,7 +307,7 @@ class StatsActivity : Activity() {
                 }
                 val (kv, ku) = formatKeys(keys)
                 col.addView(TextView(this).apply {
-                    text = if (ku.isEmpty()) "$kv claves" else "$kv $ku claves"
+                    text = if (ku.isEmpty()) "$kv keys" else "$kv $ku keys"
                     textSize = AppTheme.SP_BODY; setTextColor(TXT)
                     typeface = AppTheme.bold(context)
                     letterSpacing = -0.01f
@@ -315,10 +315,10 @@ class StatsActivity : Activity() {
                 val dias = ((hoy - ts) / 86_400_000L).toInt()
                 col.addView(TextView(this).apply {
                     text = when (dias) {
-                        0    -> "Hoy ${hf.format(Date(ts))}"
-                        1    -> "Ayer ${hf.format(Date(ts))}"
+                        0    -> "Today ${hf.format(Date(ts))}"
+                        1    -> "Yesterday ${hf.format(Date(ts))}"
                         else -> df.format(Date(ts))
-                    } + " · duró ${formatTime(duration)}"
+                    } + " · lasted ${formatTime(duration)}"
                     textSize = AppTheme.SP_MICRO; setTextColor(MUTED)
                     typeface = AppTheme.body(context)
                     setPadding(0, dp(3), 0, 0)
@@ -343,7 +343,7 @@ class StatsActivity : Activity() {
 
         // ── EXPORTAR / VACIAR ─────────────────────────────────────────────
         //
-        // "Limpiar" era una palabra en rojo de 9sp pegada al rótulo "Sesiones",
+        // "Limpiar" era una palabra en rojo de 9sp pegada al rótulo "Sessions",
         // que es donde menos se espera encontrar algo que borra.
         fun accion(label: String, icon: Int, ancho: Int, rojo: Boolean, click: () -> Unit) =
             LinearLayout(this).apply {
@@ -370,19 +370,19 @@ class StatsActivity : Activity() {
             }
 
         val accionesRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        accionesRow.addView(accion("Exportar", R.drawable.ic_export, 0, false) {
+        accionesRow.addView(accion("Export", R.drawable.ic_export, 0, false) {
             exportarSesiones(sessions)
         }.apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(AppTheme.GAP) })
-        accionesRow.addView(accion("Vaciar", R.drawable.ic_trash, dp(118), true) {
+        accionesRow.addView(accion("Clear", R.drawable.ic_trash, dp(118), true) {
             android.app.AlertDialog.Builder(this)
-                .setTitle("¿Vaciar el historial?")
-                .setMessage("Se borran las ${sessions.size} sesiones guardadas. Esto no se puede deshacer.")
-                .setPositiveButton("Vaciar") { _, _ ->
+                .setTitle("Clear the history?")
+                .setMessage("The ${sessions.size} stored sessions are deleted. This cannot be undone.")
+                .setPositiveButton("Clear") { _, _ ->
                     getSharedPreferences(PREFS_HISTORY, MODE_PRIVATE)
                         .edit().remove(KEY_SESSIONS).apply()
                     finish(); startActivity(intent)
                 }
-                .setNegativeButton("Cancelar", null).show()
+                .setNegativeButton("Cancel", null).show()
         })
         root.addView(side(accionesRow, top = 18))
 
@@ -393,13 +393,13 @@ class StatsActivity : Activity() {
     /** Vuelca el historial a un fichero de texto y abre el selector de envío. */
     private fun exportarSesiones(sessions: List<JSONObject>) {
         if (sessions.isEmpty()) {
-            Toast.makeText(this, "No hay nada que exportar", Toast.LENGTH_SHORT).show(); return
+            Toast.makeText(this, "There is nothing to export", Toast.LENGTH_SHORT).show(); return
         }
         try {
             val df = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
             val txt = buildString {
-                appendLine("Wallet Hunter · historial de sesiones")
-                appendLine("fecha\tmodo\tclaves\thallazgos\tsegundos\tK/s")
+                appendLine("Wallet Hunter · session history")
+                appendLine("date\tmode\tkeys\tfinds\tseconds\tK/s")
                 sessions.forEach {
                     appendLine(listOf(
                         df.format(Date(it.optLong("ts", 0))),
@@ -411,7 +411,7 @@ class StatsActivity : Activity() {
                     ).joinToString("\t"))
                 }
             }
-            val f = java.io.File(filesDir, "historial.txt").apply { writeText(txt) }
+            val f = java.io.File(filesDir, "history.txt").apply { writeText(txt) }
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 this, "$packageName.provider", f)
             startActivity(android.content.Intent.createChooser(
@@ -419,9 +419,9 @@ class StatsActivity : Activity() {
                     type = "text/plain"
                     putExtra(android.content.Intent.EXTRA_STREAM, uri)
                     addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                }, "Exportar el historial"))
+                }, "Export the history"))
         } catch (e: Exception) {
-            Toast.makeText(this, "No se pudo exportar: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Could not export: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }

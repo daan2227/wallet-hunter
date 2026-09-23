@@ -98,46 +98,46 @@ object BtcAddress {
 
     fun validate(addrRaw: String, testnet: Boolean): Result {
         val addr = addrRaw.trim()
-        if (addr.isEmpty()) return Result.Invalid("Dirección vacía")
+        if (addr.isEmpty()) return Result.Invalid("Empty address")
 
         // Bech32 / Bech32m (bc1..., tb1...)
         val lower = addr.lowercase()
         if (lower.startsWith("bc1") || lower.startsWith("tb1")) {
             if (addr != lower && addr != addr.uppercase())
-                return Result.Invalid("Bech32 no admite mayúsculas y minúsculas mezcladas")
+                return Result.Invalid("Bech32 does not allow mixed upper and lower case")
             if (lower.length < 14 || lower.length > 90)
-                return Result.Invalid("Longitud inválida para una dirección Bech32")
+                return Result.Invalid("Invalid length for a Bech32 address")
             val sep = lower.lastIndexOf('1')
             val hrp = lower.substring(0, sep)
             val isTestAddr = hrp == "tb"
             if (isTestAddr != testnet)
                 return Result.Invalid(
-                    if (testnet) "Es una dirección de mainnet y estás en testnet"
-                    else "Es una dirección de testnet y estás en mainnet")
+                    if (testnet) "That is a mainnet address and you are on testnet"
+                    else "That is a testnet address and you are on mainnet")
 
             val dataPart = lower.substring(sep + 1).map { BECH32_CHARSET.indexOf(it) }
-            if (dataPart.any { it < 0 }) return Result.Invalid("Carácter inválido en la dirección")
+            if (dataPart.any { it < 0 }) return Result.Invalid("Invalid character in the address")
 
             val chk = polymod(hrpExpand(hrp) + dataPart)
             val witVer = dataPart[0]
             val expected = if (witVer == 0) BECH32_CONST else BECH32M_CONST
-            if (chk != expected) return Result.Invalid("Checksum incorrecto — revisa la dirección")
+            if (chk != expected) return Result.Invalid("Wrong checksum — check the address")
 
             val program = convertBits(dataPart.subList(1, dataPart.size - 6), 5, 8, false)
-                ?: return Result.Invalid("Dirección Bech32 mal formada")
+                ?: return Result.Invalid("Malformed Bech32 address")
             val type = when {
                 witVer == 0 && program.size == 20 -> Type.P2WPKH
                 witVer == 0 && program.size == 32 -> Type.P2WSH
                 witVer == 1 && program.size == 32 -> Type.P2TR
-                else -> return Result.Invalid("Tipo de dirección no soportado (witness v$witVer)")
+                else -> return Result.Invalid("Unsupported address type (witness v$witVer)")
             }
             return Result.Valid(Info(type, isTestAddr, program))
         }
 
         // Base58Check (1..., 3..., m/n..., 2...)
         val payload = base58CheckDecode(addr)
-            ?: return Result.Invalid("Checksum incorrecto — revisa la dirección")
-        if (payload.size != 21) return Result.Invalid("Dirección Base58 mal formada")
+            ?: return Result.Invalid("Wrong checksum — check the address")
+        if (payload.size != 21) return Result.Invalid("Malformed Base58 address")
         val version = payload[0].toInt() and 0xff
         val hash160 = payload.copyOfRange(1, 21)
         val (type, isTestAddr) = when (version) {
@@ -145,12 +145,12 @@ object BtcAddress {
             0x05 -> Type.P2SH  to false
             0x6f -> Type.P2PKH to true
             0xc4 -> Type.P2SH  to true
-            else -> return Result.Invalid("Prefijo de dirección desconocido (0x%02x)".format(version))
+            else -> return Result.Invalid("Unknown address prefix (0x%02x)".format(version))
         }
         if (isTestAddr != testnet)
             return Result.Invalid(
-                if (testnet) "Es una dirección de mainnet y estás en testnet"
-                else "Es una dirección de testnet y estás en mainnet")
+                if (testnet) "That is a mainnet address and you are on testnet"
+                else "That is a testnet address and you are on mainnet")
         return Result.Valid(Info(type, isTestAddr, hash160))
     }
 }

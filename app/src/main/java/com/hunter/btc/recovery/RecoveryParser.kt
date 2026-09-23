@@ -39,15 +39,15 @@ object RecoveryParser {
             .replace(Regex("\\s+"), " ")
 
         if (cleaned.isEmpty()) {
-            return ParseResult.Error("Ingresa tu seed phrase.")
+            return ParseResult.Error("Type your seed phrase.")
         }
 
         val tokens = cleaned.split(" ").filter { it.isNotEmpty() }
 
         if (tokens.size !in VALID_LENGTHS) {
             return ParseResult.Error(
-                "La seed phrase debe tener 12, 15, 18, 21 o 24 palabras. " +
-                "Detectadas: ${tokens.size}"
+                "A seed phrase has 12, 15, 18, 21 or 24 words. " +
+                "Found: ${tokens.size}"
             )
         }
 
@@ -71,11 +71,11 @@ object RecoveryParser {
 
         if (invalidWords.isNotEmpty()) {
             val details = invalidWords.joinToString(", ") { (pos, word) ->
-                "posición $pos: \"$word\""
+                "position $pos: \"$word\""
             }
             return ParseResult.Error(
-                "Palabras no encontradas en BIP39: $details\n" +
-                "Verifica la ortografía o márcalas con ???"
+                "Words that are not in the BIP39 list: $details\n" +
+                "Check the spelling, or mark them with ???"
             )
         }
 
@@ -83,16 +83,16 @@ object RecoveryParser {
 
         if (missingCount == 0) {
             return ParseResult.Error(
-                "No se encontraron palabras faltantes. " +
-                "Usa ??? para las palabras que no recuerdas."
+                "No missing words were found. " +
+                "Use ??? for the words you do not remember."
             )
         }
 
         if (missingCount > MAX_MISSING) {
             val combinations = estimateCombinations(missingCount)
             return ParseResult.Error(
-                "Tienes $missingCount palabras faltantes (~$combinations combinaciones). " +
-                "El máximo recomendado es $MAX_MISSING."
+                "There are $missingCount missing words (~$combinations combinations). " +
+                "The recommended maximum is $MAX_MISSING."
             )
         }
 
@@ -123,10 +123,10 @@ object RecoveryParser {
 
     fun formatEstimatedTime(seconds: Long): String {
         return when {
-            seconds < 60 -> "$seconds seg"
+            seconds < 60 -> "$seconds s"
             seconds < 3600 -> "${seconds / 60} min"
-            seconds < 86400 -> "${seconds / 3600} horas"
-            else -> "${seconds / 86400} días"
+            seconds < 86400 -> "${seconds / 3600} hours"
+            else -> "${seconds / 86400} days"
         }
     }
 

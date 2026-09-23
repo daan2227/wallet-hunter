@@ -83,7 +83,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(logoRow)
 
         root.addView(android.widget.TextView(this).apply {
-            text = "Escáner de seeds de Bitcoin"
+            text = "Bitcoin seed scanner"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER
@@ -140,15 +140,15 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(40) }
         }
-        statsRow.addView(statCard(R.drawable.ic_play, formatKeys(totalKeys), "Claves", AppTheme.TXT_PRI))
-        statsRow.addView(statCard(R.drawable.ic_target, totalMatches.toString(), "Coincidencias",
+        statsRow.addView(statCard(R.drawable.ic_play, formatKeys(totalKeys), "Keys", AppTheme.TXT_PRI))
+        statsRow.addView(statCard(R.drawable.ic_target, totalMatches.toString(), "Matches",
             if (totalMatches > 0) AppTheme.ACCENT else AppTheme.TXT_PRI))
-        statsRow.addView(statCard(R.drawable.ic_stats, sessions.size.toString(), "Sesiones", AppTheme.TXT_PRI))
+        statsRow.addView(statCard(R.drawable.ic_stats, sessions.size.toString(), "Sessions", AppTheme.TXT_PRI))
         root.addView(statsRow)
 
         // Mensaje de bienvenida
         root.addView(android.widget.TextView(this).apply {
-            text = "Verificando identidad…"
+            text = "Verifying identity…"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER
@@ -221,7 +221,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(logoRow)
 
         root.addView(TextView(this).apply {
-            text = "Escáner de seeds de Bitcoin"
+            text = "Bitcoin seed scanner"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = Gravity.CENTER
@@ -230,7 +230,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Descripción
         root.addView(TextView(this).apply {
-            text = "Elige un PIN para proteger tus carteras."
+            text = "Pick a PIN to protect your wallets."
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = Gravity.CENTER
@@ -239,7 +239,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Botón crear PIN
         root.addView(Button(this).apply {
-            text = "Crear el PIN"
+            text = "Create the PIN"
             textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.BG_DEEP)
             typeface = AppTheme.bold(context)
             isAllCaps = false
@@ -305,7 +305,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             setPadding(dp(20), dp(20), dp(20), dp(12))
         }
         topBar.addView(android.widget.TextView(activity).apply {
-            text = "Código"
+            text = "Code"
             textSize = AppTheme.SP_TITLE; setTextColor(TXT)
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
@@ -328,7 +328,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         val tvLabel = android.widget.TextView(activity).apply {
-            text = if (isSetup) "Elige tu código" else "Introduce el código"
+            text = if (isSetup) "Pick your code" else "Enter the code"
             textSize = 22f; setTextColor(TXT)
             typeface = AppTheme.display(context)
             letterSpacing = -0.02f; gravity = android.view.Gravity.CENTER
@@ -371,8 +371,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val tvHint = android.widget.TextView(activity).apply {
             text = if (isSetup)
-                "Elige tu código. Apúntalo donde no se te pierda:\nsin él no puedes abrir la cartera."
-            else "Introduce el código o usa la huella"
+                "Pick your code. Write it down where you will not lose it:\nwithout it you cannot open the wallet."
+            else "Enter the code or use your fingerprint"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             gravity = android.view.Gravity.CENTER
         }
@@ -424,8 +424,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (isSetup) {
                     if (firstPin.isEmpty()) {
                         firstPin = pin.toString(); pin.clear(); updateDots()
-                        tvLabel.text = "Repítelo"
-                        tvHint.text = "Escribe el mismo código otra vez"
+                        tvLabel.text = "Again"
+                        tvHint.text = "Type the same code again"
                         tvHint.setTextColor(MUTED)
                     } else if (firstPin == pin.toString()) {
                         WalletManager.savePin(activity, pin.toString())
@@ -433,7 +433,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                     } else {
                         firstPin = ""; shakeAndClear()
                         tvLabel.text = "Try again"
-                        tvHint.text = "No coinciden"
+                        tvHint.text = "They do not match"
                         tvHint.setTextColor(RED)
                     }
                 } else {
@@ -441,7 +441,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Código incorrecto. Inténtalo otra vez."
+                        tvHint.text = "Wrong code. Try again."
                         tvHint.setTextColor(RED)
                     }
                 }
