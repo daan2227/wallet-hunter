@@ -33,6 +33,16 @@ object BackupStore {
     fun dir(ctx: Context): File =
         File(ctx.filesDir, "backups").also { it.mkdirs() }
 
+    /**
+     * Donde se dejan los ficheros que se van a compartir (exportaciones,
+     * progreso, historial). El FileProvider sólo da acceso a esta carpeta y a
+     * la de copias: antes daba la raíz entera del almacenamiento interno y
+     * del externo de la app. Nadie de fuera podía pedirla sin permiso, pero
+     * cualquier fallo al elegir el fichero habría servido cualquier cosa.
+     */
+    fun compartidos(ctx: Context): File =
+        File(ctx.filesDir, "shared").also { it.mkdirs() }
+
     /** Copias guardadas, la más reciente primero. */
     fun list(ctx: Context): List<Info> =
         dir(ctx).listFiles()

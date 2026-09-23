@@ -421,7 +421,7 @@ class StatsActivity : Activity() {
                     ).joinToString("\t"))
                 }
             }
-            val f = java.io.File(filesDir, "history.txt").apply { writeText(txt) }
+            val f = java.io.File(BackupStore.compartidos(this), "history.txt").apply { writeText(txt) }
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 this, "$packageName.provider", f)
             startActivity(android.content.Intent.createChooser(

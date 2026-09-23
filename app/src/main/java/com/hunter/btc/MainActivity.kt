@@ -4929,7 +4929,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             json.put("puzzles", puzzlesJson)
             val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
-            val file = java.io.File(getExternalFilesDir(null), "wh_progress_$ts.json")
+            BackupStore.compartidos(this).listFiles()?.filter { it.name.startsWith("wh_progress_") }?.forEach { it.delete() }
+            val file = java.io.File(BackupStore.compartidos(this), "wh_progress_$ts.json")
             file.writeText(json.toString(2))
             val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.provider", file)
             val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
@@ -5043,11 +5044,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private fun redactSecrets(text: String): String = Secretos.tachar(text)
 
     private fun writeAndShareLog(includeCrashLog: Boolean) {
-        val dir = getExternalFilesDir(null) ?: filesDir
-        // Los exports anteriores se quedaban ahí para siempre. En Android 8 y 9
-        // este directorio lo lee cualquier app con READ_EXTERNAL_STORAGE.
-        dir.listFiles()?.filter { it.name.startsWith("wallet_hunter_export_") }
-            ?.forEach { it.delete() }
+        // Interno y no externo: en Android 8 y 9 el externo lo lee cualquier
+        // app con READ_EXTERNAL_STORAGE. Se borran también los que dejaron
+        // versiones anteriores ahí fuera.
+        val dir = BackupStore.compartidos(this)
+        listOfNotNull(dir, getExternalFilesDir(null)).forEach { d ->
+            d.listFiles()?.filter { it.name.startsWith("wallet_hunter_export_") ||
+                                    it.name.startsWith("wh_progress_") }?.forEach { it.delete() }
+        }
 
         val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
         val f = File(dir, "wallet_hunter_export_$ts.txt")

@@ -89,13 +89,8 @@ def limpiar(src):
 # por que se queda, y lo que no este aqui hace fallar --estricto. La diferencia
 # entre una excepcion y una excusa es que la excepcion esta escrita.
 CONOCIDOS = {
-    ("Strings.kt", "ALL"):
-        "El mapa de los ocho idiomas. Hoy no lo lee nadie —fromSystem() no se "
-        "llama y `s` esta fijado a Strings.EN—, asi que las siete tablas que no "
-        "son la inglesa son inalcanzables. Se queda porque borrarlo es tirar la "
-        "traduccion a siete idiomas, y eso es una decision de producto, no "
-        "limpieza. Si se decide que la app es solo en ingles, fuera esto y las "
-        "siete tablas de una vez.",
+    # Vacio. Estuvo ("Strings.kt", "ALL"): el mapa de ocho idiomas que no leia
+    # nadie. Se decidio que la app es en ingles y se quitaron las siete tablas.
 }
 
 ESCRITURA = re.compile(r'\s*(=[^=]|\+=|-=|\*=|/=|\+\+|--)')
