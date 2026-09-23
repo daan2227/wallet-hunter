@@ -17,8 +17,12 @@ android {
         resourceConfigurations += ["en", "es"]
         minSdk 26
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        // Número de versión = número de compilación de la CI. Estaba fijo en
+        // 1 / "1.0": no había forma de saber qué APK estaba instalado ni si
+        // el que se descargaba era más nuevo. En local, sin CI, sale 1.
+        def compilacion = (System.getenv("GITHUB_RUN_NUMBER") ?: "1").toInteger()
+        versionCode compilacion
+        versionName "1.0.$compilacion"
         externalNativeBuild {
             cmake {
                 cppFlags "-std=c++17 -O3"

@@ -109,6 +109,20 @@ jobs:
 
     # Restaura el keystore real si el secret existe; si no, genera el de debug
     # para que la compilación siga funcionando (APK no publicable).
+    # Sin el secret, la clave de respaldo se generaba NUEVA en cada ejecución:
+    # cada APK salía firmado con una clave distinta, y Android no deja
+    # instalar encima una app firmada con otra clave. Había que desinstalar
+    # para actualizar, y desinstalar borra el baúl, las carteras y el PIN.
+    #
+    # Ahora la de respaldo se guarda en la caché y se reutiliza. Es un
+    # parche: la caché caduca si pasan 7 días sin compilar. Lo bueno es el
+    # secret RELEASE_KEYSTORE_B64, que no caduca nunca.
+    - name: Clave de respaldo estable
+      uses: actions/cache@v4
+      with:
+        path: app/debug.keystore
+        key: firma-respaldo-v1
+
     - name: Restore signing keystore
       env:
         KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
@@ -116,8 +130,10 @@ jobs:
         if [ -n "$KEYSTORE_B64" ]; then
           echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
           echo "Using release keystore from secrets."
+        elif [ -f app/debug.keystore ]; then
+          echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the cached fallback key (same as previous builds)."
         else
-          echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the debug key."
+          echo "::warning::RELEASE_KEYSTORE_B64 not set and no cached fallback key — generating a NEW one. APKs from before will not update in place."
           keytool -genkeypair -v -keystore app/debug.keystore \
             -alias androiddebugkey -keyalg RSA -keysize 2048 \
             -validity 10000 -storepass android -keypass android \
