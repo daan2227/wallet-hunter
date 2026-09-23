@@ -49,6 +49,21 @@ for et in $(grep -rho 'return@[a-zA-Z_][a-zA-Z0-9_]*' "$SRC" 2>/dev/null \
 done
 [ "$fallos" -eq 0 ] && echo "  ninguno"
 
+# ── Estado declarado y nunca leido ────────────────────────────────────────
+#
+# El cuarto fallo de la lista, y el que mas caro ha salido: una funcion escrita
+# entera y sin un cable que la conecte compila en verde y no se ve leyendo el
+# fichero, porque lo que falta no esta escrito en ninguna parte. Han sido
+# cuatro —el cierre por inactividad, la proteccion termica, el limite de CPU de
+# Kangaroo y los ocho idiomas—, asi que el quinto lo busca una maquina.
+echo
+if command -v python3 >/dev/null 2>&1; then
+    python3 "$(dirname "$0")/estado-muerto.py" --estricto || fallos=$((fallos+1))
+else
+    echo "=== estado declarado y nunca leido ==="
+    echo "  (sin python3, saltado)"
+fi
+
 echo
 if [ "$fallos" -gt 0 ]; then
     printf '%s problema(s). Arreglalos antes de subir.\n' "$fallos"

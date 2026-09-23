@@ -2,6 +2,13 @@ XLARig/
 *.py
 *.txt
 
+# ...menos las herramientas, que son codigo del repositorio como cualquier
+# otro. El *.py de arriba esta para que no se cuele un script suelto de los
+# que uno deja por ahi al depurar; tools/ NO es eso. Sin esta linea,
+# revisa-kotlin.sh se subio llamando a un fichero que el repositorio no
+# tenia: en un clon limpio la comprobacion falla por un fichero que falta.
+!tools/*.py
+
 # Firma de release — el keystore nunca se versiona.
 *.keystore
 *.jks
