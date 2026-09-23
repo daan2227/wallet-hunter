@@ -25,6 +25,10 @@ class DebugActivity : AppCompatActivity() {
         // pantalla es esta, y sin esto se pintaria en oscuro aunque el
         // usuario tenga elegido el claro.
         AppTheme.init(this)
+        // Cualquier pantalla puede ser la primera si Android revive el
+        // proceso por una notificacion, asi que todas lo llaman. Es
+        // idempotente: engancha los avisos del sistema una sola vez.
+        AppLock.init(this)
 
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE

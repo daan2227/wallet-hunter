@@ -82,9 +82,12 @@ class WalletActivity : FragmentActivity() {
     private var currentTab = 0
     private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var balanceVisible = true
-    private var isLocked = false
-    private var lastInteraction = 0L
-    private val AUTO_LOCK_MS = 2 * 60 * 1000L
+    // Aqui vivian isLocked, lastInteraction y AUTO_LOCK_MS. Los tres estan
+    // fuera: el bloqueo lo decide AppLock para toda la app. AUTO_LOCK_MS
+    // ademas no se leia en ningun sitio —el cierre por inactividad a los dos
+    // minutos nunca llego a existir— y lastInteraction se actualizaba en cada
+    // toque para nada. Dejar estado de bloqueo muerto en el fichero cuyo
+    // bloqueo se acaba de rehacer es como vuelve el fallo.
     private lateinit var tabContent: FrameLayout
     private val labelMap = mapOf(
         "p2pkh_0" to "P2PKH [0]", "p2pkh_1" to "P2PKH [1]", "p2pkh_2" to "P2PKH [2]",
@@ -102,15 +105,15 @@ class WalletActivity : FragmentActivity() {
         // pantalla es esta, y sin esto se pintaria en oscuro aunque el
         // usuario tenga elegido el claro.
         AppTheme.init(this)
+        AppLock.init(this)
         overridePendingTransition(0, 0)
-        lastInteraction = System.currentTimeMillis()
         val mode = intent.getStringExtra("MODE") ?: ""
         when (mode) {
             "seed" -> {
                 val walletId = intent.getStringExtra("WALLET_ID") ?: ""
                 currentWalletName = if (walletId.isEmpty()) "Main Wallet" else walletId
                 isWifMode = false
-                authenticate {
+                conSesion {
                     mnemonic = if (walletId.isEmpty()) WalletManager.loadSeed(this) ?: ""
                                else WalletManager.loadWalletSeed(this, walletId) ?: ""
                     currentWalletId = walletId
@@ -125,7 +128,7 @@ class WalletActivity : FragmentActivity() {
                 wifAddr = intent.getStringExtra("WIF_ADDR") ?: ""
                 currentWalletName = intent.getStringExtra("WALLET_NAME") ?: "WIF Wallet"
                 isWifMode = true
-                authenticate {
+                conSesion {
                     loadAddresses(); buildUI()
                 }
             }
@@ -163,7 +166,15 @@ class WalletActivity : FragmentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (isLocked && (mnemonic.isNotEmpty() || wifKey.isNotEmpty())) {
+        // isLocked se ponia en CADA onPause. onPause salta cuando se pone
+        // delante cualquier otra pantalla: el baul, el selector de ficheros,
+        // el dialogo de compartir. Volver de cualquiera de ellos re-pedia la
+        // huella o el PIN, aunque hubieran pasado dos segundos y el usuario
+        // no se hubiera movido de la app. Ahora la sesion la cierra AppLock
+        // —pantalla apagada, app en segundo plano, proceso nuevo— y aqui solo
+        // se pregunta si sigue abierta.
+        val hayQueAbrir = WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid()
+        if (hayQueAbrir && (mnemonic.isNotEmpty() || wifKey.isNotEmpty())) {
             /* Mostrar overlay oscuro mientras autentica */
             val overlay = android.widget.FrameLayout(this).apply {
                 setBackgroundColor(AppTheme.BG_DEEP)
@@ -181,21 +192,9 @@ class WalletActivity : FragmentActivity() {
             overlay.addView(lockIcon)
             (window.decorView as? android.view.ViewGroup)?.addView(overlay)
             authenticate {
-                isLocked = false
                 (window.decorView as? android.view.ViewGroup)?.removeView(overlay)
             }
         }
-        lastInteraction = System.currentTimeMillis()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        isLocked = true  // bloquear siempre al salir
-    }
-
-    override fun onUserInteraction() {
-        super.onUserInteraction()
-        lastInteraction = System.currentTimeMillis()
     }
 
     override fun onBackPressed() {
@@ -208,20 +207,48 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Entrar en la cartera con la sesion ya abierta.
+     *
+     * Abrir la cartera desde el cajon pedia el PIN DOS veces seguidas por una
+     * sola navegacion: una en MainActivity, que comprueba la sesion antes de
+     * cambiar de pestana, y otra aqui nada mas crearse la pantalla, que
+     * llamaba a authenticate sin mirar nada. Dos candados en fila en el mismo
+     * paso no protegen el doble; solo ensenan a teclear el PIN sin pensar.
+     *
+     * Si no hay PIN configurado, isSessionValid es false para siempre y
+     * authenticate se encarga: su showPinDialog no tiene nada que pedir.
+     */
+    private fun conSesion(onSuccess: () -> Unit) {
+        if (WalletManager.hasPin(this) && PinAuthHelper.isSessionValid()) onSuccess()
+        else authenticate(onSuccess)
+    }
+
     /* -- AUTH: biometria con fallback a PIN -- */
+    /**
+     * Esta pantalla no pasa por PinAuthHelper: tiene su propia huella con
+     * caida a PIN, porque abre la cartera y quiere la huella directa.
+     *
+     * Pero la sesion es UNA para toda la app, asi que abrirla por aqui tiene
+     * que contar igual. Sin esto, desbloquear la cartera con la huella dejaba
+     * lastAuthTime a cero: el baul de dentro volveria a pedir el PIN, y peor,
+     * cada onResume de esta misma pantalla veria la sesion cerrada y pediria
+     * la huella otra vez — un bucle, y justo el fallo que se viene a quitar.
+     */
     private fun authenticate(onSuccess: () -> Unit) {
+        val exito = { PinAuthHelper.markAuthenticated(); onSuccess() }
         val bm = BiometricManager.from(this)
         val canBio = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
         if (canBio) {
             val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
-                        lastInteraction = System.currentTimeMillis(); isLocked = false; onSuccess()
+                        exito()
                     }
                     override fun onAuthenticationError(code: Int, msg: CharSequence) {
                         if (code == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
                             code == BiometricPrompt.ERROR_USER_CANCELED) {
-                            showPinDialog(isSetup = false) { ok -> if (ok) { isLocked = false; onSuccess() } else finish() }
+                            showPinDialog(isSetup = false) { ok -> if (ok) exito() else finish() }
                         } else finish()
                     }
                     override fun onAuthenticationFailed() {}
@@ -232,7 +259,7 @@ class WalletActivity : FragmentActivity() {
                 .setNegativeButtonText("Use PIN")
                 .build())
         } else {
-            showPinDialog(isSetup = false) { ok -> if (ok) { isLocked = false; onSuccess() } else finish() }
+            showPinDialog(isSetup = false) { ok -> if (ok) exito() else finish() }
         }
     }
 

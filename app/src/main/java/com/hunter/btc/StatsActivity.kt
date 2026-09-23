@@ -118,6 +118,10 @@ class StatsActivity : Activity() {
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
         AppTheme.init(this)
+        // Cualquier pantalla puede ser la primera si Android revive el
+        // proceso por una notificacion, asi que todas lo llaman. Es
+        // idempotente: engancha los avisos del sistema una sola vez.
+        AppLock.init(this)
 
         val scroll = ScrollView(this).apply { setBackgroundColor(BG) }
         val root = LinearLayout(this).apply {

@@ -21,14 +21,25 @@ import com.hunter.btc.AppTheme.TXT_SEC
 
 object PinAuthHelper {
 
-    // Timestamp de la última autenticación exitosa
+    /**
+     * Cuándo se autenticó por última vez, o 0 si la sesión está cerrada.
+     *
+     * Lo pone a cero [AppLock] cuando la app sale de primer plano o se apaga
+     * la pantalla. No es un cero mágico: es "no hay sesión".
+     */
     var lastAuthTime: Long = 0L
-    // Tiempo máximo sin re-autenticar (30 segundos en background)
-    private const val AUTH_TIMEOUT_MS = 30_000L
 
-    fun isSessionValid(): Boolean {
-        return System.currentTimeMillis() - lastAuthTime < AUTH_TIMEOUT_MS
-    }
+    /**
+     * ¿Hay sesión abierta?
+     *
+     * Ya NO caduca sola a los treinta segundos. Ese reloj era lo que hacía que
+     * el PIN saliera dos veces seguidas por mirar el baúl y volver: nadie
+     * había salido de la app, simplemente había pasado medio minuto. Ahora la
+     * sesión dura lo que dure el uso de la app, y la cierra [AppLock] en los
+     * momentos que de verdad lo son —pantalla apagada, app en segundo plano,
+     * proceso nuevo—, que es donde el PIN protege algo.
+     */
+    fun isSessionValid(): Boolean = lastAuthTime > 0L
 
     fun markAuthenticated() {
         lastAuthTime = System.currentTimeMillis()

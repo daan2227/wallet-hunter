@@ -661,6 +661,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.os.Process.killProcess(android.os.Process.myPid())
         }
         AppTheme.init(this)
+        AppLock.init(this)
         migrarTablaPuzzles()
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = BG_DEEP
@@ -6333,19 +6334,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     }
 
-    private var appPausedTime = 0L
     private var thermalThrottleEnabled = true
     private var lastThermalCheck = 0L
     private var originalCpuLimit = 70
     private var isThrottled = false
     private var tvThermal: TextView? = null
-    private val LOCK_TIMEOUT_MS = 15_000L // 15 seg en background
 
     override fun onResume() {
         super.onResume()
         handler.post(updater)
-        val elapsed = System.currentTimeMillis() - appPausedTime
-        if (appPausedTime > 0 && elapsed > LOCK_TIMEOUT_MS && WalletManager.hasPin(this)) {
+        // Antes esto miraba cuanto habia pasado desde su propio onPause, con
+        // un limite de 15 s. Pero onPause salta al abrir la cartera, el
+        // cluster, las estadisticas o el selector de ficheros, asi que volver
+        // de cualquiera de ellas pasados quince segundos pedia el PIN sin que
+        // nadie hubiera salido de la app. Ahora lo decide AppLock, que sabe la
+        // diferencia entre cambiar de pantalla y dejar la app.
+        if (WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid()) {
             PinAuthHelper.show(this) { ok -> if (!ok) finish() }
         }
         // Auto-reinicio: si el engine estaba corriendo pero el servicio fue matado
@@ -6392,7 +6396,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         handler.removeCallbacks(updater)
-        appPausedTime = System.currentTimeMillis()
         savePuzzleCheckpoint()
     }
 
