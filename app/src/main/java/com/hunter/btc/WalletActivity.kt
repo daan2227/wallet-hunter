@@ -562,7 +562,7 @@ class WalletActivity : FragmentActivity() {
                         setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
                     }
                 }
-                btn.setTextColor(AppTheme.BG_DEEP)
+                btn.setTextColor(AppTheme.ON_ACCENT)
                 btn.typeface = AppTheme.bold(btn.context)
                 btn.background = GradientDrawable().apply {
                     setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
@@ -906,7 +906,7 @@ class WalletActivity : FragmentActivity() {
                             var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
                             row("Total out","%.8f BTC".format(totalOut/1e8))
                             val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
-                            val btnExplorer=android.widget.Button(this).apply{text="View in the explorer";textSize=AppTheme.SP_BODY;setTextColor(BG_DEEP);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
+                            val btnExplorer=android.widget.Button(this).apply{text="View in the explorer";textSize=AppTheme.SP_BODY;setTextColor(AppTheme.ON_ACCENT);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
                             val btnClose=android.widget.Button(this).apply{text="Close";textSize=AppTheme.SP_BODY;setTextColor(TXT_PRI);typeface=AppTheme.medium(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}
                             btnRow.addView(btnExplorer);btnRow.addView(btnClose);sheet.addView(btnRow)
                             val txDlg=AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
@@ -1307,12 +1307,12 @@ class WalletActivity : FragmentActivity() {
         }
         btnSend.addView(android.widget.ImageView(this).apply {
             setImageResource(R.drawable.ic_send)
-            setColorFilter(AppTheme.BG_DEEP)
+            setColorFilter(AppTheme.ON_ACCENT)
             layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(10) }
         })
         btnSend.addView(TextView(this).apply {
             text = "Review the send"
-            textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.BG_DEEP)
+            textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
         })
         ll.addView(btnSend)
@@ -2239,7 +2239,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(etWif)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnImport = Button(this).apply {
-            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2424,7 +2424,7 @@ class WalletActivity : FragmentActivity() {
         })
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
         val btnNext = Button(this).apply {
-            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.display(context)
             background = GradientDrawable().apply { setColor(AMBER); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) }
@@ -2501,7 +2501,7 @@ class WalletActivity : FragmentActivity() {
         sheet.addView(etAddr); sheet.addView(etLabel)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnAdd = Button(this).apply {
-            text = "Watch"; textSize = AppTheme.SP_BODY; setTextColor(BG_DEEP)
+            text = "Watch"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null

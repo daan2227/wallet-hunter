@@ -240,7 +240,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         // Botón crear PIN
         root.addView(Button(this).apply {
             text = "Create the PIN"
-            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.BG_DEEP)
+            textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null

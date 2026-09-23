@@ -127,7 +127,7 @@ class DebugActivity : AppCompatActivity() {
             this.text = text; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
             typeface = AppTheme.medium(context)
             isAllCaps = false
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             background = GradientDrawable().apply {
                 setColor(color); cornerRadius = dp(8).toFloat()
             }

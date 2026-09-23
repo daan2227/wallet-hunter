@@ -814,7 +814,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         header.addView(TextView(this).apply {
             text = "\u20BF"
             textSize = 15f
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.display(context)
             gravity = Gravity.CENTER
             background = Ui.cardBg(9, AppTheme.ACCENT, context)
@@ -1798,7 +1798,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnToggle = Button(this).apply {
             text = s.start
             textSize = AppTheme.SP_BODY + 1f
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null   // sin la sombra de Material sobre el plano
@@ -2214,7 +2214,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnKangaroo = Button(this).apply {
             text = "Search with Kangaroo"
             textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null
@@ -2686,7 +2686,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnPuzzleToggle = Button(this).apply {
             text = "Start puzzle"
             textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false
             stateListAnimator = null
@@ -3674,7 +3674,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         val btnStartRecovery = Button(this).apply {
             text = "Start recovery"; textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
             typeface = AppTheme.bold(context)
             isAllCaps = false
@@ -3696,7 +3696,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val btnSaveWallet = Button(this).apply {
             text = "Save to wallet"; textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.BG_DEEP)
+            setTextColor(AppTheme.ON_ACCENT)
             background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
             typeface = AppTheme.bold(context)
             isAllCaps = false

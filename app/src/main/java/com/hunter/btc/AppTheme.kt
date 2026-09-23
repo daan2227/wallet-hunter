@@ -70,6 +70,22 @@ object AppTheme {
 
     /* ── Semánticos: un color, un significado ─────────────────────────── */
     val ACCENT get() = Color.parseColor("#00C896")   // acción / positivo / corriendo
+
+    /**
+     * Lo que va ENCIMA del acento: texto de un botón principal, un icono
+     * dentro de un chip verde.
+     *
+     * No es un color más de la paleta, es una corrección. Todo esto se pintaba
+     * con [BG_DEEP], que en oscuro es casi negro y sobre el verde se lee
+     * perfectamente. Con el tema claro BG_DEEP pasa a ser #F4F4F4: blanco roto
+     * sobre verde medio, 2,3:1, ilegible. Diecisiete botones —incluido el de
+     * arrancar el escaneo y el de revisar un envío— se quedaban sin texto
+     * visible en cuanto se cambiaba de tema.
+     *
+     * Es fijo a propósito: el acento no cambia con el tema, así que lo que va
+     * encima tampoco debe.
+     */
+    val ON_ACCENT get() = Color.parseColor("#0F1210")
     val RED    get() = Color.parseColor("#F04040")   // destructivo / error
     val WARN   get() = Color.parseColor("#FF6B35")   // aviso, no error
     val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo
@@ -79,9 +95,12 @@ object AppTheme {
      * Sube con el resto: a #1E1414 le pasaba lo mismo que a las tarjetas, sólo
      * que al revés — quedaba por DEBAJO del panel nuevo, así que el botón de
      * parar se hundía en vez de destacar. Es el mismo nivel que [BG_ELEV] con
-     * el rojo dentro.
+     * el rojo dentro. Y en claro es un rosa pálido, no el mismo granate: sobre
+     * una tarjeta blanca, un fondo oscuro con el texto en rojo encima no se
+     * lee ni pega con nada.
      */
-    val BG_STOP get() = Color.parseColor("#331F1F")
+    val BG_STOP get() = if (isDark) Color.parseColor("#331F1F")
+                        else Color.parseColor("#FBE3E3")
 
     /* Compatibilidad: AMBER y GREEN eran el mismo verde con dos nombres. */
     val AMBER  get() = ACCENT

@@ -99,10 +99,15 @@ class StatsActivity : Activity() {
                 // se deja un tocón gris para que el hueco se vea.
                 val frac = v.toDouble() / max
                 val alto = if (v == 0L) 4f * d else (height * frac).toFloat().coerceAtLeast(4f * d)
+                // El verde apagado de los días flojos era un #2A4A40 fijo:
+                // elegido a ojo para que se viera sobre el fondo oscuro, y
+                // por tanto invisible sobre el claro. Es el acento con un 40 %
+                // de alpha, que se mezcla con el fondo que haya debajo y sale
+                // bien en los dos temas.
                 p.color = when {
                     v == 0L      -> AppTheme.BG_ELEV
                     frac > 0.70  -> AppTheme.ACCENT
-                    else         -> 0xFF2A4A40.toInt()
+                    else         -> (AppTheme.ACCENT and 0x00FFFFFF) or (0x66 shl 24)
                 }
                 val x = i * (ancho + hueco)
                 c.drawRoundRect(x, height - alto, x + ancho, height.toFloat(), radio, radio, p)

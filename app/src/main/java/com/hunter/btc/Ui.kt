@@ -168,7 +168,7 @@ object Ui {
     fun primary(ctx: Context, label: String, height: Int = 56) = TextView(ctx).apply {
         text = label
         textSize = AppTheme.SP_TITLE
-        setTextColor(AppTheme.BG_DEEP)
+        setTextColor(AppTheme.ON_ACCENT)
         typeface = AppTheme.bold(ctx)
         gravity = Gravity.CENTER
         background = cardBg(AppTheme.R_KEY, AppTheme.ACCENT, ctx)
