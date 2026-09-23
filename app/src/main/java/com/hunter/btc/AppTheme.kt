@@ -36,27 +36,52 @@ object AppTheme {
     }
 
     /* ── Superficies ──────────────────────────────────────────────────────
-       Sin bordes: la elevación la hace el tono, no una línea. */
-    val BG_DEEP   get() = if (isDark) Color.parseColor("#0E0E0E") else Color.parseColor("#F4F4F4")
-    val BG_PANEL  get() = if (isDark) Color.parseColor("#161616") else Color.parseColor("#FFFFFF")
-    val BG_CARD   get() = if (isDark) Color.parseColor("#161616") else Color.parseColor("#FFFFFF")
-    val BG_ELEV   get() = if (isDark) Color.parseColor("#1D1D1D") else Color.parseColor("#E8E8E8")
-    /** Superficie de un control pulsable en reposo (teclas, botones secundarios). */
-    val BG_KEY    get() = if (isDark) Color.parseColor("#1A1A1A") else Color.parseColor("#EDEDED")
-    val BORDER_C  get() = if (isDark) Color.parseColor("#222222") else Color.parseColor("#E0E0E0")
+       Sin bordes: la elevación la hace el tono, no una línea.
 
-    /* ── Texto ─────────────────────────────────────────────────────────── */
+       Y para que el tono pueda hacerla tiene que haber tono. El tema oscuro
+       empezaba en #0E0E0E y las tarjetas iban a #161616: ocho valores de
+       diferencia sobre 255, que en un móvil a media luz no se ven. El efecto
+       no era sólo "está muy oscuro", era que la pantalla se leía como una
+       sola mancha negra con texto encima: sin separación entre el fondo y la
+       tarjeta no hay manera de ver qué va con qué, y todo parece amontonado
+       aunque el espaciado esté bien.
+
+       Ahora cada nivel sube unos diez valores sobre el anterior — fondo,
+       tarjeta, elemento elevado —, que es el escalón mínimo que se distingue
+       sin mirar fijamente. El más oscuro sube de #0E a #19, porque el negro
+       casi puro no es "elegante" en una pantalla OLED: es el sitio donde el
+       resto de tonos no tiene contra qué destacar. */
+    val BG_DEEP   get() = if (isDark) Color.parseColor("#191919") else Color.parseColor("#F4F4F4")
+    val BG_PANEL  get() = if (isDark) Color.parseColor("#232323") else Color.parseColor("#FFFFFF")
+    val BG_CARD   get() = if (isDark) Color.parseColor("#232323") else Color.parseColor("#FFFFFF")
+    val BG_ELEV   get() = if (isDark) Color.parseColor("#2D2D2D") else Color.parseColor("#E8E8E8")
+    /** Superficie de un control pulsable en reposo (teclas, botones secundarios). */
+    val BG_KEY    get() = if (isDark) Color.parseColor("#282828") else Color.parseColor("#EDEDED")
+    val BORDER_C  get() = if (isDark) Color.parseColor("#383838") else Color.parseColor("#E0E0E0")
+
+    /* ── Texto ───────────────────────────────────────────────────────────
+       TXT_SEC sube de #8A a #A4 y TXT_MUTED de #4A a #6C: al aclarar el
+       fondo, los grises de antes perdían el contraste que tenían. #A4 sobre
+       la tarjeta da 6,3:1 y #F2 da 16:1, los dos por encima del mínimo que
+       se lee con el móvil al sol. */
     val TXT_PRI   get() = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#0A0A0A")
-    val TXT_SEC   get() = if (isDark) Color.parseColor("#8A8A8A") else Color.parseColor("#444444")
-    val TXT_MUTED get() = if (isDark) Color.parseColor("#4A4A4A") else Color.parseColor("#909090")
+    val TXT_SEC   get() = if (isDark) Color.parseColor("#A4A4A4") else Color.parseColor("#444444")
+    val TXT_MUTED get() = if (isDark) Color.parseColor("#6C6C6C") else Color.parseColor("#909090")
 
     /* ── Semánticos: un color, un significado ─────────────────────────── */
     val ACCENT get() = Color.parseColor("#00C896")   // acción / positivo / corriendo
     val RED    get() = Color.parseColor("#F04040")   // destructivo / error
     val WARN   get() = Color.parseColor("#FF6B35")   // aviso, no error
     val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo
-    /** Fondo tenue del botón de parar. */
-    val BG_STOP get() = Color.parseColor("#1E1414")
+    /**
+     * Fondo tenue del botón de parar.
+     *
+     * Sube con el resto: a #1E1414 le pasaba lo mismo que a las tarjetas, sólo
+     * que al revés — quedaba por DEBAJO del panel nuevo, así que el botón de
+     * parar se hundía en vez de destacar. Es el mismo nivel que [BG_ELEV] con
+     * el rojo dentro.
+     */
+    val BG_STOP get() = Color.parseColor("#331F1F")
 
     /* Compatibilidad: AMBER y GREEN eran el mismo verde con dos nombres. */
     val AMBER  get() = ACCENT

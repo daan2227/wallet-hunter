@@ -687,10 +687,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         var puzzleScroll: ScrollView? = null
         var walletScroll: ScrollView? = null
         var recoveryScroll: ScrollView? = null
+        // Qué pestaña se está montando. Antes esto se decía con un Toast por
+        // pestaña —cuatro avisos encadenados en cada arranque, que el usuario
+        // ve SIEMPRE aunque no falle nada—. Lo que hacía falta de verdad era
+        // saber dónde murió si muere, y para eso basta una variable que el
+        // catch de abajo mete en el mensaje y en crash_log.txt. El diagnóstico
+        // queda igual de completo y el arranque queda limpio.
+        var fase = "scan"
         try {
-            android.widget.Toast.makeText(this, "Building Scan...", android.widget.Toast.LENGTH_SHORT).show()
             scanScroll = buildScanTab()
-            android.widget.Toast.makeText(this, "Building Puzzle...", android.widget.Toast.LENGTH_SHORT).show()
+            fase = "puzzle"
             try {
                 puzzleScroll = buildPuzzleTab()
             } catch (e: Throwable) {
@@ -698,9 +704,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
                 java.io.File(filesDir, "crash_log.txt").appendText("\n$msg\n${e.stackTraceToString()}\n")
             }
-            android.widget.Toast.makeText(this, "Building Wallet...", android.widget.Toast.LENGTH_SHORT).show()
+            fase = "wallet"
             walletScroll = buildWalletTab()
-            android.widget.Toast.makeText(this, "Building Recovery...", android.widget.Toast.LENGTH_SHORT).show()
+            fase = "recovery"
             recoveryScroll = buildRecoveryTab()
 
         // Throwable y no Exception. Esto no es puntillismo: un
@@ -715,10 +721,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // Escribir error a archivo para diagnóstico
             try {
                 val errFile = java.io.File(filesDir, "crash_log.txt")
-                errFile.writeText("CRASH: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
+                errFile.writeText("CRASH building $fase: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
             } catch (ex: Throwable) {}
             android.widget.Toast.makeText(this,
-                "CRASH: ${e.javaClass.simpleName}: ${e.message}",
+                "CRASH building $fase: ${e.javaClass.simpleName}: ${e.message}",
                 android.widget.Toast.LENGTH_LONG).show()
             finish(); return
         }
@@ -4907,9 +4913,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     return
                 }
 
-                val batchNow = HunterEngine.getBatchSize()
-                Toast.makeText(this, "threads=$threads · cpu=$cpu% · batch=$batchNow",
-                    Toast.LENGTH_SHORT).show()
+                // Aquí salía un toast con "threads=… · cpu=… · batch=…" en cada
+                // arranque. Son los tres ajustes que el usuario acaba de poner
+                // él mismo en la pestaña de Config, escritos en jerga, encima
+                // de una pantalla que ya cambia el botón a STOP y empieza a
+                // contar. El dato sigue estando —y con más— en la pantalla de
+                // Debug, que es donde se va a mirar cuando importe.
 
                 // Guardar estado para auto-reinicio
                 prefs.edit()
