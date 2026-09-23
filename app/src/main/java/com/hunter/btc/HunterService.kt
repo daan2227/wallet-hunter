@@ -177,17 +177,36 @@ class HunterService : Service() {
         val pi = PendingIntent.getActivity(this, 0,
             Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+
+        /* ESTO ENSEÑABA LA CLAVE PRIVADA. `details` es la cadena del motor,
+         * "MATCH|ADDR:…|BTC:…|WIF:…|HEX:<clave privada>", y iba tal cual al
+         * cuerpo de la notificación. Una notificación sale en la pantalla de
+         * bloqueo, se copia al reloj y al historial de notificaciones, y la lee
+         * cualquier app con acceso a notificaciones. Una clave hallada es
+         * dinero.
+         *
+         * De la cadena sólo se saca la dirección, que es pública. La clave
+         * está en el baúl cifrado, que es donde tiene que estar. */
+        val dirs = Regex("ADDR:([^|\\s]+)").findAll(details).map { it.groupValues[1] }.take(5).toList()
+        val corto = dirs.firstOrNull()?.let { "Address: $it" } ?: "Open the app to see it"
+        val largo = (if (dirs.isEmpty()) "" else dirs.joinToString("\n") { "Address: $it" } + "\n\n") +
+                    "The key is saved in the finds vault."
+
+        // En la pantalla de bloqueo, sin dirección: decirle a quien coja el
+        // móvil que aquí hay una clave hallada es ya decir demasiado.
+        val publica = Notification.Builder(this, CHANNEL_MATCH)
+            .setContentTitle("Wallet Hunter")
+            .setContentText("Match found — unlock to see it")
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .build()
+
         getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH,
             Notification.Builder(this, CHANNEL_MATCH)
                 .setContentTitle("WALLET FOUND ($count total)")
-                // lineSequence y no lines: lines() construye la lista ENTERA
-                // de lineas para quedarse con la primera. Con la lista de
-                // coincidencias acotada ya no puede ser enorme, pero esta
-                // funcion recibe una cadena de fuera y no tiene por que
-                // fiarse: aqui es donde murio la app, y la traza no decia
-                // nada del escaneo, solo StringsKt.lines().
-                .setContentText(details.lineSequence().firstOrNull()?.take(80) ?: "")
-                .setStyle(Notification.BigTextStyle().bigText(details.take(400)))
+                .setContentText(corto)
+                .setStyle(Notification.BigTextStyle().bigText(largo))
+                .setVisibility(Notification.VISIBILITY_PRIVATE)
+                .setPublicVersion(publica)
                 .setSmallIcon(android.R.drawable.ic_dialog_alert)
                 .setContentIntent(pi).setAutoCancel(true).build())
     }

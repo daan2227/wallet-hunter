@@ -772,7 +772,11 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         double btc=0.0; /* check via Electrum */
         char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
         save_match(pkhex,addr,btc,wif,extra);
-        add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" PRIV:"+pkhex);
+        /* Sin la clave. Este log lo ensena la pantalla de Debug y su boton
+           "Copy" lo manda al portapapeles: la clave privada del puzzle
+           resuelto iba entera. La clave ya viaja por save_match al baul
+           cifrado, que es el unico sitio donde tiene que estar. */
+        add_log(std::string("*** PUZZLE SOLVED *** ADDR:")+addr+" (key saved to the vault)");
         /* SE ACABO.
          *
          * Con un objetivo unico —que es lo que hay en modo puzzle— encontrarlo

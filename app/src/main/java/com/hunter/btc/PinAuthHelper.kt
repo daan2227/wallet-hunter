@@ -248,7 +248,7 @@ object PinAuthHelper {
                         dlg?.dismiss(); onResult(true)
                     } else {
                         shakeAndClear()
-                        tvHint.text = "Wrong code. Try again."
+                        tvHint.text = WalletManager.avisoPinFallido(activity)
                         tvHint.setTextColor(RED)
                     }
                 }

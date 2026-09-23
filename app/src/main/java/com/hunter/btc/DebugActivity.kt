@@ -152,7 +152,11 @@ class DebugActivity : AppCompatActivity() {
         })
         logBtnRow.addView(actionBtn("Copy", ACCENT2) {
             val cm = getSystemService(android.content.ClipboardManager::class.java)
-            cm.setPrimaryClip(android.content.ClipData.newPlainText("log", tvLive.text))
+            // Tachado: el log del motor ha llevado claves privadas —la del
+            // puzzle resuelto iba entera— y "Export log" ya las tachaba. Este
+            // botón copiaba el mismo texto sin tachar.
+            cm.setPrimaryClip(android.content.ClipData.newPlainText(
+                "log", Secretos.tachar(tvLive.text.toString())))
             android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show()
         })
         logBtnRow.addView(actionBtn("Clear", RED) {

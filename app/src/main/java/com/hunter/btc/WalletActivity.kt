@@ -405,7 +405,7 @@ class WalletActivity : FragmentActivity() {
                     dlg?.dismiss(); onResult(true)
                 } else {
                     pin.clear(); updateDots()
-                    tvStatus.text = "Wrong PIN"; tvStatus.setTextColor(RED)
+                    tvStatus.text = WalletManager.avisoPinFallido(this); tvStatus.setTextColor(RED)
                 }
             }
         }
@@ -1592,6 +1592,12 @@ class WalletActivity : FragmentActivity() {
                 tvStatus.text = "The amount is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
+            // Por debajo de 546 sat la red rechaza la salida por "polvo": se
+            // firmaba y fallaba al emitirla, con un error que no decía por qué.
+            if (Math.round(amtBtc * 1e8) < CoinSelector.DUST) {
+                tvStatus.text = "The minimum is 546 sat (0.00000546 BTC): the network rejects smaller amounts."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
             val check = BtcAddress.validate(toAddr, isTestnet)
             if (check is BtcAddress.Result.Invalid) {
                 tvStatus.text = "Invalid address: ${check.reason}"
@@ -1646,7 +1652,7 @@ class WalletActivity : FragmentActivity() {
                         else (0 until fetched.length()).map { fetched.getJSONObject(it) }
                     if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "None of the selected UTXOs is still available"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
 
-                    val amtSat = (amtBtc * 1e8).toLong()
+                    val amtSat = Math.round(amtBtc * 1e8)
 
                     // La tarifa era un campo con 5 sat/vB por defecto: un número
                     // fijo que no sabe cómo está la mempool. Se pregunta, y el
@@ -2452,8 +2458,18 @@ class WalletActivity : FragmentActivity() {
                 when (pos) {
                     0 -> showWalletSelectorDialog(forceShow = true)
                     1 -> authenticate {
-                        val msg = if (isWifMode) "WIF: $wifKey" else mnemonic
-                        AlertDialog.Builder(this).setTitle("Do not show it to anyone").setMessage(msg).setPositiveButton("Got it", null).show()
+                        // Numerada, una palabra por línea: era un único renglón
+                        // de 12 o 24 palabras seguidas, que es justo como se
+                        // apunta mal una. Y sin capturas —FLAG_SECURE—, igual
+                        // que al crearla: una captura de la seed acaba en la
+                        // galería y de ahí en la nube.
+                        val msg = if (isWifMode) "WIF: $wifKey"
+                                  else mnemonic.split(" ").mapIndexed { i, w -> "${i + 1}. $w" }
+                                           .joinToString("\n")
+                        val d = AlertDialog.Builder(this).setTitle("Do not show it to anyone")
+                            .setMessage(msg).setPositiveButton("Got it", null).create()
+                        d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                        d.show()
                     }
                     2 -> authenticate { showPinDialog(isSetup = true) {} }
                     3 -> {

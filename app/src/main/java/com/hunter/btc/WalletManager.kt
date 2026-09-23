@@ -212,10 +212,73 @@ object WalletManager {
             .putString(PREF_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
             .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
+            // Un PIN nuevo empieza sin fallos a cuestas.
+            .remove(PREF_FALLOS).remove(PREF_ESPERA)
             .apply()
     }
 
+    // ── Intentos de PIN ──────────────────────────────────────────────────
+    //
+    // No había ningún límite. Son seis cifras, un millón de combinaciones, y
+    // cada intento cuesta una fracción de segundo: se podía automatizar sin
+    // freno. Y el PIN es lo único entre quien tenga el móvil desbloqueado y
+    // "Show seed / WIF".
+    //
+    // Tras 5 fallos seguidos, una espera de 30 s que se dobla con cada fallo
+    // más, hasta una hora. Va aquí, dentro de checkPin, y no en las pantallas:
+    // son tres las que piden el PIN, y una que se olvidara de mirarlo dejaría
+    // la puerta abierta. Se guarda en disco, así que cerrar la app no borra la
+    // cuenta.
+
+    private const val PREF_FALLOS = "pin_fallos"
+    private const val PREF_ESPERA = "pin_espera_hasta"
+    private const val FALLOS_LIBRES = 5
+
+    /** Segundos que faltan para poder volver a intentarlo; 0 si ya se puede. */
+    fun esperaPin(ctx: Context): Long {
+        val hasta = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getLong(PREF_ESPERA, 0L)
+        val resto = hasta - System.currentTimeMillis()
+        return if (resto > 0) (resto + 999) / 1000 else 0
+    }
+
+    /**
+     * El mensaje para después de un PIN rechazado: cuánto hay que esperar, o
+     * cuántos intentos quedan antes de la espera, o sólo que está mal.
+     */
+    fun avisoPinFallido(ctx: Context): String {
+        val espera = esperaPin(ctx)
+        if (espera > 0) {
+            val cuanto = if (espera >= 60) "${(espera + 59) / 60} min" else "$espera s"
+            return "Too many attempts. Try again in $cuanto."
+        }
+        val fallos = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getInt(PREF_FALLOS, 0)
+        val quedan = FALLOS_LIBRES - fallos
+        return if (quedan in 1..2) "Wrong code. $quedan more before a wait."
+               else "Wrong code. Try again."
+    }
+
     fun checkPin(ctx: Context, pin: String): Boolean {
+        // Durante la espera no se comprueba nada: ni el PIN correcto entra.
+        // Si no, la espera sería sólo un aviso.
+        if (esperaPin(ctx) > 0) return false
+        val ok = comprobarPin(ctx, pin)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (ok) {
+            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA).apply()
+        } else {
+            val fallos = prefs.getInt(PREF_FALLOS, 0) + 1
+            val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
+            if (fallos >= FALLOS_LIBRES) {
+                val seg = (30L shl (fallos - FALLOS_LIBRES).coerceAtMost(7)).coerceAtMost(3600L)
+                ed.putLong(PREF_ESPERA, System.currentTimeMillis() + seg * 1000)
+            }
+            ed.apply()
+        }
+        return ok
+    }
+
+    private fun comprobarPin(ctx: Context, pin: String): Boolean {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val salt = Base64.decode(prefs.getString(PREF_SALT, null) ?: return false, Base64.NO_WRAP)
         val enc  = Base64.decode(prefs.getString(PREF_VER,  null) ?: return false, Base64.NO_WRAP)

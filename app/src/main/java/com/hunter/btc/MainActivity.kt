@@ -3646,7 +3646,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // usuario pulsa "Guardar wallet", que la cifra con el Keystore.
                     // Borramos también los ficheros que dejaron versiones anteriores.
                     purgeLegacyRecoveryFiles()
-                    sendMatchNotification("Seed recovered", "RECOVERY")
+                    sendMatchNotification("Seed recovered", "Open the app to save it to your wallet.")
                 }
             }
             override fun onNotFound() {
@@ -5059,10 +5059,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     android.widget.Toast.makeText(this, "This entry has no WIF",
                         android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("wif", e.wif))
+                    // Marcada como sensible y borrada a los 60 s: ver Secretos.
+                    Secretos.copiarClave(this, "wif", e.wif)
                     android.widget.Toast.makeText(this,
-                        "WIF copied — paste it and clear the clipboard",
+                        "WIF copied. It will be cleared from the clipboard in 60 s.",
                         android.widget.Toast.LENGTH_LONG).show()
                 }
             }
@@ -5071,10 +5071,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     android.widget.Toast.makeText(this, "This entry has no hex key",
                         android.widget.Toast.LENGTH_SHORT).show()
                 } else {
-                    (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                        .setPrimaryClip(android.content.ClipData.newPlainText("hex", e.privHex))
-                    android.widget.Toast.makeText(this, "Hex key copied",
-                        android.widget.Toast.LENGTH_SHORT).show()
+                    Secretos.copiarClave(this, "hex", e.privHex)
+                    android.widget.Toast.makeText(this,
+                        "Hex key copied. It will be cleared from the clipboard in 60 s.",
+                        android.widget.Toast.LENGTH_LONG).show()
                 }
             }
             .setNegativeButton("Close", null)
@@ -5140,10 +5140,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * (5/K/L + Base58) y claves extendidas. Es una red de seguridad sobre el
      * registro de fallos, no una garantía — por eso incluirlo se pregunta.
      */
-    private fun redactSecrets(text: String): String =
-        text.replace(Regex("""\b[0-9a-fA-F]{64}\b"""), "[hex-hidden]")
-            .replace(Regex("""\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b"""), "[wif-hidden]")
-            .replace(Regex("""\b(xprv|yprv|zprv|tprv)[1-9A-HJ-NP-Za-km-z]{50,}"""), "[xprv-hidden]")
+    // Vive en Secretos para que el botón "Copy" del debug tache lo mismo.
+    private fun redactSecrets(text: String): String = Secretos.tachar(text)
 
     private fun writeAndShareLog(includeCrashLog: Boolean) {
         val dir = getExternalFilesDir(null) ?: filesDir
@@ -5618,7 +5616,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvPuzzleAtajo?.text = "KEY FOUND on $dispositivo\n$claveHex\n" +
                               "Saved to the finds vault."
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
-        try { sendMatchNotification("(puzzle over the network)", claveHex) } catch (e: Throwable) {}
+        try { sendMatchNotification("Key found over the network", "Saved to the finds vault.") } catch (e: Throwable) {}
     }
 
     /* ── ¿Sigue habiendo premio? ──────────────────────────────────────────────
@@ -6173,7 +6171,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun sendMatchNotification(addr: String, wif: String) {
+    /**
+     * Aviso de hallazgo.
+     *
+     * Recibía la clave —"WIF: $wif" en el cuerpo— y el puzzle resuelto por
+     * red le pasaba la clave privada en hex por ese mismo parámetro. Una
+     * notificación sale en la pantalla de bloqueo, en el reloj y en el
+     * historial de notificaciones, y la puede leer cualquier app con acceso a
+     * ellas. Ahora recibe sólo lo que se puede enseñar: la clave está en el
+     * baúl cifrado.
+     */
+    private fun sendMatchNotification(titulo: String, texto: String) {
         try {
             // Vibración
             val vib = getSystemService(android.os.Vibrator::class.java)
@@ -6182,20 +6190,26 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     longArrayOf(0, 500, 200, 500, 200, 500), -1
                 ))
             }
-            // Notificación
             val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
             val intent = android.app.PendingIntent.getActivity(
                 this, 0,
                 Intent(this, MainActivity::class.java),
                 android.app.PendingIntent.FLAG_IMMUTABLE
             )
+            // En la pantalla de bloqueo, sólo esto.
+            val publica = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
+                .setSmallIcon(android.R.drawable.star_on)
+                .setContentTitle("Wallet Hunter")
+                .setContentText("Match found — unlock to see it")
+                .build()
             val notif = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
                 .setSmallIcon(android.R.drawable.star_on)
-                .setContentTitle("Match found")
-                .setContentText("Addr: ${addr.take(20)}...")
-                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle()
-                    .bigText("Address: $addr\nWIF: $wif"))
+                .setContentTitle(titulo)
+                .setContentText(texto)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(texto))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
+                .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(publica)
                 .setAutoCancel(true)
                 .setContentIntent(intent)
                 .setColor(AppTheme.AMBER)
