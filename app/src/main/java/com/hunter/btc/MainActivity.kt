@@ -2819,15 +2819,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(26) }
         }
 
-        heroCard.addView(TextView(this).apply {
+        // El total real, para destaparlo con el ojo sin volver a leer el baúl.
+        var totalReal = "0,00000000"
+        val filaRotulo = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        filaRotulo.addView(TextView(this).apply {
             text = "Balance in finds"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        heroCard.addView(filaRotulo)
         // El verde estaba fijo, así que un saldo de cero se pintaba igual que
         // uno con fondos. Ahora el acento significa "hay algo"; lo pone
         // refreshWallet según el total.
@@ -2853,6 +2857,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         heroCard.addView(tvTotalBtc)
         heroCard.addView(tvTotalUsd)
         page.addView(heroCard)
+        // Ocultar saldos: el mismo ajuste que en la cartera. Dentro del baúl
+        // no se aplica —ver Privacidad—.
+        filaRotulo.addView(Privacidad.ojo(this) {
+            tvTotalBtc.text = Privacidad.monto(this, totalReal)
+        })
+        tvTotalBtc.text = Privacidad.monto(this, totalReal)
 
         // Leer los hallazgos del baúl y calcular total.
         //
@@ -2891,7 +2901,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // decirlo es la diferencia entre "está vacío" y "no lo sé".
                 val sinRed = consultarRed && pendientes > 0
                 runOnUiThread {
-                    tvTotalBtc.text = "%.8f".format(total).replace('.', ',')
+                    totalReal = "%.8f".format(total).replace('.', ',')
+                    tvTotalBtc.text = Privacidad.monto(this@MainActivity, totalReal)
                     // El acento sólo cuando de verdad hay saldo. Pintar de verde
                     // un cero es lo mismo que no pintar nada.
                     tvTotalBtc.setTextColor(

@@ -78,7 +78,20 @@ class WalletActivity : FragmentActivity() {
                     .edit().putBoolean("testnet", v).apply() }
     private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
-    private var balanceVisible = true
+    /**
+     * Cantidades de la pestaña Balance con su texto real, para taparlas y
+     * destaparlas con el ojo sin volver a preguntar a la red.
+     */
+    private val montos = mutableListOf<Pair<TextView, String>>()
+
+    private fun monto(tv: TextView, real: String) {
+        montos.add(tv to real)
+        tv.text = Privacidad.monto(this, real)
+    }
+
+    private fun repintarMontos() {
+        montos.forEach { (tv, real) -> tv.text = Privacidad.monto(this, real) }
+    }
     // Aqui vivian isLocked, lastInteraction y AUTO_LOCK_MS. Los tres estan
     // fuera: el bloqueo lo decide AppLock para toda la app. AUTO_LOCK_MS
     // ademas no se leia en ningun sitio —el cierre por inactividad a los dos
@@ -720,18 +733,28 @@ class WalletActivity : FragmentActivity() {
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
         // Centrado y en verde fijo, igual que el saldo de la pestaña Cartera
         // antes del rediseño: el acento pintaba también un cero.
+        montos.clear()
         val tvTotal = TextView(this).apply {
             text = "—"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
             letterSpacing = -0.04f
             setPadding(0, dp(12), 0, dp(6))
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         val tvFiat = TextView(this).apply {
             text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, 0, 0, dp(20))
         }
-        ll.addView(tvTotal); ll.addView(tvFiat)
+        // El ojo, al lado de la cifra: tapa el total, el equivalente en
+        // dólares y el saldo de cada dirección. Queda guardado.
+        val filaTotal = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        filaTotal.addView(tvTotal)
+        filaTotal.addView(Privacidad.ojo(this) { repintarMontos() })
+        ll.addView(filaTotal); ll.addView(tvFiat)
         scroll.addView(ll); tabContent.addView(scroll)
 
         Thread {
@@ -832,14 +855,9 @@ class WalletActivity : FragmentActivity() {
             runOnUiThread {
                 val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
                 val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} USD" else "BTC"
-                tvTotal.text = if (balanceVisible) btcText else "••••••••"
+                monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
-                if (pr > 0) tvFiat.text = if (balanceVisible) fiatText else "******"
-                tvTotal.setOnClickListener {
-                    balanceVisible = !balanceVisible
-                    tvTotal.text = if (balanceVisible) btcText else "********"
-                    tvFiat.text  = if (balanceVisible) fiatText else "******"
-                }
+                if (pr > 0) monto(tvFiat, fiatText)
                 // Un fallo de red se decía antes fila a fila ("no answer"
                 // doce veces) sin explicar nunca que el problema era el mismo.
                 if (huboFallo) {
@@ -875,8 +893,9 @@ class WalletActivity : FragmentActivity() {
                         setPadding(0, dp(3), 0, dp(7))
                     })
                     card.addView(TextView(this).apply {
-                        text = (if (bal < 0) "no answer" else "%.8f BTC".format(bal / 1e8)) +
-                               (if (src == "electrum") "  · electrum" else "")
+                        val real = (if (bal < 0) "no answer" else "%.8f BTC".format(bal / 1e8)) +
+                                   (if (src == "electrum") "  · electrum" else "")
+                        if (bal < 0) text = real else monto(this, real)
                         textSize = AppTheme.SP_BODY
                         setTextColor(when { bal > 0 -> GREEN; bal == 0L -> TXT_SEC; else -> RED })
                         typeface = AppTheme.bold(context)
@@ -957,7 +976,7 @@ class WalletActivity : FragmentActivity() {
                             setTextColor(TXT_SEC); typeface = Typeface.MONOSPACE
                         })
                         if (received > 0) card.addView(TextView(this).apply {
-                            text = "+%.8f BTC".format(received/1e8); textSize = AppTheme.SP_BODY
+                            text = Privacidad.monto(context, "+%.8f BTC".format(received/1e8)); textSize = AppTheme.SP_BODY
                             setTextColor(GREEN); typeface = AppTheme.bold(context)
                             setPadding(0, dp(6), 0, dp(4))
                         })
@@ -989,11 +1008,11 @@ class WalletActivity : FragmentActivity() {
                             }
                             row("Transaction ID", txidCopy)
                             row("Status", if(confirmedCopy)"Confirmed" else "Pending", if(confirmedCopy)GREEN else AppTheme.WARN)
-                            if(receivedCopy>0) row("Received","%.8f BTC".format(receivedCopy/1e8),GREEN)
+                            if(receivedCopy>0) row("Received",Privacidad.monto(this,"%.8f BTC".format(receivedCopy/1e8)),GREEN)
                             if(blockTimeCopy>0) row("Date",java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date(blockTimeCopy*1000)))
                             val voutArr=txCopy.getJSONArray("vout")
                             var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
-                            row("Total out","%.8f BTC".format(totalOut/1e8))
+                            row("Total out",Privacidad.monto(this,"%.8f BTC".format(totalOut/1e8)))
                             val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
                             val btnExplorer=android.widget.Button(this).apply{text="View in the explorer";textSize=AppTheme.SP_BODY;setTextColor(AppTheme.ON_ACCENT);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
                             val btnClose=android.widget.Button(this).apply{text="Close";textSize=AppTheme.SP_BODY;setTextColor(TXT_PRI);typeface=AppTheme.medium(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}
