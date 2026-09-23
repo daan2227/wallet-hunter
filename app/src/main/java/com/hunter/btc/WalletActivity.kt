@@ -762,8 +762,44 @@ class WalletActivity : FragmentActivity() {
     }
 
     /* -- HISTORY -- */
-    private fun loadHistoryTab() {
 
+    /** Una transacción vista desde esta cartera. neto > 0 entra, < 0 sale. */
+    private class MovTx(val tx: JSONObject, val txid: String, val confirmado: Boolean,
+                        val tiempo: Long, val neto: Long, val fee: Long)
+
+    /**
+     * Las direcciones de CAMBIO de la seed (rama .../1/k de los cuatro
+     * propósitos), con su ruta. No salen en la lista de direcciones, pero el
+     * dinero que vuelve a ellas es de la cartera: sin contarlas, un envío
+     * parecía gastar también el cambio.
+     */
+    private fun direccionesDeCambio(): Map<String, String> {
+        if (isWifMode || mnemonic.isEmpty()) return emptyMap()
+        val coin = if (isTestnet) 1 else 0
+        val r = HashMap<String, String>()
+        for (purpose in listOf(44, 49, 84, 86)) {
+            try {
+                val arr = JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, 1, 0, 30, isTestnet))
+                for (k in 0 until arr.length()) {
+                    val o = arr.optJSONObject(k) ?: continue
+                    val a = o.optString("addr"); if (a.isNotEmpty())
+                        r[a] = "m/$purpose'/$coin'/0'/1/${o.optInt("i")}"
+                }
+            } catch (e: Exception) {}
+        }
+        return r
+    }
+
+    /**
+     * Historial de TODAS las direcciones de la cartera.
+     *
+     * Antes sólo preguntaba por la primera (queryAddrs[0]): lo recibido en la
+     * SegWit, la Taproot o cualquier otra no salía, y la pantalla decía "no
+     * transactions yet" sobre una cartera con movimientos. Ahora se consulta
+     * cada una, se juntan por txid y cada transacción dice lo que de verdad
+     * hizo con esta cartera: entrado menos salido, contando el cambio.
+     */
+    private fun loadHistoryTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
         val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
         val tvHead = TextView(this).apply {
@@ -773,24 +809,36 @@ class WalletActivity : FragmentActivity() {
         }
         ll.addView(tvHead); scroll.addView(ll); tabContent.addView(scroll)
 
-        // ifEmpty { return } salía dejando el "Loading..." puesto para siempre,
-        // sin mensaje ni error. Ocurre si deriveWallet falló (su catch llama a
-        // buildUI con el mapa vacío) o si se abre la pestaña antes de que la
-        // derivación asíncrona haya terminado.
-        val queryAddrs = addresses.values.toList()
-        if (queryAddrs.isEmpty()) {
+        val consultar = addresses.values.filter { it.isNotEmpty() }.distinct()
+        if (consultar.isEmpty()) {
             tvHead.text = "No addresses to check yet"
             tvHead.setTextColor(AppTheme.WARN)
             return
         }
         Thread {
             try {
-                val cuerpo = ChainApi.get("/address/${queryAddrs[0]}/txs", isTestnet)
-                if (cuerpo == null) {
+                val porTx = LinkedHashMap<String, JSONObject>()
+                var respondidas = 0; var fallos = 0
+                for (a in consultar) {
+                    val cuerpo = ChainApi.get("/address/$a/txs", isTestnet)
+                    if (cuerpo == null) {
+                        // Sin red no tiene sentido seguir probando una a una.
+                        if (++fallos >= 3 && respondidas == 0) break
+                        continue
+                    }
+                    fallos = 0; respondidas++
+                    val arr = JSONArray(cuerpo)
+                    for (k in 0 until arr.length()) {
+                        val tx = arr.getJSONObject(k)
+                        porTx.putIfAbsent(tx.getString("txid"), tx)
+                    }
+                    val n = respondidas
+                    runOnUiThread { tvHead.text = "Loading… $n of ${consultar.size} addresses" }
+                }
+                if (respondidas == 0) {
                     // Electrum da la lista de identificadores pero no el detalle
-                    // de cada transacción; reconstruirlo serían N llamadas más.
-                    // Al menos se puede decir CUÁNTAS hay, que es más que nada.
-                    val hist = ElectrumClient.getHistory(queryAddrs[0], isTestnet)
+                    // de cada transacción. Al menos se puede decir cuántas hay.
+                    val hist = ElectrumClient.getHistory(consultar[0], isTestnet)
                     runOnUiThread {
                         tvHead.text = if (hist.isEmpty())
                             "Could not fetch the history. Check your connection."
@@ -799,10 +847,29 @@ class WalletActivity : FragmentActivity() {
                     }
                     return@Thread
                 }
-                val arr = JSONArray(cuerpo)
+
+                val cambio = direccionesDeCambio()
+                val propias = consultar.toHashSet().apply { addAll(cambio.keys) }
+                val movs = porTx.values.map { tx ->
+                    var entra = 0L; var sale = 0L
+                    val vout = tx.getJSONArray("vout")
+                    for (k in 0 until vout.length()) {
+                        val o = vout.getJSONObject(k)
+                        if (o.optString("scriptpubkey_address") in propias) entra += o.optLong("value", 0)
+                    }
+                    val vin = tx.getJSONArray("vin")
+                    for (k in 0 until vin.length()) {
+                        val pv = vin.getJSONObject(k).optJSONObject("prevout") ?: continue
+                        if (pv.optString("scriptpubkey_address") in propias) sale += pv.optLong("value", 0)
+                    }
+                    val st = tx.optJSONObject("status")
+                    MovTx(tx, tx.getString("txid"), st?.optBoolean("confirmed", false) ?: false,
+                          st?.optLong("block_time", 0) ?: 0L, entra - sale, tx.optLong("fee", 0))
+                }.sortedWith(compareBy<MovTx> { it.confirmado }.thenByDescending { it.tiempo })
+
                 runOnUiThread {
-                    tvHead.text = "${arr.length()} transactions · ${queryAddrs[0].take(14)}…"
-                    if (arr.length() == 0) {
+                    tvHead.text = "${movs.size} transactions · ${consultar.size} addresses"
+                    if (movs.isEmpty()) {
                         ll.addView(TextView(this).apply {
                             text = "No transactions yet"
                             setTextColor(TXT_SEC); textSize = AppTheme.SP_BODY
@@ -810,78 +877,221 @@ class WalletActivity : FragmentActivity() {
                         })
                         return@runOnUiThread
                     }
-                    for (i in 0 until minOf(arr.length(), 20)) {
-                        val tx = arr.getJSONObject(i)
-                        val txid = tx.getString("txid")
-                        val confirmed = tx.optJSONObject("status")?.optBoolean("confirmed", false) ?: false
-                        val blockTime = tx.optJSONObject("status")?.optLong("block_time", 0) ?: 0L
-                        var received = 0L
-                        val vout = tx.getJSONArray("vout")
-                        for (j in 0 until vout.length()) {
-                            val o = vout.getJSONObject(j)
-                            if (addresses.values.contains(o.optString("scriptpubkey_address",""))) received += o.optLong("value", 0)
-                        }
+                    val fmt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+                    for (m in movs.take(50)) {
                         val card = LinearLayout(this).apply {
                             orientation = LinearLayout.VERTICAL; background = cardBg()
                             setPadding(dp(16),dp(14),dp(16),dp(14))
                             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(AppTheme.GAP) }
+                            isClickable = true; foreground = Ui.toque()
                         }
-                        card.addView(TextView(this).apply {
-                            text = txid.take(22)+"…"; textSize = AppTheme.SP_MICRO
-                            setTextColor(TXT_SEC); typeface = Typeface.MONOSPACE
+                        val arriba = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        }
+                        arriba.addView(TextView(this).apply {
+                            text = when { m.neto > 0 -> "Received"; m.neto < 0 -> "Sent"; else -> "Moved" }
+                            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI); typeface = AppTheme.medium(context)
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                         })
-                        if (received > 0) card.addView(TextView(this).apply {
-                            text = Privacidad.monto(context, "+%.8f BTC".format(received/1e8)); textSize = AppTheme.SP_BODY
-                            setTextColor(GREEN); typeface = AppTheme.bold(context)
-                            setPadding(0, dp(6), 0, dp(4))
+                        arriba.addView(TextView(this).apply {
+                            val real = (if (m.neto > 0) "+" else if (m.neto < 0) "−" else "") +
+                                       "%.8f BTC".format(Math.abs(m.neto) / 1e8)
+                            text = Privacidad.monto(context, real)
+                            textSize = AppTheme.SP_BODY; typeface = AppTheme.bold(context)
+                            setTextColor(if (m.neto > 0) GREEN else TXT_PRI)
                         })
+                        card.addView(arriba)
                         card.addView(TextView(this).apply {
-                            // Estado y fecha en una línea: eran dos, y ninguna
-                            // de las dos llenaba la suya.
-                            val fecha = if (blockTime > 0)
-                                java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
-                                    .format(java.util.Date(blockTime*1000))
-                            else ""
-                            text = (if (confirmed) "Confirmed" else "Pending") +
-                                   (if (fecha.isNotEmpty()) " · $fecha" else "")
+                            val fecha = if (m.tiempo > 0) fmt.format(java.util.Date(m.tiempo * 1000)) else ""
+                            text = (if (m.confirmado) "Confirmed" else "Pending") +
+                                   (if (fecha.isNotEmpty()) " · $fecha" else "") + " · " + m.txid.take(12) + "…"
                             textSize = AppTheme.SP_CAPTION
-                            setTextColor(if (confirmed) TXT_SEC else AppTheme.WARN)
+                            setTextColor(if (m.confirmado) TXT_SEC else AppTheme.WARN)
                             typeface = AppTheme.body(context)
+                            setPadding(0, dp(4), 0, 0)
                         })
-                        /* Click -> detalle de transaccion */
-                        val txCopy = tx; val txidCopy = txid; val receivedCopy = received; val confirmedCopy = confirmed; val blockTimeCopy = blockTime
-                        card.isClickable = true
-                        card.setOnClickListener {
-                            val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(AppTheme.R_CARD).toFloat()}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
-                            sheet.addView(TextView(this).apply{text="Transaction";textSize=AppTheme.SP_TITLE;setTextColor(TXT_PRI);typeface=AppTheme.title(context);setPadding(0,0,0,dp(18))})
-                            fun row(k:String,v:String,vc:Int=TXT_PRI){
-                                val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
-                                r.addView(TextView(this).apply{text=k;textSize=AppTheme.SP_CAPTION;setTextColor(TXT_SEC);typeface=AppTheme.medium(context);setPadding(0,0,0,dp(5))})
-                                val tv=TextView(this).apply{text=v;textSize=AppTheme.SP_CAPTION;setTextColor(vc);typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};setPadding(dp(14),dp(12),dp(14),dp(12))}
-                                r.addView(tv);sheet.addView(r)
-                                tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
-                            }
-                            row("Transaction ID", txidCopy)
-                            row("Status", if(confirmedCopy)"Confirmed" else "Pending", if(confirmedCopy)GREEN else AppTheme.WARN)
-                            if(receivedCopy>0) row("Received",Privacidad.monto(this,"%.8f BTC".format(receivedCopy/1e8)),GREEN)
-                            if(blockTimeCopy>0) row("Date",java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss",java.util.Locale.getDefault()).format(java.util.Date(blockTimeCopy*1000)))
-                            val voutArr=txCopy.getJSONArray("vout")
-                            var totalOut=0L; for(j in 0 until voutArr.length()) totalOut+=voutArr.getJSONObject(j).optLong("value",0)
-                            row("Total out",Privacidad.monto(this,"%.8f BTC".format(totalOut/1e8)))
-                            val btnRow=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL;setPadding(0,dp(8),0,0)}
-                            val btnExplorer=android.widget.Button(this).apply{text="View in the explorer";textSize=AppTheme.SP_BODY;setTextColor(AppTheme.ON_ACCENT);typeface=AppTheme.bold(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(AppTheme.ACCENT);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f).apply{marginEnd=dp(8)}}
-                            val btnClose=android.widget.Button(this).apply{text="Close";textSize=AppTheme.SP_BODY;setTextColor(TXT_PRI);typeface=AppTheme.medium(context);isAllCaps=false;stateListAnimator=null;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};layoutParams=LinearLayout.LayoutParams(0,dp(48),1f)}
-                            btnRow.addView(btnExplorer);btnRow.addView(btnClose);sheet.addView(btnRow)
-                            val txDlg=AlertDialog.Builder(this).setView(sheet).setCancelable(true).create()
-                            txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
-                            txDlg.show()
-                            btnClose.setOnClickListener{txDlg.dismiss()}
-                            btnExplorer.setOnClickListener{val url=if(isTestnet)"https://mempool.space/testnet/tx/$txidCopy" else "https://mempool.space/tx/$txidCopy";startActivity(Intent(Intent.ACTION_VIEW,android.net.Uri.parse(url)))}
-                        }
+                        card.setOnClickListener { detalleTx(m, propias, cambio) }
                         ll.addView(card)
                     }
                 }
             } catch(e: Exception) { runOnUiThread { tvHead.text = motivo(e); tvHead.setTextColor(RED) } }
+        }.start()
+    }
+
+    private fun detalleTx(m: MovTx, propias: Set<String>, cambio: Map<String, String>) {
+        val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(AppTheme.R_CARD).toFloat()}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
+        sheet.addView(TextView(this).apply{text="Transaction";textSize=AppTheme.SP_TITLE;setTextColor(TXT_PRI);typeface=AppTheme.title(context);setPadding(0,0,0,dp(18))})
+        fun row(k:String,v:String,vc:Int=TXT_PRI){
+            val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
+            r.addView(TextView(this).apply{text=k;textSize=AppTheme.SP_CAPTION;setTextColor(TXT_SEC);typeface=AppTheme.medium(context);setPadding(0,0,0,dp(5))})
+            val tv=TextView(this).apply{text=v;textSize=AppTheme.SP_CAPTION;setTextColor(vc);typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};setPadding(dp(14),dp(12),dp(14),dp(12))}
+            r.addView(tv);sheet.addView(r)
+            tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
+        }
+        row("Transaction ID", m.txid)
+        row("Status", if (m.confirmado) "Confirmed" else "Pending", if (m.confirmado) GREEN else AppTheme.WARN)
+        if (m.neto != 0L) row(if (m.neto > 0) "Received" else "Sent (fee included)",
+            Privacidad.monto(this, "%.8f BTC".format(Math.abs(m.neto) / 1e8)), if (m.neto > 0) GREEN else TXT_PRI)
+        if (m.fee > 0) row("Fee", "%,d sat".format(m.fee))
+        if (m.tiempo > 0) row("Date", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(m.tiempo * 1000)))
+
+        fun boton(t: String, principal: Boolean) = android.widget.Button(this).apply {
+            text = t; textSize = AppTheme.SP_BODY; isAllCaps = false; stateListAnimator = null
+            setTextColor(if (principal) AppTheme.ON_ACCENT else TXT_PRI)
+            typeface = if (principal) AppTheme.bold(context) else AppTheme.medium(context)
+            background = GradientDrawable().apply { setColor(if (principal) AppTheme.ACCENT else BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+        }
+        // Acelerar: sólo una pendiente que salió de esta cartera.
+        val puedeAcelerar = !m.confirmado && m.neto < 0
+        val btnAcelerar = if (puedeAcelerar) boton("Speed up (raise the fee)", true).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+        } else null
+        btnAcelerar?.let { sheet.addView(it) }
+        val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
+        val btnExplorer = boton("View in the explorer", false).apply { layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) } }
+        val btnClose = boton("Close", false).apply { layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f) }
+        btnRow.addView(btnExplorer); btnRow.addView(btnClose); sheet.addView(btnRow)
+        val txDlg = AlertDialog.Builder(this).setView(android.widget.ScrollView(this).apply { addView(sheet) }).setCancelable(true).create()
+        txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
+        txDlg.show()
+        btnClose.setOnClickListener { txDlg.dismiss() }
+        btnExplorer.setOnClickListener {
+            val url = if (isTestnet) "https://mempool.space/testnet/tx/${m.txid}" else "https://mempool.space/tx/${m.txid}"
+            startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
+        }
+        btnAcelerar?.setOnClickListener { txDlg.dismiss(); acelerar(m, propias, cambio) }
+    }
+
+    /** La ruta BIP32 de una dirección de la lista, por su clave (p2wpkh_3…). */
+    private fun rutaDeClave(k: String): String? {
+        val i = k.substringAfterLast('_').toIntOrNull() ?: 0
+        return when {
+            k.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$i"
+            k.startsWith("p2sh")   -> "m/49'/0'/0'/0/$i"
+            k.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$i"
+            k.startsWith("p2tr")   -> "m/86'/0'/0'/0/$i"
+            else -> null
+        }
+    }
+
+    /**
+     * Sube la comisión de un envío atascado (RBF, BIP125).
+     *
+     * Los envíos salían ya como reemplazables y la pantalla lo decía ("you can
+     * raise the fee if it gets stuck"), pero no había con qué hacerlo. Esto
+     * rehace la MISMA transacción —mismas entradas, mismo destinatario, mismo
+     * importe— con más comisión, que sale del cambio. El destinatario recibe
+     * lo mismo.
+     *
+     * Sólo para envíos sencillos hechos desde una dirección: un destinatario y,
+     * como mucho, un cambio propio. Es lo que hace la app al enviar.
+     */
+    private fun acelerar(m: MovTx, propias: Set<String>, cambio: Map<String, String>) {
+        fun aviso(t: String) = runOnUiThread {
+            AlertDialog.Builder(this).setTitle("Cannot speed it up").setMessage(t)
+                .setPositiveButton("Got it", null).show()
+        }
+        if (isWifMode && wifKey.isEmpty()) { aviso("This is a watch-only wallet: it has no key to sign with."); return }
+        Toast.makeText(this, "Preparing…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val tx = m.tx
+                // Entradas: todas de UNA dirección de esta cartera.
+                val vin = tx.getJSONArray("vin")
+                val utxos = JSONArray(); var totalIn = 0L; var origen = ""
+                for (k in 0 until vin.length()) {
+                    val v = vin.getJSONObject(k)
+                    val pv = v.optJSONObject("prevout") ?: return@Thread aviso("The transaction data is incomplete.")
+                    val a = pv.optString("scriptpubkey_address")
+                    if (origen.isEmpty()) origen = a
+                    if (a != origen) return@Thread aviso("It spends from more than one address; this wallet cannot rebuild it.")
+                    val valor = pv.optLong("value")
+                    totalIn += valor
+                    utxos.put(JSONObject().put("txid", v.getString("txid")).put("vout", v.getInt("vout")).put("amount", valor))
+                }
+                val claveOrigen = addresses.entries.firstOrNull { it.value == origen }?.key
+                    ?: return@Thread aviso("It was not sent from this wallet.")
+                val ruta = if (isWifMode) "" else (rutaDeClave(claveOrigen)
+                    ?: return@Thread aviso("Unsupported address type."))
+
+                // Salidas: un destinatario y, si lo hay, un cambio propio.
+                val vout = tx.getJSONArray("vout")
+                var destino = ""; var importe = 0L; var cambioAddr = ""; var ajenas = 0
+                for (k in 0 until vout.length()) {
+                    val o = vout.getJSONObject(k)
+                    val a = o.optString("scriptpubkey_address")
+                    if (a in propias) cambioAddr = a
+                    else { ajenas++; destino = a; importe = o.optLong("value") }
+                }
+                if (ajenas != 1) return@Thread aviso("Only simple sends (one recipient) can be sped up here.")
+                if (cambioAddr.isEmpty()) return@Thread aviso("It has no change output: there is nothing to take the extra fee from without paying the recipient less.")
+
+                val vsize = (tx.optLong("weight", 0) + 3) / 4
+                val feeViejo = tx.optLong("fee", 0)
+                if (vsize <= 0 || feeViejo <= 0) return@Thread aviso("The transaction data is incomplete.")
+                val tasaVieja = (feeViejo + vsize - 1) / vsize
+                val rapida = (ChainInfo.fees(isTestnet)?.fastest ?: 0).toLong()
+                val tasaNueva = maxOf(rapida, tasaVieja + 2)
+                // BIP125: la nueva tiene que pagar más en total, y al menos
+                // 1 sat/vB más que la vieja por el espacio que ocupa.
+                val feeNuevo = maxOf(tasaNueva * vsize, feeViejo + vsize)
+                val cambioNuevo = totalIn - importe - feeNuevo
+                if (cambioNuevo < 0) return@Thread aviso("The change is not enough to pay a higher fee.")
+                val rutaCambio = when {
+                    isWifMode || cambioAddr == origen -> null      // vuelve a la de origen
+                    else -> cambio[cambioAddr]
+                        ?: return@Thread aviso("The change address is not one this wallet can derive.")
+                }
+
+                val resumen = buildString {
+                    appendLine("Recipient still receives %.8f BTC".format(importe / 1e8))
+                    appendLine("to $destino")
+                    appendLine()
+                    appendLine("Fee  %,d → %,d sat".format(feeViejo, feeNuevo))
+                    appendLine("Rate %d → %d sat/vB".format(tasaVieja, feeNuevo / vsize))
+                    appendLine()
+                    append(if (cambioNuevo <= CoinSelector.DUST)
+                        "The change is too small to keep and goes to the fee."
+                    else "Change %.8f BTC back to your wallet.".format(cambioNuevo / 1e8))
+                    appendLine(); appendLine()
+                    append("The old transaction is replaced by this one.")
+                }
+                val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle("Speed up the send?").setMessage(resumen)
+                        .setCancelable(false)
+                        .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
+                        .setPositiveButton("Speed up") { _, _ -> seguir.offer(true) }
+                        .show()
+                }
+                if (!seguir.take()) return@Thread
+
+                val req = JSONObject()
+                    .put("mnemonic", if (isWifMode) "" else mnemonic)
+                    .put("path", ruta)
+                    .put("utxos", utxos)
+                    .put("to", destino)
+                    .put("amount", importe)
+                    .put("fee", feeNuevo)
+                    .apply {
+                        if (isWifMode) put("wif", wifKey)
+                        if (rutaCambio != null) put("change_path", rutaCambio)
+                        ChainInfo.tipHeight(isTestnet)?.let { put("locktime", it) }
+                    }.toString()
+                val raw = HunterEngine.buildAndSignTx(req)
+                if (raw.startsWith("ERROR")) return@Thread aviso(raw)
+                val resp = ChainInfo.broadcast(raw, isTestnet)
+                runOnUiThread {
+                    if (resp.startsWith("ERROR")) {
+                        AlertDialog.Builder(this).setTitle("Not accepted")
+                            .setMessage(resp.removePrefix("ERROR: "))
+                            .setPositiveButton("Got it", null).show()
+                    } else {
+                        Toast.makeText(this, "Sped up. New transaction: ${resp.take(16)}…", Toast.LENGTH_LONG).show()
+                        tabContent.removeAllViews(); loadHistoryTab()
+                    }
+                }
+            } catch (e: Exception) { aviso(motivo(e)) }
         }.start()
     }
 
@@ -1458,6 +1668,11 @@ class WalletActivity : FragmentActivity() {
             val amtBtc = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
             val fromKey = keys.getOrNull(fromIdx) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
+            // Una dirección vigilada no tiene clave con la que firmar.
+            if (isWifMode && wifKey.isEmpty()) {
+                tvStatus.text = "This is a watch-only wallet: it has no key to send with."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
             if (toAddr.isEmpty()) {
                 tvStatus.text = "The destination address is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
@@ -1596,6 +1811,9 @@ class WalletActivity : FragmentActivity() {
                     // P2PKH heredado, P2SH-P2WPKH (BIP49), P2WPKH nativo y
                     // Taproot por gasto de clave (BIP86 + BIP341 con Schnorr).
                     val pathStr = when {
+                        // Un WIF no tiene ruta: el motor firma con la clave del
+                        // WIF (ver "wif" en la petición).
+                        isWifMode                    -> ""
                         fromKey.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$addrIdx"
                         fromKey.startsWith("p2sh")   -> "m/49'/0'/0'/0/$addrIdx"
                         fromKey.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$addrIdx"
@@ -1642,8 +1860,9 @@ class WalletActivity : FragmentActivity() {
                     val tip = ChainInfo.tipHeight(isTestnet)
 
                     val req = org.json.JSONObject()
-                        .put("mnemonic", mnemonic)
+                        .put("mnemonic", if (isWifMode) "" else mnemonic)
                         .put("path",     pathStr)
+                        .apply { if (isWifMode) put("wif", wifKey) }
                         .put("utxos",    utxoArr)
                         .put("to",       toAddr)
                         .put("amount",   amtSat)

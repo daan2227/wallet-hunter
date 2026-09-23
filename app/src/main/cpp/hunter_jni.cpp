@@ -1811,10 +1811,29 @@ static std::string build_and_sign_tx(const std::string &req){
                     : (path.find("49'")!=std::string::npos) ? SP_P2SH_P2WPKH
                     : SP_LEGACY;
     bool is_segwit = (stype==SP_P2SH_P2WPKH || stype==SP_P2WPKH);
-    // Derive key
-    uint8_t seed[64];
-    PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
-    HDKey hd; derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
+    /* La clave: de la seed y la ruta, o de un WIF.
+     *
+     * Con una cartera WIF —las claves sueltas, los hallazgos pasados a la
+     * cartera— no había forma de firmar: esto sólo sabía derivar de una seed,
+     * y Kotlin paraba antes con "Unsupported address type". Así que los
+     * hallazgos se podían ver pero no gastar desde la app.
+     *
+     * Sólo WIF comprimido (K/L): la dirección que enseña la app para un WIF
+     * es la de la clave pública comprimida, P2PKH, y es la que se gasta aquí.
+     * Uno sin comprimir (5...) tendría los fondos en OTRA dirección. */
+    std::string wif=json_str(req,"wif");
+    uint8_t seed[64]={0};
+    HDKey hd; memset(&hd,0,sizeof(hd));
+    if(!wif.empty()){
+        if(wif[0]!='K'&&wif[0]!='L'){secp256k1_context_destroy(ctx);return "ERROR:uncompressed_wif";}
+        if(!wif_decode(wif.c_str(),hd.key)||!secp256k1_ec_seckey_verify(ctx,hd.key)){
+            secp256k1_context_destroy(ctx);return "ERROR:bad_wif";
+        }
+        stype=SP_LEGACY; is_segwit=false;
+    }else{
+        PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+        derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
+    }
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
     uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
     /* redeemScript de BIP49: OP_0 <h160>, 22 bytes. La dirección 3... es
@@ -1901,7 +1920,9 @@ static std::string build_and_sign_tx(const std::string &req){
      * Sin ella se mantiene el comportamiento anterior, para no romper a quien
      * llame sin el campo. */
     std::string spk_change = spk_me;
-    std::string change_path = json_str(req,"change_path");
+    /* Con WIF no hay seed de la que derivar el cambio: vuelve a la misma
+       dirección. */
+    std::string change_path = wif.empty() ? json_str(req,"change_path") : std::string();
     if(has_change && !change_path.empty()){
         HDKey ch; derive_path(ctx,seed,change_path.c_str(),&ch);
         if(stype==SP_P2TR){

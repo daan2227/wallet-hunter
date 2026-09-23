@@ -96,6 +96,7 @@ object CoinSelector {
     /** Tamaño en vB de una entrada según el tipo de dirección que la gasta. */
     fun inputVBytes(fromKey: String) = when {
         fromKey.startsWith("p2pkh")  -> 148
+        fromKey.startsWith("wif")    -> 148   // un WIF se gasta como P2PKH
         fromKey.startsWith("p2sh")   -> 91
         fromKey.startsWith("p2wpkh") -> 68
         else                         -> 58   // p2tr
