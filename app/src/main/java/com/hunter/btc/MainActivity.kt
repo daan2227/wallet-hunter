@@ -2957,13 +2957,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         fun abrirCartera() {
-            val hasSeed = WalletManager.hasPin(this) && WalletManager.loadSeed(this) != null
-            val hasWif  = WalletManager.listWifs(this).isNotEmpty()
-            if (hasSeed || hasWif) {
+            // Cualquier cartera cuenta. Antes sólo miraba la seed principal y
+            // los WIF, así que quien sólo tuviera otra seed o una dirección
+            // vigilada recibía "No wallet yet" teniéndolas.
+            val hayAlguna = WalletManager.hasSeed(this) ||
+                            WalletManager.listWallets(this).isNotEmpty() ||
+                            WalletManager.listWifs(this).isNotEmpty() ||
+                            WalletManager.listWatchers(this).isNotEmpty()
+            if (hayAlguna) {
+                // SIN "MODE". Con MODE="seed" se abría siempre la cartera
+                // principal y el selector no llegaba a salir: no había forma
+                // de elegir otra desde aquí. Sin modo, WalletActivity enseña
+                // la lista, y si sólo hay una entra directo a ella.
                 val ir = {
-                    startActivity(Intent(this, WalletActivity::class.java).apply {
-                        putExtra("MODE", "seed")
-                    })
+                    startActivity(Intent(this, WalletActivity::class.java))
                 }
                 if (!PinAuthHelper.isSessionValid())
                     PinAuthHelper.show(this) { ok -> if (ok) ir() }

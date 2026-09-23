@@ -2085,6 +2085,12 @@ class WalletActivity : FragmentActivity() {
         onReady()
     }
 
+    /* Cada entrada abre su cartera con conSesion y no con authenticate ni
+     * showPinDialog. Esos dos piden la huella o el PIN SIEMPRE, y a esta lista
+     * se llega desde la pestaña Wallet, que acaba de pedirlo: elegir una
+     * cartera costaba dos PIN seguidos. conSesion sólo lo pide si la sesión
+     * está cerrada — pantalla apagada o app en segundo plano —, que es cuando
+     * protege algo. */
     private fun showWalletSelectorDialog(forceShow: Boolean = false) {
         val wallets = WalletManager.listWallets(this).toMutableList()
         val hasSeed = WalletManager.hasSeed(this)
@@ -2094,7 +2100,7 @@ class WalletActivity : FragmentActivity() {
         val wifList2 = WalletManager.listWifs(this)
         val watchList2 = WalletManager.listWatchers(this)
         if (!forceShow && hasSeed && wallets.isEmpty() && wifList2.isEmpty() && watchList2.isEmpty()) {
-            authenticate {
+            conSesion {
                 mnemonic = WalletManager.loadSeed(this) ?: ""
                 currentWalletName = "Main Wallet"
                 loadAddresses(); buildUI()
@@ -2146,7 +2152,7 @@ class WalletActivity : FragmentActivity() {
             walletCard("Main wallet", "BIP39 seed, HD derivation", TXT_PRI) {
                 selectorDlg?.dismiss()
                 switchToWallet {
-                    authenticate {
+                    conSesion {
                         mnemonic = WalletManager.loadSeed(this) ?: ""
                         currentWalletName = "Main Wallet"; isWifMode = false
                         loadAddresses()
@@ -2159,7 +2165,7 @@ class WalletActivity : FragmentActivity() {
             walletCard(name, "BIP39 HD Wallet", TXT_PRI) {
                 selectorDlg?.dismiss()
                 switchToWallet {
-                    authenticate {
+                    conSesion {
                         mnemonic = WalletManager.loadWalletSeed(this, id) ?: ""
                         currentWalletId = id; currentWalletName = name; isWifMode = false
                         loadAddresses()
@@ -2176,8 +2182,7 @@ class WalletActivity : FragmentActivity() {
             val wname = parts.getOrNull(1) ?: "WIF Wallet"
             walletCard(wname, "${wkey.take(8)}...", GREEN) {
                 selectorDlg?.dismiss()
-                showPinDialog(isSetup = false) { ok ->
-                    if (!ok) { showWalletSelectorDialog(); return@showPinDialog }
+                conSesion {
                     switchToWallet {
                         wifKey = wkey
                         wifAddr = if (waddr.isNotEmpty()) waddr
