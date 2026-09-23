@@ -15,10 +15,7 @@ import android.widget.*
 class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
     private val BG    get() = AppTheme.BG_DEEP
-    private val GOLD  get() = AppTheme.AMBER
     private val TXT   get() = AppTheme.TXT_PRI
-    private val TXT3  get() = AppTheme.TXT_MUTED
-    private val BORDER get() = AppTheme.BORDER_C
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     override fun onCreate(s: Bundle?) {

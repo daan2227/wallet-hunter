@@ -161,23 +161,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val BG_CARD   get() = AppTheme.BG_CARD
     private val BG_ELEV   get() = AppTheme.BG_ELEV
     private val AMBER     get() = AppTheme.AMBER
-    private val GREEN     get() = AppTheme.GREEN
     private val RED       get() = AppTheme.RED
     private val CYAN      get() = AppTheme.CYAN
     private val TXT_PRI   get() = AppTheme.TXT_PRI
     private val TXT_SEC   get() = AppTheme.TXT_SEC
     private val TXT_MUTED get() = AppTheme.TXT_MUTED
     private val BORDER_C  get() = AppTheme.BORDER_C
-    private val YELLOW    get() = AppTheme.YELLOW
-    private val ORANGE    get() = AppTheme.ORANGE
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ── Tab system ────────────────────────────────────────────────────────────
     private var tabPages:    List<android.view.View>          = emptyList()
-    private var tabBtns:     List<android.widget.TextView>    = emptyList()
     private var contentFrame: android.widget.FrameLayout?     = null
     private var drawerOpen:   Boolean                         = false
-    private var menuBtn:      android.view.View?              = null
     private var drawerView:   android.view.View?              = null
     private var overlayView:  android.view.View?              = null
     private fun goTab(idx: Int) {
@@ -194,8 +189,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var sessionStartTime = 0L
     private var sessionStartCount = 0L
     private var batteryReceiver: android.content.BroadcastReceiver? = null
-    private var lastFoundCount = 0L
-    private val NOTIF_CHANNEL = "hunter_match"
     private val NOTIF_ID = 42
     private val handler = Handler(Looper.getMainLooper())
     private var tvStatus: TextView? = null
@@ -207,19 +200,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvQuickThreads: TextView? = null
     private var tvQuickCpu: TextView? = null
     private var fastModeEnabled = false
-    private var filterP2PKH  = true
-    private var filterP2SH   = true
-    private var filterP2WPKH = true
-    private var lblDataset: TextView? = null
-    private var lblPerformance: TextView? = null
-    private var lblMode: TextView? = null
-    private var lblWallet: TextView? = null
-    private var lblLog: TextView? = null
-    private var lblStats: TextView? = null
-    private var tvLiveSec: LinearLayout? = null
-    private var tvMatchSec: LinearLayout? = null
-    private var tvLogSec: LinearLayout? = null
-    private var tvLangLbl: TextView? = null
     private var tvCount: TextView? = null
     private var chartView: SpeedChartView? = null
     private var tvMediaPuzzle: TextView? = null
@@ -230,13 +210,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvPuzzleStatus: TextView? = null
     private var tvTime: TextView? = null
     private var tvMatches: TextView? = null
-    private var tvMatchList: TextView? = null
-    private var tvAddrFeed: TextView? = null
     private var tvRam: TextView? = null
     private var tvTemp: TextView? = null
     private var tvBattery: TextView? = null
-    private var tvLog: TextView? = null
-    private var puzzleTabReady = false
     private var tvFooter: TextView? = null
     private var btnToggle: Button? = null
     /** Línea de estado del escáner: "Buscando · 51 s". */
@@ -272,7 +248,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var kgSegPrevios = 0L
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var tvHeaderTitle: TextView? = null
-    private var btnSwitch: Button? = null
     private var sbThreads: SeekBar? = null
     private var sbCpu: SeekBar? = null
     // Puzzle tiene sus propios sliders independientes
@@ -282,11 +257,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvCpuPuzzle: TextView? = null
     private var tvThreads: TextView? = null
     private var tvCpu: TextView? = null
-    private var tvCsvSec: LinearLayout? = null
-    private var tvConfigSec: LinearLayout? = null
-    private var tvStatsSec: LinearLayout? = null
     private var btnCsv: Button? = null
-    private var csvSecView: LinearLayout? = null
     private var etRangeStart: EditText? = null
     private var etRangeEnd: EditText? = null
     private var currentRangeStart: String = ""
@@ -304,9 +275,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     private var cardCobertura: android.view.View? = null
     private var etTarget: EditText? = null
-    private var layoutPuzzle: LinearLayout? = null
-    private var rbBip39: Button? = null
-    private var rbPuzzle: Button? = null
     private var csvPath: String = ""
     private var s = Strings.EN
     private var puzzleMode = false
@@ -320,7 +288,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
     private var cachedPuzzleLabel: String = ""
     private var cachedPuzzleLabelForStart: String = ""
-    private var tvAvgWps: TextView? = null
     private var tvPeakWps: TextView? = null
     private var tvPeakWpsPuzzle: TextView? = null
     private var watchdogEnabled = false
@@ -431,7 +398,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var tvCountPuzzle: TextView? = null
     private var tvTimePuzzle: TextView? = null
     private var btnPuzzleToggle: Button? = null
-    private val recentAddrs = mutableListOf<String>()
     private var recoveryEngine: RecoveryEngine? = null
     private val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
 
@@ -748,7 +714,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         setContentView(root)
 
         tabPages = listOfNotNull(scanScroll, puzzleScroll, walletScroll, recoveryScroll)
-        tabBtns  = listOf<TextView>()
         goTab(0)
 
         // El motor escribe coincidencias.txt con los WIF en claro. Sin esto los
@@ -856,7 +821,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             setOnClickListener { toggleDrawer() }
             addView(Ui.icon(this@MainActivity, R.drawable.ic_menu, 22, AppTheme.TXT_PRI))
         }
-        menuBtn = menu
         header.addView(menu)
 
         return header
@@ -1234,7 +1198,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         tvPeakWps = peakLine
         val avgHidden = TextView(this).apply { visibility = android.view.View.GONE }
-        tvAvgWps = avgHidden
         page.addView(side(peakLine, top = 12, bottom = 24))
         page.addView(avgHidden)
 
@@ -1337,8 +1300,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvMatches   = TextView(this).apply { visibility = android.view.View.GONE }
         tvFooter    = TextView(this).apply { visibility = android.view.View.GONE }
         tvStatus    = TextView(this).apply { visibility = android.view.View.GONE }
-        tvAddrFeed  = TextView(this).apply { visibility = android.view.View.GONE }
-        tvMatchList = TextView(this).apply { visibility = android.view.View.GONE }
         listOf(tvTime, tvRam, tvBattery, tvFooter, tvStatus).forEach {
             it?.let { v -> page.addView(v) }
         }
@@ -2927,7 +2888,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }.start()
 
         scroll.addView(page)
-        puzzleTabReady = true
         return scroll
     }
 

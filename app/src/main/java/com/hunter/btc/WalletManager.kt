@@ -305,17 +305,22 @@ object WalletManager {
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
     }
 
-    fun clearSeed(ctx: Context) {
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
-        try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
-    }
+    // Aqui estaba clearSeed(), sin una sola llamada. Hacia prefs.clear(): la
+    // seed, TODAS las demas carteras, los WIF, los watchers y el PIN. Se va
+    // porque no es solo codigo muerto, es un pie de plomo: se llama igual que
+    // clearSeedOnly() menos una palabra, y esa si se usa —es la que corre al
+    // pulsar "Delete wallet" sin wallet-id—. Equivocarse de nombre al
+    // completar borraba la cartera entera del usuario en vez de una seed.
 
     /* Borra solo la seed principal — preserva PIN y otras wallets */
     fun clearSeedOnly(ctx: Context) {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val pin_salt = prefs.getString(PREF_SALT, null)
-        val pin_ver  = prefs.getString(PREF_VER, null)
-        val pin_viv  = prefs.getString(PREF_VIV, null)
+        // Aqui se leian pin_salt, pin_ver y pin_viv a tres locales que no se
+        // usaban para nada. Son de cuando esto hacia prefs.clear() y habia que
+        // volver a escribir el PIN despues. Ya no: se quitan las dos claves de
+        // la seed y ya esta, asi que el PIN ni se toca. Guardar a un lado algo
+        // que nadie restaura solo sirve para que el siguiente que lo lea crea
+        // que esta funcion borra mas de lo que borra.
         prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }

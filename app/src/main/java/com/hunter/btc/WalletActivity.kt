@@ -79,8 +79,6 @@ class WalletActivity : FragmentActivity() {
                     .edit().putBoolean("testnet", v).apply() }
     private var selectedUtxos = mutableListOf<org.json.JSONObject>()
     private var addresses = mutableMapOf<String, String>()
-    private var currentTab = 0
-    private val handler = android.os.Handler(android.os.Looper.getMainLooper())
     private var balanceVisible = true
     // Aqui vivian isLocked, lastInteraction y AUTO_LOCK_MS. Los tres estan
     // fuera: el bloqueo lo decide AppLock para toda la app. AUTO_LOCK_MS
@@ -594,7 +592,7 @@ class WalletActivity : FragmentActivity() {
                 btn.background = GradientDrawable().apply {
                     setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
                 }
-                currentTab = i; tabContent.removeAllViews()
+                tabContent.removeAllViews()
                 actionBar?.visibility = if (i >= 2) View.GONE else View.VISIBLE
                 when (i) { 0 -> loadBalanceTab(); 1 -> loadHistoryTab(); 2 -> loadSendTab(); 3 -> loadReceiveTab() }
             }
@@ -2075,7 +2073,6 @@ class WalletActivity : FragmentActivity() {
         wifKey = ""
         wifAddr = ""
         isWifMode = false
-        currentTab = 0
         selectedUtxos.clear()
         // Ejecutar la carga de la nueva wallet
         onReady()

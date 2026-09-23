@@ -17,10 +17,8 @@ class StatsActivity : Activity() {
     private val ACCENT2 get() = AppTheme.BLUE
     private val BG      get() = AppTheme.BG_DEEP
     private val SURFACE get() = AppTheme.BG_CARD
-    private val BORDER  get() = AppTheme.BORDER_C
     private val TXT     get() = AppTheme.TXT_PRI
     private val MUTED   get() = AppTheme.TXT_SEC
-    private val RED     get() = AppTheme.WARN
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
