@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El mismo, en tema claro: blanco sobre el fondo #F4F4F4 de la pantalla. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="16dp"
+    android:insetTop="16dp"
+    android:insetRight="16dp"
+    android:insetBottom="16dp">
+    <shape android:shape="rectangle">
+        <corners android:radius="20dp" />
+        <solid android:color="#FFFFFF" />
+    </shape>
+</inset>

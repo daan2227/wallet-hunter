@@ -114,6 +114,9 @@ class StatsActivity : Activity() {
     }
 
     override fun onCreate(s: Bundle?) {
+        // Antes de super.onCreate: es el único momento en que el tema se
+        // puede cambiar, y de él salen los colores de todos los diálogos.
+        setTheme(AppTheme.estilo(this))
         super.onCreate(s)
         AppTheme.init(this)
         // Cualquier pantalla puede ser la primera si Android revive el

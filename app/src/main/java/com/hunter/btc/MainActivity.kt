@@ -686,6 +686,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     override fun onCreate(savedState: Bundle?) {
+        // Antes de super.onCreate: es el único momento en que el tema se
+        // puede cambiar, y de él salen los colores de todos los diálogos.
+        setTheme(AppTheme.estilo(this))
         super.onCreate(savedState)
         // Capturar crashes globales.
         //

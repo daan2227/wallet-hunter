@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fondo de los diálogos en tema oscuro. El inset de 16dp es el mismo que
+     trae el fondo por defecto de AppCompat: sin él el diálogo ocupa de borde a
+     borde. El color es BG_ELEV de AppTheme.kt (#2D2D2D), un escalón por encima
+     de la tarjeta, para que el diálogo se lea como algo que flota sobre la
+     pantalla y no como otra tarjeta más. Si cambia la paleta, cambiar aquí. -->
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:insetLeft="16dp"
+    android:insetTop="16dp"
+    android:insetRight="16dp"
+    android:insetBottom="16dp">
+    <shape android:shape="rectangle">
+        <corners android:radius="20dp" />
+        <solid android:color="#2D2D2D" />
+    </shape>
+</inset>

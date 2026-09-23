@@ -72,6 +72,9 @@ class NetworkActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Antes de super.onCreate: es el único momento en que el tema se
+        // puede cambiar, y de él salen los colores de todos los diálogos.
+        setTheme(AppTheme.estilo(this))
         super.onCreate(savedInstanceState)
         // El tema es un objeto de proceso: lo fija la primera pantalla que
         // arranca. Si Android mata el proceso y lo revive directamente aqui

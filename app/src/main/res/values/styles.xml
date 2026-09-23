@@ -7,18 +7,149 @@
         <item name="android:backgroundDimEnabled">false</item>
     </style>
 
-    <!-- Tema único de la app. Antes se usaba Theme.AppCompat.DayNight, que en
+    <!-- Tema de la app, oscuro. Antes se usaba Theme.AppCompat.DayNight, que en
          modo claro pinta un fondo blanco antes de que la actividad dibuje su
-         contenido: destello gris/blanco en cada transición sobre una interfaz
-         que siempre es oscura. -->
+         contenido: destello gris/blanco en cada transición.
+
+         El fondo de ventana era #090909, de antes de aclarar la paleta: en cada
+         cambio de pantalla asomaba un negro más negro que el de la app. Ahora
+         es BG_DEEP de AppTheme.kt.
+
+         Y lleva los temas de diálogo. Los diálogos NO los dibuja el código de
+         la app como el resto de la interfaz: los dibuja Android con el tema de
+         la actividad. Sin estas dos líneas salían con el de serie —caja gris,
+         esquinas en ángulo, botones en MAYÚSCULAS y en otro verde— en los
+         ~50 que hay repartidos por cuatro pantallas. Son dos porque la app usa
+         dos clases de AlertDialog: la de AppCompat lee `alertDialogTheme` y la
+         del sistema lee `android:alertDialogTheme`. -->
     <style name="AppThemeDark" parent="Theme.AppCompat.NoActionBar">
-        <item name="android:windowBackground">#090909</item>
-        <item name="android:colorBackground">#090909</item>
+        <item name="android:windowBackground">#191919</item>
+        <item name="android:colorBackground">#191919</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="alertDialogTheme">@style/WhDialogo</item>
+        <item name="android:alertDialogTheme">@style/WhDialogoSistema</item>
+    </style>
+
+    <!-- El mismo en claro. Hereda del oscuro a propósito: los controles que el
+         código no colorea siguen como estaban, y sólo cambian el fondo de
+         ventana y los diálogos. La actividad elige uno u otro en onCreate con
+         AppTheme.estilo(), porque el tema claro/oscuro se decide en código y un
+         tema de XML no puede leerlo. -->
+    <style name="AppThemeLight" parent="AppThemeDark">
+        <item name="android:windowBackground">#F4F4F4</item>
+        <item name="android:colorBackground">#F4F4F4</item>
+        <item name="alertDialogTheme">@style/WhDialogoClaro</item>
+        <item name="android:alertDialogTheme">@style/WhDialogoSistemaClaro</item>
     </style>
 
     <!-- WalletActivity se declaraba con Theme.DeviceDefault.Dialog, así que
          Android la dibujaba como diálogo flotante: marco, márgenes y barra de
          título. Además no es AppCompat, lo que hacía reventar sus diálogos. -->
     <style name="AppThemeWallet" parent="AppThemeDark" />
+
+    <!-- ── Diálogos de AppCompat ─────────────────────────────────────────
+         Colores de AppTheme.kt: texto #F2F2F2 / #A4A4A4 en oscuro y
+         #0A0A0A / #444444 en claro. Si cambia la paleta, cambiar aquí.
+
+         El verde del botón principal NO es el mismo en los dos temas. En
+         oscuro es el acento, #00C896. En claro, ese verde sobre blanco da
+         2:1 y no se lee; #007A5C da 5,4:1 y sigue siendo el mismo verde. -->
+    <style name="WhDialogo" parent="ThemeOverlay.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialogo_fondo_oscuro</item>
+        <item name="colorAccent">#00C896</item>
+        <item name="android:textColorPrimary">#F2F2F2</item>
+        <item name="android:textColorSecondary">#A4A4A4</item>
+        <item name="textColorAlertDialogListItem">#F2F2F2</item>
+        <item name="android:windowTitleStyle">@style/WhDialogoTitulo</item>
+        <item name="buttonBarPositiveButtonStyle">@style/WhDialogoBoton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/WhDialogoBotonSecundario</item>
+        <item name="buttonBarNeutralButtonStyle">@style/WhDialogoBotonSecundario</item>
+    </style>
+
+    <style name="WhDialogoClaro" parent="ThemeOverlay.AppCompat.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialogo_fondo_claro</item>
+        <item name="colorAccent">#007A5C</item>
+        <item name="android:textColorPrimary">#0A0A0A</item>
+        <item name="android:textColorSecondary">#444444</item>
+        <item name="textColorAlertDialogListItem">#0A0A0A</item>
+        <item name="android:windowTitleStyle">@style/WhDialogoTitulo</item>
+        <item name="buttonBarPositiveButtonStyle">@style/WhDialogoBoton</item>
+        <item name="buttonBarNegativeButtonStyle">@style/WhDialogoBotonSecundario</item>
+        <item name="buttonBarNeutralButtonStyle">@style/WhDialogoBotonSecundario</item>
+    </style>
+
+    <!-- Los estilos de título van SIN padre a propósito: los de serie
+         (RtlOverlay.DialogWindowTitle.AppCompat, DialogWindowTitle.Material)
+         no son todos públicos, y heredar de uno privado tumba la compilación
+         al enlazar recursos. Un título sólo necesita su textAppearance; con
+         dos líneas en vez de una, un título largo se lee entero en vez de
+         cortarse.
+
+         El título en Sora, la misma que los títulos de página. El color lo
+         pone textColorPrimary del tema de cada diálogo, así que vale para los
+         dos temas. -->
+    <style name="WhDialogoTitulo">
+        <item name="android:textAppearance">@style/WhDialogoTituloTexto</item>
+        <item name="android:maxLines">2</item>
+    </style>
+    <style name="WhDialogoTituloTexto" parent="TextAppearance.AppCompat.Title">
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+
+    <!-- Botones sin MAYÚSCULAS: "NOT NOW" gritaba más que la pregunta. El
+         principal toma el verde de colorAccent; los otros, el gris secundario,
+         para que se vea cuál es la acción y cuál la salida. -->
+    <style name="WhDialogoBoton" parent="Widget.AppCompat.Button.ButtonBar.AlertDialog">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">@font/public_sans_semibold</item>
+    </style>
+    <style name="WhDialogoBotonSecundario" parent="WhDialogoBoton">
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+    </style>
+
+    <!-- ── Diálogos del sistema (android.app.AlertDialog) ──────────────────
+         Los mismos colores y la misma forma, con los atributos del sistema. -->
+    <style name="WhDialogoSistema" parent="@android:style/Theme.Material.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialogo_fondo_oscuro</item>
+        <item name="android:colorAccent">#00C896</item>
+        <item name="android:textColorPrimary">#F2F2F2</item>
+        <item name="android:textColorSecondary">#A4A4A4</item>
+        <item name="android:textColorAlertDialogListItem">#F2F2F2</item>
+        <item name="android:windowTitleStyle">@style/WhDialogoTituloSistema</item>
+        <item name="android:buttonBarPositiveButtonStyle">@style/WhDialogoBotonSistema</item>
+        <item name="android:buttonBarNegativeButtonStyle">@style/WhDialogoBotonSistemaSecundario</item>
+        <item name="android:buttonBarNeutralButtonStyle">@style/WhDialogoBotonSistemaSecundario</item>
+    </style>
+
+    <style name="WhDialogoSistemaClaro" parent="@android:style/Theme.Material.Light.Dialog.Alert">
+        <item name="android:windowBackground">@drawable/dialogo_fondo_claro</item>
+        <item name="android:colorAccent">#007A5C</item>
+        <item name="android:textColorPrimary">#0A0A0A</item>
+        <item name="android:textColorSecondary">#444444</item>
+        <item name="android:textColorAlertDialogListItem">#0A0A0A</item>
+        <item name="android:windowTitleStyle">@style/WhDialogoTituloSistema</item>
+        <item name="android:buttonBarPositiveButtonStyle">@style/WhDialogoBotonSistema</item>
+        <item name="android:buttonBarNegativeButtonStyle">@style/WhDialogoBotonSistemaSecundario</item>
+        <item name="android:buttonBarNeutralButtonStyle">@style/WhDialogoBotonSistemaSecundario</item>
+    </style>
+
+    <style name="WhDialogoTituloSistema">
+        <item name="android:textAppearance">@style/WhDialogoTituloTextoSistema</item>
+        <item name="android:maxLines">2</item>
+    </style>
+    <style name="WhDialogoTituloTextoSistema" parent="@android:style/TextAppearance.Material.DialogWindowTitle">
+        <item name="android:fontFamily">@font/sora_semibold</item>
+        <item name="android:textSize">19sp</item>
+    </style>
+
+    <style name="WhDialogoBotonSistema" parent="@android:style/Widget.Material.Button.Borderless.Colored">
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:fontFamily">@font/public_sans_semibold</item>
+    </style>
+    <style name="WhDialogoBotonSistemaSecundario" parent="WhDialogoBotonSistema">
+        <item name="android:textColor">?android:attr/textColorSecondary</item>
+    </style>
 </resources>

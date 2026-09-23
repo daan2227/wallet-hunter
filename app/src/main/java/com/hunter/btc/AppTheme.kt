@@ -29,6 +29,21 @@ object AppTheme {
         isDark = prefs.getBoolean("dark_mode", true)
     }
 
+    /**
+     * El tema de XML que toca: oscuro o claro.
+     *
+     * Casi toda la interfaz se colorea en código con esta paleta, pero los
+     * diálogos los dibuja Android con el tema de la actividad, y un tema de XML
+     * no puede leer [isDark]. Por eso cada actividad llama a esto con
+     * setTheme() ANTES de super.onCreate —el único momento en que el tema
+     * todavía se puede cambiar— y así sus diálogos salen del mismo color que
+     * la pantalla que los abre.
+     */
+    fun estilo(ctx: Context): Int {
+        init(ctx)
+        return if (isDark) R.style.AppThemeDark else R.style.AppThemeLight
+    }
+
     fun toggle(ctx: Context) {
         isDark = !isDark
         ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
