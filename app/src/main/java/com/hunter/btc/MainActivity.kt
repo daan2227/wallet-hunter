@@ -2485,9 +2485,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(6) }
         })
 
+
+        // ── AJUSTE FINO ───────────────────────────────────────────────────
+        // Cómo se recorre el rango y el tamaño de lote se tocan una vez y ya:
+        // uno sólo afecta a la fuerza bruta y el otro tiene un óptimo medido
+        // que ya viene puesto. Ocupaban media pantalla en medio de la tarjeta
+        // de Potencia, entre el selector que sí se usa a diario y el botón de
+        // arrancar. Van a una sección plegada, con el mismo mecanismo que ya
+        // usan "Hex range" y "Tools" en esta misma pestaña.
+        //
+        // Potencia NO se pliega: es lo que se mira cuando el móvil se calienta
+        // o la velocidad baja, y esconderlo detrás de un toque sería cambiar
+        // una pantalla cargada por una pantalla incómoda.
+        // MATCH_PARENT explícito: el cuerpo de una sección plegable no lo
+        // impone, y sin esto el contenedor mide a lo que ocupe su hijo más
+        // ancho — los textos de ayuda se partirían a media frase.
+        val tuningCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
         // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
-        powerCard.addView(Ui.sectionLabel(this, "How the range is walked", topGap = 18))
-        powerCard.addView(Ui.segmented(
+        tuningCard.addView(Ui.sectionLabel(this, "How the range is walked", topGap = 0))
+        tuningCard.addView(Ui.segmented(
             this, listOf("Random" to null, "Sequential" to null), initial = 0
         ) { idx ->
             HunterEngine.setSequential(idx == 1)
@@ -2500,7 +2522,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El aviso de arriba sólo salía SI tocabas el control Y Kangaroo estaba
         // en marcha. Si lo dejabas puesto y arrancabas, nada te decía que no
         // hace nada. Va fijo en la pantalla.
-        powerCard.addView(TextView(this).apply {
+        tuningCard.addView(TextView(this).apply {
             text = "Brute force only. Kangaroo does not walk the range: " +
                    "it hops along the curve using the jump function."
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
@@ -2552,7 +2574,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = AppTheme.bold(context)
         }
         batchHeaderRow.addView(tvBatchVal)
-        powerCard.addView(batchHeaderRow)
+        tuningCard.addView(batchHeaderRow)
 
         val sbBatch = SeekBar(this).apply {
             max = batchLabels.size - 1
@@ -2575,7 +2597,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Restaurar valor guardado
         sbBatch.progress = prefs.getInt("puzzle_batch", 2)
         HunterEngine.setBatchSize(batchLabels[sbBatch.progress])
-        powerCard.addView(sbBatch)
+        tuningCard.addView(sbBatch)
 
         // Labels del slider
         val batchLabelRow = LinearLayout(this).apply {
@@ -2595,11 +2617,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
         }
-        powerCard.addView(batchLabelRow)
+        tuningCard.addView(batchLabelRow)
         // Medido: en Kangaroo por encima de ~2048 va peor, no mejor. Y el valor
         // se lee al arrancar, asi que moverlo con la busqueda en marcha no hace
         // nada hasta reiniciarla. Las dos cosas son invisibles sin decirlas.
-        powerCard.addView(TextView(this).apply {
+        tuningCard.addView(TextView(this).apply {
             text = "Kangaroo caps it at 4096 and the measured optimum is 2048: " +
                    "bigger is worse. Applies when the search restarts."
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
@@ -2611,6 +2633,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
 
         page.addView(powerCard)
+        page.addView(collapsibleSection(R.drawable.ic_dice, "Fine tuning") {
+            addView(tuningCard)
+        })
         updatePuzzleLabels()
 
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
