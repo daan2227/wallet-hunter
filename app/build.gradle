@@ -64,10 +64,32 @@ android {
             }
         }
     }
+    // Las librerías nativas van COMPRIMIDAS dentro del APK.
+    //
+    // Por defecto van sin comprimir, para que Android las cargue directamente
+    // del APK sin copiarlas: eso ahorra espacio instalado, pero el APK pesa
+    // lo que pesan las librerías enteras, y aquí son el 90 % del fichero
+    // (libtailscale.so sola eran 21 MB). Como la app se instala a mano y no
+    // desde Play —que ya comprime la descarga por su cuenta—, lo que se
+    // descarga y se pasa de un móvil a otro es este APK. Comprimidas bajan a
+    // un tercio; a cambio, al instalar se descomprimen a disco una vez.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
     buildTypes {
         release {
-            minifyEnabled false
+            // R8 quita del dex lo que no se usa de las librerías (AppCompat,
+            // la biblioteca de Kotlin, zxing…). Las clases de la app se
+            // conservan enteras y sin renombrar —ver proguard-rules.pro—:
+            // el código nativo llama a métodos Kotlin por su nombre
+            // (HunterEngine.alHallar, los avisos de Recovery), y renombrarlos
+            // rompería eso en el móvil sin que la compilación dijera nada.
+            minifyEnabled true
             shrinkResources false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'),
+                          'proguard-rules.pro'
             signingConfig signingConfigs.release
         }
         debug {

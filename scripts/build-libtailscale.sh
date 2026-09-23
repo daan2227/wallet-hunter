@@ -133,8 +133,33 @@ export CC
 #
 # Es un fallo que NO da la cara al compilar: el APK sale entero y con las dos
 # librerias dentro. Solo se ve al instalarlo.
-go build -buildmode=c-shared \
-    -ldflags '-extldflags "-Wl,-soname,libtailscale.so -Wl,-z,max-page-size=16384"' \
+#
+# PESO. Era el 73 % del APK: 21,4 MB de 29. Tres cosas lo bajan:
+#
+#   - Etiquetas ts_omit_*: tsnet arrastra por defecto todo tailscaled —SSH,
+#     Taildrop, Drive, exit node, rutas anunciadas, AWS, Kubernetes, la CLI,
+#     el cliente web, Tailnet Lock…—. Aquí sólo se levanta un nodo que
+#     escucha y marca por TCP, así que eso sobra. serve y acme NO se pueden
+#     quitar: tsnet.go los llama directamente y no compila sin ellos.
+#     Medido en x86_64 con el mismo commit: 26,0 -> 20,4 MB (-21 %).
+#   - -s -w: fuera la tabla de símbolos y el DWARF. Los símbolos DINÁMICOS
+#     (los tailscale_* que busca libtsbridge.so) se quedan: son otra tabla.
+#   - -trimpath: fuera las rutas de esta máquina incrustadas en el binario.
+#
+# Si una versión nueva de tailscale.com deja de compilar con alguna de estas
+# etiquetas, el error dice qué función falta: se quita esa etiqueta y ya.
+OMITIR="appconnectors aws advertiseexitnode advertiseroutes bird c2n capture
+  cli cliconndiag clientupdate completion cloud dbus debugeventbus
+  debugportmapper doctor drive iptables kube linuxdnsfight netlog
+  networkmanager oauthkey identityfederation osrouter posture qrcodes
+  relayserver resolved sdnotify ssh synology syspolicy systray taildrop tap
+  tpm webclient wakeonlan useexitnode portlist tailnetlock hujsonconf ace
+  captiveportal lazywg"
+TAGS=$(for t in $OMITIR; do printf 'ts_omit_%s,' "$t"; done)
+TAGS=${TAGS%,}
+
+go build -buildmode=c-shared -trimpath -tags "$TAGS" \
+    -ldflags '-s -w -extldflags "-Wl,-soname,libtailscale.so -Wl,-z,max-page-size=16384"' \
     -o "$SALIDA_SO/libtailscale.so" .
 
 # El .h que genera cgo NO es el que hay que incluir: trae los prototipos de los
