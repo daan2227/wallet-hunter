@@ -2559,12 +2559,57 @@ class WalletActivity : FragmentActivity() {
      * again", desde la comprobación, vuelva a enseñar LA MISMA y no una nueva.
      */
     private fun showCreateDialog(mn: String = Bip39.generate(12), nombre: String = "") {
+        val palabras = mn.split(" ")
         val hoja = hojaBase("Your new wallet",
-            "Write these 12 words down on paper, in this order. They are the " +
+            "Write these ${palabras.size} words down on paper, in this order. They are the " +
             "only way to recover this wallet, and anyone who has them can take " +
             "its funds. Never type them into a website or send them to anyone.")
 
-        val palabras = mn.split(" ")
+        // Se crea aquí y se añade más abajo: el selector de longitud de justo
+        // debajo lo necesita para no perder el nombre ya escrito al cambiar.
+        val etNombre = campoNombre().apply { setText(nombre) }
+        var esteDialogo: AlertDialog? = null
+
+        /* 12 o 24 palabras.
+         *
+         * Sólo había 12, y no por nada técnico: generate() ya hacía 24 y
+         * estaba probado con los vectores de 24. 12 palabras son 128 bits, que
+         * es lo mismo que resiste la propia curva de Bitcoin, así que 24 no la
+         * hacen más difícil de romper en la práctica. Pero es una elección
+         * legítima —hay carteras de hardware que sólo usan 24— y no es a esta
+         * app a quien le toca decidirla. Cambiar genera una frase nueva: la de
+         * ahora todavía no se ha guardado ni confirmado. */
+        val selectorLargo = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = GradientDrawable().apply {
+                setColor(BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+            }
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { bottomMargin = dp(12) }
+        }
+        for (n in listOf(12, 24)) {
+            val activo = n == palabras.size
+            selectorLargo.addView(TextView(this).apply {
+                text = "$n words"; gravity = Gravity.CENTER
+                textSize = AppTheme.SP_BODY
+                setTextColor(if (activo) TXT_PRI else TXT_SEC)
+                typeface = if (activo) AppTheme.bold(context) else AppTheme.medium(context)
+                background = if (activo) GradientDrawable().apply {
+                    setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                } else null
+                layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f)
+                isClickable = true; isFocusable = true
+                isSelected = activo
+                if (!activo) setOnClickListener {
+                    esteDialogo?.dismiss()
+                    showCreateDialog(Bip39.generate(n), etNombre.text.toString())
+                }
+            })
+        }
+        hoja.addView(selectorLargo)
         for (fila in 0 until palabras.size / 2) {
             val row = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
@@ -2573,8 +2618,9 @@ class WalletActivity : FragmentActivity() {
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { bottomMargin = dp(6) }
             }
-            // Por columnas: 1-6 a la izquierda y 7-12 a la derecha, que es como
-            // se lee de arriba abajo y como vienen las hojas de apuntarlas.
+            // Por columnas: la primera mitad a la izquierda y la segunda a la
+            // derecha (1-6 y 7-12, o 1-12 y 13-24), que es como se lee de
+            // arriba abajo y como vienen las hojas de apuntarlas.
             for (col in 0 until 2) {
                 val i = fila + col * (palabras.size / 2)
                 row.addView(LinearLayout(this).apply {
@@ -2601,7 +2647,6 @@ class WalletActivity : FragmentActivity() {
             hoja.addView(row)
         }
 
-        val etNombre = campoNombre().apply { setText(nombre) }
         hoja.addView(etNombre)
 
         val chk = android.widget.CheckBox(this).apply {
@@ -2624,6 +2669,7 @@ class WalletActivity : FragmentActivity() {
         }
 
         val dlg = hojaSegura(hoja)
+        esteDialogo = dlg
         dlg.show()
         btnCancelar.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnSeguir.setOnClickListener {
