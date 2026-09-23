@@ -2,9 +2,37 @@ package com.hunter.btc
 
 object HunterEngine {
     init { System.loadLibrary("hunter_jni") }
+
+    /**
+     * Contexto de la app, para que [alHallar] pueda abrir el baúl. Lo fijan
+     * [conectarBaul] la pantalla principal y el servicio: el motor corre en
+     * cualquiera de los dos.
+     */
+    @Volatile private var appCtx: android.content.Context? = null
+
+    fun conectarBaul(ctx: android.content.Context) { appCtx = ctx.applicationContext }
+
+    /**
+     * La llama el motor, desde su propio hilo, en cuanto encuentra algo: la
+     * clave va cifrada al baúl sin pasar por disco en claro. Antes se escribía
+     * en coincidencias.txt y ahí esperaba hasta la siguiente vez que se abría
+     * la app.
+     *
+     * @return false si no se ha podido guardar; el motor la conserva en
+     *   memoria y [MatchVault.recoger] la vuelve a intentar.
+     */
+    @JvmStatic
+    fun alHallar(linea: String): Boolean {
+        val ctx = appCtx ?: return false
+        return MatchVault.guardarHallazgo(ctx, linea)
+    }
+
+    /** Un hallazgo que el motor no pudo entregar al baúl, o "" si no queda. */
+    external fun popPorGuardar(): String
+    /** Devuelve al motor uno que tampoco se pudo guardar ahora. */
+    external fun devolverPorGuardar(linea: String)
+
     external fun loadCsv(path: String)
-    /** Directorio donde el motor escribe coincidencias.txt (contiene WIF en claro). */
-    external fun setMatchDir(dir: String)
     external fun setMode(mode: Int)
     external fun setRange(start: String, end: String)
     external fun setTarget(addr: String)

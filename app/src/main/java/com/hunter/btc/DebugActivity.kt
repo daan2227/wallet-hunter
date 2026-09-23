@@ -203,14 +203,13 @@ class DebugActivity : AppCompatActivity() {
         val filesCard = card()
         filesCard.addView(label("LOG FILES"))
 
-        // coincidencias.txt vive ahora en almacenamiento interno; el externo se
-        // deja listado sólo para poder borrar restos de versiones anteriores.
+        // coincidencias.txt ya no existe: los hallazgos van directos al baúl
+        // cifrado, y los que dejaran versiones anteriores se pasan a él y se
+        // borran al abrir la app (MatchVault.recoger).
         val logFiles = listOf(
             File(filesDir, "crash_log.txt"),
             File(filesDir, "puz_debug.txt"),
-            File(filesDir, "coincidencias.txt"),
-            File(getExternalFilesDir(null), "crash_log.txt"),
-            File(getExternalFilesDir(null), "coincidencias.txt")
+            File(getExternalFilesDir(null), "crash_log.txt")
         )
 
         logFiles.forEach { f ->

@@ -459,15 +459,15 @@ object WalletManager {
      * (saveSeed), los WIF y los watchers no se exportaban nunca.
      *
      * Incluye también el baúl de hallazgos (MatchVault): las claves que
-     * encuentran el puzzle y el escáner vivían sólo en coincidencias.txt, un
-     * fichero en claro que no entraba en ningún backup, así que un acierto se
-     * perdía al desinstalar.
+     * encuentran el puzzle y el escáner vivían sólo en un fichero en claro
+     * (coincidencias.txt, ya retirado) que no entraba en ningún backup, así
+     * que un acierto se perdía al desinstalar.
      */
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
         return try {
-            // Recoge lo que el motor nativo haya dejado en claro desde el último
-            // arranque, para que un acierto reciente no se quede fuera del backup.
-            try { MatchVault.ingestPlaintextFile(ctx) } catch (e: Exception) {}
+            // Recoge lo que el motor no haya podido entregar al baúl todavía,
+            // para que un acierto reciente no se quede fuera del backup.
+            try { MatchVault.recoger(ctx) } catch (e: Exception) {}
 
             val wallets = listWallets(ctx)
             val mainSeed = loadSeed(ctx)

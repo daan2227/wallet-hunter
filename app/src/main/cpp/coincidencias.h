@@ -25,8 +25,8 @@
 #include <deque>
 #include <mutex>
 
-/* Cuantas se guardan. Es para ENSENAR y para avisar, no un archivo: el archivo
- * es coincidencias.txt, que se escribe aparte y no se toca. 200 entradas son
+/* Cuantas se guardan. Es para ENSENAR y para avisar, no un archivo: lo que se
+ * guarda de verdad va al baul cifrado, aparte (save_match). 200 entradas son
  * unos 30 KB y de sobra para cualquier pantalla. */
 #define COINC_TOPE 200
 

@@ -84,6 +84,10 @@
         <activity android:name=".NetworkActivity"
             android:theme="@style/AppThemeDark" />
 
+        <activity android:name=".VaultActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.provider"

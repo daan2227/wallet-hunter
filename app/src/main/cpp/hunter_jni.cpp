@@ -90,10 +90,18 @@ static uint8_t  *g_xonly  = nullptr;
 static uint64_t  g_total_tr = 0;
 static Bloom     g_bloom_tr = {nullptr,0,0};
 static char      g_csv_path[1024] = "";
-/* Directorio donde se guardan los matches. Lo fija la app con
-   setMatchDir(filesDir) para que las claves privadas no acaben junto al CSV,
-   que normalmente está en almacenamiento externo. */
-static char      g_match_dir[1024] = "";
+/* Hallazgos que no se han podido entregar al baul (ver save_match). Se
+   quedan en memoria, nunca en disco, hasta que la app los recoja con
+   popPorGuardar(). */
+static std::deque<std::string> g_por_guardar;
+static std::mutex              g_por_guardar_mtx;
+
+/* Para llamar a HunterEngine.alHallar() desde los hilos del motor. La clase
+   se busca en JNI_OnLoad porque desde un hilo nativo FindClass usa el
+   cargador del sistema, que no conoce las clases de la app. */
+static JavaVM   *g_vm          = nullptr;
+static jclass    g_engine_cls  = nullptr;
+static jmethodID g_al_hallar   = nullptr;
 
 static std::atomic<long>   g_count(0);
 static std::atomic<long>   g_found(0);
@@ -617,34 +625,62 @@ static void gen_privkey_fast(uint8_t *out, XR128 *rng){
         memcpy(out, g_range_end, 32);
 }
 
+/* Entrega una coincidencia al baul cifrado, en el momento.
+ *
+ * Antes se escribia en files/coincidencias.txt, en claro y con la clave
+ * privada, y la app lo pasaba al baul la proxima vez que se abria. Entre medias
+ * la clave estaba en un fichero legible por cualquiera con acceso al
+ * almacenamiento de la app (root, una copia por adb, una herramienta forense).
+ * El motor no puede cifrar —el Keystore es de la capa Java—, asi que ahora
+ * llama a HunterEngine.alHallar(), que la cifra y la guarda antes de que el
+ * hilo siga buscando.
+ *
+ * @return true si el baul la ha guardado. */
+static bool entregar_al_baul(const std::string &linea){
+    if(!g_vm || !g_engine_cls || !g_al_hallar) return false;
+    JNIEnv *env=nullptr;
+    bool adjuntado=false;
+    jint st=g_vm->GetEnv((void**)&env,JNI_VERSION_1_6);
+    if(st==JNI_EDETACHED){
+        if(g_vm->AttachCurrentThread(&env,nullptr)!=JNI_OK) return false;
+        adjuntado=true;
+    }else if(st!=JNI_OK) return false;
+    bool ok=false;
+    jstring js=env->NewStringUTF(linea.c_str());
+    if(js){
+        ok=env->CallStaticBooleanMethod(g_engine_cls,g_al_hallar,js)==JNI_TRUE;
+        if(env->ExceptionCheck()){ env->ExceptionClear(); ok=false; }
+        env->DeleteLocalRef(js);
+    }
+    /* Un hilo nativo que termina adjuntado tumba el proceso: se suelta aqui
+       mismo, que es quien lo adjunto. */
+    if(adjuntado) g_vm->DetachCurrentThread();
+    return ok;
+}
+
 /* Guardar match */
 static void save_match(const char *privhex, const char *addr, double btc, const char *wif, const char *extra){
-    /* El fichero lleva claves privadas en claro. Si la app ha fijado un
-       directorio interno lo usamos; sólo si no, caemos junto al CSV (que suele
-       estar en almacenamiento externo, legible por apps con
-       MANAGE_EXTERNAL_STORAGE y por USB). */
-    std::string outpath;
-    if(g_match_dir[0]!='\0'){
-        outpath=std::string(g_match_dir);
-        if(outpath.back()!='/') outpath+='/';
-        outpath+="coincidencias.txt";
-    }else{
-        outpath=std::string(g_csv_path);
-        size_t sl=outpath.rfind('/');
-        if(sl!=std::string::npos) outpath=outpath.substr(0,sl+1)+"coincidencias.txt";
-    }
     /* Primero a la lista, que es quien sabe si ya estaba.
      *
      * Lo de mirar si se repite no es cosmetico: el escaneo secuencial vuelve a
      * empezar al terminar el rango, asi que con un rango pequeno encuentra la
      * MISMA clave una y otra vez. Sin este filtro, cada vuelta anadia una
-     * entrada a la lista y una linea al fichero, y la app se quedaba sin
+     * entrada a la lista y una llamada al baul, y la app se quedaba sin
      * memoria en minutos. Ver coincidencias.h. */
     std::ostringstream full;full<<"MATCH|ADDR:"<<addr<<"|BTC:"<<btc<<"|WIF:"<<wif<<"|HEX:"<<privhex;
     if(!coinc_add(&g_matches,full.str())) return;   /* ya estaba */
 
-    FILE *fo=fopen(outpath.c_str(),"a");
-    if(fo){fprintf(fo,"%s ADDR:%s BTC:%.8f WIF:%s\n",extra,addr,btc,wif);fclose(fo);}
+    /* El formato es el que lee MatchVault.deLinea(). */
+    char btcs[32]; snprintf(btcs,sizeof(btcs),"%.8f",btc);
+    std::string linea=std::string(extra)+" ADDR:"+addr+" BTC:"+btcs+" WIF:"+wif;
+    if(!entregar_al_baul(linea)){
+        /* Si el baul no ha podido (Keystore sin desbloquear tras reiniciar,
+           app aun sin conectar) se guarda en memoria y la app la recoge con
+           popPorGuardar(). En memoria y no en disco: es justo lo que se quiere
+           evitar. */
+        std::lock_guard<std::mutex> lk(g_por_guardar_mtx);
+        g_por_guardar.push_back(linea);
+    }
     std::ostringstream oss;oss<<"MATCH! "<<addr<<" "<<btc<<" BTC";
     add_log(oss.str());
 }
@@ -1143,14 +1179,45 @@ Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
     pthread_t t;pthread_create(&t,nullptr,load_fn,nullptr);pthread_detach(t);
 }
 
-/* Fija el directorio donde save_match() escribe coincidencias.txt. La app pasa
-   filesDir (almacenamiento interno) para que las claves privadas no se escriban
-   junto al CSV. */
+/* Se llama al cargar la libreria, desde el hilo de System.loadLibrary y con el
+   cargador de clases de la app: es el unico momento en que FindClass encuentra
+   HunterEngine. */
+JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *){
+    g_vm=vm;
+    JNIEnv *env=nullptr;
+    if(vm->GetEnv((void**)&env,JNI_VERSION_1_6)!=JNI_OK) return JNI_VERSION_1_6;
+    jclass c=env->FindClass("com/hunter/btc/HunterEngine");
+    if(c){
+        g_engine_cls=(jclass)env->NewGlobalRef(c);
+        g_al_hallar=env->GetStaticMethodID(c,"alHallar","(Ljava/lang/String;)Z");
+        env->DeleteLocalRef(c);
+    }
+    if(env->ExceptionCheck()){
+        env->ExceptionClear();
+        g_al_hallar=nullptr;
+    }
+    return JNI_VERSION_1_6;
+}
+
+/* Saca un hallazgo que no se pudo entregar al baul, o "" si no queda. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_popPorGuardar(JNIEnv *env,jobject){
+    std::lock_guard<std::mutex> lk(g_por_guardar_mtx);
+    if(g_por_guardar.empty()) return env->NewStringUTF("");
+    std::string s=g_por_guardar.front(); g_por_guardar.pop_front();
+    return env->NewStringUTF(s.c_str());
+}
+
+/* Devuelve uno que la app no pudo guardar, para que no se pierda. */
 JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setMatchDir(JNIEnv *env,jobject,jstring dir){
-    const char *p=env->GetStringUTFChars(dir,nullptr);
-    if(p){ strncpy(g_match_dir,p,sizeof(g_match_dir)-1); g_match_dir[sizeof(g_match_dir)-1]='\0'; }
-    env->ReleaseStringUTFChars(dir,p);
+Java_com_hunter_btc_HunterEngine_devolverPorGuardar(JNIEnv *env,jobject,jstring l){
+    const char *p=env->GetStringUTFChars(l,nullptr);
+    if(!p) return;
+    {
+        std::lock_guard<std::mutex> lk(g_por_guardar_mtx);
+        g_por_guardar.push_front(std::string(p));
+    }
+    env->ReleaseStringUTFChars(l,p);
 }
 
 JNIEXPORT void JNICALL

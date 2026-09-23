@@ -83,6 +83,9 @@ class HunterService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        // El motor puede estar corriendo sin ninguna pantalla abierta: el baúl
+        // tiene que poder abrirse desde aquí.
+        HunterEngine.conectarBaul(this)
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         startForeground(NOTIF_FG, buildFgNotif("BTC Hunter running", "Starting..."))
@@ -297,6 +300,8 @@ class HunterService : Service() {
             if (found < lastFound) lastFound = found
             if (found > lastFound) {
                 lastFound = found
+                // Lo que el motor no pudiera entregar al baúl al encontrarlo.
+                try { MatchVault.recoger(this) } catch (e: Throwable) {}
                 val detalles = HunterEngine.getMatches()
                 sendMatchNotif(found, detalles)
                 // Si este móvil trabaja para un cluster, avisar al master.

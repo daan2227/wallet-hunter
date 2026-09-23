@@ -811,19 +811,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         goTab(savedState?.getInt("pagina", PAG_SCANNER) ?: PAG_SCANNER)
         abrirPestanaPedida(intent)
 
-        // El motor escribe coincidencias.txt con los WIF en claro. Sin esto los
-        // deja junto al CSV, normalmente en almacenamiento externo.
+        // El motor entrega cada hallazgo al baúl cifrado en el momento; esto le
+        // da con qué abrirlo. Y lo que dejaran en claro versiones anteriores
+        // pasa al baúl y se borra. Aquí NO se consulta ningún saldo: hacerlo en
+        // cada arranque mandaba todas las direcciones encontradas a
+        // mempool.space sin que nadie lo pidiera. La consulta está en
+        // "Actualizar Balance" y en el botón del baúl.
         try {
-            HunterEngine.setMatchDir(filesDir.absolutePath)
-            migrateLegacyMatchFile()
-            // Lo que quedara en claro de la sesión anterior pasa al baúl cifrado.
-            // Sólo se mueve el fichero: aquí NO se consulta ningún saldo. Hacerlo
-            // en cada arranque mandaba todas las direcciones encontradas a
-            // mempool.space sin que nadie lo pidiera. La consulta está en
-            // "Actualizar Balance" y en el botón del baúl.
-            MatchVault.ingestPlaintextFile(this)
+            HunterEngine.conectarBaul(this)
+            MatchVault.recoger(this)
         } catch (e: Throwable) {
-            android.util.Log.e("MainActivity", "setMatchDir: ${e.message}", e)
+            android.util.Log.e("MainActivity", "vault: ${e.message}", e)
         }
 
         // Init
@@ -2871,7 +2869,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // que nadie lo hubiera pedido: preguntar por una dirección se la revela
         // a quien responde, y eso delata que este dispositivo tiene la clave.
         fun loadCoincidencias(consultarRed: Boolean): Pair<Double, List<Triple<String,Double,String>>> {
-            MatchVault.ingestPlaintextFile(this@MainActivity)
+            MatchVault.recoger(this@MainActivity)
             // Los hallazgos de Kangaroo de antes del arreglo se guardaron sólo
             // con la clave, y el baúl lista por dirección: salían en blanco.
             // Se completan al abrirlo, que es cuando importa verlos.
@@ -3093,8 +3091,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         val (estVault, _) = guardRow(R.drawable.ic_vault, "Finds vault",
                                 "Encrypted, separate from your wallets", primero = true) {
-            if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) showVault() }
-            else showVault()
+            // El baúl pide el PIN él mismo, siempre: ver VaultActivity.
+            startActivity(Intent(this, VaultActivity::class.java))
         }
         val (estBackup, subBackup) = guardRow(R.drawable.ic_lock, "Backups",
                                  "Create, view, share or restore", primero = false) {
@@ -4481,7 +4479,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         // acaba de aparecer un acierto y lo primero que se
                         // quiere saber es si esa dirección tiene fondos. Es una
                         // dirección, no el baúl entero.
-                        if (MatchVault.ingestPlaintextFile(this@MainActivity) > 0)
+                        MatchVault.recoger(this@MainActivity)
+                        if (MatchVault.pendingBalance(this@MainActivity) > 0)
                             MatchVault.resolvePendingBalances(this@MainActivity)
                     } catch (e: Exception) {}
                 }.start()
@@ -4960,128 +4959,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /**
-     * Baúl de hallazgos: lo que han encontrado el puzzle y el escáner.
-     *
-     * Llega aquí tras PIN. Las claves se muestran tapadas y sólo se revelan al
-     * pulsar una entrada: la pantalla puede quedar a la vista de cualquiera, y
-     * quien vea un WIF se lleva el saldo.
-     */
-    private fun showVault() {
-        MatchVault.ingestPlaintextFile(this)
-        val entries = MatchVault.list(this)
-        if (entries.isEmpty()) {
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Vault empty")
-                .setMessage("No finds yet. When the puzzle or the scanner " +
-                            "finds a key it will be stored here encrypted, and included " +
-                            "in the backup.")
-                .setPositiveButton("OK", null)
-                .show()
-            return
-        }
-
-        val fmt = java.text.SimpleDateFormat("dd/MM/yy HH:mm", java.util.Locale.US)
-        val items = entries.map { e ->
-            val etiqueta = when (e.source) {
-                "puzzle"   -> "Puzzle"
-                "scanner"  -> "Scanner"
-                "recovery" -> "Recovery"
-                else       -> e.source
-            }
-            // Un "0.00000000 BTC" a secas se lee como "vacía", cuando puede ser
-            // sólo que aún no se ha preguntado a la cadena.
-            val saldo = if (e.checkedTs == 0L) "balance not checked"
-                        else "${"%.8f".format(e.btc)} BTC"
-            "$etiqueta · ${fmt.format(java.util.Date(e.ts))}\n${e.addr}\n$saldo"
-        }.toTypedArray()
-
-        val pendientes = entries.count { it.checkedTs == 0L }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Vault · ${entries.size} find(s)")
-            .setItems(items) { _, which -> showVaultEntry(entries[which]) }
-            .setPositiveButton(
-                if (pendientes > 0) "Check balances ($pendientes)" else "Refresh balances"
-            ) { _, _ -> resolveVaultBalances() }
-            .setNeutralButton("Backup") { _, _ -> exportEncryptedBackup() }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
-    /**
-     * Pregunta a la cadena por el saldo de los hallazgos sin comprobar.
-     *
-     * Consultar una dirección se la revela al servidor: para las del puzzle da
-     * casi igual —están vigiladas por medio mundo—, pero es una acción del
-     * usuario, no algo que la app deba hacer a sus espaldas.
-     */
-    private fun resolveVaultBalances() {
-        android.widget.Toast.makeText(this, "Checking balances…",
-            android.widget.Toast.LENGTH_SHORT).show()
-        Thread {
-            val n = try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) { 0 }
-            runOnUiThread {
-                android.widget.Toast.makeText(this,
-                    if (n > 0) "$n balance(s) updated"
-                    else "No source answered — try again later",
-                    android.widget.Toast.LENGTH_SHORT).show()
-                if (n > 0) showVault()
-            }
-        }.start()
-    }
-
-    private fun showVaultEntry(e: MatchVault.Entry) {
-        val detalle = buildString {
-            appendLine("Source: ${e.source}")
-            appendLine("Date: ${java.util.Date(e.ts)}")
-            appendLine()
-            appendLine("Address:")
-            appendLine(e.addr)
-            appendLine()
-            if (e.checkedTs == 0L) {
-                appendLine("Balance: not checked yet")
-            } else {
-                appendLine("Balance: ${"%.8f".format(e.btc)} BTC")
-                appendLine("Checked: ${java.util.Date(e.checkedTs)}")
-            }
-            if (e.extra.contains("SEED:")) {
-                appendLine()
-                appendLine("Seed: " + (Regex("""SEED:(.+?)\s+PATH:""")
-                    .find(e.extra)?.groupValues?.get(1) ?: "—"))
-                appendLine("Path: " + (Regex("""PATH:(\S+)""")
-                    .find(e.extra)?.groupValues?.get(1) ?: "—"))
-            }
-        }
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Find")
-            .setMessage(detalle)
-            .setPositiveButton("Copy WIF") { _, _ ->
-                if (e.wif.isEmpty()) {
-                    android.widget.Toast.makeText(this, "This entry has no WIF",
-                        android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    // Marcada como sensible y borrada a los 60 s: ver Secretos.
-                    Secretos.copiarClave(this, "wif", e.wif)
-                    android.widget.Toast.makeText(this,
-                        "WIF copied. It will be cleared from the clipboard in 60 s.",
-                        android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
-            .setNeutralButton("Copy HEX") { _, _ ->
-                if (e.privHex.isEmpty()) {
-                    android.widget.Toast.makeText(this, "This entry has no hex key",
-                        android.widget.Toast.LENGTH_SHORT).show()
-                } else {
-                    Secretos.copiarClave(this, "hex", e.privHex)
-                    android.widget.Toast.makeText(this,
-                        "Hex key copied. It will be cleared from the clipboard in 60 s.",
-                        android.widget.Toast.LENGTH_LONG).show()
-                }
-            }
-            .setNegativeButton("Close", null)
-            .show()
-    }
-
-    /**
      * Crea una copia de seguridad. Lleva al baúl de copias de WalletActivity.
      *
      * Antes esto era un exportador aparte: cifraba sólo los hallazgos con
@@ -5092,7 +4969,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * que sí tiene importador, así que no hacen falta dos mecanismos.
      */
     private fun exportEncryptedBackup() {
-        MatchVault.ingestPlaintextFile(this)
+        MatchVault.recoger(this)
         startActivity(Intent(this, WalletActivity::class.java).apply {
             putExtra("MODE", "seed")
             putExtra("OPEN_BACKUP_VAULT", true)
@@ -5160,7 +5037,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Los hallazgos van SIN claves privadas: para llevarse las claves está la
         // copia de seguridad, que cifra con el PIN.
-        MatchVault.ingestPlaintextFile(this)
+        MatchVault.recoger(this)
         val hallazgos = MatchVault.list(this)
         if (hallazgos.isNotEmpty()) {
             sb.appendLine("=== MATCHES FOUND ===")
@@ -6298,35 +6175,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onDestroy()
         savePuzzleCheckpoint()
         batteryReceiver?.let { unregisterReceiver(it) }
-    }
-
-    /** Fichero de matches, ahora siempre en almacenamiento interno. */
-    private fun matchesFile() = java.io.File(filesDir, "coincidencias.txt")
-
-    /**
-     * Traslada el coincidencias.txt que las versiones anteriores dejaron en
-     * almacenamiento externo. Contiene claves privadas en claro, así que se
-     * concatena al interno y se borra el original.
-     */
-    private fun migrateLegacyMatchFile() {
-        try {
-            val ext = getExternalFilesDir(null) ?: return
-            val old = java.io.File(ext, "coincidencias.txt")
-            if (!old.exists()) return
-            // Por trozos y no readText(): este fichero lo escribe el motor con
-            // "append" y nada limita su tamaño. Leerlo entero en memoria es el
-            // mismo patrón que acaba de matar la app con la lista de hallazgos
-            // —244 MB de 256— y aquí pasaría al ARRANCAR, que es peor.
-            old.inputStream().use { ent ->
-                java.io.FileOutputStream(matchesFile(), true).use { sal ->
-                    ent.copyTo(sal, 64 * 1024)
-                }
-            }
-            old.delete()
-            android.util.Log.i("MainActivity", "coincidencias.txt moved to internal storage")
-        } catch (e: Exception) {
-            android.util.Log.w("MainActivity", "migrate matches: ${e.message}")
-        }
     }
 
     /**

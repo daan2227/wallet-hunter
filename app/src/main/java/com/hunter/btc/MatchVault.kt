@@ -15,12 +15,14 @@ import org.json.JSONObject
 /**
  * Baúl cifrado de hallazgos (puzzle y escáner).
  *
- * El motor nativo escribe cada acierto en files/coincidencias.txt como texto
- * plano, con la clave privada dentro. Ese fichero no entraba en el backup, así
- * que un hallazgo se perdía al desinstalar y no había forma de llevárselo.
+ * El motor nativo entrega cada acierto aquí en el momento, por
+ * HunterEngine.alHallar(). Antes lo escribía en files/coincidencias.txt, en
+ * claro y con la clave privada, y ahí se quedaba hasta la siguiente vez que se
+ * abría la app. Ya no se escribe nunca; sólo se recogen y se borran los que
+ * dejaran versiones anteriores.
  *
- * Aquí se guardan cifrados con AES-GCM bajo una clave propia del Keystore, y
- * el fichero en claro se ingiere y se borra. La clave es distinta de la de las
+ * Aquí se guardan cifrados con AES-GCM bajo una clave propia del Keystore.
+ * La clave es distinta de la de las
  * seeds y de la de los WIF: borrar una wallet no debe llevarse los hallazgos,
  * ni al revés.
  */
@@ -59,7 +61,17 @@ object MatchVault {
 
     // ── Persistencia ──────────────────────────────────────────────────────────
 
-    fun list(ctx: Context): List<Entry> {
+    fun list(ctx: Context): List<Entry> = leer(ctx) ?: emptyList()
+
+    /**
+     * Lo que hay en el baúl, o null si HAY algo pero no se ha podido abrir.
+     *
+     * list() devuelve vacío en los dos casos, y para enseñar da igual. Para
+     * AÑADIR no: add() leía "vacío", le sumaba el hallazgo nuevo y escribía
+     * eso encima, así que un fallo pasajero del Keystore al abrir el baúl lo
+     * dejaba con una sola entrada y el resto perdido.
+     */
+    private fun leer(ctx: Context): List<Entry>? {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val encB64 = prefs.getString(PREF_ENC, null) ?: return emptyList()
         val ivB64  = prefs.getString(PREF_IV, null) ?: return emptyList()
@@ -71,31 +83,41 @@ object MatchVault {
             fromJson(JSONArray(json))
         } catch (e: Exception) {
             android.util.Log.e("MatchVault", "could not open the vault: ${e.javaClass.simpleName}")
-            emptyList()
+            null
         }
     }
 
-    private fun write(ctx: Context, entries: List<Entry>) {
+    /**
+     * @param seguro escribe a disco antes de volver (commit) en vez de en
+     *   segundo plano (apply). Para un hallazgo recién encontrado: si el
+     *   proceso muere justo después, con apply() se habría perdido.
+     */
+    private fun write(ctx: Context, entries: List<Entry>, seguro: Boolean = false) {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (entries.isEmpty()) { prefs.edit().clear().apply(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val enc = cipher.doFinal(toJson(entries).toString().toByteArray(Charsets.UTF_8))
-        prefs.edit()
+        val ed = prefs.edit()
             .putString(PREF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
             .putString(PREF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .apply()
+        if (seguro) ed.commit() else ed.apply()
     }
 
-    /** Añade evitando duplicados por dirección; los más recientes primero. */
+    /**
+     * Añade evitando duplicados por dirección; los más recientes primero.
+     *
+     * @throws IllegalStateException si el baúl tiene contenido y no se puede
+     *   abrir: escribir encima lo borraría.
+     */
     @Synchronized
-    fun add(ctx: Context, entries: List<Entry>): Int {
+    fun add(ctx: Context, entries: List<Entry>, seguro: Boolean = false): Int {
         if (entries.isEmpty()) return 0
-        val current = list(ctx)
+        val current = leer(ctx) ?: throw IllegalStateException("vault locked")
         val known = current.mapTo(HashSet()) { it.addr }
         val nuevos = entries.filter { it.addr.isNotEmpty() && it.addr !in known }
         if (nuevos.isEmpty()) return 0
-        write(ctx, (nuevos + current).take(MAX_ENTRIES))
+        write(ctx, (nuevos + current).take(MAX_ENTRIES), seguro)
         return nuevos.size
     }
 
@@ -222,52 +244,97 @@ object MatchVault {
             )
         }.filter { it.addr.isNotEmpty() }
 
-    // ── Ingesta del fichero en claro que escribe el motor nativo ──────────────
+    // ── Hallazgos del motor nativo ───────────────────────────────────────────
 
     /**
-     * Lee files/coincidencias.txt, incorpora lo que haya al baúl y borra el
-     * fichero. El motor en C++ no puede cifrar por sí mismo —el Keystore es
-     * de la capa Java— así que sigue escribiendo en claro y se recoge aquí.
+     * Una línea del motor como entrada del baúl, o null si no trae dirección.
      *
-     * save_match() en C++ escribe "<extra> ADDR:.. BTC:.. WIF:..", y extra
+     * save_match() en C++ manda "<extra> ADDR:.. BTC:.. WIF:..", y extra
      * cambia según el modo:
      *   BIP39   SEED:<mnemónico> PATH:<ruta> PRIV:<hex>
      *   puzzle  PRIV:<hex>
      *   raw     RAW:<hex>
      */
-    @Synchronized
-    fun ingestPlaintextFile(ctx: Context): Int {
-        val f = java.io.File(ctx.filesDir, "coincidencias.txt")
-        if (!f.exists() || f.length() == 0L) return 0
+    fun deLinea(line: String, ts: Long = System.currentTimeMillis()): Entry? {
+        if (line.isBlank()) return null
+        fun field(name: String): String =
+            Regex("""\b$name:(\S+)""").find(line)?.groupValues?.get(1) ?: ""
+        val addr = field("ADDR")
+        if (addr.isEmpty()) return null
+        return Entry(
+            ts      = ts,
+            source  = when {
+                line.contains("SEED:") -> "scanner"   // BIP39
+                line.contains("RAW:")  -> "scanner"   // raw keys
+                else                   -> "puzzle"
+            },
+            addr    = addr,
+            wif     = field("WIF"),
+            privHex = field("PRIV").ifEmpty { field("RAW") }.ifEmpty { field("HEX") },
+            btc     = field("BTC").toDoubleOrNull() ?: 0.0,
+            extra   = line.trim()
+        )
+    }
+
+    /**
+     * Guarda en el baúl un hallazgo recién salido del motor, escrito a disco
+     * antes de volver.
+     *
+     * @return true si queda guardado (también si ya lo estaba).
+     */
+    fun guardarHallazgo(ctx: Context, linea: String): Boolean {
+        val e = deLinea(linea) ?: return false
         return try {
-            val now = System.currentTimeMillis()
-            val parsed = f.readLines().mapNotNull { line ->
-                if (line.isBlank()) return@mapNotNull null
-                fun field(name: String): String =
-                    Regex("""\b$name:(\S+)""").find(line)?.groupValues?.get(1) ?: ""
-                val addr = field("ADDR")
-                if (addr.isEmpty()) return@mapNotNull null
-                Entry(
-                    ts      = now,
-                    source  = when {
-                        line.contains("SEED:") -> "scanner"   // BIP39
-                        line.contains("RAW:")  -> "scanner"   // raw keys
-                        else                   -> "puzzle"
-                    },
-                    addr    = addr,
-                    wif     = field("WIF"),
-                    privHex = field("PRIV").ifEmpty { field("RAW") }.ifEmpty { field("HEX") },
-                    btc     = field("BTC").toDoubleOrNull() ?: 0.0,
-                    extra   = line.trim()
-                )
-            }
-            val added = add(ctx, parsed)
-            // Sólo se borra el fichero en claro si el baúl quedó escrito.
-            if (parsed.isNotEmpty() && count(ctx) > 0) f.delete()
-            added
-        } catch (e: Exception) {
-            android.util.Log.e("MatchVault", "ingest failed: ${e.message}")
-            0
+            add(ctx, listOf(e), seguro = true)
+            leer(ctx)?.any { it.addr == e.addr } == true
+        } catch (t: Throwable) {
+            android.util.Log.e("MatchVault", "could not store a find: ${t.javaClass.simpleName}")
+            false
         }
+    }
+
+    /**
+     * Recoge lo que no haya llegado al baúl todavía.
+     *
+     *   - Lo que el motor no pudo entregar al encontrarlo y guarda en memoria
+     *     (Keystore sin abrir, app aún sin conectar). Nunca en disco.
+     *   - Los coincidencias.txt en claro que dejaron versiones anteriores, en
+     *     almacenamiento interno o externo. Se pasan al baúl y se borran.
+     *
+     * @return cuántos hallazgos nuevos han entrado.
+     */
+    @Synchronized
+    fun recoger(ctx: Context): Int {
+        var nuevos = 0
+        while (true) {
+            val l = try { HunterEngine.popPorGuardar() } catch (t: Throwable) { "" }
+            if (l.isEmpty()) break
+            val e = deLinea(l) ?: continue
+            try {
+                nuevos += add(ctx, listOf(e), seguro = true)
+            } catch (t: Throwable) {
+                // El baúl no se abre: se devuelve al motor y se reintenta luego.
+                try { HunterEngine.devolverPorGuardar(l) } catch (t2: Throwable) {}
+                break
+            }
+        }
+        val viejos = listOfNotNull(
+            java.io.File(ctx.filesDir, "coincidencias.txt"),
+            ctx.getExternalFilesDir(null)?.let { java.io.File(it, "coincidencias.txt") }
+        )
+        for (f in viejos) {
+            if (!f.exists()) continue
+            try {
+                val now = System.currentTimeMillis()
+                val entradas = f.useLines { ls -> ls.mapNotNull { deLinea(it, now) }.toList() }
+                nuevos += add(ctx, entradas, seguro = true)
+                // Sólo se borra si todo lo que traía está ya en el baúl.
+                val dentro = leer(ctx)?.mapTo(HashSet()) { it.addr } ?: continue
+                if (entradas.all { it.addr in dentro }) f.delete()
+            } catch (e: Exception) {
+                android.util.Log.e("MatchVault", "legacy file: ${e.javaClass.simpleName}")
+            }
+        }
+        return nuevos
     }
 }
