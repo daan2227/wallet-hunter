@@ -18,6 +18,9 @@
          siempre un aparato que llevaba días trabajando para un cluster, y lo
          único que se veía era que desaparecía de la lista del maestro. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Sólo para leer el QR de la dirección al enviar (QrScanActivity). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <!-- Desde Android 11 una app no ve qué otras hay instaladas salvo que las
          declare aquí. Sin esto, getPackageInfo("com.tailscale.ipn") lanza
@@ -83,6 +86,10 @@
 
         <activity android:name=".NetworkActivity"
             android:theme="@style/AppThemeDark" />
+
+        <activity android:name=".QrScanActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait" />
 
         <activity android:name=".VaultActivity"
             android:theme="@style/AppThemeDark"

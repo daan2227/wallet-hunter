@@ -25,6 +25,9 @@ private data class BalanceRow(
 
 class WalletActivity : FragmentActivity() {
     private val REQ_IMPORT_BACKUP = 1002
+    private val REQ_QR = 1003
+    /** Qué hacer con el texto de un QR leído: lo pone la pestaña Enviar. */
+    private var alLeerQr: ((String) -> Unit)? = null
 
     private val AMBER     get() = AppTheme.AMBER
     private val GREEN     get() = AppTheme.GREEN
@@ -1286,6 +1289,46 @@ class WalletActivity : FragmentActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT)
         }
         toCard.addView(etTo)
+
+        // Pegar y escanear: teclear 42 caracteres a mano es como se manda
+        // dinero a una dirección con uno cambiado.
+        fun rellenar(texto: String) {
+            val p = PagoUri.leer(texto)
+            etTo.setText(p.direccion)
+            if (p.importeBtc != null) etAmt.setText(p.importeBtc)
+        }
+        alLeerQr = { rellenar(it) }
+        val filaAcciones = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+        }
+        fun accion(t: String, icono: Int, ultimo: Boolean, click: () -> Unit) = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+            foreground = Ui.toque()
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply { if (!ultimo) marginEnd = dp(8) }
+            addView(Ui.icon(this@WalletActivity, icono, 16, TXT_PRI).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8)
+            })
+            addView(TextView(this@WalletActivity).apply {
+                text = t; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_PRI)
+                typeface = AppTheme.medium(context)
+            })
+            setOnClickListener { click() }
+        }
+        filaAcciones.addView(accion("Paste", R.drawable.ic_copy, false) {
+            val cm = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            val t = cm.primaryClip?.getItemAt(0)?.coerceToText(this)?.toString()?.trim().orEmpty()
+            if (t.isEmpty()) Toast.makeText(this, "The clipboard is empty", Toast.LENGTH_SHORT).show()
+            else rellenar(t)
+        })
+        filaAcciones.addView(accion("Scan QR", R.drawable.ic_scan, true) {
+            startActivityForResult(Intent(this, QrScanActivity::class.java), REQ_QR)
+        })
+        toCard.addView(filaAcciones)
         ll.addView(side(toCard, bottom = 20))
 
         /* ── COMISIÓN ──────────────────────────────────────────────────── */
@@ -3410,6 +3453,9 @@ class WalletActivity : FragmentActivity() {
         super.onActivityResult(req, res, data)
         if (req == REQ_IMPORT_BACKUP && res == RESULT_OK) {
             data?.data?.let { doRestore(it) }
+        }
+        if (req == REQ_QR && res == RESULT_OK) {
+            data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeerQr?.invoke(it) }
         }
     }
 }
