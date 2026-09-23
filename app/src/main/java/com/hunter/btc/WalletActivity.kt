@@ -96,6 +96,12 @@ class WalletActivity : FragmentActivity() {
     /* -- LIFECYCLE -- */
     override fun onCreate(s: Bundle?) {
         super.onCreate(s)
+        // El tema es un objeto de proceso: lo fija la primera pantalla que
+        // arranca. Si Android mata el proceso y lo revive directamente aqui
+        // —desde una notificacion, o al volver a la tarea—, esa primera
+        // pantalla es esta, y sin esto se pintaria en oscuro aunque el
+        // usuario tenga elegido el claro.
+        AppTheme.init(this)
         overridePendingTransition(0, 0)
         lastInteraction = System.currentTimeMillis()
         val mode = intent.getStringExtra("MODE") ?: ""

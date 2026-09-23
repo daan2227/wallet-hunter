@@ -73,6 +73,12 @@ class NetworkActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // El tema es un objeto de proceso: lo fija la primera pantalla que
+        // arranca. Si Android mata el proceso y lo revive directamente aqui
+        // —desde una notificacion, o al volver a la tarea—, esa primera
+        // pantalla es esta, y sin esto se pintaria en oscuro aunque el
+        // usuario tenga elegido el claro.
+        AppTheme.init(this)
         val BG    = AppTheme.BG_DEEP
         val TXT   = AppTheme.TXT_PRI
         val MUTED = AppTheme.TXT_SEC

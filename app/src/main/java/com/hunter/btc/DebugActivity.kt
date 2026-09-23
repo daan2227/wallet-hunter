@@ -19,6 +19,12 @@ class DebugActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // El tema es un objeto de proceso: lo fija la primera pantalla que
+        // arranca. Si Android mata el proceso y lo revive directamente aqui
+        // —desde una notificacion, o al volver a la tarea—, esa primera
+        // pantalla es esta, y sin esto se pintaria en oscuro aunque el
+        // usuario tenga elegido el claro.
+        AppTheme.init(this)
 
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE
