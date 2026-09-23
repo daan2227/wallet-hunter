@@ -98,15 +98,25 @@ object WalletManager {
             .apply()
     }
 
-    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet") {
+    /**
+     * @return true si la clave queda en la lista (también si ya estaba).
+     */
+    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet"): Boolean {
         val lista = listWifs(ctx)
+        // listWifs() devuelve vacío también cuando NO puede descifrar. Una lista
+        // vacía de verdad no deja nada guardado (writeWifs limpia), así que si
+        // hay algo cifrado y sale vacía es un fallo del Keystore: escribir
+        // encima borraría todas las claves que hay.
+        if (lista.isEmpty() && ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+                .contains(PREF_WIF_ENC)) return false
         // La misma clave dos veces es la misma cartera dos veces. Pasaba: abrir
         // un hallazgo del puzzle la guardaba cada vez, y la lista acababa con
         // entradas idénticas sin forma de saber que eran la misma.
-        if (lista.any { it.second == wif }) return
+        if (lista.any { it.second == wif }) return true
         val id = "wif_${System.currentTimeMillis()}"
         val n = limpiarNombre(name).ifEmpty { "WIF Wallet" }
         writeWifs(ctx, lista + Triple(id, wif, "$addr|$n"))
+        return true
     }
 
     fun listWifs(ctx: Context): List<Triple<String,String,String>> {

@@ -286,12 +286,76 @@ object MatchVault {
         val e = deLinea(linea) ?: return false
         return try {
             add(ctx, listOf(e), seguro = true)
-            leer(ctx)?.any { it.addr == e.addr } == true
+            val ok = leer(ctx)?.any { it.addr == e.addr } == true
+            if (ok) alGuardar(ctx, e)
+            ok
         } catch (t: Throwable) {
             android.util.Log.e("MatchVault", "could not store a find: ${t.javaClass.simpleName}")
             false
         }
     }
+
+    // ── Pasar hallazgos a la cartera ─────────────────────────────────────────
+
+    private const val PREFS_CFG = "match_vault_cfg"
+    private const val PREF_AUTO_CARTERA = "auto_cartera"
+
+    /**
+     * ¿Cada hallazgo nuevo se añade también a la cartera, como clave WIF?
+     *
+     * En preferencias aparte de las del baúl: write() las limpia enteras
+     * cuando el baúl se queda vacío, y el ajuste no debe irse con él.
+     */
+    fun autoCartera(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS_CFG, Context.MODE_PRIVATE)
+            .getBoolean(PREF_AUTO_CARTERA, false)
+
+    fun setAutoCartera(ctx: Context, v: Boolean) {
+        ctx.getSharedPreferences(PREFS_CFG, Context.MODE_PRIVATE).edit()
+            .putBoolean(PREF_AUTO_CARTERA, v).apply()
+    }
+
+    private fun alGuardar(ctx: Context, e: Entry) {
+        if (autoCartera(ctx)) try { aCartera(ctx, e) } catch (t: Throwable) {}
+    }
+
+    /**
+     * El WIF de un hallazgo, sacándolo de la clave si la entrada no lo trae
+     * (los de Kangaroo antiguos sólo guardaban la clave).
+     */
+    private fun wifDe(e: Entry): Pair<String, String>? {
+        if (e.wif.isNotEmpty()) return e.wif to e.addr
+        if (e.privHex.length != 64) return null
+        val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) { "" }
+        if (!d.contains("|")) return null
+        return d.substringBefore("|") to e.addr.ifEmpty { d.substringAfter("|") }
+    }
+
+    /** ¿Este hallazgo ya está en la cartera? */
+    fun enCartera(e: Entry, wifsCartera: Set<String>): Boolean =
+        e.wif.isNotEmpty() && e.wif in wifsCartera
+
+    /**
+     * Añade el hallazgo a la cartera como clave WIF, con un nombre que dice de
+     * dónde sale. Si ya estaba no la duplica.
+     *
+     * @return true si queda en la cartera.
+     */
+    fun aCartera(ctx: Context, e: Entry): Boolean {
+        val (wif, addr) = wifDe(e) ?: return false
+        val origen = when (e.source) {
+            "puzzle"   -> "Puzzle"
+            "scanner"  -> "Scanner"
+            "kangaroo" -> "Kangaroo"
+            "recovery" -> "Recovery"
+            else       -> "Find"
+        }
+        return WalletManager.saveWif(ctx, wif, addr, "$origen find ${addr.take(8)}")
+    }
+
+    /** Añade a la cartera todos los hallazgos que tengan clave. @return cuántos. */
+    fun todosACartera(ctx: Context): Int =
+        list(ctx).count { try { aCartera(ctx, it) } catch (t: Throwable) { false } }
 
     /**
      * Recoge lo que no haya llegado al baúl todavía.
@@ -312,6 +376,7 @@ object MatchVault {
             val e = deLinea(l) ?: continue
             try {
                 nuevos += add(ctx, listOf(e), seguro = true)
+                alGuardar(ctx, e)
             } catch (t: Throwable) {
                 // El baúl no se abre: se devuelve al motor y se reintenta luego.
                 try { HunterEngine.devolverPorGuardar(l) } catch (t2: Throwable) {}

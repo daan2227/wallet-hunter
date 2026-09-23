@@ -141,7 +141,10 @@ class VaultActivity : AppCompatActivity() {
                 MatchVault.recoger(this)
                 MatchVault.list(this)
             } catch (e: Exception) { emptyList() }
-            runOnUiThread { if (!bloqueado && !isFinishing) pintar(entradas) }
+            val wifs = try {
+                WalletManager.listWifs(this).mapTo(HashSet()) { it.second }
+            } catch (e: Exception) { HashSet<String>() }
+            runOnUiThread { if (!bloqueado && !isFinishing) pintar(entradas, wifs) }
         }.start()
     }
 
@@ -153,7 +156,7 @@ class VaultActivity : AppCompatActivity() {
         else       -> s.replaceFirstChar { it.uppercase() }
     }
 
-    private fun pintar(entradas: List<MatchVault.Entry>) {
+    private fun pintar(entradas: List<MatchVault.Entry>, wifs: Set<String>) {
         contenido.removeAllViews()
         contenido.addView(cabecera(
             "Encrypted on this phone · ${entradas.size} find" + if (entradas.size == 1) "" else "s"))
@@ -172,6 +175,7 @@ class VaultActivity : AppCompatActivity() {
                     gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f)
                 })
             })
+            contenido.addView(Ui.card(this, topGap = 12).apply { addView(interruptorCartera(emptyList(), wifs)) })
             return
         }
 
@@ -210,6 +214,8 @@ class VaultActivity : AppCompatActivity() {
         }
         botones.addView(bSaldo); botones.addView(bCopia)
         resumen.addView(botones)
+        resumen.addView(Ui.divider(this, 16))
+        resumen.addView(interruptorCartera(entradas, wifs))
         contenido.addView(resumen)
 
         // ── Lista ─────────────────────────────────────────────────────────
@@ -219,14 +225,80 @@ class VaultActivity : AppCompatActivity() {
             }
         })
         val fmt = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.US)
-        entradas.forEach { e -> contenido.addView(fila(e, fmt)) }
+        entradas.forEach { e -> contenido.addView(fila(e, fmt, MatchVault.enCartera(e, wifs))) }
     }
 
-    private fun fila(e: MatchVault.Entry, fmt: java.text.SimpleDateFormat): View {
+    /**
+     * "Añadir a la cartera automáticamente".
+     *
+     * Apagado por defecto: un hallazgo del escáner puede ser una dirección
+     * vacía o de otro, y meterla en la cartera sin preguntar llenaría la lista
+     * de claves que no son del usuario. Quien lo encienda, que lo decida.
+     *
+     * Al encenderlo se ofrece añadir también los que ya hay: si no, el ajuste
+     * sólo afectaría a lo que se encuentre de ahí en adelante y parecería que
+     * no hace nada.
+     */
+    private fun interruptorCartera(entradas: List<MatchVault.Entry>, wifs: Set<String>): View {
+        val fila = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        col.addView(texto("Add finds to the wallet", AppTheme.SP_BODY, AppTheme.TXT_PRI, AppTheme.medium(this)))
+        col.addView(texto("Each new find also appears in Wallet as a WIF key",
+                          AppTheme.SP_CAPTION, AppTheme.TXT_SEC).apply { setPadding(0, dp(2), dp(8), 0) })
+        fila.addView(col)
+        val sw = android.widget.Switch(this).apply {
+            isChecked = MatchVault.autoCartera(this@VaultActivity)
+            val estados = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+            thumbTintList = android.content.res.ColorStateList(estados,
+                intArrayOf(AppTheme.ACCENT, AppTheme.TXT_SEC))
+            trackTintList = android.content.res.ColorStateList(estados,
+                intArrayOf((AppTheme.ACCENT and 0x00FFFFFF) or (0x66 shl 24), AppTheme.BG_ELEV))
+        }
+        sw.setOnCheckedChangeListener { _, on ->
+            MatchVault.setAutoCartera(this, on)
+            val fuera = entradas.count { !MatchVault.enCartera(it, wifs) }
+            if (on && fuera > 0) {
+                val d = AlertDialog.Builder(this)
+                    .setTitle("Add the current finds too?")
+                    .setMessage("From now on new finds go to the wallet. There " +
+                                (if (fuera == 1) "is 1 find" else "are $fuera finds") +
+                                " in the vault that are not in it yet.")
+                    .setPositiveButton("Add them") { _, _ -> anadirTodos() }
+                    .setNegativeButton("Only new ones", null)
+                    .create()
+                d.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                dialogo = d
+                d.show()
+            }
+        }
+        fila.addView(sw)
+        return fila
+    }
+
+    private fun anadirTodos() {
+        Thread {
+            val n = try { MatchVault.todosACartera(this) } catch (e: Exception) { 0 }
+            runOnUiThread {
+                if (bloqueado || isFinishing) return@runOnUiThread
+                Toast.makeText(this,
+                    if (n > 0) "$n find(s) are now in the wallet" else "Could not add them to the wallet",
+                    Toast.LENGTH_SHORT).show()
+                mostrar()
+            }
+        }.start()
+    }
+
+    private fun fila(e: MatchVault.Entry, fmt: java.text.SimpleDateFormat, enCartera: Boolean): View {
         val c = Ui.card(this, topGap = 10, pad = 16)
         c.foreground = Ui.toque()
         c.isClickable = true; c.isFocusable = true
-        c.setOnClickListener { detalle(e) }
+        c.setOnClickListener { detalle(e, enCartera) }
 
         val arriba = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -236,6 +308,14 @@ class VaultActivity : AppCompatActivity() {
                              AppTheme.bold(this)).apply {
             background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, this@VaultActivity)
             setPadding(dp(8), dp(3), dp(8), dp(3))
+        })
+        if (enCartera) arriba.addView(texto("In wallet", AppTheme.SP_MICRO, AppTheme.ACCENT,
+                                            AppTheme.bold(this)).apply {
+            background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, this@VaultActivity)
+            setPadding(dp(8), dp(3), dp(8), dp(3))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { marginStart = dp(6) }
         })
         arriba.addView(texto(if (e.ts > 0) fmt.format(java.util.Date(e.ts)) else "",
                              AppTheme.SP_CAPTION, AppTheme.TXT_MUTED).apply {
@@ -279,7 +359,7 @@ class VaultActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun detalle(e: MatchVault.Entry) {
+    private fun detalle(e: MatchVault.Entry, enCartera: Boolean) {
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), dp(4))
@@ -327,6 +407,35 @@ class VaultActivity : AppCompatActivity() {
                 visible = !visible
                 tvClave.text = if (visible) secretos else "•••••••• hidden — tap to show"
             }
+        }
+
+        // Añadir a la cartera a mano, hallazgo a hallazgo, con el automático
+        // apagado o para los que ya estaban.
+        if (secretos.isNotEmpty()) {
+            val bCartera = if (enCartera)
+                Ui.ghost(this, "In the wallet", AppTheme.ACCENT, 44).apply { isEnabled = false }
+            else Ui.ghost(this, "Add to wallet", AppTheme.TXT_PRI, 44)
+            bCartera.layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(18) }
+            if (!enCartera) bCartera.setOnClickListener {
+                bCartera.isEnabled = false
+                Thread {
+                    val ok = try { MatchVault.aCartera(this, e) } catch (t: Throwable) { false }
+                    runOnUiThread {
+                        if (bloqueado || isFinishing) return@runOnUiThread
+                        if (ok) {
+                            bCartera.text = "In the wallet"
+                            bCartera.setTextColor(AppTheme.ACCENT)
+                            Toast.makeText(this, "Added to the wallet", Toast.LENGTH_SHORT).show()
+                            mostrar()
+                        } else {
+                            bCartera.isEnabled = true
+                            Toast.makeText(this, "Could not add it to the wallet", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                }.start()
+            }
+            v.addView(bCartera)
         }
 
         val b = AlertDialog.Builder(this)
