@@ -301,7 +301,7 @@ class HunterService : Service() {
             if (found > lastFound) {
                 lastFound = found
                 // Lo que el motor no pudiera entregar al baúl al encontrarlo.
-                try { MatchVault.recoger(this) } catch (e: Throwable) {}
+                try { MatchVault.recoger(this@HunterService) } catch (e: Throwable) {}
                 val detalles = HunterEngine.getMatches()
                 sendMatchNotif(found, detalles)
                 // Si este móvil trabaja para un cluster, avisar al master.
