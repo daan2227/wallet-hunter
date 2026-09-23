@@ -140,8 +140,8 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         // La media de todo, en trazos.
         canvas.drawLine(pad, yDe(med), w - pad, yDe(med), paintMedia)
 
-        canvas.drawText("máx ${corto(mx)}", pad, topTxt - 2f * d, paintLbl)
-        val tMin = "mín ${corto(mn)}"
+        canvas.drawText("max ${corto(mx)}", pad, topTxt - 2f * d, paintLbl)
+        val tMin = "min ${corto(mn)}"
         canvas.drawText(tMin, w - pad - paintLbl.measureText(tMin), topTxt - 2f * d, paintLbl)
 
         val min = wpsPoints.size * SEG_MUESTRA / 60
@@ -182,7 +182,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var overlayView:  android.view.View?              = null
     private fun goTab(idx: Int) {
         tvHeaderTitle?.text = when (idx) {
-            0 -> "Escáner"; 1 -> "Puzzle"; 2 -> "Cartera"; else -> "Recuperar seed"
+            0 -> "Scanner"; 1 -> "Puzzle"; 2 -> "Cartera"; else -> "Recuperar seed"
         }
         tabPages.forEachIndexed { i, v ->
             v.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
@@ -296,7 +296,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     private var currentBlockId: String = ""
     private var tvBlockProgress: TextView? = null
     /**
-     * La tarjeta de "Cobertura del rango". Se esconde mientras corre Kangaroo:
+     * La tarjeta de "Range coverage". Se esconde mientras corre Kangaroo:
      * Kangaroo NO recorre el rango bloque a bloque, da saltos por él, así que
      * esa cobertura se queda clavada en 0,0000 % para siempre por bien que vaya
      * la búsqueda. Enseñar un 0 % junto a una búsqueda sana es peor que no
@@ -367,9 +367,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // watchdogRestarts sólo se incrementaba y no se leía en ningún sitio.
         // Puesto aquí sirve para saber si de verdad está haciendo algo.
         watchdogEnabled && watchdogRestarts > 0 ->
-            "Watchdog ON — $watchdogRestarts reinicio(s) esta sesión"
-        watchdogEnabled -> "Watchdog ON — reinicia el scan si se detiene"
-        else            -> "Watchdog OFF — no reinicia el scan"
+            "Watchdog ON — $watchdogRestarts restart(s) this session"
+        watchdogEnabled -> "Watchdog ON — restarts the scan if it stops"
+        else            -> "Watchdog OFF — will not restart the scan"
     }
 
     private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
@@ -404,10 +404,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val years = secs.divide(year)
                 val d = years.toString().length
                 when {
-                    d <= 3 -> "$years años"
-                    d <= 6 -> "${years.divide(java.math.BigInteger.valueOf(1000))}k años"
-                    d <= 9 -> "${years.divide(java.math.BigInteger.valueOf(1_000_000))}M años"
-                    else   -> "10^${d - 1} años"
+                    d <= 3 -> "$years years"
+                    d <= 6 -> "${years.divide(java.math.BigInteger.valueOf(1000))}k years"
+                    d <= 9 -> "${years.divide(java.math.BigInteger.valueOf(1_000_000))}M years"
+                    else   -> "10^${d - 1} years"
                 }
             }
         }
@@ -423,8 +423,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val ratio = total.divide(java.math.BigInteger.valueOf(scanned))
             if (ratio.signum() <= 0) return "rango cubierto"
             val digits = ratio.toString().length
-            if (digits <= 6) "1 de ${numberFmt.format(ratio.toLong())}"
-            else "1 de 10^${digits - 1}"
+            if (digits <= 6) "1 in ${numberFmt.format(ratio.toLong())}"
+            else "1 in 10^${digits - 1}"
         } catch (e: Exception) { "—" }
     }
     private var tvCheckpointLive: TextView? = null
@@ -820,7 +820,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El título decía "Wallet Hunter" en las cuatro pestañas, así que no
         // decía dónde estabas.
         tvHeaderTitle = TextView(this).apply {
-            text = "Escáner"
+            text = "Scanner"
             textSize = AppTheme.SP_TITLE
             typeface = AppTheme.title(context)
             letterSpacing = -0.01f
@@ -942,7 +942,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // teñirlo para marcar la pestaña activa.
         data class NavItem(val icon: Int, val label: String, val idx: Int, val special: Boolean = false)
         val items = listOf(
-            NavItem(R.drawable.ic_scan,     "Escáner",  0),
+            NavItem(R.drawable.ic_scan,     "Scanner",  0),
             NavItem(R.drawable.ic_puzzle,   "Puzzle",   1),
             NavItem(R.drawable.ic_wallet,   "Cartera",  2),
             NavItem(R.drawable.ic_recovery, "Recovery", 3),
@@ -1425,7 +1425,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val tvCsvLocal = TextView(this@MainActivity).apply {
                 text = if (csvPath.isNotEmpty() && java.io.File(csvPath).exists())
-                    java.io.File(csvPath).name else "Sin archivo"
+                    java.io.File(csvPath).name else "No file"
                 setTextColor(AppTheme.TXT_SEC)
                 textSize = AppTheme.SP_CAPTION
                 typeface = Typeface.MONOSPACE   // es un nombre de fichero
@@ -1462,7 +1462,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             addView(sbThreads)
 
             addView(TextView(this@MainActivity).apply {
-                text = "Límite de CPU"; textSize = AppTheme.SP_CAPTION
+                text = "CPU limit"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.medium(context)
                 setPadding(0, dp(18), 0, dp(4))
@@ -1492,7 +1492,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
             fastLabels.addView(TextView(this@MainActivity).apply {
-                text = "Escaneo rápido"
+                text = "Fast scan"
                 textSize = AppTheme.SP_BODY
                 setTextColor(AppTheme.TXT_PRI)
                 typeface = AppTheme.body(context)
@@ -1501,7 +1501,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // muchísimo, pero las seeds resultantes no son las de ningún
             // mnemónico BIP39: es velocidad sin ninguna posibilidad de acierto.
             val tvFastWarn = TextView(this@MainActivity).apply {
-                text = "Sólo para medir velocidad: con una iteración las seeds no son BIP39, así que no puede encontrar nada."
+                text = "Benchmark only: with one iteration the seeds are not BIP39, so it cannot find anything."
                 textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.WARN)
                 typeface = AppTheme.body(context)
@@ -1519,7 +1519,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvFastWarn.visibility = if (c) android.view.View.VISIBLE
                                             else android.view.View.GONE
                     if (c) Toast.makeText(this@MainActivity,
-                        "Escaneo rápido: sólo mide velocidad, no encuentra carteras",
+                        "Fast scan: measures speed only, finds no wallets",
                         Toast.LENGTH_LONG).show()
                 }
             }
@@ -1541,7 +1541,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // el ahorro es del 2-5%, pero si el dataset sólo tiene un tipo de
             // dirección la mitad del trabajo no sirve para nada.
             addView(TextView(this@MainActivity).apply {
-                text = "Rutas de derivación"; textSize = AppTheme.SP_CAPTION
+                text = "Derivation paths"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.medium(context)
                 setPadding(0, dp(20), 0, dp(4))
@@ -1596,7 +1596,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         if (watchdogEnabled) "Watchdog activado" else "Watchdog desactivado",
                         android.widget.Toast.LENGTH_SHORT).show()
                 }),
-                Triple(R.drawable.ic_gear, "Configurar según el hardware", { _: TextView -> showHardwareInfo() })
+                Triple(R.drawable.ic_gear, "Set up for this hardware", { _: TextView -> showHardwareInfo() })
             ).forEach { (ic, lbl, action) ->
                 val tvLabel = TextView(this@MainActivity).apply {
                     text = lbl
@@ -1661,8 +1661,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     onFin = { n ->
                         if (n == 0) runOnUiThread {
                             android.widget.Toast.makeText(this@MainActivity,
-                                "Ningún maestro en esta WiFi. Desde otra red, " +
-                                "escribe su dirección en la pantalla de red.",
+                                "No master on this WiFi. From another network, " +
+                                "type its address on the network screen.",
                                 android.widget.Toast.LENGTH_LONG).show()
                         }
                     })
@@ -1740,7 +1740,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // y en realidad cada frase semilla cuesta lo que mil cuatrocientas
         // claves. Casi todo se va en el PBKDF2 de 2048 vueltas, que es
         // deliberadamente lento por diseño del propio BIP39.
-        listOf("BIP39" to "Frases semilla", "Clave directa" to "~1.400× más rápido")
+        listOf("BIP39" to "Frases semilla", "Clave directa" to "~1,400× faster")
             .forEachIndexed { i, (name, sub2) ->
                 val c = LinearLayout(this).apply {
                     orientation = LinearLayout.VERTICAL
@@ -1876,7 +1876,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         if (invalidas.isNotEmpty())
             android.util.Log.e("MainActivity",
-                "Tabla de puzzles: ${invalidas.size} direcciones inválidas: " +
+                "Puzzle table: ${invalidas.size} invalid addresses: " +
                 invalidas.joinToString { "#${it.num}" })
         // Los que valen como objetivo, sin mirar todavia si tienen fondos.
         val todosPuzzles = puzzles.filter {
@@ -1931,8 +1931,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         fun pintarBotonSinFondos() {
             val ver = prefs.getBoolean("mostrar_sin_fondos", false)
-            btnSinFondos.text = if (ver) "Ocultar los que ya no tienen fondos"
-                                else     "Mostrar también los ya resueltos (prueba)"
+            btnSinFondos.text = if (ver) "Hide the ones with no funds left"
+                                else     "Also show the already solved ones (test)"
             btnSinFondos.background = Ui.cardBg(AppTheme.R_CHIP,
                 if (ver) AppTheme.BG_ELEV else AppTheme.BG_CARD, this@MainActivity)
             btnSinFondos.setTextColor(if (ver) AppTheme.WARN else AppTheme.TXT_SEC)
@@ -1979,7 +1979,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // seleccionado", que no es ni una acción, ni un saldo, ni que algo esté
         // corriendo: es sólo información.
         tvPuzzleStatus = TextView(this).apply {
-            text = "Selecciona un puzzle"
+            text = "Select a puzzle"
             textSize = AppTheme.SP_BODY
             typeface = AppTheme.medium(context)
             setTextColor(AppTheme.TXT_SEC)
@@ -2008,7 +2008,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = AppTheme.bold(context)
         }
         progressHeader.addView(TextView(this).apply {
-            text = "Cobertura del rango"
+            text = "Range coverage"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
@@ -2070,7 +2070,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Salto aleatorio dentro del rango del puzzle.
         tvRandomJump = TextView(this).apply {
-            text = "Saltar a un punto aleatorio del rango"
+            text = "Jump to a random point in the range"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.medium(context)
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
@@ -2119,7 +2119,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 if (puzzleNum == 0) return@setOnClickListener
                 AlertDialog.Builder(this@MainActivity)
                     .setTitle("Reiniciar progreso")
-                    .setMessage("¿Borrar el progreso del puzzle #$puzzleNum?")
+                    .setMessage("Delete the progress of puzzle #$puzzleNum?")
                     .setPositiveButton("Reiniciar") { _, _ ->
                         getBlockPrefs().edit().remove("scanned_$puzzleNum").apply()
                         progressBarPuzzle.progress = 0
@@ -2190,7 +2190,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Kangaroo no está implementado todavía. Esto dice si sería posible,
         // que es lo que hay que saber ANTES de dedicarle el móvil a algo.
         tvPuzzleAtajo = TextView(this).apply {
-            text = "Comprobando si la clave pública está publicada…"
+            text = "Checking whether the public key is published…"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
@@ -2206,7 +2206,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         page.addView(tvPuzzleAtajo)
 
         btnKangaroo = Button(this).apply {
-            text = "Buscar con Kangaroo"
+            text = "Search with Kangaroo"
             textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.BG_DEEP)
             typeface = AppTheme.bold(context)
@@ -2245,7 +2245,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             colEnd.addView(etRangeEnd)
             rangeRow.addView(colStart); rangeRow.addView(colEnd)
             addView(rangeRow)
-            addView(TextView(this@MainActivity).apply { text = "Dirección objetivo"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
+            addView(TextView(this@MainActivity).apply { text = "Target address"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
             etTarget = styledInput("1A2B3C…")
             addView(etTarget)
         })
@@ -2325,7 +2325,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // frenando por calor o por batería, y eso no se ve en un segundo. 360
         // puntos son una hora de historia.
         tvMediaPuzzle = TextView(this).apply {
-            text = "Velocidad media · una muestra cada 10 s, última hora"
+            text = "Average speed · one sample every 10 s, last hour"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
@@ -2470,7 +2470,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // obliga a reiniciar la busqueda. Sin decirlo, mover "Potencia" con
         // Kangaroo en marcha parece que hace mas de lo que hace.
         powerCard.addView(TextView(this).apply {
-            text = "El % de CPU se aplica al momento. Los hilos, al reiniciar la búsqueda."
+            text = "The CPU % applies right away. Threads, when the search restarts."
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
@@ -2480,23 +2480,23 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         })
 
         // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
-        powerCard.addView(Ui.sectionLabel(this, "Recorrido del rango", topGap = 18))
+        powerCard.addView(Ui.sectionLabel(this, "How the range is walked", topGap = 18))
         powerCard.addView(Ui.segmented(
             this, listOf("Aleatorio" to null, "Secuencial" to null), initial = 0
         ) { idx ->
             HunterEngine.setSequential(idx == 1)
             if (HunterEngine.kangarooRunning())
                 android.widget.Toast.makeText(this,
-                    "Esto sólo afecta a la fuerza bruta: en Kangaroo el recorrido " +
-                    "lo decide la función de salto.",
+                    "This only affects brute force: in Kangaroo the path " +
+                    "is decided by the jump function.",
                     android.widget.Toast.LENGTH_LONG).show()
         })
         // El aviso de arriba sólo salía SI tocabas el control Y Kangaroo estaba
         // en marcha. Si lo dejabas puesto y arrancabas, nada te decía que no
         // hace nada. Va fijo en la pantalla.
         powerCard.addView(TextView(this).apply {
-            text = "Sólo para fuerza bruta. Kangaroo no recorre el rango: " +
-                   "salta por la curva según la función de salto."
+            text = "Brute force only. Kangaroo does not walk the range: " +
+                   "it hops along the curve using the jump function."
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
@@ -2531,7 +2531,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(14) }
         }
         batchHeaderRow.addView(TextView(this).apply {
-            text = "Tamaño de lote"
+            text = "Batch size"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
@@ -2594,8 +2594,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // se lee al arrancar, asi que moverlo con la busqueda en marcha no hace
         // nada hasta reiniciarla. Las dos cosas son invisibles sin decirlas.
         powerCard.addView(TextView(this).apply {
-            text = "En Kangaroo se limita a 4096 y el óptimo medido es 2048: " +
-                   "más grande va peor. Se aplica al reiniciar la búsqueda."
+            text = "Kangaroo caps it at 4096 and the measured optimum is 2048: " +
+                   "bigger is worse. Applies when the search restarts."
             textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(
@@ -2610,8 +2610,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // ── HERRAMIENTAS ──────────────────────────────────────────────────
         page.addView(collapsibleSection(R.drawable.ic_gear, "Herramientas") {
             listOf(
-                Triple(R.drawable.ic_search, "Buscar claves públicas",      { auditarClavesPublicas() }),
-                Triple(R.drawable.ic_gear,   "Configurar según el hardware", { showHardwareInfo() }),
+                Triple(R.drawable.ic_search, "Look for public keys",      { auditarClavesPublicas() }),
+                Triple(R.drawable.ic_gear,   "Set up for this hardware", { showHardwareInfo() }),
                 Triple(R.drawable.ic_export, "Exportar progreso",            { exportPuzzleProgress() }),
                 Triple(R.drawable.ic_import, "Importar progreso",            { importPuzzleProgress() })
             ).forEach { (icon, label, action) ->
@@ -2701,7 +2701,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvCheckpointLive?.visibility = android.view.View.GONE
             }
             puzzleSeleccionado = p.num
-            tvBalResult.text = "Consultando el saldo de #${p.num}…"
+            tvBalResult.text = "Checking the balance of #${p.num}…"
             comprobarAtajo(p)
             checkPuzzleBalance(p.addr) { bal ->
                 runOnUiThread {
@@ -2720,12 +2720,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             // con lo que acaba de pedir el usuario.
                             if (prefs.getBoolean("mostrar_sin_fondos", false)) {
                                 tvBalResult.text =
-                                    "Sin fondos — #${p.num} ya resuelto. Sirve de prueba: " +
-                                    "la clave existe y se puede encontrar."
+                                    "No funds — #${p.num} already solved. Good as a test: " +
+                                    "the key exists and can be found."
                                 tvBalResult.setTextColor(AppTheme.WARN)
                                 return@runOnUiThread
                             }
-                            tvBalResult.text = "Sin fondos — #${p.num} ocultado"
+                            tvBalResult.text = "No funds — #${p.num} hidden"
                             tvBalResult.setTextColor(AppTheme.WARN)
                             // Ocultar chip visualmente
                             chipView?.visibility = android.view.View.GONE
@@ -2740,11 +2740,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                 }
                             }
                             if (!nextSelected) {
-                                tvPuzzleStatus?.text = "No hay puzzles disponibles en este grupo"
+                                tvPuzzleStatus?.text = "No puzzles available in this group"
                             }
                         }
                         else -> {
-                            tvBalResult.text = "Sin conexión — reintenta"
+                            tvBalResult.text = "No connection — try again"
                             tvBalResult.setTextColor(AppTheme.TXT_SEC)
                         }
                     }
@@ -2881,8 +2881,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         // Antes ponía "Buscando puzzle con fondos..." y llamaba a
                         // autoSelectPuzzle(), que no busca nada: la autoselección
                         // está desactivada y lo único que hacía era dejar el
-                        // estado en "Selecciona un puzzle" con uno ya elegido.
-                        tvBalResult.text = "Sin fondos confirmados en #${defaultPuzzle.num}"
+                        // estado en "Select a puzzle" con uno ya elegido.
+                        tvBalResult.text = "No confirmed funds in #${defaultPuzzle.num}"
                         tvBalResult.setTextColor(AppTheme.WARN)
                     }
                 }
@@ -2950,7 +2950,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             )
         }
         val tvTotalUsd = TextView(this).apply {
-            text = "Aún no ha encontrado ninguna clave"
+            text = "No key found yet"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(
@@ -3005,12 +3005,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvTotalBtc.setTextColor(
                         if (total > 0.0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                     tvTotalUsd.text = when {
-                        matches.isEmpty()  -> "Aún no ha encontrado ninguna clave"
-                        sinRed             -> "${matches.size} hallazgo(s) · sin conexión, " +
-                                              "$pendientes sin consultar"
+                        matches.isEmpty()  -> "No key found yet"
+                        sinRed             -> "${matches.size} find(s) · offline, " +
+                                              "$pendientes not checked"
                         // Un total que suma ceros sin consultar no es un saldo:
                         // decir "0,00000000" a secas afirma que están vacías.
-                        pendientes > 0     -> "${matches.size} hallazgo(s) · $pendientes sin consultar"
+                        pendientes > 0     -> "${matches.size} find(s) · $pendientes not checked"
                         else               -> "${matches.size} hallazgo(s)"
                     }
                 }
@@ -3079,21 +3079,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 else ir()
             } else {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Todavía no hay ninguna cartera")
-                    .setMessage("¿Quieres añadir una?")
-                    .setPositiveButton("Añadir") { _, _ ->
+                    .setTitle("No wallet yet")
+                    .setMessage("Want to add one?")
+                    .setPositiveButton("Add") { _, _ ->
                         startActivity(Intent(this, WalletActivity::class.java).apply {
                             putExtra("MODE", "setup")
                         })
                     }
-                    .setNegativeButton("Ahora no", null)
+                    .setNegativeButton("Not now", null)
                     .show()
             }
         }
         fun anadirCartera() {
-            val opciones = arrayOf("Frase semilla (BIP39)", "Clave WIF", "Sólo observación (dirección)")
+            val opciones = arrayOf("Frase semilla (BIP39)", "Clave WIF", "Watch only (address)")
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("¿Qué quieres añadir?")
+                .setTitle("What do you want to add?")
                 .setItems(opciones) { _, which ->
                     startActivity(Intent(this, WalletActivity::class.java).apply {
                         putExtra("MODE", when (which) {
@@ -3110,9 +3110,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = dp(24) }
-            addView(bigCard(R.drawable.ic_wallet, "Ver cartera", "Saldos y direcciones",
+            addView(bigCard(R.drawable.ic_wallet, "Ver cartera", "Balances and addresses",
                 primary = true, last = false) { abrirCartera() })
-            addView(bigCard(R.drawable.ic_add, "Añadir", "Seed, WIF o dirección",
+            addView(bigCard(R.drawable.ic_add, "Add", "Seed, WIF or address",
                 primary = false, last = true) { anadirCartera() })
         })
 
@@ -3183,18 +3183,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return estado to subTv
         }
 
-        val (estVault, _) = guardRow(R.drawable.ic_vault, "Baúl de hallazgos",
-                                "Cifrado, aparte de tus carteras", primero = true) {
+        val (estVault, _) = guardRow(R.drawable.ic_vault, "Finds vault",
+                                "Encrypted, separate from your wallets", primero = true) {
             if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) showVault() }
             else showVault()
         }
-        val (estBackup, subBackup) = guardRow(R.drawable.ic_lock, "Copias de seguridad",
-                                 "Crear, ver, compartir o restaurar", primero = false) {
+        val (estBackup, subBackup) = guardRow(R.drawable.ic_lock, "Backups",
+                                 "Create, view, share or restore", primero = false) {
             if (!PinAuthHelper.isSessionValid()) PinAuthHelper.show(this) { ok -> if (ok) exportEncryptedBackup() }
             else exportEncryptedBackup()
         }
         guardRow(R.drawable.ic_export, "Exportar resumen",
-                 "Sin claves privadas", primero = false) { exportLog() }
+                 "No private keys", primero = false) { exportLog() }
         page.addView(guardCard)
 
         // El estado de las dos filas, en segundo plano: leer el baúl y listar
@@ -3204,14 +3204,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val copias = try { BackupStore.list(this@MainActivity) } catch (e: Exception) { emptyList() }
             val ultima = copias.firstOrNull()?.createdAt ?: 0L
             runOnUiThread {
-                estVault.text = if (hallazgos == 0) "Vacío" else "$hallazgos"
+                estVault.text = if (hallazgos == 0) "Empty" else "$hallazgos"
                 estBackup.text = if (copias.isEmpty()) "Ninguna" else "${copias.size}"
                 if (ultima > 0) {
                     val dias = ((System.currentTimeMillis() - ultima) / 86_400_000L).toInt()
                     subBackup.text = when (dias) {
-                        0    -> "Última hoy"
-                        1    -> "Última ayer"
-                        else -> "Última hace $dias días"
+                        0    -> "Last today"
+                        1    -> "Last yesterday"
+                        else -> "Last $dias days ago"
                     }
                 }
             }
@@ -3236,9 +3236,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             })
             addView(TextView(this@MainActivity).apply {
-                text = "Los saldos se consultan solos al abrir esta pantalla. " +
-                       "Eso revela tus direcciones al servidor que responde: es el " +
-                       "precio de verlos sin pedirlo."
+                text = "Balances are checked automatically when this screen opens. " +
+                       "That reveals your addresses to whichever server answers: it is the " +
+                       "price of seeing them without asking."
                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context)
                 setLineSpacing(0f, 1.55f)
@@ -3262,7 +3262,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { topMargin = dp(18) }
             setOnClickListener {
                 refreshWallet(consultarRed = true)
-                android.widget.Toast.makeText(this@MainActivity, "Consultando la cadena…",
+                android.widget.Toast.makeText(this@MainActivity, "Querying the chain…",
                     android.widget.Toast.LENGTH_SHORT).show()
             }
             addView(Ui.icon(this@MainActivity, R.drawable.ic_refresh, 16).apply {
@@ -3337,7 +3337,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El subtítulo repetía el título en otras palabras. En su lugar, lo que
         // de verdad hay que saber para usar la pantalla.
         recoveryPage.addView(TextView(this).apply {
-            text = "Escribe las palabras que recuerdes y marca los huecos con ?"
+            text = "Type the words you remember and mark the gaps with ?"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             setLineSpacing(dp(4).toFloat(), 1f)
@@ -3373,7 +3373,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         val tvRecoveryInfo = TextView(this).apply {
-            text = "Toca una casilla para escribirla"
+            text = "Tap a box to type it"
             textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.medium(context)
@@ -3386,7 +3386,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = AppTheme.title(context)
         }
         val tvRecoveryCombos = TextView(this).apply {
-            text = "Faltan palabras por poner"
+            text = "Some words are still missing"
             textSize = AppTheme.SP_MICRO
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
@@ -3401,15 +3401,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val puestas = palabras.size - huecos
             when {
                 huecos == 0 && puestas == palabras.size -> {
-                    tvRecoveryInfo.text = "No falta ninguna"
+                    tvRecoveryInfo.text = "None missing"
                     tvRecoveryEta.text = ""
-                    tvRecoveryCombos.text = "Sin huecos no hay nada que probar: " +
-                                            "marca las que no recuerdes."
+                    tvRecoveryCombos.text = "With no gaps there is nothing to try: " +
+                                            "mark the ones you do not remember."
                 }
                 huecos == palabras.size -> {
-                    tvRecoveryInfo.text = "Toca una casilla para escribirla"
+                    tvRecoveryInfo.text = "Tap a box to type it"
                     tvRecoveryEta.text = ""
-                    tvRecoveryCombos.text = "Escribe al menos las que recuerdes."
+                    tvRecoveryCombos.text = "Type at least the ones you remember."
                 }
                 else -> {
                     // 2048^huecos. Por encima de 4 huecos se sale de Long, así
@@ -3418,14 +3418,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val porSeg = 6_300_000.0   // orden de magnitud de un móvil
                     val secs = combos / porSeg
                     tvRecoveryInfo.text =
-                        if (huecos == 1) "1 palabra por adivinar"
-                        else "$huecos palabras por adivinar"
+                        if (huecos == 1) "1 word to guess"
+                        else "$huecos words to guess"
                     tvRecoveryEta.text = when {
                         secs < 60        -> "~ ${secs.toInt()} s"
                         secs < 3600      -> "~ ${(secs / 60).toInt()} min"
                         secs < 86_400    -> "~ ${(secs / 3600).toInt()} h"
-                        secs < 31_536_000-> "~ ${(secs / 86_400).toInt()} días"
-                        else             -> "más de un año"
+                        secs < 31_536_000-> "~ ${(secs / 86_400).toInt()} days"
+                        else             -> "over a year"
                     }
                     tvRecoveryEta.setTextColor(
                         if (secs > 86_400) AppTheme.WARN else AppTheme.ACCENT)
@@ -3435,7 +3435,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         combos >= 1e6  -> "%.1f millones".format(combos / 1e6)
                         else           -> numberFmt.format(combos.toLong())
                     }
-                    tvRecoveryCombos.text = "$combosTxt de combinaciones"
+                    tvRecoveryCombos.text = "$combosTxt combinations"
                 }
             }
         }
@@ -3471,11 +3471,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val w = campo.text.toString().trim().lowercase()
                     palabras[idx] = if (w.isNotEmpty() && Bip39Words.WORDS.contains(w)) w else ""
                     if (w.isNotEmpty() && !Bip39Words.WORDS.contains(w))
-                        Toast.makeText(this, "\"$w\" no está en el diccionario BIP39",
+                        Toast.makeText(this, "\"$w\" is not in the BIP39 word list",
                             Toast.LENGTH_LONG).show()
                     pintarPalabras(); refrescarCoste()
                 }
-                .setNeutralButton("No la recuerdo") { _, _ ->
+                .setNeutralButton("I do not remember it") { _, _ ->
                     palabras[idx] = ""
                     pintarPalabras(); refrescarCoste()
                 }
@@ -3559,7 +3559,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // ── TARGET ADDRESS CARD ───────────────────────────────────────────
         val targetCard = rCard()
-        targetCard.addView(fieldLabel("Dirección conocida · opcional"))
+        targetCard.addView(fieldLabel("Known address · optional"))
         val etTarget = android.widget.EditText(this).apply {
             hint = "1A2B3C... o bc1q..."
             setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
@@ -3642,7 +3642,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(8) }
         }
         val btnStartRecovery = Button(this).apply {
-            text = "Iniciar recuperación"; textSize = AppTheme.SP_TITLE
+            text = "Start recovery"; textSize = AppTheme.SP_TITLE
             setTextColor(AppTheme.BG_DEEP)
             background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
             typeface = AppTheme.bold(context)
@@ -3664,7 +3664,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(btnRow)
 
         val btnSaveWallet = Button(this).apply {
-            text = "Guardar en la cartera"; textSize = AppTheme.SP_TITLE
+            text = "Save to wallet"; textSize = AppTheme.SP_TITLE
             setTextColor(AppTheme.BG_DEEP)
             background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
             typeface = AppTheme.bold(context)
@@ -3683,19 +3683,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val foundMnemonic = it.tag as? String ?: return@setOnClickListener
             AlertDialog.Builder(this)
                 .setTitle("Guardar en Wallet")
-                .setMessage("¿Guardar esta seed phrase en tu wallet principal?\n\n$foundMnemonic")
+                .setMessage("Save this seed phrase to your main wallet?\n\n$foundMnemonic")
                 .setPositiveButton("Guardar") { _, _ ->
                     if (PinAuthHelper.isSessionValid()) {
                         WalletManager.saveSeed(this, foundMnemonic)
                         btnSaveWallet.visibility = android.view.View.GONE
-                        tvRecoveryStatus.text = "Seed guardada en la cartera principal"
+                        tvRecoveryStatus.text = "Seed saved to the main wallet"
                         tvRecoveryStatus.visibility = android.view.View.VISIBLE
                     } else {
                         PinAuthHelper.show(this) { ok ->
                             if (ok) {
                                 WalletManager.saveSeed(this, foundMnemonic)
                                 btnSaveWallet.visibility = android.view.View.GONE
-                                tvRecoveryStatus.text = "Seed guardada en la cartera principal"
+                                tvRecoveryStatus.text = "Seed saved to the main wallet"
                                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                             }
                         }
@@ -3753,7 +3753,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             override fun onNotFound() {
                 runOnUiThread {
                     pbRecovery.visibility = android.view.View.GONE
-                    tvRecoveryStatus.text = "No encontrado. Verifica las palabras conocidas."
+                    tvRecoveryStatus.text = "Not found. Check the words you entered."
                     btnCancelRecovery.visibility = android.view.View.GONE
                     btnStartRecovery.visibility = android.view.View.VISIBLE
                 }
@@ -3771,17 +3771,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnStartRecovery.setOnClickListener {
             val input = seedText()
             if (palabras.all { it.isEmpty() }) {
-                tvRecoveryStatus.text = "Escribe al menos las palabras que recuerdes."
+                tvRecoveryStatus.text = "Type at least the words you remember."
                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 return@setOnClickListener
             }
             if (palabras.none { it.isEmpty() }) {
-                tvRecoveryStatus.text = "No hay ningún hueco que probar: marca las que no recuerdes."
+                tvRecoveryStatus.text = "There is no gap to try: mark the ones you do not remember."
                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 return@setOnClickListener
             }
             if (!wordlistLoaded) {
-                tvRecoveryStatus.text = "No se pudo cargar el diccionario BIP39."
+                tvRecoveryStatus.text = "Could not load the BIP39 word list."
                 tvRecoveryStatus.visibility = android.view.View.VISIBLE
                 return@setOnClickListener
             }
@@ -4124,14 +4124,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Tamaño de lote: 2048 (medido: el mejor para Kangaroo y
             en la zona plana del escáner)
             Núcleos rápidos: ${nucleosRapidos().let {
-                if (it.isEmpty()) "no detectados (sin fijar)" else it.joinToString(",")
+                if (it.isEmpty()) "not detected (not pinned)" else it.joinToString(",")
             }}
             
             ¿Aplicar configuración óptima?
         """.trimIndent()
 
         AlertDialog.Builder(this)
-            .setTitle("Auto-configuración")
+            .setTitle("Auto setup")
             .setMessage(msg)
             .setPositiveButton("Aplicar") { _, _ ->
                 applyHardwareProfile(profile)
@@ -4207,7 +4207,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // lo que tenga guardado sigue siendo cierto y no hay que tirarlo.
         p.edit().putInt("tabla_puzzles_ver", 2).apply()
         android.util.Log.i("MainActivity",
-            "Tabla de puzzles corregida: progreso y ocultos reiniciados")
+            "Puzzle table fixed: progress and hidden ones reset")
     }
 
     private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
@@ -4292,7 +4292,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         try {
             val total = totalBlocksOf(rs, re)
             val pct   = blockPercent(blockIdx, total)
-            val txt = "$prefix #%s  ·  %.4f%% del rango".format(
+            val txt = "$prefix #%s  ·  %.4f%% of the range".format(
                 numberFmt.format(blockIdx), pct)
             if (tvCurrentBlock?.text?.toString() != txt) tvCurrentBlock?.text = txt
         } catch (e: Exception) {}
@@ -4302,7 +4302,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
         val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
         if (rs.isEmpty() || re.isEmpty()) {
-            Toast.makeText(this, "Selecciona un puzzle primero", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Select a puzzle first", Toast.LENGTH_SHORT).show()
             return
         }
         try {
@@ -4310,12 +4310,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val idx   = randomBelow(total)
             pendingBlockIdx = idx
             val pct = blockPercent(idx, total)
-            tvRandomJump?.text = "Otro punto al azar"
-            setCurrentBlockLabel("Arrancará en el bloque", idx)
+            tvRandomJump?.text = "Another random point"
+            setCurrentBlockLabel("Will start at block", idx)
             val (bStart, _) = blockRange(rs, re, idx)
             if (HunterEngine.isRunning()) {
                 Toast.makeText(this,
-                    "Se aplicará al reiniciar el escaneo (%.2f%%)".format(pct),
+                    "Applies when the scan restarts (%.2f%%)".format(pct),
                     Toast.LENGTH_LONG).show()
             } else {
                 Toast.makeText(this,
@@ -4323,7 +4323,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     Toast.LENGTH_LONG).show()
             }
         } catch (e: Exception) {
-            Toast.makeText(this, "No se pudo calcular el salto: ${e.message}",
+            Toast.makeText(this, "Could not compute the jump: ${e.message}",
                 Toast.LENGTH_SHORT).show()
         }
     }
@@ -4435,7 +4435,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false })
         tvScanState?.text = when {
             running -> "Buscando · ${formatElapsed(sessionStartTime)}"
-            hallado -> "¡CLAVE ENCONTRADA! — mírala en el baúl"
+            hallado -> "KEY FOUND! — see it in the vault"
             else    -> "En espera"
         }
         tvScanState?.setTextColor(
@@ -4563,7 +4563,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             perDay >= 1_000_000 -> "${numberFmt.format(perDay/1_000_000)} millones"
                             else                -> numberFmt.format(perDay)
                         }
-                        tvBinInfoRef?.text = "$perDayStr de claves al día"
+                        tvBinInfoRef?.text = "$perDayStr keys per day"
                         tvBinInfoRef?.setTextColor(AppTheme.TXT_SEC)
                     }
                 }
@@ -4677,13 +4677,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
                           else "${total/1000}K"
                 tvDatasetStat?.text = fmt
-                tvDatasetStat?.textSize = AppTheme.SP_FIGURE  // vuelve de "sin cargar"
+                tvDatasetStat?.textSize = AppTheme.SP_FIGURE  // vuelve de "not loaded"
                 tvDatasetStat?.setTextColor(AppTheme.TXT_PRI)
             }
         } else {
             // Un "—" verde no dice nada, y aquí decía algo importante: sin
             // dataset, los modos BIP39 y RAW KEY no tienen contra qué comparar.
-            tvDatasetStat?.text = "sin cargar"
+            tvDatasetStat?.text = "not loaded"
             tvDatasetStat?.textSize = AppTheme.SP_BODY
             tvDatasetStat?.setTextColor(AppTheme.WARN)
         }
@@ -4744,29 +4744,29 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // botón de START ejecutase la rama de STOP: parecía que "a veces no
             // funciona". Mejor decirlo que fingir.
             if (HunterEngine.isStopping()) {
-                Toast.makeText(this, "Deteniendo el escaneo anterior… espera un momento",
+                Toast.makeText(this, "Stopping the previous scan… one moment",
                     Toast.LENGTH_SHORT).show()
                 return
             }
             // El dataset se carga en segundo plano: durante ese rato
             // isCsvLoaded() es false, y decir "sin dataset" sería mentira.
             if (!HunterEngine.isRunning() && HunterEngine.isLoading()) {
-                Toast.makeText(this, "Cargando el dataset… ${HunterEngine.getLoadStatus()}",
+                Toast.makeText(this, "Loading the dataset… ${HunterEngine.getLoadStatus()}",
                     Toast.LENGTH_SHORT).show()
                 return
             }
             if (!HunterEngine.isRunning() && !engineHasSomethingToMatch()) {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle(if (puzzleMode) "Sin dirección objetivo" else "Sin dataset cargado")
+                    .setTitle(if (puzzleMode) "No target address" else "No dataset loaded")
                     .setMessage(
                         if (puzzleMode)
-                            "El campo Target Address está vacío, así que no hay nada " +
-                            "que buscar.\n\nSelecciona un puzzle en la lista de arriba " +
-                            "o escribe una dirección."
+                            "The Target Address field is empty, so there is nothing " +
+                            "to search for.\n\nPick a puzzle from the list above " +
+                            "or type an address."
                         else
-                            "No hay ninguna lista de direcciones cargada, así que el " +
-                            "motor no tendría con qué comparar: escanearía a toda " +
-                            "velocidad sin poder encontrar nada.\n\nCarga el .bin con " +
+                            "No address list is loaded, so the " +
+                            "engine would have nothing to compare against: it would scan at full " +
+                            "speed without being able to find anything.\n\nLoad the .bin with " +
                             "LOAD CSV.")
                     .setPositiveButton("Entendido", null)
                     .show()
@@ -4829,7 +4829,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         // Elegir bloque no escaneado
                         val fullStart = etRangeStart?.text.toString()?.trim() ?: ""
                         if (fullStart.isEmpty()) {
-                            Toast.makeText(this, "Error: rango no configurado", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this, "Error: range not set", Toast.LENGTH_SHORT).show()
                             return
                         }
                         // Si el usuario pulsó "Saltar a un punto aleatorio",
@@ -4842,7 +4842,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             getNextUnscannedBlock(puzzleNum, fullStart, rangeEnd)
                         }
                         pendingBlockIdx = null
-                        tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
+                        tvRandomJump?.text = "Jump to a random point in the range"
                         if (block != null) {
                             val (bStart, bEnd) = block
                             HunterEngine.setRange(bStart, bEnd)
@@ -4880,7 +4880,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     HunterEngine.setTarget(target)
                     if (!HunterEngine.hasTarget()) {
                         Toast.makeText(this,
-                            "Dirección objetivo no válida: $target",
+                            "Invalid target address: $target",
                             Toast.LENGTH_LONG).show()
                         return
                     }
@@ -4901,7 +4901,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // motor parado, y la siguiente pulsación volvía a intentar
                 // arrancar. Se comprueba antes de tocar nada.
                 if (!HunterEngine.isRunning()) {
-                    Toast.makeText(this, "El motor no arrancó. Revisa el dataset y el modo.",
+                    Toast.makeText(this, "The engine did not start. Check the dataset and the mode.",
                         Toast.LENGTH_LONG).show()
                     prefs.edit().putBoolean("scan_was_running", false).apply()
                     return
@@ -5063,10 +5063,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val entries = MatchVault.list(this)
         if (entries.isEmpty()) {
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Baúl vacío")
-                .setMessage("Todavía no hay hallazgos. Cuando el puzzle o el escáner " +
-                            "encuentren una clave se guardará aquí cifrada, y entrará " +
-                            "en el backup.")
+                .setTitle("Vault empty")
+                .setMessage("No finds yet. When the puzzle or the scanner " +
+                            "finds a key it will be stored here encrypted, and included " +
+                            "in the backup.")
                 .setPositiveButton("OK", null)
                 .show()
             return
@@ -5076,25 +5076,25 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val items = entries.map { e ->
             val etiqueta = when (e.source) {
                 "puzzle"   -> "Puzzle"
-                "scanner"  -> "Escáner"
+                "scanner"  -> "Scanner"
                 "recovery" -> "Recovery"
                 else       -> e.source
             }
             // Un "0.00000000 BTC" a secas se lee como "vacía", cuando puede ser
             // sólo que aún no se ha preguntado a la cadena.
-            val saldo = if (e.checkedTs == 0L) "saldo sin consultar"
+            val saldo = if (e.checkedTs == 0L) "balance not checked"
                         else "${"%.8f".format(e.btc)} BTC"
             "$etiqueta · ${fmt.format(java.util.Date(e.ts))}\n${e.addr}\n$saldo"
         }.toTypedArray()
 
         val pendientes = entries.count { it.checkedTs == 0L }
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Baúl · ${entries.size} hallazgo(s)")
+            .setTitle("Vault · ${entries.size} find(s)")
             .setItems(items) { _, which -> showVaultEntry(entries[which]) }
             .setPositiveButton(
                 if (pendientes > 0) "Consultar saldos ($pendientes)" else "Refrescar saldos"
             ) { _, _ -> resolveVaultBalances() }
-            .setNeutralButton("Copia de seguridad") { _, _ -> exportEncryptedBackup() }
+            .setNeutralButton("Backup") { _, _ -> exportEncryptedBackup() }
             .setNegativeButton("Cerrar", null)
             .show()
     }
@@ -5114,7 +5114,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             runOnUiThread {
                 android.widget.Toast.makeText(this,
                     if (n > 0) "$n saldo(s) actualizados"
-                    else "Ninguna fuente respondió — inténtalo más tarde",
+                    else "No source answered — try again later",
                     android.widget.Toast.LENGTH_SHORT).show()
                 if (n > 0) showVault()
             }
@@ -5126,11 +5126,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             appendLine("Origen: ${e.source}")
             appendLine("Fecha: ${java.util.Date(e.ts)}")
             appendLine()
-            appendLine("Dirección:")
+            appendLine("Address:")
             appendLine(e.addr)
             appendLine()
             if (e.checkedTs == 0L) {
-                appendLine("Saldo: sin consultar todavía")
+                appendLine("Balance: not checked yet")
             } else {
                 appendLine("Saldo: ${"%.8f".format(e.btc)} BTC")
                 appendLine("Consultado: ${java.util.Date(e.checkedTs)}")
@@ -5148,19 +5148,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .setMessage(detalle)
             .setPositiveButton("Copiar WIF") { _, _ ->
                 if (e.wif.isEmpty()) {
-                    android.widget.Toast.makeText(this, "Esta entrada no tiene WIF",
+                    android.widget.Toast.makeText(this, "This entry has no WIF",
                         android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                         .setPrimaryClip(android.content.ClipData.newPlainText("wif", e.wif))
                     android.widget.Toast.makeText(this,
-                        "WIF copiado — pégalo y borra el portapapeles",
+                        "WIF copied — paste it and clear the clipboard",
                         android.widget.Toast.LENGTH_LONG).show()
                 }
             }
             .setNeutralButton("Copiar HEX") { _, _ ->
                 if (e.privHex.isEmpty()) {
-                    android.widget.Toast.makeText(this, "Esta entrada no tiene clave hex",
+                    android.widget.Toast.makeText(this, "This entry has no hex key",
                         android.widget.Toast.LENGTH_SHORT).show()
                 } else {
                     (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
@@ -5217,11 +5217,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val crashLog = File(filesDir, "crash_log.txt")
         if (!crashLog.exists() || crashLog.length() == 0L) { writeAndShareLog(false); return }
         androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("¿Incluir el registro de fallos?")
-            .setMessage("Hay un registro de fallos guardado. Ayuda a diagnosticar " +
-                        "problemas, pero un error puede llevar dentro el dato que lo " +
-                        "causó. El fichero se comparte por mensajería o correo.")
-            .setPositiveButton("Sin el registro") { _, _ -> writeAndShareLog(false) }
+            .setTitle("Include the crash log?")
+            .setMessage("There is a saved crash log. It helps diagnose " +
+                        "problems, but an error may carry inside the very data that " +
+                        "caused it. The file is shared by messaging or email.")
+            .setPositiveButton("Without the log") { _, _ -> writeAndShareLog(false) }
             .setNeutralButton("Incluirlo") { _, _ -> writeAndShareLog(true) }
             .setNegativeButton("Cancelar", null)
             .show()
@@ -5258,14 +5258,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val hallazgos = MatchVault.list(this)
         if (hallazgos.isNotEmpty()) {
             sb.appendLine("=== MATCHES ENCONTRADOS ===")
-            sb.appendLine("(claves privadas omitidas — usa la copia de seguridad)")
+            sb.appendLine("(private keys omitted — use the backup)")
             val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
             hallazgos.forEach { e ->
                 sb.appendLine("[${fmt.format(java.util.Date(e.ts))}] ${e.source}  " +
                               "ADDR:${e.addr}  BTC:${"%.8f".format(e.btc)}")
             }
         } else {
-            sb.appendLine("=== SIN MATCHES AÚN ===")
+            sb.appendLine("=== NO MATCHES YET ===")
         }
 
         if (includeCrashLog) {
@@ -5314,7 +5314,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     private fun comprobarAtajo(p: PuzzleInfo) {
         val tv = tvPuzzleAtajo ?: return
-        tv.text = "Comprobando si la clave pública está publicada…"
+        tv.text = "Checking whether the public key is published…"
         tv.setTextColor(AppTheme.TXT_SEC)
         Thread {
             // Los puzzles ya resueltos traen la clave pública en la tabla —
@@ -5337,10 +5337,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 segundos < 90            -> "${segundos.toInt()} segundos"
                 segundos < 5400          -> "${(segundos / 60).toInt()} minutos"
                 segundos < 172_800       -> "${(segundos / 3600).toInt()} horas"
-                segundos < 63_072_000    -> "${(segundos / 86_400).toInt()} días"
-                segundos < 3.15e10       -> "${(segundos / 3.15e7).toInt()} años"
-                segundos < 3.15e13       -> "%.0f mil años".format(segundos / 3.15e10)
-                else                     -> "%.0f millones de años".format(segundos / 3.15e13)
+                segundos < 63_072_000    -> "${(segundos / 86_400).toInt()} days"
+                segundos < 3.15e10       -> "${(segundos / 3.15e7).toInt()} years"
+                segundos < 3.15e13       -> "%.0f thousand years".format(segundos / 3.15e10)
+                else                     -> "%.0f million years".format(segundos / 3.15e13)
             }
             runOnUiThread {
                 /* Si mientras tanto se ha elegido OTRO puzzle, esto ya no vale.
@@ -5377,20 +5377,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 when (r) {
                     is PubKeyFinder.Resultado.Encontrada -> {
                         tv.text = if (p.clave.isNotEmpty())
-                            "PRUEBA — #${p.num} ya está resuelto y su clave se conoce, " +
-                            "así que aquí no hay premio: sirve para comprobar que el " +
-                            "motor la encuentra.\nCon Kangaroo: " +
+                            "TEST — #${p.num} is already solved and its key is known, " +
+                            "so there is no prize here: it is for checking that the " +
+                            "engine finds it.\nWith Kangaroo: " +
                             "${humano(opsKangaroo / ritmo)}."
                         else
-                            "Clave pública publicada — admite Kangaroo.\n" +
+                            "Public key published — Kangaroo works here.\n" +
                             "Fuerza bruta: ${humano(clavesBrutas / ritmo)}. " +
-                            "Con Kangaroo: ${humano(opsKangaroo / ritmo)}."
+                            "With Kangaroo: ${humano(opsKangaroo / ritmo)}."
                         tv.setTextColor(
                             if (p.clave.isNotEmpty()) AppTheme.WARN else AppTheme.ACCENT)
                     }
                     PubKeyFinder.Resultado.NoRevelada -> {
-                        tv.text = "Esta dirección no ha gastado nunca, así que su clave " +
-                                  "pública no es conocida. No hay atajo: sólo fuerza " +
+                        tv.text = "This address has never spent, so its public " +
+                                  "key is not known. There is no shortcut: brute force " +
                                   "bruta, ${humano(clavesBrutas / ritmo)} a este ritmo."
                         tv.setTextColor(AppTheme.WARN)
                     }
@@ -5398,14 +5398,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         // Ha gastado, o sea que la clave ESTÁ publicada; lo que
                         // no se ha podido es dar con la transacción. Decir "no
                         // hay atajo" aquí sería mentir.
-                        tv.text = "Esta dirección ha gastado ${r.gastos} vez/veces, así que " +
-                                  "su clave pública está publicada — pero no se ha " +
-                                  "encontrado en el historial reciente. Vuelve a " +
-                                  "intentarlo; el atajo existe."
+                        tv.text = "This address has spent ${r.gastos} time(s), so " +
+                                  "its public key is published — but it was not " +
+                                  "found in the recent history. Try " +
+                                  "again; the shortcut exists."
                         tv.setTextColor(AppTheme.TXT_SEC)
                     }
                     PubKeyFinder.Resultado.SinRed -> {
-                        tv.text = "No se pudo comprobar si la clave pública está publicada."
+                        tv.text = "Could not check whether the public key is published."
                         tv.setTextColor(AppTheme.TXT_SEC)
                     }
                 }
@@ -5435,7 +5435,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             BtcAddress.validate(it.addr, false) is BtcAddress.Result.Valid
         }
         val dlg = androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Buscando claves públicas")
+            .setTitle("Looking for public keys")
             .setMessage("Consultando ${lista.size} direcciones…")
             .setCancelable(false)
             .create()
@@ -5459,21 +5459,21 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 }
                 runOnUiThread {
-                    dlg.setMessage("Consultando… ${i + 1} de ${lista.size}")
+                    dlg.setMessage("Querying… ${i + 1} of ${lista.size}")
                 }
             }
             runOnUiThread {
                 dlg.dismiss()
                 val texto = buildString {
                     if (con.isEmpty() && publicadas == 0) {
-                        append("Ninguno de los ${lista.size} ha revelado su clave ")
-                        append("pública: ninguno ha gastado nunca.\n\n")
-                        append("Kangaroo no sirve para ninguno. La única vía es ")
-                        append("fuerza bruta, y para estos rangos eso son ")
-                        append("millones de años.\n\n")
-                        append("Si algún día alguien gasta desde una de esas ")
-                        append("direcciones, la clave quedará publicada y ")
-                        append("aparecerá aquí.")
+                        append("None of the ${lista.size} has revealed its public ")
+                        append("key: none has ever spent.\n\n")
+                        append("Kangaroo is no use for any of them. The only way is ")
+                        append("brute force, and for these ranges that means ")
+                        append("millions of years.\n\n")
+                        append("If one day somebody spends from one of those ")
+                        append("addresses, the key becomes published and ")
+                        append("will show up here.")
                     } else {
                         if (con.isNotEmpty()) {
                             append("Admiten Kangaroo:\n")
@@ -5481,15 +5481,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                             append("\n")
                         }
                         if (publicadas > 0)
-                            append("$publicadas han gastado —o sea, su clave está " +
-                                   "publicada— pero no se encontró en el historial " +
+                            append("$publicadas have spent —so their key is " +
+                                   "published— but it was not found in the history " +
                                    "reciente.\n\n")
-                        append("$sin sin revelar.")
+                        append("$sin not revealed.")
                     }
-                    if (sinRed > 0) append("\n\nNo se pudo consultar: sin conexión.")
+                    if (sinRed > 0) append("\n\nCould not query: no connection.")
                 }
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Claves públicas")
+                    .setTitle("Public keys")
                     .setMessage(texto)
                     .setPositiveButton("Entendido", null)
                     .show()
@@ -5515,7 +5515,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             lblEscaneadas?.text = "Escaneadas"
             lblRestantes?.text = "Bloques restantes"
-            btnKangaroo?.text = "Buscar con Kangaroo"
+            btnKangaroo?.text = "Search with Kangaroo"
             // Si este móvil es el maestro del cluster, volver a recoger: dejarlo
             // sin tabla haría que rechazara los puntos de los trabajadores y el
             // cluster se quedaría en N búsquedas sueltas sin enterarse nadie.
@@ -5531,12 +5531,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                                HunterEngine.topeTablaBits(this))
                 } catch (e: Throwable) { false }
                 tvPuzzleAtajo?.text = if (ok)
-                    "Este móvil deja de buscar, pero sigue recogiendo los " +
-                    "puntos de los trabajadores."
-                else "Detenida. El trabajo queda guardado."
+                    "This phone stops searching, but keeps collecting the " +
+                    "workers\u0027 points."
+                else "Stopped. The work is saved."
             } else {
-                tvPuzzleAtajo?.text = "Detenida. El trabajo queda guardado; " +
-                                      "al volver a darle sigue desde ahí."
+                tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
+                                      "pressing again continues from there."
             }
             tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
             kgInicio = 0L
@@ -5545,8 +5545,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (puzzlePubHex.length != 66) {
             // Volverse en silencio deja el botón pulsado y la pantalla igual:
             // no hay forma de saber si no ha hecho nada o si ha fallado.
-            tvPuzzleAtajo?.text = "Kangaroo necesita la clave pública y todavía no " +
-                                  "se tiene. Vuelve a tocar el puzzle para pedirla."
+            tvPuzzleAtajo?.text = "Kangaroo needs the public key and it is not " +
+                                  "available yet. Tap the puzzle again to request it."
             tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
             return
         }
@@ -5597,16 +5597,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
              * distinguido (dbits, mínimo 6) sería más grande que el rango entero
              * y los canguros no llegarían a apuntar nada. */
             tvPuzzleAtajo?.text = if (puzzleSeleccionado in 1..7)
-                "Kangaroo necesita un rango de al menos 8 bits y el " +
-                "#$puzzleSeleccionado tiene $puzzleSeleccionado. Para uno tan " +
-                "pequeño usa «Iniciar puzzle»: lo recorre entero al instante."
-            else "No se pudo arrancar la búsqueda."
+                "Kangaroo needs a range of at least 8 bits and " +
+                "#$puzzleSeleccionado has $puzzleSeleccionado. For one this " +
+                "small use \u0027Start puzzle\u0027: it sweeps the whole range instantly."
+            else "Could not start the search."
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
         }
         prepararContadoresKangaroo(puzzlePubHex, puzzleIniHex, puzzleFinHex)
-        tvPuzzleAtajo?.text = "Buscando con Kangaroo · $hilos hilos · $cpu % de CPU · " +
-                             "$porHilo canguros por hilo"
+        tvPuzzleAtajo?.text = "Searching with Kangaroo · $hilos threads · $cpu % CPU · " +
+                             "$porHilo kangaroos per thread"
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
     }
 
@@ -5699,11 +5699,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         guardarHallazgoKangaroo(claveHex, "PUZZLE kangaroo (red, desde $dispositivo)")
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
         prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
-        btnKangaroo?.text = "Buscar con Kangaroo"
+        btnKangaroo?.text = "Search with Kangaroo"
         tvPuzzleAtajo?.text = "CLAVE ENCONTRADA en $dispositivo\n$claveHex\n" +
-                              "Guardada en el baúl de hallazgos."
+                              "Saved to the finds vault."
         tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
-        try { sendMatchNotification("(puzzle por red)", claveHex) } catch (e: Throwable) {}
+        try { sendMatchNotification("(puzzle over the network)", claveHex) } catch (e: Throwable) {}
     }
 
     /* ── ¿Sigue habiendo premio? ──────────────────────────────────────────────
@@ -5755,18 +5755,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                  * encuentra. Pararla a las seis horas seria tirar la prueba
                  * abajo sin que se entendiera por que. */
                 if (prefs.getBoolean("mostrar_sin_fondos", false)) {
-                    tvPuzzleAtajo?.text = "El puzzle #${p.num} no tiene fondos —ya está " +
-                                          "resuelto— pero la búsqueda sigue: está elegido " +
-                                          "como prueba. Si aparece la clave, el motor funciona."
+                    tvPuzzleAtajo?.text = "Puzzle #${p.num} has no funds —it is already " +
+                                          "solved— but the search goes on: it was chosen " +
+                                          "as a test. If the key shows up, the engine works."
                     tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
                     return@runOnUiThread
                 }
                 try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
                 prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
-                btnKangaroo?.text = "Buscar con Kangaroo"
-                tvPuzzleAtajo?.text = "Búsqueda detenida: el puzzle #${p.num} ya no " +
-                                      "tiene fondos, alguien lo ha resuelto. El trabajo " +
-                                      "queda guardado por si te sirve."
+                btnKangaroo?.text = "Search with Kangaroo"
+                tvPuzzleAtajo?.text = "Search stopped: puzzle #${p.num} no longer " +
+                                      "has funds, somebody solved it. The work " +
+                                      "is kept in case it is useful."
                 tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
                 // Que los workers del cluster paren también.
                 NetworkManager.marcarPuzzleVacio()
@@ -5845,13 +5845,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tope = try { HunterEngine.kangarooTope() } catch (e: Throwable) { 0L }
         if (tope <= 0) return "${numberFmt.format(dps)} puntos distinguidos guardados"
         val pct = dps * 100.0 / tope
-        val base = "${numberFmt.format(dps)} de ${numberFmt.format(tope)} " +
-                   "puntos (${"%.1f".format(pct)} % de la tabla)"
+        val base = "${numberFmt.format(dps)} of ${numberFmt.format(tope)} " +
+                   "points (${"%.1f".format(pct)} % of the table)"
         return when {
-            dps >= tope -> "$base\nTABLA LLENA: ya no se guardan puntos nuevos. " +
-                           "La búsqueda no avanza aunque siga corriendo."
-            pct >= 80   -> "$base\nLa tabla se está llenando. Al llegar al tope " +
-                           "dejará de guardar y la búsqueda no avanzará más."
+            dps >= tope -> "$base\nTABLE FULL: no new points are stored. " +
+                           "The search makes no progress even though it keeps running."
+            pct >= 80   -> "$base\nThe table is filling up. Once it is full " +
+                           "it stops storing and the search stops advancing."
             else        -> base
         }
     }
@@ -5866,7 +5866,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             guardarHallazgoKangaroo(clave, "PUZZLE kangaroo")
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
-            btnKangaroo?.text = "Buscar con Kangaroo"
+            btnKangaroo?.text = "Search with Kangaroo"
             /* Si el puzzle era uno de los resueltos, la respuesta se sabía de
              * antemano: se puede COMPARAR. Eso es lo que convierte la búsqueda
              * en una prueba de verdad del motor entero —saltos, tabla, colisión
@@ -5879,13 +5879,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                   ?.clave?.lowercase()?.padStart(64, '0')
             tv.text = when {
                 esperada.isNullOrEmpty() ->
-                    "CLAVE ENCONTRADA\n$clave\nGuardada en el baúl de hallazgos."
+                    "KEY FOUND\n$clave\nSaved to the finds vault."
                 esperada == clave.lowercase() ->
                     "PRUEBA SUPERADA — #$puzzleSeleccionado\n$clave\n" +
-                    "Coincide con la clave conocida: el motor funciona de punta a punta."
+                    "Matches the known key: the engine works end to end."
                 else ->
                     "MAL — #$puzzleSeleccionado\nencontrada: $clave\n" +
-                    "esperada:  $esperada\nEl motor ha cantado una clave que no es."
+                    "expected: $esperada\nThe engine reported a key that is not the right one."
             }
             tv.setTextColor(
                 if (!esperada.isNullOrEmpty() && esperada != clave.lowercase())
@@ -5931,10 +5931,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (hilosKg == 0) {
             val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
             cardCobertura?.visibility = android.view.View.GONE
-            btnKangaroo?.text = "Buscar con Kangaroo"
-            tv.text = "Recogiendo puntos del cluster · $pts en la tabla\n" +
-                      "Este móvil no está buscando. Dale a «Buscar con " +
-                      "Kangaroo» si quieres que aporte también."
+            btnKangaroo?.text = "Search with Kangaroo"
+            tv.text = "Collecting points from the cluster · $pts in the table\n" +
+                      "This phone is not searching. Press \u0027Search with " +
+                      "Kangaroo\u0027 if you want it to contribute too."
             tv.setTextColor(AppTheme.TXT_SEC)
             return
         }
@@ -6006,7 +6006,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
                 val seg = pts.size * SpeedChartView.SEG_MUESTRA
                 val span = if (seg >= 60) "${seg / 60} min" else "$seg s"
-                "Media de $span: $mv $mu/s$estado"
+                "$span average: $mv $mu/s$estado"
             } else "Velocidad media · primera muestra en 10 s"
         }
 
@@ -6038,10 +6038,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 when {
                     seg < 5400        -> "${(seg / 60).toInt()} min"
                     seg < 172_800     -> "${(seg / 3600).toInt()} h"
-                    seg < 6.3e7       -> "${(seg / 86_400).toInt()} días"
-                    seg < 3.15e10     -> "${(seg / 3.15e7).toInt()} años"
-                    seg < 3.15e13     -> "%.0f mil años".format(seg / 3.15e10)
-                    else              -> "%.0f M años".format(seg / 3.15e13)
+                    seg < 6.3e7       -> "${(seg / 86_400).toInt()} days"
+                    seg < 3.15e10     -> "${(seg / 3.15e7).toInt()} years"
+                    seg < 3.15e13     -> "%.0f thousand years".format(seg / 3.15e10)
+                    else              -> "%.0f M years".format(seg / 3.15e13)
                 }
             } else "—"
         }
@@ -6052,7 +6052,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ultimoGuardadoKg = ahora
             Thread { try { HunterEngine.kangarooSave() } catch (e: Throwable) {} }.start()
         }
-        tv.text = "Buscando con Kangaroo · ${numberFmt.format(ops)} operaciones" +
+        tv.text = "Searching with Kangaroo · ${numberFmt.format(ops)} operations" +
                   (if (kangarooReinicios > 0) " · $kangarooReinicios reinicios" else "")
     }
 
@@ -6090,9 +6090,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .ifEmpty { puzzles.firstOrNull { it.num == pnum }?.addr ?: "" }
         if (pnum == 0 || start.isEmpty() || end.isEmpty()) {
             androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("Sin puzzle seleccionado")
-                .setMessage("Elige un puzzle en la pestaña Puzzle antes de arrancar " +
-                            "el master: es el rango que se reparte entre los dispositivos.")
+                .setTitle("No puzzle selected")
+                .setMessage("Pick a puzzle on the Puzzle tab before starting " +
+                            "the master: that range is what gets shared between devices.")
                 .setPositiveButton("OK", null)
                 .show()
             return
@@ -6116,10 +6116,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } else {
             if (addr.isEmpty()) {
                 androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("Falta la dirección del puzzle")
-                    .setMessage("Vuelve a elegir el puzzle #$pnum en la pestaña " +
-                                "Puzzle. Sin su dirección, los trabajadores " +
-                                "buscarían sin nada contra lo que comparar.")
+                    .setTitle("The puzzle address is missing")
+                    .setMessage("Pick puzzle #$pnum again on the " +
+                                "Puzzle tab. Without its address, the workers " +
+                                "would search with nothing to compare against.")
                     .setPositiveButton("OK", null)
                     .show()
                 return
@@ -6128,20 +6128,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         val explicacion = if (conKangaroo)
-            "Reparto de Kangaroo: todos los aparatos buscan el MISMO rango y " +
-            "juntan aquí sus puntos. Partir el rango empeoraría la búsqueda.\n\n" +
-            "AVISO: lo que viaja permite reconstruir la clave privada. Úsalo " +
-            "sólo en tu propia red."
+            "Kangaroo sharing: every device searches the SAME range and " +
+            "pools its points here. Splitting the range would make it worse.\n\n" +
+            "WARNING: what travels allows the private key to be rebuilt. Use it " +
+            "only on your own network."
         else
-            "Reparto por bloques: cada aparato recibe un trozo del rango."
+            "Block sharing: each device gets a slice of the range."
 
         androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Master activo — Puzzle #$pnum")
-            .setMessage("Código de acceso:\n\n${NetworkManager.authToken}\n\n" +
-                        "Introdúcelo en cada worker. Sin él el master rechaza la " +
-                        "conexión.\n\nEscucha en el puerto ${NetworkManager.TCP_PORT} " +
-                        "de esta red.\n\n$explicacion")
-            .setPositiveButton("Copiar código") { _, _ ->
+            .setMessage("Access code:\n\n${NetworkManager.authToken}\n\n" +
+                        "Enter it on each worker. Without it the master refuses the " +
+                        "connection.\n\nListening on port ${NetworkManager.TCP_PORT} " +
+                        "on this network.\n\n$explicacion")
+            .setPositiveButton("Copy code") { _, _ ->
                 (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
                     .setPrimaryClip(android.content.ClipData.newPlainText(
                         "cluster", NetworkManager.authToken))
@@ -6175,7 +6175,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 addr = addr, wif = wif, privHex = claveHex, btc = 0.0,
                 extra = deDonde, checkedTs = 0L))
         } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "no se pudo guardar: ${e.message}", e)
+            android.util.Log.e("MainActivity", "could not save: ${e.message}", e)
         }
     }
 
@@ -6192,7 +6192,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // otra vez daba "7.9 BTC BTC". Los resueltos llevan "0", que a secas no
         // dice nada: lo que hay que ver es que son objetivos de prueba.
         tvPuzzleStatus?.text = if (p.clave.isNotEmpty())
-            "Puzzle #${p.num} — ya resuelto, sirve de prueba"
+            "Puzzle #${p.num} — already solved, good as a test"
         else "Puzzle #${p.num} — ${p.btc}"
         // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
         pendingBlockIdx = null
@@ -6200,10 +6200,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // La gráfica es de la búsqueda anterior: mezclar velocidades de dos
         // puzzles en la misma línea no significa nada.
         chartView?.reset()
-        tvMediaPuzzle?.text = "Velocidad media · una muestra cada 10 s"
+        tvMediaPuzzle?.text = "Average speed · one sample every 10 s"
         kgMuestraMs = 0L; kgMuestraOps = 0L
         tvCurrentBlock?.text = "Bloque actual: —"
-        tvRandomJump?.text = "Saltar a un punto aleatorio del rango"
+        tvRandomJump?.text = "Jump to a random point in the range"
         // Guardar rango para modo distribuido.
         //
         // Y la DIRECCION, que faltaba. El maestro reparte bloques con el rango
@@ -6279,7 +6279,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 .setContentTitle("Coincidencia encontrada")
                 .setContentText("Addr: ${addr.take(20)}...")
                 .setStyle(androidx.core.app.NotificationCompat.BigTextStyle()
-                    .bigText("Dirección: $addr\nWIF: $wif"))
+                    .bigText("Address: $addr\nWIF: $wif"))
                 .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
                 .setAutoCancel(true)
                 .setContentIntent(intent)
@@ -6337,7 +6337,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val mode = if (prefs.getBoolean("scan_was_puzzle", false)) "Puzzle" else "BIP39"
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Scan interrumpido")
-                .setMessage("El scan en modo $mode fue interrumpido. ¿Reiniciar?")
+                .setMessage("The $mode scan was interrupted. Restart?")
                 .setPositiveButton("Reiniciar") { _, _ ->
                     if (prefs.getBoolean("scan_was_puzzle", false)) {
                         puzzleMode = true
