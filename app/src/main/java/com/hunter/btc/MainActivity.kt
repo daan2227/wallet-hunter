@@ -2959,6 +2959,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             })
         }
 
+        // Va ANTES que abrirCartera porque ésta la llama: en Kotlin una función
+        // local sólo ve las que se han declarado por encima.
+        fun anadirCartera() {
+            // "Create" primero: es lo que busca quien no tiene ninguna. Antes
+            // sólo se podía importar una seed que ya existiera.
+            val opciones = arrayOf(
+                "Create a new wallet",
+                "Import a seed phrase (BIP39)",
+                "Import a WIF key",
+                "Watch an address (read-only)")
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Add a wallet")
+                .setItems(opciones) { _, which ->
+                    startActivity(Intent(this, WalletActivity::class.java).apply {
+                        putExtra("MODE", when (which) {
+                            0 -> "create"; 2 -> "wif_import"; 3 -> "watch_import"; else -> "setup"
+                        })
+                    })
+                }
+                .show()
+        }
+
         fun abrirCartera() {
             // Cualquier cartera cuenta. Antes sólo miraba la seed principal y
             // los WIF, así que quien sólo tuviera otra seed o una dirección
@@ -2982,27 +3004,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 androidx.appcompat.app.AlertDialog.Builder(this)
                     .setTitle("No wallet yet")
                     .setMessage("Want to add one?")
-                    .setPositiveButton("Add") { _, _ ->
-                        startActivity(Intent(this, WalletActivity::class.java).apply {
-                            putExtra("MODE", "setup")
-                        })
-                    }
+                    // "Add" iba directo a escribir una seed. Ahora abre la misma
+                    // elección que la tarjeta "Add": crear, seed, WIF o vigilar.
+                    .setPositiveButton("Add") { _, _ -> anadirCartera() }
                     .setNegativeButton("Not now", null)
                     .show()
             }
-        }
-        fun anadirCartera() {
-            val opciones = arrayOf("Seed phrase (BIP39)", "WIF key", "Watch only (address)")
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("What do you want to add?")
-                .setItems(opciones) { _, which ->
-                    startActivity(Intent(this, WalletActivity::class.java).apply {
-                        putExtra("MODE", when (which) {
-                            1 -> "wif_import"; 2 -> "watch_import"; else -> "setup"
-                        })
-                    })
-                }
-                .show()
         }
 
         page.addView(LinearLayout(this).apply {

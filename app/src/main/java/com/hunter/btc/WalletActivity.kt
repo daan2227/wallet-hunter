@@ -139,6 +139,9 @@ class WalletActivity : FragmentActivity() {
                 isWifMode = true
                 loadAddresses(); buildUI()
             }
+            "create" -> {
+                showCreateDialog()
+            }
             "setup" -> {
                 showSetupDialog()
             }
@@ -2320,7 +2323,14 @@ class WalletActivity : FragmentActivity() {
             }
         }
 
-        // Botones agregar
+        // Crear, como acción principal; importar y vigilar, debajo.
+        val btnCrear = botonHoja("Create new wallet", principal = true)
+        sheet.addView(btnCrear)
+        sheet.addView(TextView(this).apply {
+            text = "Import"; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(dp(2), dp(16), 0, 0)
+        })
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
         fun addBtn(label: String, last: Boolean = false) = Button(this).apply {
             text = label; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_PRI)
@@ -2353,6 +2363,7 @@ class WalletActivity : FragmentActivity() {
         }
         dlg.show()
 
+        btnCrear.setOnClickListener { dlg.dismiss(); showCreateDialog() }
         btnNew.setOnClickListener { dlg.dismiss(); showSetupDialog() }
         btnWif.setOnClickListener { dlg.dismiss(); showWifImportDialog() }
         btnWatch.setOnClickListener { dlg.dismiss(); showWatcherImportDialog() }
@@ -2484,6 +2495,188 @@ class WalletActivity : FragmentActivity() {
 
     /* -- SETUP DIALOG -- */
     /* -- SETUP DIALOG -- */
+    // ── Crear una cartera nueva ──────────────────────────────────────────
+    //
+    // Hasta ahora sólo se podía IMPORTAR: escribir una seed que ya tuvieras.
+    // Para empezar de cero había que generarla en otra app y copiarla aquí.
+
+    /** Hoja con el aspecto de las demás de esta pantalla, en un diálogo. */
+    private fun hojaSegura(contenido: LinearLayout): AlertDialog {
+        val scroll = android.widget.ScrollView(this).apply { addView(contenido) }
+        val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
+        dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
+        dlg.window?.apply {
+            setBackgroundDrawableResource(android.R.color.transparent)
+            setLayout((resources.displayMetrics.widthPixels * 0.92f).toInt(),
+                      android.view.WindowManager.LayoutParams.WRAP_CONTENT)
+            setGravity(Gravity.CENTER)
+            attributes = attributes?.also { it.dimAmount = 0.75f }
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)
+            // Sin capturas ni vista previa en "recientes" mientras hay una seed
+            // en pantalla. Una captura de las 12 palabras acaba en la galería
+            // y de ahí en la nube: es la forma más común de perder una cartera.
+            addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        }
+        return dlg
+    }
+
+    private fun hojaBase(titulo: String, texto: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = GradientDrawable().apply { setColor(BG_PANEL); cornerRadius = dp(AppTheme.R_CARD).toFloat() }
+        setPadding(dp(22), dp(22), dp(22), dp(22))
+        addView(TextView(this@WalletActivity).apply {
+            text = titulo; textSize = AppTheme.SP_TITLE + 2f; setTextColor(TXT_PRI)
+            typeface = AppTheme.title(context)
+            setPadding(0, 0, 0, dp(8))
+        })
+        addView(TextView(this@WalletActivity).apply {
+            text = texto; textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context)
+            setLineSpacing(0f, 1.3f)
+            setPadding(0, 0, 0, dp(16))
+        })
+    }
+
+    private fun botonHoja(texto: String, principal: Boolean) = Button(this).apply {
+        text = texto; textSize = AppTheme.SP_BODY
+        setTextColor(if (principal) AppTheme.ON_ACCENT else TXT_PRI)
+        typeface = if (principal) AppTheme.bold(context) else AppTheme.medium(context)
+        isAllCaps = false
+        stateListAnimator = null
+        background = GradientDrawable().apply {
+            setColor(if (principal) AppTheme.ACCENT else AppTheme.BG_ELEV)
+            cornerRadius = dp(AppTheme.R_INNER).toFloat()
+        }
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
+        ).apply { topMargin = dp(10) }
+    }
+
+    /**
+     * Paso 1: las 12 palabras, para apuntarlas.
+     *
+     * Recibe la frase en vez de generarla dentro para que "Show the words
+     * again", desde la comprobación, vuelva a enseñar LA MISMA y no una nueva.
+     */
+    private fun showCreateDialog(mn: String = Bip39.generate(12), nombre: String = "") {
+        val hoja = hojaBase("Your new wallet",
+            "Write these 12 words down on paper, in this order. They are the " +
+            "only way to recover this wallet, and anyone who has them can take " +
+            "its funds. Never type them into a website or send them to anyone.")
+
+        val palabras = mn.split(" ")
+        for (fila in 0 until palabras.size / 2) {
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(6) }
+            }
+            // Por columnas: 1-6 a la izquierda y 7-12 a la derecha, que es como
+            // se lee de arriba abajo y como vienen las hojas de apuntarlas.
+            for (col in 0 until 2) {
+                val i = fila + col * (palabras.size / 2)
+                row.addView(LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    background = GradientDrawable().apply {
+                        setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
+                    }
+                    setPadding(dp(12), dp(10), dp(12), dp(10))
+                    layoutParams = LinearLayout.LayoutParams(0,
+                        LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { if (col == 0) marginEnd = dp(6) }
+                    addView(TextView(this@WalletActivity).apply {
+                        text = "${i + 1}"; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+                        typeface = AppTheme.body(context)
+                        layoutParams = LinearLayout.LayoutParams(dp(24),
+                            LinearLayout.LayoutParams.WRAP_CONTENT)
+                    })
+                    addView(TextView(this@WalletActivity).apply {
+                        text = palabras[i]; textSize = AppTheme.SP_BODY + 1f; setTextColor(TXT_PRI)
+                        typeface = AppTheme.bold(context)
+                    })
+                })
+            }
+            hoja.addView(row)
+        }
+
+        val etNombre = campoNombre().apply { setText(nombre) }
+        hoja.addView(etNombre)
+
+        val chk = android.widget.CheckBox(this).apply {
+            text = "I have written them down"
+            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+            typeface = AppTheme.body(context)
+            buttonTintList = android.content.res.ColorStateList.valueOf(AppTheme.ACCENT)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
+        }
+        hoja.addView(chk)
+
+        val btnSeguir = botonHoja("Continue", principal = true).apply { isEnabled = false; alpha = 0.4f }
+        val btnCancelar = botonHoja("Cancel", principal = false)
+        hoja.addView(btnSeguir); hoja.addView(btnCancelar)
+        chk.setOnCheckedChangeListener { _, marcado ->
+            btnSeguir.isEnabled = marcado; btnSeguir.alpha = if (marcado) 1f else 0.4f
+        }
+
+        val dlg = hojaSegura(hoja)
+        dlg.show()
+        btnCancelar.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
+        btnSeguir.setOnClickListener {
+            dlg.dismiss()
+            comprobarFrase(mn, etNombre.text.toString())
+        }
+    }
+
+    /**
+     * Paso 2: dos palabras al azar, escritas de memoria del papel.
+     *
+     * Marcar "las he apuntado" no demuestra nada, y una cartera cuya frase no
+     * está apuntada funciona perfectamente —hasta el día que se pierde el
+     * móvil—. Pedir dos palabras sueltas cuesta diez segundos y es lo que
+     * separa "las he apuntado" de "las apuntaré luego".
+     */
+    private fun comprobarFrase(mn: String, nombre: String) {
+        val palabras = mn.split(" ")
+        val azar = java.security.SecureRandom()
+        val a = azar.nextInt(palabras.size)
+        var b = azar.nextInt(palabras.size - 1); if (b >= a) b++
+        val (p1, p2) = if (a < b) Pair(a, b) else Pair(b, a)
+
+        val hoja = hojaBase("Check your words",
+            "Type these two words from what you wrote down.")
+        fun campo(n: Int) = campoNombre().apply {
+            hint = "Word #${n + 1}"
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                        InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+        }
+        val et1 = campo(p1); val et2 = campo(p2)
+        hoja.addView(et1); hoja.addView(et2)
+        val btnOk = botonHoja("Create wallet", principal = true)
+        val btnVer = botonHoja("Show the words again", principal = false)
+        hoja.addView(btnOk); hoja.addView(btnVer)
+
+        val dlg = hojaSegura(hoja)
+        dlg.show()
+        btnVer.setOnClickListener { dlg.dismiss(); showCreateDialog(mn, nombre) }
+        btnOk.setOnClickListener {
+            val ok1 = et1.text.toString().trim().lowercase() == palabras[p1]
+            val ok2 = et2.text.toString().trim().lowercase() == palabras[p2]
+            if (!ok1 || !ok2) {
+                val mal = if (!ok1) p1 + 1 else p2 + 1
+                Toast.makeText(this, "That is not word #$mal. Check what you wrote down.",
+                    Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            dlg.dismiss()
+            guardarConPin(onOk = { guardarSeedNueva(mn, nombre) }, onCancel = { finish() })
+        }
+    }
+
     /**
      * Guarda una seed recién escrita y la abre.
      *
