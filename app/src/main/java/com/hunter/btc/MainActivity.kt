@@ -1483,7 +1483,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 max = 90; progress = prefs.getInt("cpu", 70)
                 setOnSeekBarChangeListener(mkSbl {
                     updateLabels()
-                    if (HunterEngine.isRunning()) HunterEngine.setCpuLimit((sbCpu?.progress ?: 70) + 10)
+                    // Por Termico y no directo al motor: el gobernador tiene que
+                    // saber lo que ha pedido el usuario para poder devolverselo
+                    // cuando el movil se enfrie. Sin el guardia de isRunning
+                    // porque setCpuLimit con el motor parado solo guarda un
+                    // atomico, y asi el ajuste vale tambien para el siguiente
+                    // arranque.
+                    Termico.pedir((sbCpu?.progress ?: 70) + 10)
                 })
             }
             addView(sbCpu)
@@ -2454,8 +2460,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             sbCpuPuzzle?.progress = level.cpu - 10
             // Si Kangaroo está corriendo, el freno cambia al momento. El número
             // de hilos no: eso sí obligaría a reiniciar la búsqueda.
-            if (HunterEngine.kangarooRunning())
-                try { HunterEngine.kangarooSetCpu(level.cpu) } catch (e: Throwable) {}
+            Termico.pedir(level.cpu)
             prefs.edit()
                 .putInt("puzzle_threads", level.threads - 1)
                 .putInt("puzzle_cpu", level.cpu - 10)
@@ -3875,44 +3880,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
 
-    private fun getBatteryTemp(): Float {
-        return try {
-            val intent = registerReceiver(null, android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED))
-            val temp = intent?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
-            temp / 10f
-        } catch (e: Exception) { 0f }
-    }
-
-    private fun getCpuTemp(): Float {
-        // Buscar en todas las zonas térmicas disponibles
-        try {
-            val base = java.io.File("/sys/class/thermal")
-            if (base.exists()) {
-                val temps = base.listFiles()
-                    ?.filter { it.name.startsWith("thermal_zone") }
-                    ?.mapNotNull {
-                        try {
-                            val t = java.io.File(it, "temp").readText().trim().toFloatOrNull()
-                            if (t != null && t > 0) if (t > 1000) t / 1000f else t else null
-                        } catch (e: Exception) { null }
-                    } ?: emptyList()
-                if (temps.isNotEmpty()) return temps.max()
-            }
-        } catch (e: Exception) {}
-        // Fallback paths Samsung
-        for (p in listOf(
-            "/sys/class/thermal/thermal_zone4/temp",
-            "/sys/class/thermal/thermal_zone7/temp",
-            "/sys/devices/virtual/thermal/thermal_zone0/temp",
-            "/sys/kernel/debug/spmi/spmi-0/address"
-        )) {
-            try {
-                val raw = java.io.File(p).readText().trim().toFloatOrNull() ?: continue
-                if (raw > 0) return if (raw > 1000) raw / 1000f else raw
-            } catch (e: Exception) {}
-        }
-        return 0f
-    }
+    // Aqui estaban getBatteryTemp() y getCpuTemp(), las dos definidas y sin
+    // una sola llamada en toda la app. La proteccion termica las usa ahora,
+    // pero desde el servicio y con la temperatura que ya llegaba por
+    // ACTION_BATTERY_CHANGED, asi que estas dos sobran.
+    //
+    // getCpuTemp() rastreaba /sys/class/thermal con cuatro rutas de reserva
+    // para Samsung. Da la del SoC, que sube antes que la de la bateria, y
+    // habria sido tentador usarla: pero esas rutas cambian con cada
+    // fabricante y cada version, devuelven la zona mas caliente del chip
+    // —que pica y baja en segundos— y no dicen nada del calor acumulado.
+    // Lo que aqui se quiere evitar no es un pico de un segundo: es la
+    // bateria a 45 grados durante tres dias. Para eso la de la bateria no
+    // es un sucedaneo, es la buena. Si algun dia hace falta la del SoC,
+    // esta en el historial.
 
     // ── Auto-detección de hardware ───────────────────────────────────────────
     data class HardwareProfile(
@@ -4488,11 +4469,36 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /**
+     * La temperatura y, si la hay, la limitacion.
+     *
+     * tvThermal llevaba desde que se creo en visibility = GONE y sin que nadie
+     * le pusiera texto nunca: la fila existia en el arbol de vistas y no se
+     * dibujaba jamas. Ahora dice lo que pasa, y solo cuando pasa algo — un
+     * numero de grados fijo en pantalla es ruido; "45 \u00b0C \u00b7 throttled to
+     * 35 % CPU" es la respuesta a "por que ha bajado la velocidad".
+     */
+    private fun pintarTermico() {
+        val tv = tvThermal ?: return
+        val txt = Termico.resumen()
+        // Solo se ensena cuando el gobernador esta haciendo algo. Si el movil
+        // va fresco no hay nada que contar, y la temperatura a secas ya sale en
+        // la notificacion para quien la quiera.
+        if (txt.isEmpty() || !Termico.limitando) {
+            tv.visibility = android.view.View.GONE
+            return
+        }
+        tv.visibility = android.view.View.VISIBLE
+        tv.text = txt
+        tv.setTextColor(if (Termico.parado) AppTheme.RED else AppTheme.WARN)
+    }
+
     private fun updateUI() {
         try {
             paintScanState(HunterEngine.isRunning())
             paintSettingSummaries()
             refrescarKangaroo()
+            pintarTermico()
             if (HunterEngine.isRunning()) {
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
@@ -4924,6 +4930,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 HunterEngine.setMode(if (puzzleMode) 1 else selectedScanMode)
                 aplicarAfinidad(threads)
                 HunterEngine.startHunting(threads, cpu)
+                // startHunting pisa g_cpu_limit con lo que se le pasa, asi que
+                // el gobernador tiene que volver a decir la suya DESPUES: si no,
+                // arrancar una busqueda con el movil ya caliente le devolvia el
+                // ritmo entero.
+                Termico.pedir(cpu)
 
                 // startHunting() en C++ vuelve sin hacer nada en varios casos
                 // —ya corriendo, parada a medias, sin dataset en modo BIP39— y
@@ -5639,6 +5650,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvPuzzleAtajo?.setTextColor(AppTheme.RED)
             return
         }
+        // ESTE `cpu` SOLO SE PINTABA. kangarooStart no lo recibe, y el motor
+        // arranca Kangaroo con lo que hubiera en g_cpu_limit —el limite del
+        // ESCANER, o 100 si nadie lo habia tocado—. O sea que el deslizador de
+        // potencia del puzzle mostraba un numero que no era el que se estaba
+        // usando. Decirselo aqui lo hace verdad y ademas le da al gobernador su
+        // punto de partida.
+        Termico.pedir(cpu)
         prepararContadoresKangaroo(puzzlePubHex, puzzleIniHex, puzzleFinHex)
         tvPuzzleAtajo?.text = "Searching with Kangaroo · $hilos threads · $cpu % CPU · " +
                              "$porHilo kangaroos per thread"
@@ -6334,10 +6352,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         registerReceiver(batteryReceiver, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
     }
 
-    private var thermalThrottleEnabled = true
-    private var lastThermalCheck = 0L
-    private var originalCpuLimit = 70
-    private var isThrottled = false
+    // Aqui vivian thermalThrottleEnabled, lastThermalCheck, originalCpuLimit e
+    // isThrottled: cuatro variables declaradas y jamas leidas ni escritas, o
+    // sea la proteccion termica entera sin conectar. Ahora existe de verdad y
+    // vive en Termico, dentro del servicio, que es el unico sitio donde sigue
+    // funcionando con la pantalla apagada.
     private var tvThermal: TextView? = null
 
     override fun onResume() {

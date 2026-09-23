@@ -997,6 +997,11 @@ class NetworkActivity : AppCompatActivity() {
                     val cpu = prefs.getInt("puzzle_cpu", 70) + 10
                     aplicarAfinidad(threads)
                     HunterEngine.startHunting(threads, cpu)
+                    // El gobernador termico, tambien aqui. Un movil de cluster
+                    // es el caso donde mas falta hace: se deja enchufado y
+                    // buscando dias enteros sin que nadie le mire la
+                    // temperatura.
+                    Termico.pedir(cpu)
                     try {
                         startForegroundService(android.content.Intent(this, com.hunter.btc.HunterService::class.java))
                     } catch (e: Exception) {

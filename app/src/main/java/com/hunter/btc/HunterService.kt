@@ -20,14 +20,15 @@ class HunterService : Service() {
         const val NOTIF_FG      = 10
         const val NOTIF_MATCH   = 1
         var instance: HunterService? = null
-        var tempCallback: ((Float) -> Unit)? = null
+        // tempCallback se invocaba en cada lectura y NADIE se suscribia nunca:
+        // el otro extremo del cable termico que no estaba conectado. La
+        // temperatura va ahora a Termico, que si hace algo con ella.
     }
 
     private val battReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(ctx: android.content.Context?, intent: Intent?) {
             val raw = intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0
             currentTemp = raw / 10.0f
-            tempCallback?.invoke(currentTemp)
             // Nivel de batería
             val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
             val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
@@ -313,7 +314,55 @@ class HunterService : Service() {
                 NetworkManager.reportProgress(NetworkManager.masterIp, ultimaVel.toLong())
             }
 
+            // ── GOBERNADOR TERMICO ────────────────────────────────────
+            //
+            // Aqui y no en la pantalla: un gobernador que solo funcione con
+            // MainActivity delante deja de funcionar justo cuando hace falta
+            // —pantalla apagada, movil en el bolsillo, movil trabajando para
+            // un cluster—. Esto corre mientras corra el servicio.
+            if (Termico.evaluar(currentTemp)) avisarDeCalor()
+
             handler.postDelayed(this, 2000L)
+        }
+    }
+
+    /**
+     * El escalon termico ha cambiado: decirlo y, si toca, parar.
+     *
+     * Parar de verdad se hace igual que la pausa por bateria baja, incluido
+     * apagar las dos banderas de "estaba corriendo". Sin eso la pausa no sirve
+     * de nada: el watchdog de la pantalla principal ve el motor caido, lee las
+     * banderas y lo relanza a los dos segundos — y el movil se vuelve a
+     * calentar, ahora ademas sin que nadie entienda por que.
+     */
+    private fun avisarDeCalor() {
+        val bruta = HunterEngine.isRunning()
+        val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        // Sin nada buscando no hay nada que frenar ni nada que contar. El
+        // escalon sigue subiendo y bajando por dentro —tiene que hacerlo, o no
+        // podria enfriarse—, pero callado: el movil puede estar caliente por
+        // otra app, y avisar de que "se para por calor" lo que ya estaba parado
+        // solo sirve para pisar la notificacion de reposo con un susto.
+        if (!bruta && !kang) return
+        if (Termico.parado) {
+            if (bruta) HunterEngine.stopHunting()
+            if (kang)  try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+            try {
+                getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE).edit()
+                    .putBoolean("kangaroo_corriendo", false)
+                    .putBoolean("scan_was_running", false).apply()
+            } catch (e: Throwable) {}
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIF_FG, buildFgNotif(
+                    "Paused: too hot",
+                    "${"%.0f".format(Termico.tempC)} \u00b0C. " +
+                    if (kang) "The Kangaroo work is saved."
+                    else "It will not restart on its own: let it cool down first."))
+        } else if (Termico.limitando) {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIF_FG, buildFgNotif(
+                    "Slowing down: ${"%.0f".format(Termico.tempC)} \u00b0C",
+                    "CPU cut to ${Termico.efectivo()} % so the phone cools off."))
         }
     }
 }

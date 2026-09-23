@@ -741,7 +741,9 @@ object NetworkManager {
             android.util.Log.e("NetworkManager", "kangarooStart: ${e.message}", e); false
         }
         if (!ok) return false
-        try { HunterEngine.kangarooSetCpu(cpu) } catch (e: Throwable) {}
+        // Por Termico: ademas de aplicarlo, le deja dicho cual es el limite
+        // que hay que devolver cuando el movil se enfrie.
+        Termico.pedir(cpu)
         // Dejar dicho QUÉ se está buscando, para que cualquiera que encuentre el
         // motor parado pueda relanzarlo: el watchdog de la pantalla principal y
         // ahora también el servicio al volver de que lo maten.
