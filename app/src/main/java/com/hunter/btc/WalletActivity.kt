@@ -29,7 +29,6 @@ class WalletActivity : FragmentActivity() {
     private val AMBER     get() = AppTheme.AMBER
     private val GREEN     get() = AppTheme.GREEN
     private val RED       get() = AppTheme.RED
-    private val CYAN      get() = AppTheme.CYAN
     private val BG_DEEP   get() = AppTheme.BG_DEEP
     private val BG_PANEL  get() = AppTheme.BG_PANEL
     private val BG_CARD   get() = AppTheme.BG_CARD
@@ -112,7 +111,7 @@ class WalletActivity : FragmentActivity() {
         when (mode) {
             "seed" -> {
                 val walletId = intent.getStringExtra("WALLET_ID") ?: ""
-                currentWalletName = if (walletId.isEmpty()) "Main Wallet" else walletId
+                currentWalletName = if (walletId.isEmpty()) WalletManager.mainName(this) else walletId
                 isWifMode = false
                 conSesion {
                     mnemonic = if (walletId.isEmpty()) WalletManager.loadSeed(this) ?: ""
@@ -223,6 +222,58 @@ class WalletActivity : FragmentActivity() {
     private fun conSesion(onSuccess: () -> Unit) {
         if (WalletManager.hasPin(this) && PinAuthHelper.isSessionValid()) onSuccess()
         else authenticate(onSuccess)
+    }
+
+    /**
+     * Guardar una cartera nueva, con el PIN que haga falta.
+     *
+     * Añadir una cartera pedía SIEMPRE "Choose a PIN" —showPinDialog con
+     * isSetup = true— y al confirmarlo llamaba a savePin: REEMPLAZABA el PIN de
+     * la app por lo que se tecleara ahí. Es el mismo PIN que abre la app al
+     * arrancar y el que cifra las copias de seguridad, así que teclear otro
+     * distinto lo cambiaba sin avisar. De ahí el "¿para qué es este PIN, si ya
+     * tengo uno?".
+     *
+     * Ahora: si ya hay PIN, se usa ese —y sólo se pide si la sesión está
+     * cerrada—; si no hay ninguno, entonces sí se elige, porque una cartera
+     * sin PIN no la protege nada.
+     */
+    private fun guardarConPin(onOk: () -> Unit, onCancel: () -> Unit) {
+        if (WalletManager.hasPin(this)) conSesion(onOk)
+        else showPinDialog(isSetup = true) { ok -> if (ok) onOk() else onCancel() }
+    }
+
+    /** El campo "Name" de los diálogos de añadir y de renombrar. */
+    private fun campoNombre(): EditText = EditText(this).apply {
+        hint = "Name (optional)"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+        background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+        setPadding(dp(14), dp(12), dp(14), dp(12)); textSize = AppTheme.SP_BODY
+        minHeight = dp(48); isSingleLine = true
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+        filters = arrayOf<android.text.InputFilter>(android.text.InputFilter.LengthFilter(32))
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(10) }
+    }
+
+    /** Pide un nombre nuevo y se lo pasa, ya limpio, a [alGuardar]. */
+    private fun renombrar(actual: String, alGuardar: (String) -> Unit) {
+        val et = campoNombre().apply { hint = "Name"; setText(actual); setSelection(text.length) }
+        val caja = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), 0)
+            addView(et)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Rename wallet")
+            .setView(caja)
+            .setPositiveButton("Save") { _, _ ->
+                val n = WalletManager.limpiarNombre(et.text.toString())
+                if (n.isNotEmpty()) alGuardar(n)
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
 
     /* -- AUTH: biometria con fallback a PIN -- */
@@ -2105,7 +2156,7 @@ class WalletActivity : FragmentActivity() {
         if (!forceShow && hasSeed && wallets.isEmpty() && wifList2.isEmpty() && watchList2.isEmpty()) {
             conSesion {
                 mnemonic = WalletManager.loadSeed(this) ?: ""
-                currentWalletName = "Main Wallet"
+                currentWalletName = WalletManager.mainName(this)
                 loadAddresses(); buildUI()
             }
             return
@@ -2125,25 +2176,62 @@ class WalletActivity : FragmentActivity() {
             setPadding(0, 0, 0, dp(18))
         })
 
-        fun walletCard(name: String, subtitle: String, color: Int = -1, onClick: () -> Unit) {
-            val resolvedColor = if (color == -1) TXT_PRI else color
+        /* Cada entrada: su nombre, qué tipo es y su dirección.
+         *
+         * Antes enseñaba "WIF Wallet" y los ocho primeros caracteres de la
+         * CLAVE PRIVADA. Todas las WIF se llamaban igual, así que dos entradas
+         * distintas eran indistinguibles; y una lista no es sitio para enseñar
+         * trozos de una clave. La dirección identifica la cartera igual de bien
+         * y es pública.
+         *
+         * La tarjeta iba en BG_CARD sobre una hoja BG_PANEL, que son el mismo
+         * color: no se veía dónde acababa una entrada y empezaba otra. */
+        fun corta(a: String) = if (a.length > 18) a.take(8) + "…" + a.takeLast(6) else a
+
+        fun walletCard(name: String, subtitle: String, onRename: () -> Unit, onClick: () -> Unit) {
             val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(BG_CARD); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                    setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
                 }
-                setPadding(dp(16), dp(14), dp(16), dp(14))
+                clipToOutline = true
+                minimumHeight = dp(64)
+                setPadding(dp(16), dp(10), dp(4), dp(10))
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+                isClickable = true; isFocusable = true
+                foreground = Ui.toque()
+                contentDescription = "$name. $subtitle"
                 setOnClickListener { onClick() }
             }
-            card.addView(TextView(this).apply {
-                text = name; textSize = AppTheme.SP_BODY; setTextColor(resolvedColor)
+            val textos = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            textos.addView(TextView(this).apply {
+                text = name; textSize = AppTheme.SP_BODY + 1f; setTextColor(TXT_PRI)
                 typeface = AppTheme.bold(context)
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            card.addView(TextView(this).apply {
+            textos.addView(TextView(this).apply {
                 text = subtitle; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
                 typeface = AppTheme.body(context)
+                maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(0, dp(3), 0, 0)
+            })
+            card.addView(textos)
+            // El lápiz: renombrar sin tener que abrir la cartera. 48dp de
+            // blanco de toque, separado del resto de la tarjeta para que
+            // tocar el nombre abra la cartera y tocar el lápiz no.
+            card.addView(android.widget.ImageView(this).apply {
+                setImageResource(R.drawable.ic_edit)
+                setColorFilter(TXT_SEC)
+                setPadding(dp(13), dp(13), dp(13), dp(13))
+                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+                isClickable = true; isFocusable = true
+                foreground = Ui.toque()
+                contentDescription = "Rename $name"
+                setOnClickListener { onRename() }
             })
             sheet.addView(card)
         }
@@ -2152,12 +2240,18 @@ class WalletActivity : FragmentActivity() {
         var selectorDlg: AlertDialog? = null
 
         if (hasSeed) {
-            walletCard("Main wallet", "BIP39 seed, HD derivation", TXT_PRI) {
+            val nombreMain = WalletManager.mainName(this)
+            walletCard(nombreMain, "Main seed · BIP39", onRename = {
+                renombrar(nombreMain) { n ->
+                    WalletManager.renameMain(this, n)
+                    selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
+                }
+            }) {
                 selectorDlg?.dismiss()
                 switchToWallet {
                     conSesion {
                         mnemonic = WalletManager.loadSeed(this) ?: ""
-                        currentWalletName = "Main Wallet"; isWifMode = false
+                        currentWalletName = nombreMain; isWifMode = false
                         loadAddresses()
                     }
                 }
@@ -2165,7 +2259,12 @@ class WalletActivity : FragmentActivity() {
         }
 
         wallets.forEach { (id, name) ->
-            walletCard(name, "BIP39 HD Wallet", TXT_PRI) {
+            walletCard(name, "Seed · BIP39", onRename = {
+                renombrar(name) { n ->
+                    WalletManager.renameWallet(this, id, n)
+                    selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
+                }
+            }) {
                 selectorDlg?.dismiss()
                 switchToWallet {
                     conSesion {
@@ -2183,7 +2282,13 @@ class WalletActivity : FragmentActivity() {
             val parts = wmeta.split("|")
             val waddr = parts.getOrNull(0) ?: ""
             val wname = parts.getOrNull(1) ?: "WIF Wallet"
-            walletCard(wname, "${wkey.take(8)}...", GREEN) {
+            walletCard(wname, if (waddr.isNotEmpty()) "WIF key · ${corta(waddr)}" else "WIF key",
+                onRename = {
+                    renombrar(wname) { n ->
+                        WalletManager.renameWif(this, wid, n)
+                        selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
+                    }
+                }) {
                 selectorDlg?.dismiss()
                 conSesion {
                     switchToWallet {
@@ -2200,7 +2305,12 @@ class WalletActivity : FragmentActivity() {
         // Watcher wallets (solo lectura)
         val watchList = WalletManager.listWatchers(this)
         watchList.forEach { (wid, waddr, wlabel) ->
-            walletCard(wlabel, waddr.take(20) + "...", CYAN) {
+            walletCard(wlabel, "Watch only · ${corta(waddr)}", onRename = {
+                renombrar(wlabel) { n ->
+                    WalletManager.renameWatcher(this, wid, n)
+                    selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
+                }
+            }) {
                 selectorDlg?.dismiss()
                 switchToWallet {
                     wifKey = ""; wifAddr = waddr; isWifMode = true
@@ -2276,6 +2386,8 @@ class WalletActivity : FragmentActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         sheet.addView(etWif)
+        val etNombre = campoNombre()
+        sheet.addView(etNombre)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
         val btnImport = Button(this).apply {
             text = "Import"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
@@ -2310,14 +2422,16 @@ class WalletActivity : FragmentActivity() {
             val w = etWif.text.toString().trim()
             if (w.length < 50) { Toast.makeText(this, "Invalid WIF key", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
             dlg.dismiss()
-            showPinDialog(isSetup = true) { ok ->
-                if (!ok) return@showPinDialog
+            guardarConPin(onOk = {
                 val derivedAddr = try { HunterEngine.wifToAddr(w) } catch(e: Exception) { "" }
+                val nombre = WalletManager.limpiarNombre(etNombre.text.toString()).ifEmpty { "WIF Wallet" }
+                if (WalletManager.listWifs(this).any { it.second == w })
+                    Toast.makeText(this, "That key is already saved", Toast.LENGTH_SHORT).show()
                 wifKey = w; wifAddr = derivedAddr; isWifMode = true
-                currentWalletName = "WIF Wallet"
-                WalletManager.saveWif(this, w, derivedAddr)
+                currentWalletName = nombre
+                WalletManager.saveWif(this, w, derivedAddr, nombre)
                 loadAddresses(); buildUI()
-            }
+            }, onCancel = { finish() })
         }
     }
 
@@ -2370,6 +2484,48 @@ class WalletActivity : FragmentActivity() {
 
     /* -- SETUP DIALOG -- */
     /* -- SETUP DIALOG -- */
+    /**
+     * Guarda una seed recién escrita y la abre.
+     *
+     * Esto llamaba siempre a saveSeed, que escribe la seed PRINCIPAL. Con una
+     * principal ya guardada, "añadir" otra la SUSTITUÍA: la anterior se perdía,
+     * y si no había copia de seguridad, con ella el acceso a sus fondos. Las
+     * seeds adicionales ya existían —saveWallet, que usa la restauración de
+     * copias—, sólo que añadir no las usaba.
+     *
+     * Ahora la primera va de principal y las siguientes, al lado. Y si la seed
+     * ya está guardada, se abre la que hay en vez de duplicarla.
+     */
+    private fun guardarSeedNueva(mn: String, nombreEscrito: String) {
+        val nombre = WalletManager.limpiarNombre(nombreEscrito)
+        val principal = if (WalletManager.hasSeed(this)) WalletManager.loadSeed(this) else null
+        val existente = WalletManager.listWallets(this)
+            .firstOrNull { WalletManager.loadWalletSeed(this, it.first) == mn }
+        when {
+            !WalletManager.hasSeed(this) -> {
+                WalletManager.saveSeed(this, mn)
+                if (nombre.isNotEmpty()) WalletManager.renameMain(this, nombre)
+                currentWalletId = ""; currentWalletName = WalletManager.mainName(this)
+            }
+            principal == mn -> {
+                Toast.makeText(this, "That seed is already saved", Toast.LENGTH_SHORT).show()
+                currentWalletId = ""; currentWalletName = WalletManager.mainName(this)
+            }
+            existente != null -> {
+                Toast.makeText(this, "That seed is already saved", Toast.LENGTH_SHORT).show()
+                currentWalletId = existente.first; currentWalletName = existente.second
+            }
+            else -> {
+                val id = "w${System.currentTimeMillis()}"
+                val n = nombre.ifEmpty { "Wallet ${WalletManager.listWallets(this).size + 2}" }
+                WalletManager.saveWallet(this, id, n, mn)
+                currentWalletId = id; currentWalletName = n
+            }
+        }
+        mnemonic = mn; isWifMode = false
+        loadAddresses(); buildUI()
+    }
+
     private fun showSetupDialog() {
         val scroll = android.widget.ScrollView(this)
         val layout = LinearLayout(this).apply {
@@ -2418,6 +2574,8 @@ class WalletActivity : FragmentActivity() {
         val suggestInner = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(6),dp(6),dp(6),dp(6)) }
         suggestScroll.addView(suggestInner)
         layout.addView(suggestScroll)
+        val etNombre = campoNombre()
+        layout.addView(etNombre)
         val bip39 = Bip39Words.WORDS
         fun updateSuggestions(cur: String) {
             suggestInner.removeAllViews()
@@ -2499,10 +2657,8 @@ class WalletActivity : FragmentActivity() {
                 else -> {}
             }
             dlg.dismiss()
-            showPinDialog(isSetup = true) { ok ->
-                if (ok) { WalletManager.saveSeed(this, mn); mnemonic = mn; loadAddresses(); buildUI() }
-                else finish()
-            }
+            guardarConPin(onOk = { guardarSeedNueva(mn, etNombre.text.toString()) },
+                          onCancel = { finish() })
         }
     }
 

@@ -77,10 +77,12 @@ object WalletManager {
 
     private fun parseWifs(raw: String): List<Triple<String,String,String>> {
         if (raw.isEmpty()) return emptyList()
+        // distinctBy: las repetidas que ya estuvieran guardadas se quedan en una
+        // al leer, y desaparecen del disco en la siguiente escritura.
         return raw.split(";;").mapNotNull {
             val p = it.split("~~~")
             if (p.size == 3) Triple(p[0], p[1], p[2]) else null
-        }
+        }.distinctBy { it.second }
     }
 
     private fun writeWifs(ctx: Context, list: List<Triple<String,String,String>>) {
@@ -97,8 +99,14 @@ object WalletManager {
     }
 
     fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet") {
+        val lista = listWifs(ctx)
+        // La misma clave dos veces es la misma cartera dos veces. Pasaba: abrir
+        // un hallazgo del puzzle la guardaba cada vez, y la lista acababa con
+        // entradas idénticas sin forma de saber que eran la misma.
+        if (lista.any { it.second == wif }) return
         val id = "wif_${System.currentTimeMillis()}"
-        writeWifs(ctx, listWifs(ctx) + Triple(id, wif, "$addr|$name"))
+        val n = limpiarNombre(name).ifEmpty { "WIF Wallet" }
+        writeWifs(ctx, lista + Triple(id, wif, "$addr|$n"))
     }
 
     fun listWifs(ctx: Context): List<Triple<String,String,String>> {
@@ -147,11 +155,12 @@ object WalletManager {
 
     // Watcher wallets: watch-only by address
     fun saveWatcher(ctx: Context, addr: String, label: String) {
+        if (listWatchers(ctx).any { it.second == addr }) return
         val id = "watch_${System.currentTimeMillis()}"
         val prefs = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE)
         val raw = prefs.getString("watch_list", "") ?: ""
         val list = if (raw.isEmpty()) mutableListOf() else raw.split(";;").toMutableList()
-        list.add("$id~~~$addr~~~$label")
+        list.add("$id~~~$addr~~~${limpiarNombre(label).ifEmpty { "Watch" }}")
         prefs.edit().putString("watch_list", list.joinToString(";;")).apply()
     }
     fun listWatchers(ctx: Context): List<Triple<String,String,String>> {
@@ -160,7 +169,7 @@ object WalletManager {
         return raw.split(";;").mapNotNull {
             val p = it.split("~~~")
             if (p.size == 3) Triple(p[0], p[1], p[2]) else null
-        }
+        }.distinctBy { it.second }
     }
     fun removeWatcher(ctx: Context, id: String) {
         val list = listWatchers(ctx).filter { it.first != id }
@@ -237,6 +246,56 @@ object WalletManager {
     /* -- MULTI-WALLET -- */
     private const val PREF_WALLET_LIST = "wallet_list"
     private const val PREF_ACTIVE_ID   = "active_wallet_id"
+
+    // ── Nombres ──────────────────────────────────────────────────────────
+    //
+    // Cada tipo de cartera ya guardaba un nombre, pero no había forma de
+    // ponerlo ni de cambiarlo: las WIF se llamaban todas "WIF Wallet" y la
+    // lista era una columna de entradas iguales.
+
+    private const val PREF_MAIN_NAME = "main_wallet_name"
+
+    /**
+     * Un nombre que no rompa el formato en que se guardan las listas: las de
+     * carteras separan con '|' y ':', las de WIF y vigiladas con '~~~' y ';;'.
+     * Un nombre con cualquiera de esos partiría la entrada en dos al leerla.
+     */
+    fun limpiarNombre(n: String): String =
+        n.replace(Regex("[|:~;\\r\\n]"), " ").trim().take(32)
+
+    fun mainName(ctx: Context): String =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(PREF_MAIN_NAME, null)?.takeIf { it.isNotBlank() } ?: "Main wallet"
+
+    fun renameMain(ctx: Context, name: String) {
+        val n = limpiarNombre(name); if (n.isEmpty()) return
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_MAIN_NAME, n).apply()
+    }
+
+    fun renameWallet(ctx: Context, id: String, name: String) {
+        val n = limpiarNombre(name); if (n.isEmpty()) return
+        val list = listWallets(ctx).map { if (it.first == id) Pair(it.first, n) else it }
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
+            .apply()
+    }
+
+    fun renameWif(ctx: Context, id: String, name: String) {
+        val n = limpiarNombre(name); if (n.isEmpty()) return
+        writeWifs(ctx, listWifs(ctx).map {
+            if (it.first == id) Triple(it.first, it.second, "${it.third.substringBefore('|')}|$n")
+            else it
+        })
+    }
+
+    fun renameWatcher(ctx: Context, id: String, label: String) {
+        val n = limpiarNombre(label); if (n.isEmpty()) return
+        val list = listWatchers(ctx).map { if (it.first == id) Triple(it.first, it.second, n) else it }
+        ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
+            .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" })
+            .apply()
+    }
 
     fun listWallets(ctx: Context): List<Pair<String,String>> {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
