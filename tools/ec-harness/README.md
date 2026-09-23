@@ -310,7 +310,57 @@ Tres cosas hicieron falta, y las tres se descubrieron midiendo:
    espera es geométrica, así que pasarse de 20 veces la media tiene probabilidad
    e⁻²⁰— y el contador `rescatados` lo deja ver.
 
+4. **La ventana NO se puede borrar al escapar**, que es lo que hacía y estaba
+   mal. Al escapar de `P` el canguro olvidaba que había estado en `P`, así que
+   cuando el camino nuevo lo devolvía a `P` no había forma de verlo: volvía a
+   caer en el mismo ciclo, volvía a escapar por el mismo sitio, y vuelta a
+   empezar **para siempre**. Medido con `negacion.cpp`: la **mitad** de los
+   escapes salían del mismo punto que el anterior. Conservando la ventana, la
+   vuelta a `P` se ve como lo que es —un ciclo más largo— y se sale por otro
+   salto, porque ahora hay `KG_NESC` saltos de escape y el que toca lo elige la
+   **longitud** del ciclo. La longitud y el punto mínimo los ve igual cualquier
+   canguro que caiga en ese ciclo, así que el escape sigue siendo el mismo para
+   todos y dos que se hayan juntado no se separan.
+
 El escape tiene que depender **sólo del punto**, nunca de por dónde se vino: si
 dos canguros que se han juntado escapan distinto, se separan y la colisión que
 ya tenían se pierde sin dejar rastro. Por eso se escapa siempre desde el menor de
 los puntos del ciclo.
+
+### Lo que todavía NO está resuelto
+
+El mapa de negación **sigue apagado** (`kg_negacion = 0`). Lo de arriba lo mejora
+mucho y no lo arregla del todo.
+
+Lo primero que hubo que tirar fue el marco del problema. "Se rompe a partir de
+dbits 13" era falso: lo que decide no es `dbits` sino los **pasos por canguro**,
+y `dbits` sólo cambia cuánto dura la corrida antes de agotar el presupuesto. Por
+eso las dos investigaciones anteriores buscaron donde no era.
+
+Lo que mide `negacion.cpp`, en un rango de 28 bits con 16 canguros:
+
+```
+                        antes           después
+escapes repetidos       ~50 %           0,6 - 16 %
+dbits 12, resuelve      0/3             3/3   (4,65·raíz(W) contra 8,99 sin negación)
+dbits >= 13, resuelve   0/3             0/3
+```
+
+Queda una trampa permanente que no está identificada. Tres cosas que ya se saben
+de ella, todas medidas:
+
+- **No son escapes repetidos.** Subir la ventana a 128 deja los repetidos en
+  0,6 % y `dbits >= 13` sigue sin resolver. El contador de repetidos mide poco:
+  un canguro que da vueltas a un atractor grande escapa por puntos distintos
+  cada vez y nunca parece que repita.
+- **Los canguros están atrapados de verdad, no lentos.** Bajando la red de
+  seguridad de `20·2^dbits` a `3·2^dbits`, `dbits` 12 pasa de 0/3 a 3/3 con 20
+  rescates. Por encima de 13 la red no llega a saltar nunca, porque su umbral es
+  mayor que lo que un canguro llega a andar.
+- **Depende de cuántos escapes hay entre dos distinguidos.** Con 44 bits y
+  `dbits` 8 —unos 5 escapes por distinguido— el rendimiento es 0,92 de lo
+  esperado, o sea sano. Con 28 bits y `dbits` 12 —unos 120— es 0,02.
+
+O sea que cada escape tiene todavía una probabilidad pequeña, del orden del 1 %,
+de dejar al canguro dando vueltas. Con pocos escapes por distinguido no se nota;
+con muchos, se muere el rebaño entero.

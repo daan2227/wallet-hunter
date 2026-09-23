@@ -611,6 +611,10 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
  * 128 llega hasta rangos de 245 bits, que es mas de lo que hay. Cuesta 12 KB
  * por contexto, uno por movil. */
 #define KG_MAX_JUMPS 128
+/* Cuantos saltos de escape distintos hay. Ver el comentario del salto de
+ * escape en kg_setup: con uno solo, escapar de P llevaba de vuelta a P y el
+ * canguro se quedaba dando vueltas para siempre. */
+#define KG_NESC 8
 
 /* Como se construye la tabla de saltos. 0 = potencias de dos (lo de siempre),
  * 1 = longitudes al azar sacadas de la clave publica.
@@ -723,6 +727,19 @@ typedef struct {
      * dar un punto distinguido. Ver `pasos_sin_dp`. Deberia quedarse en cero o
      * casi; si sube, es que el detector de ciclos no da abasto. */
     std::atomic<long long> rescatados;
+    /* Escapes de ciclo esteril, y de esos cuantos salen DEL MISMO PUNTO del que
+     * ya salio ese canguro la vez anterior.
+     *
+     * El escape es una funcion determinista del punto: tiene que serlo, o dos
+     * canguros que se hayan juntado se separarian. Pero eso significa que si
+     * escapando de P se acaba volviendo a P, se vuelve a escapar a lo mismo, y
+     * otra vez, y otra: el canguro se queda dando vueltas PARA SIEMPRE entre el
+     * ciclo y su escape. Anda, cuenta saltos y no vuelve a dar un punto
+     * distinguido en su vida.
+     *
+     * Si esto sube, ese es el fallo. */
+    std::atomic<long long> escapes;
+    std::atomic<long long> escapes_repe;
     std::atomic<int>       parar;
     /* Porcentaje de CPU, 1..100. Kangaroo no tenia freno: el selector de
        potencia estaba puesto pero no hacia nada, y "Baja" calentaba el movil
@@ -889,6 +906,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
             if(!dp_init(&c->tabla,4)) return 0;
             c->encontrado.store(1); c->saltos.store(0); c->pegados.store(0);
             c->rescatados.store(0);
+            c->escapes.store(0); c->escapes_repe.store(0);
             c->parar.store(0);
             c->cpu_limite.store(100);
             /* Aunque ya este resuelto, kg_run puede llamarse igual y suelta el
@@ -924,7 +942,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
            splitmix64: es determinista y los dos lados del cluster tienen la
            misma clave publica, asi que construyen la MISMA tabla. Con 32 saltos
            basta para que el camino sea impredecible. */
-        int n=32; if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
+        int n=32; if(n>KG_MAX_JUMPS-KG_NESC) n=KG_MAX_JUMPS-KG_NESC;
         c->njumps=n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
         for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
@@ -959,8 +977,8 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
             nd=objetivo+l;
         }
         int n=(int)(nd+0.5);
-        /* -1: la ultima casilla se reserva para el salto de escape. */
-        if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
+        /* Las ultimas KG_NESC casillas se reservan para los escapes. */
+        if(n>KG_MAX_JUMPS-KG_NESC) n=KG_MAX_JUMPS-KG_NESC;
         if(n<4) n=4;
         c->njumps=n;
         JP S; memcpy(S.x,FIELD_GX,32); memcpy(S.y,FIELD_GY,32);
@@ -995,15 +1013,18 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
      */
     {
         sc_t le; sc_set_u64(le,3);         /* 3 no es potencia de dos */
-        for(int intento=0;intento<64;intento++){
-            int choca=0;
-            for(int i=0;i<c->njumps;i++) if(sc_cmp(c->jlen[i],le)==0){ choca=1; break; }
-            if(!choca) break;
-            sc_add_u64(le,2);
+        for(int e=0;e<KG_NESC;e++){
+            for(int intento=0;intento<64;intento++){
+                int choca=0;
+                for(int i=0;i<c->njumps;i++) if(sc_cmp(c->jlen[i],le)==0){ choca=1; break; }
+                if(!choca) break;
+                sc_add_u64(le,2);
+            }
+            sc_copy(c->jlen[c->njumps+e],le);
+            JP E; kg_scalar_mul(&E,le,FIELD_GX,FIELD_GY);
+            kg_normalize(&E,c->jx[c->njumps+e],c->jy[c->njumps+e]);
+            sc_add_u64(le,2);              /* el siguiente, distinto */
         }
-        sc_copy(c->jlen[c->njumps],le);
-        JP E; kg_scalar_mul(&E,le,FIELD_GX,FIELD_GY);
-        kg_normalize(&E,c->jx[c->njumps],c->jy[c->njumps]);
     }
 
     c->dbits=dp_bits; c->dmask=(dp_bits>=64)?~0ULL:((1ULL<<dp_bits)-1);
@@ -1012,6 +1033,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->saltos.store(0);
     c->pegados.store(0);
     c->rescatados.store(0);
+    c->escapes.store(0); c->escapes_repe.store(0);
     c->parar.store(0);
     c->cpu_limite.store(100);
     c->politica_salida=2;
@@ -1326,7 +1348,10 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
 
 /* Cuantas posiciones recuerda cada canguro para detectar ciclos esteriles.
  * El reparto medido de longitudes esta en el comentario de `ventana`. */
+#ifndef KG_VENTANA          /* el banco de pruebas la varia con -D */
 #define KG_VENTANA 16
+#endif
+
 
 typedef struct {
     fe_t x, y;
@@ -1383,6 +1408,9 @@ typedef struct {
     int  vpos;            /* siguiente hueco del anillo */
     uint64_t esc_obj[2];  /* el punto del ciclo desde el que hay que escapar */
     int  esc_act;         /* 1 = hay un escape pendiente */
+    int  esc_len;         /* longitud del ciclo detectado: elige el salto */
+    uint64_t ult_esc[2];  /* de donde escapo la vez anterior */
+    int  ult_esc_ok;      /* 0 = todavia no ha escapado nunca */
 
     /* Pasos desde el ultimo punto distinguido.
      *
@@ -1449,7 +1477,10 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
        de dbits=59, y al desbordar no da un numero grande sino uno pequeno, con
        lo que el motor se pondria a resoltar canguros sin parar y no produciria
        nada. Justo el tipo de fallo que esta red viene a evitar. */
-    uint64_t tope_sin_dp = (c->dbits<58) ? (20ULL<<c->dbits) : ~0ULL;
+#ifndef KG_FACTOR_SIN_DP    /* el banco de pruebas lo baja para ver la trampa */
+#define KG_FACTOR_SIN_DP 20ULL
+#endif
+    uint64_t tope_sin_dp = (c->dbits<58) ? (KG_FACTOR_SIN_DP<<c->dbits) : ~0ULL;
 
     sc_t disp_s, rango_m;
     /* El terreno a cubrir: W normalmente, W/2 con mapa de negacion —el objetivo
@@ -1528,6 +1559,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         sc_copy(K[i].dist,d);
         K[i].eps=1;
         K[i].vn=0; K[i].vpos=0; K[i].esc_act=0;   /* ventana de ciclos limpia */
+        K[i].ult_esc_ok=0;
         K[i].pasos_sin_dp=0;
         JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
         if(manso){
@@ -1561,8 +1593,27 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                Ver el comentario de Kangaroo.ventana y el de kg_setup. */
             if(K[i].esc_act && K[i].x[0]==K[i].esc_obj[0]
                             && K[i].x[1]==K[i].esc_obj[1]){
-                h=c->njumps; K[i].esc_act=0;
-                K[i].vn=0; K[i].vpos=0;   /* tras escapar, el camino es otro */
+                /* El salto depende de la LONGITUD del ciclo, no solo de su
+                   punto minimo. Los dos los ve igual cualquier canguro que
+                   caiga en ese ciclo, venga de donde venga, asi que el escape
+                   sigue siendo el mismo para todos y dos que se hayan juntado
+                   no se separan. Pero un ciclo de 2 y uno de 5 escapan por
+                   sitios distintos, y eso es lo que rompe el bucle. */
+                h=c->njumps+(K[i].esc_len%KG_NESC); K[i].esc_act=0;
+                /* LA VENTANA NO SE BORRA. Borrarla era el fallo: al escapar de
+                   P el canguro olvidaba que habia estado en P, asi que cuando
+                   el camino nuevo lo devolvia a P no habia forma de verlo.
+                   Volvia a caer en el mismo ciclo, volvia a escapar por el
+                   mismo sitio y vuelta a empezar, para siempre. Medido: la
+                   MITAD de los escapes salian del mismo punto que el anterior.
+                   Conservandola, la vuelta a P se ve como lo que es —un ciclo
+                   mas largo— y se sale por otro salto. */
+                c->escapes.fetch_add(1);
+                if(K[i].ult_esc_ok && K[i].ult_esc[0]==K[i].x[0]
+                                   && K[i].ult_esc[1]==K[i].x[1])
+                    c->escapes_repe.fetch_add(1);
+                K[i].ult_esc[0]=K[i].x[0]; K[i].ult_esc[1]=K[i].x[1];
+                K[i].ult_esc_ok=1;
             }
             jmp[i]=h;
             fe_sub(den[i],c->jx[h],K[i].x);
@@ -1687,6 +1738,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                         if(a1<m1 || (a1==m1 && a0<m0)){ m0=a0; m1=a1; }
                     }
                     K[i].esc_obj[0]=m0; K[i].esc_obj[1]=m1; K[i].esc_act=1;
+                    K[i].esc_len=j;
                     break;
                 }
                 K[i].ventana[K[i].vpos][0]=x3[0];
