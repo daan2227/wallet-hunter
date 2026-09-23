@@ -3561,7 +3561,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         recoveryPage.addView(btnRow)
 
         val btnSaveWallet = Button(this).apply {
-            text = "Save to wallet"; textSize = AppTheme.SP_TITLE
+            text = "Add to your wallets"; textSize = AppTheme.SP_TITLE
             setTextColor(AppTheme.ON_ACCENT)
             background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
             typeface = AppTheme.bold(context)
@@ -3578,28 +3578,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         btnSaveWallet.setOnClickListener {
             val foundMnemonic = it.tag as? String ?: return@setOnClickListener
-            AlertDialog.Builder(this)
-                .setTitle("Save to wallet")
-                .setMessage("Save this seed phrase to your main wallet?\n\n$foundMnemonic")
-                .setPositiveButton("Save") { _, _ ->
-                    if (PinAuthHelper.isSessionValid()) {
-                        WalletManager.saveSeed(this, foundMnemonic)
-                        btnSaveWallet.visibility = android.view.View.GONE
-                        tvRecoveryStatus.text = "Seed saved to the main wallet"
-                        tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                    } else {
-                        PinAuthHelper.show(this) { ok ->
-                            if (ok) {
-                                WalletManager.saveSeed(this, foundMnemonic)
-                                btnSaveWallet.visibility = android.view.View.GONE
-                                tvRecoveryStatus.text = "Seed saved to the main wallet"
-                                tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                            }
-                        }
-                    }
+            // Con agregarSeed y no saveSeed: saveSeed escribe la seed PRINCIPAL,
+            // así que con una cartera ya guardada la recuperada la SUSTITUÍA y
+            // la anterior se perdía. Ahora va al lado si ya hay una.
+            fun guardar() {
+                val g = WalletManager.agregarSeed(this, foundMnemonic, "Recovered", "recovery")
+                btnSaveWallet.visibility = android.view.View.GONE
+                tvRecoveryStatus.text = if (g.yaEstaba) "That seed was already in your wallets (${g.nombre})"
+                                        else "Seed saved to your wallets as \"${g.nombre}\""
+                tvRecoveryStatus.visibility = android.view.View.VISIBLE
+            }
+            val d = AlertDialog.Builder(this)
+                .setTitle("Save to your wallets")
+                .setMessage("It is already kept in the finds vault. Also add it to " +
+                            "your wallets, to see its balance and use it?")
+                .setPositiveButton("Add") { _, _ ->
+                    if (PinAuthHelper.isSessionValid()) guardar()
+                    else PinAuthHelper.show(this) { ok -> if (ok) guardar() }
                 }
                 .setNegativeButton("Cancel", null)
-                .show()
+                .create()
+            d.show()
         }
 
         recoveryEngine = RecoveryEngine(this)
@@ -3644,7 +3643,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // usuario pulsa "Guardar wallet", que la cifra con el Keystore.
                     // Borramos también los ficheros que dejaron versiones anteriores.
                     purgeLegacyRecoveryFiles()
-                    sendMatchNotification("Seed recovered", "Open the app to save it to your wallet.")
+                    // Al baúl en el momento: antes, salir de la app sin pulsar
+                    // "Save wallet" perdía la frase, y había que repetir una
+                    // búsqueda de horas.
+                    Thread {
+                        val ok = try { MatchVault.guardarRecuperada(this@MainActivity, mnemonic) }
+                                 catch (t: Throwable) { false }
+                        runOnUiThread {
+                            tvRecoveryStatus.text = if (ok) "Kept in the finds vault, encrypted."
+                                else "Could not keep it in the vault: save it to your wallets now."
+                            tvRecoveryStatus.visibility = android.view.View.VISIBLE
+                        }
+                    }.start()
+                    sendMatchNotification("Seed recovered", "It is kept in the finds vault.")
                 }
             }
             override fun onNotFound() {

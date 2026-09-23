@@ -144,7 +144,8 @@ class VaultActivity : AppCompatActivity() {
             val wifs = try {
                 WalletManager.listWifs(this).mapTo(HashSet()) { it.second }
             } catch (e: Exception) { HashSet<String>() }
-            runOnUiThread { if (!bloqueado && !isFinishing) pintar(entradas, wifs) }
+            val seeds = try { WalletManager.todasLasSeeds(this) } catch (e: Exception) { emptySet<String>() }
+            runOnUiThread { if (!bloqueado && !isFinishing) pintar(entradas, wifs, seeds) }
         }.start()
     }
 
@@ -153,10 +154,13 @@ class VaultActivity : AppCompatActivity() {
         "scanner"  -> "Scanner"
         "recovery" -> "Recovery"
         "kangaroo" -> "Kangaroo"
+        WalletManager.O_CREADA    -> "Your wallet · created"
+        WalletManager.O_IMPORTADA -> "Your wallet · added"
+        WalletManager.O_BACKUP    -> "Your wallet · backup"
         else       -> s.replaceFirstChar { it.uppercase() }
     }
 
-    private fun pintar(entradas: List<MatchVault.Entry>, wifs: Set<String>) {
+    private fun pintar(entradas: List<MatchVault.Entry>, wifs: Set<String>, seeds: Set<String>) {
         contenido.removeAllViews()
         contenido.addView(cabecera(
             "Encrypted on this phone · ${entradas.size} find" + if (entradas.size == 1) "" else "s"))
@@ -169,13 +173,14 @@ class VaultActivity : AppCompatActivity() {
                               AppTheme.title(this@VaultActivity)).apply {
                     gravity = Gravity.CENTER; setPadding(0, dp(12), 0, dp(6))
                 })
-                addView(texto("When the puzzle or the scanner finds a key it is " +
-                              "stored here straight away, encrypted, and included " +
-                              "in the backup.", AppTheme.SP_BODY, AppTheme.TXT_SEC).apply {
+                addView(texto("What the puzzle, the scanner, Kangaroo or Recovery " +
+                              "find is stored here straight away, encrypted, and " +
+                              "included in the backup. You can also keep a copy of " +
+                              "your own wallets here, from the wallet menu.", AppTheme.SP_BODY, AppTheme.TXT_SEC).apply {
                     gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f)
                 })
             })
-            contenido.addView(Ui.card(this, topGap = 12).apply { addView(interruptorCartera(emptyList(), wifs)) })
+            contenido.addView(Ui.card(this, topGap = 12).apply { addView(interruptorCartera(emptyList(), wifs, seeds)) })
             return
         }
 
@@ -215,7 +220,7 @@ class VaultActivity : AppCompatActivity() {
         botones.addView(bSaldo); botones.addView(bCopia)
         resumen.addView(botones)
         resumen.addView(Ui.divider(this, 16))
-        resumen.addView(interruptorCartera(entradas, wifs))
+        resumen.addView(interruptorCartera(entradas, wifs, seeds))
         contenido.addView(resumen)
 
         // ── Lista ─────────────────────────────────────────────────────────
@@ -225,7 +230,7 @@ class VaultActivity : AppCompatActivity() {
             }
         })
         val fmt = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.US)
-        entradas.forEach { e -> contenido.addView(fila(e, fmt, MatchVault.enCartera(e, wifs))) }
+        entradas.forEach { e -> contenido.addView(fila(e, fmt, MatchVault.enCartera(e, wifs, seeds))) }
     }
 
     /**
@@ -239,7 +244,8 @@ class VaultActivity : AppCompatActivity() {
      * sólo afectaría a lo que se encuentre de ahí en adelante y parecería que
      * no hace nada.
      */
-    private fun interruptorCartera(entradas: List<MatchVault.Entry>, wifs: Set<String>): View {
+    private fun interruptorCartera(entradas: List<MatchVault.Entry>, wifs: Set<String>,
+                                   seeds: Set<String>): View {
         val fila = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -262,7 +268,7 @@ class VaultActivity : AppCompatActivity() {
         }
         sw.setOnCheckedChangeListener { _, on ->
             MatchVault.setAutoCartera(this, on)
-            val fuera = entradas.count { !MatchVault.enCartera(it, wifs) }
+            val fuera = entradas.count { !MatchVault.enCartera(it, wifs, seeds) }
             if (on && fuera > 0) {
                 val d = AlertDialog.Builder(this)
                     .setTitle("Add the current finds too?")
@@ -374,6 +380,7 @@ class VaultActivity : AppCompatActivity() {
             return t
         }
 
+        MatchVault.nombreDe(e).takeIf { it.isNotEmpty() }?.let { campo("Wallet", it) }
         campo("Source", etiquetaOrigen(e.source) +
               if (e.ts > 0) " · " + java.text.DateFormat.getDateTimeInstance().format(java.util.Date(e.ts)) else "")
         campo("Address", e.addr, mono = true).apply {

@@ -158,7 +158,7 @@ class WalletActivity : FragmentActivity() {
                 if (intentWif.isNotEmpty()) {
                     wifKey = intentWif; wifAddr = intentAddr; isWifMode = true
                     currentWalletName = "Puzzle Match"
-                    WalletManager.saveWif(this, intentWif, intentAddr)
+                    WalletManager.saveWif(this, intentWif, intentAddr, origen = "puzzle")
                     loadAddresses(); buildUI()
                 } else {
                     showWalletSelectorDialog()
@@ -2197,7 +2197,8 @@ class WalletActivity : FragmentActivity() {
          * color: no se veía dónde acababa una entrada y empezaba otra. */
         fun corta(a: String) = if (a.length > 18) a.take(8) + "…" + a.takeLast(6) else a
 
-        fun walletCard(name: String, subtitle: String, onRename: () -> Unit, onClick: () -> Unit) {
+        fun walletCard(name: String, subtitle: String, origen: String?,
+                       onRename: () -> Unit, onClick: () -> Unit) {
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
@@ -2228,6 +2229,17 @@ class WalletActivity : FragmentActivity() {
                 maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                 setPadding(0, dp(3), 0, 0)
             })
+            // De dónde viene: creada aquí, añadida a mano, hallada por el
+            // puzzle… Las de antes de apuntarlo no lo tienen y no se inventa.
+            WalletManager.textoOrigen(origen)?.let { o ->
+                textos.addView(TextView(this).apply {
+                    text = o; textSize = AppTheme.SP_MICRO
+                    setTextColor(if (WalletManager.esDelUsuario(origen)) AppTheme.TXT_MUTED else AppTheme.ACCENT)
+                    typeface = AppTheme.medium(context)
+                    maxLines = 1
+                    setPadding(0, dp(3), 0, 0)
+                })
+            }
             card.addView(textos)
             // El lápiz: renombrar sin tener que abrir la cartera. 48dp de
             // blanco de toque, separado del resto de la tarjeta para que
@@ -2250,7 +2262,8 @@ class WalletActivity : FragmentActivity() {
 
         if (hasSeed) {
             val nombreMain = WalletManager.mainName(this)
-            walletCard(nombreMain, "Main seed · BIP39", onRename = {
+            walletCard(nombreMain, "Main seed · BIP39",
+                       WalletManager.origen(this, WalletManager.CLAVE_PRINCIPAL), onRename = {
                 renombrar(nombreMain) { n ->
                     WalletManager.renameMain(this, n)
                     selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
@@ -2268,7 +2281,7 @@ class WalletActivity : FragmentActivity() {
         }
 
         wallets.forEach { (id, name) ->
-            walletCard(name, "Seed · BIP39", onRename = {
+            walletCard(name, "Seed · BIP39", WalletManager.origen(this, id), onRename = {
                 renombrar(name) { n ->
                     WalletManager.renameWallet(this, id, n)
                     selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
@@ -2292,7 +2305,7 @@ class WalletActivity : FragmentActivity() {
             val waddr = parts.getOrNull(0) ?: ""
             val wname = parts.getOrNull(1) ?: "WIF Wallet"
             walletCard(wname, if (waddr.isNotEmpty()) "WIF key · ${corta(waddr)}" else "WIF key",
-                onRename = {
+                WalletManager.origen(this, wid), onRename = {
                     renombrar(wname) { n ->
                         WalletManager.renameWif(this, wid, n)
                         selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
@@ -2314,7 +2327,7 @@ class WalletActivity : FragmentActivity() {
         // Watcher wallets (solo lectura)
         val watchList = WalletManager.listWatchers(this)
         watchList.forEach { (wid, waddr, wlabel) ->
-            walletCard(wlabel, "Watch only · ${corta(waddr)}", onRename = {
+            walletCard(wlabel, "Watch only · ${corta(waddr)}", WalletManager.origen(this, wid), onRename = {
                 renombrar(wlabel) { n ->
                     WalletManager.renameWatcher(this, wid, n)
                     selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
@@ -2446,18 +2459,29 @@ class WalletActivity : FragmentActivity() {
                     Toast.makeText(this, "That key is already saved", Toast.LENGTH_SHORT).show()
                 wifKey = w; wifAddr = derivedAddr; isWifMode = true
                 currentWalletName = nombre
-                WalletManager.saveWif(this, w, derivedAddr, nombre)
+                WalletManager.saveWif(this, w, derivedAddr, nombre, WalletManager.O_IMPORTADA)
                 loadAddresses(); buildUI()
             }, onCancel = { finish() })
         }
     }
 
     private fun showMenu() {
+        // "Save to finds vault" sólo en las carteras que puso el usuario y que
+        // tienen clave: las que vienen de un hallazgo ya están en el baúl, y
+        // una vigilada no tiene nada que guardar.
+        val claveActual = claveCarteraActual()
+        val tieneClave = if (isWifMode) wifKey.isNotEmpty() else mnemonic.isNotEmpty()
+        val alBaul = tieneClave && claveActual != null &&
+                     WalletManager.esDelUsuario(WalletManager.origen(this, claveActual))
+        val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
+            if (alBaul) "Save to finds vault" else null,
+            "Change PIN", "Toggle Testnet", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
         AlertDialog.Builder(this).setTitle("Options")
-            .setItems(arrayOf("Switch Wallet","Show seed / WIF","Change PIN","Toggle Testnet","Backup vault","Restore from file","Delete wallet","Cancel")) { _, pos ->
-                when (pos) {
-                    0 -> showWalletSelectorDialog(forceShow = true)
-                    1 -> authenticate {
+            .setItems(opciones.toTypedArray()) { _, pos ->
+                when (opciones[pos]) {
+                    "Switch Wallet" -> showWalletSelectorDialog(forceShow = true)
+                    "Save to finds vault" -> authenticate { guardarEnBaul(claveActual) }
+                    "Show seed / WIF" -> authenticate {
                         // Numerada, una palabra por línea: era un único renglón
                         // de 12 o 24 palabras seguidas, que es justo como se
                         // apunta mal una. Y sin capturas —FLAG_SECURE—, igual
@@ -2471,8 +2495,8 @@ class WalletActivity : FragmentActivity() {
                         d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                         d.show()
                     }
-                    2 -> authenticate { showPinDialog(isSetup = true) {} }
-                    3 -> {
+                    "Change PIN" -> authenticate { showPinDialog(isSetup = true) {} }
+                    "Toggle Testnet" -> {
                         isTestnet = !isTestnet
                         // Hay que volver a derivar: en testnet la rama del árbol
                         // es otra (coin type 1'), así que las direcciones que se
@@ -2485,9 +2509,9 @@ class WalletActivity : FragmentActivity() {
                             else "Mainnet — addresses reloaded",
                             Toast.LENGTH_SHORT).show()
                     }
-                    4 -> showBackupVault()
-                    5 -> showRestoreDialog()
-                    6 -> AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage("Make sure you have a copy of the key: this cannot be undone.")
+                    "Backup vault" -> showBackupVault()
+                    "Restore from file" -> showRestoreDialog()
+                    "Delete wallet" -> AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage("Make sure you have a copy of the key: this cannot be undone.")
                             .setPositiveButton("Delete") { _, _ ->
                                 when {
                                     isWifMode && wifAddr.isNotEmpty() -> {
@@ -2507,6 +2531,40 @@ class WalletActivity : FragmentActivity() {
                             .setNegativeButton("Cancel", null).show()
                 }
             }.show()
+    }
+
+    /**
+     * La clave con que se apunta el origen de la cartera abierta: "main", el
+     * id de la seed, el de la WIF o el de la vigilada. null si no se encuentra.
+     */
+    private fun claveCarteraActual(): String? = when {
+        !isWifMode && currentWalletId.isNotEmpty() -> currentWalletId
+        !isWifMode -> WalletManager.CLAVE_PRINCIPAL
+        wifKey.isNotEmpty() -> WalletManager.listWifs(this).firstOrNull { it.second == wifKey }?.first
+        else -> WalletManager.listWatchers(this).firstOrNull { it.second == wifAddr }?.first
+    }
+
+    /**
+     * Guarda una copia de la cartera abierta en el baúl de hallazgos: cifrada
+     * aparte, con su propia llave del Keystore, y dentro de la copia de
+     * seguridad. Borrar la cartera no se la lleva.
+     */
+    private fun guardarEnBaul(clave: String?) {
+        val origen = clave?.let { WalletManager.origen(this, it) }
+        val seed = if (isWifMode) "" else mnemonic
+        val wif = if (isWifMode) wifKey else ""
+        val nombre = currentWalletName; val addr = wifAddr
+        Thread {
+            val r = try { MatchVault.guardarCartera(this, nombre, origen, seed, wif, addr) }
+                    catch (t: Throwable) { -1 }
+            runOnUiThread {
+                Toast.makeText(this, when (r) {
+                    1    -> "Saved to the finds vault"
+                    0    -> "It is already in the finds vault"
+                    else -> "Could not save it to the vault"
+                }, Toast.LENGTH_SHORT).show()
+            }
+        }.start()
     }
 
     /* -- SETUP DIALOG -- */
@@ -2735,7 +2793,7 @@ class WalletActivity : FragmentActivity() {
                 return@setOnClickListener
             }
             dlg.dismiss()
-            guardarConPin(onOk = { guardarSeedNueva(mn, nombre) }, onCancel = { finish() })
+            guardarConPin(onOk = { guardarSeedNueva(mn, nombre, WalletManager.O_CREADA) }, onCancel = { finish() })
         }
     }
 
@@ -2751,32 +2809,13 @@ class WalletActivity : FragmentActivity() {
      * Ahora la primera va de principal y las siguientes, al lado. Y si la seed
      * ya está guardada, se abre la que hay en vez de duplicarla.
      */
-    private fun guardarSeedNueva(mn: String, nombreEscrito: String) {
-        val nombre = WalletManager.limpiarNombre(nombreEscrito)
-        val principal = if (WalletManager.hasSeed(this)) WalletManager.loadSeed(this) else null
-        val existente = WalletManager.listWallets(this)
-            .firstOrNull { WalletManager.loadWalletSeed(this, it.first) == mn }
-        when {
-            !WalletManager.hasSeed(this) -> {
-                WalletManager.saveSeed(this, mn)
-                if (nombre.isNotEmpty()) WalletManager.renameMain(this, nombre)
-                currentWalletId = ""; currentWalletName = WalletManager.mainName(this)
-            }
-            principal == mn -> {
-                Toast.makeText(this, "That seed is already saved", Toast.LENGTH_SHORT).show()
-                currentWalletId = ""; currentWalletName = WalletManager.mainName(this)
-            }
-            existente != null -> {
-                Toast.makeText(this, "That seed is already saved", Toast.LENGTH_SHORT).show()
-                currentWalletId = existente.first; currentWalletName = existente.second
-            }
-            else -> {
-                val id = "w${System.currentTimeMillis()}"
-                val n = nombre.ifEmpty { "Wallet ${WalletManager.listWallets(this).size + 2}" }
-                WalletManager.saveWallet(this, id, n, mn)
-                currentWalletId = id; currentWalletName = n
-            }
-        }
+    private fun guardarSeedNueva(mn: String, nombreEscrito: String, origen: String) {
+        // La lógica vive en WalletManager.agregarSeed, que la comparte con
+        // Recovery y el baúl: principal si no hay, al lado si ya hay, y sin
+        // duplicar la que ya esté.
+        val g = WalletManager.agregarSeed(this, mn, nombreEscrito, origen)
+        if (g.yaEstaba) Toast.makeText(this, "That seed is already saved", Toast.LENGTH_SHORT).show()
+        currentWalletId = g.id; currentWalletName = g.nombre
         mnemonic = mn; isWifMode = false
         loadAddresses(); buildUI()
     }
@@ -2912,7 +2951,7 @@ class WalletActivity : FragmentActivity() {
                 else -> {}
             }
             dlg.dismiss()
-            guardarConPin(onOk = { guardarSeedNueva(mn, etNombre.text.toString()) },
+            guardarConPin(onOk = { guardarSeedNueva(mn, etNombre.text.toString(), WalletManager.O_IMPORTADA) },
                           onCancel = { finish() })
         }
     }
@@ -2983,7 +3022,7 @@ class WalletActivity : FragmentActivity() {
             val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
             if (addr.length < 26) { Toast.makeText(this, "Invalid address", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
             dlg.dismiss()
-            WalletManager.saveWatcher(this, addr, label)
+            WalletManager.saveWatcher(this, addr, label, WalletManager.O_IMPORTADA)
             wifKey = ""; wifAddr = addr; isWifMode = true
             currentWalletName = label
             loadAddresses(); buildUI()

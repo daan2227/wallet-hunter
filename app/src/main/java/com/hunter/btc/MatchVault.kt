@@ -36,7 +36,9 @@ object MatchVault {
 
     data class Entry(
         val ts: Long,
-        val source: String,   // "puzzle" | "scanner" | "recovery"
+        /** "puzzle" | "scanner" | "kangaroo" | "recovery", o "created" /
+         *  "imported" para una cartera del usuario guardada aquí a mano. */
+        val source: String,
         val addr: String,
         val wif: String,
         val privHex: String,
@@ -331,26 +333,110 @@ object MatchVault {
         return d.substringBefore("|") to e.addr.ifEmpty { d.substringAfter("|") }
     }
 
-    /** ¿Este hallazgo ya está en la cartera? */
-    fun enCartera(e: Entry, wifsCartera: Set<String>): Boolean =
-        e.wif.isNotEmpty() && e.wif in wifsCartera
+    /** La seed de una entrada, si la trae (BIP39 del escáner, Recovery, carteras). */
+    fun seedDe(e: Entry): String =
+        Regex("""SEED:(.+?)\s+PATH:""").find(e.extra)?.groupValues?.get(1)?.trim() ?: ""
+
+    /** El nombre con que se guardó una cartera propia. */
+    fun nombreDe(e: Entry): String =
+        Regex("""NAME:(.+)$""").find(e.extra)?.groupValues?.get(1)?.trim() ?: ""
 
     /**
-     * Añade el hallazgo a la cartera como clave WIF, con un nombre que dice de
-     * dónde sale. Si ya estaba no la duplica.
+     * ¿Ya está en la cartera? Por su WIF si lo trae, y si no por su seed.
+     */
+    fun enCartera(e: Entry, wifsCartera: Set<String>, seedsCartera: Set<String>): Boolean {
+        if (e.wif.isNotEmpty()) return e.wif in wifsCartera
+        val seed = seedDe(e)
+        return seed.isNotEmpty() && seed in seedsCartera
+    }
+
+    /**
+     * Añade el hallazgo a la cartera, con un nombre que dice de dónde sale y
+     * su origen apuntado. Si trae WIF va como clave WIF; si sólo trae seed
+     * (Recovery, una cartera propia), como seed. Si ya estaba no la duplica.
      *
      * @return true si queda en la cartera.
      */
     fun aCartera(ctx: Context, e: Entry): Boolean {
-        val (wif, addr) = wifDe(e) ?: return false
         val origen = when (e.source) {
             "puzzle"   -> "Puzzle"
             "scanner"  -> "Scanner"
             "kangaroo" -> "Kangaroo"
-            "recovery" -> "Recovery"
+            "recovery" -> "Recovered"
             else       -> "Find"
         }
-        return WalletManager.saveWif(ctx, wif, addr, "$origen find ${addr.take(8)}")
+        val par = wifDe(e)
+        if (par != null) {
+            val (wif, addr) = par
+            return WalletManager.saveWif(ctx, wif, addr,
+                nombreDe(e).ifEmpty { "$origen find ${addr.take(8)}" }, e.source)
+        }
+        val seed = seedDe(e)
+        if (seed.isEmpty()) return false
+        WalletManager.agregarSeed(ctx, seed,
+            nombreDe(e).ifEmpty { "$origen ${e.addr.take(8)}" }, e.source)
+        return true
+    }
+
+    /**
+     * La primera dirección de recepción de una seed y su ruta: la nativa
+     * SegWit (bc1q…, m/84') si sale, y si no la heredada (1…, m/44').
+     * Sirve para identificar la entrada en la lista: el baúl lista por
+     * dirección.
+     */
+    fun primeraDireccion(mn: String): Pair<String, String>? = try {
+        val o = org.json.JSONObject(HunterEngine.deriveWallet(mn, false))
+        val bech = o.optString("p2wpkh_0", "")
+        val leg  = o.optString("p2pkh_0", "")
+        when {
+            bech.isNotEmpty() -> bech to "m/84'/0'/0'/0/0"
+            leg.isNotEmpty()  -> leg to "m/44'/0'/0'/0/0"
+            else -> o.keys().asSequence().firstOrNull()?.let { k -> o.optString(k) to "?" }
+        }
+    } catch (t: Throwable) { null }
+
+    /**
+     * Guarda en el baúl la seed que ha encontrado Recovery.
+     *
+     * Antes sólo se enseñaba en pantalla con un botón "Save wallet": si se
+     * salía de la app sin pulsarlo, la frase se perdía y había que repetir
+     * una búsqueda que puede llevar horas.
+     *
+     * @return true si queda guardada.
+     */
+    fun guardarRecuperada(ctx: Context, mn: String): Boolean {
+        val (addr, ruta) = primeraDireccion(mn) ?: return false
+        val e = Entry(ts = System.currentTimeMillis(), source = "recovery", addr = addr,
+                      wif = "", privHex = "", btc = 0.0, extra = "SEED:$mn PATH:$ruta")
+        return try {
+            add(ctx, listOf(e), seguro = true)
+            val ok = leer(ctx)?.any { it.addr == addr } == true
+            if (ok) alGuardar(ctx, e)
+            ok
+        } catch (t: Throwable) { false }
+    }
+
+    /**
+     * Guarda en el baúl una copia de una cartera del usuario —creada aquí o
+     * añadida por él—, con su seed o su WIF.
+     *
+     * @param origen "created" o "imported", o null si no se sabe.
+     * @return 1 si se ha guardado, 0 si ya estaba, -1 si no se ha podido.
+     */
+    fun guardarCartera(ctx: Context, nombre: String, origen: String?,
+                       seed: String, wif: String, wifAddr: String): Int {
+        val nom = WalletManager.limpiarNombre(nombre)
+        val e = if (seed.isNotEmpty()) {
+            val (addr, ruta) = primeraDireccion(seed) ?: return -1
+            Entry(ts = System.currentTimeMillis(), source = origen ?: "imported", addr = addr,
+                  wif = "", privHex = "", btc = 0.0, extra = "SEED:$seed PATH:$ruta NAME:$nom")
+        } else if (wif.isNotEmpty()) {
+            val addr = wifAddr.ifEmpty { try { HunterEngine.wifToAddr(wif) } catch (t: Throwable) { "" } }
+            if (addr.isEmpty()) return -1
+            Entry(ts = System.currentTimeMillis(), source = origen ?: "imported", addr = addr,
+                  wif = wif, privHex = "", btc = 0.0, extra = "NAME:$nom")
+        } else return -1
+        return try { if (add(ctx, listOf(e), seguro = true) > 0) 1 else 0 } catch (t: Throwable) { -1 }
     }
 
     /** Añade a la cartera todos los hallazgos que tengan clave. @return cuántos. */

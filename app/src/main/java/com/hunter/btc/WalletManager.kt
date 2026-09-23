@@ -101,7 +101,8 @@ object WalletManager {
     /**
      * @return true si la clave queda en la lista (también si ya estaba).
      */
-    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet"): Boolean {
+    fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet",
+                origen: String? = null): Boolean {
         val lista = listWifs(ctx)
         // listWifs() devuelve vacío también cuando NO puede descifrar. Una lista
         // vacía de verdad no deja nada guardado (writeWifs limpia), así que si
@@ -116,6 +117,7 @@ object WalletManager {
         val id = "wif_${System.currentTimeMillis()}"
         val n = limpiarNombre(name).ifEmpty { "WIF Wallet" }
         writeWifs(ctx, lista + Triple(id, wif, "$addr|$n"))
+        if (origen != null) setOrigen(ctx, id, origen)
         return true
     }
 
@@ -146,6 +148,7 @@ object WalletManager {
     }
     fun removeWif(ctx: Context, id: String) {
         writeWifs(ctx, listWifs(ctx).filter { it.first != id })
+        borrarOrigen(ctx, id)
     }
     // Legacy single WIF support
     fun loadWif(ctx: Context): Pair<String,String>? {
@@ -164,9 +167,10 @@ object WalletManager {
     fun hasWif(ctx: Context) = listWifs(ctx).isNotEmpty()
 
     // Watcher wallets: watch-only by address
-    fun saveWatcher(ctx: Context, addr: String, label: String) {
+    fun saveWatcher(ctx: Context, addr: String, label: String, origen: String? = null) {
         if (listWatchers(ctx).any { it.second == addr }) return
         val id = "watch_${System.currentTimeMillis()}"
+        if (origen != null) setOrigen(ctx, id, origen)
         val prefs = ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE)
         val raw = prefs.getString("watch_list", "") ?: ""
         val list = if (raw.isEmpty()) mutableListOf() else raw.split(";;").toMutableList()
@@ -182,6 +186,7 @@ object WalletManager {
         }.distinctBy { it.second }
     }
     fun removeWatcher(ctx: Context, id: String) {
+        borrarOrigen(ctx, id)
         val list = listWatchers(ctx).filter { it.first != id }
         ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
             .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
@@ -429,6 +434,7 @@ object WalletManager {
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ACTIVE_ID, null)
 
     fun deleteWallet(ctx: Context, id: String) {
+        borrarOrigen(ctx, id)
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         prefs.remove("seed_enc_$id"); prefs.remove("seed_iv_$id")
         val list = listWallets(ctx).filter { it.first != id }
@@ -436,6 +442,101 @@ object WalletManager {
         prefs.apply()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
     }
+
+    // ── Añadir una seed sin pisar nada ──────────────────────────────────
+
+    data class SeedGuardada(val id: String, val nombre: String, val yaEstaba: Boolean)
+
+    /**
+     * Guarda una seed: de principal si no hay ninguna, y al lado si ya la hay.
+     * Si ya está guardada no la duplica y devuelve la que hay.
+     *
+     * Antes cada sitio que guardaba una seed lo resolvía a su manera, y dos
+     * lo hacían mal: añadir una desde la cartera y "Save wallet" de Recovery
+     * llamaban a saveSeed, que escribe la PRINCIPAL. Con una principal ya
+     * guardada, la sustituían y la anterior se perdía.
+     *
+     * @param id el que tendrá si se guarda al lado; "" es la principal.
+     */
+    fun agregarSeed(ctx: Context, mn: String, nombreEscrito: String, origen: String?): SeedGuardada {
+        val nombre = limpiarNombre(nombreEscrito)
+        if (!hasSeed(ctx)) {
+            saveSeed(ctx, mn)
+            if (nombre.isNotEmpty()) renameMain(ctx, nombre)
+            if (origen != null) setOrigen(ctx, CLAVE_PRINCIPAL, origen)
+            return SeedGuardada("", mainName(ctx), false)
+        }
+        if (loadSeed(ctx) == mn) return SeedGuardada("", mainName(ctx), true)
+        listWallets(ctx).firstOrNull { loadWalletSeed(ctx, it.first) == mn }?.let {
+            return SeedGuardada(it.first, it.second, true)
+        }
+        val id = "w${System.currentTimeMillis()}"
+        val n = nombre.ifEmpty { "Wallet ${listWallets(ctx).size + 2}" }
+        saveWallet(ctx, id, n, mn)
+        if (origen != null) setOrigen(ctx, id, origen)
+        return SeedGuardada(id, n, false)
+    }
+
+    /** Todas las seeds guardadas, la principal incluida. */
+    fun todasLasSeeds(ctx: Context): Set<String> {
+        val r = HashSet<String>()
+        loadSeed(ctx)?.let { r.add(it) }
+        listWallets(ctx).forEach { w -> loadWalletSeed(ctx, w.first)?.let { r.add(it) } }
+        return r
+    }
+
+    // ── De dónde viene cada cartera ─────────────────────────────────────
+    //
+    // La lista enseñaba el tipo (seed, WIF, vigilada) pero no el origen: una
+    // WIF que puso el usuario y una que encontró el puzzle se veían igual.
+    // Se guarda aparte, por identificador, para no tocar el formato de las
+    // listas —que ya tienen datos en móviles—: las carteras de antes
+    // simplemente no tienen origen y se enseñan sin él.
+
+    private const val ORIGEN_PREFS = "wallet_origen"
+
+    /** La clave de la seed principal, que no tiene id propio. */
+    const val CLAVE_PRINCIPAL = "main"
+
+    const val O_CREADA    = "created"
+    const val O_IMPORTADA = "imported"
+    const val O_BACKUP    = "backup"
+
+    fun setOrigen(ctx: Context, clave: String, origen: String) {
+        ctx.getSharedPreferences(ORIGEN_PREFS, Context.MODE_PRIVATE).edit()
+            .putString(clave, origen).apply()
+    }
+
+    fun origen(ctx: Context, clave: String): String? =
+        ctx.getSharedPreferences(ORIGEN_PREFS, Context.MODE_PRIVATE).getString(clave, null)
+
+    private fun borrarOrigen(ctx: Context, clave: String) {
+        ctx.getSharedPreferences(ORIGEN_PREFS, Context.MODE_PRIVATE).edit()
+            .remove(clave).apply()
+    }
+
+    private fun origenes(ctx: Context): Map<String, String> =
+        ctx.getSharedPreferences(ORIGEN_PREFS, Context.MODE_PRIVATE).all
+            .mapNotNull { (k, v) -> (v as? String)?.let { k to it } }.toMap()
+
+    /** Cómo se dice en pantalla. null si no se sabe (carteras de antes). */
+    fun textoOrigen(origen: String?): String? = when (origen) {
+        O_CREADA    -> "Created in this app"
+        O_IMPORTADA -> "Added by you"
+        O_BACKUP    -> "Restored from a backup"
+        "puzzle"    -> "Found by the puzzle"
+        "scanner"   -> "Found by the scanner"
+        "kangaroo"  -> "Found by Kangaroo"
+        "recovery"  -> "Recovered with Recovery"
+        else        -> null
+    }
+
+    /**
+     * ¿La puso el usuario? Las de antes, sin origen, cuentan como suyas: los
+     * hallazgos sólo entraban en la cartera abriéndolos a mano.
+     */
+    fun esDelUsuario(origen: String?): Boolean =
+        origen == null || origen == O_CREADA || origen == O_IMPORTADA || origen == O_BACKUP
 
     // Aqui estaba clearSeed(), sin una sola llamada. Hacia prefs.clear(): la
     // seed, TODAS las demas carteras, los WIF, los watchers y el PIN. Se va
@@ -454,6 +555,7 @@ object WalletManager {
         // que nadie restaura solo sirve para que el siguiente que lo lea crea
         // que esta funcion borra mas de lo que borra.
         prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
+        borrarOrigen(ctx, CLAVE_PRINCIPAL)
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 
@@ -519,6 +621,8 @@ object WalletManager {
                 if (wifArr.length() > 0)   put("wifs",     wifArr)
                 if (watchArr.length() > 0) put("watchers", watchArr)
                 if (matches.isNotEmpty())  put("matches",  MatchVault.toJson(matches))
+                val ors = origenes(ctx)
+                if (ors.isNotEmpty()) put("origins", org.json.JSONObject(ors))
             }.toString()
 
             // Derivar clave del PIN con PBKDF2
@@ -573,15 +677,28 @@ object WalletManager {
             // v1 sólo traía "wallets"; v2 añade la seed principal, los WIF, los
             // watchers y los hallazgos del baúl. Se leen con opt* para seguir
             // aceptando backups antiguos.
+            // El origen que traiga la copia; si no trae, "de una copia". No
+            // pisa el que ya haya en este móvil.
+            val ors = root.optJSONObject("origins")
+            fun origenDe(clave: String) {
+                if (origen(ctx, clave) == null)
+                    setOrigen(ctx, clave, ors?.optString(clave, "")?.ifEmpty { null } ?: O_BACKUP)
+            }
+
             val wallets = root.optJSONArray("wallets") ?: org.json.JSONArray()
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
                 saveWallet(ctx, w.getString("id"), w.getString("name"), w.getString("seed"))
+                origenDe(w.getString("id"))
                 count++
             }
 
+            // Con agregarSeed y no saveSeed: restaurar una copia con otra seed
+            // principal sustituía la que hubiera en el móvil.
             root.optString("main_seed", "").takeIf { it.isNotEmpty() }?.let {
-                saveSeed(ctx, it); count++
+                val g = agregarSeed(ctx, it, "", null)
+                if (!g.yaEstaba) origenDe(g.id.ifEmpty { CLAVE_PRINCIPAL })
+                count++
             }
 
             root.optJSONArray("wifs")?.let { arr ->
@@ -591,6 +708,7 @@ object WalletManager {
                 }.filter { it.second.isNotEmpty() }
                 if (restored.isNotEmpty()) {
                     writeWifs(ctx, listWifs(ctx) + restored)
+                    restored.forEach { origenDe(it.first) }
                     count += restored.size
                 }
             }
@@ -608,6 +726,7 @@ object WalletManager {
                         .putString("watch_list",
                             all.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" })
                         .apply()
+                    restored.forEach { origenDe(it.first) }
                     count += restored.size
                 }
             }
