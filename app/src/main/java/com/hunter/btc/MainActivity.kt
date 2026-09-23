@@ -1017,6 +1017,53 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         drawer.addView(navContainer)
 
+        /* Tema claro / oscuro.
+         *
+         * La paleta clara estaba ENTERA en AppTheme —fondos, textos, bordes— y
+         * AppTheme.toggle() no lo llamaba nadie: no habia forma de llegar a
+         * ella. Un tema que existe y no se puede elegir es lo mismo que no
+         * tenerlo.
+         *
+         * Hace falta recrear la pantalla: los colores se leen al construir cada
+         * vista, asi que las que ya estan puestas no cambian solas. */
+        val temaRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).also { it.setMargins(0, dp(4), 0, dp(4)) }
+            isClickable = true; isFocusable = true
+            background = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                setColor(android.graphics.Color.TRANSPARENT)
+            }
+            setOnClickListener {
+                AppTheme.toggle(this@MainActivity)
+                recreate()
+            }
+        }
+        temaRow.addView(android.widget.ImageView(this).apply {
+            setImageResource(R.drawable.ic_gear)
+            setColorFilter(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)).also {
+                it.gravity = Gravity.CENTER_VERTICAL
+            }
+        })
+        temaRow.addView(TextView(this).apply {
+            text = if (AppTheme.isDark) "Tema claro" else "Tema oscuro"
+            textSize = AppTheme.SP_BODY
+            typeface = AppTheme.medium(context)
+            setTextColor(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f).also {
+                it.gravity = Gravity.CENTER_VERTICAL
+                it.marginStart = dp(14)
+            }
+        })
+        drawer.addView(temaRow)
+
         // Drawer footer
         val footerDiv = android.view.View(this).apply {
             setBackgroundColor(AppTheme.BORDER_C)
@@ -1477,6 +1524,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 }
             }
             fastModeEnabled = prefs.getBoolean("fastMode", false)
+            // Y DECÍRSELO AL MOTOR. setPbkdf2Mode sólo se llamaba al tocar el
+            // interruptor, así que al reabrir la app el interruptor salía en
+            // "rápido" —lo lee de preferencias— y el motor seguía en 2048
+            // iteraciones. La pantalla decía una cosa y el motor hacía otra, que
+            // es justo lo que este ajuste NO se puede permitir: su razón de ser
+            // es medir velocidad, y con el motor en normal el número que sale no
+            // es el que se cree estar midiendo.
+            try { HunterEngine.setPbkdf2Mode(if (fastModeEnabled) 1 else 0) }
+            catch (e: Throwable) {}
             fastRow.addView(fastSwitch)
             addView(fastRow)
 
