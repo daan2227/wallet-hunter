@@ -3649,6 +3649,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // La detección del hardware y la afinidad de núcleos viven en Hardware.kt.
     private fun aplicarAfinidad(hilos: Int) = Hardware.aplicarAfinidad(hilos)
     private fun detectHardware(): HardwareProfile = Hardware.detectar(this)
+    private fun nucleosRapidos(): IntArray = Hardware.nucleosRapidos()
 
     private fun applyHardwareProfile(profile: HardwareProfile) {
         val threadProgress = (profile.recommendedThreads - 1).coerceIn(0, 7)

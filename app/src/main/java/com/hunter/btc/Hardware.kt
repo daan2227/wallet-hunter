@@ -59,7 +59,7 @@ object Hardware {
         } catch (e: Exception) {}
     }
 
-    private fun nucleosRapidos(): IntArray {
+    fun nucleosRapidos(): IntArray {
         val n = Runtime.getRuntime().availableProcessors()
         if (n <= 1) return IntArray(0)
 
