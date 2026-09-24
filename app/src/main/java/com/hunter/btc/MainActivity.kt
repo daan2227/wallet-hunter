@@ -353,9 +353,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * mapa de negación (ver kg_negacion en kangaroo.h), que medido con
      * tools/ec-harness/negacion da 1,4-1,6 cuando el dbits es pequeño frente
      * al rango, que es lo que pasa en los puzzles donde se usa (#135 en
-     * adelante). La teoría dice 1,36.
+     * adelante), y 1,38 con los terrenos y saltos ajustados (KG_VER_GS 6).
+     * La teoría dice 1,36.
      */
-    internal val COSTE_KANGAROO = 1.5
+    internal val COSTE_KANGAROO = 1.4
 
     internal var tvCheckpointLive: TextView? = null
     internal var tvCountPuzzle: TextView? = null

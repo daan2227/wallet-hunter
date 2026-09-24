@@ -381,6 +381,13 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  *        Kangaroo     1,98   1,75   3,46   4,22
  *        GS + neg     1,39   1,40   1,56   2,23
  *
+ *    Despues, ajustando los terrenos de salida y el tamano de los saltos
+ *    (ver soltar y kg_setup), con un banco de 2.400 claves de 30 bits y dbits
+ *    5 —donde el coste de arranque pesa poco, como en los puzzles de verdad—:
+ *    1,47 -> 1,38. RCKangaroo dice 1,15 con su metodo "SOTA"; no publica los
+ *    detalles que harian falta para reproducirlo, y lo que si se probo de el
+ *    (caminos sin reinicio, choques entre salvajes) no mejoro aqui.
+ *
  *    La teoria da 1,36 para GS con negacion y ~2 para Kangaroo. Con dbits
  *    altos frente al rango (18 en el #40) los dos se disparan por el coste de
  *    llegar al primer distinguido; en los rangos donde se usa de verdad
@@ -429,7 +436,9 @@ static int kg_negacion = 1;
  * motores distintos no se juntan nunca, solo coincidirian por casualidad en un
  * punto exacto. Una tabla del otro motor se tira. Tampoco se lee la 4, la del
  * mapa de negacion encima de Kangaroo, que no llegaba a resolver. */
-#define KG_VER_GS 5u
+#define KG_VER_GS 6u
+/* 6: saltos de 1,5*dbits+11 bits en vez de +8. Otra tabla de saltos, asi
+   que una tabla de la 5 no le sirve a la 6. */
 #define KG_VER_SIN_ENVIADO 1u
 #define KG_VER_CON_ENVIADO 2u
 #define KG_VER_SIN_CENTRAR 3u
@@ -937,7 +946,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
          * publica como en la politica 1 (todos los aparatos del cluster
          * construyen la MISMA). Todos del mismo tamano, de media 2^(lb-1) con
          *
-         *     lb = 1,5 * dbits + 8
+         *     lb = 1,5 * dbits + 11
          *
          * y esa cifra no es de adorno: es lo que hace que funcione. Con
          * negacion el camino no avanza, va y viene —la distancia hace un paseo
@@ -955,7 +964,10 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         c->nesc=KG_MAX_JUMPS-n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
         for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
-        int lb=(3*dp_bits)/2+8; if(lb>c->bits-3) lb=c->bits-3; if(lb<4) lb=4;
+        /* +11 y no +8: barrido con un banco de 2.400 claves (28-30 bits,
+           dbits 5), saltos 8 veces mas largos bajan el coste de 1,47 a 1,43
+           raices de W: el paseo se pisa todavia menos. Mas no mejora. */
+        int lb=(3*dp_bits)/2+11; if(lb>c->bits-3) lb=c->bits-3; if(lb<4) lb=4;
         for(int i=0;i<n+c->nesc;i++){      /* detras, los de escape */
             sc_zero(c->jlen[i]);
             int lbi = lb;
@@ -1195,7 +1207,7 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
 /* Version 4: Gaudry-Schost con negacion. Sus puntos no le sirven a un aparato
  * con Kangaroo ni al reves (ver KG_VER_GS), asi que un aparato sin actualizar
  * se rechaza, igual que en la 2. */
-#define KG_NET_VER   4u
+#define KG_NET_VER   5u   /* 5: la tabla de saltos de KG_VER_GS 6 */
 /* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
    struct, para que el relleno del compilador no forme parte del formato. */
 #define KG_NET_CAB   (4+4+33+32+32+4+4)
@@ -1554,18 +1566,28 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         for(int j=3;j>=0;j--){ uint64_t n=centro[j]&1ULL; centro[j]=(centro[j]>>1)|(arr<<63); arr=n; }
     }
 
-    sc_t gs_cuarto; sc_shr(gs_cuarto,c->medio,1);
-    int bits_medio=sc_bits(c->medio);
+    sc_t gs_octavo; sc_shr(gs_octavo,c->medio,2);         /* W/8 */
+    if(sc_bits(gs_octavo)==0) sc_set_u64(gs_octavo,2);
+    sc_t gs_dieciseisavo; sc_shr(gs_dieciseisavo,gs_octavo,1);
+    int bits_medio=sc_bits(c->medio), bits_octavo=sc_bits(gs_octavo);
     auto soltar=[&](int i,int manso){
         sc_t d; sc_zero(d);
         if(c->negacion){
             /* Gaudry-Schost con negacion (Galbraith y Ruprai): mansos por
                [0, W/2) —con la negacion, eso es todo [-W/2, W/2]— y salvajes
-               por P'' + [-W/4, W/4). Cada camino se suelta de nuevo en cuanto
+               por P'' + [-W/16, W/16). Cada camino se suelta de nuevo en cuanto
                da un distinguido, asi que lo que importa es de DONDE salen,
                no a donde llegan: no hace falta que avancen. */
-            sc_t u; azar_bajo(u,c->medio,bits_medio);
-            if(manso) sc_copy(d,u); else sc_sub_n(d,u,gs_cuarto);
+            /* Los salvajes, de una franja ESTRECHA alrededor de la clave:
+               [-W/16, W/16]. Era [-W/4, W/4], lo del articulo. Medido con el
+               mismo banco, junto con los saltos mas largos: 1,47 -> 1,38
+               raices de W (+-0,015). Mas estrecha no gana, y los mansos tienen
+               que cubrir todo [0, W/2): con 3/4 de eso sube a 1,75. */
+            if(manso){ azar_bajo(d,c->medio,bits_medio); }
+            else{
+                sc_t u; azar_bajo(u,gs_octavo,bits_octavo);
+                sc_sub_n(d,u,gs_dieciseisavo);
+            }
         }else
         if(c->politica_salida==1){
             /* Un valor al azar de disp_bits bits, y al manso se le suma el
