@@ -182,28 +182,47 @@ object MatchVault {
      *
      * @return número de entradas actualizadas.
      */
-    fun resolvePendingBalances(ctx: Context, max: Int = 25): Int {
-        val pendientes = list(ctx).filter { it.checkedTs == 0L && it.addr.isNotEmpty() }.take(max)
-        if (pendientes.isEmpty()) return 0
+    fun resolvePendingBalances(ctx: Context, max: Int = 25): Int =
+        actualizarSaldos(ctx, soloPendientes = true, max = max).second
+
+    /**
+     * Consulta en la cadena el saldo de los hallazgos y lo guarda.
+     *
+     * @param soloPendientes true: sólo los que nunca se han consultado. false:
+     *   todos, empezando por los consultados hace más tiempo (los pendientes
+     *   van primero, porque su fecha de consulta es cero).
+     *
+     *   El botón "Refresh balances" del baúl llamaba a la versión de sólo
+     *   pendientes. Con todo ya consultado no preguntaba nada a nadie, volvía
+     *   con cero respuestas y la pantalla decía "No source answered" teniendo
+     *   conexión.
+     * @return (cuántas se consultaron, cuántas respondieron). Hacen falta las
+     *   dos para distinguir "no había nada que consultar" de "nadie respondió".
+     */
+    fun actualizarSaldos(ctx: Context, soloPendientes: Boolean, max: Int = 25): Pair<Int, Int> {
+        val candidatas = list(ctx).filter { it.addr.isNotEmpty() && (!soloPendientes || it.checkedTs == 0L) }
+            .sortedBy { it.checkedTs }.take(max)
+        if (candidatas.isEmpty()) return 0 to 0
 
         val saldos = HashMap<String, Long>()
-        // Sin esto, una consulta automática sin cobertura encadena 25 esperas
-        // completas —cada una probando dos APIs web y diez servidores Electrum—
-        // y el hilo se queda minutos dando vueltas para acabar sin nada.
+        var consultadas = 0
+        // Sin esto, una consulta sin cobertura encadena 25 esperas completas
+        // —cada una probando dos APIs web y diez servidores Electrum— y el hilo
+        // se queda minutos dando vueltas para acabar sin nada.
         var fallosSeguidos = 0
-        for (e in pendientes) {
+        for (e in candidatas) {
+            consultadas++
             val r = BalanceLookup.query(e.addr)
             if (r == null) {
                 // Tres seguidas es que no hay ruta a la cadena, no que esas tres
-                // direcciones tengan mala suerte. Las que queden se reintentan
-                // la próxima vez, que es lo que ya hacía checkedTs.
+                // direcciones tengan mala suerte.
                 if (++fallosSeguidos >= 3) break
                 continue
             }
             fallosSeguidos = 0
             saldos[e.addr] = r.sat
         }
-        if (saldos.isEmpty()) return 0
+        if (saldos.isEmpty()) return consultadas to 0
 
         val now = System.currentTimeMillis()
         synchronized(this) {
@@ -214,7 +233,7 @@ object MatchVault {
                 if (sat == null) e else e.copy(btc = sat / 1e8, checkedTs = now)
             })
         }
-        return saldos.size
+        return consultadas to saldos.size
     }
 
     // ── Serialización, compartida con el backup ───────────────────────────────

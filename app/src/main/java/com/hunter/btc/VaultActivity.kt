@@ -354,12 +354,17 @@ class VaultActivity : AppCompatActivity() {
         boton.isEnabled = false
         boton.text = "Checking…"
         Thread {
-            val n = try { MatchVault.resolvePendingBalances(this) } catch (e: Exception) { 0 }
+            val (consultadas, respondidas) = try { MatchVault.actualizarSaldos(this, soloPendientes = false) }
+                                              catch (e: Exception) { 0 to 0 }
             runOnUiThread {
                 if (bloqueado || isFinishing) return@runOnUiThread
-                Toast.makeText(this,
-                    if (n > 0) "$n balance(s) updated" else "No source answered — try again later",
-                    Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, when {
+                    consultadas == 0 -> "Nothing to check"
+                    respondidas == 0 -> "No source answered. Check your connection and try again."
+                    respondidas < consultadas ->
+                        "$respondidas of $consultadas balance(s) updated; the rest did not answer"
+                    else -> "$respondidas balance(s) updated"
+                }, Toast.LENGTH_LONG).show()
                 mostrar()
             }
         }.start()
