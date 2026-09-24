@@ -2577,6 +2577,36 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
     o<<"fe_sqr asm:  "<<qa<<" ns  ("<<std::setprecision(2)<<qc/qa<<"x)\n"<<std::setprecision(1);
 #endif
 
+    /* hash160 (SHA-256 + RIPEMD-160 de una clave publica): la mitad del
+       tiempo de la fuerza bruta. Con las instrucciones SHA-256 del
+       procesador y sin ellas. */
+    {
+        uint8_t in[33]={0x02}, h[20]; for(int i=1;i<33;i++) in[i]=(uint8_t)(i*37);
+        const int N=400000;
+        auto t0=std::chrono::steady_clock::now();
+        for(int i=0;i<N;i++){ uint8_t sh[32]; sha256_33_sw(in,sh); ripemd160_32(sh,h); in[5]^=h[0]; }
+        double sw=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"hash160 soft:  "<<std::setprecision(2)<<N/sw/1e6<<" M/s\n";
+#ifdef SHA256_HW
+        t0=std::chrono::steady_clock::now();
+        for(int i=0;i<N;i++){ hash160_inline(in,h); in[5]^=h[0]; }
+        double hw=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"hash160 CPU SHA: "<<N/hw/1e6<<" M/s  ("<<sw/hw<<"x)\n";
+#endif
+        sal^=h[0];
+    }
+    /* PBKDF2-HMAC-SHA512 de 2048 vueltas: lo que cuesta cada seed del
+       escaner BIP39. Lo hace OpenSSL. */
+    {
+        const char *mn="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
+        uint8_t seed[64]; const int N=40;
+        auto t0=std::chrono::steady_clock::now();
+        for(int i=0;i<N;i++) PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+        double seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"BIP39 seeds:  "<<std::setprecision(0)<<N/seg<<" /s (PBKDF2, 1 thread)\n"<<std::setprecision(1);
+        sal^=seed[0];
+    }
+
     /* Saltos por segundo del bucle de Kangaroo, un hilo, dos segundos, en un
        rango como el del #140. */
     {

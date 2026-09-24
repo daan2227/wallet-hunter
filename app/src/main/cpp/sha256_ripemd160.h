@@ -37,14 +37,69 @@ static inline void sha256_block(uint32_t *st, const uint8_t *data){
     st[0]+=a;st[1]+=b;st[2]+=c;st[3]+=d;st[4]+=e;st[5]+=f;st[6]+=g;st[7]+=h;
 }
 
+#if defined(__aarch64__) && (defined(__ARM_FEATURE_SHA2) || defined(__ARM_FEATURE_CRYPTO))
+#include <arm_neon.h>
+#define SHA256_HW 1
+/* Un bloque de SHA-256 con las instrucciones del procesador (ARMv8 Crypto:
+ * sha256h, sha256h2, sha256su0, sha256su1). Las tienen todos los ARMv8 de
+ * movil de la ultima decada, y el proyecto ya compila con
+ * -march=armv8-a+crypto (CMakeLists.txt).
+ *
+ * La version de software de arriba hace las 64 rondas a mano; en la fuerza
+ * bruta el hash160 es la mitad del tiempo por clave, y SHA-256 la mayor
+ * parte de eso. Comprobada contra la de software con qemu-aarch64
+ * (tools/ec-harness/sha256_hw.cpp). */
+static inline void sha256_block_hw(uint32_t *st, const uint8_t *data){
+    uint32x4_t S0=vld1q_u32(&st[0]), S1=vld1q_u32(&st[4]);
+    const uint32x4_t G0=S0, G1=S1;
+    uint32x4_t M0=vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(data)));
+    uint32x4_t M1=vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(data+16)));
+    uint32x4_t M2=vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(data+32)));
+    uint32x4_t M3=vreinterpretq_u32_u8(vrev32q_u8(vld1q_u8(data+48)));
+    uint32x4_t T0,T2;
+#define SHA_R(Ma,Mb,Mc,Md,k) \
+    T0=vaddq_u32(Ma,vld1q_u32(&K256[k])); T2=S0; \
+    Ma=vsha256su0q_u32(Ma,Mb); \
+    S0=vsha256hq_u32(S0,S1,T0); S1=vsha256h2q_u32(S1,T2,T0); \
+    Ma=vsha256su1q_u32(Ma,Mc,Md);
+#define SHA_F(Ma,k) \
+    T0=vaddq_u32(Ma,vld1q_u32(&K256[k])); T2=S0; \
+    S0=vsha256hq_u32(S0,S1,T0); S1=vsha256h2q_u32(S1,T2,T0);
+    SHA_R(M0,M1,M2,M3, 0) SHA_R(M1,M2,M3,M0, 4) SHA_R(M2,M3,M0,M1, 8) SHA_R(M3,M0,M1,M2,12)
+    SHA_R(M0,M1,M2,M3,16) SHA_R(M1,M2,M3,M0,20) SHA_R(M2,M3,M0,M1,24) SHA_R(M3,M0,M1,M2,28)
+    SHA_R(M0,M1,M2,M3,32) SHA_R(M1,M2,M3,M0,36) SHA_R(M2,M3,M0,M1,40) SHA_R(M3,M0,M1,M2,44)
+    SHA_F(M0,48) SHA_F(M1,52) SHA_F(M2,56) SHA_F(M3,60)
+#undef SHA_R
+#undef SHA_F
+    vst1q_u32(&st[0],vaddq_u32(S0,G0));
+    vst1q_u32(&st[4],vaddq_u32(S1,G1));
+}
+#endif
+
+/* SHA-256 de una clave publica comprimida (33 bytes), en software. */
+static inline void sha256_33_sw(const uint8_t *in, uint8_t *out){
+    uint32_t st[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    uint8_t blk[64]={0};
+    memcpy(blk,in,33);
+    blk[33]=0x80;
+    blk[62]=0x01; blk[63]=0x08;
+    sha256_block(st,blk);
+    for(int i=0;i<8;i++){out[i*4]=(uint8_t)(st[i]>>24);out[i*4+1]=(uint8_t)(st[i]>>16);out[i*4+2]=(uint8_t)(st[i]>>8);out[i*4+3]=(uint8_t)st[i];}
+}
+
+/* La que se usa: con las instrucciones del procesador si las hay. */
 static inline void sha256_33(const uint8_t *in, uint8_t *out){
+#ifndef SHA256_HW
+    sha256_33_sw(in,out); return;
+#else
     uint32_t st[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
     uint8_t blk[64]={0};
     memcpy(blk,in,33);
     blk[33]=0x80;
     blk[62]=0x01; blk[63]=0x08; /* length = 33*8 = 264 bits = 0x108 */
-    sha256_block(st,blk);
+    sha256_block_hw(st,blk);
     for(int i=0;i<8;i++){out[i*4]=(uint8_t)(st[i]>>24);out[i*4+1]=(uint8_t)(st[i]>>16);out[i*4+2]=(uint8_t)(st[i]>>8);out[i*4+3]=(uint8_t)st[i];}
+#endif
 }
 
 /* =========================================================
