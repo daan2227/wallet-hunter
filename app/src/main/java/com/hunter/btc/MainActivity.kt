@@ -197,6 +197,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Segundos de búsqueda de sesiones anteriores, para que el reloj cuadre
      *  con el contador de operaciones, que también es acumulado. */
     private var kgSegPrevios = 0L
+    /** La clave cuyo resultado ya se ha pintado, para pintarlo una sola vez. */
+    private var kgClavePintada = ""
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
     private var sbThreads: SeekBar? = null
     private var sbCpu: SeekBar? = null
@@ -5079,6 +5081,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     private fun prepararContadoresKangaroo(pub: String, ini: String, fin: String) {
         kgInicio = System.currentTimeMillis()
+        kgClavePintada = ""       // una búsqueda nueva pinta su resultado otra vez
         // La velocidad se saca de (ops - kgUltOps) / dt. Y kangarooOps() NO es
         // el trabajo de esta sesión: devuelve el acumulado, con lo recuperado
         // del fichero de guardado incluido.
@@ -5307,10 +5310,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val tv = tvPuzzleAtajo ?: return
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         if (clave.length == 64) {
+            // Esto se repite en cada refresco mientras el motor siga teniendo
+            // el resultado. Las cifras finales se leen la PRIMERA vez, antes de
+            // parar: después el contador puede volver a cero.
+            val primera = kgClavePintada != clave
+            val opsFin = if (primera) (try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }) else 0L
+            val segFin = if (primera && kgInicio > 0)
+                kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000 else 0L
             // Guardar ANTES de tocar la interfaz: si la app muere aquí, la
             // clave no puede perderse.
             guardarHallazgoKangaroo(clave, "PUZZLE kangaroo")
             HunterEngine.kangarooStop()
+            if (!primera) return
+            kgClavePintada = clave
+            // Un puzzle pequeño se resuelve en menos de un segundo, antes del
+            // primer refresco: las tarjetas se quedaban en 0 y 00:00:00 con la
+            // clave ya encontrada. Se dejan puestas las cifras finales.
+            tvCountPuzzle?.text = formatCorto(opsFin)
+            tvTimePuzzle?.text = formatSegundos(segFin)
+            tvPctPuzzle?.text = "done"
+            // Cuánto ha costado frente a lo esperado: es la cifra que dice si
+            // el motor rinde (1,5 raíces de W de media; una sola búsqueda
+            // puede salir bastante por encima o por debajo).
+            val raices = if (kgOpsEsperadas > 0 && opsFin > 0)
+                opsFin / (kgOpsEsperadas / COSTE_KANGAROO) else 0.0
+            val coste = if (raices > 0) "\n${formatCorto(opsFin)} operations · " +
+                "%.2f × √W (average %.1f)".format(raices, COSTE_KANGAROO) else ""
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Search with Kangaroo"
             /* Si el puzzle era uno de los resueltos, la respuesta se sabía de
@@ -5325,10 +5350,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                   ?.clave?.lowercase()?.padStart(64, '0')
             tv.text = when {
                 esperada.isNullOrEmpty() ->
-                    "KEY FOUND\n$clave\nSaved to the finds vault."
+                    "KEY FOUND\n$clave\nSaved to the finds vault." + coste
                 esperada == clave.lowercase() ->
                     "TEST PASSED — #$puzzleSeleccionado\n$clave\n" +
-                    "Matches the known key: the engine works end to end."
+                    "Matches the known key: the engine works end to end." + coste
                 else ->
                     "WRONG — #$puzzleSeleccionado\nfound: $clave\n" +
                     "expected: $esperada\nThe engine reported a key that is not the right one."
