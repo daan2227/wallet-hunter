@@ -1812,7 +1812,16 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                    el mismo punto y con el mismo salto, y por tanto seguiran
                    juntos. Si dependiera de la historia se separarian, y la
                    colision que ya tenian se perderia sin dejar rastro. */
-                for(int j=1;j<=K[i].vn;j++){
+                /* Solo los dos ultimos en cada paso, y la ventana entera uno
+                   de cada 16. El 97 % de los ciclos son de dos (ver la
+                   ventana), y los largos no se escapan: un ciclo de L <= 16
+                   pasos se repite, asi que la revision entera lo encuentra a
+                   los 16 pasos como mucho. Recorrer las 16 entradas en cada
+                   salto costaba un 4-6 % de velocidad (tools/ec-harness/
+                   velocidad) para nada. */
+                int jmax = ((K[i].pasos_sin_dp & 15)==0) ? K[i].vn
+                                                         : (K[i].vn<2 ? K[i].vn : 2);
+                for(int j=1;j<=jmax;j++){
                     int idx=(K[i].vpos-j+KG_VENTANA)%KG_VENTANA;
                     if(K[i].ventana[idx][0]!=x3[0] ||
                        K[i].ventana[idx][1]!=x3[1]) continue;
