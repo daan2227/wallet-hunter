@@ -25,17 +25,17 @@ import com.hunter.btc.recovery.ParseResult
 class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     // ── Tema ──────────────────────────────────────────────────────────────────
-    private val BG_DEEP   get() = AppTheme.BG_DEEP
-    private val BG_CARD   get() = AppTheme.BG_CARD
-    private val BG_ELEV   get() = AppTheme.BG_ELEV
-    private val AMBER     get() = AppTheme.AMBER
-    private val RED       get() = AppTheme.RED
-    private val CYAN      get() = AppTheme.CYAN
-    private val TXT_PRI   get() = AppTheme.TXT_PRI
-    private val TXT_SEC   get() = AppTheme.TXT_SEC
-    private val TXT_MUTED get() = AppTheme.TXT_MUTED
-    private val BORDER_C  get() = AppTheme.BORDER_C
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    internal val BG_DEEP   get() = AppTheme.BG_DEEP
+    internal val BG_CARD   get() = AppTheme.BG_CARD
+    internal val BG_ELEV   get() = AppTheme.BG_ELEV
+    internal val AMBER     get() = AppTheme.AMBER
+    internal val RED       get() = AppTheme.RED
+    internal val CYAN      get() = AppTheme.CYAN
+    internal val TXT_PRI   get() = AppTheme.TXT_PRI
+    internal val TXT_SEC   get() = AppTheme.TXT_SEC
+    internal val TXT_MUTED get() = AppTheme.TXT_MUTED
+    internal val BORDER_C  get() = AppTheme.BORDER_C
+    internal fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
     // ── Páginas y barra de pestañas ─────────────────────────────────────────
     //
@@ -44,16 +44,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // eso— las de detrás se corrían un puesto: tocar "Wallet" enseñaba
     // Recovery. Ahora una página que falta deja su hueco y las demás siguen
     // donde estaban.
-    private val PAG_SCANNER  = 0
-    private val PAG_PUZZLE   = 1
-    private val PAG_WALLET   = 2
-    private val PAG_RECOVERY = 3
-    private val PAG_MORE     = 4
-    private var tabPages: List<android.view.View?> = emptyList()
-    private var barra: BottomBar? = null
-    private var paginaActual = PAG_SCANNER
+    internal val PAG_SCANNER  = 0
+    internal val PAG_PUZZLE   = 1
+    internal val PAG_WALLET   = 2
+    internal val PAG_RECOVERY = 3
+    internal val PAG_MORE     = 4
+    internal var tabPages: List<android.view.View?> = emptyList()
+    internal var barra: BottomBar? = null
+    internal var paginaActual = PAG_SCANNER
 
-    private fun goTab(idx: Int) {
+    internal fun goTab(idx: Int) {
         tabPages.forEachIndexed { i, v ->
             v?.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
         }
@@ -78,7 +78,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * se abre sin animación para que se sienta como cambiar de pestaña y no
      * como entrar en otra sección.
      */
-    private fun pestana(tab: Int) {
+    internal fun pestana(tab: Int) {
         when (tab) {
             BottomBar.SCANNER -> goTab(PAG_SCANNER)
             BottomBar.PUZZLE  -> goTab(PAG_PUZZLE)
@@ -103,7 +103,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Se quita el extra después de usarlo. Si no, un recreate() —el cambio de
      * tema— reutiliza el mismo Intent y volvería a saltar a esa pestaña.
      */
-    private fun abrirPestanaPedida(i: Intent?) {
+    internal fun abrirPestanaPedida(i: Intent?) {
         val tab = i?.getIntExtra(BottomBar.EXTRA_TAB, -1) ?: -1
         if (tab < 0) return
         i?.removeExtra(BottomBar.EXTRA_TAB)
@@ -137,87 +137,87 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     // ── Variables ─────────────────────────────────────────────────────────────
-    private var sessionStartTime = 0L
-    private var sessionStartCount = 0L
-    private var batteryReceiver: android.content.BroadcastReceiver? = null
-    private val NOTIF_ID = 42
-    private val handler = Handler(Looper.getMainLooper())
-    private var tvStatus: TextView? = null
-    private var tvCsvName: TextView? = null
-    private var tvQuickCsv: TextView? = null
-    private var tvQuickMatches: TextView? = null
-    private var tvWps: TextView? = null
-    private var tvKps: TextView? = null
-    private var tvQuickThreads: TextView? = null
-    private var tvQuickCpu: TextView? = null
-    private var fastModeEnabled = false
-    private var tvCount: TextView? = null
-    private var chartView: SpeedChartView? = null
-    private var tvMediaPuzzle: TextView? = null
+    internal var sessionStartTime = 0L
+    internal var sessionStartCount = 0L
+    internal var batteryReceiver: android.content.BroadcastReceiver? = null
+    internal val NOTIF_ID = 42
+    internal val handler = Handler(Looper.getMainLooper())
+    internal var tvStatus: TextView? = null
+    internal var tvCsvName: TextView? = null
+    internal var tvQuickCsv: TextView? = null
+    internal var tvQuickMatches: TextView? = null
+    internal var tvWps: TextView? = null
+    internal var tvKps: TextView? = null
+    internal var tvQuickThreads: TextView? = null
+    internal var tvQuickCpu: TextView? = null
+    internal var fastModeEnabled = false
+    internal var tvCount: TextView? = null
+    internal var chartView: SpeedChartView? = null
+    internal var tvMediaPuzzle: TextView? = null
     /** Cuándo se tomó la última muestra de la gráfica, y con qué contador. */
-    private var kgMuestraMs = 0L
-    private var kgMuestraOps = 0L
-    private var kgMuestrasSinGuardar = 0
-    private var tvPuzzleStatus: TextView? = null
-    private var tvTime: TextView? = null
-    private var tvMatches: TextView? = null
-    private var tvRam: TextView? = null
-    private var tvTemp: TextView? = null
-    private var tvBattery: TextView? = null
-    private var tvFooter: TextView? = null
-    private var btnToggle: Button? = null
+    internal var kgMuestraMs = 0L
+    internal var kgMuestraOps = 0L
+    internal var kgMuestrasSinGuardar = 0
+    internal var tvPuzzleStatus: TextView? = null
+    internal var tvTime: TextView? = null
+    internal var tvMatches: TextView? = null
+    internal var tvRam: TextView? = null
+    internal var tvTemp: TextView? = null
+    internal var tvBattery: TextView? = null
+    internal var tvFooter: TextView? = null
+    internal var btnToggle: Button? = null
     /** Línea de estado del escáner: "Buscando · 51 s". */
-    private var tvScanState: TextView? = null
-    private var scanStateDot: android.view.View? = null
+    internal var tvScanState: TextView? = null
+    internal var scanStateDot: android.view.View? = null
     /** Resumen a la derecha de las filas de ajuste: "8 hilos · 100 %". */
-    private var tvEngineSummary: TextView? = null
-    private var tvClusterSummary: TextView? = null
+    internal var tvEngineSummary: TextView? = null
+    internal var tvClusterSummary: TextView? = null
     /** "Sin atajo: fuerza bruta" / "Admite Kangaroo". */
-    private var tvPuzzleAtajo: TextView? = null
+    internal var tvPuzzleAtajo: TextView? = null
     /** Botón de Kangaroo: sólo aparece si la clave pública es conocida. */
-    private var btnKangaroo: Button? = null
+    internal var btnKangaroo: Button? = null
     /** Clave pública del puzzle elegido, si está publicada. */
-    private var puzzlePubHex: String = ""
-    private var puzzleIniHex: String = ""
-    private var puzzleFinHex: String = ""
-    private var ultimoGuardadoKg = 0L
-    private var kangarooReinicios = 0
+    internal var puzzlePubHex: String = ""
+    internal var puzzleIniHex: String = ""
+    internal var puzzleFinHex: String = ""
+    internal var ultimoGuardadoKg = 0L
+    internal var kangarooReinicios = 0
     /** A qué puzzle pertenece la respuesta que estamos esperando. */
-    private var puzzleSeleccionado = -1
+    internal var puzzleSeleccionado = -1
     /** Etiquetas de las tarjetas de estadística: cambian según el modo. */
-    private var lblEscaneadas: TextView? = null
-    private var lblRestantes: TextView? = null
+    internal var lblEscaneadas: TextView? = null
+    internal var lblRestantes: TextView? = null
     /** Para calcular la velocidad de Kangaroo, que no pasa por HunterEngine. */
-    private var kgInicio = 0L
-    private var kgUltOps = 0L
-    private var kgUltMs = 0L
-    private var kgOpsSeg = 0.0
+    internal var kgInicio = 0L
+    internal var kgUltOps = 0L
+    internal var kgUltMs = 0L
+    internal var kgOpsSeg = 0.0
     /** Operaciones que se esperan: ~2,2·raíz(W). */
-    private var kgOpsEsperadas = 0.0
+    internal var kgOpsEsperadas = 0.0
     /** Segundos de búsqueda de sesiones anteriores, para que el reloj cuadre
      *  con el contador de operaciones, que también es acumulado. */
-    private var kgSegPrevios = 0L
+    internal var kgSegPrevios = 0L
     /** La clave cuyo resultado ya se ha pintado, para pintarlo una sola vez. */
-    private var kgClavePintada = ""
+    internal var kgClavePintada = ""
     /** Título de la pantalla en la cabecera, que cambia con la pestaña. */
-    private var sbThreads: SeekBar? = null
-    private var sbCpu: SeekBar? = null
+    internal var sbThreads: SeekBar? = null
+    internal var sbCpu: SeekBar? = null
     // Puzzle tiene sus propios sliders independientes
-    private var sbThreadsPuzzle: SeekBar? = null
-    private var sbCpuPuzzle: SeekBar? = null
-    private var tvThreadsPuzzle: TextView? = null
-    private var tvCpuPuzzle: TextView? = null
-    private var tvThreads: TextView? = null
-    private var tvCpu: TextView? = null
-    private var btnCsv: Button? = null
-    private var etRangeStart: EditText? = null
-    private var etRangeEnd: EditText? = null
-    private var currentRangeStart: String = ""
-    private var currentRangeEnd: String = ""
-    private val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
-    private val REQ_IMPORT_PROGRESS = 1003
-    private var currentBlockId: String = ""
-    private var tvBlockProgress: TextView? = null
+    internal var sbThreadsPuzzle: SeekBar? = null
+    internal var sbCpuPuzzle: SeekBar? = null
+    internal var tvThreadsPuzzle: TextView? = null
+    internal var tvCpuPuzzle: TextView? = null
+    internal var tvThreads: TextView? = null
+    internal var tvCpu: TextView? = null
+    internal var btnCsv: Button? = null
+    internal var etRangeStart: EditText? = null
+    internal var etRangeEnd: EditText? = null
+    internal var currentRangeStart: String = ""
+    internal var currentRangeEnd: String = ""
+    internal val BLOCK_SIZE = java.math.BigInteger("1000000000") // 1B keys por bloque
+    internal val REQ_IMPORT_PROGRESS = 1003
+    internal var currentBlockId: String = ""
+    internal var tvBlockProgress: TextView? = null
     /**
      * La tarjeta de "Range coverage". Se esconde mientras corre Kangaroo:
      * Kangaroo NO recorre el rango bloque a bloque, da saltos por él, así que
@@ -225,45 +225,45 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * la búsqueda. Enseñar un 0 % junto a una búsqueda sana es peor que no
      * enseñar nada.
      */
-    private var cardCobertura: android.view.View? = null
-    private var etTarget: EditText? = null
-    private var csvPath: String = ""
-    private var s = Strings.EN
-    private var puzzleMode = false
-    private var selectedScanMode = 0 // 0=BIP39, 2=RawKey
-    private var fastScanRow: android.view.View? = null
-    private var tvBinInfoRef: TextView? = null
-    private var tvDatasetStat: TextView? = null
-    private var peakWps: Double = 0.0
-    private var avgWpsSum: Double = 0.0
-    private var avgWpsCount: Long = 0
-    private val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
-    private var cachedPuzzleLabel: String = ""
-    private var cachedPuzzleLabelForStart: String = ""
-    private var tvPeakWps: TextView? = null
-    private var tvPeakWpsPuzzle: TextView? = null
-    private var watchdogEnabled = false
-    private var lastKnownRunning = false
-    private var tvRandomJump: TextView? = null
-    private var tvCurrentBlock: TextView? = null
+    internal var cardCobertura: android.view.View? = null
+    internal var etTarget: EditText? = null
+    internal var csvPath: String = ""
+    internal var s = Strings.EN
+    internal var puzzleMode = false
+    internal var selectedScanMode = 0 // 0=BIP39, 2=RawKey
+    internal var fastScanRow: android.view.View? = null
+    internal var tvBinInfoRef: TextView? = null
+    internal var tvDatasetStat: TextView? = null
+    internal var peakWps: Double = 0.0
+    internal var avgWpsSum: Double = 0.0
+    internal var avgWpsCount: Long = 0
+    internal val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
+    internal var cachedPuzzleLabel: String = ""
+    internal var cachedPuzzleLabelForStart: String = ""
+    internal var tvPeakWps: TextView? = null
+    internal var tvPeakWpsPuzzle: TextView? = null
+    internal var watchdogEnabled = false
+    internal var lastKnownRunning = false
+    internal var tvRandomJump: TextView? = null
+    internal var tvCurrentBlock: TextView? = null
     /** Bloque elegido a mano con "Saltar a un punto aleatorio"; lo usa el próximo START. */
-    private var pendingBlockIdx: java.math.BigInteger? = null
+    internal var pendingBlockIdx: java.math.BigInteger? = null
     /** Reinicios hechos por el watchdog en esta sesión; se muestra en su etiqueta. */
-    private var watchdogRestarts = 0
-    private var activeToggleBtn: Button? = null
-    private var tvWpsPuzzle: TextView? = null
-    private var tvPctPuzzle: TextView? = null
-    private var tvSpeedUnitPuzzle: TextView? = null
-    private var tvSpeedUnitScan: TextView? = null
+    internal var watchdogRestarts = 0
+    internal var activeToggleBtn: Button? = null
+    internal var tvWpsPuzzle: TextView? = null
+    internal var tvPctPuzzle: TextView? = null
+    internal var tvSpeedUnitPuzzle: TextView? = null
+    internal var tvSpeedUnitScan: TextView? = null
     /* Rango completo del puzzle. currentRangeStart/End apuntan al BLOQUE en
        curso (BLOCK_SIZE claves), así que usarlos para el progreso global
        comparaba la sesión entera contra un bloque y daba "1 de 0". */
-    private var puzzleProgressUpdater: ((Int, String, String) -> Unit)? = null
-    private var lastProgressTick = 0L
+    internal var puzzleProgressUpdater: ((Int, String, String) -> Unit)? = null
+    internal var lastProgressTick = 0L
     /** Último getFound() visto, para saber cuándo hay aciertos nuevos que guardar. */
-    private var lastFoundSeen = -1L
-    private var puzzleFullStart: String = ""
-    private var puzzleFullEnd: String = ""
+    internal var lastFoundSeen = -1L
+    internal var puzzleFullStart: String = ""
+    internal var puzzleFullEnd: String = ""
 
     /** Velocidad escalada + unidad, para no volver a mentir con la etiqueta. */
     /**
@@ -278,11 +278,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * puzzleFullStart sí guarda el rango del puzzle y no lo pisa la lógica de
      * bloques; prefs es el respaldo, que applyPuzzle() ya deja escrito.
      */
-    private fun currentPuzzleNum(): Int =
+    internal fun currentPuzzleNum(): Int =
         puzzles.firstOrNull { it.start == puzzleFullStart }?.num
             ?: prefs.getInt("current_puzzle_num", 0)
 
-    private fun watchdogLabel() = when {
+    internal fun watchdogLabel() = when {
         // watchdogRestarts sólo se incrementaba y no se leía en ningún sitio.
         // Puesto aquí sirve para saber si de verdad está haciendo algo.
         watchdogEnabled && watchdogRestarts > 0 ->
@@ -291,7 +291,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         else            -> "Watchdog OFF — will not restart the scan"
     }
 
-    private fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
+    internal fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
         keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
         keysPerSec >= 1e6 -> "%.2f".format(keysPerSec / 1e6) to "MKeys"
         keysPerSec >= 1e3 -> "%.1f".format(keysPerSec / 1e3) to "kKeys"
@@ -308,7 +308,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * segundos, que para puzzles grandes (2.8e29 s en el 120) no cabe en Long y
      * devolvía los 64 bits bajos, es decir, un valor arbitrario.
      */
-    private fun formatEta(secs: java.math.BigInteger): String {
+    internal fun formatEta(secs: java.math.BigInteger): String {
         if (secs.signum() <= 0) return "—"
         val min  = java.math.BigInteger.valueOf(60)
         val hour = java.math.BigInteger.valueOf(3600)
@@ -332,7 +332,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun formatPuzzleProgress(scanned: Long, start: String, end: String): String {
+    internal fun formatPuzzleProgress(scanned: Long, start: String, end: String): String {
         return try {
             if (start.isEmpty() || end.isEmpty() || scanned <= 0) return "—"
             val s = java.math.BigInteger(start.trimStart('0').ifEmpty { "0" }, 16)
@@ -355,14 +355,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * al rango, que es lo que pasa en los puzzles donde se usa (#135 en
      * adelante). La teoría dice 1,36.
      */
-    private val COSTE_KANGAROO = 1.5
+    internal val COSTE_KANGAROO = 1.5
 
-    private var tvCheckpointLive: TextView? = null
-    private var tvCountPuzzle: TextView? = null
-    private var tvTimePuzzle: TextView? = null
-    private var btnPuzzleToggle: Button? = null
-    private var recoveryEngine: RecoveryEngine? = null
-    private val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
+    internal var tvCheckpointLive: TextView? = null
+    internal var tvCountPuzzle: TextView? = null
+    internal var tvTimePuzzle: TextView? = null
+    internal var btnPuzzleToggle: Button? = null
+    internal var recoveryEngine: RecoveryEngine? = null
+    internal val prefs get() = getSharedPreferences("hunter", MODE_PRIVATE)
 
     /**
      * Un puzzle.
@@ -379,7 +379,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     data class PuzzleInfo(val num: Int, val addr: String, val start: String,
                           val end: String, val btc: String,
                           val pub: String = "", val clave: String = "")
-    private val puzzles = listOf(
+    internal val puzzles = listOf(
         // Los 160 puzzles, resueltos y sin resolver.
         //
         // Los RANGOS no se transcriben: se calculan. El puzzle N va de 2^(N-1)
@@ -560,7 +560,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         PuzzleInfo(160, "1NBC8uXJy1GiJ6drkiZa1WuKn51ps7EPTv", "8000000000000000000000000000000000000000", "ffffffffffffffffffffffffffffffffffffffff", "16.00019082 BTC")
     )
 
-    private val updater = object : Runnable {
+    internal val updater = object : Runnable {
         override fun run() {
             updateUI()
             handler.postDelayed(this, 800)
@@ -745,7 +745,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * días. Aquí va agrupado —herramientas por un lado, la app por otro— y
      * cada fila dice para qué sirve, que en el menú no lo decía.
      */
-    private fun buildMoreTab(): ScrollView {
+    internal fun buildMoreTab(): ScrollView {
         val scroll = ScrollView(this).apply {
             setBackgroundColor(AppTheme.BG_DEEP)
             visibility = android.view.View.GONE
@@ -889,7 +889,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     // ── BUILD SCAN TAB ────────────────────────────────────────────────────────
-    private fun buildScanTab(): ScrollView {
+    internal fun buildScanTab(): ScrollView {
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE
 
@@ -1578,7 +1578,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     // ── BUILD PUZZLE TAB ──────────────────────────────────────────────────────
-    private fun buildPuzzleTab(): ScrollView {
+    internal fun buildPuzzleTab(): ScrollView {
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE
 
@@ -2669,7 +2669,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         return scroll
     }
 
-    private fun buildWalletTab(): ScrollView {
+    internal fun buildWalletTab(): ScrollView {
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE
 
@@ -3081,550 +3081,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         return scroll
     }
 
-    // ── BUILD RECOVERY TAB ────────────────────────────────────────────────────
-    private fun buildRecoveryTab(): ScrollView {
-        val ACCENT  = AppTheme.ACCENT
-        val ACCENT2 = AppTheme.BLUE
-
-        val recoveryScroll = ScrollView(this).apply {
-            setBackgroundColor(AppTheme.BG_DEEP)
-            visibility = android.view.View.GONE
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-            )
-        }
-        val recoveryPage = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(80))
-        }
-
-        // ── HELPER ────────────────────────────────────────────────────────
-        fun rCard(): LinearLayout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(AppTheme.BG_CARD)
-                cornerRadius = dp(AppTheme.R_CARD).toFloat()
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(AppTheme.GAP) }
-            setPadding(dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD),
-                       dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD))
-        }
-
-        fun fieldLabel(text: String) = TextView(this).apply {
-            this.text = text
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        }
-
-        // ── CABECERA ──────────────────────────────────────────────────────
-        recoveryPage.addView(Ui.pageTitle(this, "Recover seed", lados = false))
-        // El subtítulo repetía el título en otras palabras. En su lugar, lo que
-        // de verdad hay que saber para usar la pantalla.
-        recoveryPage.addView(TextView(this).apply {
-            text = "Type the words you remember and mark the gaps with ?"
-            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
-            setLineSpacing(dp(4).toFloat(), 1f)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(20) }
-        })
-
-        // ── LAS PALABRAS ──────────────────────────────────────────────────
-        //
-        // Era un cuadro de texto donde escribías la frase entera separada por
-        // espacios y ponías "???" en los huecos. Eso obliga a llevar la cuenta
-        // mental de en qué posición vas, a no equivocarte con los espacios, y a
-        // saberse una convención que no está escrita en ninguna parte salvo en
-        // la línea de ayuda de encima.
-        //
-        // Son doce (o veinticuatro) casillas numeradas. Tocas una y escribes la
-        // palabra, con las sugerencias del diccionario BIP39 debajo; o la
-        // marcas como hueco. El estado se ve sin leer nada: los huecos van en
-        // el acento y con su borde.
-        val palabras = MutableList(12) { "" }
-
-        /** Lo que espera el motor: las palabras separadas por espacios, "???" en los huecos. */
-        fun seedText() = palabras.joinToString(" ") { it.ifEmpty { "???" } }
-
-        val wordGrid = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(20) }
-        }
-
-        val tvRecoveryInfo = TextView(this).apply {
-            text = "Tap a box to type it"
-            textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.medium(context)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val tvRecoveryEta = TextView(this).apply {
-            text = ""
-            textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.ACCENT)
-            typeface = AppTheme.title(context)
-        }
-        val tvRecoveryCombos = TextView(this).apply {
-            text = "Some words are still missing"
-            textSize = AppTheme.SP_MICRO
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
-            setPadding(0, dp(6), 0, 0)
-        }
-
-        lateinit var pintarPalabras: () -> Unit
-
-        /** Recalcula cuánto va a costar el intento, antes de empezarlo. */
-        fun refrescarCoste() {
-            val huecos = palabras.count { it.isEmpty() }
-            val puestas = palabras.size - huecos
-            when {
-                huecos == 0 && puestas == palabras.size -> {
-                    tvRecoveryInfo.text = "None missing"
-                    tvRecoveryEta.text = ""
-                    tvRecoveryCombos.text = "With no gaps there is nothing to try: " +
-                                            "mark the ones you do not remember."
-                }
-                huecos == palabras.size -> {
-                    tvRecoveryInfo.text = "Tap a box to type it"
-                    tvRecoveryEta.text = ""
-                    tvRecoveryCombos.text = "Type at least the ones you remember."
-                }
-                else -> {
-                    // 2048^huecos. Por encima de 4 huecos se sale de Long, así
-                    // que la cuenta va en Double y se dice en texto.
-                    val combos = Math.pow(2048.0, huecos.toDouble())
-                    val porSeg = 6_300_000.0   // orden de magnitud de un móvil
-                    val secs = combos / porSeg
-                    tvRecoveryInfo.text =
-                        if (huecos == 1) "1 word to guess"
-                        else "$huecos words to guess"
-                    tvRecoveryEta.text = when {
-                        secs < 60        -> "~ ${secs.toInt()} s"
-                        secs < 3600      -> "~ ${(secs / 60).toInt()} min"
-                        secs < 86_400    -> "~ ${(secs / 3600).toInt()} h"
-                        secs < 31_536_000-> "~ ${(secs / 86_400).toInt()} days"
-                        else             -> "over a year"
-                    }
-                    tvRecoveryEta.setTextColor(
-                        if (secs > 86_400) AppTheme.WARN else AppTheme.ACCENT)
-                    val combosTxt = when {
-                        combos >= 1e12 -> "%.1f trillion".format(combos / 1e12)
-                        combos >= 1e9  -> "%.1f billion".format(combos / 1e9)
-                        combos >= 1e6  -> "%.1f million".format(combos / 1e6)
-                        else           -> numberFmt.format(combos.toLong())
-                    }
-                    tvRecoveryCombos.text = "$combosTxt combinations"
-                }
-            }
-        }
-
-        /** Pide la palabra de una casilla, con el diccionario delante. */
-        fun pedirPalabra(idx: Int) {
-            val cont = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setPadding(dp(22), dp(16), dp(22), dp(8))
-            }
-            val campo = android.widget.AutoCompleteTextView(this).apply {
-                setText(palabras[idx])
-                hint = "word ${idx + 1}"
-                setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
-                textSize = AppTheme.SP_BODY
-                typeface = AppTheme.body(context)
-                setSingleLine()
-                inputType = android.text.InputType.TYPE_CLASS_TEXT or
-                            android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-                // Las 2048 del diccionario: teclear una que no esté hace que la
-                // búsqueda no pueda encontrar nada, y antes no avisaba nadie.
-                setAdapter(android.widget.ArrayAdapter(
-                    this@MainActivity, android.R.layout.simple_list_item_1,
-                    Bip39Words.WORDS))
-                threshold = 1
-                setSelection(text.length)
-            }
-            cont.addView(campo)
-            AlertDialog.Builder(this)
-                .setTitle("Word ${idx + 1}")
-                .setView(cont)
-                .setPositiveButton("Save") { _, _ ->
-                    val w = campo.text.toString().trim().lowercase()
-                    palabras[idx] = if (w.isNotEmpty() && Bip39Words.WORDS.contains(w)) w else ""
-                    if (w.isNotEmpty() && !Bip39Words.WORDS.contains(w))
-                        Toast.makeText(this, "\"$w\" is not in the BIP39 word list",
-                            Toast.LENGTH_LONG).show()
-                    pintarPalabras(); refrescarCoste()
-                }
-                .setNeutralButton("I do not remember it") { _, _ ->
-                    palabras[idx] = ""
-                    pintarPalabras(); refrescarCoste()
-                }
-                .setNegativeButton("Cancel", null)
-                .show()
-        }
-
-        pintarPalabras = {
-            wordGrid.removeAllViews()
-            var fila: LinearLayout? = null
-            palabras.forEachIndexed { i, w ->
-                if (i % 3 == 0) {
-                    fila = LinearLayout(this).apply {
-                        orientation = LinearLayout.HORIZONTAL
-                        layoutParams = LinearLayout.LayoutParams(
-                            LinearLayout.LayoutParams.MATCH_PARENT,
-                            LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply { if (i > 0) topMargin = dp(8) }
-                    }
-                    wordGrid.addView(fila)
-                }
-                val hueco = w.isEmpty()
-                val chip = TextView(this).apply {
-                    val sp = android.text.SpannableStringBuilder("${i + 1}  ")
-                    sp.setSpan(android.text.style.ForegroundColorSpan(AppTheme.TXT_MUTED),
-                        0, sp.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    sp.setSpan(android.text.style.AbsoluteSizeSpan(
-                        (11 * resources.displayMetrics.scaledDensity).toInt()),
-                        0, sp.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    sp.append(if (hueco) "falta" else w)
-                    text = sp
-                    textSize = AppTheme.SP_BODY
-                    gravity = Gravity.CENTER
-                    setTextColor(if (hueco) AppTheme.ACCENT else AppTheme.TXT_PRI)
-                    typeface = if (hueco) AppTheme.bold(context) else AppTheme.body(context)
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        setColor(if (hueco) AppTheme.BG_ELEV else AppTheme.BG_KEY)
-                        cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                        if (hueco) setStroke(dp(2), AppTheme.ACCENT)
-                    }
-                    setPadding(dp(6), dp(14), dp(6), dp(14))
-                    isClickable = true; isFocusable = true
-                    setOnClickListener { pedirPalabra(i) }
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                        .apply { if (i % 3 < 2) marginEnd = dp(8) }
-                }
-                fila?.addView(chip)
-            }
-        }
-
-        // Selector de 12 o 24 palabras. Antes se deducía de cuántas escribías,
-        // así que una frase de 24 a medio poner se trataba como de 12.
-        val largoRow = Ui.segmented(this,
-            listOf("12 palabras" to null, "24 palabras" to null), initial = 0) { idx ->
-            val nuevo = if (idx == 0) 12 else 24
-            while (palabras.size < nuevo) palabras.add("")
-            while (palabras.size > nuevo) palabras.removeAt(palabras.size - 1)
-            pintarPalabras(); refrescarCoste()
-        }
-        recoveryPage.addView(largoRow.apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(18) }
-        })
-        pintarPalabras()
-        recoveryPage.addView(wordGrid)
-
-        // ── LO QUE CUESTA EL INTENTO ──────────────────────────────────────
-        val costeCard = rCard()
-        val costeHead = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            isBaselineAligned = true
-        }
-        costeHead.addView(tvRecoveryInfo); costeHead.addView(tvRecoveryEta)
-        costeCard.addView(costeHead)
-        costeCard.addView(tvRecoveryCombos)
-        refrescarCoste()
-
-        recoveryPage.addView(costeCard)
-
-        // ── TARGET ADDRESS CARD ───────────────────────────────────────────
-        val targetCard = rCard()
-        targetCard.addView(fieldLabel("Known address · optional"))
-        val etTarget = android.widget.EditText(this).apply {
-            hint = "1A2B3C... o bc1q..."
-            setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
-            textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
-            minHeight = dp(48)
-            setPadding(dp(14), dp(14), dp(14), dp(14))
-            isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-        targetCard.addView(etTarget)
-        recoveryPage.addView(targetCard)
-
-        // ── PROGRESS CARD ─────────────────────────────────────────────────
-        // El coste del intento está arriba, en costeCard; aquí sólo va la barra
-        // y lo que está probando ahora mismo.
-        val progressCard = rCard()
-        val pbRecovery = android.widget.ProgressBar(
-            this, null, android.R.attr.progressBarStyleHorizontal
-        ).apply {
-            max = 1000; progress = 0
-            // Mismo fallo que tenía la barra del puzzle: un GradientDrawable
-            // pelado como progressDrawable se pinta entero, sin recortarse,
-            // así que la barra aparecía llena desde el primer instante.
-            progressDrawable = android.graphics.drawable.LayerDrawable(
-                arrayOf(
-                    android.graphics.drawable.GradientDrawable().apply {
-                        setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
-                    },
-                    android.graphics.drawable.ClipDrawable(
-                        android.graphics.drawable.GradientDrawable(
-                            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                            intArrayOf(ACCENT2, ACCENT)
-                        ).apply { cornerRadius = dp(4).toFloat() },
-                        Gravity.START,
-                        android.graphics.drawable.ClipDrawable.HORIZONTAL)
-                )
-            ).apply {
-                setId(0, android.R.id.background)
-                setId(1, android.R.id.progress)
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(6)
-            ).apply { bottomMargin = dp(8) }
-            visibility = android.view.View.GONE
-        }
-        val tvRecoveryStatus = TextView(this).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
-            visibility = android.view.View.GONE
-        }
-        progressCard.addView(pbRecovery)
-        progressCard.addView(tvRecoveryStatus)
-
-        val tvRecoveryResult = TextView(this).apply {
-            // Un resultado encontrado SÍ merece el acento: es el hallazgo.
-            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
-            typeface = Typeface.MONOSPACE   // lleva la seed entera
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            setLineSpacing(0f, 1.35f)
-            visibility = android.view.View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(8) }
-        }
-        progressCard.addView(tvRecoveryResult)
-        recoveryPage.addView(progressCard)
-
-        // ── BUTTONS ───────────────────────────────────────────────────────
-        val btnRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(8) }
-        }
-        val btnStartRecovery = Button(this).apply {
-            text = "Start recovery"; textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.ON_ACCENT)
-            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
-            typeface = AppTheme.bold(context)
-            isAllCaps = false
-            stateListAnimator = null
-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f).apply { marginEnd = dp(8) }
-        }
-        val btnCancelRecovery = Button(this).apply {
-            text = "Cancel"; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.RED)
-            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_ELEV, context)
-            typeface = AppTheme.medium(context)
-            isAllCaps = false
-            stateListAnimator = null
-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
-            visibility = android.view.View.GONE
-        }
-        btnRow.addView(btnStartRecovery); btnRow.addView(btnCancelRecovery)
-        recoveryPage.addView(btnRow)
-
-        val btnSaveWallet = Button(this).apply {
-            text = "Add to your wallets"; textSize = AppTheme.SP_TITLE
-            setTextColor(AppTheme.ON_ACCENT)
-            background = Ui.cardBg(AppTheme.R_KEY, AppTheme.ACCENT, context)
-            typeface = AppTheme.bold(context)
-            isAllCaps = false
-            stateListAnimator = null
-            visibility = android.view.View.GONE
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(56)
-            )
-        }
-        recoveryPage.addView(btnSaveWallet)
-
-        // ── LISTENERS ─────────────────────────────────────────────────────
-
-        btnSaveWallet.setOnClickListener {
-            val foundMnemonic = it.tag as? String ?: return@setOnClickListener
-            // Con agregarSeed y no saveSeed: saveSeed escribe la seed PRINCIPAL,
-            // así que con una cartera ya guardada la recuperada la SUSTITUÍA y
-            // la anterior se perdía. Ahora va al lado si ya hay una.
-            fun guardar() {
-                val g = WalletManager.agregarSeed(this, foundMnemonic, "Recovered", "recovery")
-                btnSaveWallet.visibility = android.view.View.GONE
-                tvRecoveryStatus.text = if (g.yaEstaba) "That seed was already in your wallets (${g.nombre})"
-                                        else "Seed saved to your wallets as \"${g.nombre}\""
-                tvRecoveryStatus.visibility = android.view.View.VISIBLE
-            }
-            val d = AlertDialog.Builder(this)
-                .setTitle("Save to your wallets")
-                .setMessage("It is already kept in the finds vault. Also add it to " +
-                            "your wallets, to see its balance and use it?")
-                .setPositiveButton("Add") { _, _ ->
-                    if (PinAuthHelper.isSessionValid()) guardar()
-                    else PinAuthHelper.show(this) { ok -> if (ok) guardar() }
-                }
-                .setNegativeButton("Cancel", null)
-                .create()
-            d.show()
-        }
-
-        recoveryEngine = RecoveryEngine(this)
-        val wordlistLoaded = recoveryEngine?.loadWordlist() ?: false
-
-        recoveryEngine?.listener = object : com.hunter.btc.recovery.RecoveryEngine.ProgressListener {
-            override fun onProgress(attempts: Long, total: Long, currentWord: String) {
-                runOnUiThread {
-                    // attempts.toFloat() pierde precisión por encima de ~16.7M,
-                    // y con 3-4 palabras faltantes el total llega a 1e13.
-                    val pct = if (total > 0)
-                        ((attempts.toDouble() / total) * 1000).toInt().coerceIn(0, 1000)
-                    else 0
-                    pbRecovery.progress = pct
-                    tvRecoveryStatus.text = "Trying: $currentWord  ($attempts / $total)"
-                }
-            }
-            override fun onFoundWithAddress(mnemonic: String, address: String) {
-                runOnUiThread {
-                    pbRecovery.visibility = android.view.View.GONE
-                    tvRecoveryStatus.visibility = android.view.View.GONE
-                    btnCancelRecovery.visibility = android.view.View.GONE
-                    btnStartRecovery.visibility = android.view.View.VISIBLE
-                    tvRecoveryResult.text = "DERIVED ADDRESS:\n$address\n\nPHRASE:\n$mnemonic"
-                    tvRecoveryResult.visibility = android.view.View.VISIBLE
-                }
-            }
-            override fun onFound(mnemonic: String) {
-                runOnUiThread {
-                    pbRecovery.visibility = android.view.View.GONE
-                    tvRecoveryStatus.visibility = android.view.View.GONE
-                    btnCancelRecovery.visibility = android.view.View.GONE
-                    btnStartRecovery.visibility = android.view.View.VISIBLE
-                    tvRecoveryResult.text = "✓ FOUND\n\n$mnemonic"
-                    tvRecoveryResult.visibility = android.view.View.VISIBLE
-                    btnSaveWallet.tag = mnemonic
-                    btnSaveWallet.visibility = android.view.View.VISIBLE
-                    // La seed NO se escribe en disco. Antes se volcaba en claro a
-                    // getExternalFilesDir()/recovery_<ts>.txt, legible por cualquier
-                    // app con MANAGE_EXTERNAL_STORAGE y visible por USB, lo que
-                    // anulaba el cifrado del resto de la app. Para conservarla, el
-                    // usuario pulsa "Guardar wallet", que la cifra con el Keystore.
-                    // Borramos también los ficheros que dejaron versiones anteriores.
-                    purgeLegacyRecoveryFiles()
-                    // Al baúl en el momento: antes, salir de la app sin pulsar
-                    // "Save wallet" perdía la frase, y había que repetir una
-                    // búsqueda de horas.
-                    Thread {
-                        val ok = try { MatchVault.guardarRecuperada(this@MainActivity, mnemonic) }
-                                 catch (t: Throwable) { false }
-                        runOnUiThread {
-                            tvRecoveryStatus.text = if (ok) "Kept in the finds vault, encrypted."
-                                else "Could not keep it in the vault: save it to your wallets now."
-                            tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                        }
-                    }.start()
-                    sendMatchNotification("Seed recovered", "It is kept in the finds vault.")
-                }
-            }
-            override fun onNotFound() {
-                runOnUiThread {
-                    pbRecovery.visibility = android.view.View.GONE
-                    tvRecoveryStatus.text = "Not found. Check the words you entered."
-                    btnCancelRecovery.visibility = android.view.View.GONE
-                    btnStartRecovery.visibility = android.view.View.VISIBLE
-                }
-            }
-            override fun onCancelled() {
-                runOnUiThread {
-                    pbRecovery.visibility = android.view.View.GONE
-                    tvRecoveryStatus.text = "Cancelled."
-                    btnCancelRecovery.visibility = android.view.View.GONE
-                    btnStartRecovery.visibility = android.view.View.VISIBLE
-                }
-            }
-        }
-
-        btnStartRecovery.setOnClickListener {
-            val input = seedText()
-            if (palabras.all { it.isEmpty() }) {
-                tvRecoveryStatus.text = "Type at least the words you remember."
-                tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                return@setOnClickListener
-            }
-            if (palabras.none { it.isEmpty() }) {
-                tvRecoveryStatus.text = "There is no gap to try: mark the ones you do not remember."
-                tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                return@setOnClickListener
-            }
-            if (!wordlistLoaded) {
-                tvRecoveryStatus.text = "Could not load the BIP39 word list."
-                tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                return@setOnClickListener
-            }
-            val wl = recoveryEngine?.getWordlistSet() ?: emptySet()
-            val parseResult = com.hunter.btc.recovery.RecoveryParser.parse(input, wl)
-            when (parseResult) {
-                is com.hunter.btc.recovery.ParseResult.Error -> {
-                    tvRecoveryStatus.text = parseResult.message
-                    tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                }
-                is com.hunter.btc.recovery.ParseResult.Success -> {
-                    tvRecoveryResult.visibility = android.view.View.GONE
-                    pbRecovery.progress = 0
-                    pbRecovery.visibility = android.view.View.VISIBLE
-                    tvRecoveryStatus.visibility = android.view.View.VISIBLE
-                    tvRecoveryStatus.text = "Starting..."
-                    btnStartRecovery.visibility = android.view.View.GONE
-                    btnCancelRecovery.visibility = android.view.View.VISIBLE
-                    recoveryEngine?.startRecovery(parseResult.parsed, etTarget?.text.toString().trim() ?: "")
-                }
-            }
-        }
-
-        btnCancelRecovery.setOnClickListener { recoveryEngine?.cancel() }
-
-        recoveryScroll.addView(recoveryPage)
-        return recoveryScroll
-    }
+    // buildRecoveryTab(): en PestanaRecovery.kt
 
     // ── FUNCIONES AUXILIARES ──────────────────────────────────────────────────
 
-    private fun mkSbl(cb: () -> Unit) = object : SeekBar.OnSeekBarChangeListener {
+    internal fun mkSbl(cb: () -> Unit) = object : SeekBar.OnSeekBarChangeListener {
         override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { cb() }
         override fun onStartTrackingTouch(s: SeekBar?) {}
         override fun onStopTrackingTouch(s: SeekBar?) {}
     }
 
 
-    private fun updateLabels() {
+    internal fun updateLabels() {
                 val t = (sbThreads?.progress ?: 3) + 1
         val c = (sbCpu?.progress ?: 70) + 10
         tvThreads?.text = "Threads: $t"
@@ -3634,7 +3102,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
-    private fun updatePuzzleLabels() {
+    internal fun updatePuzzleLabels() {
         val t = (sbThreadsPuzzle?.progress ?: 3) + 1
         val c = (sbCpuPuzzle?.progress ?: 70) + 10
         // Mostrar también los núcleos disponibles: sin esa referencia no hay
@@ -3663,11 +3131,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // esta en el historial.
 
     // La detección del hardware y la afinidad de núcleos viven en Hardware.kt.
-    private fun aplicarAfinidad(hilos: Int) = Hardware.aplicarAfinidad(hilos)
-    private fun detectHardware(): HardwareProfile = Hardware.detectar(this)
-    private fun nucleosRapidos(): IntArray = Hardware.nucleosRapidos()
+    internal fun aplicarAfinidad(hilos: Int) = Hardware.aplicarAfinidad(hilos)
+    internal fun detectHardware(): HardwareProfile = Hardware.detectar(this)
+    internal fun nucleosRapidos(): IntArray = Hardware.nucleosRapidos()
 
-    private fun applyHardwareProfile(profile: HardwareProfile) {
+    internal fun applyHardwareProfile(profile: HardwareProfile) {
         val threadProgress = (profile.recommendedThreads - 1).coerceIn(0, 7)
         sbThreads?.progress = threadProgress
         sbThreadsPuzzle?.progress = threadProgress
@@ -3736,7 +3204,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun showHardwareInfo() {
+    internal fun showHardwareInfo() {
         val profile = detectHardware()
         val msg = """
             🔧 Hardware detectado:
@@ -3787,7 +3255,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .show()
     }
 
-    private fun formatCount(v: Long): String = numberFmt.format(v)
+    internal fun formatCount(v: Long): String = numberFmt.format(v)
 
     /**
      * El mismo número, pero que quepa.
@@ -3800,7 +3268,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Se conserva una cifra decimal porque sin ella "10 G" y "10,9 G" se ven
      * iguales durante horas y parece que no avanza.
      */
-    private fun formatCorto(v: Long): String = when {
+    internal fun formatCorto(v: Long): String = when {
         v >= 1_000_000_000_000_000L -> "%.1f P".format(v / 1e15).replace('.', ',')
         v >= 1_000_000_000_000L     -> "%.1f T".format(v / 1e12).replace('.', ',')
         v >= 1_000_000_000L         -> "%.1f G".format(v / 1e9).replace('.', ',')
@@ -3826,7 +3294,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      *
      * Se hace una sola vez y queda anotado.
      */
-    private fun migrarTablaPuzzles() {
+    internal fun migrarTablaPuzzles() {
         val p = getSharedPreferences("app_settings", MODE_PRIVATE)
         if (p.getInt("tabla_puzzles_ver", 0) >= 2) return
         listOf("puzzle_blocks", "puzzle_checkpoint", "hidden_puzzles").forEach {
@@ -3839,10 +3307,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             "Puzzle table fixed: progress and hidden ones reset")
     }
 
-    private fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
+    internal fun getBlockPrefs() = getSharedPreferences("puzzle_blocks", MODE_PRIVATE)
 
     /** Entero aleatorio uniforme entre 0 y bound-1. Por rechazo: <2 intentos de media. */
-    private fun randomBelow(bound: java.math.BigInteger): java.math.BigInteger {
+    internal fun randomBelow(bound: java.math.BigInteger): java.math.BigInteger {
         if (bound <= java.math.BigInteger.ONE) return java.math.BigInteger.ZERO
         val rnd = java.security.SecureRandom()
         val bits = bound.bitLength()
@@ -3852,14 +3320,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Número total de bloques del rango de un puzzle. */
-    private fun totalBlocksOf(rangeStart: String, rangeEnd: String): java.math.BigInteger {
+    internal fun totalBlocksOf(rangeStart: String, rangeEnd: String): java.math.BigInteger {
         val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
         return end.subtract(start).divide(BLOCK_SIZE).max(java.math.BigInteger.ONE)
     }
 
     /** Traduce un índice de bloque al rango hexadecimal que entiende el motor. */
-    private fun blockRange(rangeStart: String, rangeEnd: String,
+    internal fun blockRange(rangeStart: String, rangeEnd: String,
                            blockIdx: java.math.BigInteger): Pair<String, String> {
         val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
@@ -3870,14 +3338,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Posición del bloque dentro del rango, en porcentaje. */
-    private fun blockPercent(blockIdx: java.math.BigInteger,
+    internal fun blockPercent(blockIdx: java.math.BigInteger,
                              totalBlocks: java.math.BigInteger): Double =
         if (totalBlocks.signum() <= 0) 0.0
         else blockIdx.toBigDecimal()
             .divide(totalBlocks.toBigDecimal(), 8, java.math.RoundingMode.HALF_UP)
             .toDouble() * 100.0
 
-    private fun getNextUnscannedBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): Pair<String, String>? {
+    internal fun getNextUnscannedBlock(puzzleNum: Int, rangeStart: String, rangeEnd: String): Pair<String, String>? {
         return try {
             // totalBlocks estaba topado a 100.000 y el índice se sacaba con
             // Math.random()*totalBlocks sobre un Long. El puzzle 70 tiene
@@ -3914,7 +3382,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      *
      * Un id de bloque de doce cifras no dice nada solo; el porcentaje sí.
      */
-    private fun setCurrentBlockLabel(prefix: String, blockIdx: java.math.BigInteger) {
+    internal fun setCurrentBlockLabel(prefix: String, blockIdx: java.math.BigInteger) {
         val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
         val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
         if (rs.isEmpty() || re.isEmpty()) return
@@ -3927,7 +3395,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {}
     }
 
-    private fun pickRandomJump() {
+    internal fun pickRandomJump() {
         val rs = puzzleFullStart.ifEmpty { etRangeStart?.text?.toString()?.trim() ?: "" }
         val re = puzzleFullEnd.ifEmpty  { etRangeEnd?.text?.toString()?.trim() ?: "" }
         if (rs.isEmpty() || re.isEmpty()) {
@@ -3957,7 +3425,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun markBlockScanned(puzzleNum: Int) {
+    internal fun markBlockScanned(puzzleNum: Int) {
         if (currentBlockId.isEmpty()) return
         val prefs = getBlockPrefs()
         val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet())?.toMutableSet() ?: mutableSetOf()
@@ -3974,7 +3442,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         NetworkManager.globalScannedBlocks.add(currentBlockId)
     }
 
-    private fun getBlockProgressText(puzzleNum: Int, rangeStart: String, rangeEnd: String): String {
+    internal fun getBlockProgressText(puzzleNum: Int, rangeStart: String, rangeEnd: String): String {
         // Si hay red activa, mostrar progreso global
         if (NetworkManager.isRunning.get() && NetworkManager.globalScannedBlocks.isNotEmpty()) {
             return NetworkManager.getGlobalProgress(rangeStart, rangeEnd) + " [NET]"
@@ -3993,7 +3461,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     /** Un total de segundos a texto. formatElapsed sólo sabe de un instante de
      *  inicio, y aquí hace falta sumar lo de sesiones anteriores. */
-    private fun formatSegundos(elapsed: Long): String {
+    internal fun formatSegundos(elapsed: Long): String {
         if (elapsed <= 0) return "00:00:00"
         val d  = elapsed / 86400
         val h  = (elapsed % 86400) / 3600
@@ -4003,7 +3471,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                else "%02d:%02d:%02d".format(h, m, sc)
     }
 
-    private fun formatElapsed(startTimeMs: Long): String {
+    internal fun formatElapsed(startTimeMs: Long): String {
         if (startTimeMs <= 0) return "00:00:00"
         val elapsed = (System.currentTimeMillis() - startTimeMs) / 1000
         if (elapsed < 0) return "00:00:00"
@@ -4015,10 +3483,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                else "%02d:%02d:%02d".format(h, m, sc)
     }
 
-    private var peakLabel = ""
+    internal var peakLabel = ""
 
     /** "Buscando · 51 s" o "Idle", con su punto. */
-    private fun paintScanState(running: Boolean) {
+    internal fun paintScanState(running: Boolean) {
         // Adoptar una búsqueda que arrancó otro.
         //
         // sessionStartTime sólo se ponía al pulsar el botón de esta pantalla,
@@ -4074,7 +3542,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Resumen de las filas de ajuste, con el valor que tienen ahora mismo. */
-    private fun paintSettingSummaries() {
+    internal fun paintSettingSummaries() {
         val hilos = (sbThreads?.progress ?: 3) + 1
         val cpu   = (sbCpu?.progress ?: 70) + 10
         tvEngineSummary?.text = "$hilos threads · $cpu %"
@@ -4094,7 +3562,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * numero de grados fijo en pantalla es ruido; "45 \u00b0C \u00b7 throttled to
      * 35 % CPU" es la respuesta a "por que ha bajado la velocidad".
      */
-    private fun pintarTermico() {
+    internal fun pintarTermico() {
         val tv = tvThermal ?: return
         val txt = Termico.resumen()
         // Solo se ensena cuando el gobernador esta haciendo algo. Si el movil
@@ -4109,7 +3577,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tv.setTextColor(if (Termico.parado) AppTheme.RED else AppTheme.WARN)
     }
 
-    private fun updateUI() {
+    internal fun updateUI() {
         try {
             paintScanState(HunterEngine.isRunning())
             paintSettingSummaries()
@@ -4367,7 +3835,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * El tag lleva [fondoStart, fondoStop]; se comprueba el texto antes de
      * tocar nada para no reasignar el drawable en cada ciclo de 800 ms.
      */
-    private fun syncToggleButton(btn: Button?, running: Boolean, textoStart: String) {
+    internal fun syncToggleButton(btn: Button?, running: Boolean, textoStart: String) {
         if (btn == null) return
         val deseado = if (running) s.stop else textoStart
         if (btn.text.toString() == deseado) return
@@ -4381,9 +3849,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Dirección objetivo del puzzle, tal y como está en el campo. */
-    private fun puzzleTargetAddr(): String = etTarget?.text?.toString()?.trim() ?: ""
+    internal fun puzzleTargetAddr(): String = etTarget?.text?.toString()?.trim() ?: ""
 
-    private fun engineHasSomethingToMatch(): Boolean =
+    internal fun engineHasSomethingToMatch(): Boolean =
         // El puzzle busca UNA dirección y no necesita dataset ninguno; el
         // escáner compara contra la lista. Antes esto era
         // `isCsvLoaded() || hasTarget()`, y como nadie llamaba nunca a
@@ -4392,7 +3860,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (puzzleMode) puzzleTargetAddr().isNotEmpty()
         else            HunterEngine.isCsvLoaded()
 
-    private fun doToggle(callerBtn: Button? = null) {
+    internal fun doToggle(callerBtn: Button? = null) {
         try {
             // Entre pulsar STOP y que los workers mueran hay una ventana en la
             // que isRunning() sigue devolviendo true. Pulsar ahí hacía que el
@@ -4600,7 +4068,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun pickCsv() {
+    internal fun pickCsv() {
         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
@@ -4645,7 +4113,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun exportPuzzleProgress() {
+    internal fun exportPuzzleProgress() {
         try {
             val prefs = getBlockPrefs()
             val json = org.json.JSONObject()
@@ -4679,7 +4147,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun importPuzzleProgress() {
+    internal fun importPuzzleProgress() {
         val intent = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(android.content.Intent.CATEGORY_OPENABLE)
             type = "application/json"
@@ -4687,7 +4155,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         startActivityForResult(intent, REQ_IMPORT_PROGRESS)
     }
 
-    private fun processImportedProgress(uri: android.net.Uri) {
+    internal fun processImportedProgress(uri: android.net.Uri) {
         try {
             val text = contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: return
             val json = org.json.JSONObject(text)
@@ -4725,7 +4193,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * ida—. Los hallazgos van ahora dentro de la copia normal (campo "matches"),
      * que sí tiene importador, así que no hacen falta dos mecanismos.
      */
-    private fun exportEncryptedBackup() {
+    internal fun exportEncryptedBackup() {
         MatchVault.recoger(this)
         startActivity(Intent(this, WalletActivity::class.java).apply {
             putExtra("MODE", "seed")
@@ -4734,7 +4202,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** El resumen de hallazgos para compartir: ver ExportarResumen. */
-    private fun exportLog() = ExportarResumen.exportar(this)
+    internal fun exportLog() = ExportarResumen.exportar(this)
 
 
     /**
@@ -4756,7 +4224,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * puzzle n. La fuerza bruta las recorre todas; Kangaroo necesita del orden
      * de la raíz cuadrada, unas 1,5 veces (ver COSTE_KANGAROO).
      */
-    private fun comprobarAtajo(p: PuzzleInfo) {
+    internal fun comprobarAtajo(p: PuzzleInfo) {
         val tv = tvPuzzleAtajo ?: return
         tv.text = "Checking whether the public key is published…"
         tv.setTextColor(AppTheme.TXT_SEC)
@@ -4873,7 +4341,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Una consulta por puzzle, la barata: /address/{addr} y mirar cuántas veces
      * ha gastado. Las respuestas quedan en caché, así que repetirlo es gratis.
      */
-    private fun auditarClavesPublicas() {
+    internal fun auditarClavesPublicas() {
         val lista = puzzles.filter {
             BtcAddress.validate(it.addr, false) is BtcAddress.Result.Valid
         }
@@ -4941,7 +4409,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Arranca o para la búsqueda por Kangaroo del puzzle elegido. */
-    private fun alternarKangaroo() {
+    internal fun alternarKangaroo() {
         // Recolectando (maestro de un cluster, tabla viva y cero hilos): esto no
         // es "parar", es "ponerse a buscar TAMBIÉN". El motor no deja añadir
         // hilos a un contexto vivo, así que se para y se vuelve a arrancar; la
@@ -5079,7 +4547,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Y lo que no se veía: sin kangaroo_corriendo el watchdog no lo relanzaba,
      * y sin kgUltOps volvía el pico de 2 G/s de la primera muestra.
      */
-    private fun prepararContadoresKangaroo(pub: String, ini: String, fin: String) {
+    internal fun prepararContadoresKangaroo(pub: String, ini: String, fin: String) {
         kgInicio = System.currentTimeMillis()
         kgClavePintada = ""       // una búsqueda nueva pinta su resultado otra vez
         // La velocidad se saca de (ops - kgUltOps) / dt. Y kangarooOps() NO es
@@ -5144,7 +4612,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Se guarda antes de tocar nada de la pantalla: si la app muere justo aquí,
      * la clave no puede perderse.
      */
-    private fun mostrarClaveDeWorker(dispositivo: String, claveHex: String) {
+    internal fun mostrarClaveDeWorker(dispositivo: String, claveHex: String) {
         guardarHallazgoKangaroo(claveHex, "PUZZLE kangaroo (network, from $dispositivo)")
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
         prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
@@ -5175,10 +4643,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * devuelve -1, no 0, cuando la red falla: un corte de conexión no puede
      * detener la búsqueda por error.
      */
-    private var kgUltSaldoMs = 0L
-    private var kgSaldoPedido = false
+    internal var kgUltSaldoMs = 0L
+    internal var kgSaldoPedido = false
 
-    private fun vigilarSaldoDelPuzzle() {
+    internal fun vigilarSaldoDelPuzzle() {
         val ahora = System.currentTimeMillis()
         if (kgSaldoPedido) return
         if (kgUltSaldoMs != 0L && ahora - kgUltSaldoMs < 6L * 3600_000L) return
@@ -5231,13 +4699,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * hora en volver a tener algo que mirar — justo cuando lo que quieres saber
      * es si el móvil ha mantenido el ritmo mientras no mirabas.
      */
-    private fun guardarMuestras() {
+    internal fun guardarMuestras() {
         val pts = chartView?.getPoints() ?: return
         prefs.edit().putString("kangaroo_grafica_${puzzlePubHex.take(16)}",
             pts.joinToString(",") { it.toLong().toString() }).apply()
     }
 
-    private fun recuperarMuestras() {
+    internal fun recuperarMuestras() {
         chartView?.reset()
         val txt = prefs.getString("kangaroo_grafica_${puzzlePubHex.take(16)}", "") ?: ""
         if (txt.isEmpty()) return
@@ -5257,7 +4725,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * watchdog acabaría relanzando un puzzle distinto del que estaba corriendo,
      * que es peor que no relanzar nada.
      */
-    private fun adoptarKangaroo() {
+    internal fun adoptarKangaroo() {
         val pub = try { HunterEngine.kangarooPub() } catch (e: Throwable) { "" }
         if (pub.length != 66) { kgInicio = System.currentTimeMillis(); return }
         val ini = prefs.getString("kangaroo_ini", "") ?: ""
@@ -5290,7 +4758,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * margen: tiempo de sobra para hacer algo, y suficientemente tarde para no
      * estar dando la lata desde el primer día.
      */
-    private fun textoDeLaTabla(dps: Long): String {
+    internal fun textoDeLaTabla(dps: Long): String {
         val tope = try { HunterEngine.kangarooTope() } catch (e: Throwable) { 0L }
         if (tope <= 0) return "${numberFmt.format(dps)} distinguished points stored"
         val pct = dps * 100.0 / tope
@@ -5306,7 +4774,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Se llama desde updateUI(): progreso y resultado. */
-    private fun refrescarKangaroo() {
+    internal fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         if (clave.length == 64) {
@@ -5527,7 +4995,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                   (if (kangarooReinicios > 0) " · $kangarooReinicios restarts" else "")
     }
 
-    private fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
+    internal fun checkPuzzleBalance(addr: String, onResult: (Long) -> Unit) {
         Thread {
             val r = try { BalanceLookup.query(addr, false) } catch (e: Exception) { null }
             runOnUiThread { onResult(r?.sat ?: -1L) }
@@ -5549,7 +5017,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * quedaba escuchando en 0.0.0.0:7771 sin que supieras el código que hay que
      * dar a los workers.
      */
-    private fun startClusterMaster() {
+    internal fun startClusterMaster() {
         val pnum  = prefs.getInt("current_puzzle_num", 0)
         val start = prefs.getString("current_range_start", "") ?: ""
         val end   = prefs.getString("current_range_end", "") ?: ""
@@ -5632,7 +5100,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Si la derivación fallara se guarda igual con lo que haya: perder la clave
      * por no poder adornarla sería mucho peor que una entrada incompleta.
      */
-    private fun guardarHallazgoKangaroo(claveHex: String, deDonde: String) {
+    internal fun guardarHallazgoKangaroo(claveHex: String, deDonde: String) {
         var addr = ""; var wif = ""
         try {
             val d = HunterEngine.datosDeClave(claveHex)
@@ -5650,7 +5118,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun applyPuzzle(p: PuzzleInfo) {
+    internal fun applyPuzzle(p: PuzzleInfo) {
         etRangeStart?.setText(p.start)
         etRangeEnd?.setText(p.end)
         currentRangeStart = p.start
@@ -5707,7 +5175,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
 
     // ── Export / Import Configuración ────────────────────────────────────────
-    private fun setupNotificationChannel() {
+    internal fun setupNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             // Canal normal
             val ch = android.app.NotificationChannel(
@@ -5739,7 +5207,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * ellas. Ahora recibe sólo lo que se puede enseñar: la clave está en el
      * baúl cifrado.
      */
-    private fun sendMatchNotification(titulo: String, texto: String) {
+    internal fun sendMatchNotification(titulo: String, texto: String) {
         try {
             // Vibración
             val vib = getSystemService(android.os.Vibrator::class.java)
@@ -5776,7 +5244,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {}
     }
 
-    private fun registerBatteryReceiver() {
+    internal fun registerBatteryReceiver() {
         batteryReceiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context?, i: Intent?) {
                 val pct = i?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: return
@@ -5791,7 +5259,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // sea la proteccion termica entera sin conectar. Ahora existe de verdad y
     // vive en Termico, dentro del servicio, que es el unico sitio donde sigue
     // funcionando con la pantalla apagada.
-    private var tvThermal: TextView? = null
+    internal var tvThermal: TextView? = null
 
     override fun onResume() {
         super.onResume()
@@ -5809,7 +5277,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         checkAndRestartScan()
     }
 
-    private fun checkAndRestartScan() {
+    internal fun checkAndRestartScan() {
         val wasRunning = prefs.getBoolean("scan_was_running", false)
         if (!wasRunning) return
         if (HunterEngine.isRunning()) return // ya está corriendo
@@ -5863,7 +5331,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * getExternalFilesDir()/recovery_<ts>.txt. Actualizar la app no borra esos
      * ficheros, así que se eliminan aquí en cuanto se ejecuta un recovery.
      */
-    private fun purgeLegacyRecoveryFiles() {
+    internal fun purgeLegacyRecoveryFiles() {
         try {
             getExternalFilesDir(null)
                 ?.listFiles { f -> f.name.startsWith("recovery_") && f.name.endsWith(".txt") }
@@ -5873,7 +5341,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
-    private fun savePuzzleCheckpoint() {
+    internal fun savePuzzleCheckpoint() {
         if (!puzzleMode) return
         try {
             val lastKey = HunterEngine.getLastKey()
