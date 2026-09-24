@@ -6,8 +6,8 @@
  *     los hilos de CPU (c->tabla), asi que una colision entre un canguro de
  *     la GPU y uno de la CPU tambien resuelve;
  *   - suelta de nuevo los canguros aparcados (tras un distinguido, un ciclo
- *     repetido o demasiado tiempo sin distinguido): soltar es una
- *     multiplicacion escalar entera, que en la GPU seria cara y rara.
+ *     repetido o demasiado tiempo sin distinguido), todos de una vez y en
+ *     progresion (gk_soltar_tipo), que cuesta una suma por canguro.
  *
  * Solo con el mapa de negacion (c->negacion), que es lo que usa el motor.
  * Requiere kangaroo.h incluido antes. */
@@ -98,6 +98,89 @@ static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso){
     st[24]=fl;
 }
 
+/* a / m, con m pequeno. */
+static void gk_div(sc_t r,const sc_t a,uint32_t m){
+    __uint128_t resto=0;
+    for(int i=3;i>=0;i--){ __uint128_t t=(resto<<64)|a[i]; r[i]=(uint64_t)(t/m); resto=t%m; }
+}
+
+/* El punto de salida de la distancia d, en Jacobiano: d*G (manso) u
+ * objetivo + d*G (salvaje). Devuelve 0 si sale el infinito. */
+static int gk_punto(KangarooCtx *c,const sc_t d,int manso,JP *R){
+    int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
+    if(cero){ if(manso) return 0; *R=c->objetivo; return 1; }
+    JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
+    if(!manso){ fe_t dx,dy; kg_normalize(&dG,dx,dy); jp_add_affine(R,&c->objetivo,dx,dy); }
+    else *R=dG;
+    int inf=1; for(int j=0;j<4;j++) if(R->z[j]) inf=0;
+    return !inf;
+}
+
+/* Suelta n canguros del mismo tipo de una vez. En vez de una multiplicacion
+ * escalar por canguro (unas 256 dobladas y sumas, mas una inversion), las
+ * salidas van en progresion: d_i = d_0 + i*D, con D = ancho/n y d_0 al azar
+ * en [inicio, inicio+D). Cada punto es el anterior mas D*G (una suma mixta), y
+ * una sola inversion (el truco de Montgomery) los pasa todos a afin. De paso
+ * quedan repartidos por igual por su zona, que para Gaudry-Schost es tan
+ * bueno como al azar. */
+static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t n,int manso){
+    sc_t ini,ancho;
+    if(manso){ sc_zero(ini); sc_copy(ancho,c->medio); }
+    else{
+        sc_t dieci; sc_shr(ancho,c->medio,2);
+        if(sc_bits(ancho)==0) sc_set_u64(ancho,2);
+        sc_shr(dieci,ancho,1); sc_neg_n(ini,dieci);
+    }
+    sc_t D; gk_div(D,ancho,n?n:1);
+    if(n<16 || sc_bits(D)==0){ for(uint32_t i=0;i<n;i++) gk_soltar(g,c,kids[i],manso); return; }
+    sc_t off,d; gk_azar(g,off,D); sc_add_n(d,ini,off);
+    JP DGj; kg_scalar_mul(&DGj,D,FIELD_GX,FIELD_GY);
+    fe_t Dx,Dy; kg_normalize(&DGj,Dx,Dy);
+
+    std::vector<JP> P(n); std::vector<uint64_t> dv((size_t)n*4), pv((size_t)n*4); std::vector<uint8_t> ok(n);
+    uint64_t *dist=dv.data(), *pfx=pv.data();
+    int valido=gk_punto(c,d,manso,&P[0]);
+    for(uint32_t i=0;i<n;i++){
+        if(i){
+            sc_add_n(d,d,D);
+            if(valido){ jp_add_affine(&P[i],&P[i-1],Dx,Dy);
+                int inf=1; for(int j=0;j<4;j++) if(P[i].z[j]) inf=0;
+                valido=!inf; }
+            /* Infinito: o el punto lo es de verdad (el objetivo menos su
+               propia clave), o la suma mixta cayo en el doblado. Se rehace
+               entera; si sigue siendo el infinito, ese canguro va aparte. */
+            if(!valido) valido=gk_punto(c,d,manso,&P[i]);
+        }
+        sc_copy(dist+4*(size_t)i,d); ok[i]=(uint8_t)valido;
+    }
+    /* Montgomery: pfx[i] = z_0 * ... * z_i de los validos. */
+    fe_t acc; memset(acc,0,32); acc[0]=1;
+    for(uint32_t i=0;i<n;i++){ if(ok[i]) fe_mul(acc,acc,P[i].z); memcpy(pfx+4*(size_t)i,acc,32); }
+    fe_t inv; fe_inv(inv,acc);
+    for(uint32_t k=n;k-- >0;){
+        uint32_t *st=(uint32_t*)g->map[0]+(size_t)kids[k]*GK_ST;
+        if(!ok[k]){ gk_soltar(g,c,kids[k],manso); continue; }
+        fe_t zi,z2,z3,x,y;
+        if(k){ fe_mul(zi,inv,pfx+4*(size_t)(k-1)); fe_mul(inv,inv,P[k].z); }
+        else memcpy(zi,inv,32);
+        fe_sqr(z2,zi); fe_mul(z3,z2,zi);
+        fe_mul(x,P[k].x,z2); fe_mul(y,P[k].y,z3);
+        uint32_t fl=manso?2u:0u;
+        if(y[0]&1){ fe_t z; memset(z,0,32); fe_sub(y,z,y); fl|=1u; }
+        memset(st,0,GK_ST*4);
+        gk_put(st,x); gk_put(st+8,y); gk_put(st+16,dist+4*(size_t)k);
+        st[24]=fl;
+    }
+}
+
+/* Suelta una lista de canguros, separando mansos y salvajes. */
+static void gk_soltar_lote(GpuKg *g,KangarooCtx *c,const uint32_t *kids,const uint8_t *mansos,uint32_t n){
+    std::vector<uint32_t> m,s; m.reserve(n); s.reserve(n);
+    for(uint32_t i=0;i<n;i++) (mansos[i]?m:s).push_back(kids[i]);
+    if(!m.empty()) gk_soltar_tipo(g,c,m.data(),(uint32_t)m.size(),1);
+    if(!s.empty()) gk_soltar_tipo(g,c,s.data(),(uint32_t)s.size(),0);
+}
+
 static bool gk_buffer(GpuKg *g,int i,VkDeviceSize bytes,std::string &err){
     g->tam[i]=bytes;
     VkBufferCreateInfo bci{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
@@ -150,15 +233,20 @@ static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
     uint32_t *T=(uint32_t*)g->map[1];
     for(int e=0;e<KG_MAX_JUMPS;e++){ gk_put(T+e*24,c->jx[e]); gk_put(T+e*24+8,c->jy[e]); gk_put(T+e*24+16,c->jlen[e]); }
     if(c->njumps!=64 || c->nesc!=64){ err="unexpected jump table"; gpu_kg_destruir(g); return NULL; }
-    /* Soltar 65.536 canguros son otras tantas multiplicaciones escalares:
-       segundos en un movil. Si mientras tanto se pide parar (o la CPU ya ha
+    /* Soltar cientos de miles de canguros lleva su rato aun en progresion. Si mientras tanto se pide parar (o la CPU ya ha
        encontrado la clave, que en un puzzle pequeno pasa antes de acabar),
        se deja: parar espera a este hilo, y bloquearia la pantalla. */
-    for(uint32_t k=0;k<g->total;k++){
-        if((k&255)==0 && (c->parar.load() || c->encontrado.load())){
-            err="stopped before starting"; gpu_kg_destruir(g); return NULL;
+    {
+        const uint32_t TROZO=4096;
+        std::vector<uint32_t> kids(TROZO); std::vector<uint8_t> mansos(TROZO);
+        for(uint32_t k0=0;k0<g->total;k0+=TROZO){
+            if(c->parar.load() || c->encontrado.load()){
+                err="stopped before starting"; gpu_kg_destruir(g); return NULL;
+            }
+            uint32_t n=g->total-k0<TROZO?g->total-k0:TROZO;
+            for(uint32_t i=0;i<n;i++){ kids[i]=k0+i; mansos[i]=(uint8_t)((k0+i)&1); }
+            gk_soltar_lote(g,c,kids.data(),mansos.data(),n);
         }
-        gk_soltar(g,c,k,(int)(k&1));
     }
     memset(g->map[2],0,(size_t)g->tam[2]);
 
@@ -224,11 +312,13 @@ static double gpu_kg_tanda(GpuKg *g,KangarooCtx *c,uint32_t pasos){
         else if(mismo) c->pegados.fetch_add(1);
     }
     const uint32_t *R=S+4+(size_t)g->maxdp*GK_REC;
+    std::vector<uint32_t> kids; std::vector<uint8_t> mansos; kids.reserve(nre); mansos.reserve(nre);
     for(uint32_t j=0;j<nre;j++){
         uint32_t kid=R[j]; if(kid>=g->total) continue;
-        uint32_t *st=(uint32_t*)g->map[0]+(size_t)kid*GK_ST;
-        gk_soltar(g,c,kid,(st[24]&2u)?1:0);
+        const uint32_t *st=(const uint32_t*)g->map[0]+(size_t)kid*GK_ST;
+        kids.push_back(kid); mansos.push_back((st[24]&2u)?1:0);
     }
+    gk_soltar_lote(g,c,kids.data(),mansos.data(),(uint32_t)kids.size());
     S[0]=S[1]=S[2]=0;
     return seg;
 }

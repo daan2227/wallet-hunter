@@ -2474,12 +2474,15 @@ Java_com_hunter_btc_HunterEngine_benchGpuKangaroo(JNIEnv *env, jobject){
     memset(ini,0,32); ini[31-139/8]=(uint8_t)(1u<<(139%8));
     memset(fin,0,32); for(int q2=0;q2<=139;q2++) fin[31-q2/8]|=(uint8_t)(1u<<(q2%8));
     int neg_antes=kg_negacion; kg_negacion=1;
-    struct Rep{ uint32_t inv, kpi; } reps[]={{128,128},{256,64},{512,32},{1024,16},{2048,8}};
+    struct Rep{ uint32_t inv, kpi; } reps[]={{1024,16},{2048,16},{4096,16},{2048,32},{4096,32},{1024,64},{2048,64}};
+    std::string nombre;
     for(auto r:reps){
         KangarooCtx *kc=new KangarooCtx();
         if(!kg_setup(kc,pub,ini,fin,28,18)){ delete kc; continue; }
         std::string err;
+        auto tc=std::chrono::steady_clock::now();
         GpuKg *g=gpu_kg_crear(kc,KANGAROO_SPV,sizeof(KANGAROO_SPV),r.inv,r.kpi,0x5EED,err);
+        double crear=std::chrono::duration<double>(std::chrono::steady_clock::now()-tc).count();
         if(!g){ o<<"GPU: "<<err<<"\n"; kg_free(kc); delete kc; break; }
         uint32_t pasos=4;
         for(int w=0;w<6;w++){ double seg=gpu_kg_tanda(g,kc,pasos); if(seg<0.03&&pasos<4096) pasos*=2; }
@@ -2491,12 +2494,13 @@ Java_com_hunter_btc_HunterEngine_benchGpuKangaroo(JNIEnv *env, jobject){
         double tot=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
         long long n=g->saltos-s0;
         o<<r.inv<<" x "<<r.kpi<<": "<<std::fixed<<std::setprecision(2)<<n/tot/1e6<<" M jumps/s"
-         <<"  (GPU busy "<<(int)(100*gpu_seg/tot)<<"%, "<<pasos<<" steps/batch)\n";
-        if(o.str().size()<200 && r.inv==128) o.str(g->nombre+"\n"+o.str());
+         <<"  (busy "<<(int)(100*gpu_seg/tot)<<"%, "<<pasos<<" steps, start "<<std::setprecision(1)<<crear<<" s)\n";
+        nombre=g->nombre;
         gpu_kg_destruir(g); kg_free(kc); delete kc;
     }
     kg_negacion=neg_antes;
-    return env->NewStringUTF(o.str().c_str());
+    std::string texto=nombre.empty()?o.str():nombre+"\n"+o.str();
+    return env->NewStringUTF(texto.c_str());
 }
 
 /* Usar o no la GPU en la proxima busqueda de Kangaroo. */
