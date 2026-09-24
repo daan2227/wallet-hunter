@@ -22,6 +22,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
+      with:
+        # Historia entera: el paso siguiente compara con el commit anterior
+        # para saber si hace falta pasar los bancos. El repositorio es pequeño.
+        fetch-depth: 0
+
+    # ¿Toca este push el motor o sus pruebas?
+    #
+    # Los dos bancos se llevan unos 2,5 de los ~5,5 minutos de la compilación,
+    # y la mayoría de los commits son de pantallas, que no pueden romper el
+    # motor. Se pasan si cambia algo de app/src/main/cpp/ (el motor, la GPU),
+    # de tools/ec-harness/ (las pruebas) o este mismo fichero. Ante la duda
+    # —primer push de una rama, commit anterior que no está, lanzado a mano—
+    # se pasan: saltarse una prueba que tocaba es peor que perder dos minutos.
+    - name: ¿Toca el motor?
+      id: motor
+      run: |
+        ANTES="${{ github.event.before }}"
+        if [ "${{ github.event_name }}" != "push" ] || [ -z "$ANTES" ] \
+           || [ "$ANTES" = "0000000000000000000000000000000000000000" ] \
+           || ! git cat-file -e "$ANTES^{commit}" 2>/dev/null; then
+          echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "Sin commit anterior: se pasan los bancos."; exit 0
+        fi
+        CAMBIOS=$(git diff --name-only "$ANTES" "${{ github.sha }}")
+        if echo "$CAMBIOS" | grep -qE '^(app/src/main/cpp/|tools/ec-harness/|\.github/workflows/)'; then
+          echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "Toca el motor o sus pruebas: se pasan los bancos."
+        else
+          echo "cambia=0" >> "$GITHUB_OUTPUT"; echo "No toca el motor: se saltan los bancos."
+        fi
 
     # El banco de pruebas, ANTES de compilar nada.
     #
@@ -41,6 +69,7 @@ jobs:
     # contados de un repositorio privado es la diferencia entre poder seguir
     # compilando y no.
     - name: Banco de pruebas del motor
+      if: steps.motor.outputs.cambia == '1'
       run: |
         # reparto mide PBKDF2 y direcciones usa el hash, los dos con OpenSSL.
         # La imagen de ubuntu lo trae, pero si algun dia dejara de traerlo esto
@@ -53,6 +82,7 @@ jobs:
     # distancia y que resuelve claves conocidas SOLO con la GPU. El ritmo de
     # aqui no dice nada del movil; la exactitud si.
     - name: Banco de la GPU (Vulkan por software)
+      if: steps.motor.outputs.cambia == '1'
       run: |
         sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan-dev > /dev/null
         cd tools/ec-harness
