@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+# Convierte el dataset de direcciones (CSV) al formato .bin que carga el
+# motor: se carga en memoria de golpe (mmap) en vez de leer el CSV linea a
+# linea, que con decenas de millones de direcciones tarda mucho mas.
+# Pensado para correr en Termux, en el propio movil: las rutas de abajo son
+# las de la carpeta de descargas.
 import sys, struct, hashlib, time
 
 CSV = "/data/data/com.termux/files/home/storage/downloads/utxos_clean.csv"

@@ -1,4 +1,3 @@
-XLARig/
 *.py
 *.txt
 
@@ -8,6 +7,7 @@ XLARig/
 # revisa-kotlin.sh se subio llamando a un fichero que el repositorio no
 # tenia: en un clon limpio la comprobacion falla por un fichero que falta.
 !tools/*.py
+!scripts/*.py
 
 # Firma de release — el keystore nunca se versiona.
 *.keystore
