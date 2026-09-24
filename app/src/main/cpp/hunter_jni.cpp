@@ -15,6 +15,7 @@
 #include <thread>
 #include <chrono>
 #include <sstream>
+#include <iomanip>
 #include <cstring>
 #include <cstdint>
 #include <cstdlib>
@@ -32,6 +33,7 @@
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
 #include "kangaroo.h"
+#include "fe_arm64.h"
 #include "coincidencias.h"
 #include "bloom.h"
 
@@ -2438,6 +2440,92 @@ Java_com_hunter_btc_HunterEngine_kangarooHilos(JNIEnv *, jobject){
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooCapacidad(JNIEnv *, jobject){
     return g_kg_vivo ? (jlong)(g_kg.tabla.mask+1) : 0;
+}
+
+/* ---------- Prueba de rendimiento del motor (pantalla Debug) ----------
+ *
+ * Mide en el PROPIO movil lo que en el banco de escritorio no se puede: la
+ * multiplicacion de cuerpo en C frente a la de ensamblador ARM64, y los
+ * saltos por segundo del bucle de Kangaroo en un hilo. Es lo que decide si el
+ * ensamblador (fe_arm64.h) merece entrar en el motor.
+ *
+ * Las multiplicaciones van en cuatro cadenas independientes (r = r*b con b al
+ * azar): con una sola cadena se mide la latencia, no el ritmo, y con valores
+ * que se vuelven triviales se mide nada. */
+static double bench_mul(int variante,int n,uint64_t *sal){
+    fe_t r[4],b[4];
+    uint64_t s=0x9E3779B97F4A7C15ULL;
+    for(int k=0;k<4;k++) for(int j=0;j<4;j++){ s^=s<<13; s^=s>>7; s^=s<<17; r[k][j]=s>>1; s^=s<<13; s^=s>>7; s^=s<<17; b[k][j]=s>>1; }
+    auto t0=std::chrono::steady_clock::now();
+    for(int i=0;i<n;i++) for(int k=0;k<4;k++){
+#ifdef FE_ARM64
+        if(variante==1){ fe_mul_asm(r[k],r[k],b[k]); continue; }
+#endif
+        if(variante==2) fe_sqr(r[k],r[k]); else fe_mul(r[k],r[k],b[k]);
+    }
+    double ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-t0).count()/(4.0*n);
+    *sal^=r[0][0]^r[1][1]^r[2][2]^r[3][3];
+    return ns;
+}
+struct BenchKg { KangarooCtx *c; };
+static void *bench_kg_hilo(void *p){ kg_run(((BenchKg*)p)->c,512,0xC0FFEE1234ULL); return NULL; }
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
+    std::ostringstream o;
+    uint64_t sal=0;
+#ifdef FE_ARM64
+    /* Primero, que de lo mismo. Un ensamblador rapido y equivocado es peor que
+       nada: firmaria y buscaria con numeros que no son. */
+    long mal=0;
+    uint64_t s=0x1234567887654321ULL;
+    for(int it=0;it<200000;it++){
+        fe_t a,b,r1,r2;
+        for(int j=0;j<4;j++){ s^=s<<13; s^=s>>7; s^=s<<17; a[j]=s; s^=s<<13; s^=s>>7; s^=s<<17; b[j]=s; }
+        if(it%5==0){ a[3]=~0ULL; b[2]=~0ULL; }
+        fe_mul(r1,a,b); fe_mul_asm(r2,a,b);
+        if(memcmp(r1,r2,32)) mal++;
+    }
+    o<<"ARM64 asm vs C: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of 200000)\n";
+#else
+    o<<"Not ARM64: no assembly to compare\n";
+#endif
+    bench_mul(0,200000,&sal);                     /* calentar la CPU */
+    double c=bench_mul(0,3000000,&sal);
+    o<<"fe_mul C:    "<<std::fixed<<std::setprecision(1)<<c<<" ns\n";
+#ifdef FE_ARM64
+    double a=bench_mul(1,3000000,&sal);
+    o<<"fe_mul asm:  "<<a<<" ns  ("<<std::setprecision(2)<<c/a<<"x)\n"<<std::setprecision(1);
+#endif
+    double q=bench_mul(2,3000000,&sal);
+    o<<"fe_sqr C:    "<<q<<" ns\n";
+
+    /* Saltos por segundo del bucle de Kangaroo, un hilo, dos segundos, en un
+       rango como el del #140. */
+    {
+        uint8_t pub[33],ini[32],fin[32];
+        sc_t k; sc_set_u64(k,123456789ULL);
+        JP P; kg_scalar_mul(&P,k,FIELD_GX,FIELD_GY); fe_t x,y; kg_normalize(&P,x,y);
+        pub[0]=(y[0]&1)?3:2;
+        for(int w=0;w<4;w++) for(int bb=0;bb<8;bb++) pub[1+(3-w)*8+(7-bb)]=(uint8_t)(x[w]>>(bb*8));
+        memset(ini,0,32); ini[31-139/8]=(uint8_t)(1u<<(139%8));
+        memset(fin,0,32); for(int q2=0;q2<=139;q2++) fin[31-q2/8]|=(uint8_t)(1u<<(q2%8));
+        KangarooCtx *kc=new KangarooCtx();
+        if(kg_setup(kc,pub,ini,fin,20,18)){
+            BenchKg arg{kc}; pthread_t th; pthread_create(&th,NULL,bench_kg_hilo,&arg);
+            std::this_thread::sleep_for(std::chrono::milliseconds(300));
+            long long s0=kc->saltos.load(); auto t0=std::chrono::steady_clock::now();
+            std::this_thread::sleep_for(std::chrono::milliseconds(2000));
+            long long s1=kc->saltos.load();
+            double seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+            kc->parar.store(1); pthread_join(th,NULL);
+            o<<"Kangaroo, 1 thread: "<<std::setprecision(2)<<(s1-s0)/seg/1e6<<" M jumps/s\n";
+            kg_free(kc);
+        }
+        delete kc;
+    }
+    if(sal==42) o<<" ";   /* que el compilador no se salte el trabajo */
+    return env->NewStringUTF(o.str().c_str());
 }
 
 /* Cuantos caben antes de que dp_insert deje de guardar. Es el 90 % de la

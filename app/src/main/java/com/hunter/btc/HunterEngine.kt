@@ -149,6 +149,12 @@ object HunterEngine {
      * avanzar sin que nada lo diga. Por eso hay que poder enseñarlo.
      */
     external fun kangarooTope(): Long
+    /**
+     * Prueba de rendimiento del motor en este móvil: multiplicación de cuerpo
+     * en C frente a ensamblador ARM64, y saltos por segundo de Kangaroo en un
+     * hilo. Tarda unos cuatro segundos; llamar fuera del hilo principal.
+     */
+    external fun benchCampo(): String
 
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.

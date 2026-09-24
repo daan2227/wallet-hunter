@@ -199,6 +199,33 @@ class DebugActivity : AppCompatActivity() {
         statsCard.addView(statRow("Matches", HunterEngine.getFound().toString(), ACCENT))
         root.addView(statsCard)
 
+        // ── PRUEBA DE RENDIMIENTO ─────────────────────────────────────────
+        // Mide en este móvil lo que el banco de escritorio no puede: si la
+        // multiplicación en ensamblador ARM64 gana a la de C, y cuántos saltos
+        // por segundo da Kangaroo en un hilo. Con el motor parado, para que
+        // no compitan por la CPU.
+        val benchCard = card()
+        benchCard.addView(label("ENGINE BENCHMARK"))
+        val tvBench = TextView(this).apply {
+            text = "Measures field multiplication (C vs ARM64 assembly) and Kangaroo " +
+                   "jumps per second on this phone. Takes about 5 seconds; stop any " +
+                   "search first."
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
+            typeface = Typeface.MONOSPACE
+            setTextIsSelectable(true)
+            setPadding(0, 0, 0, dp(8))
+        }
+        benchCard.addView(tvBench)
+        benchCard.addView(actionBtn("Run benchmark", ACCENT) {
+            tvBench.text = "Running…"
+            Thread {
+                val r = try { HunterEngine.benchCampo() } catch (e: Throwable) { "Error: ${e.message}" }
+                runOnUiThread { tvBench.text = r + "\n" + android.os.Build.MODEL + " · " +
+                                (if (android.os.Build.VERSION.SDK_INT >= 31) android.os.Build.SOC_MODEL else "") }
+            }.start()
+        })
+        root.addView(benchCard)
+
         // ── ARCHIVOS DE LOG ───────────────────────────────────────────────
         val filesCard = card()
         filesCard.addView(label("LOG FILES"))
