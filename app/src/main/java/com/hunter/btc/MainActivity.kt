@@ -2459,7 +2459,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // primer refresco: las tarjetas se quedaban en 0 y 00:00:00 con la
             // clave ya encontrada. Se dejan puestas las cifras finales.
             tvCountPuzzle?.text = formatCorto(opsFin)
-            tvTimePuzzle?.text = formatSegundos(segFin)
+            // Un puzzle de prueba se resuelve en décimas: "00:00:00" parecía
+            // que no había contado.
+            tvTimePuzzle?.text = if (segFin < 1) "< 1 s" else formatSegundos(segFin)
             tvPctPuzzle?.text = "done"
             // Cuánto ha costado frente a lo esperado: es la cifra que dice si
             // el motor rinde (1,5 raíces de W de media; una sola búsqueda
@@ -2467,7 +2469,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val raices = if (kgOpsEsperadas > 0 && opsFin > 0)
                 opsFin / (kgOpsEsperadas / COSTE_KANGAROO) else 0.0
             val coste = if (raices > 0) "\n${formatCorto(opsFin)} operations · " +
-                "%.2f × √W (average %.1f)".format(raices, COSTE_KANGAROO) else ""
+                "%.2f × √W".format(raices) +
+                // La media de 1,5 es la de los rangos grandes. En uno pequeño
+                // pesa el coste fijo de llegar al primer distinguido, que ahí
+                // es del orden del problema entero, y sale bastante más.
+                (if (raices > 3 * COSTE_KANGAROO)
+                    "\n(the average is %.1f on large ranges; a small test ".format(COSTE_KANGAROO) +
+                    "pays the fixed cost of reaching the first distinguished points)"
+                 else " (average %.1f)".format(COSTE_KANGAROO)) else ""
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             btnKangaroo?.text = "Search with Kangaroo"
             /* Si el puzzle era uno de los resueltos, la respuesta se sabía de
