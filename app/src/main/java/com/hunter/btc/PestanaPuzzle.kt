@@ -71,7 +71,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // lista de puzzles lo que hace la lista de puzzles.
 
     // ── PUZZLE CHIP SELECTOR ──────────────────────────────────────────
-    val hiddenPuzzles = getSharedPreferences("hidden_puzzles", MODE_PRIVATE)
+    val hiddenPuzzles = getSharedPreferences("hidden_puzzles", android.content.Context.MODE_PRIVATE)
     // Se descartan las entradas cuya dirección NO es una dirección de
     // Bitcoin. Buscar una clave cuyo hash160 dé una dirección con el
     // checksum roto es buscar algo que no puede existir: el contador
@@ -918,7 +918,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
 
     fun applyPuzzleAndCheckBalance(p: PuzzleInfo, chipView: TextView? = null) {
         applyPuzzle(p)
-        val puzzlePrefs2 = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+        val puzzlePrefs2 = getSharedPreferences("puzzle_checkpoint", android.content.Context.MODE_PRIVATE)
         val savedKey = puzzlePrefs2.getString("last_key_${p.num}", null)
         val savedTime = puzzlePrefs2.getLong("last_time_${p.num}", 0)
         if (savedKey != null && savedTime > 0) {
@@ -1080,7 +1080,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
 
     // Load checkpoint for default
     val defaultPuzzle = visiblePuzzles.getOrElse(defaultIdx) { visiblePuzzles.first() }
-    val puzzlePrefsInit = getSharedPreferences("puzzle_checkpoint", MODE_PRIVATE)
+    val puzzlePrefsInit = getSharedPreferences("puzzle_checkpoint", android.content.Context.MODE_PRIVATE)
     val savedKeyInit = puzzlePrefsInit.getString("last_key_${defaultPuzzle.num}", null)
     val savedTimeInit = puzzlePrefsInit.getLong("last_time_${defaultPuzzle.num}", 0)
     if (savedKeyInit != null && savedTimeInit > 0) {
