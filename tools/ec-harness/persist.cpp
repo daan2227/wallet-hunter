@@ -130,6 +130,9 @@ int main(){
      * y que NO se tira cuando es pequeno, donde nunca hubo problema.
      */
     {
+        /* Las versiones 1 a 3 son de Kangaroo: se prueban con Kangaroo. Con
+           Gaudry-Schost no se leen nunca (ver la 8). */
+        int neg7=kg_negacion; kg_negacion=0;
         /* Se fabrica a mano un fichero de version 2: una cabecera y una
            entrada. No se usa dp_save, que escribe la version de ahora. */
         auto escribe_v2=[&](const char *ruta,const uint8_t *pi,const uint8_t *pf){
@@ -190,55 +193,49 @@ int main(){
         f+=(l_gra!=0);
         kg_free(&c9);
         remove("/tmp/kg_v2_peq.dat"); remove("/tmp/kg_v2_gra.dat");
+        kg_negacion=neg7;
     }
 
-    /* 8) Una tabla guardada SIN mapa de negacion se lee CON el, y al reves.
+    /* 8) Cada motor lee solo sus tablas.
      *
-     * El mapa de negacion traslada el objetivo al centro del intervalo, asi que
-     * las distancias de los salvajes pasan a medirse desde otro sitio: P' era
-     * P-a*G y P'' es P-(a+W/2)*G. Como P' = P'' + (W/2)*G, la conversion es
-     * exacta —sumar o restar W/2— y no hay que tirar el trabajo de nadie.
-     *
-     * Si la conversion estuviera mal, la tabla cargaria igual, el contador de
-     * puntos diria lo mismo y NADA resolveria. Otra vez el fallo sin sintoma.
-     * Se comprueba con la invariante: un salvaje tiene que estar en P''+d*G.
+     * Gaudry-Schost (con negacion) y Kangaroo (sin) caminan con tablas de
+     * saltos distintas, asi que los puntos de uno no le sirven al otro: ver
+     * KG_VER_GS. Se comprueba que una tabla de GS se recupera entera y con las
+     * distancias bien —los mansos en d*G y los salvajes en P''+d*G, salvo el
+     * signo, que la x no ve— y que ninguno de los dos lee la del otro.
      */
     {
         int antes=kg_negacion;
 
-        /* Guardar sin negacion. */
-        kg_negacion=0;
-        KangarooCtx cs; kg_setup(&cs,pub,ini,fin,7,18);
+        kg_negacion=1;
+        KangarooCtx cn; kg_setup(&cn,pub,ini,fin,7,18);
         pthread_t th2;
-        struct B{KangarooCtx*c;}; static B br; br.c=&cs;
+        struct B{KangarooCtx*c;}; static B br; br.c=&cn;
         pthread_create(&th2,NULL,[](void*p)->void*{
             B*x=(B*)p; kg_run(x->c,32,4321); return NULL;},&br);
         struct timespec ts2={0,120*1000*1000}; nanosleep(&ts2,NULL);
-        cs.parar.store(1); pthread_join(th2,NULL);
-        uint64_t guardados=cs.tabla.guardados;
-        dp_save(&cs.tabla,"/tmp/kg_sin_neg.dat",pub,ini,fin,7,0);
-        kg_free(&cs);
+        cn.parar.store(1); pthread_join(th2,NULL);
+        uint64_t guardados=cn.tabla.guardados;
+        dp_save(&cn.tabla,"/tmp/kg_gs.dat",pub,ini,fin,7,0);
+        kg_free(&cn);
 
-        /* Leerla con negacion: el contexto ya esta centrado. */
-        kg_negacion=1;
-        KangarooCtx cn; kg_setup(&cn,pub,ini,fin,7,18);
-        uint64_t leidas=dp_load(&cn.tabla,"/tmp/kg_sin_neg.dat",pub,ini,fin,7,NULL);
-        printf("%s  se lee una tabla de antes del mapa de negacion (%llu de %llu)\n",
+        KangarooCtx cl; kg_setup(&cl,pub,ini,fin,7,18);
+        uint64_t leidas=dp_load(&cl.tabla,"/tmp/kg_gs.dat",pub,ini,fin,7,NULL);
+        printf("%s  una tabla de Gaudry-Schost se recupera (%llu de %llu)\n",
                (leidas>0&&leidas==guardados)?"OK ":"MAL",
                (unsigned long long)leidas,(unsigned long long)guardados);
         f+=!(leidas>0&&leidas==guardados);
 
-        /* Y sus salvajes tienen que cuadrar con el objetivo NUEVO. */
         uint64_t sal=0, sal_ok=0, man=0, man_ok=0;
-        for(uint64_t i=0;i<=cn.tabla.mask;i++){
-            DP *sl=&cn.tabla.slots[i];
+        for(uint64_t i=0;i<=cl.tabla.mask;i++){
+            DP *sl=&cl.tabla.slots[i];
             if(!sl->usado) continue;
             JP P; kg_scalar_mul(&P,sl->dist,FIELD_GX,FIELD_GY);
             int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
             if(!sl->manso){
                 if(inf){ sal++; continue; }
                 fe_t dx,dy; kg_normalize(&P,dx,dy);
-                JP W2; jp_add_affine(&W2,&cn.objetivo,dx,dy); P=W2;
+                JP W2; jp_add_affine(&W2,&cl.objetivo,dx,dy); P=W2;
                 inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
             }
             if(inf){ if(sl->manso) man++; else sal++; continue; }
@@ -246,26 +243,38 @@ int main(){
             int bien=(x[0]==sl->kx[0]&&x[1]==sl->kx[1]);
             if(sl->manso){ man++; man_ok+=bien; } else { sal++; sal_ok+=bien; }
         }
-        printf("%s  y las distancias quedan bien (mansos %llu/%llu, salvajes %llu/%llu)\n",
-               (man==man_ok&&sal==sal_ok&&sal>0)?"OK ":"MAL",
+        printf("%s  y las distancias cuadran (mansos %llu/%llu, salvajes %llu/%llu)\n",
+               (man==man_ok&&sal==sal_ok&&man+sal>0)?"OK ":"MAL",
                (unsigned long long)man_ok,(unsigned long long)man,
                (unsigned long long)sal_ok,(unsigned long long)sal);
-        f+=!(man==man_ok&&sal==sal_ok&&sal>0);
+        f+=!(man==man_ok&&sal==sal_ok&&man+sal>0);
+        kg_free(&cl);
 
-        /* Y al reves NO: una tabla escrita con negacion no se puede leer sin
-           ella, porque el signo de cada punto no se guarda y un motor sin
-           negacion solo prueba uno. Peor que perder trabajo: una colision que
-           no cuadra por el signo se COME un punto bueno, porque dp_insert avisa
-           de la pareja y no guarda el que llega. */
-        dp_save(&cn.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,0);
         kg_negacion=0;
-        KangarooCtx cv; kg_setup(&cv,pub,ini,fin,7,18);
-        uint64_t vuelta=dp_load(&cv.tabla,"/tmp/kg_con_neg.dat",pub,ini,fin,7,NULL);
-        printf("%s  una tabla con negacion NO se lee sin negacion (%llu leidas)\n",
-               vuelta==0?"OK ":"MAL",(unsigned long long)vuelta);
-        f+=(vuelta!=0);
-        kg_free(&cn); kg_free(&cv);
-        remove("/tmp/kg_sin_neg.dat"); remove("/tmp/kg_con_neg.dat");
+        KangarooCtx ck; kg_setup(&ck,pub,ini,fin,7,18);
+        uint64_t v1=dp_load(&ck.tabla,"/tmp/kg_gs.dat",pub,ini,fin,7,NULL);
+        printf("%s  Kangaroo no lee una tabla de Gaudry-Schost (%llu leidas)\n",
+               v1==0?"OK ":"MAL",(unsigned long long)v1);
+        f+=(v1!=0);
+        /* Con puntos dentro, o "no lee ninguno" no probaria nada. */
+        br.c=&ck;
+        pthread_create(&th2,NULL,[](void*p)->void*{
+            B*x=(B*)p; kg_run(x->c,32,777); return NULL;},&br);
+        nanosleep(&ts2,NULL);
+        ck.parar.store(1); pthread_join(th2,NULL);
+        uint64_t en_kang=ck.tabla.guardados;
+        dp_save(&ck.tabla,"/tmp/kg_kang.dat",pub,ini,fin,7,0);
+        kg_free(&ck);
+
+        kg_negacion=1;
+        KangarooCtx cg; kg_setup(&cg,pub,ini,fin,7,18);
+        uint64_t v2=dp_load(&cg.tabla,"/tmp/kg_kang.dat",pub,ini,fin,7,NULL);
+        printf("%s  y Gaudry-Schost no lee una de Kangaroo (%llu de %llu)\n",
+               (v2==0&&en_kang>0)?"OK ":"MAL",(unsigned long long)v2,(unsigned long long)en_kang);
+        f+=!(v2==0&&en_kang>0);
+        kg_free(&cg);
+        remove("/tmp/kg_gs.dat"); remove("/tmp/kg_kang.dat");
+
         kg_negacion=antes;
     }
 

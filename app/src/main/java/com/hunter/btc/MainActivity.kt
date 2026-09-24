@@ -344,6 +344,17 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             else "1 in 10^${digits - 1}"
         } catch (e: Exception) { "—" }
     }
+    /**
+     * Operaciones que cuesta resolver un rango de ancho W, en raíces de W.
+     *
+     * Era 2,4: lo medido con Kangaroo. El motor usa ahora Gaudry-Schost con
+     * mapa de negación (ver kg_negacion en kangaroo.h), que medido con
+     * tools/ec-harness/negacion da 1,4-1,6 cuando el dbits es pequeño frente
+     * al rango, que es lo que pasa en los puzzles donde se usa (#135 en
+     * adelante). La teoría dice 1,36.
+     */
+    private val COSTE_KANGAROO = 1.5
+
     private var tvCheckpointLive: TextView? = null
     private var tvCountPuzzle: TextView? = null
     private var tvTimePuzzle: TextView? = null
@@ -860,7 +871,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         page.addView(TextView(this).apply {
-            text = "v2.4 · Wallet Hunter"
+            // La versión de verdad, la que pone la CI (1.0.<compilación>).
+            // Estaba escrito "v2.4" a mano y no cambiaba nunca.
+            text = "v" + (try { packageManager.getPackageInfo(packageName, 0).versionName }
+                          catch (e: Exception) { "?" }) + " · Wallet Hunter"
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
@@ -4738,7 +4752,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      *
      * Los dos números salen del tamaño del rango, que es 2^(n-1) claves para el
      * puzzle n. La fuerza bruta las recorre todas; Kangaroo necesita del orden
-     * de la raíz cuadrada, unas 2,2 veces.
+     * de la raíz cuadrada, unas 1,5 veces (ver COSTE_KANGAROO).
      */
     private fun comprobarAtajo(p: PuzzleInfo) {
         val tv = tvPuzzleAtajo ?: return
@@ -4758,9 +4772,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val ritmo = HunterEngine.getWps().takeIf { it > 1000 } ?: 4_000_000.0
             val bits = (p.num - 1).coerceAtLeast(1)
             val clavesBrutas = Math.pow(2.0, bits.toDouble())
-            // 2,4 medido, no estimado: tools/ec-harness/constante. Ver el
-            // comentario de kgOpsEsperadas.
-            val opsKangaroo = 2.4 * Math.pow(2.0, bits / 2.0)
+            // Medido, no estimado. Ver COSTE_KANGAROO.
+            val opsKangaroo = COSTE_KANGAROO * Math.pow(2.0, bits / 2.0)
             fun humano(segundos: Double): String = when {
                 segundos < 90            -> "${segundos.toInt()} seconds"
                 segundos < 5400          -> "${(segundos / 60).toInt()} minutes"
@@ -5098,13 +5111,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // 4,16 — o sea que el "Estimated" llevaba meses siendo el doble de
         // optimista sin que nada lo dijera.
         //
-        // El 2,4 es lo medido SIN mapa de negación, que es como corre ahora: la
-        // negación daba 1,7 pero no encuentra la clave con el dbits real, así
-        // que está apagada. Ver el comentario de kg_negacion en kangaroo.h.
+        // Ver COSTE_KANGAROO.
         kgOpsEsperadas = try {
             val a = java.math.BigInteger(ini, 16)
             val b = java.math.BigInteger(fin, 16)
-            2.4 * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
+            COSTE_KANGAROO * Math.pow(2.0, (b.subtract(a).bitLength()) / 2.0)
         } catch (e: Exception) { 0.0 }
         lblEscaneadas?.text = "Operations"
         lblRestantes?.text = "Estimated"

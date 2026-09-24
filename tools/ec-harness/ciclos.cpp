@@ -44,8 +44,13 @@ int main(int argc,char**argv){
     memset(i2,0,32); i2[31-bits/8]=(uint8_t)(1u<<(bits%8));
     memset(f2,0,32); for(int q=0;q<=bits;q++) f2[31-q/8]|=(uint8_t)(1u<<(q%8));
     (void)a;(void)b;
-    KangarooCtx c; kg_setup(&c,pub,i2,f2,6,18);
-    printf("bits=%d njumps=%d\n",bits,c.njumps);
+    /* El dbits que usaria la app para este rango (bits/4+4, hasta 28). Con
+       Gaudry-Schost el tamano de los saltos sale del dbits —ver kg_setup—, y
+       con un dbits de juguete los saltos son cortos y el camino se pisa a si
+       mismo: salian ciclos de 180 que en el movil no existen. */
+    int dapp=bits/4+4; if(dapp<6) dapp=6; if(dapp>28) dapp=28;
+    KangarooCtx c; kg_setup(&c,pub,i2,f2,dapp,18);
+    printf("bits=%d dbits=%d njumps=%d\n",bits,dapp,c.njumps);
     std::map<int,int> hist; int sin_ciclo=0; long long suma_cola=0, suma_len=0; int n=0;
     for(int s=0;s<muestras;s++){
         sc_t d; sc_set_u64(d,1000+s*7919);

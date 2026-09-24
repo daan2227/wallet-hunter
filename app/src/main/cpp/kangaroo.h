@@ -345,90 +345,50 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  * de OTRO puzzle y se ignora. Mezclar dos tablas daria colisiones que no
  * significan nada. */
 
-/* Mapa de negacion: 0 apagado, 1 encendido. Ver el campo `negacion` del
- * contexto para el razonamiento entero.
+/* Mapa de negacion: 0 apagado (Kangaroo), 1 encendido (Gaudry-Schost).
  *
  * Va suelto por lo mismo que kg_politica_saltos: kg_setup tiene que saberlo
- * ANTES de construir nada, porque cambia a donde se traslada el objetivo. Se
- * copia al contexto en kg_setup y a partir de ahi se lee de ahi.
+ * ANTES de construir nada. Se copia al contexto y a partir de ahi se lee de
+ * ahi.
  *
- * APAGADO. Estuvo encendido y NO ENCUENTRA LA CLAVE con el dbits que usa la
- * app. Medido con el puzzle #40, misma clave, variando solo dbits:
+ * ENCENDIDO, y ya no encima de Kangaroo sino con otro algoritmo. La historia,
+ * para no repetirla:
  *
- *     dbits      5    8   10   12   13   14   15   16
- *     con        OK   OK   OK   OK   NO   NO   NO   NO
- *     sin        OK   OK   OK   OK   OK   OK   OK   OK
+ * 1. Encima de Kangaroo NO FUNCIONA, y no es un fallo que arreglar. Con el
+ *    mapa de negacion el canguro no avanza: canonizar le da la vuelta al punto
+ *    una de cada dos veces, y la distancia hace un paseo al azar en vez de
+ *    crecer. Un paseo al azar vuelve a pisar puntos, y en un camino
+ *    determinista eso es un ciclo. Con dbits >= 13 —el de la app— no resolvia
+ *    nunca: 17 distinguidos donde tocaban 244 (#40, dbits 14).
  *
- * A partir de 13 se queda dando vueltas sin dar con ella. El movil usa
- * dbits = bits/4+4 con tope 28, o sea 14 en el #40 y 28 en el #140: justo el
- * lado malo de esa raya en todos los casos reales.
+ * 2. Lo que SI funciona es Gaudry-Schost con negacion (Galbraith y Ruprai,
+ *    2010), que no necesita que los caminos avancen: cada uno se suelta de
+ *    nuevo en cuanto da un distinguido, y lo que cuenta es de donde salen
+ *    (ver soltar en kg_run). Hicieron falta cuatro cosas, medidas una a una
+ *    con tools/ec-harness/negacion:
  *
- * COMO SE COLO. tools/ec-harness/constante mide con dbits=5, que es donde
- * funciona, asi que dio 1,38 veces mejor y se dio por bueno. La prueba medía
- * el algoritmo en una configuracion que no es la que corre. Por eso ahora
- * `resueltos` resuelve puzzles de verdad con la formula de dbits de la app, y
- * `constante` barre dbits en vez de fijarlo.
+ *      - Saltos mucho mas largos que el camino (lb = 1,5*dbits + 8, ver
+ *        kg_setup). Con saltos cortos el paseo se pisa a si mismo.
+ *      - El salto de escape de un ciclo esteril elegido por el punto, de una
+ *        tabla de 64. Con uno fijo, dos escapes de signo contrario se anulan
+ *        y el camino vuelve a donde estaba: un escape cada 3,3 pasos.
+ *      - Soltar el camino si escapa dos veces del mismo punto.
+ *      - Soltarlo tras cada distinguido.
  *
- * NO esta descartado como idea: el raiz(2) es real y se midio. Pero la causa
- * NO esta identificada. Lo medido, con el puzzle #40 y dbits 14, 14 millones
- * de saltos en 5 segundos:
+ *    Medido, #40 con 64 canguros (raices de W, menos es mejor):
  *
- *     tabla:       45 entradas   (tocarian ~855)
- *     pegados:      4
- *     rescatados:   0
- *     kg_resolver:  0 llamadas
+ *        dbits          8     10     12     14 (app)
+ *        Kangaroo     1,98   1,75   3,46   4,22
+ *        GS + neg     1,39   1,40   1,56   2,23
  *
- * La ultima linea es la que manda: kg_resolver no se llama NUNCA, o sea que no
- * hay colisiones que cerrar. El problema no esta en cerrarlas sino en que los
- * canguros no estan apuntando puntos distinguidos: faltan unos 800 de 855.
+ *    La teoria da 1,36 para GS con negacion y ~2 para Kangaroo. Con dbits
+ *    altos frente al rango (18 en el #40) los dos se disparan por el coste de
+ *    llegar al primer distinguido; en los rangos donde se usa de verdad
+ *    (#135 en adelante) esa parte es despreciable.
  *
- * Y eso no cuadra con `rescatados: 0`, que dice que ningun canguro paso 20
- * veces 2^dbits sin dar uno. Las dos cosas no pueden ser ciertas a la vez con
- * la cuenta que yo hago, asi que hay algo en el bucle que no entiendo — y ahi
- * es donde hay que mirar, no en el resolver.
- *
- * DESCARTADO, para no repetir intentos:
- *
- *  - Que el eps se lleve mal. Era el sospechoso natural, porque la prueba
- *    `saltos` compara solo la x y P y -P tienen la MISMA x: un eps equivocado
- *    pasaria esa prueba y rompeia el resolver. Comprobada a mano la invariante
- *    entera, x E y: cero descuadres en 20.000 pasos con los dos rebanos.
- *
- *  - Que fallara al cerrar las colisiones. kg_resolver no llega a llamarse.
- *
- * LA CAUSA, ENCONTRADA (con tools/ec-harness/negacion y una traza de un
- * canguro paso a paso):
- *
- * Con el mapa de negacion el canguro NO AVANZA. Canonizar le da la vuelta al
- * punto una de cada dos veces, y cada vuelta cambia el signo con el que suma
- * los saltos siguientes. La distancia deja de crecer y hace un paseo al azar
- * de un lado a otro: en la traza, 60 pasos despues seguia en 606 millones,
- * mas o menos donde empezo. Un paseo al azar con una tabla fija de saltos
- * vuelve una y otra vez a puntos por los que ya paso, y como el camino es
- * determinista, volver a un punto es entrar en un ciclo. Medido con el #36
- * y dbits 14: un escape cada 4,6 saltos, y el 97 % de los ciclos aparecen
- * en los 16 pasos siguientes a otro escape. Los ciclos mas largos que la
- * ventana no se ven, el canguro repite los mismos distinguidos (que no
- * cuentan) y la tabla se queda en 17 puntos donde tocaban 244.
- *
- * Con dbits bajo "funcionaba" porque cada canguro da un distinguido antes de
- * volver sobre sus pasos, y la red de seguridad (20 * 2^dbits pasos) los
- * vuelve a soltar a menudo. Con dbits alto esa red tarda demasiado.
- *
- * Probado y NO basta: un salto de escape grande en vez de 3. Baja las
- * recaidas en el mismo ciclo del 45 % al 6 % y resuelve con dbits 12, pero
- * con 13 y mas sigue sin encontrar: el problema no es el escape, es que el
- * paseo no avanza.
- *
- * O sea que no es un fallo que arreglar: Kangaroo necesita canguros que vayan
- * hacia delante, y el mapa de negacion se lo quita. Para usar la simetria en
- * un intervalo hace falta OTRO algoritmo —Gaudry-Schost con negacion
- * (Galbraith y Ruprai, 2010), unas 1,36 raices de W—, con otra tabla y otra
- * forma de repartir el trabajo entre aparatos. Es un motor nuevo, no un
- * interruptor.
- *
- * Queda apagado, y ahora se sabe por que. */
-static int kg_negacion = 0;
+ * Las tablas guardadas y los mensajes del cluster de un motor no le sirven al
+ * otro: ver KG_VER_GS y KG_NET_VER. */
+static int kg_negacion = 1;
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
 /* Version 2: cada entrada lleva ademas la marca de "ya enviado".
@@ -462,6 +422,14 @@ static int kg_negacion = 0;
  * convierte al vuelo en los dos sentidos. Las de los mansos no cambian: un
  * manso esta en d*G y eso no depende de donde se traslade el objetivo. */
 #define KG_VER   4u
+/* Version 5: Gaudry-Schost con negacion (ver `nesc` y kg_setup).
+ *
+ * Los puntos de una tabla de Kangaroo no le sirven a Gaudry-Schost ni al
+ * reves: cada uno camina con su propia tabla de saltos, asi que dos caminos de
+ * motores distintos no se juntan nunca, solo coincidirian por casualidad en un
+ * punto exacto. Una tabla del otro motor se tira. Tampoco se lee la 4, la del
+ * mapa de negacion encima de Kangaroo, que no llegaba a resolver. */
+#define KG_VER_GS 5u
 #define KG_VER_SIN_ENVIADO 1u
 #define KG_VER_CON_ENVIADO 2u
 #define KG_VER_SIN_CENTRAR 3u
@@ -490,7 +458,7 @@ static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
     memset(&c,0,sizeof(c));
     /* La version dice desde donde se miden las distancias de los salvajes, que
        es lo unico que cambia con el mapa de negacion. */
-    c.magic=KG_MAGIC; c.ver=kg_negacion?KG_VER:KG_VER_SIN_CENTRAR;
+    c.magic=KG_MAGIC; c.ver=kg_negacion?KG_VER_GS:KG_VER_SIN_CENTRAR;
     c.dbits=(uint32_t)dbits; c.ops=ops;
     memcpy(c.pub,pub,33); memcpy(c.ini,ini,32); memcpy(c.fin,fin,32);
     c.n=t->guardados;
@@ -525,8 +493,11 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     /* Se aceptan las tres versiones. La 1 no guardaba la marca de "ya enviado";
        tirar la tabla de alguien por eso seria una faena mucho mayor que el
        ultimo reenvio que provoca. */
-    if(c.magic!=KG_MAGIC ||
-       (c.ver!=KG_VER && c.ver!=KG_VER_SIN_CENTRAR &&
+    /* Cada motor lee solo lo suyo: Gaudry-Schost la 5, Kangaroo de la 1 a la
+       3. Ver KG_VER_GS. */
+    int es_gs = (c.ver==KG_VER_GS);
+    if(c.magic!=KG_MAGIC || es_gs!=(kg_negacion?1:0) ||
+       (c.ver!=KG_VER_GS && c.ver!=KG_VER_SIN_CENTRAR &&
         c.ver!=KG_VER_CON_ENVIADO && c.ver!=KG_VER_SIN_ENVIADO) ||
        c.dbits!=(uint32_t)dbits ||
        memcmp(c.pub,pub,33)!=0 || memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){
@@ -547,7 +518,7 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     /* ¿Desde donde mide el fichero las distancias de los salvajes, y desde
        donde las mide este motor? Si no coinciden hay que convertirlas: son
        exactamente W/2 de diferencia, ni una mas. */
-    int fichero_centrado = (c.ver==KG_VER);
+    int fichero_centrado = es_gs;
     int motor_centrado   = kg_negacion?1:0;
 
     /* PERO una tabla de la version 4 no se puede leer sin mapa de negacion.
@@ -721,6 +692,9 @@ typedef struct {
      * y 82 en el #155, o sea mas del doble que las 32 con las que ya se mide
      * 1,38. Por eso se deja encendido. */
     int      negacion;
+    /* Con negacion (Gaudry-Schost): cuantos saltos de escape hay detras de los
+       njumps normales. Ver kg_setup. */
+    int      nesc;
 
     /* Tabla de saltos: S[i] = 2^i * G, en afin */
     int      njumps;
@@ -955,6 +929,51 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
      *
      * El salto medio conviene que ronde raiz(W)/2: mas corto y los canguros
      * tardan en separarse, mas largo y se pasan de largo de la zona util. */
+    c->nesc=0;
+    if(kg_negacion){
+        /* ---- Gaudry-Schost con negacion: la tabla ----
+         *
+         * 64 saltos normales y 64 de escape, al azar, sacados de la clave
+         * publica como en la politica 1 (todos los aparatos del cluster
+         * construyen la MISMA). Todos del mismo tamano, de media 2^(lb-1) con
+         *
+         *     lb = 1,5 * dbits + 8
+         *
+         * y esa cifra no es de adorno: es lo que hace que funcione. Con
+         * negacion el camino no avanza, va y viene —la distancia hace un paseo
+         * al azar—, y un paseo al azar de L pasos con saltos de tamano m cubre
+         * unos m*raiz(L) numeros. Si en ese trozo caben pocos mas que L, el
+         * camino vuelve a pisar un numero por el que ya paso, y en un camino
+         * determinista eso es un ciclo del que no sale. Para que no pase, m
+         * tiene que ser mucho mayor que L^1,5, con L = 2^dbits. Con los saltos
+         * de raiz(W)/2 de Kangaroo, en el #40 con dbits 14 salian 17 puntos
+         * distinguidos donde tocaban 244.
+         *
+         * Los de escape son otra tabla, elegida por el punto (ver kg_run). */
+        int n=64; if(n>KG_MAX_JUMPS/2) n=KG_MAX_JUMPS/2;
+        c->njumps=n;
+        c->nesc=KG_MAX_JUMPS-n;
+        uint64_t s=0xA5A5A5A5DEADBEEFULL;
+        for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
+        int lb=(3*dp_bits)/2+8; if(lb>c->bits-3) lb=c->bits-3; if(lb<4) lb=4;
+        for(int i=0;i<n+c->nesc;i++){      /* detras, los de escape */
+            sc_zero(c->jlen[i]);
+            int lbi = lb;
+            for(int w=0;w<4;w++){
+                s+=0x9E3779B97F4A7C15ULL;
+                uint64_t z=s;
+                z=(z^(z>>30))*0xBF58476D1CE4E5B9ULL;
+                z=(z^(z>>27))*0x94D049BB133111EBULL;
+                c->jlen[i][w]=z^(z>>31);
+            }
+            int top=(lbi-1)/64, sh=(lbi-1)%64;
+            for(int w=3;w>top;w--) c->jlen[i][w]=0;
+            if(sh<63) c->jlen[i][top]&=((1ULL<<(sh+1))-1);
+            if(sc_bits(c->jlen[i])==0) sc_set_u64(c->jlen[i],1);
+            JP S; kg_scalar_mul(&S,c->jlen[i],FIELD_GX,FIELD_GY);
+            kg_normalize(&S,c->jx[i],c->jy[i]);
+        }
+    }else
     if(kg_politica_saltos==1){
         /* Longitudes al azar entre 1 y 2^(bits/2), o sea de media raiz(W)/2,
            que es lo que se quiere. El azar sale de la clave publica con
@@ -1030,6 +1049,7 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
      * La longitud es pequena a proposito: lo unico que tiene que hacer es sacar
      * al canguro del ciclo, y desde el punto nuevo el camino sigue como siempre.
      */
+    if(!kg_negacion)
     {
         sc_t le; sc_set_u64(le,3);         /* 3 no es potencia de dos */
         for(int intento=0;intento<64;intento++){
@@ -1172,7 +1192,10 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
  * mapa de negacion (ver KG_VER). Aqui no se convierte al vuelo como en el
  * fichero: dos aparatos que no coincidan tienen caminos distintos y ademas no se
  * cruzarian bien, asi que es mejor que se rechacen y se vea. */
-#define KG_NET_VER   3u
+/* Version 4: Gaudry-Schost con negacion. Sus puntos no le sirven a un aparato
+ * con Kangaroo ni al reves (ver KG_VER_GS), asi que un aparato sin actualizar
+ * se rechaza, igual que en la 2. */
+#define KG_NET_VER   4u
 /* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
    struct, para que el relleno del compilador no forme parte del formato. */
 #define KG_NET_CAB   (4+4+33+32+32+4+4)
@@ -1444,6 +1467,8 @@ typedef struct {
      * Lo que se pierde es su rastro desde el ultimo distinguido. Lo que se gana
      * es que no haya ningun camino por el que esto se quede parado. */
     uint64_t pasos_sin_dp;
+    uint64_t gs_esc[4][2];   /* ultimos puntos de escape (negacion) */
+    int gs_ep;
 } Kangaroo;
 
 /* Suelta un rebano y lo hace saltar hasta que aparezca la solucion o se pare.
@@ -1529,8 +1554,19 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         for(int j=3;j>=0;j--){ uint64_t n=centro[j]&1ULL; centro[j]=(centro[j]>>1)|(arr<<63); arr=n; }
     }
 
+    sc_t gs_cuarto; sc_shr(gs_cuarto,c->medio,1);
+    int bits_medio=sc_bits(c->medio);
     auto soltar=[&](int i,int manso){
         sc_t d; sc_zero(d);
+        if(c->negacion){
+            /* Gaudry-Schost con negacion (Galbraith y Ruprai): mansos por
+               [0, W/2) —con la negacion, eso es todo [-W/2, W/2]— y salvajes
+               por P'' + [-W/4, W/4). Cada camino se suelta de nuevo en cuanto
+               da un distinguido, asi que lo que importa es de DONDE salen,
+               no a donde llegan: no hace falta que avancen. */
+            sc_t u; azar_bajo(u,c->medio,bits_medio);
+            if(manso) sc_copy(d,u); else sc_sub_n(d,u,gs_cuarto);
+        }else
         if(c->politica_salida==1){
             /* Un valor al azar de disp_bits bits, y al manso se le suma el
                centro. El salvaje se queda pegado a P. Asi la distancia entre
@@ -1607,6 +1643,29 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                Ver el comentario de Kangaroo.ventana y el de kg_setup. */
             if(K[i].esc_act && K[i].x[0]==K[i].esc_obj[0]
                             && K[i].x[1]==K[i].esc_obj[1]){
+                if(c->negacion){
+                    /* Salto de escape elegido por el PUNTO, con otros bits de
+                       la x. Con uno fijo, dos escapes con signos contrarios se
+                       anulan y el camino vuelve exactamente a donde estaba: un
+                       ciclo que pasa por los escapes y que la ventana no ve,
+                       porque se vacia en cada escape. Medido: un escape cada
+                       3,3 pasos. Con 64 para elegir, al ritmo de la teoria,
+                       uno cada 2*njumps. */
+                    h=c->njumps+(int)(K[i].x[1]%(uint64_t)c->nesc);
+                    /* Y si aun asi se escapa dos veces del mismo punto, el
+                       camino ha dado la vuelta: se suelta de nuevo. En
+                       Gaudry-Schost soltar es lo normal, no una perdida. */
+                    int visto=0;
+                    for(int q=0;q<4;q++) if(K[i].gs_esc[q][0]==K[i].x[0] && K[i].gs_esc[q][1]==K[i].x[1]) visto=1;
+                    if(visto){ c->escapes_repe.fetch_add(1); soltar(i,K[i].manso);
+                               h=(int)(K[i].x[0]%(uint64_t)c->njumps); jmp[i]=h;
+                               fe_sub(den[i],c->jx[h],K[i].x); mal[i]=0;
+                               int z0=1; for(int j=0;j<4;j++) if(den[i][j]) z0=0;
+                               if(z0){ den[i][0]=1; den[i][1]=den[i][2]=den[i][3]=0; mal[i]=1; }
+                               continue; }
+                    K[i].gs_esc[K[i].gs_ep][0]=K[i].x[0]; K[i].gs_esc[K[i].gs_ep][1]=K[i].x[1];
+                    K[i].gs_ep=(K[i].gs_ep+1)&3;
+                }else
                 h=c->njumps; K[i].esc_act=0;
                 K[i].vn=0; K[i].vpos=0;   /* tras escapar, el camino es otro */
                 c->escapes.fetch_add(1);
@@ -1673,6 +1732,9 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                 if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,
                              otro,&otro_manso,&mismo))
                     kg_resolver(c,K[i].dist,K[i].manso,otro);
+                /* Gaudry-Schost: el camino acaba en su distinguido y se
+                   empieza otro desde un sitio nuevo. */
+                if(c->negacion){ soltar(i,K[i].manso); continue; }
                 else if(mismo){
                     c->pegados.fetch_add(1);
                     if(c->soltar_muertos){
