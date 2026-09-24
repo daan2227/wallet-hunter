@@ -2419,6 +2419,22 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
        recolector de un cluster y no busca). Solo con el motor de negacion,
        que es el que hay en la GPU. */
     g_gpu_hilo_vivo=false;
+    /* ¿Le da tiempo a la GPU a aportar algo? Sus 65.536 canguros tienen que
+     * andar unos 2^dbits saltos cada uno antes de dar su primer distinguido.
+     * Si eso pasa de una vigesima del trabajo esperado (1,4 raices de W), la
+     * clave casi siempre aparece antes de que la GPU cuente, y mientras tanto
+     * le quita potencia a la CPU (comparten limite de consumo y temperatura).
+     * Medido en el A56 con el #60: 14,96 M/s con GPU frente a 16,93 sin ella.
+     * En esos rangos no se usa. */
+    bool gpu_sirve=true;
+    if(g_usar_gpu.load() && hilos>0 && g_kg.negacion){
+        double arranque=65536.0*ldexp(1.0,g_kg.dbits);
+        double trabajo=1.4*sqrt(ldexp(1.0,g_kg.bits>0?g_kg.bits:1));
+        if(arranque>trabajo/20.0) gpu_sirve=false;
+    }
+    if(g_usar_gpu.load() && hilos>0 && g_kg.negacion && !gpu_sirve){
+        gpu_estado("not used: range too small for the GPU to catch up (it only helps from about #100 on)");
+    }else
     if(g_usar_gpu.load() && hilos>0 && g_kg.negacion){
         if(pthread_create(&g_gpu_hilo,NULL,gpu_thread,NULL)==0) g_gpu_hilo_vivo=true;
     }else gpu_estado(g_usar_gpu.load()?"not used (collector mode)":"off");
@@ -2441,6 +2457,46 @@ Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
                 g_kg_ops_previas+(uint64_t)g_kg.saltos.load());
     kg_free(&g_kg);
     g_kg_vivo=false;
+}
+
+/* Kangaroo en la GPU, medido: saltos por segundo del bucle de verdad sobre
+ * un rango como el del #140, con varios repartos (invocaciones x canguros por
+ * invocacion). Con el motor parado. Sirve para saber donde se pierde: la
+ * prueba de multiplicaciones promete ~10 veces mas de lo que dio en el A56. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_benchGpuKangaroo(JNIEnv *env, jobject){
+    std::ostringstream o;
+    uint8_t pub[33],ini[32],fin[32];
+    sc_t k; sc_set_u64(k,987654321ULL);
+    JP P; kg_scalar_mul(&P,k,FIELD_GX,FIELD_GY); fe_t x,y; kg_normalize(&P,x,y);
+    pub[0]=(y[0]&1)?3:2;
+    for(int w=0;w<4;w++) for(int bb=0;bb<8;bb++) pub[1+(3-w)*8+(7-bb)]=(uint8_t)(x[w]>>(bb*8));
+    memset(ini,0,32); ini[31-139/8]=(uint8_t)(1u<<(139%8));
+    memset(fin,0,32); for(int q2=0;q2<=139;q2++) fin[31-q2/8]|=(uint8_t)(1u<<(q2%8));
+    int neg_antes=kg_negacion; kg_negacion=1;
+    struct Rep{ uint32_t inv, kpi; } reps[]={{128,128},{256,64},{512,32},{1024,16},{2048,8}};
+    for(auto r:reps){
+        KangarooCtx *kc=new KangarooCtx();
+        if(!kg_setup(kc,pub,ini,fin,28,18)){ delete kc; continue; }
+        std::string err;
+        GpuKg *g=gpu_kg_crear(kc,KANGAROO_SPV,sizeof(KANGAROO_SPV),r.inv,r.kpi,0x5EED,err);
+        if(!g){ o<<"GPU: "<<err<<"\n"; kg_free(kc); delete kc; break; }
+        uint32_t pasos=4;
+        for(int w=0;w<6;w++){ double seg=gpu_kg_tanda(g,kc,pasos); if(seg<0.03&&pasos<4096) pasos*=2; }
+        long long s0=g->saltos; auto t0=std::chrono::steady_clock::now(); double gpu_seg=0;
+        while(std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count()<2.0){
+            double seg=gpu_kg_tanda(g,kc,pasos); gpu_seg+=seg;
+            if(seg<0.03&&pasos<4096) pasos*=2; else if(seg>0.12&&pasos>1) pasos/=2;
+        }
+        double tot=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        long long n=g->saltos-s0;
+        o<<r.inv<<" x "<<r.kpi<<": "<<std::fixed<<std::setprecision(2)<<n/tot/1e6<<" M jumps/s"
+         <<"  (GPU busy "<<(int)(100*gpu_seg/tot)<<"%, "<<pasos<<" steps/batch)\n";
+        if(o.str().size()<200 && r.inv==128) o.str(g->nombre+"\n"+o.str());
+        gpu_kg_destruir(g); kg_free(kc); delete kc;
+    }
+    kg_negacion=neg_antes;
+    return env->NewStringUTF(o.str().c_str());
 }
 
 /* Usar o no la GPU en la proxima busqueda de Kangaroo. */

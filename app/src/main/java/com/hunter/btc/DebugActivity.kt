@@ -237,6 +237,13 @@ class DebugActivity : AppCompatActivity() {
                 runOnUiThread { tvBench.text = r }
             }.start()
         }, arriba = 8))
+        benchCard.addView(aLoAncho(actionBtn("GPU Kangaroo benchmark", ACCENT2) {
+            tvBench.text = "Running Kangaroo on the GPU (about 15 s)…"
+            Thread {
+                val r = try { HunterEngine.benchGpuKangaroo() } catch (e: Throwable) { "Error: ${e.message}" }
+                runOnUiThread { tvBench.text = r }
+            }.start()
+        }, arriba = 8))
         root.addView(benchCard)
 
         // ── ARCHIVOS DE LOG ───────────────────────────────────────────────

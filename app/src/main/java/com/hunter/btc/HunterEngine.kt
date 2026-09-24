@@ -171,6 +171,8 @@ object HunterEngine {
     external fun gpuEstado(): String
     /** Saltos hechos por la GPU en esta búsqueda (ya van en el total). */
     external fun gpuSaltos(): Long
+    /** Kangaroo en la GPU, medido con varios repartos. Unos 15 s; motor parado. */
+    external fun benchGpuKangaroo(): String
 
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.

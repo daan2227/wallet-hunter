@@ -2679,6 +2679,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvBlockProgress?.text = if (kgOpsSeg > 1000) {
                 val seg = (kgOpsEsperadas - ops) / kgOpsSeg
                 when {
+                    // Pasada la media ya no hay "lo que falta": cualquier
+                    // momento es tan probable como otro. Salía "-1 min".
+                    seg <= 0          -> "past average"
+                    seg < 60          -> "< 1 min"
                     seg < 5400        -> "${(seg / 60).toInt()} min"
                     seg < 172_800     -> "${(seg / 3600).toInt()} h"
                     seg < 6.3e7       -> "${(seg / 86_400).toInt()} days"
