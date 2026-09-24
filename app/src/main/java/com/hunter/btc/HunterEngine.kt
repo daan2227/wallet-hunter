@@ -160,6 +160,17 @@ object HunterEngine {
      * comprobadas antes contra la CPU. Fuera del hilo principal.
      */
     external fun benchGpu(): String
+    /**
+     * La GPU de este móvil, sin medir: "nombre|fabricante|vulkan|driver|MB|hilos
+     * por grupo", o "" si no hay Vulkan.
+     */
+    external fun gpuInfo(): String
+    /** Usar la GPU como trabajador más de Kangaroo, en la próxima búsqueda. */
+    external fun setUsarGpu(v: Boolean)
+    /** Qué hace la GPU: off, starting, running on X, error: … */
+    external fun gpuEstado(): String
+    /** Saltos hechos por la GPU en esta búsqueda (ya van en el total). */
+    external fun gpuSaltos(): Long
 
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.

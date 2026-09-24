@@ -1,0 +1,442 @@
+#version 450
+// GENERADO por gen_kangaroo.py: no editar a mano. Ver alli el porque.
+layout(local_size_x = 64) in;
+struct F { uvec4 lo; uvec4 hi; };
+layout(std430, binding = 0) buffer Kang { uint K[]; };      // estado, ST uints por canguro
+layout(std430, binding = 1) readonly buffer Tabla { uint T[]; };  // 128 x (jx 8, jy 8, jlen 8)
+layout(std430, binding = 2) buffer Salida { uint S[]; };    // [0] nDP, [1] nRestart, [2] saltos, [3] -, DPs, restarts
+layout(std430, binding = 3) buffer Pfx { uint PF[]; };      // productos parciales, 8 por canguro
+layout(push_constant) uniform Params { uint kpi; uint pasos; uint dmlo; uint dmhi; uint tope; uint maxdp; uint total; } pc;
+const uint ST = 72u;
+const uint REC = 13u;
+#define MA(x,y) { uint hi_, lo_, k_; umulExtended(x, y, hi_, lo_); c0 = uaddCarry(c0, lo_, k_); hi_ += k_; c1 = uaddCarry(c1, hi_, k_); c2 += k_; }
+
+F f_mul(F a, F b) {
+    F r;
+    uint c0 = 0u, c1 = 0u, c2 = 0u;
+    MA(a.lo.x, b.lo.x)
+    uint t0 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.lo.y)
+    MA(a.lo.y, b.lo.x)
+    uint t1 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.lo.z)
+    MA(a.lo.y, b.lo.y)
+    MA(a.lo.z, b.lo.x)
+    uint t2 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.lo.w)
+    MA(a.lo.y, b.lo.z)
+    MA(a.lo.z, b.lo.y)
+    MA(a.lo.w, b.lo.x)
+    uint t3 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.hi.x)
+    MA(a.lo.y, b.lo.w)
+    MA(a.lo.z, b.lo.z)
+    MA(a.lo.w, b.lo.y)
+    MA(a.hi.x, b.lo.x)
+    uint t4 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.hi.y)
+    MA(a.lo.y, b.hi.x)
+    MA(a.lo.z, b.lo.w)
+    MA(a.lo.w, b.lo.z)
+    MA(a.hi.x, b.lo.y)
+    MA(a.hi.y, b.lo.x)
+    uint t5 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.hi.z)
+    MA(a.lo.y, b.hi.y)
+    MA(a.lo.z, b.hi.x)
+    MA(a.lo.w, b.lo.w)
+    MA(a.hi.x, b.lo.z)
+    MA(a.hi.y, b.lo.y)
+    MA(a.hi.z, b.lo.x)
+    uint t6 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.x, b.hi.w)
+    MA(a.lo.y, b.hi.z)
+    MA(a.lo.z, b.hi.y)
+    MA(a.lo.w, b.hi.x)
+    MA(a.hi.x, b.lo.w)
+    MA(a.hi.y, b.lo.z)
+    MA(a.hi.z, b.lo.y)
+    MA(a.hi.w, b.lo.x)
+    uint t7 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.y, b.hi.w)
+    MA(a.lo.z, b.hi.z)
+    MA(a.lo.w, b.hi.y)
+    MA(a.hi.x, b.hi.x)
+    MA(a.hi.y, b.lo.w)
+    MA(a.hi.z, b.lo.z)
+    MA(a.hi.w, b.lo.y)
+    uint t8 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.z, b.hi.w)
+    MA(a.lo.w, b.hi.z)
+    MA(a.hi.x, b.hi.y)
+    MA(a.hi.y, b.hi.x)
+    MA(a.hi.z, b.lo.w)
+    MA(a.hi.w, b.lo.z)
+    uint t9 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.lo.w, b.hi.w)
+    MA(a.hi.x, b.hi.z)
+    MA(a.hi.y, b.hi.y)
+    MA(a.hi.z, b.hi.x)
+    MA(a.hi.w, b.lo.w)
+    uint t10 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.hi.x, b.hi.w)
+    MA(a.hi.y, b.hi.z)
+    MA(a.hi.z, b.hi.y)
+    MA(a.hi.w, b.hi.x)
+    uint t11 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.hi.y, b.hi.w)
+    MA(a.hi.z, b.hi.z)
+    MA(a.hi.w, b.hi.y)
+    uint t12 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.hi.z, b.hi.w)
+    MA(a.hi.w, b.hi.z)
+    uint t13 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a.hi.w, b.hi.w)
+    uint t14 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    uint t15 = c0;
+    uint k_, hi_, lo_; uint acc = 0u, ca = 0u; uint mh = 0u;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t0, k_); ca += k_;
+    umulExtended(t8, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    uint x0 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t1, k_); ca += k_;
+    umulExtended(t9, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t8, k_); ca += k_;
+    uint x1 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t2, k_); ca += k_;
+    umulExtended(t10, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t9, k_); ca += k_;
+    uint x2 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t3, k_); ca += k_;
+    umulExtended(t11, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t10, k_); ca += k_;
+    uint x3 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t4, k_); ca += k_;
+    umulExtended(t12, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t11, k_); ca += k_;
+    uint x4 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t5, k_); ca += k_;
+    umulExtended(t13, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t12, k_); ca += k_;
+    uint x5 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t6, k_); ca += k_;
+    umulExtended(t14, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t13, k_); ca += k_;
+    uint x6 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t7, k_); ca += k_;
+    umulExtended(t15, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t14, k_); ca += k_;
+    uint x7 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = 0u;
+    acc = uaddCarry(acc, t15, k_); ca += k_;
+    uint x8 = acc;
+    acc = ca; ca = 0u;
+    uint x9 = acc;
+    {
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    {
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    {
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    uint s0, s1, s2, s3, s4, s5, s6, s7, kk;
+    s0 = uaddCarry(x0, 977u, kk);
+    s1 = uaddCarry(x1, 1u + kk, kk);
+    s2 = uaddCarry(x2, kk, kk);
+    s3 = uaddCarry(x3, kk, kk);
+    s4 = uaddCarry(x4, kk, kk);
+    s5 = uaddCarry(x5, kk, kk);
+    s6 = uaddCarry(x6, kk, kk);
+    s7 = uaddCarry(x7, kk, kk);
+    bool ge = kk != 0u;
+    r.lo = ge ? uvec4(s0, s1, s2, s3) : uvec4(x0, x1, x2, x3);
+    r.hi = ge ? uvec4(s4, s5, s6, s7) : uvec4(x4, x5, x6, x7);
+    return r;
+}
+F f_sqr(F a) { return f_mul(a, a); }
+
+const uint P0 = 0xFFFFFC2Fu, P1 = 0xFFFFFFFEu, PX = 0xFFFFFFFFu;
+// r = a - b mod p (a, b < p)
+F f_sub(F a, F b) {
+    uint br, k; uint r0,r1,r2,r3,r4,r5,r6,r7;
+    r0 = usubBorrow(a.lo.x, b.lo.x, br);
+    r1 = usubBorrow(a.lo.y, b.lo.y, k); r1 = usubBorrow(r1, br, br); br += k;
+    r2 = usubBorrow(a.lo.z, b.lo.z, k); r2 = usubBorrow(r2, br, br); br += k;
+    r3 = usubBorrow(a.lo.w, b.lo.w, k); r3 = usubBorrow(r3, br, br); br += k;
+    r4 = usubBorrow(a.hi.x, b.hi.x, k); r4 = usubBorrow(r4, br, br); br += k;
+    r5 = usubBorrow(a.hi.y, b.hi.y, k); r5 = usubBorrow(r5, br, br); br += k;
+    r6 = usubBorrow(a.hi.z, b.hi.z, k); r6 = usubBorrow(r6, br, br); br += k;
+    r7 = usubBorrow(a.hi.w, b.hi.w, k); r7 = usubBorrow(r7, br, br); br += k;
+    // si hubo prestamo, + p
+    uint m = (br != 0u) ? 0xFFFFFFFFu : 0u; uint c;
+    r0 = uaddCarry(r0, P0 & m, c);
+    r1 = uaddCarry(r1, P1 & m, k); r1 = uaddCarry(r1, c, c); c += k;
+    r2 = uaddCarry(r2, PX & m, k); r2 = uaddCarry(r2, c, c); c += k;
+    r3 = uaddCarry(r3, PX & m, k); r3 = uaddCarry(r3, c, c); c += k;
+    r4 = uaddCarry(r4, PX & m, k); r4 = uaddCarry(r4, c, c); c += k;
+    r5 = uaddCarry(r5, PX & m, k); r5 = uaddCarry(r5, c, c); c += k;
+    r6 = uaddCarry(r6, PX & m, k); r6 = uaddCarry(r6, c, c); c += k;
+    r7 = uaddCarry(r7, PX & m, k); r7 = uaddCarry(r7, c, c);
+    F r; r.lo = uvec4(r0,r1,r2,r3); r.hi = uvec4(r4,r5,r6,r7); return r;
+}
+bool f_cero(F a) { return all(equal(a.lo, uvec4(0u))) && all(equal(a.hi, uvec4(0u))); }
+F f_uno() { F r; r.lo = uvec4(1u,0u,0u,0u); r.hi = uvec4(0u); return r; }
+
+// Inverso: a^(p-2), la misma cadena de adicion que fe_inv (jac_batch.h).
+F f_sqrn(F a, int n) { for (int i = 0; i < n; i++) a = f_sqr(a); return a; }
+F f_inv(F a) {
+    F x2 = f_mul(f_sqr(a), a);
+    F x3 = f_mul(f_sqr(x2), a);
+    F x6 = f_mul(f_sqrn(x3, 3), x3);
+    F x9 = f_mul(f_sqrn(x6, 3), x3);
+    F x11 = f_mul(f_sqrn(x9, 2), x2);
+    F x22 = f_mul(f_sqrn(x11, 11), x11);
+    F x44 = f_mul(f_sqrn(x22, 22), x22);
+    F x88 = f_mul(f_sqrn(x44, 44), x44);
+    F x176 = f_mul(f_sqrn(x88, 88), x88);
+    F x220 = f_mul(f_sqrn(x176, 44), x44);
+    F x223 = f_mul(f_sqrn(x220, 3), x3);
+    F t = f_mul(f_sqrn(x223, 23), x22);
+    t = f_mul(f_sqrn(t, 5), a);
+    t = f_mul(f_sqrn(t, 3), x2);
+    t = f_mul(f_sqrn(t, 2), a);
+    return t;
+}
+
+// Distancias modulo n.
+const uint N0=0xD0364141u, N1=0xBFD25E8Cu, N2=0xAF48A03Bu, N3=0xBAAEDCE6u, N4=0xFFFFFFFEu, N5=0xFFFFFFFFu, N6=0xFFFFFFFFu, N7=0xFFFFFFFFu;
+F d_add(F a, F b) {
+    uint c, k; uint s0,s1,s2,s3,s4,s5,s6,s7;
+    s0 = uaddCarry(a.lo.x, b.lo.x, c);
+    s1 = uaddCarry(a.lo.y, b.lo.y, k); s1 = uaddCarry(s1, c, c); c += k;
+    s2 = uaddCarry(a.lo.z, b.lo.z, k); s2 = uaddCarry(s2, c, c); c += k;
+    s3 = uaddCarry(a.lo.w, b.lo.w, k); s3 = uaddCarry(s3, c, c); c += k;
+    s4 = uaddCarry(a.hi.x, b.hi.x, k); s4 = uaddCarry(s4, c, c); c += k;
+    s5 = uaddCarry(a.hi.y, b.hi.y, k); s5 = uaddCarry(s5, c, c); c += k;
+    s6 = uaddCarry(a.hi.z, b.hi.z, k); s6 = uaddCarry(s6, c, c); c += k;
+    s7 = uaddCarry(a.hi.w, b.hi.w, k); s7 = uaddCarry(s7, c, c); c += k;
+    uint br; uint t0,t1,t2,t3,t4,t5,t6,t7;
+    t0 = usubBorrow(s0, N0, br);
+    t1 = usubBorrow(s1, N1, k); t1 = usubBorrow(t1, br, br); br += k;
+    t2 = usubBorrow(s2, N2, k); t2 = usubBorrow(t2, br, br); br += k;
+    t3 = usubBorrow(s3, N3, k); t3 = usubBorrow(t3, br, br); br += k;
+    t4 = usubBorrow(s4, N4, k); t4 = usubBorrow(t4, br, br); br += k;
+    t5 = usubBorrow(s5, N5, k); t5 = usubBorrow(t5, br, br); br += k;
+    t6 = usubBorrow(s6, N6, k); t6 = usubBorrow(t6, br, br); br += k;
+    t7 = usubBorrow(s7, N7, k); t7 = usubBorrow(t7, br, br); br += k;
+    bool resta = (c != 0u) || (br == 0u);
+    F r;
+    r.lo = resta ? uvec4(t0,t1,t2,t3) : uvec4(s0,s1,s2,s3);
+    r.hi = resta ? uvec4(t4,t5,t6,t7) : uvec4(s4,s5,s6,s7);
+    return r;
+}
+F d_sub(F a, F b) {
+    uint br, k; uint r0,r1,r2,r3,r4,r5,r6,r7;
+    r0 = usubBorrow(a.lo.x, b.lo.x, br);
+    r1 = usubBorrow(a.lo.y, b.lo.y, k); r1 = usubBorrow(r1, br, br); br += k;
+    r2 = usubBorrow(a.lo.z, b.lo.z, k); r2 = usubBorrow(r2, br, br); br += k;
+    r3 = usubBorrow(a.lo.w, b.lo.w, k); r3 = usubBorrow(r3, br, br); br += k;
+    r4 = usubBorrow(a.hi.x, b.hi.x, k); r4 = usubBorrow(r4, br, br); br += k;
+    r5 = usubBorrow(a.hi.y, b.hi.y, k); r5 = usubBorrow(r5, br, br); br += k;
+    r6 = usubBorrow(a.hi.z, b.hi.z, k); r6 = usubBorrow(r6, br, br); br += k;
+    r7 = usubBorrow(a.hi.w, b.hi.w, k); r7 = usubBorrow(r7, br, br); br += k;
+    uint m = (br != 0u) ? 0xFFFFFFFFu : 0u; uint c;
+    r0 = uaddCarry(r0, N0 & m, c);
+    r1 = uaddCarry(r1, N1 & m, k); r1 = uaddCarry(r1, c, c); c += k;
+    r2 = uaddCarry(r2, N2 & m, k); r2 = uaddCarry(r2, c, c); c += k;
+    r3 = uaddCarry(r3, N3 & m, k); r3 = uaddCarry(r3, c, c); c += k;
+    r4 = uaddCarry(r4, N4 & m, k); r4 = uaddCarry(r4, c, c); c += k;
+    r5 = uaddCarry(r5, N5 & m, k); r5 = uaddCarry(r5, c, c); c += k;
+    r6 = uaddCarry(r6, N6 & m, k); r6 = uaddCarry(r6, c, c); c += k;
+    r7 = uaddCarry(r7, N7 & m, k); r7 = uaddCarry(r7, c, c);
+    F r; r.lo = uvec4(r0,r1,r2,r3); r.hi = uvec4(r4,r5,r6,r7); return r;
+}
+
+F ld(uint base) { F r; r.lo = uvec4(K[base],K[base+1u],K[base+2u],K[base+3u]); r.hi = uvec4(K[base+4u],K[base+5u],K[base+6u],K[base+7u]); return r; }
+void st(uint base, F v) { K[base]=v.lo.x; K[base+1u]=v.lo.y; K[base+2u]=v.lo.z; K[base+3u]=v.lo.w; K[base+4u]=v.hi.x; K[base+5u]=v.hi.y; K[base+6u]=v.hi.z; K[base+7u]=v.hi.w; }
+F ldT(uint base) { F r; r.lo = uvec4(T[base],T[base+1u],T[base+2u],T[base+3u]); r.hi = uvec4(T[base+4u],T[base+5u],T[base+6u],T[base+7u]); return r; }
+F ldP(uint base) { F r; r.lo = uvec4(PF[base],PF[base+1u],PF[base+2u],PF[base+3u]); r.hi = uvec4(PF[base+4u],PF[base+5u],PF[base+6u],PF[base+7u]); return r; }
+void stP(uint base, F v) { PF[base]=v.lo.x; PF[base+1u]=v.lo.y; PF[base+2u]=v.lo.z; PF[base+3u]=v.lo.w; PF[base+4u]=v.hi.x; PF[base+5u]=v.hi.y; PF[base+6u]=v.hi.z; PF[base+7u]=v.hi.w; }
+
+// Estado de cada canguro (ST = 72 uints):
+//  0 x   8 y   16 dist   24 flags (1 eps<0, 2 manso, 4 aparcado, 8 escape pendiente)
+//  25 salto elegido   26 pasos sin distinguido   27 vn | vpos<<8 | gs_ep<<16
+//  28 esc_obj (64)   30 gs_esc[4] (64 c/u)   38 ventana[16] (64 c/u)
+const uint FL_EPS = 1u, FL_MANSO = 2u, FL_APARC = 4u, FL_ESC = 8u;
+
+void aparcar(uint kid, uint base) {
+    K[base+24u] |= FL_APARC;
+    uint i = atomicAdd(S[1], 1u);
+    if (i < pc.total) S[4u + pc.maxdp*REC + i] = kid;
+}
+
+bool menor64(uint alo, uint ahi, uint blo, uint bhi) { return ahi < bhi || (ahi == bhi && alo < blo); }
+
+void main() {
+    uint inv0 = gl_GlobalInvocationID.x;
+    uint k0 = inv0 * pc.kpi;
+    if (k0 >= pc.total) return;
+    uint nk = min(pc.kpi, pc.total - k0);
+    uint hechos = 0u;
+    for (uint paso = 0u; paso < pc.pasos; paso++) {
+        // 1) salto de cada uno y producto de denominadores
+        F acc = f_uno();
+        for (uint i = 0u; i < nk; i++) {
+            uint kid = k0 + i, b = kid * ST;
+            uint fl = K[b+24u];
+            if ((fl & FL_APARC) != 0u) { stP(kid*8u, acc); continue; }
+            uint x0 = K[b], x1 = K[b+1u];
+            uint h = x0 & 63u;
+            if ((fl & FL_ESC) != 0u && x0 == K[b+28u] && x1 == K[b+29u]) {
+                uint vv = K[b+27u]; uint gep = (vv >> 16) & 3u;
+                bool visto = false;
+                for (uint q = 0u; q < 4u; q++) if (K[b+30u+2u*q] == x0 && K[b+31u+2u*q] == x1) visto = true;
+                if (visto) { aparcar(kid, b); stP(kid*8u, acc); continue; }
+                K[b+30u+2u*gep] = x0; K[b+31u+2u*gep] = x1;
+                gep = (gep + 1u) & 3u;
+                K[b+27u] = (gep << 16);                // vn = 0, vpos = 0
+                h = 64u + (K[b+2u] & 63u);             // x[1] % 64: limb 2
+                fl &= ~FL_ESC; K[b+24u] = fl;
+            }
+            K[b+25u] = h;
+            F x = ld(b);
+            F den = f_sub(ldT(h*24u), x);
+            if (f_cero(den)) { aparcar(kid, b); stP(kid*8u, acc); continue; }
+            acc = f_mul(acc, den);
+            stP(kid*8u, acc);
+        }
+        F inv = f_inv(acc);
+        // 2) de atras adelante
+        for (int ii = int(nk) - 1; ii >= 0; ii--) {
+            uint i = uint(ii);
+            uint kid = k0 + i, b = kid * ST;
+            uint fl = K[b+24u];
+            if ((fl & FL_APARC) != 0u) continue;
+            uint h = K[b+25u];
+            F x = ld(b);
+            F jx = ldT(h*24u);
+            F den = f_sub(jx, x);
+            F dinv = (i > 0u) ? f_mul(inv, ldP((kid-1u)*8u)) : inv;
+            inv = f_mul(inv, den);
+            // rescate
+            uint sdp = K[b+26u] + 1u; K[b+26u] = sdp;
+            if (sdp > pc.tope) { aparcar(kid, b); continue; }
+            // punto distinguido: se apunta y se aparca (Gaudry-Schost suelta de nuevo)
+            if ((x.lo.x & pc.dmlo) == 0u && (x.lo.y & pc.dmhi) == 0u) {
+                uint j = atomicAdd(S[0], 1u);
+                if (j < pc.maxdp) {
+                    uint o = 4u + j*REC;
+                    S[o]=x.lo.x; S[o+1u]=x.lo.y; S[o+2u]=x.lo.z; S[o+3u]=x.lo.w;
+                    for (uint q = 0u; q < 8u; q++) S[o+4u+q] = K[b+16u+q];
+                    S[o+12u] = ((fl & FL_MANSO) != 0u) ? 1u : 0u;
+                }
+                aparcar(kid, b);
+                continue;
+            }
+            F y = ld(b+8u);
+            F lam = f_mul(f_sub(ldT(h*24u+8u), y), dinv);
+            F x3 = f_sub(f_sub(f_sqr(lam), x), jx);
+            F y3 = f_sub(f_mul(lam, f_sub(x, x3)), y);
+            F dist = ld(b+16u);
+            F jl = ldT(h*24u+16u);
+            dist = ((fl & FL_EPS) != 0u) ? d_sub(dist, jl) : d_add(dist, jl);
+            if ((y3.lo.x & 1u) != 0u) {
+                F cero; cero.lo = uvec4(0u); cero.hi = uvec4(0u);
+                y3 = f_sub(cero, y3);
+                fl ^= FL_EPS;
+            }
+            // ventana de ciclos: los dos ultimos cada paso, entera uno de cada 16
+            uint vv = K[b+27u];
+            uint vn = vv & 255u, vpos = (vv >> 8) & 255u, gep = (vv >> 16) & 3u;
+            uint jmax = ((sdp & 15u) == 0u) ? vn : min(vn, 2u);
+            for (uint j = 1u; j <= jmax; j++) {
+                uint idx = (vpos + 16u - j) & 15u;
+                if (K[b+38u+2u*idx] != x3.lo.x || K[b+39u+2u*idx] != x3.lo.y) continue;
+                uint mlo = x3.lo.x, mhi = x3.lo.y;
+                for (uint q = 1u; q < j; q++) {
+                    uint i2 = (vpos + 16u - q) & 15u;
+                    uint alo = K[b+38u+2u*i2], ahi = K[b+39u+2u*i2];
+                    if (menor64(alo, ahi, mlo, mhi)) { mlo = alo; mhi = ahi; }
+                }
+                K[b+28u] = mlo; K[b+29u] = mhi; fl |= FL_ESC;
+                break;
+            }
+            K[b+38u+2u*vpos] = x3.lo.x; K[b+39u+2u*vpos] = x3.lo.y;
+            vpos = (vpos + 1u) & 15u; vn = min(vn + 1u, 16u);
+            K[b+27u] = vn | (vpos << 8) | (gep << 16);
+            st(b, x3); st(b+8u, y3); st(b+16u, dist);
+            K[b+24u] = fl;
+            hechos++;
+        }
+    }
+    atomicAdd(S[2], hechos);
+}
+

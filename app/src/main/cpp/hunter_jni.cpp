@@ -34,6 +34,8 @@
 #include "jac_batch.h"
 #include "kangaroo.h"
 #include "fe_arm64.h"
+#include "gpu/gpu_kangaroo.h"
+#include "gpu/kangaroo_spv.h"
 #include "coincidencias.h"
 #include "bloom.h"
 
@@ -2234,6 +2236,50 @@ static void *kg_thread(void *p){
     return NULL;
 }
 
+/* ---------- La GPU como un trabajador mas ----------
+ *
+ * Si el usuario la activa, un hilo mas prepara la GPU (Vulkan) y la hace
+ * saltar sobre la MISMA tabla que los hilos de CPU: ver gpu/gpu_kangaroo.h.
+ * Se prepara dentro del hilo porque soltar los 65.536 canguros de la GPU son
+ * otras tantas multiplicaciones escalares, un par de segundos en un movil, y
+ * kangarooStart no debe tardar eso. */
+static std::atomic<int> g_usar_gpu(0);
+static pthread_t   g_gpu_hilo;
+static bool        g_gpu_hilo_vivo=false;
+static std::mutex  g_gpu_estado_mtx;
+static std::string g_gpu_estado="";
+static std::atomic<long long> g_gpu_saltos(0);
+
+static void gpu_estado(const std::string &e){
+    std::lock_guard<std::mutex> lk(g_gpu_estado_mtx); g_gpu_estado=e;
+}
+static void *gpu_thread(void *){
+    g_gpu_saltos.store(0);
+    gpu_estado("starting");
+    std::string err;
+    GpuKg *g=gpu_kg_crear(&g_kg,KANGAROO_SPV,sizeof(KANGAROO_SPV),1024,64,kg_semilla(0x6770),err);
+    if(!g){ gpu_estado("error: "+err); return NULL; }
+    gpu_estado("running on "+g->nombre);
+    /* Tandas de ~60 ms: Android corta el trabajo de GPU que tarda segundos, y
+       asi parar responde enseguida. El freno de CPU del usuario vale tambien
+       para la GPU (duerme en proporcion). */
+    uint32_t pasos=4;
+    while(!g_kg.parar.load() && !g_kg.encontrado.load()){
+        double seg=gpu_kg_tanda(g,&g_kg,pasos);
+        g_gpu_saltos.store(g->saltos);
+        if(seg<0.03 && pasos<4096) pasos*=2;
+        else if(seg>0.12 && pasos>1) pasos/=2;
+        int cpu=g_kg.cpu_limite.load();
+        if(cpu>0 && cpu<100){
+            double dormir=seg*(100.0-cpu)/cpu;
+            if(dormir>0.0005) std::this_thread::sleep_for(std::chrono::microseconds((long long)(dormir*1e6)));
+        }
+    }
+    gpu_kg_destruir(g);
+    gpu_estado("stopped");
+    return NULL;
+}
+
 static int hex2bin(const char *h,uint8_t *out,int max){
     int n=0;
     while(h[0]&&h[1]&&n<max){
@@ -2368,6 +2414,13 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         g_kg_args[i].semilla=kg_semilla((uint64_t)(i+1));
         pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]);
     }
+    /* La GPU, si esta activada y el telefono busca (con 0 hilos es solo
+       recolector de un cluster y no busca). Solo con el motor de negacion,
+       que es el que hay en la GPU. */
+    g_gpu_hilo_vivo=false;
+    if(g_usar_gpu.load() && hilos>0 && g_kg.negacion){
+        if(pthread_create(&g_gpu_hilo,NULL,gpu_thread,NULL)==0) g_gpu_hilo_vivo=true;
+    }else gpu_estado(g_usar_gpu.load()?"not used (collector mode)":"off");
     g_kg_vivo=true;
     return JNI_TRUE;
 }
@@ -2379,6 +2432,7 @@ Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
     g_kg.parar.store(1);
     for(auto &t:g_kg_hilos) pthread_join(t,NULL);
     g_kg_hilos.clear();
+    if(g_gpu_hilo_vivo){ pthread_join(g_gpu_hilo,NULL); g_gpu_hilo_vivo=false; }
     /* Guardar ANTES de liberar: si no, parar tiraba a la basura todo el trabajo
        de la sesion y la siguiente empezaba de cero. */
     if(g_kg_ruta[0])
@@ -2386,6 +2440,21 @@ Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
                 g_kg_ops_previas+(uint64_t)g_kg.saltos.load());
     kg_free(&g_kg);
     g_kg_vivo=false;
+}
+
+/* Usar o no la GPU en la proxima busqueda de Kangaroo. */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_setUsarGpu(JNIEnv *, jobject, jboolean v){ g_usar_gpu.store(v?1:0); }
+
+/* Saltos hechos por la GPU en esta busqueda (ya incluidos en el total). */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_gpuSaltos(JNIEnv *, jobject){ return (jlong)g_gpu_saltos.load(); }
+
+/* Que esta haciendo la GPU: "off", "starting", "running on X", "error: ..." */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_gpuEstado(JNIEnv *env, jobject){
+    std::lock_guard<std::mutex> lk(g_gpu_estado_mtx);
+    return env->NewStringUTF(g_gpu_estado.c_str());
 }
 
 /* Guardado periodico. Android puede matar la app sin avisar, y entonces no hay

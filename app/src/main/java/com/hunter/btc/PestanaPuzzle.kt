@@ -683,6 +683,69 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         ).apply { topMargin = dp(6) }
     })
 
+    // ── GPU ───────────────────────────────────────────────────────────
+    // La gráfica como un trabajador más de Kangaroo, sobre la misma tabla
+    // que los hilos de CPU (gpu/gpu_kangaroo.h). Qué gráfica es se pregunta
+    // a Vulkan en segundo plano; si no hay Vulkan, el interruptor se apaga.
+    //
+    // No en todos los móviles compensa: en el Galaxy A34 (Mali-G68) rinde lo
+    // que un núcleo; en el A56 (Xclipse 540), del orden de toda la CPU. Por
+    // eso es una opción y no va siempre.
+    val filaGpu = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = android.view.Gravity.CENTER_VERTICAL
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(16) }
+    }
+    val colGpu = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+    }
+    colGpu.addView(TextView(this).apply {
+        text = "Use the graphics card (GPU)"
+        textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.medium(context)
+    })
+    val tvGpu = TextView(this).apply {
+        text = "Checking the GPU…"
+        textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.body(context)
+        setPadding(0, dp(2), dp(8), 0)
+    }
+    colGpu.addView(tvGpu)
+    filaGpu.addView(colGpu)
+    val swGpu = android.widget.Switch(this).apply {
+        isChecked = prefs.getBoolean("usar_gpu", false)
+        isEnabled = false
+    }
+    filaGpu.addView(swGpu)
+    powerCard.addView(filaGpu)
+    HunterEngine.setUsarGpu(swGpu.isChecked)
+    swGpu.setOnCheckedChangeListener { _, on ->
+        prefs.edit().putBoolean("usar_gpu", on).apply()
+        HunterEngine.setUsarGpu(on)
+        android.widget.Toast.makeText(this,
+            if (on) "GPU on: applies when Kangaroo (re)starts" else "GPU off: applies when Kangaroo (re)starts",
+            android.widget.Toast.LENGTH_SHORT).show()
+    }
+    Thread {
+        val info = try { HunterEngine.gpuInfo() } catch (e: Throwable) { "" }
+        runOnUiThread {
+            val p = info.split("|")
+            if (p.size >= 5 && p[0].isNotBlank()) {
+                tvGpu.text = "${p[0]} · ${p[1]} · Vulkan ${p[2]} · ${p[4]} MB. " +
+                             "Kangaroo only; runs next to the CPU threads."
+                swGpu.isEnabled = true
+            } else {
+                tvGpu.text = "No Vulkan GPU on this phone."
+                swGpu.isChecked = false; swGpu.isEnabled = false
+                HunterEngine.setUsarGpu(false)
+            }
+        }
+    }.start()
+
 
     // ── AJUSTE FINO ───────────────────────────────────────────────────
     // Cómo se recorre el rango y el tamaño de lote se tocan una vez y ya:

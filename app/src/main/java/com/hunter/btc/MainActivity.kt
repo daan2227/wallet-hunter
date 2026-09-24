@@ -2438,6 +2438,30 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    // Ritmo de la GPU, aparte: los saltos de la GPU ya van en el total, esto
+    // dice cuántos son suyos.
+    internal var kgGpuUlt = 0L
+    internal var kgGpuUltMs = 0L
+    internal var kgGpuSeg = 0.0
+    internal fun lineaGpu(ahoraMs: Long): String {
+        val estado = try { HunterEngine.gpuEstado() } catch (e: Throwable) { "" }
+        if (estado.isEmpty() || estado == "off") return ""
+        val n = try { HunterEngine.gpuSaltos() } catch (e: Throwable) { 0L }
+        if (n < kgGpuUlt) { kgGpuUlt = 0L; kgGpuUltMs = 0L; kgGpuSeg = 0.0 }
+        if (kgGpuUltMs > 0 && ahoraMs - kgGpuUltMs >= 1000) {
+            val inst = (n - kgGpuUlt) * 1000.0 / (ahoraMs - kgGpuUltMs)
+            kgGpuSeg = if (kgGpuSeg <= 0) inst else kgGpuSeg * 0.7 + inst * 0.3
+            kgGpuUlt = n; kgGpuUltMs = ahoraMs
+        } else if (kgGpuUltMs == 0L) { kgGpuUlt = n; kgGpuUltMs = ahoraMs }
+        return when {
+            estado.startsWith("running") -> {
+                val (v, u) = scaleSpeed(kgGpuSeg)
+                "\nGPU: $v $u op/s (${estado.removePrefix("running on ")})"
+            }
+            else -> "\nGPU: $estado"
+        }
+    }
+
     /** Se llama desde updateUI(): progreso y resultado. */
     internal fun refrescarKangaroo() {
         val tv = tvPuzzleAtajo ?: return
@@ -2626,7 +2650,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val (v, u) = scaleSpeed(kgOpsSeg)
         tvWpsPuzzle?.text = v
         tvSpeedUnitPuzzle?.text = "$u op/s"
-        tvPeakWpsPuzzle?.text = textoDeLaTabla(dps)
+        tvPeakWpsPuzzle?.text = textoDeLaTabla(dps) + lineaGpu(ahoraMs)
         tvCountPuzzle?.text = formatCorto(ops)
         val segTotal = kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000
         tvTimePuzzle?.text = formatSegundos(segTotal)

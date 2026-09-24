@@ -48,6 +48,17 @@ jobs:
         sudo apt-get install -y libssl-dev 2>/dev/null || true
         tools/ec-harness/run.sh
 
+    # Kangaroo en la GPU, con Vulkan por software (lavapipe): comprueba que
+    # cada punto distinguido que devuelve el shader esta donde dice su
+    # distancia y que resuelve claves conocidas SOLO con la GPU. El ritmo de
+    # aqui no dice nada del movil; la exactitud si.
+    - name: Banco de la GPU (Vulkan por software)
+      run: |
+        sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan-dev > /dev/null
+        cd tools/ec-harness
+        g++ -O2 -o gpu_kangaroo gpu_kangaroo.cpp -lvulkan -lpthread
+        ./gpu_kangaroo
+
     - uses: actions/setup-java@v4
       with:
         java-version: '17'
