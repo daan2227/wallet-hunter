@@ -1,0 +1,100 @@
+#version 450
+// Multiplicacion en el cuerpo de secp256k1 en la GPU, para medir.
+//
+// Solo enteros de 32 bits: umulExtended da el producto de 32x32 en dos
+// mitades y uaddCarry la suma con acarreo. Las gráficas de móvil no
+// garantizan enteros de 64 (shaderInt64 es opcional en Vulkan).
+//
+// Cada invocación hace N multiplicaciones encadenadas r = r*b y guarda r. El
+// anfitrión comprueba unas cuantas contra la versión de C.
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) buffer Datos { uint d[]; };   // [inv*8 .. +7] = r
+layout(push_constant) uniform Params { uint n; uint b0,b1,b2,b3,b4,b5,b6,b7; } pc;
+
+// r = t mod p, t de 16 limbs. p = 2^256 - 2^32 - 977, así que
+// 2^256 == 2^32 + 977: la parte alta se dobla hacia abajo multiplicada.
+void reducir(in uint t[16], out uint r[8]) {
+    uint x[10];
+    // x = t_bajo + t_alto*977 + (t_alto << 32)
+    uint c = 0u;          // acarreo que llevamos (puede pasar de 1)
+    uint mhi_prev = 0u;   // parte alta de t_alto[i-1]*977
+    for (int i = 0; i < 10; i++) {
+        uint acc = c; c = 0u; uint k;
+        if (i < 8) { acc = uaddCarry(acc, t[i], k); c += k; }
+        if (i < 8) {
+            uint hi, lo; umulExtended(t[8 + i], 977u, hi, lo);
+            acc = uaddCarry(acc, lo, k); c += k;
+            acc = uaddCarry(acc, mhi_prev, k); c += k;
+            mhi_prev = hi;
+        } else if (i == 8) {
+            acc = uaddCarry(acc, mhi_prev, k); c += k; mhi_prev = 0u;
+        }
+        if (i >= 1 && i <= 8) { acc = uaddCarry(acc, t[8 + i - 1], k); c += k; }
+        x[i] = acc;
+    }
+    // Segunda vuelta: lo que ha quedado por encima de 2^256 (x[8], x[9]).
+    for (int vuelta = 0; vuelta < 3; vuelta++) {   // la 3a casi nunca hace nada, pero sin ella un caso de 1 entre 2^200 saldria mal
+        uint h0 = x[8], h1 = x[9];
+        x[8] = 0u; x[9] = 0u;
+        uint hi0, lo0, hi1, lo1;
+        umulExtended(h0, 977u, hi0, lo0);
+        umulExtended(h1, 977u, hi1, lo1);
+        // sumandos por limb: [lo0, hi0+lo1+h0, hi1+h1, 0...]
+        uint add0 = lo0;
+        uint k, c2 = 0u;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k;
+        add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k;
+        add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3 = 0u;
+        x[0] = uaddCarry(x[0], add0, k); c3 = k;
+        uint s1 = uaddCarry(x[1], add1, k); uint k2; s1 = uaddCarry(s1, c3, k2); c3 = k + k2; x[1] = s1;
+        uint s2 = uaddCarry(x[2], add2, k); s2 = uaddCarry(s2, c3, k2); c3 = k + k2; x[2] = s2;
+        uint s3 = uaddCarry(x[3], add2c, k); s3 = uaddCarry(s3, c3, k2); c3 = k + k2; x[3] = s3;
+        for (int i = 4; i < 8; i++) { x[i] = uaddCarry(x[i], c3, k); c3 = k; }
+        x[8] = c3;
+    }
+    // Ya cabe en 256 bits (x[8] == 0). Si x >= p, restar p.
+    const uint P[8] = uint[8](0xFFFFFC2Fu, 0xFFFFFFFEu, 0xFFFFFFFFu, 0xFFFFFFFFu,
+                              0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu, 0xFFFFFFFFu);
+    bool mayor = true;
+    for (int i = 7; i >= 0; i--) {
+        if (x[i] > P[i]) { mayor = true; break; }
+        if (x[i] < P[i]) { mayor = false; break; }
+    }
+    uint br = 0u;
+    for (int i = 0; i < 8; i++) {
+        uint bo, bo2;
+        uint v = usubBorrow(x[i], mayor ? P[i] : 0u, bo);
+        v = usubBorrow(v, br, bo2);
+        br = bo + bo2;
+        r[i] = v;
+    }
+}
+
+void mul(in uint a[8], in uint b[8], out uint r[8]) {
+    uint t[16];
+    for (int i = 0; i < 16; i++) t[i] = 0u;
+    for (int i = 0; i < 8; i++) {
+        uint carry = 0u;
+        for (int j = 0; j < 8; j++) {
+            uint hi, lo, c1, c2;
+            umulExtended(a[i], b[j], hi, lo);
+            lo = uaddCarry(lo, t[i + j], c1);
+            lo = uaddCarry(lo, carry, c2);
+            t[i + j] = lo;
+            carry = hi + c1 + c2;
+        }
+        t[i + 8] = carry;
+    }
+    reducir(t, r);
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x;
+    uint a[8], b[8], r[8];
+    for (int i = 0; i < 8; i++) a[i] = d[id * 8u + uint(i)];
+    b[0]=pc.b0; b[1]=pc.b1; b[2]=pc.b2; b[3]=pc.b3; b[4]=pc.b4; b[5]=pc.b5; b[6]=pc.b6; b[7]=pc.b7;
+    for (uint k = 0u; k < pc.n; k++) { mul(a, b, r); a = r; }
+    for (int i = 0; i < 8; i++) d[id * 8u + uint(i)] = a[i];
+}

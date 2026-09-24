@@ -42,6 +42,7 @@ add_library(hunter_jni SHARED hunter_jni.cpp
         mnemonic.cpp
         bip32.cpp
         recovery_engine.cpp
+        gpu/gpu_jni.cpp
 )
 target_compile_options(hunter_jni PRIVATE
     -O3
@@ -88,10 +89,13 @@ find_library(log-lib log)
 # openssl::ssl se enlazaba sin usarse: el C++ sólo incluye sha.h, ripemd.h,
 # hmac.h, evp.h y bn.h — ni una línea de TLS; lo de red va en Kotlin sobre JSSE.
 # Enlazarlo metía libssl.so (0,48 MB) en el APK para nada.
+# vulkan: sólo para la prueba de la GPU (gpu/gpu_jni.cpp). libvulkan.so viene
+# con Android desde la API 24; si el móvil no tiene Vulkan, la prueba lo dice.
 target_link_libraries(hunter_jni
     secp256k1
     openssl::crypto
     ${log-lib}
+    vulkan
 )
 
 # hunter_jni NO enlaza tailscale. Ver arriba: hacerlo arrancaba el runtime de

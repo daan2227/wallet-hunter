@@ -155,6 +155,11 @@ object HunterEngine {
      * hilo. Tarda unos cuatro segundos; llamar fuera del hilo principal.
      */
     external fun benchCampo(): String
+    /**
+     * Prueba de la GPU con Vulkan: multiplicaciones de cuerpo por segundo,
+     * comprobadas antes contra la CPU. Fuera del hilo principal.
+     */
+    external fun benchGpu(): String
 
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.

@@ -216,14 +216,27 @@ class DebugActivity : AppCompatActivity() {
             setPadding(0, 0, 0, dp(8))
         }
         benchCard.addView(tvBench)
-        benchCard.addView(actionBtn("Run benchmark", ACCENT) {
+        // actionBtn está pensado para una fila (ancho 0 y peso): aquí va solo,
+        // así que a lo ancho, o saldría con ancho cero.
+        fun aLoAncho(v: android.view.View, arriba: Int = 0) = v.apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(arriba) }
+        }
+        benchCard.addView(aLoAncho(actionBtn("Run benchmark", ACCENT) {
             tvBench.text = "Running…"
             Thread {
                 val r = try { HunterEngine.benchCampo() } catch (e: Throwable) { "Error: ${e.message}" }
                 runOnUiThread { tvBench.text = r + "\n" + android.os.Build.MODEL + " · " +
                                 (if (android.os.Build.VERSION.SDK_INT >= 31) android.os.Build.SOC_MODEL else "") }
             }.start()
-        })
+        }))
+        benchCard.addView(aLoAncho(actionBtn("GPU benchmark (Vulkan)", ACCENT2) {
+            tvBench.text = "Running on the GPU…"
+            Thread {
+                val r = try { HunterEngine.benchGpu() } catch (e: Throwable) { "Error: ${e.message}" }
+                runOnUiThread { tvBench.text = r }
+            }.start()
+        }, arriba = 8))
         root.addView(benchCard)
 
         // ── ARCHIVOS DE LOG ───────────────────────────────────────────────
