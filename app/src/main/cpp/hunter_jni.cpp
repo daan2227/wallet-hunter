@@ -2461,7 +2461,9 @@ static double bench_mul(int variante,int n,uint64_t *sal){
 #ifdef FE_ARM64
         if(variante==1){ fe_mul_asm(r[k],r[k],b[k]); continue; }
 #endif
-        if(variante==2) fe_sqr(r[k],r[k]); else fe_mul_c(r[k],r[k],b[k]);
+        if(variante==2) fe_sqr(r[k],r[k]);
+        else if(variante==3) fe_sqr_c(r[k],r[k]);
+        else fe_mul_c(r[k],r[k],b[k]);
     }
     double ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-t0).count()/(4.0*n);
     *sal^=r[0][0]^r[1][1]^r[2][2]^r[3][3];
@@ -2485,8 +2487,10 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
         if(it%5==0){ a[3]=~0ULL; b[2]=~0ULL; }
         fe_mul_c(r1,a,b); fe_mul_asm(r2,a,b);
         if(memcmp(r1,r2,32)) mal++;
+        fe_sqr_c(r1,a); fe_sqr(r2,a);
+        if(memcmp(r1,r2,32)) mal++;
     }
-    o<<"ARM64 asm vs C: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of 200000)\n";
+    o<<"ARM64 asm vs C: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of 400000)\n";
 #else
     o<<"Not ARM64: no assembly to compare\n";
 #endif
@@ -2497,8 +2501,12 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
     double a=bench_mul(1,3000000,&sal);
     o<<"fe_mul asm:  "<<a<<" ns  ("<<std::setprecision(2)<<c/a<<"x)\n"<<std::setprecision(1);
 #endif
-    double q=bench_mul(2,3000000,&sal);
-    o<<"fe_sqr C:    "<<q<<" ns\n";
+    double qc=bench_mul(3,3000000,&sal);
+    o<<"fe_sqr C:    "<<qc<<" ns\n";
+#ifdef FE_ARM64
+    double qa=bench_mul(2,3000000,&sal);
+    o<<"fe_sqr asm:  "<<qa<<" ns  ("<<std::setprecision(2)<<qc/qa<<"x)\n"<<std::setprecision(1);
+#endif
 
     /* Saltos por segundo del bucle de Kangaroo, un hilo, dos segundos, en un
        rango como el del #140. */

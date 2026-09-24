@@ -21,6 +21,16 @@ int main(){
         if(memcmp(r1,r2,32)){ if(mal<3) printf("MAL en %ld\n",it); mal++; }
     }
     printf("%s  fe_mul (asm) == fe_mul_c en %ld productos (%ld distintos)\n", mal?"MAL":"OK ", n, mal);
-    return mal!=0;
+    long mal2=0;
+    for(long it=0;it<n;it++){
+        fe_t a,r1,r2;
+        for(int k=0;k<4;k++) a[k]=(rnd()%3==0)?esp[rnd()%8]:rnd();
+        if(it<4096){ for(int k=0;k<4;k++) a[k]=esp[(it>>(3*k))&7]; }
+        fe_sqr_c(r1,a); fe_sqr(r2,a);
+        fe_t r3; fe_mul_c(r3,a,a);
+        if(memcmp(r1,r2,32)||memcmp(r1,r3,32)){ if(mal2<3) printf("MAL sqr en %ld\n",it); mal2++; }
+    }
+    printf("%s  fe_sqr (asm) == fe_sqr_c == fe_mul_c(a,a) en %ld (%ld distintos)\n", mal2?"MAL":"OK ", n, mal2);
+    return (mal||mal2)!=0;
 }
 #endif

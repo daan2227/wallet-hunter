@@ -208,7 +208,7 @@ static inline void fe_mul(fe_t r,const fe_t a,const fe_t b){ fe_mul_c(r,a,b); }
  *
  * Importa porque fe_sqr esta en los dos sitios calientes: una vez por salto de
  * canguro (la lambda al cuadrado) y 255 veces dentro de fe_inv. */
-static void fe_sqr(fe_t r,const fe_t a){
+static void fe_sqr_c(fe_t r,const fe_t a){
     uint64_t t[8]={0};
     __uint128_t cur; uint64_t c;
 
@@ -238,6 +238,77 @@ static void fe_sqr(fe_t r,const fe_t a){
     /* a < 2^256 => a^2 < 2^512: el ultimo acarreo es siempre 0. */
     fe_reduce8(r,t);
 }
+
+#if defined(__aarch64__)
+/* El cuadrado en ensamblador ARM64, con la misma idea que fe_sqr_c: los seis
+ * productos cruzados a[i]*a[j] (i<j), duplicados de un golpe con extr, mas
+ * los cuatro cuadrados de la diagonal. Diez multiplicaciones de 64x64.
+ *
+ * mul y umulh no tocan los indicadores, asi que la cadena de acarreos de
+ * adds/adcs puede ir intercalada con las multiplicaciones. */
+static inline void fe_sqr(fe_t r,const fe_t a){
+    uint64_t t0,t1,t2,t3,t4,t5,t6,t7,l,h,x;
+    asm volatile(
+        /* a0*a1, a0*a2, a0*a3 en t1..t4 */
+        "mul   %[t1], %[a0], %[a1]\n\t"
+        "umulh %[t2], %[a0], %[a1]\n\t"
+        "mul   %[l],  %[a0], %[a2]\n\t"
+        "umulh %[t3], %[a0], %[a2]\n\t"
+        "adds  %[t2], %[t2], %[l]\n\t"
+        "mul   %[l],  %[a0], %[a3]\n\t"
+        "umulh %[t4], %[a0], %[a3]\n\t"
+        "adcs  %[t3], %[t3], %[l]\n\t"
+        "adc   %[t4], %[t4], xzr\n\t"
+        /* a1*a2 en t3, a1*a3 en t4 */
+        "mul   %[l],  %[a1], %[a2]\n\t"
+        "umulh %[h],  %[a1], %[a2]\n\t"
+        "mul   %[x],  %[a1], %[a3]\n\t"
+        "umulh %[t5], %[a1], %[a3]\n\t"
+        "adds  %[x],  %[x],  %[h]\n\t"
+        "adc   %[t5], %[t5], xzr\n\t"
+        "adds  %[t3], %[t3], %[l]\n\t"
+        "adcs  %[t4], %[t4], %[x]\n\t"
+        "adc   %[t5], %[t5], xzr\n\t"
+        /* a2*a3 en t5 */
+        "mul   %[l],  %[a2], %[a3]\n\t"
+        "umulh %[t6], %[a2], %[a3]\n\t"
+        "adds  %[t5], %[t5], %[l]\n\t"
+        "adc   %[t6], %[t6], xzr\n\t"
+        /* duplicar t1..t6; lo que sale por arriba va a t7 */
+        "lsr   %[t7], %[t6], #63\n\t"
+        "extr  %[t6], %[t6], %[t5], #63\n\t"
+        "extr  %[t5], %[t5], %[t4], #63\n\t"
+        "extr  %[t4], %[t4], %[t3], #63\n\t"
+        "extr  %[t3], %[t3], %[t2], #63\n\t"
+        "extr  %[t2], %[t2], %[t1], #63\n\t"
+        "lsl   %[t1], %[t1], #1\n\t"
+        /* y los cuadrados de la diagonal */
+        "mul   %[t0], %[a0], %[a0]\n\t"
+        "umulh %[h],  %[a0], %[a0]\n\t"
+        "adds  %[t1], %[t1], %[h]\n\t"
+        "mul   %[l],  %[a1], %[a1]\n\t"
+        "umulh %[h],  %[a1], %[a1]\n\t"
+        "adcs  %[t2], %[t2], %[l]\n\t"
+        "adcs  %[t3], %[t3], %[h]\n\t"
+        "mul   %[l],  %[a2], %[a2]\n\t"
+        "umulh %[h],  %[a2], %[a2]\n\t"
+        "adcs  %[t4], %[t4], %[l]\n\t"
+        "adcs  %[t5], %[t5], %[h]\n\t"
+        "mul   %[l],  %[a3], %[a3]\n\t"
+        "umulh %[h],  %[a3], %[a3]\n\t"
+        "adcs  %[t6], %[t6], %[l]\n\t"
+        "adc   %[t7], %[t7], %[h]\n\t"
+        : [t0]"=&r"(t0),[t1]"=&r"(t1),[t2]"=&r"(t2),[t3]"=&r"(t3),
+          [t4]"=&r"(t4),[t5]"=&r"(t5),[t6]"=&r"(t6),[t7]"=&r"(t7),
+          [l]"=&r"(l),[h]"=&r"(h),[x]"=&r"(x)
+        : [a0]"r"(a[0]),[a1]"r"(a[1]),[a2]"r"(a[2]),[a3]"r"(a[3])
+        : "cc");
+    uint64_t t[8]={t0,t1,t2,t3,t4,t5,t6,t7};
+    fe_reduce8(r,t);
+}
+#else
+static inline void fe_sqr(fe_t r,const fe_t a){ fe_sqr_c(r,a); }
+#endif
 static void fe_dbl(fe_t r,const fe_t a){fe_add(r,a,a);}
 
 /* Inverso modular: a^(p-2) mod p.
