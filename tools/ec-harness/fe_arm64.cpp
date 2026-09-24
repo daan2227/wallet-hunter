@@ -1,4 +1,4 @@
-/* fe_mul_asm (ARM64) contra fe_mul (C). Solo corre en ARM64 o con qemu:
+/* fe_mul (ensamblador en ARM64) contra fe_mul_c (C). Solo corre en ARM64 o con qemu:
  *
  *   aarch64-linux-gnu-g++ -O2 -static -o fe_arm64 fe_arm64.cpp
  *   qemu-aarch64 ./fe_arm64
@@ -17,10 +17,10 @@ int main(){
         fe_t a,b,r1,r2;
         for(int k=0;k<4;k++){ a[k]=(rnd()%3==0)?esp[rnd()%8]:rnd(); b[k]=(rnd()%3==0)?esp[rnd()%8]:rnd(); }
         if(it<64){ for(int k=0;k<4;k++){ a[k]=esp[(it>>3)&7]; b[k]=esp[it&7]; } }
-        fe_mul(r1,a,b); fe_mul_asm(r2,a,b);
+        fe_mul_c(r1,a,b); fe_mul(r2,a,b);
         if(memcmp(r1,r2,32)){ if(mal<3) printf("MAL en %ld\n",it); mal++; }
     }
-    printf("%s  fe_mul_asm == fe_mul en %ld productos (%ld distintos)\n", mal?"MAL":"OK ", n, mal);
+    printf("%s  fe_mul (asm) == fe_mul_c en %ld productos (%ld distintos)\n", mal?"MAL":"OK ", n, mal);
     return mal!=0;
 }
 #endif

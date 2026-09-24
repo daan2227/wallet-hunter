@@ -2461,7 +2461,7 @@ static double bench_mul(int variante,int n,uint64_t *sal){
 #ifdef FE_ARM64
         if(variante==1){ fe_mul_asm(r[k],r[k],b[k]); continue; }
 #endif
-        if(variante==2) fe_sqr(r[k],r[k]); else fe_mul(r[k],r[k],b[k]);
+        if(variante==2) fe_sqr(r[k],r[k]); else fe_mul_c(r[k],r[k],b[k]);
     }
     double ns=std::chrono::duration<double,std::nano>(std::chrono::steady_clock::now()-t0).count()/(4.0*n);
     *sal^=r[0][0]^r[1][1]^r[2][2]^r[3][3];
@@ -2483,7 +2483,7 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
         fe_t a,b,r1,r2;
         for(int j=0;j<4;j++){ s^=s<<13; s^=s>>7; s^=s<<17; a[j]=s; s^=s<<13; s^=s>>7; s^=s<<17; b[j]=s; }
         if(it%5==0){ a[3]=~0ULL; b[2]=~0ULL; }
-        fe_mul(r1,a,b); fe_mul_asm(r2,a,b);
+        fe_mul_c(r1,a,b); fe_mul_asm(r2,a,b);
         if(memcmp(r1,r2,32)) mal++;
     }
     o<<"ARM64 asm vs C: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of 200000)\n";

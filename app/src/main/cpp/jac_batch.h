@@ -128,7 +128,7 @@ static void fe_reduce8(fe_t r,uint64_t *t){
     memcpy(r,t,32);
 }
 
-static void fe_mul(fe_t r,const fe_t a,const fe_t b){
+static void fe_mul_c(fe_t r,const fe_t a,const fe_t b){
     /* Escolar 4x4 -> 8 limbs. El maximo de cada paso es
        (2^64-1) + (2^64-1)^2 + (2^64-1) = 2^128-1, asi que cabe en 128 bits y
        el acarreo nunca pasa de 64. */
@@ -145,6 +145,58 @@ static void fe_mul(fe_t r,const fe_t a,const fe_t b){
     }
     fe_reduce8(r,t);
 }
+
+#if defined(__aarch64__)
+/* En ARM64, el producto en ensamblador: mul/umulh y cadenas adds/adcs, fila a
+ * fila. La reduccion sigue siendo fe_reduce8.
+ *
+ * Medido en el movil (Galaxy A34, Dimensity 1080), prueba "Engine benchmark"
+ * de Debug: 22,7 ns en C, 19,3 ns en ensamblador, 1,18 veces. Mismos
+ * resultados en 200.000 productos alli, y en 3 millones con qemu-aarch64
+ * (tools/ec-harness/fe_arm64.cpp). fe_mul_c se queda para comparar. */
+#define FE_ARM64 1
+#define FE_FILA(ai, T0, T1, T2, T3, T4, PRIMERA)                              \
+    asm volatile(                                                             \
+        "mul   %[l0], %[a], %[b0]\n\t"                                        \
+        "umulh %[h0], %[a], %[b0]\n\t"                                        \
+        "mul   %[l1], %[a], %[b1]\n\t"                                        \
+        "umulh %[h1], %[a], %[b1]\n\t"                                        \
+        "mul   %[l2], %[a], %[b2]\n\t"                                        \
+        "umulh %[h2], %[a], %[b2]\n\t"                                        \
+        "mul   %[l3], %[a], %[b3]\n\t"                                        \
+        "umulh %[h3], %[a], %[b3]\n\t"                                        \
+        "adds  %[l1], %[l1], %[h0]\n\t"                                       \
+        "adcs  %[l2], %[l2], %[h1]\n\t"                                       \
+        "adcs  %[l3], %[l3], %[h2]\n\t"                                       \
+        "adc   %[h3], %[h3], xzr\n\t"                                         \
+        : [l0]"=&r"(l0),[l1]"=&r"(l1),[l2]"=&r"(l2),[l3]"=&r"(l3),            \
+          [h0]"=&r"(h0),[h1]"=&r"(h1),[h2]"=&r"(h2),[h3]"=&r"(h3)             \
+        : [a]"r"(ai),[b0]"r"(b[0]),[b1]"r"(b[1]),[b2]"r"(b[2]),[b3]"r"(b[3])  \
+        : "cc");                                                              \
+    if(PRIMERA){ T0=l0; T1=l1; T2=l2; T3=l3; T4=h3; }                         \
+    else asm volatile(                                                        \
+        "adds  %[t0], %[t0], %[l0]\n\t"                                       \
+        "adcs  %[t1], %[t1], %[l1]\n\t"                                       \
+        "adcs  %[t2], %[t2], %[l2]\n\t"                                       \
+        "adcs  %[t3], %[t3], %[l3]\n\t"                                       \
+        "adc   %[t4], %[h3], xzr\n\t"                                         \
+        : [t0]"+r"(T0),[t1]"+r"(T1),[t2]"+r"(T2),[t3]"+r"(T3),[t4]"=r"(T4)    \
+        : [l0]"r"(l0),[l1]"r"(l1),[l2]"r"(l2),[l3]"r"(l3),[h3]"r"(h3)         \
+        : "cc");
+
+static inline void fe_mul(fe_t r,const fe_t a,const fe_t b){
+    uint64_t t[8];
+    uint64_t l0,l1,l2,l3,h0,h1,h2,h3;
+    FE_FILA(a[0], t[0],t[1],t[2],t[3],t[4], 1)
+    FE_FILA(a[1], t[1],t[2],t[3],t[4],t[5], 0)
+    FE_FILA(a[2], t[2],t[3],t[4],t[5],t[6], 0)
+    FE_FILA(a[3], t[3],t[4],t[5],t[6],t[7], 0)
+    fe_reduce8(r,t);
+}
+#undef FE_FILA
+#else
+static inline void fe_mul(fe_t r,const fe_t a,const fe_t b){ fe_mul_c(r,a,b); }
+#endif
 
 /* Elevar al cuadrado, con su propio camino.
  *
