@@ -2258,7 +2258,8 @@ static void *gpu_thread(void *){
     gpu_estado("starting");
     std::string err;
     GpuKg *g=gpu_kg_crear(&g_kg,KANGAROO_SPV,sizeof(KANGAROO_SPV),1024,64,kg_semilla(0x6770),err);
-    if(!g){ gpu_estado("error: "+err); return NULL; }
+    if(!g){ gpu_estado(err=="stopped before starting" ? "stopped (the search ended before the GPU started)"
+                                                         : "error: "+err); return NULL; }
     gpu_estado("running on "+g->nombre);
     /* Tandas de ~60 ms: Android corta el trabajo de GPU que tarda segundos, y
        asi parar responde enseguida. El freno de CPU del usuario vale tambien

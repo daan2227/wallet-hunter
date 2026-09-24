@@ -2480,6 +2480,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.kangarooStop()
             if (!primera) return
             kgClavePintada = clave
+            // La línea de la GPU, con su estado final: la pantalla deja de
+            // refrescarse al encontrar la clave y se quedaba en "starting".
+            tvPeakWpsPuzzle?.let { tvT ->
+                val base = tvT.text.toString().substringBefore("\nGPU:")
+                tvT.text = base + lineaGpu(System.currentTimeMillis())
+            }
             // Un puzzle pequeño se resuelve en menos de un segundo, antes del
             // primer refresco: las tarjetas se quedaban en 0 y 00:00:00 con la
             // clave ya encontrada. Se dejan puestas las cifras finales.

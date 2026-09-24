@@ -150,7 +150,16 @@ static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
     uint32_t *T=(uint32_t*)g->map[1];
     for(int e=0;e<KG_MAX_JUMPS;e++){ gk_put(T+e*24,c->jx[e]); gk_put(T+e*24+8,c->jy[e]); gk_put(T+e*24+16,c->jlen[e]); }
     if(c->njumps!=64 || c->nesc!=64){ err="unexpected jump table"; gpu_kg_destruir(g); return NULL; }
-    for(uint32_t k=0;k<g->total;k++) gk_soltar(g,c,k,(int)(k&1));
+    /* Soltar 65.536 canguros son otras tantas multiplicaciones escalares:
+       segundos en un movil. Si mientras tanto se pide parar (o la CPU ya ha
+       encontrado la clave, que en un puzzle pequeno pasa antes de acabar),
+       se deja: parar espera a este hilo, y bloquearia la pantalla. */
+    for(uint32_t k=0;k<g->total;k++){
+        if((k&255)==0 && (c->parar.load() || c->encontrado.load())){
+            err="stopped before starting"; gpu_kg_destruir(g); return NULL;
+        }
+        gk_soltar(g,c,k,(int)(k&1));
+    }
     memset(g->map[2],0,(size_t)g->tam[2]);
 
     VkShaderModuleCreateInfo smi{VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO}; smi.codeSize=spv_bytes; smi.pCode=spv;
