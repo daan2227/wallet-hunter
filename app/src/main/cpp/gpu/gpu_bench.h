@@ -15,7 +15,8 @@
 #include <string.h>
 #include "../jac_batch.h"
 
-static std::string gpu_bench(const uint32_t *spv, size_t spv_bytes){
+static std::string gpu_bench(const uint32_t *spv, size_t spv_bytes,
+                             const char *etiqueta="", bool con_nombre=true){
     std::ostringstream o;
     VkInstance inst=VK_NULL_HANDLE; VkDevice dev=VK_NULL_HANDLE;
     VkBuffer buf=VK_NULL_HANDLE; VkDeviceMemory mem=VK_NULL_HANDLE;
@@ -51,7 +52,7 @@ static std::string gpu_bench(const uint32_t *spv, size_t spv_bytes){
     std::vector<VkPhysicalDevice> pds(nd); vkEnumeratePhysicalDevices(inst,&nd,pds.data());
     VkPhysicalDevice pd=pds[0];
     VkPhysicalDeviceProperties props; vkGetPhysicalDeviceProperties(pd,&props);
-    o<<"GPU: "<<props.deviceName<<"\n";
+    if(con_nombre) o<<"GPU: "<<props.deviceName<<"\n";
 
     uint32_t nq=0; vkGetPhysicalDeviceQueueFamilyProperties(pd,&nq,NULL);
     std::vector<VkQueueFamilyProperties> qf(nq); vkGetPhysicalDeviceQueueFamilyProperties(pd,&nq,qf.data());
@@ -151,14 +152,14 @@ static std::string gpu_bench(const uint32_t *spv, size_t spv_bytes){
         for(int k=0;k<7;k++) fe_mul(a,a,b);
         for(int w=0;w<4;w++) if(d[i*8+2*w]!=(uint32_t)a[w] || d[i*8+2*w+1]!=(uint32_t)(a[w]>>32)) { mal++; break; }
     }
-    o<<"GPU vs CPU: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of "<<INV<<")\n";
+    o<<etiqueta<<"GPU vs CPU: "<<(mal?"DIFFERENT RESULTS ":"same results ")<<"("<<mal<<" of "<<INV<<")\n";
     if(mal) return fin(NULL);
 
     /* 2) Ritmo: se calienta y se mide. */
     lanzar(16,INV);
     double seg=lanzar(N,INV);
     double mps=(double)INV*N/seg/1e6;
-    o<<"GPU fe_mul: "<<(int)mps<<" M/s  ("<<INV<<" x "<<N<<" in "<<(int)(seg*1000)<<" ms)\n";
+    o<<etiqueta<<"GPU fe_mul: "<<(int)mps<<" M/s  ("<<INV<<" x "<<N<<" in "<<(int)(seg*1000)<<" ms)\n";
     vkUnmapMemory(dev,mem);
     return fin(NULL);
 }

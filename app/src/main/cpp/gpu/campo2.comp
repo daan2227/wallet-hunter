@@ -1,0 +1,248 @@
+#version 450
+// GENERADO por gen_campo2.py: no editar a mano. Ver alli el porque.
+layout(local_size_x = 64) in;
+layout(std430, binding = 0) buffer Datos { uint d[]; };
+layout(push_constant) uniform Params { uint n; uint b0,b1,b2,b3,b4,b5,b6,b7; } pc;
+
+#define MA(x,y) { uint hi_, lo_, k_; umulExtended(x, y, hi_, lo_); c0 = uaddCarry(c0, lo_, k_); hi_ += k_; c1 = uaddCarry(c1, hi_, k_); c2 += k_; }
+
+void mul8(uint a0, uint a1, uint a2, uint a3, uint a4, uint a5, uint a6, uint a7, uint b0, uint b1, uint b2, uint b3, uint b4, uint b5, uint b6, uint b7, out uint r0, out uint r1, out uint r2, out uint r3, out uint r4, out uint r5, out uint r6, out uint r7) {
+    uint c0 = 0u, c1 = 0u, c2 = 0u;
+    MA(a0, b0)
+    uint t0 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b1)
+    MA(a1, b0)
+    uint t1 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b2)
+    MA(a1, b1)
+    MA(a2, b0)
+    uint t2 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b3)
+    MA(a1, b2)
+    MA(a2, b1)
+    MA(a3, b0)
+    uint t3 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b4)
+    MA(a1, b3)
+    MA(a2, b2)
+    MA(a3, b1)
+    MA(a4, b0)
+    uint t4 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b5)
+    MA(a1, b4)
+    MA(a2, b3)
+    MA(a3, b2)
+    MA(a4, b1)
+    MA(a5, b0)
+    uint t5 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b6)
+    MA(a1, b5)
+    MA(a2, b4)
+    MA(a3, b3)
+    MA(a4, b2)
+    MA(a5, b1)
+    MA(a6, b0)
+    uint t6 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a0, b7)
+    MA(a1, b6)
+    MA(a2, b5)
+    MA(a3, b4)
+    MA(a4, b3)
+    MA(a5, b2)
+    MA(a6, b1)
+    MA(a7, b0)
+    uint t7 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a1, b7)
+    MA(a2, b6)
+    MA(a3, b5)
+    MA(a4, b4)
+    MA(a5, b3)
+    MA(a6, b2)
+    MA(a7, b1)
+    uint t8 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a2, b7)
+    MA(a3, b6)
+    MA(a4, b5)
+    MA(a5, b4)
+    MA(a6, b3)
+    MA(a7, b2)
+    uint t9 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a3, b7)
+    MA(a4, b6)
+    MA(a5, b5)
+    MA(a6, b4)
+    MA(a7, b3)
+    uint t10 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a4, b7)
+    MA(a5, b6)
+    MA(a6, b5)
+    MA(a7, b4)
+    uint t11 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a5, b7)
+    MA(a6, b6)
+    MA(a7, b5)
+    uint t12 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a6, b7)
+    MA(a7, b6)
+    uint t13 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    MA(a7, b7)
+    uint t14 = c0; c0 = c1; c1 = c2; c2 = 0u;
+    uint t15 = c0;
+    // Primera vuelta: x = t[0..7] + t[8..15]*977 + t[8..15] << 32
+    uint k_, hi_, lo_; uint acc = 0u, ca = 0u;
+    uint mh = 0u;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t0, k_); ca += k_;
+    umulExtended(t8, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    uint x0 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t1, k_); ca += k_;
+    umulExtended(t9, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t8, k_); ca += k_;
+    uint x1 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t2, k_); ca += k_;
+    umulExtended(t10, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t9, k_); ca += k_;
+    uint x2 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t3, k_); ca += k_;
+    umulExtended(t11, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t10, k_); ca += k_;
+    uint x3 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t4, k_); ca += k_;
+    umulExtended(t12, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t11, k_); ca += k_;
+    uint x4 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t5, k_); ca += k_;
+    umulExtended(t13, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t12, k_); ca += k_;
+    uint x5 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t6, k_); ca += k_;
+    umulExtended(t14, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t13, k_); ca += k_;
+    uint x6 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, t7, k_); ca += k_;
+    umulExtended(t15, 977u, hi_, lo_);
+    acc = uaddCarry(acc, lo_, k_); ca += k_;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = hi_;
+    acc = uaddCarry(acc, t14, k_); ca += k_;
+    uint x7 = acc;
+    acc = ca; ca = 0u;
+    acc = uaddCarry(acc, mh, k_); ca += k_; mh = 0u;
+    acc = uaddCarry(acc, t15, k_); ca += k_;
+    uint x8 = acc;
+    acc = ca; ca = 0u;
+    uint x9 = acc;
+    { // vuelta 2
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    { // vuelta 3
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    { // vuelta 4
+        uint h0 = x8, h1 = x9; x8 = 0u; x9 = 0u;
+        uint hi0, lo0, hi1, lo1; umulExtended(h0, 977u, hi0, lo0); umulExtended(h1, 977u, hi1, lo1);
+        uint k, k2;
+        uint add1 = uaddCarry(hi0, lo1, k); uint add1c = k; add1 = uaddCarry(add1, h0, k); add1c += k;
+        uint add2 = uaddCarry(hi1, h1, k); uint add2c = k; add2 = uaddCarry(add2, add1c, k); add2c += k;
+        uint c3;
+        x0 = uaddCarry(x0, lo0, k); c3 = k;
+        x1 = uaddCarry(x1, add1, k); x1 = uaddCarry(x1, c3, k2); c3 = k + k2;
+        x2 = uaddCarry(x2, add2, k); x2 = uaddCarry(x2, c3, k2); c3 = k + k2;
+        x3 = uaddCarry(x3, add2c, k); x3 = uaddCarry(x3, c3, k2); c3 = k + k2;
+        x4 = uaddCarry(x4, c3, k); c3 = k;
+        x5 = uaddCarry(x5, c3, k); c3 = k;
+        x6 = uaddCarry(x6, c3, k); c3 = k;
+        x7 = uaddCarry(x7, c3, k); c3 = k;
+        x8 = c3;
+    }
+    // x >= p  <=>  x + (2^32 + 977) se sale de 2^256. Sin ramas.
+    uint s0, s1, s2, s3, s4, s5, s6, s7, kk;
+    s0 = uaddCarry(x0, 977u, kk);
+    s1 = uaddCarry(x1, 1u + kk, kk);
+    s2 = uaddCarry(x2, kk, kk);
+    s3 = uaddCarry(x3, kk, kk);
+    s4 = uaddCarry(x4, kk, kk);
+    s5 = uaddCarry(x5, kk, kk);
+    s6 = uaddCarry(x6, kk, kk);
+    s7 = uaddCarry(x7, kk, kk);
+    bool ge = kk != 0u;
+    r0 = ge ? s0 : x0;
+    r1 = ge ? s1 : x1;
+    r2 = ge ? s2 : x2;
+    r3 = ge ? s3 : x3;
+    r4 = ge ? s4 : x4;
+    r5 = ge ? s5 : x5;
+    r6 = ge ? s6 : x6;
+    r7 = ge ? s7 : x7;
+}
+
+void main() {
+    uint id = gl_GlobalInvocationID.x * 8u;
+    uint a0 = d[id + 0u];
+    uint a1 = d[id + 1u];
+    uint a2 = d[id + 2u];
+    uint a3 = d[id + 3u];
+    uint a4 = d[id + 4u];
+    uint a5 = d[id + 5u];
+    uint a6 = d[id + 6u];
+    uint a7 = d[id + 7u];
+    for (uint k = 0u; k < pc.n; k++) {
+        mul8(a0, a1, a2, a3, a4, a5, a6, a7, pc.b0, pc.b1, pc.b2, pc.b3, pc.b4, pc.b5, pc.b6, pc.b7, a0, a1, a2, a3, a4, a5, a6, a7);
+    }
+    d[id + 0u] = a0;
+    d[id + 1u] = a1;
+    d[id + 2u] = a2;
+    d[id + 3u] = a3;
+    d[id + 4u] = a4;
+    d[id + 5u] = a5;
+    d[id + 6u] = a6;
+    d[id + 7u] = a7;
+}
