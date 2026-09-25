@@ -43,7 +43,13 @@ add_library(hunter_jni SHARED hunter_jni.cpp
         bip32.cpp
         recovery_engine.cpp
         gpu/gpu_jni.cpp
+        sha512.cpp
+        sha512_hw.cpp
 )
+# Solo este fichero lleva las instrucciones SHA-512 (ARMv8.2): el resto de la
+# app tiene que arrancar en procesadores sin ellas, y lo que hay aqui dentro
+# no se llama sin comprobarlo antes (sha512_tiene_hw).
+set_source_files_properties(sha512_hw.cpp PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+sha3")
 target_compile_options(hunter_jni PRIVATE
     -O3
     -march=armv8-a+crypto

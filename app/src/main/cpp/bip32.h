@@ -91,4 +91,12 @@ bool bip_derive_from_chain(const Bip32Node& chain,
                            uint32_t address_index,
                            uint8_t privkey_out[32]);
 
+/** Igual, con la clave publica comprimida del nodo ya calculada
+ *  (bip32_pub33): una multiplicacion escalar menos por indice. */
+bool bip_derive_from_chain_pub(const Bip32Node& chain, const uint8_t chain_pub33[33],
+                               uint32_t address_index, uint8_t privkey_out[32]);
+
+/** Clave publica comprimida de una privada. */
+bool bip32_pub33(const uint8_t key[32], uint8_t out33[33]);
+
 #endif // WALLET_HUNTER_BIP32_H

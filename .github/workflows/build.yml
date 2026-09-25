@@ -42,9 +42,17 @@ jobs:
         if [ "${{ github.event_name }}" != "push" ] || [ -z "$ANTES" ] \
            || [ "$ANTES" = "0000000000000000000000000000000000000000" ] \
            || ! git cat-file -e "$ANTES^{commit}" 2>/dev/null; then
-          echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "Sin commit anterior: se pasan los bancos."; exit 0
+          echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "arm=1" >> "$GITHUB_OUTPUT"
+          echo "Sin commit anterior: se pasan los bancos."; exit 0
         fi
         CAMBIOS=$(git diff --name-only "$ANTES" "${{ github.sha }}")
+        # El banco ARM64 (qemu) cuesta instalar un compilador cruzado: solo
+        # cuando cambia algo que tiene codigo propio de ARM64.
+        if echo "$CAMBIOS" | grep -qE '(sha512|fe_arm64|sha256_ripemd160|sha256_hw|pbkdf2|arm64\.sh|build\.yml)'; then
+          echo "arm=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "arm=0" >> "$GITHUB_OUTPUT"
+        fi
         if echo "$CAMBIOS" | grep -qE '^(app/src/main/cpp/|tools/ec-harness/|\.github/workflows/)'; then
           echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "Toca el motor o sus pruebas: se pasan los bancos."
         else
@@ -89,6 +97,15 @@ jobs:
         g++ -O2 -o gpu_kangaroo gpu_kangaroo.cpp -lvulkan -lpthread
         ./gpu_kangaroo
 
+    # fe_mul en ensamblador y SHA-256/SHA-512 con las instrucciones del
+    # procesador: la CI es x86, asi que con qemu. Tambien que un procesador SIN
+    # SHA-512 se quede en software en vez de cerrarse la app.
+    - name: Banco ARM64 (qemu)
+      if: steps.motor.outputs.arm == '1'
+      run: |
+        sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu qemu-user > /dev/null
+        tools/ec-harness/arm64.sh
+
     - uses: actions/setup-java@v4
       with:
         java-version: '17'
@@ -114,6 +131,13 @@ jobs:
           gcc -o gen_precomputed_ecmult             src/gen_ecmult_static_pre_g.c             -I. -Isrc             -DSECP256K1_BUILD             -DUSE_FIELD_5x52             -DUSE_SCALAR_4x64 2>/dev/null || true
           ./gen_precomputed_ecmult > src/precomputed_ecmult.c 2>/dev/null || true
         fi
+
+    # La recuperacion de frases entera (PBKDF2, BIP32, direcciones), sin JNI,
+    # contra frases y direcciones conocidas. Va aqui porque necesita el
+    # secp256k1 que se acaba de clonar.
+    - name: Banco de la recuperacion
+      if: steps.motor.outputs.cambia == '1'
+      run: tools/ec-harness/recuperacion.sh app/src/main/cpp/secp256k1
 
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py

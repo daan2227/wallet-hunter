@@ -40,6 +40,7 @@
 #include "bloom.h"
 
 #include "sha256_ripemd160.h"
+#include "sha512.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -256,13 +257,13 @@ static void gen_mnemonic(char *out,size_t sz){
     out[0]='\0';for(int w=0;w<12;w++){uint32_t idx=0;for(int b=0;b<11;b++)idx=(idx<<1)|bits[w*11+b];if(w>0)strncat(out," ",sz-strlen(out)-1);strncat(out,BIP39[idx%2048],sz-strlen(out)-1);}
 }
 typedef struct{uint8_t key[32];uint8_t chain[32];}HDKey;
-static void derive_master(const uint8_t *s,HDKey *o){uint8_t I[64];unsigned int l=64;HMAC(EVP_sha512(),"Bitcoin seed",12,s,64,I,&l);memcpy(o->key,I,32);memcpy(o->chain,I+32,32);}
+static void derive_master(const uint8_t *s,HDKey *o){uint8_t I[64];hmac_sha512((const uint8_t*)"Bitcoin seed",12,s,64,I);memcpy(o->key,I,32);memcpy(o->chain,I+32,32);}
 static void get_pub33(secp256k1_context *ctx,const uint8_t *pk,uint8_t *p33){secp256k1_pubkey pub;secp256k1_ec_pubkey_create(ctx,&pub,pk);size_t len=33;secp256k1_ec_pubkey_serialize(ctx,p33,&len,&pub,SECP256K1_EC_COMPRESSED);}
 static void derive_child(secp256k1_context *ctx,const HDKey *par,uint32_t idx,HDKey *child){
-    uint8_t data[37];unsigned int l=64;uint8_t I[64];
+    uint8_t data[37];uint8_t I[64];
     if(idx>=0x80000000){data[0]=0;memcpy(data+1,par->key,32);}else get_pub33(ctx,par->key,data);
     data[33]=(uint8_t)(idx>>24);data[34]=(uint8_t)(idx>>16);data[35]=(uint8_t)(idx>>8);data[36]=(uint8_t)idx;
-    HMAC(EVP_sha512(),par->chain,32,data,37,I,&l);
+    hmac_sha512(par->chain,32,data,37,I);
     memcpy(child->key,par->key,32);secp256k1_ec_seckey_tweak_add(ctx,child->key,I);memcpy(child->chain,I+32,32);
 }
 /*
@@ -292,7 +293,7 @@ static void derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *pa
         HDKey c;derive_child(ctx,o,i+(h?0x80000000u:0u),&c);*o=c;
     }
 }
-static void pk_to_h160(secp256k1_context *ctx,const uint8_t *pk,uint8_t *out){uint8_t pub[33];get_pub33(ctx,pk,pub);uint8_t sha[32];SHA256(pub,33,sha);RIPEMD160(sha,32,out);}
+static void pk_to_h160(secp256k1_context *ctx,const uint8_t *pk,uint8_t *out){uint8_t pub[33];get_pub33(ctx,pk,pub);hash160_inline(pub,out);}
 static void read_row_by_h160(const uint8_t *h160,char *sats,char *type){
     strcpy(sats,"0");strcpy(type,"?");
     FILE *f=fopen(g_csv_path,"r");if(!f)return;
@@ -328,40 +329,6 @@ static void hex_to_bytes32(const char *hex, uint8_t *out){
 }
 
 
-
-/* PBKDF2-SHA512 optimizado: precalcula estado HMAC del password */
-static void fast_pbkdf2_sha512(const char *pass, int plen, const uint8_t *salt, int slen, int iters, uint8_t *out) {
-    /* Precalcular estado HMAC con el password - solo 2 SHA512 calls */
-    HMAC_CTX *hctx = HMAC_CTX_new();
-    HMAC_Init_ex(hctx, pass, plen, EVP_sha512(), nullptr);
-    /* Salt + block counter para primer bloque */
-    uint8_t saltblock[slen+4];
-    memcpy(saltblock, salt, slen);
-    saltblock[slen]=0; saltblock[slen+1]=0; saltblock[slen+2]=0; saltblock[slen+3]=1;
-    /* U1 = HMAC(pass, salt||1) */
-    uint8_t U[64], T[64];
-    unsigned int ulen=64;
-    HMAC_CTX *hctx2 = HMAC_CTX_new();
-    HMAC_CTX_copy(hctx2, hctx);
-    HMAC_Update(hctx2, saltblock, slen+4);
-    HMAC_Final(hctx2, U, &ulen);
-    HMAC_CTX_free(hctx2);
-    memcpy(T, U, 64);
-    /* U2..Un = HMAC(pass, U_prev) - reusar estado base del password */
-    for (int i = 1; i < iters; i++) {
-        HMAC_CTX *hctx3 = HMAC_CTX_new();
-        HMAC_CTX_copy(hctx3, hctx);
-        HMAC_Update(hctx3, U, 64);
-        HMAC_Final(hctx3, U, &ulen);
-        HMAC_CTX_free(hctx3);
-        for (int j=0;j<64;j++) T[j]^=U[j];
-    }
-    HMAC_CTX_free(hctx);
-    memcpy(out, T, 64);
-}
-static void pbkdf2_sha512_1iter(const char *pass, int plen, const uint8_t *salt, int slen, uint8_t *out) {
-    fast_pbkdf2_sha512(pass, plen, salt, slen, 1, out);
-}
 
 /* =========================================================
    Wallet address encoding helpers
@@ -468,7 +435,7 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     const uint32_t COIN = 0x80000000u + (testnet?1u:0u);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     uint8_t seed[64];
-    PKCS5_PBKDF2_HMAC(mnemonic,(int)strlen(mnemonic),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+    bip39_semilla(mnemonic,strlen(mnemonic),"",0,seed);
     HDKey master; derive_master(seed,&master);
     std::string json="{";
     /* BIP44: m/44'/0'/0'/0/0-2 */
@@ -719,9 +686,15 @@ static void *worker_bip39_fn(void *arg){
     while(!g_stop.load()){
         auto t0=std::chrono::high_resolution_clock::now();
         nhits=0; local_done=0;
-        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi++){
-            gen_mnemonic(mn,sizeof(mn));
-            PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,g_pbkdf2_iters.load(),EVP_sha512(),64,seed);
+        /* De dos en dos: con las instrucciones SHA-512 las dos PBKDF2 van
+           entrelazadas (ver sha512.h); sin ellas es lo mismo que una y otra. */
+        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi+=2){
+            char mn2[2][256]; uint8_t seeds[2][64];
+            gen_mnemonic(mn2[0],sizeof(mn2[0])); gen_mnemonic(mn2[1],sizeof(mn2[1]));
+            pbkdf2_sha512_x2((const uint8_t*)mn2[0],strlen(mn2[0]),(const uint8_t*)mn2[1],strlen(mn2[1]),
+                             (const uint8_t*)"mnemonic",8,(uint32_t)g_pbkdf2_iters.load(),seeds[0],seeds[1]);
+          for(int q=0;q<2;q++){
+            strcpy(mn,mn2[q]); memcpy(seed,seeds[q],64);
             HDKey master; derive_master(seed,&master);
             const int paths=g_bip39_paths.load();
             /* --- m/44'/0'/0'/0/0 --- */
@@ -748,7 +721,8 @@ static void *worker_bip39_fn(void *arg){
                 {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
             }
             /* Feed visual: solo 1 vez por batch */
-            if(bi==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
+            if(bi==0&&q==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
+          }
             /* BIP86 removed */
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
@@ -1562,7 +1536,7 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
     if(!mn||!mn[0]){ if(mn)env->ReleaseStringUTFChars(jmn,mn); return env->NewStringUTF("[]"); }
 
     uint8_t seed[64];
-    PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+    bip39_semilla(mn,strlen(mn),"",0,seed);
     env->ReleaseStringUTFChars(jmn,mn);
 
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -1835,7 +1809,7 @@ static std::string build_and_sign_tx(const std::string &req){
         }
         stype=SP_LEGACY; is_segwit=false;
     }else{
-        PKCS5_PBKDF2_HMAC(mnemonic.c_str(),(int)mnemonic.size(),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
+        bip39_semilla(mnemonic.c_str(),mnemonic.size(),"",0,seed);
         derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
     }
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
@@ -2657,15 +2631,33 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
         sal^=h[0];
     }
     /* PBKDF2-HMAC-SHA512 de 2048 vueltas: lo que cuesta cada seed del
-       escaner BIP39. Lo hace OpenSSL. */
+       escaner BIP39 y de la recuperacion. OpenSSL frente a lo propio
+       (sha512.cpp), en cada forma que tenga este procesador. */
     {
         const char *mn="abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about";
-        uint8_t seed[64]; const int N=40;
-        auto t0=std::chrono::steady_clock::now();
-        for(int i=0;i<N;i++) PKCS5_PBKDF2_HMAC(mn,(int)strlen(mn),(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed);
-        double seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
-        o<<"BIP39 seeds:  "<<std::setprecision(0)<<N/seg<<" /s (PBKDF2, 1 thread)\n"<<std::setprecision(1);
-        sal^=seed[0];
+        const size_t mnl=strlen(mn);
+        uint8_t seed[64],seed2[64];
+        auto medir=[&](int modo)->double{
+            int n=0; auto t0=std::chrono::steady_clock::now(); double seg;
+            do{
+                if(modo<0){ PKCS5_PBKDF2_HMAC(mn,(int)mnl,(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed); n++; }
+                else{ bip39_semilla_x2(mn,mnl,mn,mnl,"",0,seed,seed2); n+=2; }
+                seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+            }while(seg<0.6);
+            sal^=seed[0]; return n/seg;
+        };
+        o<<"SHA-512 instructions: "<<(sha512_tiene_hw()?"yes":"no")<<"\n";
+        double base=medir(-1);
+        o<<"BIP39 seeds OpenSSL:  "<<std::setprecision(0)<<base<<" /s (1 thread)\n";
+        int nm=sha512_tiene_hw()?3:1;
+        for(int m=0;m<nm;m++){
+            sha512_fijar_modo(m);
+            double v=medir(m);
+            o<<"BIP39 seeds "<<sha512_nombre_modo(m)<<": "<<std::setprecision(0)<<v<<" /s ("
+             <<std::setprecision(2)<<v/base<<"x)\n";
+        }
+        sha512_fijar_modo(-1);
+        o<<"In use: "<<sha512_nombre_modo(sha512_modo())<<"\n"<<std::setprecision(1);
     }
 
     /* Saltos por segundo del bucle de Kangaroo, un hilo, dos segundos, en un

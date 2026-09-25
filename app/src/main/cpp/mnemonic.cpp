@@ -1,6 +1,5 @@
 #include "mnemonic.h"
-#include <openssl/evp.h>
-#include <openssl/hmac.h>
+#include "sha512.h"
 #include <cstring>
 #include <algorithm>
 
@@ -16,22 +15,11 @@ bool mnemonic_to_seed(const std::string& mnemonic,
                       const std::string& passphrase,
                       uint8_t seed_out[64])
 {
-    // Construir salt: "mnemonic" + passphrase
-    const std::string salt_prefix = "mnemonic";
-    std::string salt = salt_prefix + passphrase;
-
-    int result = PKCS5_PBKDF2_HMAC(
-        mnemonic.c_str(),          // password
-        (int)mnemonic.size(),      // password length
-        (const unsigned char*)salt.c_str(),  // salt
-        (int)salt.size(),          // salt length
-        2048,                      // iterations (BIP39 estándar)
-        EVP_sha512(),              // hash function
-        64,                        // key length en bytes
-        seed_out                   // output buffer
-    );
-
-    return result == 1;
+    // PBKDF2-HMAC-SHA512 propio (sha512.cpp): mismo resultado que OpenSSL,
+    // comprobado en tools/ec-harness/pbkdf2.cpp, y bastante mas rapido.
+    bip39_semilla(mnemonic.data(), mnemonic.size(),
+                  passphrase.data(), passphrase.size(), seed_out);
+    return true;
 }
 
 int validate_mnemonic_words(const std::vector<std::string>& words,

@@ -1,4 +1,9 @@
+#ifndef RECOVERY_SIN_JNI
 #include <jni.h>
+#include <android/log.h>
+#endif
+#include <functional>
+#include <chrono>
 #include <string>
 #include <vector>
 #include <unordered_map>
@@ -6,7 +11,6 @@
 #include <thread>
 #include <mutex>
 #include <atomic>
-#include <android/log.h>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
 #include <openssl/hmac.h>
@@ -14,9 +18,15 @@
 #include <secp256k1.h>
 #include "mnemonic.h"
 #include "bip32.h"
+#include "sha512.h"
+#include "sha256_ripemd160.h"
 
 #define LOG_TAG "RecoveryEngine"
+#ifndef RECOVERY_SIN_JNI
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  LOG_TAG, __VA_ARGS__)
+#else
+#define LOGI(...) ((void)0)
+#endif
 #define MAX_ADDR 64
 /* Índices de dirección a probar por candidato (m/purpose'/0'/0'/0/0..N).
    Antes sólo se probaba el 0, así que si la dirección conocida no era la
@@ -85,7 +95,7 @@ static void candidate_h160(secp256k1_context* ctx,const uint8_t* pk,
     secp256k1_ec_pubkey_serialize(ctx,pub,&plen,&pubkey,SECP256K1_EC_COMPRESSED);
 
     uint8_t h160[20];
-    hash160_of(pub,33,h160);
+    hash160_inline(pub,h160);   /* SHA-256 del procesador si lo tiene */
 
     if(kind==AK_P2SH){
         /* P2SH-P2WPKH: el hash del script redentor 0x0014<h160> */
@@ -194,20 +204,6 @@ static AddrKind parse_target(const std::string& addr,uint8_t h160_out[20]){
 // NOTA: esto es una heurística — el filtro real compara h160 de m/44'/0'/0'/0/0
 // Para máxima velocidad hacemos BIP44 completo solo cuando seed pasa pre-filtro
 
-// Pre-filtro: comparar primeros 2 bytes del master_key con fingerprint
-// ~1/65536 falsos positivos → solo 64 derivaciones BIP44 completas por 4M combos
-static bool quick_filter(const uint8_t seed[64], const uint8_t fingerprint[2]){
-    // master key = HMAC-SHA512("Bitcoin seed", seed)
-    uint8_t I[64];
-    unsigned int out_len=64;
-    HMAC(EVP_sha512(),
-         "Bitcoin seed",12,
-         seed,64,
-         I,&out_len);
-    // Comparar primeros 2 bytes del master key con fingerprint
-    return (I[0]==fingerprint[0] && I[1]==fingerprint[1]);
-}
-
 /**
  * Verifica el checksum BIP39 a partir de los índices de las palabras.
  *
@@ -249,11 +245,13 @@ static bool bip39_checksum_ok(const std::vector<int>& idx){
     return got == (h[0] >> (8 - cs_bits));
 }
 
+#ifndef RECOVERY_SIN_JNI
 static std::string jstr(JNIEnv* env,jstring js){
     if(!js)return"";
     const char* c=env->GetStringUTFChars(js,nullptr);
     std::string s(c);env->ReleaseStringUTFChars(js,c);return s;
 }
+#endif
 
 // ── Estado compartido ─────────────────────────────────────────────────────────
 static volatile bool      g_cancelled=false;
@@ -281,91 +279,93 @@ struct WorkerArgs {
     int                      n_missing;
 };
 
+/* Un contexto para todos los hilos: pubkey_create lo toma como const. */
+static secp256k1_context* ctx_rec(){
+    static secp256k1_context* c=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    return c;
+}
+
+/* ¿Sale el objetivo de esta semilla? Mira m/purpose'/0'/0'/0/0..max_index.
+ * La clave publica de m/purpose'/0'/0'/0 se calcula una vez y vale para todos
+ * los indices: 7 multiplicaciones escalares por candidato en vez de 11. */
+static bool semilla_da_objetivo(const WorkerArgs& args,const uint8_t seed[64]){
+    AddrKind kind=(AddrKind)args.target_kind;
+    Bip32Node chain;
+    if(!bip_derive_chain(seed,purpose_for(kind),chain)) return false;
+    uint8_t chain_pub[33];
+    if(!bip32_pub33(chain.key,chain_pub)) return false;
+    for(int ai=0; ai<=args.max_index; ai++){
+        uint8_t privkey[32],h[20];
+        if(!bip_derive_from_chain_pub(chain,chain_pub,(uint32_t)ai,privkey)) continue;
+        candidate_h160(ctx_rec(),privkey,kind,h);
+        if(memcmp(h,args.target_h160,20)==0) return true;
+    }
+    return false;
+}
+
 static void worker(WorkerArgs args){
-    secp256k1_context* ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-    int n=args.n_missing,wl=args.wl_size;
+    secp256k1_context* ctx=ctx_rec();
+    const int n=args.n_missing,wl=args.wl_size,nw=(int)args.word_idx.size();
 
     std::vector<int> counters(n,0);
     long long tmp=args.start_combo;
     for(int i=n-1;i>=0;i--){counters[i]=(int)(tmp%wl);tmp/=wl;}
 
     long long combo=args.start_combo;
-    std::vector<std::string> slots=args.slots;
     std::vector<int> widx=args.word_idx;
+
+    /* Las frases que pasan el checksum se juntan de dos en dos: con las
+       instrucciones SHA-512 las dos PBKDF2 van entrelazadas (sha512.h). */
+    struct Cand{ char mn[400]; size_t len; };
+    Cand cand[2]; int nc=0;
+    /* El contador compartido se tocaba en cada combinacion, desde todos los
+       hilos: la misma linea de cache saltando de nucleo en nucleo. */
+    long long pendientes=0;
+
+    auto encontrado=[&](const char* mn,const std::string& extra){
+        std::lock_guard<std::mutex> lk(g_result_mutex);
+        if(!g_found.load()){ g_result=std::string(mn)+extra; g_found.store(true); }
+    };
+    auto procesar=[&](int cuantos){
+        uint8_t seeds[2][64];
+        if(cuantos==2) bip39_semilla_x2(cand[0].mn,cand[0].len,cand[1].mn,cand[1].len,"",0,seeds[0],seeds[1]);
+        else           bip39_semilla(cand[0].mn,cand[0].len,"",0,seeds[0]);
+        for(int q=0;q<cuantos && !g_found.load();q++){
+            if(args.has_target){
+                g_filtered.fetch_add(1,std::memory_order_relaxed);
+                if(semilla_da_objetivo(args,seeds[q])) encontrado(cand[q].mn,"");
+            }else{
+                /* Sin objetivo: la primera frase que pasa el checksum, con su
+                   direccion legacy de referencia. */
+                uint8_t privkey[32];
+                if(bip_derive_privkey(seeds[q],44,0,privkey)){
+                    char addr[MAX_ADDR];
+                    privkey_to_addr(ctx,privkey,addr);
+                    encontrado(cand[q].mn,"|ADDR:"+std::string(addr));
+                }
+            }
+        }
+    };
 
     while(combo<args.end_combo&&!g_found.load()&&!g_cancelled){
         for(int i=0;i<n;i++)
             widx[args.missing_indices[i]]=counters[i];
 
         /* Descartar antes de derivar: el checksum cuesta un SHA256 de 16-32
-           bytes, frente a PBKDF2 con 2048 iteraciones más la derivación BIP32
-           y secp256k1 de cada candidato. */
-        if(!bip39_checksum_ok(widx)){
-            g_attempts.fetch_add(1);
-            int carry0=1;
-            for(int i=n-1;i>=0&&carry0;i--){
-                counters[i]+=carry0;
-                if(counters[i]>=wl){counters[i]=0;carry0=1;}else{carry0=0;}
+           bytes, frente a PBKDF2 con 2048 iteraciones. */
+        if(bip39_checksum_ok(widx)){
+            Cand& c=cand[nc];
+            size_t p=0;
+            for(int i=0;i<nw;i++){
+                const std::string& w=args.wordlist[widx[i]];
+                if(i) c.mn[p++]=' ';
+                memcpy(c.mn+p,w.data(),w.size()); p+=w.size();
             }
-            combo++;
-            continue;
+            c.mn[p]=0; c.len=p;
+            if(++nc==2){ procesar(2); nc=0; }
         }
 
-        for(int i=0;i<n;i++)
-            slots[args.missing_indices[i]]=args.wordlist[counters[i]];
-
-        std::string mnemonic;mnemonic.reserve(200);
-        for(int i=0;i<(int)slots.size();i++){if(i>0)mnemonic+=' ';mnemonic+=slots[i];}
-
-        uint8_t seed[64];
-        if(mnemonic_to_seed(mnemonic,"",seed)){
-
-            bool do_full_derivation=true;
-
-            // Filtro deshabilitado - siempre derivación completa
-            if(args.has_target) g_filtered.fetch_add(1);
-            do_full_derivation=true;
-
-            if(do_full_derivation){
-                uint8_t privkey[32];
-                if(args.has_target){
-                    /* Sólo la ruta que corresponde al tipo del objetivo, y los
-                       índices de dirección pedidos. Comparación binaria de
-                       hash160: evita reconstruir la cadena Base58 por candidato. */
-                    AddrKind kind=(AddrKind)args.target_kind;
-                    uint32_t purpose=purpose_for(kind);
-                    /* m/purpose'/0'/0'/0 se deriva una vez por seed en lugar de
-                       una vez por índice: eran 25 niveles HMAC-SHA512 por
-                       candidato en lugar de los 9 necesarios. */
-                    Bip32Node chain;
-                    if(bip_derive_chain(seed,purpose,chain))
-                    for(int ai=0; ai<=args.max_index; ai++){
-                        if(!bip_derive_from_chain(chain,(uint32_t)ai,privkey)) continue;
-                        uint8_t h[20];
-                        candidate_h160(ctx,privkey,kind,h);
-                        if(memcmp(h,args.target_h160,20)==0){
-                            std::lock_guard<std::mutex> lk(g_result_mutex);
-                            g_result=mnemonic;g_found.store(true);
-                            secp256k1_context_destroy(ctx);return;
-                        }
-                    }
-                }else{
-                    /* Sin objetivo devolvemos la primera frase que pasa el
-                       checksum BIP39, con su dirección legacy de referencia. */
-                    if(bip_derive_privkey(seed,44,0,privkey)){
-                        char addr[MAX_ADDR];
-                        privkey_to_addr(ctx,privkey,addr);
-                        std::string res=mnemonic+"|ADDR:"+std::string(addr);
-                        std::lock_guard<std::mutex> lk(g_result_mutex);
-                        g_result=res;g_found.store(true);
-                        secp256k1_context_destroy(ctx);return;
-                    }
-                }
-            }
-        }
-
-        g_attempts.fetch_add(1);
-
+        if(++pendientes>=256){ g_attempts.fetch_add(pendientes); pendientes=0; }
         int carry=1;
         for(int i=n-1;i>=0&&carry;i--){
             counters[i]+=carry;
@@ -373,7 +373,8 @@ static void worker(WorkerArgs args){
         }
         combo++;
     }
-    secp256k1_context_destroy(ctx);
+    if(nc && !g_found.load() && !g_cancelled) procesar(nc);
+    g_attempts.fetch_add(pendientes);
 }
 
 // ── Calcular fingerprint desde dirección objetivo ─────────────────────────────
@@ -387,38 +388,19 @@ static void compute_fingerprint(const uint8_t target_h160[20], uint8_t fp_out[2]
     fp_out[0]=hash[0];fp_out[1]=hash[1];
 }
 
-static bool seed_passes_filter(const uint8_t seed[64], const uint8_t fp[2]){
-    uint8_t hash[32];
-    SHA256(seed,64,hash);
-    return (hash[0]==fp[0]&&hash[1]==fp[1]);
-}
-
-// ── JNI ───────────────────────────────────────────────────────────────────────
-extern "C"{
-
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
-    JNIEnv* env,jobject thiz,
-    jobjectArray slots_arr,jobjectArray wordlist_arr,
-    jintArray missing_arr,jstring target_j)
+// ── La busqueda, sin JNI (para poder probarla en el escritorio) ─────────────
+/* Devuelve la frase encontrada ("frase" o "frase|ADDR:..."), "" si no hay, o
+ * "ERROR:..." si el objetivo no vale. progreso(intentos, total) cada 300 ms. */
+std::string recovery_run(const std::vector<std::string>& slots,
+                         const std::vector<std::string>& wordlist,
+                         const std::vector<int>& missing,
+                         const std::string& target,
+                         const std::function<void(long long,long long,const std::string&)>& progreso,
+                         int n_threads_pedidos=0)
 {
     g_cancelled=false;g_found.store(false);
     g_attempts.store(0);g_filtered.store(0);g_result="";
-
-    int sc=env->GetArrayLength(slots_arr);
-    std::vector<std::string> slots(sc);
-    for(int i=0;i<sc;i++){auto js=(jstring)env->GetObjectArrayElement(slots_arr,i);slots[i]=jstr(env,js);env->DeleteLocalRef(js);}
-
-    int wc=env->GetArrayLength(wordlist_arr);
-    std::vector<std::string> wordlist(wc);
-    for(int i=0;i<wc;i++){auto js=(jstring)env->GetObjectArrayElement(wordlist_arr,i);wordlist[i]=jstr(env,js);env->DeleteLocalRef(js);}
-
-    int mc=env->GetArrayLength(missing_arr);
-    jint* raw=env->GetIntArrayElements(missing_arr,nullptr);
-    std::vector<int> missing(raw,raw+mc);
-    env->ReleaseIntArrayElements(missing_arr,raw,JNI_ABORT);
-
-    std::string target=jstr(env,target_j);
+    const int sc=(int)slots.size(), wc=(int)wordlist.size(), mc=(int)missing.size();
     bool has_target=!target.empty();
 
     /* Índice BIP39 de cada posición conocida, resuelto una sola vez: en el
@@ -434,7 +416,6 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
 
     long long total=1;for(int i=0;i<mc;i++)total*=wc;
 
-    // Preparar fingerprint si hay target
     uint8_t target_h160[20]={0};
     uint8_t fingerprint[2]={0};
     AddrKind target_kind=AK_P2PKH;
@@ -444,18 +425,16 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
             /* Antes se seguía buscando con un hash160 basura, de modo que la
                recuperación no podía terminar nunca en coincidencia. */
             LOGI("Dirección objetivo no soportada o con checksum incorrecto");
-            return env->NewStringUTF("ERROR:INVALID_TARGET");
+            return "ERROR:INVALID_TARGET";
         }
         compute_fingerprint(target_h160,fingerprint);
         LOGI("Objetivo tipo=%d purpose=m/%u'",(int)target_kind,purpose_for(target_kind));
     }
 
-    /* Estaba fijo en 6, sin relación con el dispositivo: desaprovechaba los
-       móviles de 8 núcleos y sobresuscribía los de 4. Se deja uno libre para
-       la UI y el sistema. */
+    /* Se deja un núcleo libre para la UI y el sistema. */
     int hw=(int)std::thread::hardware_concurrency();
     if(hw<1) hw=4;
-    int n_threads=hw-1;
+    int n_threads=n_threads_pedidos>0?n_threads_pedidos:hw-1;
     if(n_threads<1) n_threads=1;
     if(n_threads>16) n_threads=16;
     if(total<n_threads)n_threads=(int)total;
@@ -479,22 +458,13 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
         threads.emplace_back(worker,args);
     }
 
-    jclass cls=env->GetObjectClass(thiz);
-    jmethodID on_progress=env->GetMethodID(cls,"onProgress","(JJLjava/lang/String;)V");
-
     while(!g_found.load()&&!g_cancelled){
         std::this_thread::sleep_for(std::chrono::milliseconds(300));
         long long att=g_attempts.load();
-        if(on_progress){
-            // Mostrar también cuántos pasaron el filtro
+        if(progreso){
             std::string status=std::to_string(att);
-            if(has_target){
-                long long filt=g_filtered.load();
-                status+=" (filtro: "+std::to_string(filt)+" full)";
-            }
-            jstring jw=env->NewStringUTF(status.c_str());
-            env->CallVoidMethod(thiz,on_progress,(jlong)att,(jlong)total,jw);
-            env->DeleteLocalRef(jw);
+            if(has_target) status+=" (filtro: "+std::to_string(g_filtered.load())+" full)";
+            progreso(att,total,status);
         }
         if(att>=total)break;
     }
@@ -503,9 +473,45 @@ Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
 
     LOGI("Recovery done: %lld intentos, %lld full derivations",
          g_attempts.load(),g_filtered.load());
+    return g_result;
+}
 
-    if(g_result.empty())return nullptr;
-    return env->NewStringUTF(g_result.c_str());
+#ifndef RECOVERY_SIN_JNI
+// ── JNI ───────────────────────────────────────────────────────────────────────
+extern "C"{
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_recovery_RecoveryEngine_bruteForceSeeds(
+    JNIEnv* env,jobject thiz,
+    jobjectArray slots_arr,jobjectArray wordlist_arr,
+    jintArray missing_arr,jstring target_j)
+{
+    int sc=env->GetArrayLength(slots_arr);
+    std::vector<std::string> slots(sc);
+    for(int i=0;i<sc;i++){auto js=(jstring)env->GetObjectArrayElement(slots_arr,i);slots[i]=jstr(env,js);env->DeleteLocalRef(js);}
+
+    int wc=env->GetArrayLength(wordlist_arr);
+    std::vector<std::string> wordlist(wc);
+    for(int i=0;i<wc;i++){auto js=(jstring)env->GetObjectArrayElement(wordlist_arr,i);wordlist[i]=jstr(env,js);env->DeleteLocalRef(js);}
+
+    int mc=env->GetArrayLength(missing_arr);
+    jint* raw=env->GetIntArrayElements(missing_arr,nullptr);
+    std::vector<int> missing(raw,raw+mc);
+    env->ReleaseIntArrayElements(missing_arr,raw,JNI_ABORT);
+
+    std::string target=jstr(env,target_j);
+
+    jclass cls=env->GetObjectClass(thiz);
+    jmethodID on_progress=env->GetMethodID(cls,"onProgress","(JJLjava/lang/String;)V");
+    std::string res=recovery_run(slots,wordlist,missing,target,
+        [&](long long att,long long total,const std::string& status){
+            if(!on_progress) return;
+            jstring jw=env->NewStringUTF(status.c_str());
+            env->CallVoidMethod(thiz,on_progress,(jlong)att,(jlong)total,jw);
+            env->DeleteLocalRef(jw);
+        });
+    if(res.empty())return nullptr;
+    return env->NewStringUTF(res.c_str());
 }
 
 JNIEXPORT void JNICALL
@@ -514,3 +520,4 @@ Java_com_hunter_btc_recovery_RecoveryEngine_cancelRecovery(JNIEnv* env,jobject t
 }
 
 }// extern "C"
+#endif
