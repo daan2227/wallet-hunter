@@ -6,6 +6,14 @@
 #include <string.h>
 #include <stdlib.h>
 
+/* v -> [0, nbits) con una multiplicacion en vez de una division de 64 bits
+ * (la "reduccion rapida" de Lemire). Se usa igual al construir y al consultar,
+ * y el filtro se construye al cargar la lista, asi que no hay nada guardado
+ * con la cuenta de antes. */
+static inline uint64_t bloom_rango(uint64_t v, uint64_t nbits){
+    return (uint64_t)(((__uint128_t)v * nbits) >> 64);
+}
+
 typedef struct {
     uint8_t *bits;
     uint64_t nbits;
@@ -16,25 +24,25 @@ static inline uint64_t bloom_hash1(const uint8_t *h, uint64_t nbits) {
     uint64_t v;
     memcpy(&v, h, 8);
     v ^= v >> 33; v *= 0xff51afd7ed558ccdULL; v ^= v >> 33;
-    return v % nbits;
+    return bloom_rango(v, nbits);
 }
 static inline uint64_t bloom_hash2(const uint8_t *h, uint64_t nbits) {
     uint64_t v;
     memcpy(&v, h + 4, 8);
     v ^= v >> 33; v *= 0xc4ceb9fe1a85ec53ULL; v ^= v >> 33;
-    return v % nbits;
+    return bloom_rango(v, nbits);
 }
 static inline uint64_t bloom_hash3(const uint8_t *h, uint64_t nbits) {
     uint64_t v;
     memcpy(&v, h + 8, 8);
     v ^= v >> 33; v *= 0x9e3779b97f4a7c15ULL; v ^= v >> 33;
-    return v % nbits;
+    return bloom_rango(v, nbits);
 }
 static inline uint64_t bloom_hash4(const uint8_t *h, uint64_t nbits) {
     uint64_t v;
     memcpy(&v, h + 12, 8);
     v ^= v >> 33; v *= 0x6c62272e07bb0142ULL; v ^= v >> 33;
-    return v % nbits;
+    return bloom_rango(v, nbits);
 }
 
 static inline void bloom_set(Bloom *b, const uint8_t *h160) {

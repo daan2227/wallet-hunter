@@ -48,7 +48,7 @@ jobs:
         CAMBIOS=$(git diff --name-only "$ANTES" "${{ github.sha }}")
         # El banco ARM64 (qemu) cuesta instalar un compilador cruzado: solo
         # cuando cambia algo que tiene codigo propio de ARM64.
-        if echo "$CAMBIOS" | grep -qE '(sha512|fe_arm64|sha256_ripemd160|sha256_hw|pbkdf2|arm64\.sh|build\.yml)'; then
+        if echo "$CAMBIOS" | grep -qE '(sha512|fe_arm64|sha256_ripemd160|sha256_hw|hash160x4|escaner_raw|pbkdf2|arm64\.sh|build\.yml)'; then
           echo "arm=1" >> "$GITHUB_OUTPUT"
         else
           echo "arm=0" >> "$GITHUB_OUTPUT"
@@ -132,12 +132,13 @@ jobs:
           ./gen_precomputed_ecmult > src/precomputed_ecmult.c 2>/dev/null || true
         fi
 
-    # La recuperacion de frases entera (PBKDF2, BIP32, direcciones), sin JNI,
-    # contra frases y direcciones conocidas. Va aqui porque necesita el
-    # secp256k1 que se acaba de clonar.
-    - name: Banco de la recuperacion
+    # Lo que necesita el secp256k1 que se acaba de clonar: la recuperacion de
+    # frases entera (PBKDF2, BIP32, direcciones) contra frases y direcciones
+    # conocidas, y el escaner de claves (cada clave publica que prueba es la de
+    # la privada que guardaria si coincidiera).
+    - name: Banco de la recuperacion y el escaner
       if: steps.motor.outputs.cambia == '1'
-      run: tools/ec-harness/recuperacion.sh app/src/main/cpp/secp256k1
+      run: tools/ec-harness/con_secp.sh app/src/main/cpp/secp256k1
 
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py

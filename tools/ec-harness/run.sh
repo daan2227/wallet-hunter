@@ -27,9 +27,10 @@ cd "$(dirname "$0")"
 # ciclos   - cuanto miden los ciclos esteriles: dimensiona KG_VENTANA
 # orden    - aritmetica modulo el orden del grupo, atada a la curva
 # saltos   - punto y distancia avanzan a la par, tambien en rangos grandes
+# hash160x4- RIPEMD-160 desenrollado y cuatro hash160 a la vez
 # pbkdf2   - SHA-512, HMAC y PBKDF2 propios contra OpenSSL
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2"
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {

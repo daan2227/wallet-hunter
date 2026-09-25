@@ -87,19 +87,26 @@ static inline void sha256_33_sw(const uint8_t *in, uint8_t *out){
     for(int i=0;i<8;i++){out[i*4]=(uint8_t)(st[i]>>24);out[i*4+1]=(uint8_t)(st[i]>>16);out[i*4+2]=(uint8_t)(st[i]>>8);out[i*4+3]=(uint8_t)st[i];}
 }
 
-/* La que se usa: con las instrucciones del procesador si las hay. */
-static inline void sha256_33(const uint8_t *in, uint8_t *out){
-#ifndef SHA256_HW
-    sha256_33_sw(in,out); return;
-#else
-    uint32_t st[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+/* Estado final de SHA-256 de 33 bytes: con las instrucciones del procesador
+ * si las hay. */
+static inline void sha256_33_st(const uint8_t *in, uint32_t *st){
+    static const uint32_t IV[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
+    memcpy(st,IV,32);
     uint8_t blk[64]={0};
     memcpy(blk,in,33);
     blk[33]=0x80;
     blk[62]=0x01; blk[63]=0x08; /* length = 33*8 = 264 bits = 0x108 */
+#ifdef SHA256_HW
     sha256_block_hw(st,blk);
-    for(int i=0;i<8;i++){out[i*4]=(uint8_t)(st[i]>>24);out[i*4+1]=(uint8_t)(st[i]>>16);out[i*4+2]=(uint8_t)(st[i]>>8);out[i*4+3]=(uint8_t)st[i];}
+#else
+    sha256_block(st,blk);
 #endif
+}
+
+/* La que se usa. */
+static inline void sha256_33(const uint8_t *in, uint8_t *out){
+    uint32_t st[8]; sha256_33_st(in,st);
+    for(int i=0;i<8;i++){out[i*4]=(uint8_t)(st[i]>>24);out[i*4+1]=(uint8_t)(st[i]>>16);out[i*4+2]=(uint8_t)(st[i]>>8);out[i*4+3]=(uint8_t)st[i];}
 }
 
 /* =========================================================
@@ -143,7 +150,121 @@ static const int SR[80]={
     8,5,12,9,12,5,14,6,8,13,6,5,15,13,11,11
 };
 
+/* Las 80 rondas desenrolladas, con las palabras, desplazamientos y
+ * constantes escritos en cada paso (generadas de las tablas de arriba). El
+ * bucle de antes elegia la funcion con un if por ronda y leia cuatro tablas en
+ * cada paso; asi el compilador ve constantes y el relleno fijo del mensaje de
+ * 32 bytes (X8..X15) se pliega solo. Los nombres rotan en vez de mover los
+ * valores: tras 80 pasos (multiplo de 5) vuelven a su sitio. */
+#define RMD_P(F,a,b,c,d,e,x,k,s) { a += F(b,c,d) + (x) + (k); a = ROL32(a,s) + e; c = ROL32(c,10); }
+#define P1(a,b,c,d,e,x,k,s) RMD_P(F1,a,b,c,d,e,x,k,s)
+#define P2(a,b,c,d,e,x,k,s) RMD_P(F2,a,b,c,d,e,x,k,s)
+#define P3(a,b,c,d,e,x,k,s) RMD_P(F3,a,b,c,d,e,x,k,s)
+#define P4(a,b,c,d,e,x,k,s) RMD_P(F4,a,b,c,d,e,x,k,s)
+#define P5(a,b,c,d,e,x,k,s) RMD_P(F5,a,b,c,d,e,x,k,s)
+#define RMD_RONDAS \
+    P1(al,bl,cl,dl,el,X0,0x00000000u,11) P5(ar,br,cr,dr,er,X5,0x50A28BE6u,8) \
+    P1(el,al,bl,cl,dl,X1,0x00000000u,14) P5(er,ar,br,cr,dr,X14,0x50A28BE6u,9) \
+    P1(dl,el,al,bl,cl,X2,0x00000000u,15) P5(dr,er,ar,br,cr,X7,0x50A28BE6u,9) \
+    P1(cl,dl,el,al,bl,X3,0x00000000u,12) P5(cr,dr,er,ar,br,X0,0x50A28BE6u,11) \
+    P1(bl,cl,dl,el,al,X4,0x00000000u,5) P5(br,cr,dr,er,ar,X9,0x50A28BE6u,13) \
+    P1(al,bl,cl,dl,el,X5,0x00000000u,8) P5(ar,br,cr,dr,er,X2,0x50A28BE6u,15) \
+    P1(el,al,bl,cl,dl,X6,0x00000000u,7) P5(er,ar,br,cr,dr,X11,0x50A28BE6u,15) \
+    P1(dl,el,al,bl,cl,X7,0x00000000u,9) P5(dr,er,ar,br,cr,X4,0x50A28BE6u,5) \
+    P1(cl,dl,el,al,bl,X8,0x00000000u,11) P5(cr,dr,er,ar,br,X13,0x50A28BE6u,7) \
+    P1(bl,cl,dl,el,al,X9,0x00000000u,13) P5(br,cr,dr,er,ar,X6,0x50A28BE6u,7) \
+    P1(al,bl,cl,dl,el,X10,0x00000000u,14) P5(ar,br,cr,dr,er,X15,0x50A28BE6u,8) \
+    P1(el,al,bl,cl,dl,X11,0x00000000u,15) P5(er,ar,br,cr,dr,X8,0x50A28BE6u,11) \
+    P1(dl,el,al,bl,cl,X12,0x00000000u,6) P5(dr,er,ar,br,cr,X1,0x50A28BE6u,14) \
+    P1(cl,dl,el,al,bl,X13,0x00000000u,7) P5(cr,dr,er,ar,br,X10,0x50A28BE6u,14) \
+    P1(bl,cl,dl,el,al,X14,0x00000000u,9) P5(br,cr,dr,er,ar,X3,0x50A28BE6u,12) \
+    P1(al,bl,cl,dl,el,X15,0x00000000u,8) P5(ar,br,cr,dr,er,X12,0x50A28BE6u,6) \
+    P2(el,al,bl,cl,dl,X7,0x5A827999u,7) P4(er,ar,br,cr,dr,X6,0x5C4DD124u,9) \
+    P2(dl,el,al,bl,cl,X4,0x5A827999u,6) P4(dr,er,ar,br,cr,X11,0x5C4DD124u,13) \
+    P2(cl,dl,el,al,bl,X13,0x5A827999u,8) P4(cr,dr,er,ar,br,X3,0x5C4DD124u,15) \
+    P2(bl,cl,dl,el,al,X1,0x5A827999u,13) P4(br,cr,dr,er,ar,X7,0x5C4DD124u,7) \
+    P2(al,bl,cl,dl,el,X10,0x5A827999u,11) P4(ar,br,cr,dr,er,X0,0x5C4DD124u,12) \
+    P2(el,al,bl,cl,dl,X6,0x5A827999u,9) P4(er,ar,br,cr,dr,X13,0x5C4DD124u,8) \
+    P2(dl,el,al,bl,cl,X15,0x5A827999u,7) P4(dr,er,ar,br,cr,X5,0x5C4DD124u,9) \
+    P2(cl,dl,el,al,bl,X3,0x5A827999u,15) P4(cr,dr,er,ar,br,X10,0x5C4DD124u,11) \
+    P2(bl,cl,dl,el,al,X12,0x5A827999u,7) P4(br,cr,dr,er,ar,X14,0x5C4DD124u,7) \
+    P2(al,bl,cl,dl,el,X0,0x5A827999u,12) P4(ar,br,cr,dr,er,X15,0x5C4DD124u,7) \
+    P2(el,al,bl,cl,dl,X9,0x5A827999u,15) P4(er,ar,br,cr,dr,X8,0x5C4DD124u,12) \
+    P2(dl,el,al,bl,cl,X5,0x5A827999u,9) P4(dr,er,ar,br,cr,X12,0x5C4DD124u,7) \
+    P2(cl,dl,el,al,bl,X2,0x5A827999u,11) P4(cr,dr,er,ar,br,X4,0x5C4DD124u,6) \
+    P2(bl,cl,dl,el,al,X14,0x5A827999u,7) P4(br,cr,dr,er,ar,X9,0x5C4DD124u,15) \
+    P2(al,bl,cl,dl,el,X11,0x5A827999u,13) P4(ar,br,cr,dr,er,X1,0x5C4DD124u,13) \
+    P2(el,al,bl,cl,dl,X8,0x5A827999u,12) P4(er,ar,br,cr,dr,X2,0x5C4DD124u,11) \
+    P3(dl,el,al,bl,cl,X3,0x6ED9EBA1u,11) P3(dr,er,ar,br,cr,X15,0x6D703EF3u,9) \
+    P3(cl,dl,el,al,bl,X10,0x6ED9EBA1u,13) P3(cr,dr,er,ar,br,X5,0x6D703EF3u,7) \
+    P3(bl,cl,dl,el,al,X14,0x6ED9EBA1u,6) P3(br,cr,dr,er,ar,X1,0x6D703EF3u,15) \
+    P3(al,bl,cl,dl,el,X4,0x6ED9EBA1u,7) P3(ar,br,cr,dr,er,X3,0x6D703EF3u,11) \
+    P3(el,al,bl,cl,dl,X9,0x6ED9EBA1u,14) P3(er,ar,br,cr,dr,X7,0x6D703EF3u,8) \
+    P3(dl,el,al,bl,cl,X15,0x6ED9EBA1u,9) P3(dr,er,ar,br,cr,X14,0x6D703EF3u,6) \
+    P3(cl,dl,el,al,bl,X8,0x6ED9EBA1u,13) P3(cr,dr,er,ar,br,X6,0x6D703EF3u,6) \
+    P3(bl,cl,dl,el,al,X1,0x6ED9EBA1u,15) P3(br,cr,dr,er,ar,X9,0x6D703EF3u,14) \
+    P3(al,bl,cl,dl,el,X2,0x6ED9EBA1u,14) P3(ar,br,cr,dr,er,X11,0x6D703EF3u,12) \
+    P3(el,al,bl,cl,dl,X7,0x6ED9EBA1u,8) P3(er,ar,br,cr,dr,X8,0x6D703EF3u,13) \
+    P3(dl,el,al,bl,cl,X0,0x6ED9EBA1u,13) P3(dr,er,ar,br,cr,X12,0x6D703EF3u,5) \
+    P3(cl,dl,el,al,bl,X6,0x6ED9EBA1u,6) P3(cr,dr,er,ar,br,X2,0x6D703EF3u,14) \
+    P3(bl,cl,dl,el,al,X13,0x6ED9EBA1u,5) P3(br,cr,dr,er,ar,X10,0x6D703EF3u,13) \
+    P3(al,bl,cl,dl,el,X11,0x6ED9EBA1u,12) P3(ar,br,cr,dr,er,X0,0x6D703EF3u,13) \
+    P3(el,al,bl,cl,dl,X5,0x6ED9EBA1u,7) P3(er,ar,br,cr,dr,X4,0x6D703EF3u,7) \
+    P3(dl,el,al,bl,cl,X12,0x6ED9EBA1u,5) P3(dr,er,ar,br,cr,X13,0x6D703EF3u,5) \
+    P4(cl,dl,el,al,bl,X1,0x8F1BBCDCu,11) P2(cr,dr,er,ar,br,X8,0x7A6D76E9u,15) \
+    P4(bl,cl,dl,el,al,X9,0x8F1BBCDCu,12) P2(br,cr,dr,er,ar,X6,0x7A6D76E9u,5) \
+    P4(al,bl,cl,dl,el,X11,0x8F1BBCDCu,14) P2(ar,br,cr,dr,er,X4,0x7A6D76E9u,8) \
+    P4(el,al,bl,cl,dl,X10,0x8F1BBCDCu,15) P2(er,ar,br,cr,dr,X1,0x7A6D76E9u,11) \
+    P4(dl,el,al,bl,cl,X0,0x8F1BBCDCu,14) P2(dr,er,ar,br,cr,X3,0x7A6D76E9u,14) \
+    P4(cl,dl,el,al,bl,X8,0x8F1BBCDCu,15) P2(cr,dr,er,ar,br,X11,0x7A6D76E9u,14) \
+    P4(bl,cl,dl,el,al,X12,0x8F1BBCDCu,9) P2(br,cr,dr,er,ar,X15,0x7A6D76E9u,6) \
+    P4(al,bl,cl,dl,el,X4,0x8F1BBCDCu,8) P2(ar,br,cr,dr,er,X0,0x7A6D76E9u,14) \
+    P4(el,al,bl,cl,dl,X13,0x8F1BBCDCu,9) P2(er,ar,br,cr,dr,X5,0x7A6D76E9u,6) \
+    P4(dl,el,al,bl,cl,X3,0x8F1BBCDCu,14) P2(dr,er,ar,br,cr,X12,0x7A6D76E9u,9) \
+    P4(cl,dl,el,al,bl,X7,0x8F1BBCDCu,5) P2(cr,dr,er,ar,br,X2,0x7A6D76E9u,12) \
+    P4(bl,cl,dl,el,al,X15,0x8F1BBCDCu,6) P2(br,cr,dr,er,ar,X13,0x7A6D76E9u,9) \
+    P4(al,bl,cl,dl,el,X14,0x8F1BBCDCu,8) P2(ar,br,cr,dr,er,X9,0x7A6D76E9u,12) \
+    P4(el,al,bl,cl,dl,X5,0x8F1BBCDCu,6) P2(er,ar,br,cr,dr,X7,0x7A6D76E9u,5) \
+    P4(dl,el,al,bl,cl,X6,0x8F1BBCDCu,5) P2(dr,er,ar,br,cr,X10,0x7A6D76E9u,15) \
+    P4(cl,dl,el,al,bl,X2,0x8F1BBCDCu,12) P2(cr,dr,er,ar,br,X14,0x7A6D76E9u,8) \
+    P5(bl,cl,dl,el,al,X4,0xA953FD4Eu,9) P1(br,cr,dr,er,ar,X12,0x00000000u,8) \
+    P5(al,bl,cl,dl,el,X0,0xA953FD4Eu,15) P1(ar,br,cr,dr,er,X15,0x00000000u,5) \
+    P5(el,al,bl,cl,dl,X5,0xA953FD4Eu,5) P1(er,ar,br,cr,dr,X10,0x00000000u,12) \
+    P5(dl,el,al,bl,cl,X9,0xA953FD4Eu,11) P1(dr,er,ar,br,cr,X4,0x00000000u,9) \
+    P5(cl,dl,el,al,bl,X7,0xA953FD4Eu,6) P1(cr,dr,er,ar,br,X1,0x00000000u,12) \
+    P5(bl,cl,dl,el,al,X12,0xA953FD4Eu,8) P1(br,cr,dr,er,ar,X5,0x00000000u,5) \
+    P5(al,bl,cl,dl,el,X2,0xA953FD4Eu,13) P1(ar,br,cr,dr,er,X8,0x00000000u,14) \
+    P5(el,al,bl,cl,dl,X10,0xA953FD4Eu,12) P1(er,ar,br,cr,dr,X7,0x00000000u,6) \
+    P5(dl,el,al,bl,cl,X14,0xA953FD4Eu,5) P1(dr,er,ar,br,cr,X6,0x00000000u,8) \
+    P5(cl,dl,el,al,bl,X1,0xA953FD4Eu,12) P1(cr,dr,er,ar,br,X2,0x00000000u,13) \
+    P5(bl,cl,dl,el,al,X3,0xA953FD4Eu,13) P1(br,cr,dr,er,ar,X13,0x00000000u,6) \
+    P5(al,bl,cl,dl,el,X8,0xA953FD4Eu,14) P1(ar,br,cr,dr,er,X14,0x00000000u,5) \
+    P5(el,al,bl,cl,dl,X11,0xA953FD4Eu,11) P1(er,ar,br,cr,dr,X0,0x00000000u,15) \
+    P5(dl,el,al,bl,cl,X6,0xA953FD4Eu,8) P1(dr,er,ar,br,cr,X3,0x00000000u,13) \
+    P5(cl,dl,el,al,bl,X15,0xA953FD4Eu,5) P1(cr,dr,er,ar,br,X9,0x00000000u,11) \
+    P5(bl,cl,dl,el,al,X13,0xA953FD4Eu,6) P1(br,cr,dr,er,ar,X11,0x00000000u,11)
+
+/* RIPEMD-160 de 32 bytes dados como 8 palabras ya leidas en little-endian. */
+static inline void ripemd160_32w(const uint32_t *w, uint32_t *h){
+    const uint32_t X0=w[0],X1=w[1],X2=w[2],X3=w[3],X4=w[4],X5=w[5],X6=w[6],X7=w[7];
+    const uint32_t X8=0x80,X9=0,X10=0,X11=0,X12=0,X13=0,X14=256,X15=0;
+    uint32_t al=0x67452301,bl=0xEFCDAB89,cl=0x98BADCFE,dl=0x10325476,el=0xC3D2E1F0;
+    uint32_t ar=al,br=bl,cr=cl,dr=dl,er=el;
+    RMD_RONDAS
+    h[0]=0xEFCDAB89u+cl+dr; h[1]=0x98BADCFEu+dl+er; h[2]=0x10325476u+el+ar;
+    h[3]=0xC3D2E1F0u+al+br; h[4]=0x67452301u+bl+cr;
+}
+
 static inline void ripemd160_32(const uint8_t *in, uint8_t *out){
+    uint32_t w[8],h[5];
+    for(int i=0;i<8;i++) w[i]=(uint32_t)in[4*i]|((uint32_t)in[4*i+1]<<8)|((uint32_t)in[4*i+2]<<16)|((uint32_t)in[4*i+3]<<24);
+    ripemd160_32w(w,h);
+    for(int i=0;i<5;i++){out[i*4]=(uint8_t)h[i];out[i*4+1]=(uint8_t)(h[i]>>8);out[i*4+2]=(uint8_t)(h[i]>>16);out[i*4+3]=(uint8_t)(h[i]>>24);}
+}
+
+/* La de antes, tal cual: solo para comprobar la nueva y medirlas. */
+static inline void ripemd160_32_ref(const uint8_t *in, uint8_t *out){
+
     uint32_t st[5]={0x67452301,0xEFCDAB89,0x98BADCFE,0x10325476,0xC3D2E1F0};
     uint8_t blk[64]={0};
     memcpy(blk,in,32);
@@ -171,9 +292,13 @@ static inline void ripemd160_32(const uint8_t *in, uint8_t *out){
     for(int i=0;i<5;i++){out[i*4]=(uint8_t)st[i];out[i*4+1]=(uint8_t)(st[i]>>8);out[i*4+2]=(uint8_t)(st[i]>>16);out[i*4+3]=(uint8_t)(st[i]>>24);}
 }
 
-/* Hash160 inline: SHA256(pub33) -> RIPEMD160 */
+/* Hash160 inline: SHA256(pub33) -> RIPEMD160. De palabra a palabra: el
+ * resumen de SHA-256 son palabras big-endian y RIPEMD-160 lee little-endian,
+ * asi que basta darles la vuelta, sin pasar por bytes. */
 static inline void hash160_inline(const uint8_t *pub33, uint8_t *out20){
-    uint8_t sha[32];
-    sha256_33(pub33,sha);
-    ripemd160_32(sha,out20);
+    uint32_t st[8],w[8],h[5];
+    sha256_33_st(pub33,st);
+    for(int i=0;i<8;i++) w[i]=__builtin_bswap32(st[i]);
+    ripemd160_32w(w,h);
+    memcpy(out20,h,20);   /* little-endian: los bytes salen en su orden */
 }

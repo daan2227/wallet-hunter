@@ -41,6 +41,7 @@
 
 #include "sha256_ripemd160.h"
 #include "sha512.h"
+#include "escaner_raw.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -811,114 +812,79 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
 
 /* =========================================================
    RAW KEY WORKER - modo 2
-   Logica identica a hunter_master.cpp:
-   - Inicio aleatorio por thread
-   - Incremento secuencial +1
-   - pubkey_create por cada key (igual que script Termux)
-   - Lookup via bloom+bsearch
+   Claves al azar: cada hilo parte de una al azar y recorre grupos de
+   ESC_GRUPO claves de curva, seis claves publicas por punto (escaner_raw.h).
    ========================================================= */
+static EscTabla g_esc_tabla;
+static std::once_flag g_esc_tabla_hecha;
+
+struct RawCtx {
+    secp256k1_context *ctx;
+    uint8_t kc[32];              /* clave del centro del grupo en curso */
+};
+
+static void raw_visto(const uint8_t *h160, int j, int v, void *raw){
+    int match=0;
+    if(g_has_target){
+        if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
+    } else if(g_csv_loaded.load()){
+        if(bsearch_h160(h160)>=0) match=1;
+    }
+    if(!match) return;
+    RawCtx *c=(RawCtx*)raw;
+    uint8_t pk[32];
+    if(!esc_clave(c->ctx,c->kc,j,v,pk)) return;
+    g_found.fetch_add(1);
+    char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
+    h160_to_addr(h160,addr); pk_to_wif(pk,wif);
+    for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",pk[b]);
+    char extra[128]; snprintf(extra,sizeof(extra),"RAW:%s",pkhex);
+    save_match(pkhex,addr,0.0,wif,extra);
+    add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
+    /* Igual que en modo puzzle: con objetivo unico, encontrarlo es el final.
+       Con CSV no, que hay muchas direcciones. */
+    if(g_has_target){ g_objetivo_hallado.store(1); parar_motor(); }
+}
+
 static void *worker_rawkey_fn(void *arg){
     /* El índice del hilo llega en el argumento: antes se pasaba 0 literal y
        set_thread_affinity fijaba TODOS los hilos al mismo núcleo. */
     set_thread_affinity((int)(intptr_t)arg);
-    secp256k1_context *ctx = secp256k1_context_create(
-        SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     if(!ctx) return nullptr;
+    std::call_once(g_esc_tabla_hecha,[]{ esc_tabla_crear(&g_esc_tabla); });
+    fe_t *dx=(fe_t*)malloc((ESC_M+1)*sizeof(fe_t));
+    fe_t *pfx=(fe_t*)malloc((ESC_M+1)*sizeof(fe_t));
+    if(!dx||!pfx){ free(dx); free(pfx); secp256k1_context_destroy(ctx); return nullptr; }
 
-    const int MAX_SAFE = 512;
-    JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
-    if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
-    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
-    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
-    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
-
-    XR128 rng; xr_init(&rng);
-    uint8_t priv[32];
-    uint64_t r0=xr_next(&rng),r1=xr_next(&rng),
-             r2=xr_next(&rng),r3=xr_next(&rng);
-    memcpy(priv,    &r0, 8); memcpy(priv+8,  &r1, 8);
-    memcpy(priv+16, &r2, 8); memcpy(priv+24, &r3, 8);
-    while(!secp256k1_ec_seckey_verify(ctx, priv)){
-        for(int b=31;b>=0;b--){if(++priv[b])break;}
-    }
+    RawCtx rc; rc.ctx=ctx;
+    uint8_t paso[32]={0}; paso[30]=(uint8_t)(ESC_GRUPO>>8); paso[31]=(uint8_t)ESC_GRUPO;
+    fe_t cx,cy;
+    auto nuevo_centro=[&]{
+        XR128 rng; xr_init(&rng);
+        do{
+            for(int i=0;i<4;i++){ uint64_t r=xr_next(&rng); memcpy(rc.kc+8*i,&r,8); }
+        }while(!secp256k1_ec_seckey_verify(ctx,rc.kc));
+        secp256k1_pubkey pk; (void)secp256k1_ec_pubkey_create(ctx,&pk,rc.kc);
+        uint8_t p65[65]; size_t l=65;
+        secp256k1_ec_pubkey_serialize(ctx,p65,&l,&pk,SECP256K1_EC_UNCOMPRESSED);
+        JP P; jp_from_affine(&P,p65); memcpy(cx,P.x,32); memcpy(cy,P.y,32);
+    };
+    nuevo_centro();
 
     while(!g_stop.load()){
         auto t0 = std::chrono::high_resolution_clock::now();
-
-        int cur_batch = g_batch_size.load();
-        if(cur_batch < 1) cur_batch = 1;
-        if(cur_batch > MAX_SAFE) cur_batch = MAX_SAFE;
-
-        /* 1 multiplicacion escalar para punto base */
-        secp256k1_pubkey pubkey;
-        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, priv)){
-            for(int b=31;b>=0;b--){if(++priv[b])break;}
-            continue;
+        /* Unos cuantos grupos por vuelta: cada uno son 6150 claves. */
+        long hechas=0;
+        for(int g=0; g<8 && !g_stop.load(); g++){
+            if(!esc_grupo(&g_esc_tabla,cx,cy,dx,pfx,raw_visto,&rc)){ nuevo_centro(); continue; }
+            hechas+=6L*ESC_GRUPO;
+            if(!secp256k1_ec_seckey_tweak_add(ctx,rc.kc,paso)) nuevo_centro();
         }
-        uint8_t pub65[65]; size_t plen=65;
-        secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
-            SECP256K1_EC_UNCOMPRESSED);
-        jp_from_affine(&pts[0], pub65);
-
-        bool z_ok=false;
-        for(int j=0;j<4;j++) if(pts[0].z[j]){z_ok=true;break;}
-        if(!z_ok){ for(int b=31;b>=0;b--){if(++priv[b])break;} continue; }
-
-        uint8_t base[32]; memcpy(base, priv, 32);
-        int actual=1;
-
-        /* Batch de adiciones - cur_batch-1 sumas en vez de multiplicaciones */
-        for(int i=1; i<cur_batch && !g_stop.load(); i++){
-            for(int b=31;b>=0;b--){if(++priv[b])break;}
-            jp_add_G(&pts[i], &pts[i-1]);
-            bool zi=false;
-            for(int j=0;j<4;j++) if(pts[i].z[j]){zi=true;break;}
-            if(!zi) break;
-            actual++;
-        }
-
-        /* Batch normalize + hash + lookup */
-        struct RawCtx { 
-            uint8_t base[32]; 
-            int done;
-        };
-        RawCtx rctx; 
-        memcpy(rctx.base, base, 32); 
-        rctx.done=0;
-
-        jac_batch_hash160(pts, actual, pfx, [](int idx, const uint8_t *pub33, void *raw){
-            RawCtx *c = (RawCtx*)raw;
-            uint8_t h160[HASH160_BYTES];
-            hash160_inline(pub33, h160);
-            c->done++;
-
-            int match=0;
-            if(g_has_target){
-                if(memcmp(h160, g_target_h160, HASH160_BYTES)==0) match=1;
-            } else if(g_csv_loaded.load()){
-                if(bsearch_h160(h160)>=0) match=1;
-            }
-
-            if(match){
-                g_found.fetch_add(1);
-                uint8_t pk[32]; memcpy(pk, c->base, 32);
-                for(int k=0;k<idx;k++){for(int b=31;b>=0;b--){if(++pk[b])break;}}
-                char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-                h160_to_addr(h160,addr); pk_to_wif(pk,wif);
-                for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",pk[b]);
-                char extra[128]; snprintf(extra,sizeof(extra),"RAW:%s",pkhex);
-                save_match(pkhex,addr,0.0,wif,extra);
-                add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
-                /* Igual que en modo puzzle: con objetivo unico, encontrarlo es
-                   el final. Con CSV no, que hay muchas direcciones. */
-                if(g_has_target){ g_objetivo_hallado.store(1); parar_motor(); }
-            }
-        }, &rctx);
-
-        g_count.fetch_add(actual);
+        g_count.fetch_add(hechas);
 
         {std::lock_guard<std::mutex> lk(g_last_key_mutex);
-         memcpy(g_last_key, priv, 32);}
+         memcpy(g_last_key, rc.kc, 32);}
 
         double work_ms = std::chrono::duration<double,std::milli>(
             std::chrono::high_resolution_clock::now()-t0).count();
@@ -930,7 +896,7 @@ static void *worker_rawkey_fn(void *arg){
         }
     }
 
-    free(pts); free(pfx);
+    free(dx); free(pfx);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }
@@ -2612,23 +2578,47 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
     o<<"fe_sqr asm:  "<<qa<<" ns  ("<<std::setprecision(2)<<qc/qa<<"x)\n"<<std::setprecision(1);
 #endif
 
-    /* hash160 (SHA-256 + RIPEMD-160 de una clave publica): la mitad del
-       tiempo de la fuerza bruta. Con las instrucciones SHA-256 del
-       procesador y sin ellas. */
+    /* hash160 (SHA-256 + RIPEMD-160 de una clave publica): casi todo el
+       tiempo del escaner de claves. El de antes (todo software, RIPEMD con
+       bucle), el de ahora (SHA-256 del procesador, RIPEMD desenrollado) y
+       cuatro a la vez (hash160x4.h). */
     {
-        uint8_t in[33]={0x02}, h[20]; for(int i=1;i<33;i++) in[i]=(uint8_t)(i*37);
+        uint8_t in[4][33], h[20], h4[4][20];
+        for(int k=0;k<4;k++){ in[k][0]=0x02; for(int i=1;i<33;i++) in[k][i]=(uint8_t)(i*37+k); }
+        const uint8_t *pp[4]={in[0],in[1],in[2],in[3]};
         const int N=400000;
         auto t0=std::chrono::steady_clock::now();
-        for(int i=0;i<N;i++){ uint8_t sh[32]; sha256_33_sw(in,sh); ripemd160_32(sh,h); in[5]^=h[0]; }
-        double sw=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
-        o<<"hash160 soft:  "<<std::setprecision(2)<<N/sw/1e6<<" M/s\n";
-#ifdef SHA256_HW
+        for(int i=0;i<N;i++){ uint8_t sh[32]; sha256_33_sw(in[0],sh); ripemd160_32_ref(sh,h); in[0][5]^=h[0]; }
+        double antes=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"hash160 before:  "<<std::setprecision(2)<<N/antes/1e6<<" M/s\n";
         t0=std::chrono::steady_clock::now();
-        for(int i=0;i<N;i++){ hash160_inline(in,h); in[5]^=h[0]; }
-        double hw=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
-        o<<"hash160 CPU SHA: "<<N/hw/1e6<<" M/s  ("<<sw/hw<<"x)\n";
-#endif
-        sal^=h[0];
+        for(int i=0;i<N;i++){ hash160_inline(in[0],h); in[0][5]^=h[0]; }
+        double uno=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"hash160 now:     "<<N/uno/1e6<<" M/s  ("<<antes/uno<<"x)\n";
+        t0=std::chrono::steady_clock::now();
+        for(int i=0;i<N/4;i++){ hash160_x4(pp,h4); in[0][5]^=h4[0][0]; }
+        double cuatro=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        o<<"hash160 x4:      "<<N/cuatro/1e6<<" M/s  ("<<antes/cuatro<<"x)\n";
+        sal^=h[0]^h4[1][0];
+    }
+    /* El escaner de claves entero (escaner_raw.h), un hilo, sin lista: curva,
+       seis claves por punto y hash160 de cuatro en cuatro. */
+    {
+        std::call_once(g_esc_tabla_hecha,[]{ esc_tabla_crear(&g_esc_tabla); });
+        static fe_t dx[ESC_M+1],pfx[ESC_M+1];
+        /* Centro en 1026*G: lejos de todos los +-iG de la tabla. */
+        fe_t cx,cy;
+        { JP S; memcpy(S.x,g_esc_tabla.sx,32); memcpy(S.y,g_esc_tabla.sy,32); memset(S.z,0,32); S.z[0]=1;
+          JP S1; jp_add_G(&S1,&S); kg_normalize(&S1,cx,cy); }
+        long cuenta=0; int grupos=0;
+        auto t0=std::chrono::steady_clock::now(); double seg;
+        do{
+            esc_grupo(&g_esc_tabla,cx,cy,dx,pfx,[](const uint8_t *h,int,int,void *c){ (*(long*)c)+=h[0]; },&cuenta);
+            grupos++;
+            seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+        }while(seg<1.0);
+        o<<"RawKey scanner: "<<std::setprecision(2)<<(double)grupos*ESC_GRUPO*6/seg/1e6<<" M keys/s (1 thread)\n"<<std::setprecision(1);
+        sal^=(uint64_t)cuenta;
     }
     /* PBKDF2-HMAC-SHA512 de 2048 vueltas: lo que cuesta cada seed del
        escaner BIP39 y de la recuperacion. OpenSSL frente a lo propio
