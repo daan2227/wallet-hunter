@@ -96,8 +96,11 @@ static inline void esc_seis(EscCola *c, const fe_t x, int impar, int j, EscVisto
 
 /* Un grupo alrededor del centro (cx,cy), y el centro pasa al siguiente
  * (+ESC_GRUPO). dx, pfx: sitio para ESC_M+1. Devuelve 0 si el centro cae
- * justo en +-iG (imposible con claves al azar; entonces no se toca nada). */
-static int esc_grupo(const EscTabla *t, fe_t cx, fe_t cy, fe_t *dx, fe_t *pfx, EscVisto f, void *ctx){
+ * justo en +-iG o en +-ESC_GRUPO*G (imposible con claves al azar; en un
+ * puzzle de rango diminuto puede pasar): entonces no se toca nada.
+ * seis=0: solo la clave de cada punto (el modo puzzle, que busca en un rango:
+ * -k y lambda*k caen fuera). */
+static int esc_grupo(const EscTabla *t, fe_t cx, fe_t cy, fe_t *dx, fe_t *pfx, EscVisto f, void *ctx, int seis=1){
     const int n=ESC_M+1;
     for(int i=1;i<=ESC_M;i++) fe_sub(dx[i-1],t->gx[i],cx);
     fe_sub(dx[ESC_M],t->sx,cx);
@@ -119,14 +122,17 @@ static int esc_grupo(const EscTabla *t, fe_t cx, fe_t cy, fe_t *dx, fe_t *pfx, E
         fe_sqr(l2,l); fe_sub(x3,l2,cx); fe_sub(x3,x3,qx);
         fe_sub(tmp,cx,x3); fe_mul(y3,l,tmp); fe_sub(y3,y3,cy);
         if(i==ESC_M){ memcpy(sig_x,x3,32); memcpy(sig_y,y3,32); continue; }
-        esc_seis(&cola,x3,(int)(y3[0]&1),i+1,f,ctx);
+        if(seis) esc_seis(&cola,x3,(int)(y3[0]&1),i+1,f,ctx);
+        else     esc_meter(&cola,x3,(int)(y3[0]&1),i+1,0,f,ctx);
         /* C - Q: la misma inversa, con -qy */
         fe_add(tmp,qy,cy); fe_mul(l,tmp,di);                /* l' = -(qy+cy)/dx; se usa l'^2 y -l' */
         fe_sqr(l2,l); fe_sub(x3,l2,cx); fe_sub(x3,x3,qx);
         fe_sub(tmp,x3,cx); fe_mul(y3,l,tmp); fe_sub(y3,y3,cy);  /* -l'*(cx-x3) = l*(x3-cx) */
-        esc_seis(&cola,x3,(int)(y3[0]&1),-(i+1),f,ctx);
+        if(seis) esc_seis(&cola,x3,(int)(y3[0]&1),-(i+1),f,ctx);
+        else     esc_meter(&cola,x3,(int)(y3[0]&1),-(i+1),0,f,ctx);
     }
-    esc_seis(&cola,cx,(int)(cy[0]&1),0,f,ctx);
+    if(seis) esc_seis(&cola,cx,(int)(cy[0]&1),0,f,ctx);
+    else     esc_meter(&cola,cx,(int)(cy[0]&1),0,0,f,ctx);
     esc_vaciar(&cola,f,ctx);
     memcpy(cx,sig_x,32); memcpy(cy,sig_y,32);
     return 1;

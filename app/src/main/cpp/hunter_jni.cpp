@@ -754,14 +754,7 @@ struct PuzzleBatchCtx {
 };
 static PuzzleBatchCtx g_pbctx;
 
-static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
-    PuzzleBatchCtx *c=(PuzzleBatchCtx*)raw;
-    uint8_t h160[HASH160_BYTES];
-    /* Llamaba a SHA256() y RIPEMD160() de OpenSSL, que montan y desmontan su
-       contexto en cada llamada: para 33 bytes ese armazon pesa mas que el
-       hash. El worker de clave directa ya usaba hash160_inline; el del puzzle
-       se habia quedado atras. */
-    hash160_inline(pub33,h160);
+static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
     c->done++;
     /* Muestra de direcciones para la UI. Estaba cada 500 claves, lo que a
        1M/s son 2000 codificaciones Base58 por segundo — cada una con doble
@@ -780,7 +773,8 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         g_found.fetch_add(1);
         /* Reconstruir privkey = base + idx */
         uint8_t privkey[32]; memcpy(privkey,c->priv_base,32);
-        for(int k=0;k<idx;k++){for(int b=31;b>=0;b--){if(++privkey[b])break;}}
+        { uint64_t add=(uint64_t)idx;             /* base + idx, con acarreo */
+          for(int b=31;b>=0&&add;b--){ uint64_t sm=(uint64_t)privkey[b]+(add&0xFF); privkey[b]=(uint8_t)sm; add=(add>>8)+(sm>>8); } }
         char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
         h160_to_addr(h160,addr); pk_to_wif(privkey,wif);
         for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
@@ -806,6 +800,21 @@ static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
         g_objetivo_hallado.store(1);
         parar_motor();
     }
+}
+static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
+    uint8_t h160[HASH160_BYTES];
+    hash160_inline(pub33,h160);
+    puzzle_h160((PuzzleBatchCtx*)raw,idx,h160);
+}
+
+/* Para esc_grupo: la clave es base + g*ESC_GRUPO + ESC_M + j. Lo que se sale
+ * del lote (el final del rango) se ignora. */
+struct PuzzleGrupoCtx { PuzzleBatchCtx *pb; long g, cuenta; };
+static void puzzle_visto(const uint8_t *h160, int j, int, void *raw){
+    PuzzleGrupoCtx *c=(PuzzleGrupoCtx*)raw;
+    long idx=c->g*ESC_GRUPO+ESC_M+j;
+    if(idx<0 || idx>=c->cuenta) return;
+    puzzle_h160(c->pb,idx,h160);
 }
 
 
@@ -911,11 +920,10 @@ static void *worker_puzzle_fn(void *arg){
     if(!ctx) return nullptr;
 
     const int MAX_SAFE = JAC_BATCH;
-    JP *pts = (JP*)malloc(MAX_SAFE * sizeof(JP));
-    if(!pts){ secp256k1_context_destroy(ctx); return nullptr; }
-    /* Buffer de productos prefijo, reutilizado en todos los lotes. */
-    fe_t *pfx = (fe_t*)malloc(MAX_SAFE * sizeof(fe_t));
-    if(!pfx){ free(pts); secp256k1_context_destroy(ctx); return nullptr; }
+    std::call_once(g_esc_tabla_hecha,[]{ esc_tabla_crear(&g_esc_tabla); });
+    fe_t *dx=(fe_t*)malloc((ESC_M+1)*sizeof(fe_t));
+    fe_t *pfxg=(fe_t*)malloc((ESC_M+1)*sizeof(fe_t));
+    if(!dx||!pfxg){ free(dx); free(pfxg); secp256k1_context_destroy(ctx); return nullptr; }
 
     XR128 rng; xr_init(&rng);
 
@@ -961,43 +969,53 @@ static void *worker_puzzle_fn(void *arg){
         {std::lock_guard<std::mutex> lk(g_last_key_mutex);
          memcpy(g_last_key, privkey, 32);}
 
-        /* Crear pubkey base */
-        secp256k1_pubkey pubkey;
-        if(!secp256k1_ec_pubkey_create(ctx, &pubkey, privkey)) continue;
-
-        uint8_t pub65[65]; size_t plen = 65;
-        secp256k1_ec_pubkey_serialize(ctx, pub65, &plen, &pubkey,
-            SECP256K1_EC_UNCOMPRESSED);
-        jp_from_affine(&pts[0], pub65);
-
-        /* Verificar Z valido */
-        bool z_ok = false;
-        for(int j=0;j<4;j++) if(pts[0].z[j]){z_ok=true;break;}
-        if(!z_ok) continue;
-
-        uint8_t cur[32];
-        memcpy(cur, privkey, 32);
-        int actual = 1;
-
-        /* Batch de adiciones Jacobianas */
-        for(int i = 1; i < cur_batch && !g_stop.load(); i++){
-            for(int b = 31; b >= 0; b--){ if(++cur[b]) break; }
-            if(memcmp(cur, g_range_end, 32) > 0) break;
-            jp_add_G(&pts[i], &pts[i-1]);
-
-            /* Verificar Z */
-            bool zi_ok = false;
-            for(int j=0;j<4;j++) if(pts[i].z[j]){zi_ok=true;break;}
-            if(!zi_ok) break;
-            actual++;
+        /* Cuantas claves de este lote caben antes del final del rango. */
+        long cuenta=cur_batch;
+        {
+            sc_t fin,ini,dif; sc_from_be32(fin,g_range_end); sc_from_be32(ini,privkey);
+            if(!sc_sub(dif,fin,ini)) cuenta=1;
+            else if(!dif[1]&&!dif[2]&&!dif[3]&&dif[0]<(uint64_t)cur_batch) cuenta=(long)dif[0]+1;
         }
 
-        if(actual < 1) continue;
-
+        /* Grupos de ESC_GRUPO claves con centro en base+ESC_M, base+ESC_M+
+           ESC_GRUPO... (escaner_raw.h): una inversion por lotes para C+iG y
+           C-iG a la vez, y hash160 de cuatro en cuatro. */
         PuzzleBatchCtx pctx;
         memcpy(pctx.priv_base, privkey, 32);
         pctx.done = 0;
-        jac_batch_hash160(pts, actual, pfx, puzzle_on_key, &pctx);
+        PuzzleGrupoCtx gc; gc.pb=&pctx; gc.cuenta=cuenta;
+        long ngrupos=(cuenta+ESC_GRUPO-1)/ESC_GRUPO;
+        fe_t cx,cy; bool hay_centro=false;
+        for(long g=0; g<ngrupos && !g_stop.load(); g++){
+            gc.g=g;
+            if(!hay_centro){
+                /* centro = base + g*ESC_GRUPO + ESC_M, con una multiplicacion */
+                uint8_t kc[32]; memcpy(kc,privkey,32);
+                uint64_t add=(uint64_t)(g*ESC_GRUPO+ESC_M);
+                for(int b2=31;b2>=0&&add;b2--){ uint64_t sm=(uint64_t)kc[b2]+(add&0xFF); kc[b2]=(uint8_t)sm; add=(add>>8)+(sm>>8); }
+                secp256k1_pubkey pk;
+                if(!secp256k1_ec_pubkey_create(ctx,&pk,kc)) break;
+                uint8_t p65[65]; size_t l=65;
+                secp256k1_ec_pubkey_serialize(ctx,p65,&l,&pk,SECP256K1_EC_UNCOMPRESSED);
+                JP P; jp_from_affine(&P,p65); memcpy(cx,P.x,32); memcpy(cy,P.y,32);
+                hay_centro=true;
+            }
+            if(esc_grupo(&g_esc_tabla,cx,cy,dx,pfxg,puzzle_visto,&gc,0)) continue;
+            /* Centro en +-iG: rangos diminutos (los primeros puzzles). Ese
+               grupo, clave a clave. */
+            for(long k=0;k<ESC_GRUPO;k++){
+                long idx=g*ESC_GRUPO+k; if(idx>=cuenta) break;
+                uint8_t kk[32]; memcpy(kk,privkey,32);
+                uint64_t add=(uint64_t)idx;
+                for(int b2=31;b2>=0&&add;b2--){ uint64_t sm=(uint64_t)kk[b2]+(add&0xFF); kk[b2]=(uint8_t)sm; add=(add>>8)+(sm>>8); }
+                secp256k1_pubkey pk; if(!secp256k1_ec_pubkey_create(ctx,&pk,kk)) continue;
+                uint8_t p33[33]; size_t l=33;
+                secp256k1_ec_pubkey_serialize(ctx,p33,&l,&pk,SECP256K1_EC_COMPRESSED);
+                uint8_t h[20]; hash160_inline(p33,h); puzzle_h160(&pctx,idx,h);
+            }
+            hay_centro=false;
+        }
+        long actual=cuenta;
 
         g_count.fetch_add(actual);
 
@@ -1012,7 +1030,7 @@ static void *worker_puzzle_fn(void *arg){
         }
     }
 
-    free(pts); free(pfx);
+    free(dx); free(pfxg);
     secp256k1_context_destroy(ctx);
     return nullptr;
 }

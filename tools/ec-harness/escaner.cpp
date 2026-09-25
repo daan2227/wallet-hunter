@@ -60,6 +60,30 @@ int main(int argc,char**argv){
         uint8_t h[20]; hash160_inline(p33,h); if(memcmp(h,V.h[v][j+ESC_M],20)) mal++;
     }
     printf("%s  segundo grupo: 200 claves comprobadas, %ld mal\n",mal?"MAL":"OK ",mal); fallos+=mal!=0;
+    /* Modo puzzle (seis=0): solo la clave de cada punto, las 1025. */
+    {
+        fe_t x3,y3; centro(k2,x3,y3);
+        static Visto W; W.n=0; memset(W.h,0,sizeof W.h);
+        esc_grupo(&T,x3,y3,dx,pfx,anotar,&W,0);
+        long m2=0;
+        for(int j=-ESC_M;j<=ESC_M;j++){
+            uint8_t k[32]; esc_clave(ctx,k2,j,0,k);
+            secp256k1_pubkey pk; secp256k1_ec_pubkey_create(ctx,&pk,k);
+            uint8_t p33[33]; size_t l=33; secp256k1_ec_pubkey_serialize(ctx,p33,&l,&pk,SECP256K1_EC_COMPRESSED);
+            uint8_t h[20]; hash160_inline(p33,h); if(memcmp(h,W.h[0][j+ESC_M],20)) m2++;
+        }
+        int ok2=(W.n==ESC_GRUPO && !m2);
+        printf("%s  modo puzzle: %ld claves (una por punto), %ld mal\n",ok2?"OK ":"MAL",W.n,m2); fallos+=!ok2;
+    }
+    /* Un centro en +-iG no puede dar basura: tiene que negarse (el modo
+       puzzle lo hace entonces clave a clave). */
+    {
+        fe_t x4,y4; memcpy(x4,T.gx[7],32); memcpy(y4,T.gy[7],32);
+        static Visto W; W.n=0;
+        int r=esc_grupo(&T,x4,y4,dx,pfx,anotar,&W,0);
+        int ok3=(r==0 && W.n==0);
+        printf("%s  centro en 7G: se niega sin emitir nada\n",ok3?"OK ":"MAL"); fallos+=!ok3;
+    }
     printf("\n%s\n",fallos?"HAY FALLOS":"TODO CORRECTO");
     return fallos;
 }
