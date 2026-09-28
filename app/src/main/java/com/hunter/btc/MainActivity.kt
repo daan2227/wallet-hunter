@@ -1757,24 +1757,37 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } ?: "dataset.csv"
             cursor?.close()
             val dest = File(getExternalFilesDir(null), origName)
-            contentResolver.openInputStream(uri)?.use { it.copyTo(dest.outputStream()) }
-            csvPath = dest.absolutePath
-            prefs.edit().putString("csvPath", csvPath).apply()
-            HunterEngine.loadCsv(csvPath)
-            tvStatus?.text = dest.name
-            tvCsvName?.text = dest.name
-            tvCsvName?.setTextColor(AppTheme.ACCENT)
-            tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
-            val hashes = dest.length() / 20
-            // Aquí se escribía "📦 nombre · N hashes · N MB" en la misma tarjeta
-            // que luego muestra el ritmo en claves/día: dos significados en un
-            // solo hueco, y el segundo pisaba al primero en cuanto arrancaba el
-            // scan. El nombre ya está en tvCsvName y el recuento en DATASET.
-            // Actualizar stat card con conteo de hashes
-            tvDatasetStat?.text = if (hashes >= 1_000_000) "${"%.1f".format(hashes/1e6)}M" else "${hashes/1000}K"
-            tvDatasetStat?.textSize = AppTheme.SP_FIGURE
-            tvDatasetStat?.setTextColor(AppTheme.TXT_PRI)
-            Toast.makeText(this, "Dataset loaded: ${dest.name}", Toast.LENGTH_SHORT).show()
+            // Copiar en otro hilo: un índice de 333 MB tarda segundos, y en el
+            // hilo de la pantalla Android la daba por colgada.
+            tvCsvName?.text = "Copying ${dest.name}…"
+            tvCsvName?.setTextColor(AppTheme.CYAN)
+            Toast.makeText(this, "Copying ${dest.name}…", Toast.LENGTH_SHORT).show()
+            Thread {
+                val ok = try {
+                    contentResolver.openInputStream(uri)?.use { ent ->
+                        dest.outputStream().use { sal -> ent.copyTo(sal, 1 shl 20) }
+                    } != null
+                } catch (e: Exception) { false }
+                runOnUiThread {
+                    if (!ok) {
+                        tvCsvName?.text = "Copy failed"
+                        Toast.makeText(this, "Could not copy ${dest.name}", Toast.LENGTH_LONG).show()
+                        return@runOnUiThread
+                    }
+                    csvPath = dest.absolutePath
+                    prefs.edit().putString("csvPath", csvPath).apply()
+                    HunterEngine.loadCsv(csvPath)
+                    tvStatus?.text = dest.name
+                    tvCsvName?.text = dest.name
+                    tvCsvName?.setTextColor(AppTheme.ACCENT)
+                    tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
+                    // El recuento lo pone el refresco periódico con
+                    // getCsvCount() en cuanto el motor termina de cargar
+                    // (antes se calculaba como tamaño/20, que con el índice de
+                    // 9 bytes salía más del doble de bajo).
+                    Toast.makeText(this, "Dataset loaded: ${dest.name}", Toast.LENGTH_SHORT).show()
+                }
+            }.start()
         }
     }
 

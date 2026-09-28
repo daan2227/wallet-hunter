@@ -175,7 +175,12 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     vList.text = run {
         val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
         if (f != null && f.exists()) {
-            val h = f.length() / 20
+            // Lo que el motor tiene cargado; si aún no, una estimación por el
+            // tamaño: 9 bytes por dirección en el índice nuevo, 20 en el viejo.
+            val cargadas = try { HunterEngine.getCsvCount() } catch (e: Throwable) { 0L }
+            val h = if (cargadas > 0) cargadas
+                    else if (f.name.endsWith(".bin") && f.length() % 9 == 0L) f.length() / 9
+                    else f.length() / 20
             if (h >= 1_000_000) "%.1f M".format(h / 1e6) else "${h / 1000} K"
         } else "—"
     }
@@ -455,34 +460,40 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             gravity = Gravity.CENTER_VERTICAL
         }
         var pathMask = prefs.getInt("bip39_paths", 3)
-        val cb44 = android.widget.CheckBox(this@buildScanTab).apply {
-            text = "BIP44 (1…)"; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.body(context)
-            isChecked = (pathMask and 1) != 0
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        val cb84 = android.widget.CheckBox(this@buildScanTab).apply {
-            text = "BIP84 (bc1q…)"; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.body(context)
-            isChecked = (pathMask and 2) != 0
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        // Cada ruta: su bit en el motor, el texto y el tipo de dirección que
+        // busca. BIP49 (3…) y BIP86 (bc1p…) solo sirven si la lista los trae:
+        // el índice de 9 bytes sí (P2SH y P2TR).
+        val rutas = listOf(
+            Triple(1, "BIP44 (1…)", "44"), Triple(2, "BIP84 (bc1q…)", "84"),
+            Triple(4, "BIP49 (3…)", "49"), Triple(8, "BIP86 (bc1p…)", "86"))
+        val casillas = rutas.map { (bit, texto, _) ->
+            android.widget.CheckBox(this@buildScanTab).apply {
+                text = texto; textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.body(context)
+                isChecked = (pathMask and bit) != 0
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
         }
         fun applyPaths(from: android.widget.CheckBox) {
-            var m = (if (cb44.isChecked) 1 else 0) or (if (cb84.isChecked) 2 else 0)
-            if (m == 0) {           // no dejar desmarcar las dos
+            var m = 0
+            casillas.forEachIndexed { i, cb -> if (cb.isChecked) m = m or rutas[i].first }
+            if (m == 0) {           // no dejar desmarcar todas
                 from.isChecked = true
-                m = if (from === cb44) 1 else 2
+                m = rutas[casillas.indexOf(from)].first
             }
             pathMask = m
             HunterEngine.setBip39Paths(m)
             prefs.edit().putInt("bip39_paths", m).apply()
         }
-        cb44.setOnCheckedChangeListener { _, _ -> applyPaths(cb44) }
-        cb84.setOnCheckedChangeListener { _, _ -> applyPaths(cb84) }
-        pathRow.addView(cb44); pathRow.addView(cb84)
+        casillas.forEach { cb -> cb.setOnCheckedChangeListener { _, _ -> applyPaths(cb) } }
+        pathRow.addView(casillas[0]); pathRow.addView(casillas[1])
         addView(pathRow)
+        addView(LinearLayout(this@buildScanTab).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(casillas[2]); addView(casillas[3])
+        })
         try { HunterEngine.setBip39Paths(pathMask) } catch (e: Throwable) {}
 
         // Actualizar visibilidad del fastRow cuando cambia el modo

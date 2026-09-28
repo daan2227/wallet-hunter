@@ -42,6 +42,7 @@
 #include "sha256_ripemd160.h"
 #include "sha512.h"
 #include "escaner_raw.h"
+#include "indice9.h"
 
 #define TAG "HunterJNI"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
@@ -77,12 +78,13 @@ static void install_crash_handlers() {
 #define MAX_LINE      256
 #define MAX_ADDR      64
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
-#define N_PATHS       8
+#define N_PATHS       9
 
 /* Paths BIP44 para modo BIP39 */
 static const char *PATHS[N_PATHS]={
     "m/44'/0'/0'/0/0","m/44'/0'/0'/0/1","m/44'/0'/0'/0/2","m/44'/0'/0'/0/3",
-    "m/44'/0'/0'/0/4","m/49'/0'/0'/0/0","m/84'/0'/0'/0/0","m/44'/0'/0'/1/0"
+    "m/44'/0'/0'/0/4","m/49'/0'/0'/0/0","m/84'/0'/0'/0/0","m/44'/0'/0'/1/0",
+    "m/86'/0'/0'/0/0"
 };
 
 /* =========================================================
@@ -95,6 +97,12 @@ static Bloom     g_bloom  = {nullptr,0,0};
 static uint8_t  *g_xonly  = nullptr;
 static uint64_t  g_total_tr = 0;
 static Bloom     g_bloom_tr = {nullptr,0,0};
+/* El indice de 9 bytes (indice9.h), si lo que se cargo es eso. */
+static Indice9   g_i9;
+/* Que tipo de direccion dio la ultima coincidencia en este hilo (0 P2PKH,
+   1 P2WPKH, 2 P2SH, 3 P2TR, -1 no se sabe: formato viejo). Para guardar el
+   hallazgo con la direccion que de verdad esta en la lista. */
+static thread_local int g_tipo_hallado=-1;
 static char      g_csv_path[1024] = "";
 /* Hallazgos que no se han podido entregar al baul (ver save_match). Se
    quedan en memoria, nunca en disco, hasta que la app los recoja con
@@ -219,11 +227,31 @@ static int64_t bsearch_xonly(const uint8_t *t){
     return -1;
 }
 static int64_t bsearch_h160(const uint8_t *t){
+    if(g_i9.d){
+        /* El mismo hash160 es a la vez la direccion 1... y la bc1q... */
+        int64_t r=i9_buscar(&g_i9,0,t); if(r>=0){ g_tipo_hallado=0; return r; }
+        r=i9_buscar(&g_i9,1,t);         if(r>=0){ g_tipo_hallado=1; return r; }
+        return -1;
+    }
+    g_tipo_hallado=-1;
     if(!bloom_check(&g_bloom,t)) return -1; /* bloom filter: skip bsearch */
     int64_t lo=0,hi=(int64_t)g_total-1;
     while(lo<=hi){int64_t mid=(lo+hi)>>1;int c=memcmp(g_h160+mid*HASH160_BYTES,t,HASH160_BYTES);if(!c)return mid;if(c<0)lo=mid+1;else hi=mid-1;}
     return -1;
 }
+/* P2SH (hash del script) y P2TR (clave x-only de salida, 32 bytes). */
+static int64_t buscar_p2sh(const uint8_t *script_h160){
+    if(g_i9.d){ int64_t r=i9_buscar(&g_i9,2,script_h160); if(r>=0) g_tipo_hallado=2; return r; }
+    int64_t r=bsearch_h160(script_h160); if(r>=0) g_tipo_hallado=2; return r;   /* el CSV guarda los 3... por su hash */
+}
+static int64_t buscar_p2tr(const uint8_t *xonly32){
+    if(g_i9.d){ int64_t r=i9_buscar(&g_i9,3,xonly32); if(r>=0) g_tipo_hallado=3; return r; }
+    if(!g_xonly) return -1;
+    int64_t r=bsearch_xonly(xonly32); if(r>=0) g_tipo_hallado=3; return r;
+}
+/* Cuantas direcciones hay cargadas, sea cual sea el formato. */
+static uint64_t direcciones_cargadas(){ return g_i9.d?g_i9.n:g_total+g_total_tr; }
+
 static char g_sep=',';
 static int split_line(char *line,char **f,int mx){
     int n=0;char *p=line;
@@ -660,7 +688,7 @@ static void save_match(const char *privhex, const char *addr, double btc, const 
 /* =========================================================
    Worker BIP39 (modo 0)
    ========================================================= */
-typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;}Hit;
+typedef struct{int64_t idx;char mn[256];uint8_t pk[PRIVKEY_BYTES];int pi;int tipo;}Hit;
 
 /* ── CPU Affinity ── */
 static int  g_big_cores[8]  = {4,5,6,7,-1,-1,-1,-1};
@@ -698,33 +726,36 @@ static void *worker_bip39_fn(void *arg){
             strcpy(mn,mn2[q]); memcpy(seed,seeds[q],64);
             HDKey master; derive_master(seed,&master);
             const int paths=g_bip39_paths.load();
-            /* --- m/44'/0'/0'/0/0 --- */
-            if(paths&1){
-                HDKey h44,h44_0,h44_0_0,h44_ch0,h44_leaf;
-                derive_child(ctx,&master,0x80000000u+44,&h44);
-                derive_child(ctx,&h44,0x80000000u+0,&h44_0);
-                derive_child(ctx,&h44_0,0x80000000u+0,&h44_0_0);
-                derive_child(ctx,&h44_0_0,0,&h44_ch0);
-                derive_child(ctx,&h44_ch0,0,&h44_leaf);
-                pk_to_h160(ctx,h44_leaf.key,h160); local_done++;
-                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h44_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=0;nhits++;}}
-            }
-            /* BIP49 skipped — p2sh not in dataset */
-            /* --- m/84'/0'/0'/0/0 --- */
-            if(paths&2){
-                HDKey h84,h84_0,h84_00,h84_000,h84_leaf;
-                derive_child(ctx,&master,0x80000000u+84,&h84);
-                derive_child(ctx,&h84,0x80000000u+0,&h84_0);
-                derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
-                derive_child(ctx,&h84_00,0,&h84_000);
-                derive_child(ctx,&h84_000,0,&h84_leaf);
-                pk_to_h160(ctx,h84_leaf.key,h160); local_done++;
-                {int64_t ix=bsearch_h160(h160);if(ix>=0){hits[nhits].idx=ix;strcpy(hits[nhits].mn,mn);memcpy(hits[nhits].pk,h84_leaf.key,PRIVKEY_BYTES);hits[nhits].pi=6;nhits++;}}
+            /* bit0 m/44' (1...), bit1 m/84' (bc1q), bit2 m/49' (3...),
+               bit3 m/86' (bc1p). Cada una: la hoja .../0'/0'/0/0. */
+            static const struct { int bit, purpose, pi; } RUTAS[]={{1,44,0},{2,84,6},{4,49,5},{8,86,8}};
+            for(const auto &r: RUTAS){
+                if(!(paths&r.bit)) continue;
+                HDKey a1,a2,a3,a4,hoja;
+                derive_child(ctx,&master,0x80000000u+r.purpose,&a1);
+                derive_child(ctx,&a1,0x80000000u+0,&a2);
+                derive_child(ctx,&a2,0x80000000u+0,&a3);
+                derive_child(ctx,&a3,0,&a4);
+                derive_child(ctx,&a4,0,&hoja);
+                int64_t ix=-1;
+                if(r.purpose==86){
+                    uint8_t p33[33],salida[32]; get_pub33(ctx,hoja.key,p33);
+                    if(taproot_tweak_pubkey(ctx,p33+1,salida)) ix=buscar_p2tr(salida);
+                }else{
+                    pk_to_h160(ctx,hoja.key,h160);
+                    if(r.purpose==49){
+                        uint8_t red[22]={0x00,0x14}; memcpy(red+2,h160,20);
+                        uint8_t sh[32],scr[20]; SHA256(red,22,sh); RIPEMD160(sh,32,scr);
+                        ix=buscar_p2sh(scr);
+                    }else ix=bsearch_h160(h160);
+                }
+                local_done++;
+                if(ix>=0){ hits[nhits].idx=ix; strcpy(hits[nhits].mn,mn); memcpy(hits[nhits].pk,hoja.key,PRIVKEY_BYTES);
+                           hits[nhits].pi=r.pi; hits[nhits].tipo=g_tipo_hallado; nhits++; }
             }
             /* Feed visual: solo 1 vez por batch */
-            if(bi==0&&q==0){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
+            if(bi==0&&q==0&&(paths&7)){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
           }
-            /* BIP86 removed */
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
         int cpu=g_cpu_limit.load();
@@ -733,10 +764,22 @@ static void *worker_bip39_fn(void *arg){
         for(int i=0;i<nhits;i++){
             g_found.fetch_add(1);
             char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
-            uint8_t h160b[20]; pk_to_h160(ctx,hits[i].pk,h160b); h160_to_addr(h160b,addr); pk_to_wif(hits[i].pk,wif);
+            {   /* La direccion que de verdad esta en la lista, segun la ruta
+                   y el tipo que coincidio (antes siempre la 1..., tambien
+                   para m/84', cuya direccion es la bc1q). */
+                uint8_t h160b[20]; pk_to_h160(ctx,hits[i].pk,h160b);
+                int pi=hits[i].pi, t=hits[i].tipo;
+                if(pi==5) h160_to_p2sh(h160b,addr);
+                else if(pi==8){ uint8_t p33[33],sal[32]; get_pub33(ctx,hits[i].pk,p33);
+                                if(taproot_tweak_pubkey(ctx,p33+1,sal)) xonly_to_p2tr(sal,addr); }
+                else if(t==1 || (t<0 && pi==6)) h160_to_bech32(h160b,addr);
+                else h160_to_addr(h160b,addr);
+                pk_to_wif(hits[i].pk,wif);
+            }
             for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",hits[i].pk[b]);
             double btc=0.0; /* sats not available in .bin format — check via Electrum */
-            char extra[512]; snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s",hits[i].mn,PATHS[hits[i].pi],pkhex);
+            char extra[512]; snprintf(extra,sizeof(extra),"SEED:%s PATH:%s PRIV:%s%s",hits[i].mn,PATHS[hits[i].pi],pkhex,
+                                      g_i9.d?" CHECK:8-byte-index":"");
             save_match(pkhex,addr,btc,wif,extra);
         }
     }
@@ -776,10 +819,11 @@ static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
         { uint64_t add=(uint64_t)idx;             /* base + idx, con acarreo */
           for(int b=31;b>=0&&add;b--){ uint64_t sm=(uint64_t)privkey[b]+(add&0xFF); privkey[b]=(uint8_t)sm; add=(add>>8)+(sm>>8); } }
         char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-        h160_to_addr(h160,addr); pk_to_wif(privkey,wif);
+        if(g_tipo_hallado==1) h160_to_bech32(h160,addr); else h160_to_addr(h160,addr);
+        pk_to_wif(privkey,wif);
         for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",privkey[b]);
         double btc=0.0; /* check via Electrum */
-        char extra[128]; snprintf(extra,sizeof(extra),"PRIV:%s",pkhex);
+        char extra[160]; snprintf(extra,sizeof(extra),"PRIV:%s%s",pkhex,g_i9.d?" CHECK:8-byte-index":"");
         save_match(pkhex,addr,btc,wif,extra);
         /* Sin la clave. Este log lo ensena la pantalla de Debug y su boton
            "Copy" lo manda al portapapeles: la clave privada del puzzle
@@ -845,9 +889,10 @@ static void raw_visto(const uint8_t *h160, int j, int v, void *raw){
     if(!esc_clave(c->ctx,c->kc,j,v,pk)) return;
     g_found.fetch_add(1);
     char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
-    h160_to_addr(h160,addr); pk_to_wif(pk,wif);
+    if(g_tipo_hallado==1) h160_to_bech32(h160,addr); else h160_to_addr(h160,addr);
+    pk_to_wif(pk,wif);
     for(int b=0;b<32;b++) sprintf(pkhex+b*2,"%02x",pk[b]);
-    char extra[128]; snprintf(extra,sizeof(extra),"RAW:%s",pkhex);
+    char extra[160]; snprintf(extra,sizeof(extra),"RAW:%s%s",pkhex,g_i9.d?" CHECK:8-byte-index":"");
     save_match(pkhex,addr,0.0,wif,extra);
     add_log(std::string("*** RAW MATCH *** ADDR:")+addr);
     /* Igual que en modo puzzle: con objetivo unico, encontrarlo es el final.
@@ -1042,10 +1087,35 @@ static int g_active=0;
 /* =========================================================
    CSV loader
    ========================================================= */
+static void i9_progreso(uint64_t h,uint64_t n){
+    snprintf(g_load_status,sizeof(g_load_status),"Indexing %.0f%%",100.0*(double)h/(double)(n?n:1));
+}
+
 static void* load_bin_fn(void*) {
     g_loading.store(true); g_csv_loaded.store(false);
     snprintf(g_load_status,sizeof(g_load_status),"Loading .bin...");
     add_log(std::string("BIN path: ")+g_csv_path);
+    /* Primero, el indice de 9 bytes (tipo + 8 bytes de hash, ordenado, sin
+       cabecera). Si no lo es, el formato de siempre. */
+    {
+        Indice9 nuevo;
+        if(i9_abrir(&nuevo,g_csv_path,i9_progreso)){
+            if(g_h160){free(g_h160);g_h160=nullptr;} g_total=0;
+            if(g_xonly){free(g_xonly);g_xonly=nullptr;} g_total_tr=0;
+            if(g_bloom.bits) bloom_free(&g_bloom);
+            if(g_bloom_tr.bits) bloom_free(&g_bloom_tr);
+            i9_cerrar(&g_i9); g_i9=nuevo;
+            g_total=g_i9.n;
+            snprintf(g_load_status,sizeof(g_load_status),
+                     "Ready: %.1fM | 1:%.1fM bc1q:%.1fM 3:%.1fM bc1p/wsh:%.1fM",
+                     g_i9.n/1e6,g_i9.por_tipo[0]/1e6,g_i9.por_tipo[1]/1e6,g_i9.por_tipo[2]/1e6,g_i9.por_tipo[3]/1e6);
+            add_log(std::string("9-byte index: ")+g_load_status+" | bloom "+
+                    std::to_string(g_i9.nbloques*64/1024/1024)+"MB, file mapped (not copied)");
+            g_csv_loaded.store(true); g_loading.store(false);
+            return nullptr;
+        }
+    }
+    i9_cerrar(&g_i9);
     int fd=open(g_csv_path,O_RDONLY);
     if(fd<0){snprintf(g_load_status,sizeof(g_load_status),"Error: cannot open .bin");g_loading.store(false);return nullptr;}
     struct stat st; fstat(fd,&st); size_t fsz=(size_t)st.st_size;
@@ -1082,6 +1152,7 @@ static void *load_fn(void *){
     FILE *f=fopen(g_csv_path,"r");
     if(!f){snprintf(g_load_status,sizeof(g_load_status),"Error: could not open file");g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;g_csv_loaded.store(false);
+    i9_cerrar(&g_i9);
     if(g_xonly){free(g_xonly);g_xonly=nullptr;}g_total_tr=0;
     if(g_bloom_tr.bits){bloom_free(&g_bloom_tr);}
     LE *tmp=(LE*)malloc(MAX_CSV_ROWS*sizeof(LE));
