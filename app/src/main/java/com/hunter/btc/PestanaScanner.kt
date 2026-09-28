@@ -449,7 +449,14 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         // derivaciones y los hash160 por candidato; PBKDF2 domina, así que
         // el ahorro es del 2-5%, pero si el dataset sólo tiene un tipo de
         // dirección la mitad del trabajo no sirve para nada.
-        addView(TextView(this@buildScanTab).apply {
+        // Las rutas solo existen en el modo BIP39: en clave directa no hay
+        // frase de la que derivar, y verlas ahí hacía pensar que se usaban.
+        val rutasBox = LinearLayout(this@buildScanTab).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = if (selectedScanMode == 2) android.view.View.GONE else android.view.View.VISIBLE
+        }
+        rutasScanBox = rutasBox
+        rutasBox.addView(TextView(this@buildScanTab).apply {
             text = "Derivation paths"; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
@@ -488,12 +495,13 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         }
         casillas.forEach { cb -> cb.setOnCheckedChangeListener { _, _ -> applyPaths(cb) } }
         pathRow.addView(casillas[0]); pathRow.addView(casillas[1])
-        addView(pathRow)
-        addView(LinearLayout(this@buildScanTab).apply {
+        rutasBox.addView(pathRow)
+        rutasBox.addView(LinearLayout(this@buildScanTab).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             addView(casillas[2]); addView(casillas[3])
         })
+        addView(rutasBox)
         try { HunterEngine.setBip39Paths(pathMask) } catch (e: Throwable) {}
 
         // Actualizar visibilidad del fastRow cuando cambia el modo
@@ -677,9 +685,10 @@ internal fun MainActivity.buildScanTab(): ScrollView {
                 // El escaneo rápido sólo aplica a BIP39: en clave directa no
                 // hay derivación que saltarse.
                 try {
-                    fastScanRow?.visibility =
-                        if (selectedScanMode == 2) android.view.View.GONE
-                        else android.view.View.VISIBLE
+                    val vis = if (selectedScanMode == 2) android.view.View.GONE
+                              else android.view.View.VISIBLE
+                    fastScanRow?.visibility = vis
+                    rutasScanBox?.visibility = vis
                 } catch (e: Exception) {}
             }
             modeCards.add(c); modeRow.addView(c)

@@ -232,6 +232,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var puzzleMode = false
     internal var selectedScanMode = 0 // 0=BIP39, 2=RawKey
     internal var fastScanRow: android.view.View? = null
+    internal var rutasScanBox: android.view.View? = null
     internal var tvBinInfoRef: TextView? = null
     internal var tvDatasetStat: TextView? = null
     internal var peakWps: Double = 0.0
