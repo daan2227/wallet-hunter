@@ -17,13 +17,8 @@ import android.widget.TextView
  * de sección costaba dos toques y una animación. Aquí las cinco que se usan
  * están siempre a la vista y a un toque, y la activa se ve sin buscarla.
  *
- * Cinco y no más: es lo que cabe en un móvil con el rótulo entero y un blanco
- * de toque decente. Lo que se usa menos —Recovery, History, Debug, el tema—
- * va dentro de More.
- *
- * La usan dos pantallas: MainActivity, que tiene Scanner, Puzzle, Wallet y More
- * como páginas, y NetworkActivity, que ES la pestaña Cluster. Por eso la barra
- * no sabe navegar: sólo dice qué se ha tocado, y cada pantalla decide.
+ * Lo que se usa menos —Recovery, Debug, el tema— va dentro de More. La barra
+ * no sabe navegar: sólo dice qué se ha tocado, y la pantalla decide.
  */
 class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (Int) -> Unit) {
 
@@ -31,8 +26,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         const val SCANNER = 0
         const val PUZZLE  = 1
         const val WALLET  = 2
-        const val CLUSTER = 3
-        const val MORE    = 4
+        const val MORE    = 3
 
         /** Qué pestaña pedir al volver a MainActivity desde otra pantalla. */
         const val EXTRA_TAB = "com.hunter.btc.TAB"
@@ -44,7 +38,6 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         Item(R.drawable.ic_scan,    "Scanner"),
         Item(R.drawable.ic_puzzle,  "Puzzle"),
         Item(R.drawable.ic_wallet,  "Wallet"),
-        Item(R.drawable.ic_network, "Cluster"),
         Item(R.drawable.ic_more,    "More")
     )
 

@@ -102,39 +102,36 @@ class HunterService : Service() {
     /**
      * Volver a lo que estábamos haciendo cuando Android nos mató.
      *
-     * El servicio es START_STICKY, así que Android lo vuelve a levantar solo.
-     * Pero volvía con la notificación puesta y nada más: ni buscando ni
-     * conectado al maestro. Por fuera se veía igual que si todo fuera bien,
-     * mientras el móvil no aportaba nada y en la lista del maestro desaparecía a
-     * los diez minutos sin explicación.
-     *
-     * El watchdog que relanza Kangaroo vive en la pantalla principal, así que
-     * sólo actúa si esa pantalla está viva. Si muere el proceso entero no queda
-     * nadie que lo llame — y eso es exactamente lo que pasa en el móvil que se
-     * deja días trabajando para un cluster, que es donde más duele.
-     *
-     * Las dos cosas se recuperan de preferencias, que es donde ya quedan
-     * escritas arranque por donde arranque la búsqueda.
+     * El servicio es START_STICKY, así que Android lo vuelve a levantar solo,
+     * pero volvía con la notificación puesta y nada más. El watchdog que
+     * relanza Kangaroo vive en la pantalla principal, así que si muere el
+     * proceso entero no queda nadie que lo llame. Lo que se buscaba queda
+     * escrito en preferencias, arranque por donde arranque la búsqueda.
      */
     private fun recuperarTrasMorir() {
         try {
             val p = getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
-            // 1) La búsqueda
             val corriendo = p.getBoolean("kangaroo_corriendo", false)
             val viva = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-            if (corriendo && !viva) {
-                val pub = p.getString("kangaroo_pub", "") ?: ""
-                val ini = p.getString("kangaroo_ini", "") ?: ""
-                val fin = p.getString("kangaroo_fin", "") ?: ""
-                if (pub.length == 66 && ini.isNotEmpty() && fin.isNotEmpty()) {
-                    val ok = NetworkManager.arrancarMotorKangaroo(this, pub, ini, fin)
-                    android.util.Log.i("HunterService",
-                        "Kangaroo restarted after the app died: $ok")
-                }
-            }
-            // 2) El sitio en el cluster. Va después: si sólo se recupera la
-            //    búsqueda, el móvil trabaja pero para nadie.
-            NetworkManager.reanudarSesionDeWorker(this)
+            if (!corriendo || viva) return
+            val pub = p.getString("kangaroo_pub", "") ?: ""
+            val ini = p.getString("kangaroo_ini", "") ?: ""
+            val fin = p.getString("kangaroo_fin", "") ?: ""
+            if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return
+            // Si hubiera fuerza bruta en marcha, se para: los dos motores
+            // compiten por los mismos núcleos.
+            try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
+            val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+            val hilos = (p.getInt("puzzle_threads", 3) + 1).coerceIn(1, nucleos)
+            val cpu = (p.getInt("puzzle_cpu", 70) + 10).coerceIn(10, 100)
+            val porHilo = try { HunterEngine.getBatchSize() } catch (e: Throwable) { 512 }.coerceIn(256, 4096)
+            val ruta = java.io.File(filesDir, "kangaroo_${pub.take(16)}.dat").absolutePath
+            val ok = try {
+                HunterEngine.kangarooStart(pub, ini, fin, hilos, porHilo, ruta,
+                                           HunterEngine.topeTablaBits(this))
+            } catch (e: Throwable) { false }
+            if (ok) Termico.pedir(cpu)
+            android.util.Log.i("HunterService", "Kangaroo restarted after the app died: $ok")
         } catch (e: Throwable) {
             android.util.Log.e("HunterService", "recover: ${e.message}", e)
         }
@@ -273,17 +270,8 @@ class HunterService : Service() {
                 kangUltOps = kangOps; kangUltMs = System.currentTimeMillis()
                 ultimaVel = porSeg
                 val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
-                // Cero hilos con la tabla viva es el maestro de un cluster
-                // recogiendo los puntos de los trabajadores sin buscar él. Decir
-                // "Kangaroo · 0 saltos/s" ahí parece una búsqueda averiada, que
-                // es justo lo contrario de lo que pasa.
-                val hilos = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }
-                val vStr = when {
-                    hilos == 0    -> "collecting from the cluster"
-                    porSeg >= 1e6 -> "${"%.2f".format(porSeg/1e6)}M jumps/s"
-                    else          -> "${"%.0f".format(porSeg)} jumps/s"
-                }
-                if (hilos == 0) ultimaVel = 0.0
+                val vStr = if (porSeg >= 1e6) "${"%.2f".format(porSeg/1e6)}M jumps/s"
+                           else "${"%.0f".format(porSeg)} jumps/s"
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(
                         "Kangaroo · $vStr",
@@ -315,46 +303,14 @@ class HunterService : Service() {
                 try { MatchVault.recoger(this@HunterService) } catch (e: Throwable) {}
                 val detalles = HunterEngine.getMatches()
                 sendMatchNotif(found, detalles)
-                // Si este móvil trabaja para un cluster, avisar al master.
-                //
-                // reportMatch existía desde el principio y NO LA LLAMABA NADIE:
-                // un worker podía encontrar algo y el master no se enteraba
-                // jamás. Va aquí y no en la pantalla porque un worker suele
-                // estar en segundo plano, que es justo cuando la Activity no
-                // está viva para detectarlo.
-                //
-                // Sólo viaja la dirección. La clave se queda en este aparato:
-                // es la regla de reportMatch desde que se quitó el envío del
-                // WIF en claro, y no se toca.
-                if (NetworkManager.isWorker && NetworkManager.isRunning.get()) {
-                    val dir = Regex("[13][a-km-zA-HJ-NP-Z1-9]{25,34}|bc1[a-z0-9]{8,71}")
-                        .find(detalles)?.value
-                    if (!dir.isNullOrEmpty())
-                        NetworkManager.reportMatch(NetworkManager.masterIp, dir)
-                }
-            }
-
-            // Velocidad al master, para su lista de trabajadores.
-            //
-            // reportProgress tampoco la llamaba nadie, así que la columna de
-            // velocidad marcaba siempre 0 y no había forma de ver si un worker
-            // se había quedado parado. Cada 30 s basta.
-            if (NetworkManager.isWorker && NetworkManager.isRunning.get() &&
-                System.currentTimeMillis() - ultimoProgresoMs > 30_000L) {
-                ultimoProgresoMs = System.currentTimeMillis()
-                // ESTO MANDABA EL TOTAL ACUMULADO, NO LA VELOCIDAD.
-                // kangarooOps() y getCount() son contadores que solo suben, asi
-                // que el master pintaba "13800000K/s" en su lista de
-                // trabajadores. Se manda la tasa, que es lo que dice el rotulo.
-                NetworkManager.reportProgress(NetworkManager.masterIp, ultimaVel.toLong())
             }
 
             // ── GOBERNADOR TERMICO ────────────────────────────────────
             //
             // Aqui y no en la pantalla: un gobernador que solo funcione con
             // MainActivity delante deja de funcionar justo cuando hace falta
-            // —pantalla apagada, movil en el bolsillo, movil trabajando para
-            // un cluster—. Esto corre mientras corra el servicio.
+            // —pantalla apagada, movil en el bolsillo—. Esto corre mientras
+            // corra el servicio.
             if (Termico.evaluar(currentTemp)) avisarDeCalor()
 
             handler.postDelayed(this, 2000L)

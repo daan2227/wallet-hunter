@@ -162,8 +162,6 @@ static void parar_motor();
 static std::mutex               g_log_mutex;
 static std::deque<std::string>  g_log;
 static Coincidencias            g_matches;
-static std::mutex               g_addr_mutex;
-static std::deque<std::string>  g_recent_addrs;
 
 static char   g_load_status[256] = "";
 static time_t g_start_time = 0;
@@ -175,11 +173,6 @@ static void add_log(const std::string &msg){
     g_log.push_front(msg);
     if(g_log.size()>200) g_log.pop_back();
     LOGI("%s", msg.c_str());
-}
-static void add_addr(const std::string &a){
-    std::lock_guard<std::mutex> lk(g_addr_mutex);
-    g_recent_addrs.push_front(a);
-    if(g_recent_addrs.size()>50) g_recent_addrs.pop_back();
 }
 
 /* =========================================================
@@ -756,8 +749,6 @@ static void *worker_bip39_fn(void *arg){
                 if(ix>=0){ hits[nhits].idx=ix; strcpy(hits[nhits].mn,mn); memcpy(hits[nhits].pk,hoja.key,PRIVKEY_BYTES);
                            hits[nhits].pi=r.pi; hits[nhits].tipo=g_tipo_hallado; nhits++; }
             }
-            /* Feed visual: solo 1 vez por batch */
-            if(bi==0&&q==0&&(paths&7)){char at[MAX_ADDR]={0};h160_to_bech32(h160,at);add_addr(std::string(at));}
           }
         }
         double work_ms=std::chrono::duration<double,std::milli>(std::chrono::high_resolution_clock::now()-t0).count();
@@ -802,12 +793,6 @@ static PuzzleBatchCtx g_pbctx;
 
 static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
     c->done++;
-    /* Muestra de direcciones para la UI. Estaba cada 500 claves, lo que a
-       1M/s son 2000 codificaciones Base58 por segundo — cada una con doble
-       SHA-256 — más 2000 tomas de g_addr_mutex desde todos los hilos. La UI
-       sólo guarda las últimas 50 y se refresca cada 800 ms, así que una de
-       cada 50 000 basta de sobra. */
-    if(c->done%50000==0){char atmp[MAX_ADDR]={0};h160_to_addr(h160,atmp);add_addr(std::string(atmp));}
     int match=0;
     if(g_has_target){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
@@ -1539,19 +1524,7 @@ Java_com_hunter_btc_HunterEngine_datosDeClave(JNIEnv *env, jobject, jstring jhex
     return env->NewStringUTF(r.c_str());
 }
 
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_popMatch(JNIEnv *env,jobject){
-    std::string s=coinc_pop(&g_matches);
-    return env->NewStringUTF(s.c_str());
-}
 
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_popRecentAddr(JNIEnv *env,jobject){
-    std::lock_guard<std::mutex> lk(g_addr_mutex);
-    if(g_recent_addrs.empty())return env->NewStringUTF("");
-    std::string s=g_recent_addrs.front();g_recent_addrs.pop_front();
-    return env->NewStringUTF(s.c_str());
-}
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
@@ -2223,24 +2196,7 @@ Java_com_hunter_btc_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean se
     }
 }
 
-JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_isSequential(JNIEnv *env, jobject){
-    return (jboolean)(g_sequential.load() != 0);
-}
 
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_getSeqProgress(JNIEnv *env, jobject){
-    /* Retorna hex de posición actual */
-    char hex[65] = {0};
-    uint8_t pos[32];
-    {std::lock_guard<std::mutex> lk(g_seq_mutex);
-     memcpy(pos, g_seq_pos, 32);}
-    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",pos[i]);
-    /* Quitar ceros a la izquierda */
-    int start = 0;
-    while(start < 63 && hex[start] == '0') start++;
-    return env->NewStringUTF(hex+start);
-}
 
 JNIEXPORT jint JNICALL
 Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
@@ -2633,22 +2589,7 @@ Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
     return (g_kg_vivo && !g_kg.encontrado.load()) ? JNI_TRUE : JNI_FALSE;
 }
 
-/* Cuantos hilos estan caminando. CERO con la tabla viva es el modo recolector:
- * el maestro de un cluster junta los puntos de los trabajadores sin buscar.
- *
- * Hace falta porque kangarooRunning() dice que si en los dos casos —y tiene que
- * decirlo, porque de eso depende que el maestro acepte los puntos que le
- * mandan—, asi que sin esto la pantalla ensenaria "buscando a 0 op/s". */
-extern "C" JNIEXPORT jint JNICALL
-Java_com_hunter_btc_HunterEngine_kangarooHilos(JNIEnv *, jobject){
-    return g_kg_vivo ? (jint)g_kg_hilos.size() : 0;
-}
 
-/* Huecos de la tabla de distinguidos. */
-extern "C" JNIEXPORT jlong JNICALL
-Java_com_hunter_btc_HunterEngine_kangarooCapacidad(JNIEnv *, jobject){
-    return g_kg_vivo ? (jlong)(g_kg.tabla.mask+1) : 0;
-}
 
 /* ---------- Prueba de rendimiento del motor (pantalla Debug) ----------
  *
@@ -2842,43 +2783,7 @@ Java_com_hunter_btc_HunterEngine_kangarooTope(JNIEnv *, jobject){
  * coincidan dan la clave: es material de clave y no hay forma de evitarlo.
  */
 
-/* Los puntos que aun no se han mandado. Cada llamada devuelve solo lo nuevo.
- * @return byte[] para mandar tal cual, o null si no hay nada.
- */
-extern "C" JNIEXPORT jbyteArray JNICALL
-Java_com_hunter_btc_HunterEngine_kangarooExport(JNIEnv *env, jobject, jint max_ent){
-    std::lock_guard<std::mutex> lk(g_kg_mtx);
-    if(!g_kg_vivo) return NULL;
-    if(max_ent<1) max_ent=1024;
-    if(max_ent>8192) max_ent=8192;
-    size_t cap=kg_export_bytes((uint32_t)max_ent);
-    std::vector<uint8_t> buf(cap);
-    size_t n=kg_export(&g_kg.tabla,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
-                       buf.data(),cap,(uint32_t)max_ent);
-    if(n==0) return NULL;
-    jbyteArray out=env->NewByteArray((jsize)n);
-    if(!out) return NULL;
-    env->SetByteArrayRegion(out,0,(jsize)n,(const jbyte*)buf.data());
-    return out;
-}
 
-/* Mete puntos que llegan de otro aparato. La cabecera lleva puzzle, rango y
- * dbits: si no cuadran con los de aqui, se rechaza el bloque entero.
- * @return cuantos han entrado, o -1 si el bloque no valia.
- */
-extern "C" JNIEXPORT jint JNICALL
-Java_com_hunter_btc_HunterEngine_kangarooImport(JNIEnv *env, jobject, jbyteArray jdatos){
-    std::lock_guard<std::mutex> lk(g_kg_mtx);
-    if(!g_kg_vivo || !jdatos) return -1;
-    jsize len=env->GetArrayLength(jdatos);
-    if(len<=0) return -1;
-    std::vector<uint8_t> buf((size_t)len);
-    env->GetByteArrayRegion(jdatos,0,len,(jbyte*)buf.data());
-    uint32_t metidas=0;
-    if(!kg_import(&g_kg,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
-                  buf.data(),(size_t)len,&metidas)) return -1;
-    return (jint)metidas;
-}
 
 /* La clave publica con la que se arranco, para que el master pueda decirle a
  * cada trabajador en que puzzle tiene que ponerse. */

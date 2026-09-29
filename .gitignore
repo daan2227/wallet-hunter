@@ -18,6 +18,4 @@ keystore.properties
 design/*.html
 !design/*.dc.html
 tools/ec-harness/semilla
-app/src/main/cpp/tailscale/
-out-tailscale/
 app/src/main/jniLibs/

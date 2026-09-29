@@ -76,10 +76,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Lo que hace tocar una pestaña.
      *
      * Wallet sigue pidiendo el PIN si la sesión está cerrada, igual que lo
-     * pedía desde el menú. Cluster no es una página de aquí sino su propia
-     * pantalla, NetworkActivity, que lleva la misma barra con Cluster marcado:
-     * se abre sin animación para que se sienta como cambiar de pestaña y no
-     * como entrar en otra sección.
+     * pedía desde el menú.
      */
     internal fun pestana(tab: Int) {
         when (tab) {
@@ -90,18 +87,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     PinAuthHelper.show(this) { ok -> if (ok) goTab(PAG_WALLET) }
                 else goTab(PAG_WALLET)
             }
-            BottomBar.CLUSTER -> {
-                startActivity(Intent(this, NetworkActivity::class.java))
-                overridePendingTransition(0, 0)
-            }
             BottomBar.MORE -> goTab(PAG_MORE)
         }
     }
 
     /**
-     * Otra pantalla ha pedido una pestaña: NetworkActivity, cuando desde
-     * Cluster se toca Scanner, Puzzle, Wallet o More. Pasa por [pestana] para
-     * que Wallet pida el PIN igual que si se hubiera tocado aquí.
+     * Otra pantalla ha pedido una pestaña (la cartera, al volver al escáner).
+     * Pasa por [pestana] para que Wallet pida el PIN igual que si se hubiera
+     * tocado aquí.
      *
      * Se quita el extra después de usarlo. Si no, un recreate() —el cambio de
      * tema— reutiliza el mismo Intent y volvería a saltar a esa pestaña.
@@ -174,7 +167,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var scanStateDot: android.view.View? = null
     /** Resumen a la derecha de las filas de ajuste: "8 hilos · 100 %". */
     internal var tvEngineSummary: TextView? = null
-    internal var tvClusterSummary: TextView? = null
     /** "Sin atajo: fuerza bruta" / "Admite Kangaroo". */
     internal var tvPuzzleAtajo: TextView? = null
     /** Botón de Kangaroo: sólo aparece si la clave pública es conocida. */
@@ -1105,31 +1097,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val scanned = prefs.getStringSet("scanned_$puzzleNum", emptySet())?.toMutableSet() ?: mutableSetOf()
         scanned.add(currentBlockId)
         prefs.edit().putStringSet("scanned_$puzzleNum", scanned).apply()
-
-        // Si hay red activa como worker, reportar al master
-        if (NetworkManager.isWorker && NetworkManager.isRunning.get()) {
-            val masterIp = getSharedPreferences("net_prefs", MODE_PRIVATE)
-                .getString("master_ip", null) ?: return
-            NetworkManager.reportBlockDone(masterIp, currentBlockId)
-        }
-        // Agregar al registro global local
-        NetworkManager.globalScannedBlocks.add(currentBlockId)
     }
 
-    internal fun getBlockProgressText(puzzleNum: Int, rangeStart: String, rangeEnd: String): String {
-        // Si hay red activa, mostrar progreso global
-        if (NetworkManager.isRunning.get() && NetworkManager.globalScannedBlocks.isNotEmpty()) {
-            return NetworkManager.getGlobalProgress(rangeStart, rangeEnd) + " [NET]"
-        }
-        return try {
-            // .toLong() sobre el BigInteger truncaba en silencio: el puzzle 160
-            // tiene 7,3e38 bloques y el total salía como un número sin sentido.
-            val total = totalBlocksOf(rangeStart, rangeEnd)
-            val scanned = getBlockPrefs().getStringSet("scanned_$puzzleNum", emptySet())?.size ?: 0
-            val pct = blockPercent(java.math.BigInteger.valueOf(scanned.toLong()), total)
-            "Blocks: $scanned / $total (%.4f%%)".format(pct)
-        } catch (e: Exception) { "" }
-    }
 
 
 
@@ -1161,36 +1130,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     /** "Buscando · 51 s" o "Idle", con su punto. */
     internal fun paintScanState(running: Boolean) {
-        // Adoptar una búsqueda que arrancó otro.
-        //
-        // sessionStartTime sólo se ponía al pulsar el botón de esta pantalla,
-        // pero el motor NO se arranca sólo desde aquí: cuando este móvil trabaja
-        // para un cluster, el bloque llega por la red y la pantalla de red
-        // arranca la búsqueda por su cuenta. Entonces esto se quedaba a cero y
-        // salía "Buscando · 00:00:00" con cientos de millones de claves ya
-        // revisadas.
-        //
-        // Es el mismo fallo que tenía Kangaroo con kgInicio, y se arregla igual:
-        // el que encuentra una búsqueda en marcha que no puso él, la adopta.
-        // Y si el trabajo viene de la red, es de un PUZZLE, no del escáner.
-        //
-        // onBlock hace setMode(1) —el motor sí está en modo puzzle— pero
-        // puzzleMode es una bandera de Kotlin que sólo se ponía al pulsar la
-        // pestaña. Así que el trabajo de un bloque asignado por red salía en la
-        // pantalla de Escáner, con su "Modo BIP39" y su "Lista cargada: sin
-        // cargar", mientras la de Puzzle enseñaba ceros.
-        if (running) NetworkManager.bloqueActual?.let { b ->
-            if (!puzzleMode || currentBlockId != b.blockId) {
-                puzzleMode = true
-                currentRangeStart = b.rangeStart
-                currentRangeEnd   = b.rangeEnd
-                currentBlockId    = b.blockId
-                puzzles.firstOrNull { it.num == b.puzzleNum }?.let { p ->
-                    puzzleFullStart = p.start
-                    puzzleFullEnd   = p.end
-                }
-            }
-        }
+        // Adoptar una búsqueda que arrancó otro (el watchdog del servicio):
+        // sin esto salía "Buscando · 00:00:00" con millones de claves hechas.
         if (running && sessionStartTime == 0L) {
             sessionStartTime = System.currentTimeMillis()
             // El contador es acumulado, así que la cuenta de ESTA sesión parte
@@ -1220,11 +1161,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val hilos = (sbThreads?.progress ?: 3) + 1
         val cpu   = (sbCpu?.progress ?: 70) + 10
         tvEngineSummary?.text = "$hilos threads · $cpu %"
-        tvClusterSummary?.text = when {
-            NetworkManager.isRunning.get() && NetworkManager.isMaster -> "Master"
-            NetworkManager.isRunning.get() -> "Worker"
-            else -> "Idle"
-        }
     }
 
     /**
@@ -2170,45 +2106,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     internal fun alternarKangaroo() {
-        // Recolectando (maestro de un cluster, tabla viva y cero hilos): esto no
-        // es "parar", es "ponerse a buscar TAMBIÉN". El motor no deja añadir
-        // hilos a un contexto vivo, así que se para y se vuelve a arrancar; la
-        // tabla no se pierde porque kangarooStop() la guarda y kangarooStart()
-        // la recupera del mismo fichero. Lo comprueba la prueba "persist".
-        val recolectando = HunterEngine.kangarooRunning() &&
-            (try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }) == 0
-        if (recolectando) {
-            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-            // y sigue abajo, arrancando de verdad
-        } else if (HunterEngine.kangarooRunning()) {
+        if (HunterEngine.kangarooRunning()) {
             // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             lblEscaneadas?.text = "Scanned"
             lblRestantes?.text = "Blocks left"
             btnKangaroo?.text = "Search with Kangaroo"
-            // Si este móvil es el maestro del cluster, volver a recoger: dejarlo
-            // sin tabla haría que rechazara los puntos de los trabajadores y el
-            // cluster se quedaría en N búsquedas sueltas sin enterarse nadie.
-            val vuelveARecoger = NetworkManager.isMaster &&
-                NetworkManager.modo == NetworkManager.Modo.KANGAROO &&
-                puzzlePubHex.length == 66
-            if (vuelveARecoger) {
-                val ruta = java.io.File(filesDir,
-                    "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
-                val ok = try {
-                    HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex,
-                                               puzzleFinHex, 0, 256, ruta,
-                                               HunterEngine.topeTablaBits(this))
-                } catch (e: Throwable) { false }
-                tvPuzzleAtajo?.text = if (ok)
-                    "This phone stops searching, but keeps collecting the " +
-                    "workers\u0027 points."
-                else "Stopped. The work is saved."
-            } else {
-                tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
-                                      "pressing again continues from there."
-            }
+            tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
+                                  "pressing again continues from there."
             tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
             kgInicio = 0L
             return
@@ -2360,29 +2266,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putString("kangaroo_fin", fin).apply()
     }
 
-    /**
-     * Un worker del cluster ha encontrado la clave y lo ha avisado.
-     *
-     * Hace falta este camino además del intercambio de tablas. Cuando un
-     * aparato cierra la colisión en su propia tabla, la entrada que la cierra no
-     * llega a guardarse —dp_insert avisa y sale sin escribirla—, así que por
-     * muchos puntos que mande, aquí sólo llega media pareja y la cuenta no se
-     * puede repetir. Está comprobado en tools/ec-harness/reparte.cpp, prueba 4.
-     *
-     * Se guarda antes de tocar nada de la pantalla: si la app muere justo aquí,
-     * la clave no puede perderse.
-     */
-    internal fun mostrarClaveDeWorker(dispositivo: String, claveHex: String) {
-        guardarHallazgoKangaroo(claveHex, "PUZZLE kangaroo (network, from $dispositivo)")
-        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-        prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
-        btnKangaroo?.text = "Search with Kangaroo"
-        tvPuzzleAtajo?.text = "KEY FOUND on $dispositivo\n$claveHex\n" +
-                              "Saved to the finds vault."
-        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
-        try { sendMatchNotification("Key found over the network", "Saved to the finds vault.") } catch (e: Throwable) {}
-    }
-
     /* ── ¿Sigue habiendo premio? ──────────────────────────────────────────────
      *
      * El saldo del puzzle sólo se consultaba al pulsar su chip y al abrir la
@@ -2445,8 +2328,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                       "has funds, somebody solved it. The work " +
                                       "is kept in case it is useful."
                 tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
-                // Que los workers del cluster paren también.
-                NetworkManager.marcarPuzzleVacio()
             }
         }
     }
@@ -2476,8 +2357,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /**
-     * Se encontró un Kangaroo corriendo que esta pantalla no arrancó. Pasa
-     * siempre que el cluster se pone en marcha desde la pantalla de red.
+     * Se encontró un Kangaroo corriendo que esta pantalla no arrancó: lo
+     * relanzó el watchdog del servicio, o la app se reabrió con él en marcha.
      *
      * Quién manda aquí es el motor, no las preferencias: kangarooPub() dice qué
      * clave pública se está atacando de verdad. El rango sí sale de las
@@ -2665,37 +2546,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             return
         }
-        // Va ANTES de mirar si sólo se recoge. El que vigila si el puzzle sigue
-        // teniendo fondos es el maestro, y es el que avisa a los trabajadores
-        // para que no sigan quemando batería contra una dirección vacía. Si el
-        // maestro está recolectando y esto quedara detrás del return, nadie
-        // vigilaría nada y el cluster entero seguiría buscando algo ya resuelto.
         vigilarSaldoDelPuzzle()
 
-        // ── ¿Buscando, o sólo recogiendo? ────────────────────────────────
-        //
-        // El maestro de un cluster tiene la tabla viva para juntar los puntos
-        // de los trabajadores, pero sin ningún hilo caminando. kangarooRunning()
-        // dice que sí —y tiene que decirlo, porque de eso depende que acepte los
-        // puntos que le mandan—, así que sin esto la pantalla enseñaría una
-        // búsqueda a 0 op/s, con su gráfica plana y su "Estimated" absurdo.
-        val hilosKg = try { HunterEngine.kangarooHilos() } catch (e: Throwable) { 1 }
-        if (hilosKg == 0) {
-            val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
-            cardCobertura?.visibility = android.view.View.GONE
-            btnKangaroo?.text = "Search with Kangaroo"
-            tv.text = "Collecting points from the cluster · $pts in the table\n" +
-                      "This phone is not searching. Press \u0027Search with " +
-                      "Kangaroo\u0027 if you want it to contribute too."
-            tv.setTextColor(AppTheme.TXT_SEC)
-            return
-        }
-        // Hay un Kangaroo en marcha. Si kgInicio sigue a cero es que lo arrancó
-        // otro (la pantalla de red, como maestro o como trabajador) y esta
-        // pantalla no se ha enterado. Se adopta: los contadores se ponen en hora
-        // y a partir de aquí se sigue igual que si el botón lo hubiera pulsado
-        // el usuario. Se hace aquí y no duplicando el arranque en la pantalla de
-        // red porque así queda cubierto cualquier otro camino que aparezca.
+        // Si kgInicio sigue a cero es que el Kangaroo lo arrancó otro (el
+        // watchdog del servicio) y esta pantalla no se ha enterado: se adopta.
         if (kgInicio == 0L) adoptarKangaroo()
 
         val ops = try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }
@@ -2823,93 +2677,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val r = try { BalanceLookup.query(addr, false) } catch (e: Exception) { null }
             runOnUiThread { onResult(r?.sat ?: -1L) }
         }.start()
-    }
-
-    /**
-     * Arranca el master del cluster con el puzzle que está seleccionado.
-     *
-     * El botón llamaba a startMaster(..., 71, "400000000000000000",
-     * "7fffffffffffffffff"): el puzzle 71 fijo en el código, sin relación con el
-     * que tuvieras elegido. Si estabas con el #70, los workers recibían bloques
-     * del rango del #71 y buscaban donde no estaba la clave — repartiendo
-     * trabajo inútil sin que nada lo indicara. applyPuzzle() ya deja el rango en
-     * prefs, así que se lee de ahí.
-     *
-     * Además muestra el código de acceso en un diálogo: lo generaba
-     * startMaster() y sólo aparecía en un log de cinco líneas, así que el master
-     * quedaba escuchando en 0.0.0.0:7771 sin que supieras el código que hay que
-     * dar a los workers.
-     */
-    internal fun startClusterMaster() {
-        val pnum  = prefs.getInt("current_puzzle_num", 0)
-        val start = prefs.getString("current_range_start", "") ?: ""
-        val end   = prefs.getString("current_range_end", "") ?: ""
-        // La dirección va con cada bloque: es contra lo que compara el
-        // trabajador. Se saca de la tabla si las preferencias aún no la tienen
-        // —un puzzle elegido antes de que esto existiera— para no obligar a
-        // volver a elegirlo.
-        val addr  = (prefs.getString("current_puzzle_addr", "") ?: "")
-            .ifEmpty { puzzles.firstOrNull { it.num == pnum }?.addr ?: "" }
-        if (pnum == 0 || start.isEmpty() || end.isEmpty()) {
-            androidx.appcompat.app.AlertDialog.Builder(this)
-                .setTitle("No puzzle selected")
-                .setMessage("Pick a puzzle on the Puzzle tab before starting " +
-                            "the master: that range is what gets shared between devices.")
-                .setPositiveButton("OK", null)
-                .show()
-            return
-        }
-        // Si este puzzle tiene la clave pública publicada, se reparte Kangaroo,
-        // que es seis órdenes de magnitud mejor que la fuerza bruta. Y entonces
-        // NO se parte el rango: con Kangaroo partirlo empeora la búsqueda. Lo
-        // que se reparte es la tabla de puntos distinguidos.
-        val conKangaroo = puzzlePubHex.length == 66 &&
-                          puzzleIniHex.isNotEmpty() && puzzleFinHex.isNotEmpty()
-        if (conKangaroo) {
-            // El master tiene que estar buscando él también: los puntos que
-            // llegan de los workers se meten en SU tabla, y es ahí donde
-            // aparece la colisión entre dos móviles.
-            if (!HunterEngine.kangarooRunning()) alternarKangaroo()
-            NetworkManager.startMasterKangaroo(this, pnum, puzzlePubHex,
-                                               puzzleIniHex, puzzleFinHex, addr)
-            NetworkManager.onClave = { dispositivo, claveHex ->
-                runOnUiThread { mostrarClaveDeWorker(dispositivo, claveHex) }
-            }
-        } else {
-            if (addr.isEmpty()) {
-                androidx.appcompat.app.AlertDialog.Builder(this)
-                    .setTitle("The puzzle address is missing")
-                    .setMessage("Pick puzzle #$pnum again on the " +
-                                "Puzzle tab. Without its address, the workers " +
-                                "would search with nothing to compare against.")
-                    .setPositiveButton("OK", null)
-                    .show()
-                return
-            }
-            NetworkManager.startMaster(this, pnum, start, end, addr)
-        }
-
-        val explicacion = if (conKangaroo)
-            "Kangaroo sharing: every device searches the SAME range and " +
-            "pools its points here. Splitting the range would make it worse.\n\n" +
-            "WARNING: what travels allows the private key to be rebuilt. Use it " +
-            "only on your own network."
-        else
-            "Block sharing: each device gets a slice of the range."
-
-        androidx.appcompat.app.AlertDialog.Builder(this)
-            .setTitle("Master running — Puzzle #$pnum")
-            .setMessage("Access code:\n\n${NetworkManager.authToken}\n\n" +
-                        "Enter it on each worker. Without it the master refuses the " +
-                        "connection.\n\nListening on port ${NetworkManager.TCP_PORT} " +
-                        "on this network.\n\n$explicacion")
-            .setPositiveButton("Copy code") { _, _ ->
-                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText(
-                        "cluster", NetworkManager.authToken))
-            }
-            .setNegativeButton("Close", null)
-            .show()
     }
 
     /**

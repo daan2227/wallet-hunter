@@ -8,16 +8,6 @@ permissions:
   contents: write
 
 jobs:
-  # NOTA sobre el gasto de minutos.
-  #
-  # Habia aqui un trabajo "tailscale-archive" aparte que cruzaba Go otra vez
-  # sólo para fallar en rojo si se rompía. Se ha quitado: DUPLICABA la
-  # compilación de tailscale.com —lo más caro de todo esto— en cada commit, y el
-  # repositorio es privado, o sea con minutos contados. Se agotaron.
-  #
-  # Lo que aportaba se consigue más barato: el paso de abajo compila tsnet una
-  # sola vez, y otro comprueba que libtsbridge.so acabó dentro del APK y avisa
-  # si no. Se pierde el rojo inmediato; se gana poder seguir compilando.
   build:
     runs-on: ubuntu-latest
     steps:
@@ -143,36 +133,6 @@ jobs:
     - name: Generate Bip39Words.kt
       run: python3 scripts/gen_bip39.py
 
-    # tsnet empotrado. Va con continue-on-error a PROPÓSITO: compilarlo mete la
-    # cadena de Go, el árbol entero de tailscale.com y 14 MB, y nada de eso
-    # puede ser motivo de que una app que funciona deje de construirse. Si esto
-    # falla, CMake no encuentra libtailscale.so, compila sin ella, y TsNet
-    # contesta que no está disponible.
-    #
-    # El trabajo tailscale-archive de arriba sí falla en rojo cuando la
-    # compilación se rompe, que es donde queremos enterarnos.
-    - uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-      continue-on-error: true
-
-    # Sin esto, cada commit recompila el árbol entero de tailscale.com —con
-    # gvisor dentro—, que son varios minutos. La clave lleva el commit fijado de
-    # libtailscale: mientras no se cambie, el caché vale y la compilación baja a
-    # menos de un minuto. Al cambiarlo, la clave cambia sola y se recompila.
-    - uses: actions/cache@v4
-      continue-on-error: true
-      with:
-        path: |
-          ~/go/pkg/mod
-          ~/.cache/go-build
-        key: go-tsnet-${{ hashFiles('scripts/build-libtailscale.sh') }}
-        restore-keys: go-tsnet-
-
-    - name: Build embedded tsnet (optional)
-      continue-on-error: true
-      run: scripts/build-libtailscale.sh
-
     # Restaura el keystore real si el secret existe; si no, genera el de debug
     # para que la compilación siga funcionando (APK no publicable).
     # Sin el secret, la clave de respaldo se generaba NUEVA en cada ejecución:
@@ -214,43 +174,6 @@ jobs:
       run: |
         chmod +x gradlew
         ./gradlew assembleRelease
-
-    # Que se vea si tsnet entró o no.
-    #
-    # El paso que lo compila lleva continue-on-error, así que puede fallar sin
-    # teñir nada de rojo — y entonces el APK sale sin nodo empotrado y con la
-    # misma pinta que uno bueno. Esto lo dice a la cara: warning en el resumen
-    # del build en vez de un descubrimiento en el móvil media hora después.
-    - name: ¿Lleva el APK el nodo empotrado?
-      run: |
-        APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
-        if unzip -l "$APK" | grep -q 'lib/arm64-v8a/libtsbridge.so'; then
-          echo "OK: libtsbridge.so está en el APK"
-          unzip -l "$APK" | grep -E 'libtsbridge|libtailscale' || true
-          # Que pida el NOMBRE y no una ruta.
-          #
-          # Estar dentro del APK no basta: si libtailscale.so se compiló sin
-          # SONAME, libtsbridge.so anota como dependencia la ruta absoluta de
-          # ESTE runner, y en el móvil sale "library ... not found" al cargarla.
-          # El APK se construye igual de bien, así que sin esto no se sabe hasta
-          # instalarlo. Pasó, y costó tres intentos verlo.
-          rm -rf /tmp/apkchk && mkdir -p /tmp/apkchk
-          unzip -q -o "$APK" 'lib/arm64-v8a/lib*.so' -d /tmp/apkchk
-          RE=$(ls $ANDROID_SDK_ROOT/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf 2>/dev/null || echo readelf)
-          NEED=$("$RE" -d /tmp/apkchk/lib/arm64-v8a/libtsbridge.so 2>/dev/null \
-                 | grep -o 'NEEDED.*\[.*\]' | sed 's/.*\[\(.*\)\]/\1/' | tr '\n' ' ')
-          echo "libtsbridge.so necesita: $NEED"
-          case "$NEED" in
-            */*) echo "::error::libtsbridge.so pide una RUTA y no un nombre: $NEED. \
-        Falta el SONAME en libtailscale.so; en el móvil dará 'library not found'."
-                 exit 1 ;;
-            *libtailscale.so*) echo "OK: pide libtailscale.so por su nombre" ;;
-            *) echo "::warning::libtsbridge.so no depende de libtailscale.so ($NEED)" ;;
-          esac
-        else
-          echo "::warning::El APK NO lleva el nodo empotrado (libtsbridge.so). \
-        La app funciona igual, pero 'Usar nodo propio' dirá que no está disponible."
-        fi
 
     # Deja el desglose en el log del build, para no tener que descargar el APK
     # y abrirlo a mano cada vez que se quiera saber qué ocupa qué.

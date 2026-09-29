@@ -5,33 +5,20 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
         <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
-    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
-    <!-- Para volver a arrancar tras reiniciar el móvil. Sin esto, un reinicio
-         —incluido el que hace Android solo al actualizarse— dejaba parado para
-         siempre un aparato que llevaba días trabajando para un cluster, y lo
-         único que se veía era que desaparecía de la lista del maestro. -->
+    <!-- Para volver a arrancar tras reiniciar el móvil: sin esto, un reinicio
+         —incluido el que hace Android solo al actualizarse— dejaba parada una
+         búsqueda de Kangaroo de días. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Sólo para leer el QR de la dirección al enviar (QrScanActivity). -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
-    <!-- Desde Android 11 una app no ve qué otras hay instaladas salvo que las
-         declare aquí. Sin esto, getPackageInfo("com.tailscale.ipn") lanza
-         NameNotFoundException AUNQUE Tailscale esté instalado, así que el botón
-         diría "Instalar Tailscale" a quien ya lo tiene y le mandaría a la
-         tienda. Y getLaunchIntentForPackage devolvería null, o sea que tampoco
-         podría abrirlo.
-         targetSdk es 34, así que el filtrado aplica. -->
-    <queries>
-        <package android:name="com.tailscale.ipn" />
-    </queries>
     <application
         android:allowBackup="false"
         android:fullBackupContent="false"
@@ -83,9 +70,6 @@
             </intent-filter>
         </receiver>
         <activity android:name=".DebugActivity"
-            android:theme="@style/AppThemeDark" />
-
-        <activity android:name=".NetworkActivity"
             android:theme="@style/AppThemeDark" />
 
         <activity android:name=".QrScanActivity"

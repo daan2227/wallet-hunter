@@ -64,34 +64,6 @@ target_compile_options(hunter_jni PRIVATE
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
 
-# ── tsnet empotrado, en su PROPIA librería ────────────────────────────────
-#
-# libtsbridge.so, NO dentro de libhunter_jni.so. Estuvo dentro y rompió la app
-# entera: libtailscale.so trae el runtime de Go, que arranca al CARGAR la
-# librería, así que enlazarla dentro hacía que Go arrancara al abrir la app
-# —antes de que nadie hubiera pedido nada de Tailscale— y System.loadLibrary
-# fallaba. Lo que se veía era una pantalla negra con un "Building Puzzle..."
-# colgado y ni un mensaje.
-#
-# Separada, se carga SÓLO cuando alguien enciende el nodo. Si Go no arranca, el
-# botón dice que no se puede y la app sigue funcionando entera.
-#
-# Es además lo correcto aunque no hubiera fallado: 14 MB de runtime de Go no
-# tienen por qué iniciarse para buscar claves en local.
-set(TS_SO  "${CMAKE_CURRENT_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libtailscale.so")
-set(TS_INC "${CMAKE_CURRENT_SOURCE_DIR}/tailscale")
-if(EXISTS "${TS_SO}" AND EXISTS "${TS_INC}/tailscale.h")
-    message(STATUS "tsnet: construyendo libtsbridge.so contra ${TS_SO}")
-    add_library(tailscale SHARED IMPORTED)
-    set_target_properties(tailscale PROPERTIES IMPORTED_LOCATION "${TS_SO}")
-    add_library(tsbridge SHARED ts_jni.cpp)
-    target_include_directories(tsbridge PRIVATE "${TS_INC}")
-    target_compile_definitions(tsbridge PRIVATE TIENE_TAILSCALE)
-    target_link_libraries(tsbridge tailscale)
-else()
-    message(STATUS "tsnet: sin libtailscale.so, no se construye libtsbridge.so")
-endif()
-
 find_library(log-lib log)
 
 # openssl::ssl se enlazaba sin usarse: el C++ sólo incluye sha.h, ripemd.h,
@@ -106,5 +78,3 @@ target_link_libraries(hunter_jni
     vulkan
 )
 
-# hunter_jni NO enlaza tailscale. Ver arriba: hacerlo arrancaba el runtime de
-# Go al abrir la app y la tumbaba antes de pintar nada.

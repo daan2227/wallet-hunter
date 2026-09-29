@@ -72,8 +72,8 @@ android {
     //
     // Por defecto van sin comprimir, para que Android las cargue directamente
     // del APK sin copiarlas: eso ahorra espacio instalado, pero el APK pesa
-    // lo que pesan las librerías enteras, y aquí son el 90 % del fichero
-    // (libtailscale.so sola eran 21 MB). Como la app se instala a mano y no
+    // lo que pesan las librerías enteras, que son la mayor parte del
+    // fichero. Como la app se instala a mano y no
     // desde Play —que ya comprime la descarga por su cuenta—, lo que se
     // descarga y se pasa de un móvil a otro es este APK. Comprimidas bajan a
     // un tercio; a cambio, al instalar se descomprimen a disco una vez.

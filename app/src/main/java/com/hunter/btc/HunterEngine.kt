@@ -66,8 +66,6 @@ object HunterEngine {
      * guardado nada.
      */
     external fun datosDeClave(privHex: String): String
-    external fun popMatch(): String
-    external fun popRecentAddr(): String
     /**
      * Las direcciones principales de la cartera.
      *
@@ -100,8 +98,6 @@ object HunterEngine {
     external fun getBatchSize(): Int
     external fun setSequential(seq: Boolean)
     external fun getCsvCount(): Long
-    external fun isSequential(): Boolean
-    external fun getSeqProgress(): String
     external fun getLastKey(): String
 
     /* ── Kangaroo ─────────────────────────────────────────────────────────
@@ -137,8 +133,6 @@ object HunterEngine {
                                rutaEstado: String, topeTablaBits: Int): Boolean
     external fun kangarooStop()
 
-    /** Huecos que tiene la tabla de distinguidos. 0 si no hay búsqueda. */
-    external fun kangarooCapacidad(): Long
 
     /**
      * Cuántos puntos caben ANTES de que el motor deje de guardar.
@@ -237,39 +231,9 @@ object HunterEngine {
      * clave, y no hay manera de evitarlo sin perder todo el beneficio.
      */
 
-    /**
-     * Los puntos distinguidos que todavía no se han mandado.
-     *
-     * Cada llamada devuelve sólo lo nuevo, así que se puede llamar en bucle sin
-     * reenviar la tabla entera.
-     *
-     * @param maxEntradas tope por envío, para que un mensaje no se haga enorme.
-     * @return los bytes a mandar tal cual, o null si no hay nada nuevo.
-     */
-    external fun kangarooExport(maxEntradas: Int): ByteArray?
 
-    /**
-     * Mete puntos que llegan de otro aparato.
-     *
-     * El bloque lleva dentro el puzzle, el rango y el criterio de distinguido:
-     * si no cuadran con los de aquí se rechaza entero, porque mezclar tablas de
-     * búsquedas distintas daría colisiones que no significan nada.
-     *
-     * @return cuántos han entrado, o -1 si el bloque no valía.
-     */
-    external fun kangarooImport(datos: ByteArray): Int
 
     /** La clave pública con la que se arrancó, en hex. "" si no hay búsqueda. */
     external fun kangarooPub(): String
 
-    /**
-     * Hilos caminando. CERO con la tabla viva es el modo RECOLECTOR: el maestro
-     * de un cluster junta los puntos que le mandan los trabajadores sin buscar
-     * él, así que no gasta CPU ni batería.
-     *
-     * Hace falta distinguirlo porque [kangarooRunning] dice que sí en los dos
-     * casos — y tiene que decirlo, porque de eso depende que el maestro acepte
-     * los puntos que le llegan.
-     */
-    external fun kangarooHilos(): Int
 }
