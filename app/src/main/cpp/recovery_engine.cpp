@@ -314,10 +314,10 @@ static void worker(WorkerArgs args){
     long long combo=args.start_combo;
     std::vector<int> widx=args.word_idx;
 
-    /* Las frases que pasan el checksum se juntan de dos en dos: con las
-       instrucciones SHA-512 las dos PBKDF2 van entrelazadas (sha512.h). */
+    /* Las frases que pasan el checksum se juntan de cuatro en cuatro: con
+       las instrucciones SHA-512 las PBKDF2 van entrelazadas (sha512.h). */
     struct Cand{ char mn[400]; size_t len; };
-    Cand cand[2]; int nc=0;
+    Cand cand[4]; int nc=0;
     /* El contador compartido se tocaba en cada combinacion, desde todos los
        hilos: la misma linea de cache saltando de nucleo en nucleo. */
     long long pendientes=0;
@@ -327,9 +327,15 @@ static void worker(WorkerArgs args){
         if(!g_found.load()){ g_result=std::string(mn)+extra; g_found.store(true); }
     };
     auto procesar=[&](int cuantos){
-        uint8_t seeds[2][64];
-        if(cuantos==2) bip39_semilla_x2(cand[0].mn,cand[0].len,cand[1].mn,cand[1].len,"",0,seeds[0],seeds[1]);
-        else           bip39_semilla(cand[0].mn,cand[0].len,"",0,seeds[0]);
+        uint8_t seeds[4][64];
+        if(cuantos==4){
+            const char *f[4]={cand[0].mn,cand[1].mn,cand[2].mn,cand[3].mn};
+            size_t l[4]={cand[0].len,cand[1].len,cand[2].len,cand[3].len};
+            bip39_semilla_x4(f,l,"",0,seeds);
+        }else for(int q=0;q<cuantos;q+=2){
+            if(q+1<cuantos) bip39_semilla_x2(cand[q].mn,cand[q].len,cand[q+1].mn,cand[q+1].len,"",0,seeds[q],seeds[q+1]);
+            else            bip39_semilla(cand[q].mn,cand[q].len,"",0,seeds[q]);
+        }
         for(int q=0;q<cuantos && !g_found.load();q++){
             if(args.has_target){
                 g_filtered.fetch_add(1,std::memory_order_relaxed);
@@ -362,7 +368,7 @@ static void worker(WorkerArgs args){
                 memcpy(c.mn+p,w.data(),w.size()); p+=w.size();
             }
             c.mn[p]=0; c.len=p;
-            if(++nc==2){ procesar(2); nc=0; }
+            if(++nc==4){ procesar(4); nc=0; }
         }
 
         if(++pendientes>=256){ g_attempts.fetch_add(pendientes); pendientes=0; }

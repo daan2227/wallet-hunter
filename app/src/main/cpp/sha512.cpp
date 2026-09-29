@@ -89,7 +89,7 @@ static std::atomic<int> g_modo{-1};
 static std::atomic<int> g_pedido{-1};
 
 const char *sha512_nombre_modo(int m){
-    switch(m){ case 1: return "SHA-512 CPU"; case 2: return "SHA-512 CPU x2"; case 3: return "OpenSSL block"; default: return "software"; }
+    switch(m){ case 1: return "SHA-512 CPU"; case 2: return "SHA-512 CPU x2"; case 3: return "OpenSSL block"; case 4: return "SHA-512 CPU x4"; default: return "software"; }
 }
 
 static int calibrar();
@@ -99,7 +99,7 @@ int sha512_modo(void){
     int p=g_pedido.load();
     if(p>=0){
         m=p;
-        if((m==1||m==2) && !sha512_tiene_hw()) m=0;
+        if((m==1||m==2||m==4) && !sha512_tiene_hw()) m=0;
 #ifndef SHA512_CON_OPENSSL
         if(m==3) m=0;
 #endif
@@ -113,7 +113,7 @@ void sha512_fijar_modo(int m){ g_pedido.store(m); g_modo.store(-1); }
 int sha512_modo_disponible(int m){
     switch(m){
         case 0: return 1;
-        case 1: case 2: return sha512_tiene_hw();
+        case 1: case 2: case 4: return sha512_tiene_hw();
 #ifdef SHA512_CON_OPENSSL
         case 3: return 1;
 #endif
@@ -124,7 +124,7 @@ int sha512_modo_disponible(int m){
 void sha512_bloque(uint64_t st[8], const uint64_t w[16]){
     int m=sha512_modo();
 #if defined(__aarch64__)
-    if(m==1||m==2){ sha512_bloque_hw(st,w); return; }
+    if(m==1||m==2||m==4){ sha512_bloque_hw(st,w); return; }
 #endif
 #ifdef SHA512_CON_OPENSSL
     if(m==3){ bloque_ossl(st,w); return; }
@@ -237,7 +237,7 @@ void pbkdf2_sha512(const uint8_t *pw, size_t pwn, const uint8_t *sal, size_t sal
     if(vueltas>1){
         int m=sha512_modo();
 #if defined(__aarch64__)
-        if(m==1||m==2) pbkdf2_bucle_hw(is,os,u,acc,vueltas-1); else
+        if(m==1||m==2||m==4) pbkdf2_bucle_hw(is,os,u,acc,vueltas-1); else
 #endif
 #ifdef SHA512_CON_OPENSSL
         if(m==3) pbkdf2_bucle_ossl(is,os,u,acc,vueltas-1); else
@@ -251,7 +251,8 @@ void pbkdf2_sha512_x2(const uint8_t *pwA, size_t nA, const uint8_t *pwB, size_t 
                       const uint8_t *sal, size_t saln, uint32_t vueltas,
                       uint8_t outA[64], uint8_t outB[64]){
 #if defined(__aarch64__)
-    if(sha512_modo()==2 && vueltas>1){
+    int m_=sha512_modo();
+    if((m_==2||m_==4) && vueltas>1){
         uint64_t isA[8],osA[8],uA[8],accA[8], isB[8],osB[8],uB[8],accB[8];
         primera(pwA,nA,sal,saln,isA,osA,uA); memcpy(accA,uA,64);
         primera(pwB,nB,sal,saln,isB,osB,uB); memcpy(accB,uB,64);
@@ -262,6 +263,23 @@ void pbkdf2_sha512_x2(const uint8_t *pwA, size_t nA, const uint8_t *pwB, size_t 
 #endif
     pbkdf2_sha512(pwA,nA,sal,saln,vueltas,outA);
     pbkdf2_sha512(pwB,nB,sal,saln,vueltas,outB);
+}
+
+void pbkdf2_sha512_x4(const uint8_t *const pw[4], const size_t n[4],
+                      const uint8_t *sal, size_t saln, uint32_t vueltas, uint8_t out[4][64]){
+#if defined(__aarch64__)
+    if(sha512_modo()==4 && vueltas>1){
+        uint64_t is[4][8],os[4][8],u[4][8],acc[4][8];
+        for(int k=0;k<4;k++){ primera(pw[k],n[k],sal,saln,is[k],os[k],u[k]); memcpy(acc[k],u[k],64); }
+        const uint64_t *pis[4]={is[0],is[1],is[2],is[3]}, *pos[4]={os[0],os[1],os[2],os[3]};
+        uint64_t *pu[4]={u[0],u[1],u[2],u[3]}, *pac[4]={acc[0],acc[1],acc[2],acc[3]};
+        pbkdf2_bucle_hw4(pis,pos,pu,pac,vueltas-1);
+        for(int k=0;k<4;k++) for(int i=0;i<8;i++) put_be64(out[k]+8*i,acc[k][i]);
+        return;
+    }
+#endif
+    pbkdf2_sha512_x2(pw[0],n[0],pw[1],n[1],sal,saln,vueltas,out[0],out[1]);
+    pbkdf2_sha512_x2(pw[2],n[2],pw[3],n[3],sal,saln,vueltas,out[2],out[3]);
 }
 
 static size_t sal_bip39(const char *pass, size_t pn, uint8_t *buf, size_t cap){
@@ -279,6 +297,13 @@ void bip39_semilla_x2(const char *fA, size_t nA, const char *fB, size_t nB,
     pbkdf2_sha512_x2((const uint8_t*)fA,nA,(const uint8_t*)fB,nB,sal,sn,2048,outA,outB);
 }
 
+void bip39_semilla_x4(const char *const f[4], const size_t n[4],
+                      const char *pass, size_t pn, uint8_t out[4][64]){
+    uint8_t sal[1024]; size_t sn=sal_bip39(pass,pn,sal,sizeof sal);
+    const uint8_t *pw[4]={(const uint8_t*)f[0],(const uint8_t*)f[1],(const uint8_t*)f[2],(const uint8_t*)f[3]};
+    pbkdf2_sha512_x4(pw,n,sal,sn,2048,out);
+}
+
 /* ¿Que forma va mas rapido en ESTE procesador? Depende del nucleo: con
  * instrucciones, si entrelazar dos compensa; sin ellas, si la compresion en C
  * o la de OpenSSL. Se mide una vez (unos 20-40 ms) y se queda la mejor. */
@@ -288,27 +313,35 @@ static int calibrar(){
     uint64_t is2[8],os2[8],u2[8],acc2[8];
     memcpy(is2,is,64); memcpy(os2,os,64); memcpy(u2,u,64); memcpy(acc2,acc,64);
     const uint32_t N=1024;
+    /* Tiempo por FRASE: el modo 4 hace cuatro de una vez y los demas dos. */
     auto medir=[&](int m)->double{
         double mejor=1e9;
         for(int r=0;r<3;r++){
             auto t0=std::chrono::steady_clock::now();
+            double frases=2;
             switch(m){
 #if defined(__aarch64__)
                 case 1: pbkdf2_bucle_hw(is,os,u,acc,N); pbkdf2_bucle_hw(is2,os2,u2,acc2,N); break;
                 case 2: pbkdf2_bucle_hw2(is,os,u,acc,is2,os2,u2,acc2,N); break;
+                case 4: {
+                    const uint64_t *pis[4]={is,is2,is,is2}, *pos[4]={os,os2,os,os2};
+                    uint64_t u3[8],u4[8],a3[8],a4[8]; memcpy(u3,u,64); memcpy(u4,u2,64); memcpy(a3,acc,64); memcpy(a4,acc2,64);
+                    uint64_t *pu[4]={u,u2,u3,u4}, *pac[4]={acc,acc2,a3,a4};
+                    pbkdf2_bucle_hw4(pis,pos,pu,pac,N); frases=4; break;
+                }
 #endif
 #ifdef SHA512_CON_OPENSSL
                 case 3: pbkdf2_bucle_ossl(is,os,u,acc,N); pbkdf2_bucle_ossl(is2,os2,u2,acc2,N); break;
 #endif
                 default: pbkdf2_bucle_sw(is,os,u,acc,N); pbkdf2_bucle_sw(is2,os2,u2,acc2,N); break;
             }
-            double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+            double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count()/frases;
             if(t<mejor) mejor=t;
         }
         return mejor;
     };
     int mejor_m=0; double mejor_t=medir(0);
-    for(int m=1;m<=3;m++){
+    for(int m=1;m<=4;m++){
         if(!sha512_modo_disponible(m)) continue;
         double t=medir(m);
         if(t<mejor_t*0.97){ mejor_t=t; mejor_m=m; }

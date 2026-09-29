@@ -717,12 +717,15 @@ static void *worker_bip39_fn(void *arg){
         nhits=0; local_done=0;
         /* De dos en dos: con las instrucciones SHA-512 las dos PBKDF2 van
            entrelazadas (ver sha512.h); sin ellas es lo mismo que una y otra. */
-        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi+=2){
-            char mn2[2][256]; uint8_t seeds[2][64];
-            gen_mnemonic(mn2[0],sizeof(mn2[0])); gen_mnemonic(mn2[1],sizeof(mn2[1]));
-            pbkdf2_sha512_x2((const uint8_t*)mn2[0],strlen(mn2[0]),(const uint8_t*)mn2[1],strlen(mn2[1]),
-                             (const uint8_t*)"mnemonic",8,(uint32_t)g_pbkdf2_iters.load(),seeds[0],seeds[1]);
-          for(int q=0;q<2;q++){
+        /* De cuatro en cuatro: con instrucciones SHA-512 las PBKDF2 van
+           entrelazadas (2 o 4, lo que mida mejor sha512.cpp); sin ellas, una
+           detras de otra. */
+        for(int bi=0;bi<LOCAL_BATCH&&!g_stop.load();bi+=4){
+            char mn2[4][256]; uint8_t seeds[4][64];
+            const uint8_t *pw[4]; size_t pl[4];
+            for(int q=0;q<4;q++){ gen_mnemonic(mn2[q],sizeof(mn2[q])); pw[q]=(const uint8_t*)mn2[q]; pl[q]=strlen(mn2[q]); }
+            pbkdf2_sha512_x4(pw,pl,(const uint8_t*)"mnemonic",8,(uint32_t)g_pbkdf2_iters.load(),seeds);
+          for(int q=0;q<4;q++){
             strcpy(mn,mn2[q]); memcpy(seed,seeds[q],64);
             HDKey master; derive_master(seed,&master);
             const int paths=g_bip39_paths.load();
@@ -2766,6 +2769,10 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
             int n=0; auto t0=std::chrono::steady_clock::now(); double seg;
             do{
                 if(modo<0){ PKCS5_PBKDF2_HMAC(mn,(int)mnl,(const uint8_t*)"mnemonic",8,2048,EVP_sha512(),64,seed); n++; }
+                else if(modo==4){
+                    const char *f4[4]={mn,mn,mn,mn}; size_t l4[4]={mnl,mnl,mnl,mnl}; uint8_t o4[4][64];
+                    bip39_semilla_x4(f4,l4,"",0,o4); seed[0]^=o4[3][0]; n+=4;
+                }
                 else{ bip39_semilla_x2(mn,mnl,mn,mnl,"",0,seed,seed2); n+=2; }
                 seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
             }while(seg<0.6);

@@ -161,4 +161,44 @@ void pbkdf2_bucle_hw2(const uint64_t isA[8], const uint64_t osA[8], uint64_t uA[
         vst1q_u64(uB+2*i,Ub[i]); vst1q_u64(accB+2*i,Ab[i]);
     }
 }
+/* Cuatro a la vez. En el A56 entrelazar dos ya daba 1,64x sobre una: las
+ * instrucciones SHA-512 esperan varios ciclos su resultado y aun sobra hueco.
+ * Con cuatro cadenas no caben todas en los 32 registros NEON y el compilador
+ * guarda alguno en la pila; si eso se come la ganancia, la calibracion de
+ * sha512.cpp lo mide y no lo usa. */
+static inline __attribute__((always_inline)) void comp4(uint64x2_t sa[4], const uint64x2_t wa[8],
+                                                         uint64x2_t sb[4], const uint64x2_t wb[8],
+                                                         uint64x2_t sc[4], const uint64x2_t wc[8],
+                                                         uint64x2_t sd[4], const uint64x2_t wd[8]){
+    uint64x2_t SA[5]={sa[0],sa[1],sa[2],sa[3],sa[0]}, SB[5]={sb[0],sb[1],sb[2],sb[3],sb[0]};
+    uint64x2_t SC[5]={sc[0],sc[1],sc[2],sc[3],sc[0]}, SD[5]={sd[0],sd[1],sd[2],sd[3],sd[0]};
+    uint64x2_t WA[8], WB[8], WC[8], WD[8];
+    for(int i=0;i<8;i++){ WA[i]=wa[i]; WB[i]=wb[i]; WC[i]=wc[i]; WD[i]=wd[i]; }
+#define X(i0,i1,i2,i3,i4,r,e,n0,n1,n2,n3,n4) DRONDA(SA,WA,i0,i1,i2,i3,i4,r,e,n0,n1,n2,n3,n4); \
+                                             DRONDA(SB,WB,i0,i1,i2,i3,i4,r,e,n0,n1,n2,n3,n4); \
+                                             DRONDA(SC,WC,i0,i1,i2,i3,i4,r,e,n0,n1,n2,n3,n4); \
+                                             DRONDA(SD,WD,i0,i1,i2,i3,i4,r,e,n0,n1,n2,n3,n4);
+    RONDAS(X)
+#undef X
+    for(int i=0;i<4;i++){ sa[i]=vaddq_u64(sa[i],SA[i]); sb[i]=vaddq_u64(sb[i],SB[i]);
+                          sc[i]=vaddq_u64(sc[i],SC[i]); sd[i]=vaddq_u64(sd[i],SD[i]); }
+}
+
+void pbkdf2_bucle_hw4(const uint64_t *const is[4], const uint64_t *const os[4],
+                      uint64_t *const u[4], uint64_t *const acc[4], uint32_t n){
+    uint64x2_t IS[4][4],OS[4][4],U[4][4],A[4][4],m[4][8],t[4][4];
+    for(int k=0;k<4;k++) for(int i=0;i<4;i++){
+        IS[k][i]=vld1q_u64(is[k]+2*i); OS[k][i]=vld1q_u64(os[k]+2*i);
+        U[k][i]=vld1q_u64(u[k]+2*i);   A[k][i]=vld1q_u64(acc[k]+2*i);
+        m[k][4+i]=vld1q_u64(RELLENO+2*i);
+    }
+    for(uint32_t v=0; v<n; v++){
+        for(int k=0;k<4;k++) for(int i=0;i<4;i++){ m[k][i]=U[k][i]; t[k][i]=IS[k][i]; }
+        comp4(t[0],m[0],t[1],m[1],t[2],m[2],t[3],m[3]);
+        for(int k=0;k<4;k++) for(int i=0;i<4;i++){ m[k][i]=t[k][i]; U[k][i]=OS[k][i]; }
+        comp4(U[0],m[0],U[1],m[1],U[2],m[2],U[3],m[3]);
+        for(int k=0;k<4;k++) for(int i=0;i<4;i++) A[k][i]=veorq_u64(A[k][i],U[k][i]);
+    }
+    for(int k=0;k<4;k++) for(int i=0;i<4;i++){ vst1q_u64(u[k]+2*i,U[k][i]); vst1q_u64(acc[k]+2*i,A[k][i]); }
+}
 #endif

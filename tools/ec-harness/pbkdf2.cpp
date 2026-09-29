@@ -43,6 +43,11 @@ static void casos(int guardar,long *mal){
         if(it&1) pbkdf2_sha512(k,kn,m,mn,v,a);
         else pbkdf2_sha512_x2(k,kn,m,mn/2+1,m,mn,v,a,b);
         if(!(it&1)){ uint8_t h[64]; hmac_sha512(k,kn,m,mn,h); for(int i=0;i<64;i++) a[i]^=b[i]^h[i]; }
+        if(it%3==0){   /* cuatro a la vez: iguales que una a una */
+            const uint8_t *pw[4]={k,m,k+1,m+1}; size_t n4[4]={kn,mn/2+1,kn-1,mn/3+1};
+            uint8_t o4[4][64]; pbkdf2_sha512_x4(pw,n4,m,mn,v,o4);
+            for(int q=0;q<4;q++){ uint8_t r[64]; pbkdf2_sha512(pw[q],n4[q],m,mn,v,r); for(int i=0;i<64;i++) a[i]^=(uint8_t)(o4[q][i]^r[i]); }
+        }
         if(guardar) memcpy(REF[it],a,64); else if(memcmp(REF[it],a,64)) (*mal)++;
     }
 }
@@ -50,7 +55,7 @@ static void casos(int guardar,long *mal){
 int main(){
     int fallos=0;
     sha512_fijar_modo(0); casos(1,NULL);
-    int modos[4], nm=0; for(int m=0;m<=3;m++) if(sha512_modo_disponible(m)) modos[nm++]=m;
+    int modos[5], nm=0; for(int m=0;m<=4;m++) if(sha512_modo_disponible(m)) modos[nm++]=m;
     printf("instrucciones SHA-512: %s\n", sha512_tiene_hw()?"si":"no");
     for(int mi=0;mi<nm;mi++){
         sha512_fijar_modo(modos[mi]);
@@ -88,7 +93,10 @@ int main(){
 #endif
         /* Velocidad: frases por segundo en un hilo. */
         uint8_t oa[64],ob[64]; int n=0; auto t0=std::chrono::steady_clock::now(); double seg;
-        do{ bip39_semilla_x2(FRASE,strlen(FRASE),FRASE,strlen(FRASE),"",0,oa,ob); n+=2;
+        const char *f4[4]={FRASE,FRASE,FRASE,FRASE}; size_t l4[4]={strlen(FRASE),strlen(FRASE),strlen(FRASE),strlen(FRASE)};
+        uint8_t o4[4][64];
+        do{ if(sha512_modo()==4){ bip39_semilla_x4(f4,l4,"",0,o4); n+=4; oa[0]=o4[0][0]; }
+            else { bip39_semilla_x2(FRASE,strlen(FRASE),FRASE,strlen(FRASE),"",0,oa,ob); n+=2; }
             seg=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count(); }while(seg<0.5);
         printf("     [%s] %.0f semillas/s (1 hilo)\n", nom, n/seg);
     }

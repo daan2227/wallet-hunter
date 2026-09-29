@@ -12,7 +12,7 @@
  *
  * El resumen de un bloque ya ES el mensaje del siguiente, palabra a palabra.
  *
- * Cuatro formas de hacer el bucle; se mide cual va mejor y se queda (sha512_modo):
+ * Cinco formas de hacer el bucle; se mide cual va mejor y se queda (sha512_modo):
  *   0  software
  *   1  instrucciones SHA-512 del procesador (ARMv8.2, si las tiene)
  *   2  las mismas, con dos frases entrelazadas: cada instruccion tarda varios
@@ -20,6 +20,7 @@
  *      cadenas independientes el procesador rellena esa espera con la otra.
  *   3  este bucle con la compresion en ensamblador de OpenSSL
  *      (SHA512_Transform), para los procesadores sin instrucciones SHA-512.
+ *   4  las instrucciones, con cuatro frases entrelazadas.
  * sha512.cpp y sha512_hw.cpp. */
 #include <stdint.h>
 #include <stddef.h>
@@ -39,13 +40,20 @@ void pbkdf2_sha512_x2(const uint8_t *pwA, size_t nA, const uint8_t *pwB, size_t 
                       const uint8_t *sal, size_t saln, uint32_t vueltas,
                       uint8_t outA[64], uint8_t outB[64]);
 
+/* Cuatro contrasenas con la misma sal: con modo 4 van las cuatro
+ * entrelazadas; si no, de dos en dos (pbkdf2_sha512_x2). */
+void pbkdf2_sha512_x4(const uint8_t *const pw[4], const size_t n[4],
+                      const uint8_t *sal, size_t saln, uint32_t vueltas, uint8_t out[4][64]);
+
 /* BIP39: semilla = PBKDF2(frase, "mnemonic"+pass, 2048). */
 void bip39_semilla(const char *frase, size_t n, const char *pass, size_t pn, uint8_t out[64]);
 void bip39_semilla_x2(const char *fA, size_t nA, const char *fB, size_t nB,
                       const char *pass, size_t pn, uint8_t outA[64], uint8_t outB[64]);
+void bip39_semilla_x4(const char *const f[4], const size_t n[4],
+                      const char *pass, size_t pn, uint8_t out[4][64]);
 
 int  sha512_tiene_hw(void);       /* el procesador tiene las instrucciones */
-int  sha512_modo_disponible(int m);   /* 0 soft, 1 CPU, 2 CPU x2, 3 OpenSSL block */
+int  sha512_modo_disponible(int m);   /* 0 soft, 1 CPU, 2 CPU x2, 3 OpenSSL block, 4 CPU x4 */
 int  sha512_modo(void);           /* el que se esta usando */
 void sha512_fijar_modo(int m);    /* -1 = elegir solo; 0/1/2 a mano (no pasa de lo que haya) */
 const char *sha512_nombre_modo(int m);
@@ -57,4 +65,6 @@ void pbkdf2_bucle_hw(const uint64_t is[8], const uint64_t os[8], uint64_t u[8], 
 void pbkdf2_bucle_hw2(const uint64_t isA[8], const uint64_t osA[8], uint64_t uA[8], uint64_t accA[8],
                       const uint64_t isB[8], const uint64_t osB[8], uint64_t uB[8], uint64_t accB[8], uint32_t n);
 void sha512_bloque_hw(uint64_t st[8], const uint64_t w[16]);
+void pbkdf2_bucle_hw4(const uint64_t *const is[4], const uint64_t *const os[4],
+                      uint64_t *const u[4], uint64_t *const acc[4], uint32_t n);
 #endif
