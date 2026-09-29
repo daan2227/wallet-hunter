@@ -68,8 +68,6 @@ static void install_crash_handlers() {
     signal(SIGILL,  crash_handler);
 }
 
-#define PBKDF2_ITERS_STD  2048
-#define PBKDF2_ITERS_FAST 1
 #define MAX_THREADS  16
 #define LOCAL_BATCH   128
 #define MAX_CSV_ROWS  120000000ULL
@@ -124,7 +122,6 @@ static std::atomic<bool>   g_stop(false);
 static std::atomic<double> g_wps(0.0);
 static std::atomic<int>    g_cpu_limit(100);
 static std::atomic<int>    g_batch_size(1); // minimo para debug
-static std::atomic<int>    g_pbkdf2_iters(2048); /* 2048=standard, 1=fast */
 /* Rutas a derivar por mnemónico: bit0 = BIP44 (m/44'), bit1 = BIP84 (m/84').
    Derivar ambas duplica las derivaciones y los hash160 por candidato. PBKDF2
    domina el coste, así que el ahorro de usar sólo una es del 2-5%, pero si el
@@ -717,7 +714,7 @@ static void *worker_bip39_fn(void *arg){
             char mn2[4][256]; uint8_t seeds[4][64];
             const uint8_t *pw[4]; size_t pl[4];
             for(int q=0;q<4;q++){ gen_mnemonic(mn2[q],sizeof(mn2[q])); pw[q]=(const uint8_t*)mn2[q]; pl[q]=strlen(mn2[q]); }
-            pbkdf2_sha512_x4(pw,pl,(const uint8_t*)"mnemonic",8,(uint32_t)g_pbkdf2_iters.load(),seeds);
+            pbkdf2_sha512_x4(pw,pl,(const uint8_t*)"mnemonic",8,2048,seeds);
           for(int q=0;q<4;q++){
             strcpy(mn,mn2[q]); memcpy(seed,seeds[q],64);
             HDKey master; derive_master(seed,&master);
@@ -1330,10 +1327,6 @@ Java_com_hunter_btc_HunterEngine_setBip39Paths(JNIEnv *,jobject,jint mask){
     g_bip39_paths.store((mask&3)==0 ? 3 : (mask&3));
 }
 
-JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_setPbkdf2Mode(JNIEnv *,jobject,jint fast){
-    g_pbkdf2_iters.store(fast==1 ? PBKDF2_ITERS_FAST : PBKDF2_ITERS_STD);
-}
 
 JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_getCsvCount(JNIEnv *,jobject){

@@ -390,61 +390,6 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         }
         addView(sbCpu)
 
-        val fastRow = LinearLayout(this@buildScanTab).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(10), 0, 0)
-            visibility = if (selectedScanMode == 2) android.view.View.GONE else android.view.View.VISIBLE
-        }
-        fastScanRow = fastRow
-        val fastLabels = LinearLayout(this@buildScanTab).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        }
-        fastLabels.addView(TextView(this@buildScanTab).apply {
-            text = "Fast scan"
-            textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.body(context)
-        })
-        // Este modo baja PBKDF2 de 2048 iteraciones a 1. El contador sube
-        // muchísimo, pero las seeds resultantes no son las de ningún
-        // mnemónico BIP39: es velocidad sin ninguna posibilidad de acierto.
-        val tvFastWarn = TextView(this@buildScanTab).apply {
-            text = "Benchmark only: with one iteration the seeds are not BIP39, so it cannot find anything."
-            textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.WARN)
-            typeface = AppTheme.body(context)
-            visibility = if (prefs.getBoolean("fastMode", false))
-                android.view.View.VISIBLE else android.view.View.GONE
-        }
-        fastLabels.addView(tvFastWarn)
-        fastRow.addView(fastLabels)
-        val fastSwitch = android.widget.Switch(this@buildScanTab).apply {
-            isChecked = prefs.getBoolean("fastMode", false)
-            setOnCheckedChangeListener { _, c ->
-                fastModeEnabled = c
-                HunterEngine.setPbkdf2Mode(if (c) 1 else 0)
-                prefs.edit().putBoolean("fastMode", c).apply()
-                tvFastWarn.visibility = if (c) android.view.View.VISIBLE
-                                        else android.view.View.GONE
-                if (c) Toast.makeText(this@buildScanTab,
-                    "Fast scan: measures speed only, finds no wallets",
-                    Toast.LENGTH_LONG).show()
-            }
-        }
-        fastModeEnabled = prefs.getBoolean("fastMode", false)
-        // Y DECÍRSELO AL MOTOR. setPbkdf2Mode sólo se llamaba al tocar el
-        // interruptor, así que al reabrir la app el interruptor salía en
-        // "rápido" —lo lee de preferencias— y el motor seguía en 2048
-        // iteraciones. La pantalla decía una cosa y el motor hacía otra, que
-        // es justo lo que este ajuste NO se puede permitir: su razón de ser
-        // es medir velocidad, y con el motor en normal el número que sale no
-        // es el que se cree estar midiendo.
-        try { HunterEngine.setPbkdf2Mode(if (fastModeEnabled) 1 else 0) }
-        catch (e: Throwable) {}
-        fastRow.addView(fastSwitch)
-        addView(fastRow)
-
         // Selector de rutas de derivación. Derivar ambas duplica las
         // derivaciones y los hash160 por candidato; PBKDF2 domina, así que
         // el ahorro es del 2-5%, pero si el dataset sólo tiene un tipo de
@@ -609,7 +554,6 @@ internal fun MainActivity.buildScanTab(): ScrollView {
                 try {
                     val vis = if (selectedScanMode == 2) android.view.View.GONE
                               else android.view.View.VISIBLE
-                    fastScanRow?.visibility = vis
                     rutasScanBox?.visibility = vis
                 } catch (e: Exception) {}
             }

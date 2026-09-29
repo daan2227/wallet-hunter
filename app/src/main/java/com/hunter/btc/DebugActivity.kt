@@ -231,13 +231,6 @@ class DebugActivity : AppCompatActivity() {
                                 (if (android.os.Build.VERSION.SDK_INT >= 31) android.os.Build.SOC_MODEL else "") }
             }.start()
         }))
-        benchCard.addView(aLoAncho(actionBtn("GPU benchmark (Vulkan)", ACCENT2) {
-            tvBench.text = "Running on the GPU…"
-            Thread {
-                val r = try { HunterEngine.benchGpu() } catch (e: Throwable) { "Error: ${e.message}" }
-                runOnUiThread { tvBench.text = r }
-            }.start()
-        }, arriba = 8))
         benchCard.addView(aLoAncho(actionBtn("GPU Kangaroo benchmark", ACCENT2) {
             tvBench.text = "Running Kangaroo on the GPU (about 15 s)…"
             Thread {

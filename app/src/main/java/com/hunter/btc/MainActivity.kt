@@ -146,7 +146,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var tvKps: TextView? = null
     internal var tvQuickThreads: TextView? = null
     internal var tvQuickCpu: TextView? = null
-    internal var fastModeEnabled = false
     internal var tvCount: TextView? = null
     internal var chartView: SpeedChartView? = null
     internal var tvMediaPuzzle: TextView? = null
@@ -226,7 +225,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var s = Strings.EN
     internal var puzzleMode = false
     internal var selectedScanMode = 0 // 0=BIP39, 2=RawKey
-    internal var fastScanRow: android.view.View? = null
     internal var rutasScanBox: android.view.View? = null
     internal var tvBinInfoRef: TextView? = null
     internal var tvDatasetStat: TextView? = null
@@ -1517,14 +1515,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvPeakWps?.text = ""
                 tvPeakWpsPuzzle?.text = ""
                 paintScanState(false)
-                // Guardar sesión en historial
-                val sessionKeys = HunterEngine.getCount() - sessionStartCount
-                val sessionDur = if (sessionStartTime > 0)
-                    (System.currentTimeMillis() - sessionStartTime) / 1000 else 0
-                val sessionKps = if (sessionDur > 0) sessionKeys / sessionDur.toDouble() else 0.0
-                val sessionMode = if (puzzleMode) "PUZZLE" else "BIP39"
-                StatsActivity.saveSession(this, sessionMode, sessionKeys,
-                    HunterEngine.getFound(), sessionDur, sessionKps / 1000.0)
                 // Marcar bloque como escaneado al detener
                 if (puzzleMode) {
                     // El respaldo era puzzles[puzzleSpinner.selectedItemPosition],

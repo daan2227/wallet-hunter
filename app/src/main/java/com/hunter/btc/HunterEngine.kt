@@ -40,7 +40,6 @@ object HunterEngine {
     external fun startHunting(threads: Int, cpuLimit: Int)
     external fun stopHunting()
     external fun setCpuLimit(v: Int)
-    external fun setPbkdf2Mode(fast: Int)
     /** Rutas a derivar en modo BIP39: bit0=BIP44 (1...), bit1=BIP84 (bc1q...). */
     external fun setBip39Paths(mask: Int)
     external fun isCsvLoaded(): Boolean
@@ -153,7 +152,6 @@ object HunterEngine {
      * Prueba de la GPU con Vulkan: multiplicaciones de cuerpo por segundo,
      * comprobadas antes contra la CPU. Fuera del hilo principal.
      */
-    external fun benchGpu(): String
     /**
      * La GPU de este móvil, sin medir: "nombre|fabricante|vulkan|driver|MB|hilos
      * por grupo", o "" si no hay Vulkan.

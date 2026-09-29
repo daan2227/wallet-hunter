@@ -97,59 +97,6 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             ).apply { bottomMargin = dp(40) }
         })
 
-        // Stats cards
-        val (totalKeys, totalMatches, totalTime) = StatsActivity.getTotals(this)
-        val sessions = StatsActivity.loadSessions(this)
-
-        fun statCard(icon: Int, value: String, label: String, color: Int): LinearLayout {
-            return LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = android.view.Gravity.CENTER
-                background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
-                layoutParams = LinearLayout.LayoutParams(0, dp(96), 1f).apply {
-                    setMargins(dp(4), 0, dp(4), 0)
-                }
-                addView(Ui.icon(this@WelcomeActivity, icon, 20, AppTheme.TXT_SEC).apply {
-                    (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(8)
-                })
-                addView(android.widget.TextView(this@WelcomeActivity).apply {
-                    text = value; textSize = AppTheme.SP_FIGURE; setTextColor(color)
-                    typeface = AppTheme.title(context)
-                    gravity = android.view.Gravity.CENTER; letterSpacing = -0.02f
-                })
-                // 8sp: la mitad del mínimo legible que da Android.
-                addView(android.widget.TextView(this@WelcomeActivity).apply {
-                    text = label; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-                    typeface = AppTheme.body(context)
-                    gravity = android.view.Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { topMargin = dp(3) }
-                })
-            }
-        }
-
-        fun formatKeys(k: Long): String = when {
-            k >= 1_000_000_000 -> "${"%.1f".format(k/1e9)}B"
-            k >= 1_000_000 -> "${"%.1f".format(k/1e6)}M"
-            k >= 1_000 -> "${"%.0f".format(k/1e3)}K"
-            else -> k.toString()
-        }
-
-        val statsRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = dp(40) }
-        }
-        statsRow.addView(statCard(R.drawable.ic_play, formatKeys(totalKeys), "Keys", AppTheme.TXT_PRI))
-        statsRow.addView(statCard(R.drawable.ic_target, totalMatches.toString(), "Matches",
-            if (totalMatches > 0) AppTheme.ACCENT else AppTheme.TXT_PRI))
-        statsRow.addView(statCard(R.drawable.ic_stats, sessions.size.toString(), "Sessions", AppTheme.TXT_PRI))
-        root.addView(statsRow)
-
         // Mensaje de bienvenida
         root.addView(android.widget.TextView(this).apply {
             text = "Verifying identity…"

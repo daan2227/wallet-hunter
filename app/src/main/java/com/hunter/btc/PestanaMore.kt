@@ -32,7 +32,7 @@ import com.hunter.btc.MainActivity.PuzzleInfo
 
 // ── MORE ─────────────────────────────────────────────────────────────────
 /**
- * Lo que se usa menos: Recovery, History, Debug y el tema.
+ * Lo que se usa menos: Recovery, Debug y el tema.
  *
  * Estaba todo en el menú lateral, mezclado con las secciones de todos los
  * días. Aquí va agrupado —herramientas por un lado, la app por otro— y
@@ -140,10 +140,6 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     val tools = grupo("Tools")
     fila(tools, R.drawable.ic_recovery, "Recovery",
          "Recover a seed with missing words", null) { goTab(PAG_RECOVERY) }
-    fila(tools, R.drawable.ic_stats, "History",
-         "Sessions and keys checked", null) {
-        startActivity(Intent(this, StatsActivity::class.java))
-    }
 
     val app = grupo("App")
     /* Tema claro / oscuro.
