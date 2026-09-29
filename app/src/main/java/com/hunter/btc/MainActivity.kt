@@ -1222,6 +1222,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // PROGRESO era un literal fijo que nunca se recalculaba.
                     tvPctPuzzle?.text = formatPuzzleProgress(
                         scannedNow, puzzleFullStart, puzzleFullEnd)
+                    // La gráfica de la pestaña Puzzle es de la búsqueda del
+                    // puzzle: antes solo la alimentaban el escáner (que no se
+                    // ve en esta pestaña) y Kangaroo, y la fuerza bruta no
+                    // pintaba nada.
+                    chartView?.addPoint(wps.toFloat())
                     // Refresca barra y recuento de bloques. Lee prefs y opera con
                     // BigInteger, así que no en cada tick de 800ms.
                     val nowMs = System.currentTimeMillis()
@@ -1275,7 +1280,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvSpeedUnitScan?.text = "$su/s"
                     tvCount?.text = formatCount(HunterEngine.getCount())
                     tvTime?.text = formatElapsed(sessionStartTime)
-                    chartView?.addPoint(wps.toFloat())
                     val found = HunterEngine.getCount() - sessionStartCount
                     tvMatches?.text = "$found"
                     tvQuickMatches?.text = "$found"
@@ -1336,7 +1340,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             (try { HunterEngine.objetivoHallado() } catch (e: Throwable) { false })) {
             prefs.edit().putBoolean("scan_was_running", false).apply()
         }
-        if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
+        val bloqueTerminado = !isNowRunning && lastKnownRunning && puzzleMode &&
+            (try { HunterEngine.rangoCompleto() } catch (e: Throwable) { false })
+        if (bloqueTerminado) {
+            // El secuencial ha recorrido el bloque entero: se marca y se pasa
+            // al siguiente sin escanear. Solo aqui se da un bloque por hecho.
+            val pNum = currentPuzzleNum()
+            if (pNum != 0) markBlockScanned(pNum)
+            Toast.makeText(this, "Block scanned end to end · moving to the next one",
+                Toast.LENGTH_SHORT).show()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                if (!HunterEngine.isRunning() && !HunterEngine.isStopping() && puzzleMode)
+                    doToggle(btnPuzzleToggle)
+            }, 1000)
+        } else if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
             // Sin esto, tras perder el dataset —se va con la app al
             // desinstalar— el reintento entraría en el guardia de doToggle() y
             // sacaría un diálogo cada dos segundos sin que nadie lo hubiera
@@ -1515,15 +1532,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 tvPeakWps?.text = ""
                 tvPeakWpsPuzzle?.text = ""
                 paintScanState(false)
-                // Marcar bloque como escaneado al detener
-                if (puzzleMode) {
-                    // El respaldo era puzzles[puzzleSpinner.selectedItemPosition],
-                    // pero puzzleSpinner se fija a null ("no spinner in new
-                    // design"), así que caía en puzzles[0] = #70: parar un scan
-                    // del #80 apuntaba el bloque como escaneado en el #70.
-                    val pNum = currentPuzzleNum()
-                    if (pNum != 0) markBlockScanned(pNum)
-                }
+                // Parar NO marca el bloque: solo se da por escaneado cuando el
+                // modo secuencial lo recorre entero (ver el vigilante de
+                // rangoCompleto en el refresco). Antes cualquier STOP lo
+                // marcaba, y la "cobertura" contaba bloques apenas empezados.
                 val btn = activeToggleBtn
                 if (btn != null) {
                     val bg = btn.tag as? Array<*>
@@ -2101,7 +2113,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.kangarooStop()
             prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
             lblEscaneadas?.text = "Scanned"
-            lblRestantes?.text = "Blocks left"
+            lblRestantes?.text = "Whole puzzle"
             btnKangaroo?.text = "Search with Kangaroo"
             tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
                                   "pressing again continues from there."

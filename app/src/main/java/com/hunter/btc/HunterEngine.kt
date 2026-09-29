@@ -96,6 +96,8 @@ object HunterEngine {
     external fun setBatchSize(size: Int)
     external fun getBatchSize(): Int
     external fun setSequential(seq: Boolean)
+    /** El secuencial recorrió el rango entero y el motor se paró solo. */
+    external fun rangoCompleto(): Boolean
     external fun getCsvCount(): Long
     external fun getLastKey(): String
 

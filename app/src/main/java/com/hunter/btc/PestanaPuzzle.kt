@@ -760,7 +760,9 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     val pctLocal = tvPctPuzzle!!
     val blkLocal = tvBlockProgress!!
     miniRow2.addView(miniStat("Progress", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
-    miniRow2.addView(miniStat("Blocks left", blkLocal) { lblRestantes = it })
+    // Lo que enseña es el tiempo del puzzle ENTERO a este ritmo, no cuántos
+    // bloques quedan: el rótulo decía otra cosa.
+    miniRow2.addView(miniStat("Whole puzzle", blkLocal) { lblRestantes = it })
     statsCard.addView(miniRow1); statsCard.addView(miniRow2)
     page.addView(statsCard)
 
@@ -938,10 +940,15 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     }
     // ── RECORRIDO DEL RANGO ───────────────────────────────────────────
     tuningCard.addView(Ui.sectionLabel(this, "How the range is walked", topGap = 0))
+    // Se recuerda: antes volvía a "Random" en cada arranque de la app aunque
+    // se hubiera elegido "Sequential".
+    val secuencialGuardado = prefs.getBoolean("puzzle_secuencial", false)
+    HunterEngine.setSequential(secuencialGuardado)
     tuningCard.addView(Ui.segmented(
-        this, listOf("Random" to null, "Sequential" to null), initial = 0
+        this, listOf("Random" to null, "Sequential" to null), initial = if (secuencialGuardado) 1 else 0
     ) { idx ->
         HunterEngine.setSequential(idx == 1)
+        prefs.edit().putBoolean("puzzle_secuencial", idx == 1).apply()
         if (HunterEngine.kangarooRunning())
             android.widget.Toast.makeText(this,
                 "This only affects brute force: in Kangaroo the path " +
@@ -952,8 +959,9 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // en marcha. Si lo dejabas puesto y arrancabas, nada te decía que no
     // hace nada. Va fijo en la pantalla.
     tuningCard.addView(TextView(this).apply {
-        text = "Brute force only. Kangaroo does not walk the range: " +
-               "it hops along the curve using the jump function."
+        text = "Brute force only. Sequential walks each block end to end, marks it " +
+               "as scanned and moves to the next; Random samples keys inside the " +
+               "block and never completes it. Kangaroo does not walk the range."
         textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)
         layoutParams = LinearLayout.LayoutParams(
@@ -997,7 +1005,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // El valor iba en azul: un número de ajuste no es información de otro
     // tipo que el resto, sólo es el valor de la fila.
     val tvBatchVal = TextView(this).apply {
-        text = "256 claves"
+        text = "256 keys"
         textSize = AppTheme.SP_BODY
         setTextColor(AppTheme.TXT_PRI)
         typeface = AppTheme.bold(context)
@@ -1007,7 +1015,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
 
     val sbBatch = SeekBar(this).apply {
         max = batchLabels.size - 1
-        progress = 2 // default 1000
+        progress = 2
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -1304,13 +1312,13 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         buildIndivChips(0)
     }
 
-    // Default puzzle setup
-    val dayOfYear = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_YEAR)
-    val defaultIdx = dayOfYear % visiblePuzzles.size
-    applyPuzzle(visiblePuzzles.getOrElse(defaultIdx) { visiblePuzzles.first() })
+    // El puzzle de arranque es el PRIMERO, el mismo cuyo chip sale marcado.
+    // Antes se elegía uno según el día del año: el chip marcado era el
+    // primero y el rango, la dirección y el estado eran de otro puzzle.
+    val defaultPuzzle = visiblePuzzles.first()
+    applyPuzzle(defaultPuzzle)
+    puzzleSeleccionado = defaultPuzzle.num
 
-    // Load checkpoint for default
-    val defaultPuzzle = visiblePuzzles.getOrElse(defaultIdx) { visiblePuzzles.first() }
     val puzzlePrefsInit = getSharedPreferences("puzzle_checkpoint", android.content.Context.MODE_PRIVATE)
     val savedKeyInit = puzzlePrefsInit.getString("last_key_${defaultPuzzle.num}", null)
     val savedTimeInit = puzzlePrefsInit.getLong("last_time_${defaultPuzzle.num}", 0)

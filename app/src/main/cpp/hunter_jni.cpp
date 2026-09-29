@@ -145,6 +145,13 @@ static uint8_t g_range_end[32]   = {0};
 static std::atomic<int> g_sequential(0);  /* 0=random, 1=sequential */
 static uint8_t g_seq_pos[32]     = {0};   /* posición actual en modo secuencial */
 static std::mutex g_seq_mutex;
+/* Secuencial: el bloque se recorre UNA vez, de principio a fin. Antes, al
+   llegar al final volvia al principio y seguia para siempre, asi que nunca
+   se sabia si el bloque estaba hecho. Ahora, cuando no queda nada que repartir
+   y el ultimo lote en curso termina, el motor se para solo y avisa. */
+static std::atomic<int> g_seq_en_curso(0);   /* lotes repartidos y aun sin acabar */
+static std::atomic<int> g_seq_agotado(0);    /* ya no queda rango que repartir */
+static std::atomic<int> g_rango_completo(0); /* recorrido entero: la UI lo marca */
 static uint8_t g_last_key[32]     = {0};
 static std::mutex g_last_key_mutex;
 static uint8_t g_target_h160[20]  = {0};
@@ -972,16 +979,20 @@ static void *worker_puzzle_fn(void *arg){
 
         /* Generar clave base - aleatorio o secuencial */
         uint8_t privkey[32];
-        if(g_sequential.load()) {
+        const bool secuencial = g_sequential.load()!=0;
+        if(secuencial) {
             /* Modo secuencial: tomar posición actual y avanzar batch */
-            std::lock_guard<std::mutex> lk(g_seq_mutex);
+            std::unique_lock<std::mutex> lk(g_seq_mutex);
             memcpy(privkey, g_seq_pos, 32);
-            /* Verificar que no pasamos el fin */
-            if(memcmp(privkey, g_range_end, 32) > 0) {
-                /* Llegamos al fin, reiniciar desde inicio */
-                memcpy(g_seq_pos, g_range_start, 32);
-                memcpy(privkey, g_range_start, 32);
+            /* ¿Pasado el fin? Ya no hay nada que repartir. */
+            if(g_seq_agotado.load() || memcmp(privkey, g_range_end, 32) > 0) {
+                g_seq_agotado.store(1);
+                bool ultimo=(g_seq_en_curso.load()==0);
+                lk.unlock();
+                if(ultimo){ g_rango_completo.store(1); add_log("Block done: range scanned end to end"); parar_motor(); }
+                break;
             }
+            g_seq_en_curso.fetch_add(1);
             /* Avanzar la posición para el siguiente hilo.
                Antes se releía g_batch_size aquí: si el usuario movía el slider
                entre las dos lecturas, el avance no coincidía con lo que este
@@ -1054,6 +1065,15 @@ static void *worker_puzzle_fn(void *arg){
         long actual=cuenta;
 
         g_count.fetch_add(actual);
+        if(secuencial){
+            /* El ultimo lote en terminar, con el rango ya repartido, cierra. */
+            int quedan=g_seq_en_curso.fetch_sub(1)-1;
+            if(quedan==0 && g_seq_agotado.load() && !g_stop.load()){
+                g_rango_completo.store(1);
+                add_log("Block done: range scanned end to end");
+                parar_motor();
+            }
+        }
 
         double work_ms = std::chrono::duration<double,std::milli>(
             std::chrono::high_resolution_clock::now() - t0).count();
@@ -1260,6 +1280,10 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
     env->ReleaseStringUTFChars(start,s);
     env->ReleaseStringUTFChars(end,e);
     precompute_range();
+    /* El secuencial empieza SIEMPRE en el principio del rango nuevo. Antes la
+       posicion solo se ponia al tocar el selector, asi que tras cambiar de
+       bloque seguia donde se quedo el anterior (o en 0). */
+    { std::lock_guard<std::mutex> lk(g_seq_mutex); memcpy(g_seq_pos,g_range_start,32); }
 }
 
 JNIEXPORT void JNICALL
@@ -1271,6 +1295,8 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
     g_objetivo_hallado.store(0);
+    g_seq_en_curso.store(0); g_seq_agotado.store(0); g_rango_completo.store(0);
+    { std::lock_guard<std::mutex> lk(g_seq_mutex); memcpy(g_seq_pos,g_range_start,32); }
     g_last_count=0;g_last_wps_t=time(nullptr);
     g_start_time=time(nullptr);g_running.store(true);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
@@ -2190,6 +2216,12 @@ Java_com_hunter_btc_HunterEngine_setSequential(JNIEnv *env, jobject, jboolean se
 }
 
 
+
+/* ¿Se paro el motor porque el secuencial recorrio el rango entero? */
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_rangoCompleto(JNIEnv *, jobject){
+    return (jboolean)(g_rango_completo.load()!=0);
+}
 
 JNIEXPORT jint JNICALL
 Java_com_hunter_btc_HunterEngine_getBatchSize(JNIEnv *env, jobject){
