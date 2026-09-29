@@ -361,8 +361,11 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     page.addView(guardCard)
 
     // El estado de las dos filas, en segundo plano: leer el baúl y listar
-    // los ficheros de copia es I/O, y esto corre al construir la pestaña.
-    Thread {
+    // los ficheros de copia es I/O. Se repite cada vez que se entra en la
+    // pestaña (refrescoCartera): se construye una vez al abrir la app, y un
+    // hallazgo de después no aparecía ("No key found yet" con el aviso de
+    // "Test passed" en la barra).
+    fun refrescarFilas() = Thread {
         // Recoger primero lo que el motor no pudo entregar: sin esto la fila
         // decía "Empty" mientras el total de arriba ya contaba "1 find(s)".
         try { MatchVault.recoger(this@buildWalletTab) } catch (e: Exception) {}
@@ -382,6 +385,12 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             }
         }
     }.start()
+    refrescarFilas()
+    refrescoCartera = {
+        refreshWallet(consultarRed = false)
+        refrescarFilas()
+        tvTotalBtc.text = Privacidad.monto(this, totalReal)
+    }
 
     // ── POR QUÉ NO SE CONSULTAN SOLOS ─────────────────────────────────
     page.addView(LinearLayout(this).apply {

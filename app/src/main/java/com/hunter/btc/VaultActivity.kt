@@ -191,7 +191,7 @@ class VaultActivity : AppCompatActivity() {
         val resumen = Ui.card(this, topGap = 14)
         resumen.addView(texto("Known balance", AppTheme.SP_CAPTION, AppTheme.TXT_SEC,
                               AppTheme.medium(this)))
-        resumen.addView(texto("%.8f BTC".format(total), AppTheme.SP_FIGURE,
+        resumen.addView(texto(Privacidad.monto(this, "%.8f BTC".format(total)), AppTheme.SP_FIGURE,
                               if (total > 0) AppTheme.ACCENT else AppTheme.TXT_PRI,
                               AppTheme.display(this)).apply { setPadding(0, dp(4), 0, dp(2)) })
         resumen.addView(texto(
@@ -339,7 +339,7 @@ class VaultActivity : AppCompatActivity() {
         c.addView(if (e.checkedTs == 0L)
             texto("Balance not checked", AppTheme.SP_CAPTION, AppTheme.TXT_MUTED)
         else
-            texto("%.8f BTC".format(e.btc), AppTheme.SP_BODY,
+            texto(Privacidad.monto(this, "%.8f BTC".format(e.btc)), AppTheme.SP_BODY,
                   if (e.btc > 0) AppTheme.ACCENT else AppTheme.TXT_SEC, AppTheme.bold(this)))
         return c
     }
@@ -397,7 +397,7 @@ class VaultActivity : AppCompatActivity() {
             }
         }
         campo("Balance", if (e.checkedTs == 0L) "Not checked yet"
-                         else "%.8f BTC · checked %s".format(e.btc,
+                         else "%s · checked %s".format(Privacidad.monto(this, "%.8f BTC".format(e.btc)),
                              java.text.DateFormat.getDateInstance().format(java.util.Date(e.checkedTs))))
         if (e.extra.contains("SEED:")) {
             campo("Path", Regex("""PATH:(\S+)""").find(e.extra)?.groupValues?.get(1) ?: "—", mono = true)

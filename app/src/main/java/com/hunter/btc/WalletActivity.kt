@@ -1676,7 +1676,7 @@ class WalletActivity : FragmentActivity() {
                         tvStatus.text = ""
                         val items = Array(utxos.length()) { i ->
                             val u = utxos.getJSONObject(i)
-                            "%.8f BTC · ${u.getString("txid").take(12)}…".format(u.getLong("value") / 1e8)
+                            "${Privacidad.monto(this, "%.8f BTC".format(u.getLong("value") / 1e8))} · ${u.getString("txid").take(12)}…"
                         }
                         val checked = BooleanArray(items.size) { true }
                         selectedUtxos.clear()

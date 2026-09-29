@@ -22,14 +22,9 @@ object ExportarResumen {
      * incluye va con las cadenas que parecen clave tapadas.
      */
     fun exportar(act: android.app.Activity) {
-        if (!PinAuthHelper.isSessionValid()) {
-            // Sin huella automática: esto exporta un resumen sin claves privadas,
-            // no vale interrumpir con el lector. El teclado sale directo y la
-            // tecla ◉ sigue ahí para quien prefiera la huella.
-            PinAuthHelper.show(act, autoBiometric = false) { ok -> if (ok) askExportLogOptions(act) }
-        } else {
-            askExportLogOptions(act)
-        }
+        // Siempre, con la huella: el resumen no lleva claves, pero sí las
+        // direcciones halladas y sus saldos, y sale del móvil.
+        PinAuthHelper.show(act, autoBiometric = true) { ok -> if (ok) askExportLogOptions(act) }
     }
 
     private fun askExportLogOptions(act: android.app.Activity) {

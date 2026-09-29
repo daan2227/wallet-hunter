@@ -11,14 +11,17 @@ import android.widget.LinearLayout
  * tapados al volver a abrirla. Antes había un toque escondido sobre la cifra
  * que no se veía por ningún lado y se olvidaba al salir de la pantalla.
  *
- * NO se aplica en el baúl de hallazgos, a propósito: ahí se entra con PIN
- * cada vez y la pantalla no admite capturas, así que ya está protegido dos
- * veces. Tapar también ahí sólo obligaría a destaparlo cada vez.
+ * Vale para TODAS las pantallas con cantidades: pestaña Cartera, la
+ * cartera, el baúl de hallazgos. Taparlos es libre; destaparlos pide la
+ * huella (o el PIN): si no, el ojo no protegía de nadie con el móvil en la
+ * mano.
  */
 object Privacidad {
 
     /** Lo que se enseña en lugar de una cantidad. */
-    const val TAPADO = "••••••"
+    // Asteriscos: el punto medio de antes, en la fuente de la app, salía
+    // como cuadrados.
+    const val TAPADO = "******"
 
     private const val PREFS = "app_settings"
     private const val CLAVE = "ocultar_saldos"
@@ -53,9 +56,11 @@ object Privacidad {
             pintar(ocultos(ctx))
             setOnClickListener {
                 val nuevo = !ocultos(ctx)
-                poner(ctx, nuevo)
-                pintar(nuevo)
-                onCambio(nuevo)
+                fun aplicar() { poner(ctx, nuevo); pintar(nuevo); onCambio(nuevo) }
+                val act = ctx as? android.app.Activity
+                // Destapar pide huella/PIN; tapar no.
+                if (!nuevo && act != null) PinAuthHelper.show(act, autoBiometric = true) { ok -> if (ok) aplicar() }
+                else aplicar()
             }
         }
     }

@@ -52,12 +52,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var tabPages: List<android.view.View?> = emptyList()
     internal var barra: BottomBar? = null
     internal var paginaActual = PAG_SCANNER
+    /** Vuelve a leer el baúl y los totales de la pestaña Cartera. */
+    internal var refrescoCartera: (() -> Unit)? = null
 
     internal fun goTab(idx: Int) {
         tabPages.forEachIndexed { i, v ->
             v?.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
         }
         paginaActual = idx
+        if (idx == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
         // Recovery no tiene pestaña propia: se entra desde More, así que es
         // More la que se queda marcada. Si no, la barra no marcaría ninguna y
         // no se sabría dónde se está.
@@ -2979,6 +2982,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         handler.post(updater)
+        if (paginaActual == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
         // Antes esto miraba cuanto habia pasado desde su propio onPause, con
         // un limite de 15 s. Pero onPause salta al abrir la cartera, el
         // cluster, las estadisticas o el selector de ficheros, asi que volver
