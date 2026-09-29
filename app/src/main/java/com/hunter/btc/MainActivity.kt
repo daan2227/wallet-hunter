@@ -2106,7 +2106,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      *   (04 + 128 hex), o una dirección: de esa se busca en la red la clave
      *   pública, que solo existe si la dirección ha gastado alguna vez.
      */
-    internal fun kangarooPersonalizado(entrada: String, desde: String, hasta: String) {
+    internal fun kangarooPersonalizado(entrada: String, desde: String, hasta: String,
+                                       auto: Pair<Int, Double>? = null) {
         val tv = tvPuzzleAtajo
         fun aviso(t: String, c: Int = AppTheme.WARN) { tv?.text = t; tv?.setTextColor(c); tv?.visibility = android.view.View.VISIBLE }
         fun hex(x: String) = x.trim().lowercase().removePrefix("0x").trimStart('0')
@@ -2122,6 +2123,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putString("kg_custom_fin", hasta.trim()).apply()
 
         fun lanzar(pub: String) {
+            if (auto != null) { kgAutoIniciar(pub, a, b, auto.first, auto.second); return }
+            kgAutoParar(null)                   // una búsqueda normal cancela el auto-avance
             if (HunterEngine.kangarooRunning()) try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
             puzzleSeleccionado = 0              // 0 = búsqueda propia, no un puzzle de la lista
             puzzlePubHex = pub; puzzleIniHex = ini; puzzleFinHex = fin
@@ -3049,6 +3052,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onResume()
         handler.post(updater)
         if (paginaActual == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
+        if (prefs.getBoolean(KgAuto.ON, false)) kgAutoVigilar()
         // Antes esto miraba cuanto habia pasado desde su propio onPause, con
         // un limite de 15 s. Pero onPause salta al abrir la cartera, el
         // cluster, las estadisticas o el selector de ficheros, asi que volver

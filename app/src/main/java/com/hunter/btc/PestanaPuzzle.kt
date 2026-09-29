@@ -488,6 +488,59 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         etPub.setText(prefs.getString("kg_custom_pub", ""))
         etDesde.setText(prefs.getString("kg_custom_ini", ""))
         etHasta.setText(prefs.getString("kg_custom_fin", ""))
+        // Auto-avance: partes y presupuesto, con lo que se arriesga a la vista.
+        val swAuto = android.widget.Switch(this@buildPuzzleTab).apply {
+            text = "Auto-advance through parts"; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.body(context)
+            isChecked = prefs.getBoolean("kg_custom_auto", false)
+            setPadding(0, 0, 0, dp(6))
+        }
+        addView(swAuto)
+        val filaAuto = LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8))
+        }
+        val etPartes = styledInput("4").apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            setText(prefs.getInt("kg_custom_k", 4).toString())
+        }
+        val etPresu = styledInput("4").apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(prefs.getFloat("kg_custom_c", 4f).toString())
+        }
+        filaAuto.addView(col("Parts", etPartes, false)); filaAuto.addView(col("Budget × √part", etPresu, true))
+        addView(filaAuto)
+        val tvRiesgo = TextView(this@buildPuzzleTab).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
+            setPadding(0, 0, 0, dp(10))
+        }
+        addView(tvRiesgo)
+        fun pintarRiesgo() {
+            val on = swAuto.isChecked
+            filaAuto.visibility = if (on) android.view.View.VISIBLE else android.view.View.GONE
+            tvRiesgo.visibility = filaAuto.visibility
+            if (!on) return
+            val k = etPartes.text.toString().toIntOrNull() ?: 0
+            val c = etPresu.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            val a = etDesde.text.toString().trim().removePrefix("0x").toBigIntegerOrNull(16)
+            val b = etHasta.text.toString().trim().removePrefix("0x").toBigIntegerOrNull(16)
+            tvRiesgo.text = when {
+                k !in 1..4096 -> "Parts: between 1 and 4096."
+                c <= 0 -> "Budget: a number above 0 (4 is a good start)."
+                a == null || b == null || a >= b -> "Chance: " +
+                    "%.1f %% of finding the key in a part that has it (%.1f %% of passing it by).".format(
+                        KgAuto.probabilidad(c, COSTE_KANGAROO) * 100, (1 - KgAuto.probabilidad(c, COSTE_KANGAROO)) * 100)
+                else -> KgAuto.resumen(a, b, k, c, COSTE_KANGAROO)
+            }
+        }
+        val alCambiar = object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) { pintarRiesgo() }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        }
+        listOf(etPartes, etPresu, etDesde, etHasta).forEach { it.addTextChangedListener(alCambiar) }
+        swAuto.setOnCheckedChangeListener { _, v -> prefs.edit().putBoolean("kg_custom_auto", v).apply(); pintarRiesgo() }
+        pintarRiesgo()
         addView(Button(this@buildPuzzleTab).apply {
             text = "Search this range with Kangaroo"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
@@ -495,7 +548,15 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, this@buildPuzzleTab)
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50))
             setOnClickListener {
-                kangarooPersonalizado(etPub.text.toString(), etDesde.text.toString(), etHasta.text.toString())
+                var auto: Pair<Int, Double>? = null
+                if (swAuto.isChecked) {
+                    val k = etPartes.text.toString().toIntOrNull()
+                    val c = etPresu.text.toString().replace(',', '.').toDoubleOrNull()
+                    if (k == null || k !in 1..4096 || c == null || c <= 0) { pintarRiesgo(); return@setOnClickListener }
+                    prefs.edit().putInt("kg_custom_k", k).putFloat("kg_custom_c", c.toFloat()).apply()
+                    auto = k to c
+                }
+                kangarooPersonalizado(etPub.text.toString(), etDesde.text.toString(), etHasta.text.toString(), auto)
             }
         })
     })
