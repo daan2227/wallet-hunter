@@ -713,6 +713,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())
                 HunterEngine.loadCsv(csvPath)
             setupNotificationChannel()
+            // Android 13+: sin este permiso concedido no sale ningún aviso,
+            // tampoco el de un hallazgo. El sistema solo lo pregunta un par de
+            // veces; si se niega, Debug › Test notification lleva a ajustes.
+            if (Avisos.faltaPermiso(this))
+                try { requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1004) } catch (e: Exception) {}
             registerBatteryReceiver()
             // Auto-detectar hardware en primera ejecución
             selectedScanMode = prefs.getInt("scan_mode", 0)
@@ -2494,6 +2499,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             HunterEngine.kangarooStop()
             if (!primera) return
             kgClavePintada = clave
+            // Aviso, también con la app en segundo plano: Kangaroo no pasaba
+            // por el contador del servicio y un puzzle resuelto no sonaba.
+            run {
+                val esp = puzzles.firstOrNull { it.num == puzzleSeleccionado }
+                                 ?.clave?.lowercase()?.padStart(64, '0')
+                val titulo = when {
+                    esp.isNullOrEmpty() -> "Puzzle #$puzzleSeleccionado solved!"
+                    esp == clave.lowercase() -> "Test passed — puzzle #$puzzleSeleccionado"
+                    else -> "Puzzle #$puzzleSeleccionado: wrong key reported"
+                }
+                sendMatchNotification(titulo, "The key is saved in the finds vault.")
+            }
             // La línea de la GPU, con su estado final: la pantalla deja de
             // refrescarse al encontrar la clave y se quedaba en "starting".
             tvPeakWpsPuzzle?.let { tvT ->
@@ -2930,40 +2947,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * baúl cifrado.
      */
     internal fun sendMatchNotification(titulo: String, texto: String) {
-        try {
-            // Vibración
-            val vib = getSystemService(android.os.Vibrator::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vib?.vibrate(android.os.VibrationEffect.createWaveform(
-                    longArrayOf(0, 500, 200, 500, 200, 500), -1
-                ))
-            }
-            val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
-            val intent = android.app.PendingIntent.getActivity(
-                this, 0,
-                Intent(this, MainActivity::class.java),
-                android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            // En la pantalla de bloqueo, sólo esto.
-            val publica = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
-                .setSmallIcon(android.R.drawable.star_on)
-                .setContentTitle("Wallet Hunter")
-                .setContentText("Match found — unlock to see it")
-                .build()
-            val notif = androidx.core.app.NotificationCompat.Builder(this, "hunter_match")
-                .setSmallIcon(android.R.drawable.star_on)
-                .setContentTitle(titulo)
-                .setContentText(texto)
-                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(texto))
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
-                .setVisibility(androidx.core.app.NotificationCompat.VISIBILITY_PRIVATE)
-                .setPublicVersion(publica)
-                .setAutoCancel(true)
-                .setContentIntent(intent)
-                .setColor(AppTheme.AMBER)
-                .build()
-            nm.notify(NOTIF_ID, notif)
-        } catch (e: Exception) {}
+        if (!Avisos.hallazgo(this, titulo, texto)) {
+            // Sin permiso el aviso no sale: que al menos se vea en pantalla.
+            try {
+                Toast.makeText(this, "$titulo — notifications are off (Debug › Test notification)",
+                    Toast.LENGTH_LONG).show()
+            } catch (e: Exception) {}
+        }
     }
 
     internal fun registerBatteryReceiver() {

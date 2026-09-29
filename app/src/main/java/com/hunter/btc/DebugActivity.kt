@@ -14,6 +14,7 @@ import java.io.File
 class DebugActivity : AppCompatActivity() {
 
     private val handler = Handler(Looper.getMainLooper())
+    private var pidioAvisos = false
     private var logRunnable: Runnable? = null
     private var tvLiveLog: TextView? = null
 
@@ -243,6 +244,28 @@ class DebugActivity : AppCompatActivity() {
                 val r = try { HunterEngine.benchGpuKangaroo() } catch (e: Throwable) { "Error: ${e.message}" }
                 runOnUiThread { tvBench.text = r }
             }.start()
+        }, arriba = 8))
+        // Los avisos de hallazgo: manda uno de prueba, o si están bloqueados
+        // lo dice y lleva a donde se activan.
+        benchCard.addView(aLoAncho(actionBtn("Test notification", ACCENT) {
+            when {
+                Avisos.faltaPermiso(this) && android.os.Build.VERSION.SDK_INT >= 33 -> {
+                    tvBench.text = "Notifications need permission: asking…\n" +
+                        "If nothing appears, Android has stopped asking: tap again to open the settings."
+                    if (!pidioAvisos) {
+                        pidioAvisos = true
+                        requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1004)
+                    } else Avisos.abrirAjustes(this)
+                }
+                !Avisos.permitidos(this) -> {
+                    tvBench.text = "Notifications are turned off for Wallet Hunter: opening the settings."
+                    Avisos.abrirAjustes(this)
+                }
+                else -> {
+                    val ok = Avisos.hallazgo(this, "Test — Wallet Hunter", "Notifications work. A real find says the same and the key goes to the vault.")
+                    tvBench.text = if (ok) "Test notification sent." else "Could not send it."
+                }
+            }
         }, arriba = 8))
         root.addView(benchCard)
 
