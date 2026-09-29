@@ -50,7 +50,7 @@ static void casos(int guardar,long *mal){
 int main(){
     int fallos=0;
     sha512_fijar_modo(0); casos(1,NULL);
-    int modos[3]={0,1,2}; int nm=sha512_tiene_hw()?3:1;
+    int modos[4], nm=0; for(int m=0;m<=3;m++) if(sha512_modo_disponible(m)) modos[nm++]=m;
     printf("instrucciones SHA-512: %s\n", sha512_tiene_hw()?"si":"no");
     for(int mi=0;mi<nm;mi++){
         sha512_fijar_modo(modos[mi]);

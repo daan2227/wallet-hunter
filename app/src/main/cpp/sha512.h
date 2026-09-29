@@ -12,12 +12,14 @@
  *
  * El resumen de un bloque ya ES el mensaje del siguiente, palabra a palabra.
  *
- * Tres formas de hacer el bucle, que se eligen solas (sha512_modo):
+ * Cuatro formas de hacer el bucle; se mide cual va mejor y se queda (sha512_modo):
  *   0  software
  *   1  instrucciones SHA-512 del procesador (ARMv8.2, si las tiene)
  *   2  las mismas, con dos frases entrelazadas: cada instruccion tarda varios
  *      ciclos en dar su resultado y la siguiente ronda lo necesita; con dos
  *      cadenas independientes el procesador rellena esa espera con la otra.
+ *   3  este bucle con la compresion en ensamblador de OpenSSL
+ *      (SHA512_Transform), para los procesadores sin instrucciones SHA-512.
  * sha512.cpp y sha512_hw.cpp. */
 #include <stdint.h>
 #include <stddef.h>
@@ -43,6 +45,7 @@ void bip39_semilla_x2(const char *fA, size_t nA, const char *fB, size_t nB,
                       const char *pass, size_t pn, uint8_t outA[64], uint8_t outB[64]);
 
 int  sha512_tiene_hw(void);       /* el procesador tiene las instrucciones */
+int  sha512_modo_disponible(int m);   /* 0 soft, 1 CPU, 2 CPU x2, 3 OpenSSL block */
 int  sha512_modo(void);           /* el que se esta usando */
 void sha512_fijar_modo(int m);    /* -1 = elegir solo; 0/1/2 a mano (no pasa de lo que haya) */
 const char *sha512_nombre_modo(int m);

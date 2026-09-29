@@ -2774,8 +2774,8 @@ Java_com_hunter_btc_HunterEngine_benchCampo(JNIEnv *env,jobject){
         o<<"SHA-512 instructions: "<<(sha512_tiene_hw()?"yes":"no")<<"\n";
         double base=medir(-1);
         o<<"BIP39 seeds OpenSSL:  "<<std::setprecision(0)<<base<<" /s (1 thread)\n";
-        int nm=sha512_tiene_hw()?3:1;
-        for(int m=0;m<nm;m++){
+        for(int m=0;m<=3;m++){
+            if(!sha512_modo_disponible(m)) continue;
             sha512_fijar_modo(m);
             double v=medir(m);
             o<<"BIP39 seeds "<<sha512_nombre_modo(m)<<": "<<std::setprecision(0)<<v<<" /s ("

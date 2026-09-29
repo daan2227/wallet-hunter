@@ -50,6 +50,8 @@ add_library(hunter_jni SHARED hunter_jni.cpp
 # app tiene que arrancar en procesadores sin ellas, y lo que hay aqui dentro
 # no se llama sin comprobarlo antes (sha512_tiene_hw).
 set_source_files_properties(sha512_hw.cpp PROPERTIES COMPILE_OPTIONS "-march=armv8.2-a+sha3")
+# El modo 3 de sha512.cpp usa la compresion de OpenSSL (ya enlazada).
+set_source_files_properties(sha512.cpp PROPERTIES COMPILE_DEFINITIONS "SHA512_CON_OPENSSL")
 target_compile_options(hunter_jni PRIVATE
     -O3
     -march=armv8-a+crypto

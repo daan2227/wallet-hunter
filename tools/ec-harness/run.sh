@@ -39,7 +39,7 @@ flags_de() {
         reparto)     echo "-lpthread -lcrypto" ;;
         direcciones) echo "-lcrypto -Wno-deprecated-declarations" ;;
         resueltos)   echo "-lpthread -lcrypto -Wno-deprecated-declarations" ;;
-        pbkdf2)      echo "../../app/src/main/cpp/sha512.cpp -lcrypto -Wno-deprecated-declarations" ;;
+        pbkdf2)      echo "-DSHA512_CON_OPENSSL ../../app/src/main/cpp/sha512.cpp -lcrypto -Wno-deprecated-declarations" ;;
         *)       echo "-lpthread" ;;
     esac
 }

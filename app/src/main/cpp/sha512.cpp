@@ -56,6 +56,24 @@ static inline __attribute__((always_inline)) void bloque_sw(uint64_t st[8], cons
     st[0]+=a; st[1]+=b; st[2]+=c; st[3]+=d; st[4]+=e; st[5]+=f; st[6]+=g; st[7]+=h;
 }
 
+/* ---- OpenSSL, solo la compresion ----
+ *
+ * Sin instrucciones SHA-512 (el A34, por ejemplo), la compresion en C de
+ * arriba sale un 6 % mas lenta que la de OpenSSL, que va en ensamblador
+ * (sha512-armv8). Pero lo que hace lento a PKCS5_PBKDF2_HMAC no es eso, es
+ * lo de alrededor: copiar un contexto HMAC por vuelta, EVP, rellenos. Asi que
+ * el modo 3 usa el bucle de aqui con SHA512_Transform de OpenSSL: lo mejor de
+ * cada uno. Solo si se compila con OpenSSL (SHA512_CON_OPENSSL). */
+#ifdef SHA512_CON_OPENSSL
+#include <openssl/sha.h>
+static inline __attribute__((always_inline)) void bloque_ossl(uint64_t st[8], const uint64_t m[16]){
+    SHA512_CTX c; memcpy(c.h,st,64);
+    uint64_t b[16]; for(int j=0;j<16;j++) b[j]=__builtin_bswap64(m[j]);
+    SHA512_Transform(&c,(const unsigned char*)b);
+    memcpy(st,c.h,64);
+}
+#endif
+
 /* ---- el modo ---- */
 
 static int hw_disponible(){
@@ -71,7 +89,7 @@ static std::atomic<int> g_modo{-1};
 static std::atomic<int> g_pedido{-1};
 
 const char *sha512_nombre_modo(int m){
-    switch(m){ case 1: return "SHA-512 CPU"; case 2: return "SHA-512 CPU x2"; default: return "software"; }
+    switch(m){ case 1: return "SHA-512 CPU"; case 2: return "SHA-512 CPU x2"; case 3: return "OpenSSL block"; default: return "software"; }
 }
 
 static int calibrar();
@@ -79,16 +97,37 @@ int sha512_modo(void){
     int m=g_modo.load(std::memory_order_relaxed);
     if(m>=0) return m;
     int p=g_pedido.load();
-    if(p>=0) m=(p>0 && !sha512_tiene_hw())?0:p;
-    else m=sha512_tiene_hw()?calibrar():0;
+    if(p>=0){
+        m=p;
+        if((m==1||m==2) && !sha512_tiene_hw()) m=0;
+#ifndef SHA512_CON_OPENSSL
+        if(m==3) m=0;
+#endif
+    }
+    else m=calibrar();
     g_modo.store(m);
     return m;
 }
 void sha512_fijar_modo(int m){ g_pedido.store(m); g_modo.store(-1); }
 
+int sha512_modo_disponible(int m){
+    switch(m){
+        case 0: return 1;
+        case 1: case 2: return sha512_tiene_hw();
+#ifdef SHA512_CON_OPENSSL
+        case 3: return 1;
+#endif
+        default: return 0;
+    }
+}
+
 void sha512_bloque(uint64_t st[8], const uint64_t w[16]){
+    int m=sha512_modo();
 #if defined(__aarch64__)
-    if(sha512_modo()>0){ sha512_bloque_hw(st,w); return; }
+    if(m==1||m==2){ sha512_bloque_hw(st,w); return; }
+#endif
+#ifdef SHA512_CON_OPENSSL
+    if(m==3){ bloque_ossl(st,w); return; }
 #endif
     bloque_sw(st,w);
 }
@@ -163,6 +202,20 @@ void pbkdf2_bucle_sw(const uint64_t is[8], const uint64_t os[8], uint64_t u[8], 
     }
 }
 
+#ifdef SHA512_CON_OPENSSL
+static void pbkdf2_bucle_ossl(const uint64_t is[8], const uint64_t os[8], uint64_t u[8], uint64_t acc[8], uint32_t n){
+    uint64_t w[16], t[8];
+    w[8]=0x8000000000000000ULL;
+    for(int j=9;j<15;j++) w[j]=0;
+    w[15]=(128+64)*8;
+    for(uint32_t v=0; v<n; v++){
+        memcpy(w,u,64); memcpy(t,is,64); bloque_ossl(t,w);
+        memcpy(w,t,64); memcpy(u,os,64); bloque_ossl(u,w);
+        for(int j=0;j<8;j++) acc[j]^=u[j];
+    }
+}
+#endif
+
 /* Primera vuelta: U1 = HMAC(pw, sal || 00 00 00 01). */
 static void primera(const uint8_t *pw, size_t pwn, const uint8_t *sal, size_t saln,
                     uint64_t is[8], uint64_t os[8], uint64_t u[8]){
@@ -182,8 +235,12 @@ void pbkdf2_sha512(const uint8_t *pw, size_t pwn, const uint8_t *sal, size_t sal
     primera(pw,pwn,sal,saln,is,os,u);
     memcpy(acc,u,64);
     if(vueltas>1){
+        int m=sha512_modo();
 #if defined(__aarch64__)
-        if(sha512_modo()>0) pbkdf2_bucle_hw(is,os,u,acc,vueltas-1); else
+        if(m==1||m==2) pbkdf2_bucle_hw(is,os,u,acc,vueltas-1); else
+#endif
+#ifdef SHA512_CON_OPENSSL
+        if(m==3) pbkdf2_bucle_ossl(is,os,u,acc,vueltas-1); else
 #endif
         pbkdf2_bucle_sw(is,os,u,acc,vueltas-1);
     }
@@ -222,27 +279,39 @@ void bip39_semilla_x2(const char *fA, size_t nA, const char *fB, size_t nB,
     pbkdf2_sha512_x2((const uint8_t*)fA,nA,(const uint8_t*)fB,nB,sal,sn,2048,outA,outB);
 }
 
-/* Con instrucciones, ¿entrelazar dos compensa? Depende del nucleo: se mide
- * una vez (unos 20 ms) y se queda el que mas frases por segundo da. */
+/* ¿Que forma va mas rapido en ESTE procesador? Depende del nucleo: con
+ * instrucciones, si entrelazar dos compensa; sin ellas, si la compresion en C
+ * o la de OpenSSL. Se mide una vez (unos 20-40 ms) y se queda la mejor. */
 static int calibrar(){
-#if defined(__aarch64__)
     uint64_t is[8],os[8],u[8],acc[8];
     for(int i=0;i<8;i++){ is[i]=IV512[i]; os[i]=IV512[7-i]; u[i]=i; acc[i]=0; }
     uint64_t is2[8],os2[8],u2[8],acc2[8];
     memcpy(is2,is,64); memcpy(os2,os,64); memcpy(u2,u,64); memcpy(acc2,acc,64);
-    const uint32_t N=2048;
-    double mejor1=1e9, mejor2=1e9;
-    for(int r=0;r<3;r++){
-        auto t0=std::chrono::steady_clock::now();
-        pbkdf2_bucle_hw(is,os,u,acc,N); pbkdf2_bucle_hw(is2,os2,u2,acc2,N);
-        auto t1=std::chrono::steady_clock::now();
-        pbkdf2_bucle_hw2(is,os,u,acc,is2,os2,u2,acc2,N);
-        auto t2=std::chrono::steady_clock::now();
-        double a=std::chrono::duration<double>(t1-t0).count(), b=std::chrono::duration<double>(t2-t1).count();
-        if(a<mejor1) mejor1=a; if(b<mejor2) mejor2=b;
-    }
-    return (mejor2<mejor1*0.97)?2:1;
-#else
-    return 0;
+    const uint32_t N=1024;
+    auto medir=[&](int m)->double{
+        double mejor=1e9;
+        for(int r=0;r<3;r++){
+            auto t0=std::chrono::steady_clock::now();
+            switch(m){
+#if defined(__aarch64__)
+                case 1: pbkdf2_bucle_hw(is,os,u,acc,N); pbkdf2_bucle_hw(is2,os2,u2,acc2,N); break;
+                case 2: pbkdf2_bucle_hw2(is,os,u,acc,is2,os2,u2,acc2,N); break;
 #endif
+#ifdef SHA512_CON_OPENSSL
+                case 3: pbkdf2_bucle_ossl(is,os,u,acc,N); pbkdf2_bucle_ossl(is2,os2,u2,acc2,N); break;
+#endif
+                default: pbkdf2_bucle_sw(is,os,u,acc,N); pbkdf2_bucle_sw(is2,os2,u2,acc2,N); break;
+            }
+            double t=std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count();
+            if(t<mejor) mejor=t;
+        }
+        return mejor;
+    };
+    int mejor_m=0; double mejor_t=medir(0);
+    for(int m=1;m<=3;m++){
+        if(!sha512_modo_disponible(m)) continue;
+        double t=medir(m);
+        if(t<mejor_t*0.97){ mejor_t=t; mejor_m=m; }
+    }
+    return mejor_m;
 }
