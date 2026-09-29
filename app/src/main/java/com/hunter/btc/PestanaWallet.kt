@@ -357,12 +357,15 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
         else exportEncryptedBackup()
     }
     guardRow(R.drawable.ic_export, "Export summary",
-             "No private keys", primero = false) { exportLog() }
+             "Share a list of finds · no private keys", primero = false) { exportLog() }
     page.addView(guardCard)
 
     // El estado de las dos filas, en segundo plano: leer el baúl y listar
     // los ficheros de copia es I/O, y esto corre al construir la pestaña.
     Thread {
+        // Recoger primero lo que el motor no pudo entregar: sin esto la fila
+        // decía "Empty" mientras el total de arriba ya contaba "1 find(s)".
+        try { MatchVault.recoger(this@buildWalletTab) } catch (e: Exception) {}
         val hallazgos = try { MatchVault.list(this@buildWalletTab).size } catch (e: Exception) { 0 }
         val copias = try { BackupStore.list(this@buildWalletTab) } catch (e: Exception) { emptyList() }
         val ultima = copias.firstOrNull()?.createdAt ?: 0L
