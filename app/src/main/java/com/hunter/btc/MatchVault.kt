@@ -381,6 +381,7 @@ object MatchVault {
             "puzzle"   -> "Puzzle"
             "scanner"  -> "Scanner"
             "kangaroo" -> "Kangaroo"
+            "weak-key" -> "Weak-key audit"
             "recovery" -> "Recovered"
             else       -> "Find"
         }

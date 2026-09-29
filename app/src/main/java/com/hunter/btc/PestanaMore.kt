@@ -140,6 +140,10 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     val tools = grupo("Tools")
     fila(tools, R.drawable.ic_recovery, "Recovery",
          "Recover a seed with missing words", null) { goTab(PAG_RECOVERY) }
+    fila(tools, R.drawable.ic_target, "Weak-key audit",
+         "Kangaroo over a small range for spent addresses", null) {
+        startActivity(Intent(this, WeakKeyActivity::class.java))
+    }
 
     val app = grupo("App")
     /* Tema claro / oscuro.
