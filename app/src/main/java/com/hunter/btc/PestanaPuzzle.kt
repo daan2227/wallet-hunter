@@ -455,6 +455,51 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         addView(etTarget)
     })
 
+    // ── KANGAROO PERSONALIZADO ────────────────────────────────────────
+    // Cualquier clave pública y cualquier rango, no solo los de la lista:
+    // por ejemplo un trozo del #135, o una clave propia para probar.
+    page.addView(collapsibleSection(R.drawable.ic_target, "Custom Kangaroo") {
+        addView(TextView(this@buildPuzzleTab).apply {
+            text = "Public key (02…/03…/04…) or an address that has spent"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context); setPadding(0, 0, 0, dp(6))
+        })
+        val etPub = styledInput("02… or 1…/bc1q…")
+        addView(etPub)
+        val fila = LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, dp(10), 0, dp(10))
+        }
+        fun col(rotulo: String, et: EditText, ultimo: Boolean) = LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                .apply { if (!ultimo) marginEnd = dp(8) }
+            addView(TextView(this@buildPuzzleTab).apply {
+                text = rotulo; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.medium(context); setPadding(0, 0, 0, dp(6))
+            })
+            addView(et)
+        }
+        val etDesde = styledInput("hex, e.g. 4000000000000000000000000000000000")
+        val etHasta = styledInput("hex, e.g. 7fffffffffffffffffffffffffffffffff")
+        fila.addView(col("From", etDesde, false)); fila.addView(col("To", etHasta, true))
+        addView(fila)
+        // Lo último que se usó, para no tener que volver a pegarlo.
+        etPub.setText(prefs.getString("kg_custom_pub", ""))
+        etDesde.setText(prefs.getString("kg_custom_ini", ""))
+        etHasta.setText(prefs.getString("kg_custom_fin", ""))
+        addView(Button(this@buildPuzzleTab).apply {
+            text = "Search this range with Kangaroo"
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ON_ACCENT)
+            typeface = AppTheme.bold(context); isAllCaps = false; stateListAnimator = null
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, this@buildPuzzleTab)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(50))
+            setOnClickListener {
+                kangarooPersonalizado(etPub.text.toString(), etDesde.text.toString(), etHasta.text.toString())
+            }
+        })
+    })
+
     // ── CHECKPOINT ────────────────────────────────────────────────────
     tvCheckpointLive = TextView(this).apply {
         text = ""

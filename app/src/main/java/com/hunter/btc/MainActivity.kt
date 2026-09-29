@@ -2099,6 +2099,71 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /** Arranca o para la búsqueda por Kangaroo del puzzle elegido. */
+    /**
+     * Kangaroo con una clave pública y un rango cualesquiera.
+     *
+     * @param entrada clave pública comprimida (02/03 + 64 hex), sin comprimir
+     *   (04 + 128 hex), o una dirección: de esa se busca en la red la clave
+     *   pública, que solo existe si la dirección ha gastado alguna vez.
+     */
+    internal fun kangarooPersonalizado(entrada: String, desde: String, hasta: String) {
+        val tv = tvPuzzleAtajo
+        fun aviso(t: String, c: Int = AppTheme.WARN) { tv?.text = t; tv?.setTextColor(c); tv?.visibility = android.view.View.VISIBLE }
+        fun hex(x: String) = x.trim().lowercase().removePrefix("0x").trimStart('0')
+        val ini = hex(desde); val fin = hex(hasta)
+        val esHex = Regex("^[0-9a-f]+$")
+        if (!esHex.matches(ini) || !esHex.matches(fin)) { aviso("From and To must be hexadecimal numbers."); return }
+        if (ini.length > 64 || fin.length > 64) { aviso("The range cannot go past 64 hex digits (256 bits)."); return }
+        val a = java.math.BigInteger(ini, 16); val b = java.math.BigInteger(fin, 16)
+        if (a >= b) { aviso("From must be smaller than To."); return }
+        if (b.bitLength() < 8) { aviso("Kangaroo needs a range reaching at least 8 bits (To ≥ 0x80)."); return }
+        val e = entrada.trim().removePrefix("0x")
+        prefs.edit().putString("kg_custom_pub", entrada.trim()).putString("kg_custom_ini", desde.trim())
+            .putString("kg_custom_fin", hasta.trim()).apply()
+
+        fun lanzar(pub: String) {
+            if (HunterEngine.kangarooRunning()) try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
+            puzzleSeleccionado = 0              // 0 = búsqueda propia, no un puzzle de la lista
+            puzzlePubHex = pub; puzzleIniHex = ini; puzzleFinHex = fin
+            prefs.edit().putString("kangaroo_pub", pub).putString("kangaroo_ini", ini)
+                .putString("kangaroo_fin", fin).apply()
+            btnKangaroo?.visibility = android.view.View.VISIBLE
+            val bits = b.subtract(a).bitLength()
+            alternarKangaroo()
+            if (HunterEngine.kangarooRunning())
+                aviso("Custom search · range of $bits bits · about 2^${"%.1f".format(bits / 2.0 + 0.5)} operations expected.\n" +
+                      (tvPuzzleAtajo?.text ?: ""), AppTheme.ACCENT)
+        }
+        // Comprimida tal cual; sin comprimir, 02 si la y es par y 03 si es impar.
+        fun comprimida(k: String): String? = when {
+            Regex("^0[23][0-9a-fA-F]{64}$").matches(k) -> k.lowercase()
+            Regex("^04[0-9a-fA-F]{128}$").matches(k) ->
+                (if (java.math.BigInteger(k.substring(66), 16).testBit(0)) "03" else "02") +
+                k.substring(2, 66).lowercase()
+            else -> null
+        }
+        val directa = comprimida(e)
+        when {
+            directa != null -> lanzar(directa)
+            e.startsWith("1") || e.startsWith("3") || e.startsWith("bc1", true) -> {
+                aviso("Looking up the public key of that address…", AppTheme.TXT_SEC)
+                Thread {
+                    val r = try { PubKeyFinder.buscar(this, e, false) } catch (x: Exception) { PubKeyFinder.Resultado.SinRed }
+                    runOnUiThread {
+                        when (r) {
+                            is PubKeyFinder.Resultado.Encontrada ->
+                                comprimida(r.pubHex)?.let { lanzar(it) } ?: aviso("The public key found is not valid.")
+                            PubKeyFinder.Resultado.NoRevelada -> aviso("That address has never spent, so its public key is not known: Kangaroo cannot work on it.")
+                            is PubKeyFinder.Resultado.Publicada -> aviso("That address has spent, but the transaction with its public key was not found. Try again.")
+                            PubKeyFinder.Resultado.SinRed -> aviso("No network: could not look up the public key.")
+                        }
+                    }
+                }.start()
+            }
+            else -> aviso("Paste a public key (02…, 03… or 04…) or an address.")
+        }
+    }
+
     internal fun alternarKangaroo() {
         // Recolectando (maestro de un cluster, tabla viva y cero hilos): esto no
         // es "parar", es "ponerse a buscar TAMBIÉN". El motor no deja añadir
@@ -2501,7 +2566,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000 else 0L
             // Guardar ANTES de tocar la interfaz: si la app muere aquí, la
             // clave no puede perderse.
-            guardarHallazgoKangaroo(clave, "PUZZLE kangaroo")
+            guardarHallazgoKangaroo(clave, if (puzzleSeleccionado <= 0) "CUSTOM kangaroo" else "PUZZLE kangaroo")
             HunterEngine.kangarooStop()
             if (!primera) return
             kgClavePintada = clave
@@ -2511,6 +2576,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val esp = puzzles.firstOrNull { it.num == puzzleSeleccionado }
                                  ?.clave?.lowercase()?.padStart(64, '0')
                 val titulo = when {
+                    puzzleSeleccionado <= 0 -> "Custom Kangaroo: key found!"
                     esp.isNullOrEmpty() -> "Puzzle #$puzzleSeleccionado solved!"
                     esp == clave.lowercase() -> "Test passed — puzzle #$puzzleSeleccionado"
                     else -> "Puzzle #$puzzleSeleccionado: wrong key reported"
