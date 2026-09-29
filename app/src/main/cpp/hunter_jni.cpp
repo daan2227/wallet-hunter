@@ -2360,6 +2360,17 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         if(v){ bits=(31-idx)*8; for(int b=7;b>=0;b--) if(v&(1<<b)){ bits+=b+1; break; } break; }
     }
     if(bits<8) return JNI_FALSE;
+    /* Lo que cuenta para el coste es el ANCHO del rango, no lo alto que este:
+       un trozo de 2^47 claves del #50, o uno pequeno del #135, se trataban
+       como el rango entero (50 o 135 bits), con un umbral de distinguidos y
+       una tabla de ese tamano. En un puzzle el ancho es 2^(N-1): con el +1 sale
+       N, lo mismo que antes, asi que los puzzles enteros no cambian. */
+    {
+        sc_t a,b,w; sc_from_be32(a,ini); sc_from_be32(b,fin);
+        if(!sc_sub(w,b,a)) return JNI_FALSE;          /* From > To */
+        int bw=sc_bits(w)+1;
+        if(bw<bits) bits=bw<8?8:bw;
+    }
     /* Cada cuantas operaciones se apunta un punto distinguido.
      *
      * bits/4+4 es la proporcion sensata, pero con rangos enormes se dispara: en
