@@ -225,6 +225,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var tvBinInfoRef: TextView? = null
     internal var tvDatasetStat: TextView? = null
     internal var peakWps: Double = 0.0
+    /** Cuándo arrancó el motor por última vez: los primeros segundos la
+     *  velocidad sale mal medida (picos y ceros) y no se pintan. */
+    internal var motorArrancadoMs = 0L
+    /** El siguiente arranque es el paso automático al bloque siguiente: no
+     *  es una sesión nueva, así que no se reinician reloj, pico ni media. */
+    internal var continuandoBloques = false
+    /** Claves de los bloques ya terminados en esta sesión: el motor pone su
+     *  contador a cero en cada arranque, y el paso de bloque es un arranque. */
+    internal var cuentaBloquesPrevios = 0L
     internal var avgWpsSum: Double = 0.0
     internal var avgWpsCount: Long = 0
     internal val numberFmt = java.text.NumberFormat.getNumberInstance(java.util.Locale.US)
@@ -313,7 +322,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val years = secs.divide(year)
                 val d = years.toString().length
                 when {
-                    d <= 3 -> "$years years"
+                    d <= 3 -> if (years == java.math.BigInteger.ONE) "1 year" else "$years years"
                     d <= 6 -> "${years.divide(java.math.BigInteger.valueOf(1000))}k years"
                     d <= 9 -> "${years.divide(java.math.BigInteger.valueOf(1_000_000))}M years"
                     else   -> "10^${d - 1} years"
@@ -1177,7 +1186,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             paintSettingSummaries()
             refrescarKangaroo()
             pintarTermico()
-            if (HunterEngine.isRunning()) {
+            val recienArrancado = System.currentTimeMillis() - motorArrancadoMs < 3000
+            if (HunterEngine.isRunning() && !recienArrancado) {
                 val wps = HunterEngine.getWps()
                 // Actualizar peak y promedio
                 if (wps > peakWps) {
@@ -1202,7 +1212,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val (spdTxt, spdUnit) = scaleSpeed(wps)
                     tvWpsPuzzle?.text = spdTxt.replace('.', ',')
                     tvSpeedUnitPuzzle?.text = "$spdUnit/s"
-                    val scannedNow = HunterEngine.getCount()
+                    val scannedNow = HunterEngine.getCount() + cuentaBloquesPrevios
                     tvCountPuzzle?.text = formatCount(scannedNow)
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
                     // PROGRESO era un literal fijo que nunca se recalculaba.
@@ -1332,11 +1342,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // al siguiente sin escanear. Solo aqui se da un bloque por hecho.
             val pNum = currentPuzzleNum()
             if (pNum != 0) markBlockScanned(pNum)
+            cuentaBloquesPrevios += try { HunterEngine.getCount() } catch (e: Throwable) { 0L }
             Toast.makeText(this, "Block scanned end to end · moving to the next one",
                 Toast.LENGTH_SHORT).show()
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                if (!HunterEngine.isRunning() && !HunterEngine.isStopping() && puzzleMode)
+                if (!HunterEngine.isRunning() && !HunterEngine.isStopping() && puzzleMode) {
+                    continuandoBloques = true
                     doToggle(btnPuzzleToggle)
+                }
             }, 1000)
         } else if (watchdogEnabled && wasRunning && !isNowRunning && lastKnownRunning) {
             // Sin esto, tras perder el dataset —se va con la app al
@@ -1533,8 +1546,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     Toast.makeText(this, "Load an address list first (Scanner › Engine › Load)", Toast.LENGTH_SHORT).show()
                     return
                 }
-                sessionStartTime = System.currentTimeMillis()
-                sessionStartCount = HunterEngine.getCount()
+                motorArrancadoMs = System.currentTimeMillis()
+                if (!continuandoBloques) {
+                    sessionStartTime = System.currentTimeMillis()
+                    sessionStartCount = HunterEngine.getCount()
+                    cuentaBloquesPrevios = 0L
+                }
+                continuandoBloques = false
+                if (puzzleMode) {
+                    // Los rótulos de las tarjetas los deja puestos Kangaroo.
+                    lblEscaneadas?.text = "Scanned"
+                    lblRestantes?.text = "Whole puzzle"
+                }
                 val threads: Int
                 val cpu: Int
                 if (puzzleMode) {
