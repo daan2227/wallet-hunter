@@ -2772,8 +2772,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (segTotal % 15 == 0L)
             prefs.edit().putLong("kangaroo_seg_${puzzlePubHex.take(16)}", segTotal).apply()
 
-        if (kgOpsEsperadas > 0) {
-            val pct = ops / kgOpsEsperadas * 100.0
+        // Con auto-avance, el avance es el del PRESUPUESTO del trozo: comparar
+        // con la media de encontrarla daba "145 %" y "past average" en un trozo
+        // que simplemente no tiene la clave y va camino del siguiente.
+        val presupuesto = kgAutoPresupuesto()
+        val meta = if (presupuesto > 0) presupuesto else kgOpsEsperadas
+        lblRestantes?.text = if (presupuesto > 0) "Part ends in" else "Estimated"
+        if (meta > 0) {
+            val pct = ops / meta * 100.0
             // Con rangos de 2^139 el porcentaje es un cero con muchos decimales:
             // decir "0,00 %" durante meses no informa de nada. Por debajo de la
             // milésima se enseña en notación científica, que al menos cambia.
@@ -2783,11 +2789,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 else        -> "—"
             }
             tvBlockProgress?.text = if (kgOpsSeg > 1000) {
-                val seg = (kgOpsEsperadas - ops) / kgOpsSeg
+                val seg = (meta - ops) / kgOpsSeg
                 when {
                     // Pasada la media ya no hay "lo que falta": cualquier
                     // momento es tan probable como otro. Salía "-1 min".
-                    seg <= 0          -> "past average"
+                    seg <= 0          -> if (presupuesto > 0) "next part…" else "past average"
                     seg < 60          -> "< 1 min"
                     seg < 5400        -> "${(seg / 60).toInt()} min"
                     seg < 172_800     -> "${(seg / 3600).toInt()} h"

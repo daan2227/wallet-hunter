@@ -123,3 +123,14 @@ private fun MainActivity.kgAutoPaso() {
     tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
     kgAutoVigilar()
 }
+
+/** Presupuesto del trozo en curso, en operaciones; 0 si no hay auto-avance. */
+internal fun MainActivity.kgAutoPresupuesto(): Double {
+    if (!prefs.getBoolean(KgAuto.ON, false)) return 0.0
+    return try {
+        val a = BigInteger(prefs.getString(KgAuto.INI, "0") ?: "0", 16)
+        val b = BigInteger(prefs.getString(KgAuto.FIN, "0") ?: "0", 16)
+        val (pi, pf) = KgAuto.trozo(a, b, prefs.getInt(KgAuto.K, 1), prefs.getInt(KgAuto.I, 0))
+        prefs.getFloat(KgAuto.C, 4f) * Math.sqrt(pf.subtract(pi).add(BigInteger.ONE).toDouble())
+    } catch (e: Exception) { 0.0 }
+}
