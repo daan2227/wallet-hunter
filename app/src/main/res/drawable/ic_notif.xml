@@ -1,0 +1,11 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- El mismo simbolo para la barra de estado: Android solo usa la silueta. -->
+    <group android:scaleX="1.45" android:scaleY="1.45" android:pivotX="54" android:pivotY="54">
+    <group android:rotation="14" android:pivotX="54" android:pivotY="54" android:translateX="2">
+        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd" android:pathData="M38,34 H57 A9.5,9.5 0 0 1 57,53 H59 A10.5,10.5 0 0 1 59,74 H38 Z M46,40 H56 A3.5,3.5 0 0 1 56,47 H46 Z M46,59 H58 A4.5,4.5 0 0 1 58,68 H46 Z"/>
+        <path android:fillColor="#FFFFFFFF" android:pathData="M42,27 H47 V35 H42 Z M51,27 H56 V35 H51 Z M42,73 H47 V81 H42 Z M51,73 H56 V81 H51 Z"/>
+    </group>
+    </group>
+</vector>

@@ -200,7 +200,7 @@ class HunterService : Service() {
         val publica = Notification.Builder(this, CHANNEL_MATCH)
             .setContentTitle("Wallet Hunter")
             .setContentText("Match found — unlock to see it")
-            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setSmallIcon(R.drawable.ic_notif)
             .build()
 
         getSystemService(NotificationManager::class.java).notify(NOTIF_MATCH,
@@ -210,7 +210,7 @@ class HunterService : Service() {
                 .setStyle(Notification.BigTextStyle().bigText(largo))
                 .setVisibility(Notification.VISIBILITY_PRIVATE)
                 .setPublicVersion(publica)
-                .setSmallIcon(android.R.drawable.ic_dialog_alert)
+                .setSmallIcon(R.drawable.ic_notif)
                 .setContentIntent(pi).setAutoCancel(true).build())
     }
 
@@ -221,7 +221,7 @@ class HunterService : Service() {
         return Notification.Builder(this, CHANNEL_FG)
             .setContentTitle(title)
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.ic_menu_search)
+            .setSmallIcon(R.drawable.ic_notif)
             .setContentIntent(pi)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
