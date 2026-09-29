@@ -488,6 +488,68 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         etPub.setText(prefs.getString("kg_custom_pub", ""))
         etDesde.setText(prefs.getString("kg_custom_ini", ""))
         etHasta.setText(prefs.getString("kg_custom_fin", ""))
+
+        // Botón pequeño para las dos filas de ayuda.
+        fun botonito(t: String, click: () -> Unit) = Button(this@buildPuzzleTab).apply {
+            text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.bold(context); isAllCaps = false; stateListAnimator = null
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, this@buildPuzzleTab)
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, dp(44))
+                .apply { marginStart = dp(8); gravity = Gravity.BOTTOM }
+            setPadding(dp(14), 0, dp(14), 0)
+            setOnClickListener { click() }
+        }
+        fun avisoCorto(t: String) = android.widget.Toast.makeText(this@buildPuzzleTab, t, android.widget.Toast.LENGTH_SHORT).show()
+        fun hexDe(x: String) = x.trim().lowercase().removePrefix("0x").toBigIntegerOrNull(16)
+
+        // Puzzle #N: el rango del puzzle N es 2^(N-1) .. 2^N - 1 por definición,
+        // y si su clave pública está publicada, también se rellena.
+        val etNum = styledInput("135").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        addView(LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+            setPadding(0, 0, 0, dp(10))
+            addView(col("Puzzle #", etNum, true))
+            addView(botonito("Fill range") {
+                val n = etNum.text.toString().toIntOrNull()
+                if (n == null || n !in 8..256) { avisoCorto("Puzzle number between 8 and 256"); return@botonito }
+                val uno = java.math.BigInteger.ONE
+                etDesde.setText(uno.shiftLeft(n - 1).toString(16))
+                etHasta.setText(uno.shiftLeft(n).subtract(uno).toString(16))
+                val p = puzzles.firstOrNull { it.num == n }
+                when {
+                    p == null -> {}
+                    p.pub.isNotEmpty() -> etPub.setText(p.pub)
+                    else -> etPub.setText(p.addr)   // Search busca su clave pública en la red
+                }
+                avisoCorto(if (p?.clave?.isNotEmpty() == true) "#$n is already solved: good as a test"
+                           else "Range of #$n filled")
+            })
+        })
+
+        // Partir el rango en K trozos iguales y quedarse con el i-ésimo: para
+        // repartir un puzzle entre móviles sin echar cuentas en hexadecimal.
+        val etK = styledInput("2").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        val etI = styledInput("1").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+        addView(LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+            setPadding(0, 0, 0, dp(12))
+            addView(col("Split into", etK, false))
+            addView(col("Take part", etI, true))
+            addView(botonito("Split") {
+                val a = hexDe(etDesde.text.toString()); val b = hexDe(etHasta.text.toString())
+                val k = etK.text.toString().toIntOrNull(); val i = etI.text.toString().toIntOrNull()
+                when {
+                    a == null || b == null || a >= b -> avisoCorto("Fill a valid From and To first")
+                    k == null || k !in 2..1_000_000 -> avisoCorto("Split into 2 or more parts")
+                    i == null || i !in 1..k -> avisoCorto("Part must be between 1 and $k")
+                    else -> {
+                        val (pi, pf) = KgAuto.trozo(a, b, k, i - 1)
+                        etDesde.setText(pi.toString(16)); etHasta.setText(pf.toString(16))
+                        avisoCorto("Part $i of $k: ${pf.subtract(pi).add(java.math.BigInteger.ONE).bitLength()} bits")
+                    }
+                }
+            })
+        })
         // Auto-avance: partes y presupuesto, con lo que se arriesga a la vista.
         val swAuto = android.widget.Switch(this@buildPuzzleTab).apply {
             text = "Auto-advance through parts"; textSize = AppTheme.SP_BODY
