@@ -41,6 +41,7 @@
 #include <pthread.h>
 #include <atomic>
 #include <chrono>
+#include <vector>
 #include <time.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -1570,9 +1571,92 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     if(sc_bits(gs_octavo)==0) sc_set_u64(gs_octavo,2);
     sc_t gs_dieciseisavo; sc_shr(gs_dieciseisavo,gs_octavo,1);
     int bits_medio=sc_bits(c->medio), bits_octavo=sc_bits(gs_octavo);
+
+    /* Salidas por lotes (Gaudry-Schost con negacion).
+     *
+     * Con restart en cada distinguido, soltar es tan frecuente como los
+     * distinguidos: uno cada 2^dbits saltos por canguro. Y soltar era una
+     * multiplicacion escalar entera (~4.500 multiplicaciones de campo, lo que
+     * ~450 saltos). Con dbits pequeno —rangos medianos con muchos canguros, o
+     * los trozos del auto-avance— eso se comia casi todo: en el movil, 1,98 M
+     * saltos/s en vez de ~7 M con dbits 6.
+     *
+     * Ahora cada tipo tiene una reserva de KG_RESERVA salidas hechas de una
+     * vez, en progresion: d_j = d_0 + j*D con D = zona/KG_RESERVA y d_0 al azar
+     * en [inicio, inicio+D). Cada punto es el anterior mas D*G (una suma
+     * mixta) y una sola inversion los pasa todos a afin: ~36 multiplicaciones
+     * por salida. Quedan repartidas por igual por su zona, que para
+     * Gaudry-Schost vale igual que al azar (es lo que ya hace la GPU,
+     * gk_soltar_tipo). */
+    const int KG_RESERVA=512;
+    struct Reserva { std::vector<uint64_t> x,y,d; int n=0; };
+    Reserva reserva[2];                                   /* [0] salvajes, [1] mansos */
+    auto rellenar=[&](int manso)->bool{
+        sc_t ini,zona;
+        if(manso){ sc_zero(ini); sc_copy(zona,c->medio); }
+        else     { sc_neg_n(ini,gs_dieciseisavo); sc_copy(zona,gs_octavo); }
+        sc_t D; sc_shr(D,zona,9);                         /* /512 */
+        if(sc_bits(D)<2) return false;                    /* rango diminuto: una a una */
+        sc_t off,dd; azar_bajo(off,D,sc_bits(D)); sc_add_n(dd,ini,off);
+        JP DGj; kg_scalar_mul(&DGj,D,FIELD_GX,FIELD_GY);
+        fe_t Dx,Dy; kg_normalize(&DGj,Dx,Dy);
+        std::vector<JP> P(KG_RESERVA); std::vector<uint64_t> dist(4*KG_RESERVA), pf(4*KG_RESERVA);
+        std::vector<uint8_t> ok(KG_RESERVA);
+        auto punto=[&](const sc_t d,JP *R)->int{
+            int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
+            if(cero){ if(manso) return 0; *R=c->objetivo; return 1; }
+            JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
+            if(!manso){ fe_t ax,ay; kg_normalize(&dG,ax,ay); jp_add_affine(R,&c->objetivo,ax,ay); }
+            else *R=dG;
+            int inf=1; for(int j=0;j<4;j++) if(R->z[j]) inf=0;
+            return !inf;
+        };
+        int valido=punto(dd,&P[0]);
+        for(int j=0;j<KG_RESERVA;j++){
+            if(j){
+                sc_add_n(dd,dd,D);
+                if(valido){ jp_add_affine(&P[j],&P[j-1],Dx,Dy);
+                            int inf=1; for(int t=0;t<4;t++) if(P[j].z[t]) inf=0; valido=!inf; }
+                if(!valido) valido=punto(dd,&P[j]);   /* infinito o doblado: se rehace */
+            }
+            memcpy(&dist[4*j],dd,32); ok[j]=(uint8_t)valido;
+        }
+        fe_t acc; memset(acc,0,32); acc[0]=1;
+        for(int j=0;j<KG_RESERVA;j++){ if(ok[j]) fe_mul(acc,acc,P[j].z); memcpy(&pf[4*j],acc,32); }
+        fe_t inv; fe_inv(inv,acc);
+        Reserva &r=reserva[manso?1:0];
+        r.x.assign(4*KG_RESERVA,0); r.y.assign(4*KG_RESERVA,0); r.d.assign(4*KG_RESERVA,0); r.n=0;
+        for(int j=KG_RESERVA-1;j>=0;j--){
+            if(!ok[j]) continue;
+            fe_t zi,z2,z3;
+            if(j){ fe_mul(zi,inv,&pf[4*(j-1)]); fe_mul(inv,inv,P[j].z); }
+            else memcpy(zi,inv,32);
+            /* los anteriores invalidos no entran en el producto: pf[j-1] ya
+               lo tiene en cuenta porque se copio tras cada paso */
+            fe_sqr(z2,zi); fe_mul(z3,z2,zi);
+            fe_mul(&r.x[4*r.n],P[j].x,z2); fe_mul(&r.y[4*r.n],P[j].y,z3);
+            memcpy(&r.d[4*r.n],&dist[4*j],32);
+            r.n++;
+        }
+        return r.n>0;
+    };
+
     auto soltar=[&](int i,int manso){
         sc_t d; sc_zero(d);
         if(c->negacion){
+            Reserva &r=reserva[manso?1:0];
+            if(r.n>0 || rellenar(manso)){
+                r.n--;
+                K[i].manso=manso;
+                memcpy(K[i].dist,&r.d[4*r.n],32);
+                memcpy(K[i].x,&r.x[4*r.n],32); memcpy(K[i].y,&r.y[4*r.n],32);
+                K[i].eps=1;
+                K[i].vn=0; K[i].vpos=0; K[i].esc_act=0;
+                K[i].ult_esc_ok=0;
+                K[i].pasos_sin_dp=0;
+                if(K[i].y[0]&1){ fe_t cero; memset(cero,0,32); fe_sub(K[i].y,cero,K[i].y); K[i].eps=-1; }
+                return;
+            }
             /* Gaudry-Schost con negacion (Galbraith y Ruprai): mansos por
                [0, W/2) —con la negacion, eso es todo [-W/2, W/2]— y salvajes
                por P'' + [-W/16, W/16). Cada camino se suelta de nuevo en cuanto

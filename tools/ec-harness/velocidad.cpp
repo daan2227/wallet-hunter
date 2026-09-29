@@ -13,7 +13,7 @@
  *
  * asi que las dos hay que medirlas, y esta es la segunda.
  *
- * Uso: ./velocidad [bits] [n_kang] [segundos]
+ * Uso: ./velocidad [bits] [n_kang] [segundos] [dbits]
  */
 #include <stdio.h>
 #include <string.h>
@@ -75,7 +75,7 @@ int main(int argc,char **argv){
     int n_kang = argc>2? atoi(argv[2]) : 512;
     double seg = argc>3? atof(argv[3]) : 2.0;
     /* dbits alto, como en el movil: aqui no se busca nada, solo se cuenta. */
-    int dbits  = 28;
+    int dbits  = argc>4? atoi(argv[4]) : 28;
 
     printf("Velocidad del bucle. Intervalo de %d bits, %d canguros, un hilo.\n\n",
            bits,n_kang);
