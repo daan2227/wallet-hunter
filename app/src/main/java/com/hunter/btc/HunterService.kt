@@ -245,8 +245,19 @@ class HunterService : Service() {
             val elapsed = HunterEngine.getElapsed()
             val found = HunterEngine.getFound()
             val h = elapsed/3600; val m = (elapsed%3600)/60; val s = elapsed%60
-            val wStr = if(wps>=1000) "${"%.1f".format(wps/1000)}K w/s" else "${wps.toInt()} w/s"
-            val cStr = if(count>=1_000_000) "${"%.2f".format(count/1e6)}M seeds" else "$count seeds"
+            // Decía "w/s" y "seeds" en todos los modos: en el puzzle y en clave
+            // directa son claves, no frases.
+            val hp = getSharedPreferences("hunter", MODE_PRIVATE)
+            val frases = !hp.getBoolean("scan_was_puzzle", false) && hp.getInt("scan_mode", 0) == 0
+            val unidad = if (frases) "addr" else "keys"
+            fun corto(v: Double) = when {
+                v >= 1e9 -> "%.2fG".format(v / 1e9)
+                v >= 1e6 -> "%.2fM".format(v / 1e6)
+                v >= 1e3 -> "%.1fK".format(v / 1e3)
+                else -> "%.0f".format(v)
+            }
+            val wStr = "${corto(wps)} $unidad/s"
+            val cStr = "${corto(count.toDouble())} $unidad"
 
             // Kangaroo va por su cuenta y no aparece en isRunning(): sin esto
             // la notificación se quedaba con el texto de cuando se creó el

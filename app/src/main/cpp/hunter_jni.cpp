@@ -812,6 +812,11 @@ static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
         int64_t i=bsearch_h160(h160);
         if(i>=0){match=1;}  /* sats not in .bin */
     }
+    /* Con objetivo unico, solo el PRIMER hilo que lo encuentra lo guarda.
+       Varios hilos pueden estar en el mismo rango diminuto (los primeros
+       puzzles) a la vez, y antes de que parar_motor() llegara a todos cada
+       uno guardaba y avisaba: "WALLET FOUND (3 total)" con el puzzle #1. */
+    if(match && g_has_target && g_objetivo_hallado.exchange(1)) match=0;
     if(match){
         g_found.fetch_add(1);
         /* Reconstruir privkey = base + idx */
@@ -883,6 +888,7 @@ static void raw_visto(const uint8_t *h160, int j, int v, void *raw){
     } else if(g_csv_loaded.load()){
         if(bsearch_h160(h160)>=0) match=1;
     }
+    if(match && g_has_target && g_objetivo_hallado.exchange(1)) match=0;  /* ver puzzle_h160 */
     if(!match) return;
     RawCtx *c=(RawCtx*)raw;
     uint8_t pk[32];

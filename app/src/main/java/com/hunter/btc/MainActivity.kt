@@ -1717,6 +1717,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 prefs.edit()
                     .putBoolean("scan_was_running", true)
                     .putBoolean("scan_was_puzzle", puzzleMode)
+                    // Se leía al abrir la app y no lo escribía nadie: el modo
+                    // elegido (BIP39 o clave directa) no se recordaba.
+                    .putInt("scan_mode", selectedScanMode)
                     .apply()
                 activeToggleBtn = callerBtn
                 @Suppress("UNCHECKED_CAST")
