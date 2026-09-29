@@ -2425,13 +2425,17 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
      * para un puzzle de 40 bits reservar 235 MB seria tirar memoria. */
     if(tope_tabla_bits<14) tope_tabla_bits=14;
     if(tope_tabla_bits>24) tope_tabla_bits=24;
-    int tbits=bits/2+4-dbits;
+    /* Huecos para 4*raiz(W)/2^dbits puntos: al 90 % de lleno aguanta una
+       busqueda de ~3,6 raices de W, y la media son 1,4. Con +4 (16 veces)
+       el #50 reservaba 3,7 millones de huecos —unos 200 MB— para los ~250.000
+       puntos que necesita. */
+    int tbits=bits/2+2-dbits;
     if(tbits<14) tbits=14;
     if(tbits>tope_tabla_bits){
-        /* La tabla no da para tantos puntos: subir dbits hasta que quepan
-           (con margen de 8 veces lo esperado), antes que dejar que se llene. */
+        /* La tabla no da para tantos puntos: subir dbits hasta que quepan,
+           antes que dejar que se llene. */
         tbits=tope_tabla_bits;
-        int minimo=bits/2+3-tope_tabla_bits;
+        int minimo=bits/2+2-tope_tabla_bits;
         if(dbits<minimo) dbits=minimo>28?28:minimo;
     }
 

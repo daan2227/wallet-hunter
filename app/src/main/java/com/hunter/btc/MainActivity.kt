@@ -2600,6 +2600,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // que no había contado.
             tvTimePuzzle?.text = if (segFin < 1) "< 1 s" else formatSegundos(segFin)
             tvPctPuzzle?.text = "done"
+            tvBlockProgress?.text = "—"     // ya no queda nada que estimar
             // Cuánto ha costado frente a lo esperado: es la cifra que dice si
             // el motor rinde (1,5 raíces de W de media; una sola búsqueda
             // puede salir bastante por encima o por debajo).
