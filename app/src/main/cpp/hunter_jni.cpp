@@ -2372,7 +2372,26 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
      * un ano y medio en llenarse. Bajar el umbral no hace la busqueda peor:
      * guardar mas puntos solo mejora la deteccion de colisiones, lo unico que
      * cuesta es memoria. */
-    int dbits=bits/4+4; if(dbits<6) dbits=6; if(dbits>28) dbits=28;
+    int dbits=bits/4+4;
+    /* Y con muchos canguros, bits/4+4 es DEMASIADO en rangos medianos.
+     *
+     * Cada canguro lleva siempre un tramo sin apuntar: el que ha andado desde
+     * su ultimo distinguido, de media 2^dbits saltos. Con N canguros eso son
+     * unas N*2^dbits operaciones que la tabla todavia no ve, y la colision no
+     * se detecta hasta que alguno llega a su siguiente distinguido. Con los
+     * 7 hilos x 2048 canguros de la app (N ~ 2^14) y el #61 (dbits 19):
+     * 2^14 * 2^19 = 2^33 operaciones "en vuelo", SIETE veces raiz(W). Se vio:
+     * el #60 costo 2,5 raices de W, y el #61 iba por 1,8 veces lo esperado
+     * sin encontrarla. El banco de pruebas medía 1,4 porque usa pocos canguros.
+     *
+     * Se limita para que N*2^dbits no pase de raiz(W)/16 con N = 2^14. N es
+     * fijo y no el de este aparato a proposito: en un cluster el maestro y
+     * los trabajadores tienen que usar el mismo dbits (la cabecera de cada
+     * bloque lo comprueba) aunque cada uno lance distintos canguros. Solo
+     * cambia algo por debajo de ~88 bits; los puzzles grandes (#135...) siguen
+     * con el tope de 28. */
+    { int lim=bits/2-4-14; if(dbits>lim) dbits=lim; }
+    if(dbits<6) dbits=6; if(dbits>28) dbits=28;
     /* Se esperan del orden de 2*raiz(W)/2^dbits distinguidos hasta dar con la
        clave. La tabla se dimensiona con holgura por encima de eso: si se llena,
        se dejan de guardar y la busqueda se degrada sin avisar. Antes salia
@@ -2397,7 +2416,13 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     if(tope_tabla_bits>24) tope_tabla_bits=24;
     int tbits=bits/2+4-dbits;
     if(tbits<14) tbits=14;
-    if(tbits>tope_tabla_bits) tbits=tope_tabla_bits;
+    if(tbits>tope_tabla_bits){
+        /* La tabla no da para tantos puntos: subir dbits hasta que quepan
+           (con margen de 8 veces lo esperado), antes que dejar que se llene. */
+        tbits=tope_tabla_bits;
+        int minimo=bits/2+3-tope_tabla_bits;
+        if(dbits<minimo) dbits=minimo>28?28:minimo;
+    }
 
     if(!kg_setup(&g_kg,pub,ini,fin,dbits,tbits)) return JNI_FALSE;
 
