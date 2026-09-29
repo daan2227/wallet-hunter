@@ -191,11 +191,11 @@ class DebugActivity : AppCompatActivity() {
             }
         }
 
-        statsCard.addView(statRow("Engine running", if (HunterEngine.isRunning()) "SÍ" else "NO",
+        statsCard.addView(statRow("Engine running", if (HunterEngine.isRunning()) "YES" else "NO",
             if (HunterEngine.isRunning()) ACCENT else MUTED))
-        statsCard.addView(statRow("CSV loaded", if (HunterEngine.isCsvLoaded()) "SÍ" else "NO",
+        statsCard.addView(statRow("CSV loaded", if (HunterEngine.isCsvLoaded()) "YES" else "NO",
             if (HunterEngine.isCsvLoaded()) ACCENT else RED))
-        statsCard.addView(statRow("Speed", "${HunterEngine.getWps()} k/s", ACCENT))
+        statsCard.addView(statRow("Speed", "%.2f M keys/s".format(HunterEngine.getWps() / 1e6), ACCENT))
         statsCard.addView(statRow("Keys scanned", HunterEngine.getCount().toString()))
         statsCard.addView(statRow("Matches", HunterEngine.getFound().toString(), ACCENT))
         root.addView(statsCard)
@@ -320,33 +320,6 @@ class DebugActivity : AppCompatActivity() {
         }
         root.addView(filesCard)
 
-        // ── ENGINE LOG BUFFER ─────────────────────────────────────────────
-        val engLogCard = card()
-        engLogCard.addView(label("ENGINE LOG BUFFER"))
-        val tvEngLog = TextView(this).apply {
-            text = HunterEngine.popLog().ifEmpty { "No logs in the buffer" }
-            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
-            typeface = Typeface.MONOSPACE   // es un registro
-            background = GradientDrawable().apply {
-                setColor(AppTheme.BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-            }
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(200))
-            setTextIsSelectable(true)
-            isVerticalScrollBarEnabled = true
-            movementMethod = android.text.method.ScrollingMovementMethod.getInstance()
-        }
-        engLogCard.addView(tvEngLog)
-        engLogCard.addView(actionBtn("Refresh log", ACCENT2) {
-            val logs = buildString {
-                repeat(20) {
-                    val l = HunterEngine.popLog()
-                    if (l.isNotEmpty()) appendLine(l)
-                }
-            }
-            tvEngLog.text = logs.ifEmpty { "Empty buffer" }
-        })
-        root.addView(engLogCard)
 
         scroll.addView(root)
         setContentView(scroll)
@@ -379,7 +352,8 @@ class DebugActivity : AppCompatActivity() {
         val rt = Runtime.getRuntime()
         val usedMb = (rt.totalMemory() - rt.freeMemory()) / 1048576
         val maxMb = rt.maxMemory() / 1048576
-        val prefs = getSharedPreferences("hunt_prefs", MODE_PRIVATE)
+        // "hunt_prefs" no lo escribía nadie: salía siempre false/OFF/BIP39.
+        val prefs = getSharedPreferences("hunter", MODE_PRIVATE)
         sb.appendLine("=== SYSTEM ===")
         sb.appendLine("RAM: ${usedMb}MB used / ${maxMb}MB max")
         sb.appendLine("Scan running: ${prefs.getBoolean("scan_was_running", false)}")

@@ -158,13 +158,6 @@ object WalletManager {
         val addr = last.third.split("|").firstOrNull() ?: ""
         return Pair(last.second, addr)
     }
-    fun clearWif(ctx: Context) {
-        ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-        try {
-            KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }.deleteEntry(WIF_KEY_ALIAS)
-        } catch (e: Exception) {}
-    }
-    fun hasWif(ctx: Context) = listWifs(ctx).isNotEmpty()
 
     // Watcher wallets: watch-only by address
     fun saveWatcher(ctx: Context, addr: String, label: String, origen: String? = null) {
@@ -312,10 +305,6 @@ object WalletManager {
     fun hasPin(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)
 
-    fun saveAddresses(ctx: Context, json: String) {
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(PREF_ADDRS, json).apply()
-    }
 
     fun loadAddresses(ctx: Context): String? =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ADDRS, null)
@@ -425,13 +414,7 @@ object WalletManager {
         } catch(e: Exception) { null }
     }
 
-    fun setActiveWallet(ctx: Context, id: String) {
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(PREF_ACTIVE_ID, id).apply()
-    }
 
-    fun getActiveWalletId(ctx: Context): String? =
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ACTIVE_ID, null)
 
     fun deleteWallet(ctx: Context, id: String) {
         borrarOrigen(ctx, id)

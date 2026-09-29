@@ -116,19 +116,7 @@ object RecoveryParser {
         }
     }
 
-    fun estimateTimeSeconds(missingCount: Int): Long {
-        val total = Math.pow(2048.0, missingCount.toDouble()).toLong()
-        return total / 50_000L
-    }
 
-    fun formatEstimatedTime(seconds: Long): String {
-        return when {
-            seconds < 60 -> "$seconds s"
-            seconds < 3600 -> "${seconds / 60} min"
-            seconds < 86400 -> "${seconds / 3600} hours"
-            else -> "${seconds / 86400} days"
-        }
-    }
 
     private fun isMissingToken(token: String): Boolean {
         return token in MISSING_TOKENS || token.all { it == '?' || it == '_' || it == '*' }

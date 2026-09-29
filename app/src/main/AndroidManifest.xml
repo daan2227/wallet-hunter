@@ -2,12 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
         <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -27,7 +25,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="Wallet Hunter"
         android:theme="@style/AppThemeDark"
-        android:requestLegacyExternalStorage="true">
+>
         <activity android:name=".WalletActivity"
             android:theme="@style/AppThemeWallet"
             android:screenOrientation="portrait" />
@@ -42,7 +40,7 @@
         <!-- exported="true" sin intent-filter: cualquier app instalada podía
              abrir MainActivity por nombre de componente y saltarse la pantalla
              de PIN de WelcomeActivity, que es el único sitio donde se pide.
-             Sólo la arrancan WelcomeActivity, el widget y la notificación del
+             Sólo la arrancan WelcomeActivity y la notificación del
              servicio, todos dentro de la app. -->
         <activity android:name=".MainActivity" android:exported="false"
             android:launchMode="singleTop"

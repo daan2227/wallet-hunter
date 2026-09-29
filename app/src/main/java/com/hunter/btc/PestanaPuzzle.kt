@@ -392,8 +392,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // clave está publicada, sirve Pollard's Kangaroo, que es O(raiz(n)):
     // el mismo rango baja a unas 2^35 operaciones.
     //
-    // Kangaroo no está implementado todavía. Esto dice si sería posible,
-    // que es lo que hay que saber ANTES de dedicarle el móvil a algo.
+    // Esto dice si Kangaroo es posible, que es lo que hay que saber ANTES de
+    // dedicarle el móvil a algo.
     tvPuzzleAtajo = TextView(this).apply {
         text = "Checking whether the public key is published…"
         textSize = AppTheme.SP_CAPTION

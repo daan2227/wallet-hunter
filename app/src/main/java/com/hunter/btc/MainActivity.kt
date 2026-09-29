@@ -140,12 +140,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal val handler = Handler(Looper.getMainLooper())
     internal var tvStatus: TextView? = null
     internal var tvCsvName: TextView? = null
-    internal var tvQuickCsv: TextView? = null
-    internal var tvQuickMatches: TextView? = null
     internal var tvWps: TextView? = null
     internal var tvKps: TextView? = null
-    internal var tvQuickThreads: TextView? = null
-    internal var tvQuickCpu: TextView? = null
     internal var tvCount: TextView? = null
     internal var chartView: SpeedChartView? = null
     internal var tvMediaPuzzle: TextView? = null
@@ -281,7 +277,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Puesto aquí sirve para saber si de verdad está haciendo algo.
         watchdogEnabled && watchdogRestarts > 0 ->
             "Watchdog ON — $watchdogRestarts restart(s) this session"
-        watchdogEnabled -> "Watchdog ON — restarts the scan if it stops"
+        watchdogEnabled -> "Watchdog ON — restarts the scan if it stops (app open)"
         else            -> "Watchdog OFF — will not restart the scan"
     }
 
@@ -717,12 +713,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             watchdogEnabled = prefs.getBoolean("watchdog", false)
 
             if (!prefs.getBoolean("hw_detected", false)) {
-                val profile = detectHardware()
-                applyHardwareProfile(profile)
+                // Primera vez: se aplica lo recomendado sin preguntar. Antes lo
+                // aplicaba y DESPUÉS preguntaba "¿Aplicar?", sobre algo ya hecho.
+                applyHardwareProfile(detectHardware())
                 prefs.edit().putBoolean("hw_detected", true).apply()
-                android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    showHardwareInfo()
-                }, 1000)
             }
             updateLabels()
         } catch (e: Exception) {
@@ -761,8 +755,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val c = (sbCpu?.progress ?: 70) + 10
         tvThreads?.text = "Threads: $t"
         tvCpu?.text = "CPU limit: $c%"
-        tvQuickThreads?.text = "$t"
-        tvQuickCpu?.text = "$c%"
         prefs.edit().putInt("threads", sbThreads?.progress ?: 3).putInt("cpu", sbCpu?.progress ?: 70).apply()
     }
 
@@ -870,26 +862,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     internal fun showHardwareInfo() {
         val profile = detectHardware()
-        val msg = """
-            🔧 Hardware detectado:
-            
-            Chip: ${profile.chipName}
-            Cores: ${profile.cores}
-            RAM libre: ${profile.ramMB} MB
-            Arch: ${profile.archInfo}
-            
-            Configuración recomendada:
-            • Threads: ${profile.recommendedThreads}
-            • CPU limit: ${profile.recommendedCpu}%
-            
-            Tamaño de lote: 2048 (medido: el mejor para Kangaroo y
-            en la zona plana del escáner)
-            Núcleos rápidos: ${nucleosRapidos().let {
-                if (it.isEmpty()) "not detected (not pinned)" else it.joinToString(",")
-            }}
-            
-            ¿Aplicar configuración óptima?
-        """.trimIndent()
+        val rapidos = nucleosRapidos().let {
+            if (it.isEmpty()) "not detected (threads not pinned)" else it.joinToString(",")
+        }
+        val msg = "Detected hardware:\n\n" +
+            "Chip: ${profile.chipName}\n" +
+            "Cores: ${profile.cores}\n" +
+            "Free RAM: ${profile.ramMB} MB\n" +
+            "Arch: ${profile.archInfo}\n\n" +
+            "Recommended:\n" +
+            "• Threads: ${profile.recommendedThreads}\n" +
+            "• CPU limit: ${profile.recommendedCpu}%\n" +
+            "• Batch size: 2048 (measured: best for Kangaroo, flat zone for the scanner)\n" +
+            "• Fast cores: $rapidos\n\n" +
+            "Apply these settings?"
 
         AlertDialog.Builder(this)
             .setTitle("Auto setup")
@@ -1282,7 +1268,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvTime?.text = formatElapsed(sessionStartTime)
                     val found = HunterEngine.getCount() - sessionStartCount
                     tvMatches?.text = "$found"
-                    tvQuickMatches?.text = "$found"
                     // Stats adicionales para Raw Key
                     if (wps > 0) {
                         // Mismo error que en el ETA: wps ya viene en claves/s, así
@@ -1514,8 +1499,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                         else
                             "No address list is loaded, so the " +
                             "engine would have nothing to compare against: it would scan at full " +
-                            "speed without being able to find anything.\n\nLoad the .bin with " +
-                            "LOAD CSV.")
+                            "speed without being able to find anything.\n\nLoad a list in " +
+                            "Scanner › Engine › Load.")
                     .setPositiveButton("Got it", null)
                     .show()
                 prefs.edit().putBoolean("scan_was_running", false).apply()
@@ -1545,7 +1530,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 activeToggleBtn = null
             } else {
                 if (!HunterEngine.isCsvLoaded() && !puzzleMode) {
-                    Toast.makeText(this, "Load a dataset first (Config tab)", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "Load an address list first (Scanner › Engine › Load)", Toast.LENGTH_SHORT).show()
                     return
                 }
                 sessionStartTime = System.currentTimeMillis()
@@ -1730,7 +1715,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvStatus?.text = dest.name
                     tvCsvName?.text = dest.name
                     tvCsvName?.setTextColor(AppTheme.ACCENT)
-                    tvQuickCsv?.text = dest.nameWithoutExtension.take(7)
                     // El recuento lo pone el refresco periódico con
                     // getCsvCount() en cuanto el motor termina de cargar
                     // (antes se calculaba como tamaño/20, que con el índice de
@@ -2864,7 +2848,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Scan interrupted")
                 .setMessage("The $mode scan was interrupted. Restart?")
-                .setPositiveButton("Reset") { _, _ ->
+                .setPositiveButton("Restart") { _, _ ->
                     if (prefs.getBoolean("scan_was_puzzle", false)) {
                         puzzleMode = true
                         HunterEngine.setMode(1)
