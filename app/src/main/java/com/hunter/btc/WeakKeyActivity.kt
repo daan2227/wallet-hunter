@@ -44,10 +44,20 @@ class WeakKeyActivity : Activity() {
     private var pubActual = ""
 
     private lateinit var etClaves: EditText
-    private lateinit var etBits: EditText
+    private lateinit var sbBits: SeekBar
+    private lateinit var tvBits: TextView
+    private lateinit var tvEstim: TextView
     private lateinit var etPresu: EditText
     private lateinit var tvEstado: TextView
     private lateinit var btn: Button
+
+    companion object {
+        private const val BITS_MIN = 20
+        private const val BITS_MAX = 80
+        private const val BITS_SUG = 50
+        // Ritmo típico medido en estos móviles, para la estimación de tiempo.
+        private const val OPS_POR_SEG = 7_000_000.0
+    }
 
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
@@ -93,20 +103,73 @@ class WeakKeyActivity : Activity() {
         }
         root.addView(etClaves)
 
-        val fila = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(14), 0, dp(6))
+        // Selector de rango: un deslizador de 20 a 80 bits con su valor a la
+        // vista y una estimación viva de coste y tiempo por clave. 50 bits es
+        // la sugerencia: cubre las claves mal generadas más habituales (rand()
+        // de 32 bits, IDs de 40-48 bits) y a ~7 M op/s tarda segundos.
+        val cabRango = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(16), 0, dp(2))
         }
-        fun campo(rot: String, et: EditText, ultimo: Boolean) = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+        cabRango.addView(rotulo("Search range").apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { if (!ultimo) marginEnd = dp(10) }
-            addView(rotulo(rot)); addView(et)
+        })
+        tvBits = TextView(this).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.bold(context)
         }
-        etBits = entrada("64")
+        cabRango.addView(tvBits)
+        root.addView(cabRango)
+
+        sbBits = SeekBar(this).apply {
+            max = BITS_MAX - BITS_MIN
+            progress = BITS_SUG - BITS_MIN
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { estimar() }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        root.addView(sbBits)
+        // Extremos del deslizador, para dar referencia sin tener que arrastrar.
+        val ejes = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(2), 0, 0)
+        }
+        ejes.addView(TextView(this).apply {
+            text = "$BITS_MIN"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        ejes.addView(TextView(this).apply {
+            text = "suggested $BITS_SUG"; textSize = AppTheme.SP_MICRO
+            setTextColor(AppTheme.TXT_MUTED); gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        ejes.addView(TextView(this).apply {
+            text = "$BITS_MAX"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            gravity = Gravity.END
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        root.addView(ejes)
+
+        tvEstim = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
+            setPadding(0, dp(10), 0, 0)
+        }
+        root.addView(tvEstim)
+
+        root.addView(rotulo("Budget × √ (2–4; higher = surer, slower)").apply {
+            setPadding(0, dp(16), 0, dp(6))
+        })
         etPresu = entrada("2")
-        fila.addView(campo("Range bits (≤ 80)", etBits, false))
-        fila.addView(campo("Budget × √", etPresu, true))
-        root.addView(fila)
+        root.addView(etPresu)
+        etPresu.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) { estimar() }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
 
         tvEstado = TextView(this).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
@@ -126,6 +189,29 @@ class WeakKeyActivity : Activity() {
         root.addView(btn)
 
         setContentView(scroll)
+        estimar()
+    }
+
+    /** El valor del deslizador y la estimación de coste/tiempo por clave. */
+    private fun estimar() {
+        val b = sbBits.progress + BITS_MIN
+        tvBits.text = "$b bits"
+        val c = etPresu.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 2.0
+        // Kangaroo cuesta del orden de c·√(2^b) operaciones.
+        val ops = c * Math.pow(2.0, b / 2.0)
+        val seg = ops / OPS_POR_SEG
+        fun log2(x: Double) = "2^%.1f".format(Math.log(x) / Math.log(2.0))
+        fun tiempo(s: Double) = when {
+            s < 1     -> "under a second"
+            s < 60    -> "~${s.toInt()} s"
+            s < 3600  -> "~${(s / 60).toInt()} min"
+            s < 86400 -> "~${(s / 3600).toInt()} h"
+            s < 3.15e7 -> "~${(s / 86400).toInt()} days"
+            s < 3.15e10 -> "~${(s / 3.15e7).toInt()} years"
+            else -> "millennia"
+        }
+        tvEstim.text = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~7 M op/s.\n" +
+            "Only finds keys whose private value is below 2^$b."
     }
 
     private fun rotulo(t: String) = TextView(this).apply {
@@ -153,7 +239,7 @@ class WeakKeyActivity : Activity() {
     }
 
     private fun arrancar() {
-        bits = etBits.text.toString().trim().toIntOrNull() ?: 0
+        bits = sbBits.progress + BITS_MIN
         presupuesto = etPresu.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
         if (presupuesto <= 0) { aviso("Budget: a number above 0 (2 is a good start)."); return }
