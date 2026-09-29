@@ -95,6 +95,11 @@ private fun MainActivity.kgAutoPaso() {
     if (!prefs.getBoolean(KgAuto.ON, false)) return
     val clave = try { HunterEngine.kangarooResult() } catch (t: Throwable) { "" }
     if (clave.length == 64) { kgAutoParar(null); return }       // refrescarKangaroo la guarda y avisa
+    /* refrescarKangaroo guarda la clave y PARA el motor, y después de parar
+       kangarooResult() ya no la devuelve. Si esta vigilancia llegaba justo
+       entonces, veía "no corre y no hay clave" y tapaba el "KEY FOUND" con
+       "Auto-advance stopped.". kgClavePintada dice que sí la hubo. */
+    if (kgClavePintada.isNotEmpty()) { kgAutoParar(null); return }
     if (!HunterEngine.kangarooRunning()) { kgAutoParar("Auto-advance stopped."); return }
     val a = BigInteger(prefs.getString(KgAuto.INI, "0") ?: "0", 16)
     val b = BigInteger(prefs.getString(KgAuto.FIN, "0") ?: "0", 16)

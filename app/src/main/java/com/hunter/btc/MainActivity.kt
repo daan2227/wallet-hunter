@@ -2123,6 +2123,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             .putString("kg_custom_fin", hasta.trim()).apply()
 
         fun lanzar(pub: String) {
+            // La cabecera seguía hablando del último puzzle de la lista.
+            tvPuzzleStatus?.text = "Custom Kangaroo — 0x$ini → 0x$fin"
             if (auto != null) { kgAutoIniciar(pub, a, b, auto.first, auto.second); return }
             kgAutoParar(null)                   // una búsqueda normal cancela el auto-avance
             if (HunterEngine.kangarooRunning()) try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
