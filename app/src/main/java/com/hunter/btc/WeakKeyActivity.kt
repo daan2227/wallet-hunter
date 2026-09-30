@@ -49,6 +49,14 @@ class WeakKeyActivity : Activity() {
     // en pantalla solo va un resumen. La auditoría une lo escrito + esto.
     private var cargadas: List<String> = emptyList()
 
+    // Claves públicas (02/03/04) y direcciones (base58/bech32) sueltas en un
+    // texto. Compilado una vez y reutilizado línea a línea al leer ficheros.
+    private val reClaves = Regex(
+        "0[23][0-9a-fA-F]{64}" +               // clave pública comprimida
+        "|04[0-9a-fA-F]{128}" +                // clave pública sin comprimir
+        "|bc1[a-z0-9]{6,87}" +                 // bech32 (siempre minúsculas)
+        "|[13][a-km-zA-HJ-NP-Z1-9]{25,34}")    // base58 (P2PKH/P2SH)
+
     private lateinit var etClaves: EditText
     private lateinit var tvCargadas: TextView
     private lateinit var sbBits: SeekBar
@@ -421,14 +429,33 @@ class WeakKeyActivity : Activity() {
         if (req != REQ_CSV || res != RESULT_OK) return
         val uri = data?.data ?: return
         aviso("Reading file…")
-        // En otro hilo: un CSV puede ser grande y leerlo en el de la pantalla la cuelga.
+        // En otro hilo, y por LÍNEAS: leer un CSV grande entero a un solo String
+        // (readText) puede reventar con OutOfMemory —un Error, no una Exception,
+        // así que el catch de antes lo dejaba pasar y la pantalla se quedaba en
+        // "Reading file…" para siempre—. Streaming: una línea a la vez, el regex
+        // sobre cada una, progreso en vivo y captura de cualquier fallo.
         Thread {
-            val texto = try {
-                contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-            } catch (e: Exception) { null }
-            val encontrados = if (texto != null) extraerClaves(texto) else emptyList()
+            val vistos = LinkedHashSet<String>()
+            var error: String? = null
+            var lineas = 0L
+            try {
+                val ins = contentResolver.openInputStream(uri)
+                if (ins == null) error = "Could not open the file."
+                else ins.bufferedReader().use { br ->
+                    br.forEachLine { linea ->
+                        for (m in reClaves.findAll(linea)) vistos.add(m.value)
+                        if (++lineas % 20000L == 0L) {
+                            val n = vistos.size
+                            runOnUiThread { aviso("Reading file… ${"%,d".format(n)} found") }
+                        }
+                    }
+                }
+            } catch (e: Throwable) {
+                error = "Could not read the file (${e.javaClass.simpleName})."
+            }
+            val encontrados = vistos.toList()
             runOnUiThread {
-                if (texto == null) { aviso("Could not read the file."); return@runOnUiThread }
+                if (error != null) { aviso(error!!); return@runOnUiThread }
                 if (encontrados.isEmpty()) {
                     aviso("No public keys or addresses found in the file."); return@runOnUiThread
                 }
@@ -445,7 +472,7 @@ class WeakKeyActivity : Activity() {
                     // como estaba; la auditoría unirá ambas.
                     cargadas = LinkedHashSet<String>(cargadas).apply { addAll(encontrados) }.toList()
                     mostrarResumenCargadas()
-                    aviso("Large list: ${encontrados.size} loaded, kept out of the editor to stay responsive.")
+                    aviso("Large list: ${"%,d".format(encontrados.size)} loaded, kept out of the editor to stay responsive.")
                 }
             }
         }.start()
@@ -459,19 +486,6 @@ class WeakKeyActivity : Activity() {
         estimar()   // el ETA del lote incluye ahora esta lista
     }
 
-    /** Saca de un texto (CSV/TXT, cualquier columna) toda clave pública o
-     *  dirección Bitcoin que aparezca, en orden y sin repetir. Tolera cabeceras,
-     *  comillas y columnas extra: no parsea el CSV, busca los patrones sueltos. */
-    private fun extraerClaves(texto: String): List<String> {
-        val re = Regex(
-            "0[23][0-9a-fA-F]{64}" +               // clave pública comprimida
-            "|04[0-9a-fA-F]{128}" +                // clave pública sin comprimir
-            "|bc1[a-z0-9]{6,87}" +                 // bech32 (siempre minúsculas)
-            "|[13][a-km-zA-HJ-NP-Z1-9]{25,34}")    // base58 (P2PKH/P2SH)
-        val vistos = LinkedHashSet<String>()
-        for (m in re.findAll(texto)) vistos.add(m.value)
-        return vistos.toList()
-    }
 
     private fun arrancar() {
         bits = sbBits.progress + BITS_MIN
