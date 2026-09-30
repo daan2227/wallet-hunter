@@ -24,7 +24,11 @@ object Avisos {
     // hacemos a mano. Un canal ya creado no cambia sus ajustes, así que hace
     // falta un id nuevo para que esto se aplique en instalaciones antiguas.
     const val CANAL = "hunter_match2"
-    private const val ID = 4242
+    // El resumen del grupo lleva un id fijo; cada hallazgo, uno único, para que
+    // se ACUMULEN en vez de pisarse. Antes todos usaban 4242 y solo se veía uno.
+    private const val ID_RESUMEN = 4242
+    private const val GRUPO = "hunter_finds"
+    private val contador = java.util.concurrent.atomic.AtomicInteger(0)
 
     private const val PREFS = "avisos"
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -95,6 +99,7 @@ object Avisos {
         if (!notifOn(ctx)) return false        // el usuario desactivó el aviso visual
         if (!permitidos(ctx)) return false
         return try {
+            val total = contador.incrementAndGet()   // cuántos van en esta sesión
             val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java),
                 PendingIntent.FLAG_IMMUTABLE)
             val publica = NotificationCompat.Builder(ctx, CANAL)
@@ -102,6 +107,8 @@ object Avisos {
                 .setContentTitle("Wallet Hunter")
                 .setContentText("Match found — unlock to see it")
                 .build()
+            // Cada hallazgo, su propia notificación (id único) dentro del grupo,
+            // para que se acumulen en vez de pisarse.
             val n = NotificationCompat.Builder(ctx, CANAL)
                 .setSmallIcon(R.drawable.ic_notif)
                 .setContentTitle(titulo)
@@ -111,10 +118,28 @@ object Avisos {
                 .setCategory(NotificationCompat.CATEGORY_ALARM)
                 .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
                 .setPublicVersion(publica)
+                .setGroup(GRUPO)
                 .setAutoCancel(true)
                 .setContentIntent(pi)
                 .build()
-            ctx.getSystemService(NotificationManager::class.java).notify(ID, n)
+            // Resumen del grupo: uno solo, con el total; así el sistema colapsa
+            // los individuales bajo "N found" cuando hay varios.
+            val resumen = NotificationCompat.Builder(ctx, CANAL)
+                .setSmallIcon(R.drawable.ic_notif)
+                .setContentTitle("Wallet Hunter")
+                .setContentText("$total key(s) found — in the finds vault")
+                .setStyle(NotificationCompat.BigTextStyle()
+                    .setSummaryText("$total found").bigText("$total key(s) found — in the finds vault"))
+                .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                .setPublicVersion(publica)
+                .setGroup(GRUPO)
+                .setGroupSummary(true)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build()
+            val nm = ctx.getSystemService(NotificationManager::class.java)
+            nm.notify(ID_RESUMEN + total, n)   // individual, id único
+            nm.notify(ID_RESUMEN, resumen)     // resumen, id fijo
             true
         } catch (e: Exception) { false }
     }
