@@ -494,7 +494,9 @@ class WeakPage(private val act: MainActivity) {
         if (directa != null) { lanzar(directa); return }
         if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
             aviso("Key ${indice + 1}/${claves.size}: looking up its public key…")
-            tvSpeed.text = "0"; tvSpeedU.text = "op/s"   // no se machaca nada durante el lookup
+            // No se pone la velocidad a 0 durante el lookup: se deja la última
+            // medida de Kangaroo a la vista (si no, con listas de direcciones el
+            // número grande se quedaba en 0 casi siempre).
             Thread {
                 val r = try { PubKeyFinder.buscar(act, bruta, false) }
                         catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
