@@ -39,6 +39,8 @@ class WeakKeyActivity : Activity() {
     private var indice = 0
     private var bits = 64
     private var presupuesto = 2.0
+    private var topeSeg = 0.0        // tope de segundos por clave (0 = sin tope)
+    private var claveInicioMs = 0L   // arranque de la clave en curso, para el tope
     private var corriendo = false
     private var hallados = 0
 
@@ -53,6 +55,7 @@ class WeakKeyActivity : Activity() {
     private lateinit var tvBits: TextView
     private lateinit var tvEstim: TextView
     private lateinit var etPresu: EditText
+    private lateinit var etTope: EditText
     private lateinit var tvEstado: TextView
     private lateinit var btn: Button
 
@@ -212,11 +215,24 @@ class WeakKeyActivity : Activity() {
         })
         etPresu = entrada("2")
         root.addView(etPresu)
-        etPresu.addTextChangedListener(object : android.text.TextWatcher {
+
+        // Tope de tiempo por clave: en lotes grandes, una clave bien generada
+        // quema el presupuesto entero (minutos a rango alto); con un tope se
+        // corta antes y se pasa a la siguiente. 0 = sin tope (como hasta ahora).
+        root.addView(rotulo("Max seconds per key (0 = no limit)").apply {
+            setPadding(0, dp(16), 0, dp(6))
+        })
+        etTope = entrada("0")
+        root.addView(etTope)
+
+        val alEscribir = object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { estimar() }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-        })
+        }
+        etPresu.addTextChangedListener(alEscribir)
+        etTope.addTextChangedListener(alEscribir)
+        etClaves.addTextChangedListener(alEscribir)   // el ETA del lote sigue al nº de claves
 
         tvEstado = TextView(this).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
@@ -343,8 +359,27 @@ class WeakKeyActivity : Activity() {
             s < 3.15e10 -> "~${(s / 3.15e7).toInt()} years"
             else -> "millennia"
         }
-        tvEstim.text = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~7 M op/s.\n" +
+        // Tope por clave: recorta el tiempo de una clave que quemaría el
+        // presupuesto entero, así que el ETA del lote lo usa como techo.
+        val tope = etTope.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
+        val porClave = if (tope > 0) Math.min(seg, tope) else seg
+        var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~7 M op/s.\n" +
             "Only finds keys whose private value is below 2^$b."
+        // ETA del lote: nº de claves (editor + lista grande) × tiempo por clave.
+        val n = contarClaves()
+        if (n > 1) {
+            txt += "\nBatch: ${"%,d".format(n)} keys" +
+                (if (tope > 0) " · ${tope.toInt()} s cap each" else "") +
+                " ≈ ${tiempo(porClave * n)} total."
+        }
+        tvEstim.text = txt
+    }
+
+    /** Cuántas claves entrarían en la cola: lo escrito más la lista grande. */
+    private fun contarClaves(): Int {
+        val lineas = etClaves.text.toString().split('\n')
+            .map { it.trim() }.filter { it.isNotEmpty() }
+        return LinkedHashSet<String>(lineas).apply { addAll(cargadas) }.size
     }
 
     private fun rotulo(t: String) = TextView(this).apply {
@@ -418,9 +453,10 @@ class WeakKeyActivity : Activity() {
 
     /** Pinta (u oculta) el resumen de la lista grande cargada de fichero. */
     private fun mostrarResumenCargadas() {
-        if (cargadas.isEmpty()) { tvCargadas.visibility = android.view.View.GONE; return }
+        if (cargadas.isEmpty()) { tvCargadas.visibility = android.view.View.GONE; estimar(); return }
         tvCargadas.text = "file · ${"%,d".format(cargadas.size)} keys loaded, kept out of the editor · tap to clear"
         tvCargadas.visibility = android.view.View.VISIBLE
+        estimar()   // el ETA del lote incluye ahora esta lista
     }
 
     /** Saca de un texto (CSV/TXT, cualquier columna) toda clave pública o
@@ -440,6 +476,7 @@ class WeakKeyActivity : Activity() {
     private fun arrancar() {
         bits = sbBits.progress + BITS_MIN
         presupuesto = etPresu.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
+        topeSeg = etTope.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
         if (presupuesto <= 0) { aviso("Budget: a number above 0 (2 is a good start)."); return }
         // Cada línea: una clave pública directa, o una dirección que se resolverá
@@ -509,6 +546,7 @@ class WeakKeyActivity : Activity() {
         } catch (e: Throwable) { false }
         if (!ok) { indice++; siguiente(); return }   // rango imposible para esa clave
         presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
+        claveInicioMs = System.currentTimeMillis()
         programarTick()
     }
 
@@ -531,7 +569,11 @@ class WeakKeyActivity : Activity() {
             refresco(0.0, 100)
             indice++; siguiente(); return
         }
-        if (!HunterEngine.kangarooRunning() || ops >= presuActual) {
+        // Se acabó el presupuesto, el motor paró, o se alcanzó el tope de
+        // tiempo por clave (si hay uno): a la siguiente sin encontrarla.
+        val segClave = (System.currentTimeMillis() - claveInicioMs) / 1000.0
+        val topeAlcanzado = topeSeg > 0 && segClave >= topeSeg
+        if (!HunterEngine.kangarooRunning() || ops >= presuActual || topeAlcanzado) {
             opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
             indice++; siguiente(); return
@@ -539,6 +581,7 @@ class WeakKeyActivity : Activity() {
         val pct = if (presuActual > 0) (100 * ops / presuActual).toInt() else 0
         refresco(ops, pct)
         aviso("Key ${indice + 1}/${claves.size} · $bits-bit range · $pct % of its budget" +
+              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s" else "") +
               (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
         programarTick()
     }
