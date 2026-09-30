@@ -712,12 +712,24 @@ object WeakController {
         val fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
         val ini = BigInteger.ONE
         try { if (HunterEngine.kangarooRunning()) HunterEngine.kangarooStop() } catch (e: Throwable) {}
-        val ruta = java.io.File(ctx.filesDir, "weakkey.dat").absolutePath
-        java.io.File(ruta).delete()
         val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        // Canguros por hilo según el rango: cada canguro cuesta una
+        // multiplicación EC de arranque (~75 µs). En rangos pequeños la búsqueda
+        // es cortísima, así que 1024 (≈8192 canguros) hacía que el arranque
+        // costara más que la búsqueda entera. Se escala al rango (el motor
+        // clampa a ≥16). Menos canguros también mejoran la detección de colisión.
+        val porHilo = when {
+            bits <= 36 -> 16
+            bits <= 44 -> 64
+            bits <= 52 -> 256
+            else       -> 1024
+        }
+        // Ruta vacía: el motor NO carga ni guarda la tabla en disco. El weak no
+        // reanuda clave a clave (cada una es independiente y rápida), así que
+        // ese I/O por clave era pura sobrecarga.
         val ok = try {
             HunterEngine.kangarooStart(pub, ini.toString(16), fin.toString(16),
-                nucleos, 1024, ruta, HunterEngine.topeTablaBits(ctx))
+                nucleos, porHilo, "", HunterEngine.topeTablaBits(ctx))
         } catch (e: Throwable) { false }
         if (!ok) { indice++; siguiente(); return }
         presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
