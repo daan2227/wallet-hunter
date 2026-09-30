@@ -2469,26 +2469,32 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // Esto se repite en cada refresco mientras el motor siga teniendo
             // el resultado. Las cifras finales se leen la PRIMERA vez, antes de
             // parar: después el contador puede volver a cero.
+            // La respuesta conocida del puzzle (si la hay), para comparar.
+            val esperada = puzzles.firstOrNull { it.num == puzzleSeleccionado }
+                                  ?.clave?.lowercase()?.padStart(64, '0')
+            // El motor "canta" una clave que NO coincide con la conocida. Eso no
+            // es un hallazgo: no se guarda en el baúl ni se notifica —solo el
+            // aviso rojo en pantalla—. Pasaba con rangos degenerados como el #1,
+            // que llenaban el baúl de basura y spameaban notificaciones.
+            val esErronea = !esperada.isNullOrEmpty() && esperada != clave.lowercase()
             val primera = kgClavePintada != clave
             val opsFin = if (primera) (try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }) else 0L
             val segFin = if (primera && kgInicio > 0)
                 kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000 else 0L
-            // Guardar ANTES de tocar la interfaz: si la app muere aquí, la
-            // clave no puede perderse.
-            guardarHallazgoKangaroo(clave, if (puzzleSeleccionado <= 0) "CUSTOM kangaroo" else "PUZZLE kangaroo")
+            // Guardar ANTES de tocar la interfaz: si la app muere aquí, la clave
+            // no puede perderse. Una clave errónea no se guarda.
+            if (!esErronea)
+                guardarHallazgoKangaroo(clave, if (puzzleSeleccionado <= 0) "CUSTOM kangaroo" else "PUZZLE kangaroo")
             HunterEngine.kangarooStop()
             if (!primera) return
             kgClavePintada = clave
-            // Aviso, también con la app en segundo plano: Kangaroo no pasaba
-            // por el contador del servicio y un puzzle resuelto no sonaba.
-            run {
-                val esp = puzzles.firstOrNull { it.num == puzzleSeleccionado }
-                                 ?.clave?.lowercase()?.padStart(64, '0')
+            // Aviso solo si es un hallazgo de verdad; el error se ve en rojo en
+            // pantalla, sin notificación ni spam.
+            if (!esErronea) {
                 val titulo = when {
                     puzzleSeleccionado <= 0 -> "Custom Kangaroo: key found!"
-                    esp.isNullOrEmpty() -> "Puzzle #$puzzleSeleccionado solved!"
-                    esp == clave.lowercase() -> "Test passed — puzzle #$puzzleSeleccionado"
-                    else -> "Puzzle #$puzzleSeleccionado: wrong key reported"
+                    esperada.isNullOrEmpty() -> "Puzzle #$puzzleSeleccionado solved!"
+                    else -> "Test passed — puzzle #$puzzleSeleccionado"
                 }
                 sendMatchNotification(titulo, "The key is saved in the finds vault.")
             }
@@ -2531,8 +2537,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
              * Y si no coincidiera, hay que decirlo alto: significaría que el
              * motor canta una clave que no es, que es mucho peor que no
              * encontrar ninguna. */
-            val esperada = puzzles.firstOrNull { it.num == puzzleSeleccionado }
-                                  ?.clave?.lowercase()?.padStart(64, '0')
             tv.text = when {
                 esperada.isNullOrEmpty() ->
                     "KEY FOUND\n$clave\nSaved to the finds vault." + coste
