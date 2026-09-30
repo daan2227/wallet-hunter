@@ -42,7 +42,13 @@ class WeakKeyActivity : Activity() {
     private var corriendo = false
     private var hallados = 0
 
+    // Modo lista grande: si un fichero trae muchas entradas no se vuelcan al
+    // editor (se arrastra a partir de unos miles de líneas); se guardan aquí y
+    // en pantalla solo va un resumen. La auditoría une lo escrito + esto.
+    private var cargadas: List<String> = emptyList()
+
     private lateinit var etClaves: EditText
+    private lateinit var tvCargadas: TextView
     private lateinit var sbBits: SeekBar
     private lateinit var tvBits: TextView
     private lateinit var tvEstim: TextView
@@ -77,6 +83,8 @@ class WeakKeyActivity : Activity() {
         // Ritmo típico medido en estos móviles, para la estimación de tiempo.
         private const val OPS_POR_SEG = 7_000_000.0
         private const val REQ_CSV = 4021
+        // Por encima de esto, un fichero va a la lista grande en vez de al editor.
+        private const val UMBRAL_LISTA = 2000
     }
 
     override fun onCreate(s: Bundle?) {
@@ -130,6 +138,17 @@ class WeakKeyActivity : Activity() {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
             setOnClickListener { elegirCsv() }
         })
+        // Resumen de la lista grande (oculto hasta que un fichero la active).
+        tvCargadas = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.medium(context); visibility = android.view.View.GONE
+            setPadding(dp(2), dp(10), dp(2), 0)
+            setOnClickListener {
+                cargadas = emptyList(); mostrarResumenCargadas()
+                aviso("Large list cleared.")
+            }
+        }
+        root.addView(tvCargadas)
 
         // Selector de rango: un deslizador de 20 a 80 bits con su valor a la
         // vista y una estimación viva de coste y tiempo por clave. 50 bits es
@@ -378,14 +397,30 @@ class WeakKeyActivity : Activity() {
                 if (encontrados.isEmpty()) {
                     aviso("No public keys or addresses found in the file."); return@runOnUiThread
                 }
-                // Fundir con lo que ya haya escrito, en orden y sin duplicar.
                 val previas = etClaves.text.toString().split('\n')
                     .map { it.trim() }.filter { it.isNotEmpty() }
-                val todas = LinkedHashSet<String>(previas).apply { addAll(encontrados) }
-                etClaves.setText(todas.joinToString("\n"))
-                aviso("Loaded ${encontrados.size} from file · ${todas.size} in the list.")
+                val visibles = LinkedHashSet<String>(previas).apply { addAll(encontrados) }
+                if (visibles.size <= UMBRAL_LISTA) {
+                    // Caben: al editor, en orden y sin duplicar.
+                    etClaves.setText(visibles.joinToString("\n"))
+                    aviso("Loaded ${encontrados.size} from file · ${visibles.size} in the list.")
+                } else {
+                    // Demasiadas para el editor: a la lista grande (fundida, sin
+                    // duplicar) y en pantalla solo el resumen. El editor se deja
+                    // como estaba; la auditoría unirá ambas.
+                    cargadas = LinkedHashSet<String>(cargadas).apply { addAll(encontrados) }.toList()
+                    mostrarResumenCargadas()
+                    aviso("Large list: ${encontrados.size} loaded, kept out of the editor to stay responsive.")
+                }
             }
         }.start()
+    }
+
+    /** Pinta (u oculta) el resumen de la lista grande cargada de fichero. */
+    private fun mostrarResumenCargadas() {
+        if (cargadas.isEmpty()) { tvCargadas.visibility = android.view.View.GONE; return }
+        tvCargadas.text = "file · ${"%,d".format(cargadas.size)} keys loaded, kept out of the editor · tap to clear"
+        tvCargadas.visibility = android.view.View.VISIBLE
     }
 
     /** Saca de un texto (CSV/TXT, cualquier columna) toda clave pública o
@@ -408,11 +443,13 @@ class WeakKeyActivity : Activity() {
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
         if (presupuesto <= 0) { aviso("Budget: a number above 0 (2 is a good start)."); return }
         // Cada línea: una clave pública directa, o una dirección que se resolverá
-        // en la red al llegarle el turno.
+        // en la red al llegarle el turno. Se une lo escrito con la lista grande
+        // cargada de fichero, sin duplicar y en orden.
         val lineas = etClaves.text.toString().split('\n')
             .map { it.trim() }.filter { it.isNotEmpty() }
-        if (lineas.isEmpty()) { aviso("Paste at least one public key or address."); return }
-        claves = lineas
+        val cola = LinkedHashSet<String>(lineas).apply { addAll(cargadas) }
+        if (cola.isEmpty()) { aviso("Paste a key/address, or load a file."); return }
+        claves = cola.toList()
         indice = 0; hallados = 0; corriendo = true
         inicioMs = System.currentTimeMillis()
         opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
