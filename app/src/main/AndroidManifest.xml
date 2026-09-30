@@ -73,6 +73,10 @@
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
 
+        <activity android:name=".HelpActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait" />
+
         <activity android:name=".QrScanActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />

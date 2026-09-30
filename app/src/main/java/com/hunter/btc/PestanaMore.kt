@@ -161,6 +161,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         AppTheme.toggle(this)
         recreate()
     }
+    fila(app, R.drawable.ic_help, "Help", "How the weak-key audit works", null) {
+        startActivity(Intent(this, HelpActivity::class.java))
+    }
     fila(app, R.drawable.ic_debug, "Debug", "Engine log and files", null) {
         startActivity(Intent(this, DebugActivity::class.java))
     }
