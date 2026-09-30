@@ -41,6 +41,9 @@ class WeakKeyActivity : Activity() {
     private var presupuesto = 2.0
     private var topeSeg = 0.0        // tope de segundos por clave (0 = sin tope)
     private var claveInicioMs = 0L   // arranque de la clave en curso, para el tope
+    // Ritmo real del aparato (op/s), medido durante la auditoría y recordado
+    // entre sesiones. Arranca en el conservador y se afina en cuanto corre.
+    private var ritmoDisp = OPS_POR_SEG
     private var corriendo = false
     private var hallados = 0
 
@@ -103,6 +106,9 @@ class WeakKeyActivity : Activity() {
         super.onCreate(s)
         AppTheme.init(this)
         AppLock.init(this)
+        ritmoDisp = try {
+            getSharedPreferences("weakkey", MODE_PRIVATE).getFloat("ritmo", OPS_POR_SEG.toFloat()).toDouble()
+        } catch (e: Throwable) { OPS_POR_SEG }
 
         val scroll = ScrollView(this)
         val root = LinearLayout(this).apply {
@@ -356,7 +362,7 @@ class WeakKeyActivity : Activity() {
         val c = etPresu.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 2.0
         // Kangaroo cuesta del orden de c·√(2^b) operaciones.
         val ops = c * Math.pow(2.0, b / 2.0)
-        val seg = ops / OPS_POR_SEG
+        val seg = ops / ritmoDisp
         fun log2(x: Double) = "2^%.1f".format(Math.log(x) / Math.log(2.0))
         fun tiempo(s: Double) = when {
             s < 1     -> "under a second"
@@ -371,7 +377,8 @@ class WeakKeyActivity : Activity() {
         // presupuesto entero, así que el ETA del lote lo usa como techo.
         val tope = etTope.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
         val porClave = if (tope > 0) Math.min(seg, tope) else seg
-        var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~7 M op/s.\n" +
+        val (rv, ru) = escala(ritmoDisp)
+        var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~$rv $ru/s.\n" +
             "Only finds keys whose private value is below 2^$b."
         // ETA del lote: nº de claves (editor + lista grande) × tiempo por clave.
         val n = contarClaves()
@@ -517,6 +524,13 @@ class WeakKeyActivity : Activity() {
         h.removeCallbacksAndMessages(this)
         h.removeCallbacksAndMessages(tickToken)
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+        // Guardar el ritmo medido para la próxima vez y refrescar la estimación
+        // (ya vuelve a verse la línea) con la velocidad real de este aparato.
+        try {
+            getSharedPreferences("weakkey", MODE_PRIVATE).edit()
+                .putFloat("ritmo", ritmoDisp.toFloat()).apply()
+        } catch (e: Throwable) {}
+        estimar()
         btn.text = "Start audit"
         aviso(motivo + (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
     }
@@ -611,6 +625,10 @@ class WeakKeyActivity : Activity() {
             val (sv, su) = escala(vel)
             tvSpeed.text = sv; tvSpeedU.text = "$su/s"
             if (vel > pico) { pico = vel; val (pv, pu) = escala(pico); tvPeak.text = "Peak $pv $pu/s" }
+            // Afinar el ritmo del aparato con la velocidad de crucero (solo
+            // mientras se está machacando una clave, opsClave>0; en el intervalo
+            // en que una aparece el salto de ops falsearía la media). EMA suave.
+            if (opsClave > 0 && vel > 1e5) ritmoDisp = ritmoDisp * 0.8 + vel * 0.2
             // Una muestra cada 5 s: la búsqueda dura y lo que importa es la
             // tendencia, no el segundo a segundo.
             if (ahora - ultChartMs > 5000) { ultChartMs = ahora; chart.addPoint((vel / 1e6).toFloat()) }
