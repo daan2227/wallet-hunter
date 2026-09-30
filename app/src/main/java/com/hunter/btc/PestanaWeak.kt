@@ -45,6 +45,15 @@ class WeakPage(private val act: MainActivity) {
 
     private var cargadas: List<String> = emptyList()
 
+    // Prefetch de claves públicas: varios hilos resuelven las direcciones de la
+    // cola por adelantado mientras Kangaroo cracea la actual, así el consumidor
+    // no espera a la red una por una. resueltas[i] = clave comprimida, "" = esa
+    // línea no da clave; ausencia = todavía resolviéndose.
+    private val resueltas = java.util.concurrent.ConcurrentHashMap<Int, String>()
+    private val prefetchIdx = java.util.concurrent.atomic.AtomicInteger(0)
+    // Cambia en cada arranque: los hilos de una tanda vieja no escriben en la nueva.
+    private val generacion = java.util.concurrent.atomic.AtomicInteger(0)
+
     private val reClaves = Regex(
         "0[23][0-9a-fA-F]{64}" +
         "|04[0-9a-fA-F]{128}" +
@@ -86,6 +95,9 @@ class WeakPage(private val act: MainActivity) {
         private const val BITS_SUG = 50
         private const val OPS_POR_SEG = 7_000_000.0
         private const val UMBRAL_LISTA = 2000
+        // Cuántas direcciones se resuelven en la red a la vez. Moderado para no
+        // toparse con el límite de ritmo del explorador.
+        private const val NUCLEOS_RED = 5
     }
 
     fun construir(): ScrollView {
@@ -462,7 +474,36 @@ class WeakPage(private val act: MainActivity) {
         tvProg.text = "—"; tvKeys.text = "0/${claves.size} · 0"
         statsCard.visibility = android.view.View.VISIBLE
         btn.text = "Stop"
+        arrancarPrefetch()
         siguiente()
+    }
+
+    /** Lanza [NUCLEOS_RED] hilos que resuelven la cola por adelantado: cada uno
+     *  toma el siguiente índice libre, lo resuelve (clave directa o lookup de
+     *  red) y deja el resultado en [resueltas]. El consumidor solo los recoge. */
+    private fun arrancarPrefetch() {
+        resueltas.clear()
+        prefetchIdx.set(0)
+        val gen = generacion.incrementAndGet()
+        val total = claves.size
+        val cola = claves
+        repeat(NUCLEOS_RED) {
+            Thread {
+                while (corriendo && generacion.get() == gen) {
+                    val i = prefetchIdx.getAndIncrement()
+                    if (i >= total) break
+                    val bruta = cola[i].removePrefix("0x")
+                    val pub = comprimida(bruta) ?: (
+                        if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
+                            val r = try { PubKeyFinder.buscar(act, bruta, false) }
+                                    catch (e: Throwable) { PubKeyFinder.Resultado.SinRed }
+                            (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex?.let { comprimida(it) } ?: ""
+                        } else ""
+                    )
+                    if (generacion.get() == gen) resueltas[i] = pub
+                }
+            }.apply { isDaemon = true; start() }
+        }
     }
 
     private fun parar(motivo: String) {
@@ -489,26 +530,23 @@ class WeakPage(private val act: MainActivity) {
         // última clave que corrió Kangaroo mientras el estado sí avanzaba.
         tvKeys.text = "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
         tvTime.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
-        val bruta = claves[indice].removePrefix("0x")
-        val directa = comprimida(bruta)
-        if (directa != null) { lanzar(directa); return }
-        if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
-            aviso("Key ${indice + 1}/${claves.size}: looking up its public key…")
-            // No se pone la velocidad a 0 durante el lookup: se deja la última
-            // medida de Kangaroo a la vista (si no, con listas de direcciones el
-            // número grande se quedaba en 0 casi siempre).
-            Thread {
-                val r = try { PubKeyFinder.buscar(act, bruta, false) }
-                        catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
-                act.runOnUiThread {
-                    if (!corriendo) return@runOnUiThread
-                    val pub = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex?.let { comprimida(it) }
-                    if (pub != null) lanzar(pub) else { indice++; siguiente() }
-                }
-            }.start()
+        recoger()
+    }
+
+    /** Recoge la clave pública que la prefetch ya resolvió para este índice; si
+     *  aún se está resolviendo en la red, reintenta en un momento (sin bloquear
+     *  la pantalla). No se pone la velocidad a 0: se deja la última medida de
+     *  Kangaroo a la vista. "" = esa línea no da clave. */
+    private fun recoger() {
+        if (!corriendo) return
+        val pub = resueltas[indice]
+        if (pub == null) {   // todavía resolviéndose en la red
+            aviso("Key ${indice + 1}/${claves.size}: looking up its public key…" +
+                  (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
+            h.postDelayed({ recoger() }, 80)
             return
         }
-        indice++; siguiente()
+        if (pub.isNotEmpty()) lanzar(pub) else { indice++; siguiente() }
     }
 
     private fun lanzar(pub: String) {
