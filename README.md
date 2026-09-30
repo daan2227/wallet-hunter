@@ -7,6 +7,27 @@ Pollard's Kangaroo over secp256k1.
 The APK is built by GitHub Actions (`.github/workflows/build.yml`) on every push
 to `main` and to `claude/**` branches.
 
+## Performance
+
+Everything heavy runs in native code (secp256k1 field math in ARM64 asm, NEON
+`hash160x4`, an unrolled RIPEMD-160), spread across cores with a **Threads** and
+**CPU limit** control on each screen.
+
+- **Kangaroo** (weak-key audit, and puzzles once the public key is published)
+  costs about `c·√(2^bits)` operations and measures ~1.5–1.7·√W on device.
+  Measured speeds: **~7 M op/s on an A34**, **~18–20 M op/s on an A56**. The
+  weak-key ETA measures the device's real speed while it runs and remembers it
+  between sessions, so the estimate matches the phone instead of a fixed rate.
+- **PBKDF2-HMAC-SHA512** (the bulk of turning a BIP39 phrase into addresses) is a
+  custom implementation with five loop modes — software, ARMv8.2 SHA-512
+  instructions, those interleaved ×2 and ×4, and an OpenSSL block path — and
+  auto-calibrates to the fastest per device: about **1.3× faster on the A34** and
+  **2.5× on the A56** versus the generic path.
+- **Scanner** Direct-key mode is roughly **1,400× faster** than BIP39, since it
+  skips PBKDF2 and seed derivation entirely.
+- Address lookups use a memory-mapped 9-byte index over a sorted dataset with a
+  blocked Bloom filter, so a candidate is rejected without touching disk.
+
 ## Weak-key audit — how it works
 
 Kangaroo needs the **public key** *and* a **range** where the private key lives.
