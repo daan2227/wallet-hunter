@@ -66,6 +66,9 @@ class WalletActivity : FragmentActivity() {
     private var isWifMode = false
     private var currentWalletId = ""
     private var currentWalletName = ""
+    /** Último saldo consultado, en sats. -1 = aún no se sabe. Lo usa el aviso
+     *  de borrado para no dejar tirar una cartera con dinero dentro. */
+    private var ultimoSaldoSat = -1L
     /**
      * Red de pruebas.
      *
@@ -710,6 +713,7 @@ class WalletActivity : FragmentActivity() {
                 if (js != null) price = JSONObject(js).optDouble("USD", 0.0)
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
+            ultimoSaldoSat = if (huboFallo) -1L else tot
             runOnUiThread {
                 val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
                 val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} USD" else "BTC"
@@ -2647,7 +2651,20 @@ class WalletActivity : FragmentActivity() {
                     }
                     "Backup vault" -> showBackupVault()
                     "Restore from file" -> showRestoreDialog()
-                    "Delete wallet" -> AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage("Make sure you have a copy of the key: this cannot be undone.")
+                    "Delete wallet" -> {
+                        val nombre = currentWalletName.ifEmpty { "this wallet" }
+                        val aviso = buildString {
+                            append("Delete \u201c$nombre\u201d?\n\n")
+                            when {
+                                ultimoSaldoSat > 0 -> append("It still holds " +
+                                    "%.8f BTC. Move the funds out first — after deleting there is no way to spend them.\n\n"
+                                        .format(ultimoSaldoSat / 1e8))
+                                ultimoSaldoSat == 0L -> append("Its balance is 0. ")
+                                else -> append("Its balance has not been checked. If it might hold funds, move them out first. ")
+                            }
+                            append("Make sure you have a copy of the key: this cannot be undone.")
+                        }
+                        AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage(aviso)
                             .setPositiveButton("Delete") { _, _ ->
                                 when {
                                     isWifMode && wifAddr.isNotEmpty() -> {
@@ -2665,6 +2682,7 @@ class WalletActivity : FragmentActivity() {
                                 finish()
                             }
                             .setNegativeButton("Cancel", null).show()
+                    }
                 }
             }.show()
     }
