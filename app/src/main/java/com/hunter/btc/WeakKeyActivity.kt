@@ -76,6 +76,7 @@ class WeakKeyActivity : Activity() {
         private const val BITS_SUG = 50
         // Ritmo típico medido en estos móviles, para la estimación de tiempo.
         private const val OPS_POR_SEG = 7_000_000.0
+        private const val REQ_CSV = 4021
     }
 
     override fun onCreate(s: Bundle?) {
@@ -121,6 +122,14 @@ class WeakKeyActivity : Activity() {
                 ViewGroup.LayoutParams.WRAP_CONTENT)
         }
         root.addView(etClaves)
+
+        // Además de pegar, se puede cargar un CSV/TXT: se sacan de él todas las
+        // claves públicas y direcciones que aparezcan, en cualquier columna,
+        // saltando cabeceras y comillas, y se añaden a la lista sin duplicar.
+        root.addView(Ui.ghost(this, "Load CSV / text file", AppTheme.TXT_PRI).apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
+            setOnClickListener { elegirCsv() }
+        })
 
         // Selector de rango: un deslizador de 20 a 80 bits con su valor a la
         // vista y una estimación viva de coste y tiempo por clave. 50 bits es
@@ -341,6 +350,56 @@ class WeakKeyActivity : Activity() {
             (if (BigInteger(k.substring(66), 16).testBit(0)) "03" else "02") +
             k.substring(2, 66).lowercase()
         else -> null
+    }
+
+    /** Abre el selector de archivos del sistema para elegir un CSV o TXT. */
+    private fun elegirCsv() {
+        val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(android.content.Intent.CATEGORY_OPENABLE)
+            type = "*/*"   // muchos CSV llegan como text/comma-separated o application/octet-stream
+        }
+        try { startActivityForResult(i, REQ_CSV) }
+        catch (e: Exception) { aviso("No file picker available on this device.") }
+    }
+
+    override fun onActivityResult(req: Int, res: Int, data: android.content.Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req != REQ_CSV || res != RESULT_OK) return
+        val uri = data?.data ?: return
+        aviso("Reading file…")
+        // En otro hilo: un CSV puede ser grande y leerlo en el de la pantalla la cuelga.
+        Thread {
+            val texto = try {
+                contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+            } catch (e: Exception) { null }
+            val encontrados = if (texto != null) extraerClaves(texto) else emptyList()
+            runOnUiThread {
+                if (texto == null) { aviso("Could not read the file."); return@runOnUiThread }
+                if (encontrados.isEmpty()) {
+                    aviso("No public keys or addresses found in the file."); return@runOnUiThread
+                }
+                // Fundir con lo que ya haya escrito, en orden y sin duplicar.
+                val previas = etClaves.text.toString().split('\n')
+                    .map { it.trim() }.filter { it.isNotEmpty() }
+                val todas = LinkedHashSet<String>(previas).apply { addAll(encontrados) }
+                etClaves.setText(todas.joinToString("\n"))
+                aviso("Loaded ${encontrados.size} from file · ${todas.size} in the list.")
+            }
+        }.start()
+    }
+
+    /** Saca de un texto (CSV/TXT, cualquier columna) toda clave pública o
+     *  dirección Bitcoin que aparezca, en orden y sin repetir. Tolera cabeceras,
+     *  comillas y columnas extra: no parsea el CSV, busca los patrones sueltos. */
+    private fun extraerClaves(texto: String): List<String> {
+        val re = Regex(
+            "0[23][0-9a-fA-F]{64}" +               // clave pública comprimida
+            "|04[0-9a-fA-F]{128}" +                // clave pública sin comprimir
+            "|bc1[a-z0-9]{6,87}" +                 // bech32 (siempre minúsculas)
+            "|[13][a-km-zA-HJ-NP-Z1-9]{25,34}")    // base58 (P2PKH/P2SH)
+        val vistos = LinkedHashSet<String>()
+        for (m in re.findAll(texto)) vistos.add(m.value)
+        return vistos.toList()
     }
 
     private fun arrancar() {
