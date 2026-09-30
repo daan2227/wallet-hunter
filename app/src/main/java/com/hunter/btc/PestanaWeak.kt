@@ -79,6 +79,9 @@ object WeakController {
     private var streamUri: Uri? = null
     private var streamTotal = 0   // 0 = desconocido (no se cuenta un fichero enorme)
     private val colaStream = java.util.concurrent.LinkedBlockingQueue<String>(1024)
+    // El productor está vivo: si muere (fin de fichero o error) y la cola se
+    // vacía, el consumidor da por terminado en vez de sondear null para siempre.
+    private val productorVivo = java.util.concurrent.atomic.AtomicBoolean(false)
 
     private val reClaves = Regex(
         "0[23][0-9a-fA-F]{64}" +
@@ -596,10 +599,13 @@ object WeakController {
     private fun arrancarProductorStream() {
         colaStream.clear()
         val gen = generacion.incrementAndGet()
+        productorVivo.set(true)
         val ctx = appCtx; val uri = streamUri
         Thread {
             try {
-                ctx?.contentResolver?.openInputStream(uri!!)?.bufferedReader()?.use { br ->
+                // Buffer de 1 MB: menos viajes al proveedor de archivos (SAF) que
+                // el de 8 KB por defecto, que en ficheros de GB puede atascarse.
+                ctx?.contentResolver?.openInputStream(uri!!)?.reader()?.buffered(1 shl 20)?.use { br ->
                     var linea = br.readLine()
                     while (linea != null && corriendo && generacion.get() == gen) {
                         for (m in reClaves.findAll(linea)) {
@@ -619,9 +625,11 @@ object WeakController {
                     }
                 }
             } catch (e: Throwable) {}
+            productorVivo.set(false)
             // Solo si sigue corriendo (fin normal): así el consumidor sigue
             // vaciando la cola y put no se bloquea. En un Stop no se pone FIN.
-            try { if (corriendo && generacion.get() == gen) colaStream.put(FIN) } catch (e: Throwable) {}
+            // (Si no llega, el consumidor termina igual al ver productorVivo=false.)
+            try { if (corriendo && generacion.get() == gen) colaStream.offer(FIN) } catch (e: Throwable) {}
         }.apply { isDaemon = true; start() }
     }
 
@@ -682,22 +690,36 @@ object WeakController {
      *  de miles de saltos seguidos reventaría la pila). "" = sin clave. */
     private fun recoger() {
         if (!corriendo) return
+        // Se procesan como mucho unos cuantos saltos por llamada y luego se cede
+        // el hilo de pantalla (h.post): si no, con un fichero lleno de líneas que
+        // no dan clave el bucle no soltaba nunca el hilo y la app se congelaba.
+        var procesados = 0
         while (true) {
-            if (!streamMode && indice >= claves.size) {   // fin de la lista (tras varios saltos)
+            if (!streamMode && indice >= claves.size) {   // fin de la lista
                 parar("Done: ${claves.size} key(s) checked."); return
             }
             val pub: String? = if (streamMode) colaStream.poll() else resueltas[indice]
-            if (pub == null) {   // aún no está lista: reintenta luego
+            if (pub == null) {
+                // En streaming, si el productor ya terminó y la cola está vacía,
+                // hemos acabado; si no, es que va por detrás: reintentar.
+                if (streamMode && !productorVivo.get() && colaStream.isEmpty()) {
+                    parar("Done: ${"%,d".format(indice)} key(s) checked."); return
+                }
                 val msg = if (streamMode) "Streaming from disk… ${"%,d".format(indice)} checked"
                           else "Key ${indice + 1}/${claves.size}: looking up its public key…"
                 aviso(msg + (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
+                tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                 h.postDelayed({ recoger() }, if (streamMode) 40 else 80)
                 return
             }
             if (streamMode && pub == FIN) { parar("Done: ${"%,d".format(indice)} key(s) checked."); return }
-            if (pub.isEmpty()) {   // esta línea no da clave: saltar y seguir el bucle
+            if (pub.isEmpty()) {   // esta línea no da clave: saltar
                 indice++
-                if (streamMode && indice % 2000 == 0) tvKeys?.text = "${"%,d".format(indice)} · $hallados"
+                if (++procesados >= 512) {   // ceder el hilo y continuar
+                    tvKeys?.text = "${"%,d".format(indice)} · $hallados"
+                    tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
+                    h.post { recoger() }; return
+                }
                 continue
             }
             val tot = if (streamMode) streamTotal else claves.size
