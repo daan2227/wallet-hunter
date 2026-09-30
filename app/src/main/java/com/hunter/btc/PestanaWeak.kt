@@ -474,6 +474,7 @@ class WeakPage(private val act: MainActivity) {
         tvProg.text = "—"; tvKeys.text = "0/${claves.size} · 0"
         statsCard.visibility = android.view.View.VISIBLE
         btn.text = "Stop"
+        WeakService.iniciar(act)   // primer plano + WakeLock: no se para con la pantalla apagada
         arrancarPrefetch()
         siguiente()
     }
@@ -509,6 +510,7 @@ class WeakPage(private val act: MainActivity) {
     private fun parar(motivo: String) {
         corriendo = false
         h.removeCallbacksAndMessages(null)
+        WeakService.parar(act)   // suelta el primer plano y el WakeLock
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
         try {
             act.getSharedPreferences("weakkey", android.content.Context.MODE_PRIVATE).edit()
@@ -641,5 +643,6 @@ class WeakPage(private val act: MainActivity) {
     fun detener() {
         if (corriendo) { corriendo = false; try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }
         h.removeCallbacksAndMessages(null)
+        WeakService.parar(act)
     }
 }

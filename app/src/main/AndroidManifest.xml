@@ -51,6 +51,10 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <service android:name=".WeakService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- exported="true" es obligatorio aquí: quien manda estos avisos es el
              propio Android, o sea un proceso de fuera. El receptor no decide
              nada por su cuenta —sólo levanta el servicio, que mira en
