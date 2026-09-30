@@ -36,11 +36,40 @@ class HelpActivity : Activity() {
             typeface = AppTheme.title(context)
         })
         root.addView(TextView(this).apply {
-            text = "Weak-key audit — how it works"
+            text = "What each part of the app does"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(4), 0, dp(4))
         })
+
+        seccion(root, "Scanner")
+        parrafo(root, "Brute-forces keys against a loaded address dataset. Two modes: " +
+            "BIP39 (generates seed phrases and derives their addresses) or Direct key " +
+            "(raw private keys, ~1,400× faster). It derives each candidate's addresses and " +
+            "checks them against the dataset index (Dataset → Load a .bin file). Threads and " +
+            "CPU limit cap how hard it pushes; Derivation paths picks which BIP paths to try. " +
+            "Shows keys/s and an ETA.")
+
+        seccion(root, "Puzzle")
+        parrafo(root, "Solves the Bitcoin puzzle addresses, whose private key sits in a known " +
+            "range. Pick a puzzle #N and it scans that range (progress in blocks, jump to a " +
+            "random point, reset). If the puzzle's public key is published it switches to " +
+            "Kangaroo over the From–To range, finding it in √ of the range. It also checks " +
+            "the balance and whether the public key is published.")
+
+        seccion(root, "Wallet")
+        parrafo(root, "Your wallets: create or import them, see balances (checked when the " +
+            "screen opens, or with Check balances), and keep the key safe under Safekeeping. " +
+            "Deleting a wallet warns you with its name and last known balance. Finds you " +
+            "decide to keep move here.")
+
+        seccion(root, "Recovery")
+        parrafo(root, "Recovers a seed with missing words. Type the words you remember and mark " +
+            "each gap with ?; it tries the combinations for the blanks until a derived address " +
+            "matches, then lets you add it to your wallets. It shows how many combinations " +
+            "there are before you start, so you know if it's feasible.")
+
+        seccion(root, "Weak-key audit")
 
         // La idea de fondo, en la tarjeta de aviso (naranja) porque es el
         // matiz que más se malinterpreta: esto NO rompe claves normales.
@@ -92,6 +121,15 @@ class HelpActivity : Activity() {
         tarjeta(root, AppTheme.ACCENT,
             "In short: paste or load keys → set range, budget and cap → Kangaroo runs key by " +
             "key over a small range → whatever it finds (badly generated keys) goes to the vault.")
+
+        seccion(root, "Finds vault")
+        parrafo(root, "Every hit — from the scanner, a puzzle or the weak-key audit — lands " +
+            "here with its WIF and address. From a find you can check its balance, move it to " +
+            "your wallets, or delete it. It's encrypted on the device.")
+
+        seccion(root, "More")
+        parrafo(root, "Appearance switches light/dark. Debug shows the engine log and files. " +
+            "And this Help screen. Recovery and the weak-key audit are opened from here too.")
 
         setContentView(scroll)
     }
