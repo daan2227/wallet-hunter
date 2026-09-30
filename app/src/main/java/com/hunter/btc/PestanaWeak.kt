@@ -95,6 +95,7 @@ object WeakController {
     private var tvKeys: TextView? = null
 
     private val tickToken = Any()
+    private var intervaloTick = 1000L   // ms entre sondeos; se adapta por clave
     private var inicioMs = 0L
     private var opsPrevias = 0.0
     private var presuActual = 0.0
@@ -417,9 +418,12 @@ object WeakController {
             "Only finds keys whose private value is below 2^$b."
         val n = contarClaves()
         if (n > 1) {
+            // Cada clave tiene un suelo de ~50 ms de sondeo aunque el crackeo sea
+            // instantáneo; en lotes grandes de rango bajo eso es lo que manda.
+            val porClaveReal = Math.max(porClave, 0.05)
             txt += "\nBatch: ${"%,d".format(n)} keys" +
                 (if (tope > 0) " · ${tope.toInt()} s cap each" else "") +
-                " ≈ ${tiempo(porClave * n)} total."
+                " ≈ ${tiempo(porClaveReal * n)} total."
         }
         tvEstim?.text = txt
     }
@@ -605,12 +609,17 @@ object WeakController {
         if (!ok) { indice++; siguiente(); return }
         presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
         claveInicioMs = System.currentTimeMillis()
+        // Ritmo de sondeo adaptado a lo que se espera que tarde la clave: en
+        // rangos bajos termina en milisegundos, así que un tick fijo de 1 s
+        // hacía que cada clave costara 1 s (y el lote, horas). ~4 sondeos por
+        // clave, entre 50 ms y 1 s.
+        intervaloTick = ((presuActual / ritmoDisp) * 250.0).toLong().coerceIn(50L, 1000L)
         programarTick()
     }
 
     private fun programarTick() {
         h.removeCallbacksAndMessages(tickToken)
-        h.postAtTime({ tick() }, tickToken, android.os.SystemClock.uptimeMillis() + 1000)
+        h.postAtTime({ tick() }, tickToken, android.os.SystemClock.uptimeMillis() + intervaloTick)
     }
 
     private fun tick() {
@@ -628,6 +637,10 @@ object WeakController {
         val segClave = (System.currentTimeMillis() - claveInicioMs) / 1000.0
         val topeAlcanzado = topeSeg > 0 && segClave >= topeSeg
         if (!HunterEngine.kangarooRunning() || ops >= presuActual || topeAlcanzado) {
+            // Refresca ANTES de pasar: en claves rápidas (rango bajo) el
+            // presupuesto se agota en el primer sondeo y sin esto la tarjeta se
+            // quedaba en 0 aunque el motor sí estuviera trabajando.
+            refresco(ops, 100)
             opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
             indice++; siguiente(); return
