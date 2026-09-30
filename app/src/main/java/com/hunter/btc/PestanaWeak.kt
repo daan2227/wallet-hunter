@@ -1,7 +1,6 @@
 package com.hunter.btc
 
-import android.app.Activity
-import android.os.Bundle
+import android.net.Uri
 import android.os.Handler
 import android.os.Looper
 import android.view.Gravity
@@ -10,55 +9,47 @@ import android.widget.*
 import java.math.BigInteger
 
 /**
- * Auditoría de claves débiles.
+ * Auditoría de claves débiles, como PÁGINA de MainActivity (no una Activity
+ * aparte). Antes abría su propia pantalla y la barra desaparecía; ahora es una
+ * pestaña más: se construye con [buildWeakTab] y su estado vive en [WeakPage],
+ * guardado en MainActivity.weakPage.
  *
- * Kangaroo necesita la clave pública Y un rango donde esté la privada. En los
- * puzzles el rango se conoce; en una dirección cualquiera, no — la clave puede
- * estar en cualquier punto de [1, 2^256] y encontrarla es justo lo que protege
- * Bitcoin.
- *
- * Lo único que sí se puede auditar es lo MAL generado: carteras cuya clave
- * privada salió de poca entropía y cayó en un rango pequeño (un `rand()` de 32
- * bits, un timestamp, una frase corta pasada por SHA-256 truncada…). Para esas,
- * si la clave pública está publicada —la dirección ha gastado— Kangaroo sobre
- * [1, 2^bits) las encuentra en √ del rango.
- *
- * Esto toma una lista de claves públicas y prueba cada una en ese rango con un
- * presupuesto fijo; si no aparece dentro del presupuesto, pasa a la siguiente.
- * Una clave bien generada (256 bits de entropía) NO va a caer aquí: el rango es
- * una porción ínfima del espacio. Sirve para revisar TUS propias direcciones, o
- * las de un sistema que audites, no para barrer las de terceros.
+ * Kangaroo necesita la clave pública Y un rango donde esté la privada. En una
+ * dirección cualquiera la clave puede estar en cualquier punto de [1, 2^256] y
+ * encontrarla es justo lo que protege Bitcoin. Lo único auditable es lo MAL
+ * generado: carteras cuya privada salió de poca entropía y cayó en un rango
+ * pequeño. Si su clave pública está publicada (la dirección gastó), Kangaroo
+ * sobre [1, 2^bits) la encuentra en √ del rango. Una clave bien generada no cae
+ * aquí. Sirve para revisar TUS propias direcciones, no las de terceros.
  */
-class WeakKeyActivity : Activity() {
+internal fun MainActivity.buildWeakTab(): ScrollView {
+    val page = WeakPage(this)
+    weakPage = page
+    return page.construir()
+}
+
+class WeakPage(private val act: MainActivity) {
 
     private val h = Handler(Looper.getMainLooper())
-    private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
+    private fun dp(v: Int) = (v * act.resources.displayMetrics.density).toInt()
 
-    // La cola de trabajo y el estado de la ejecución en curso.
     private var claves: List<String> = emptyList()
     private var indice = 0
     private var bits = 64
     private var presupuesto = 2.0
-    private var topeSeg = 0.0        // tope de segundos por clave (0 = sin tope)
-    private var claveInicioMs = 0L   // arranque de la clave en curso, para el tope
-    // Ritmo real del aparato (op/s), medido durante la auditoría y recordado
-    // entre sesiones. Arranca en el conservador y se afina en cuanto corre.
+    private var topeSeg = 0.0
+    private var claveInicioMs = 0L
     private var ritmoDisp = OPS_POR_SEG
     private var corriendo = false
     private var hallados = 0
 
-    // Modo lista grande: si un fichero trae muchas entradas no se vuelcan al
-    // editor (se arrastra a partir de unos miles de líneas); se guardan aquí y
-    // en pantalla solo va un resumen. La auditoría une lo escrito + esto.
     private var cargadas: List<String> = emptyList()
 
-    // Claves públicas (02/03/04) y direcciones (base58/bech32) sueltas en un
-    // texto. Compilado una vez y reutilizado línea a línea al leer ficheros.
     private val reClaves = Regex(
-        "0[23][0-9a-fA-F]{64}" +               // clave pública comprimida
-        "|04[0-9a-fA-F]{128}" +                // clave pública sin comprimir
-        "|bc1[a-z0-9]{6,87}" +                 // bech32 (siempre minúsculas)
-        "|[13][a-km-zA-HJ-NP-Z1-9]{25,34}")    // base58 (P2PKH/P2SH)
+        "0[23][0-9a-fA-F]{64}" +
+        "|04[0-9a-fA-F]{128}" +
+        "|bc1[a-z0-9]{6,87}" +
+        "|[13][a-km-zA-HJ-NP-Z1-9]{25,34}")
 
     private lateinit var etClaves: EditText
     private lateinit var tvCargadas: TextView
@@ -70,7 +61,6 @@ class WeakKeyActivity : Activity() {
     private lateinit var tvEstado: TextView
     private lateinit var btn: Button
 
-    // Tarjeta de rendimiento, como la del puzzle.
     private lateinit var statsCard: LinearLayout
     private lateinit var tvSpeed: TextView
     private lateinit var tvSpeedU: TextView
@@ -83,8 +73,8 @@ class WeakKeyActivity : Activity() {
 
     private val tickToken = Any()
     private var inicioMs = 0L
-    private var opsPrevias = 0.0     // operaciones de las claves ya terminadas
-    private var presuActual = 0.0    // presupuesto de la clave en curso
+    private var opsPrevias = 0.0
+    private var presuActual = 0.0
     private var ultTotalOps = 0.0
     private var ultMs = 0L
     private var pico = 0.0
@@ -94,36 +84,30 @@ class WeakKeyActivity : Activity() {
         private const val BITS_MIN = 20
         private const val BITS_MAX = 80
         private const val BITS_SUG = 50
-        // Ritmo típico medido en estos móviles, para la estimación de tiempo.
         private const val OPS_POR_SEG = 7_000_000.0
-        private const val REQ_CSV = 4021
-        // Por encima de esto, un fichero va a la lista grande en vez de al editor.
         private const val UMBRAL_LISTA = 2000
     }
 
-    override fun onCreate(s: Bundle?) {
-        setTheme(AppTheme.estilo(this))
-        super.onCreate(s)
-        AppTheme.init(this)
-        AppLock.init(this)
+    fun construir(): ScrollView {
         ritmoDisp = try {
-            getSharedPreferences("weakkey", MODE_PRIVATE).getFloat("ritmo", OPS_POR_SEG.toFloat()).toDouble()
+            act.getSharedPreferences("weakkey", android.content.Context.MODE_PRIVATE)
+                .getFloat("ritmo", OPS_POR_SEG.toFloat()).toDouble()
         } catch (e: Throwable) { OPS_POR_SEG }
 
-        val scroll = ScrollView(this)
-        val root = LinearLayout(this).apply {
+        val scroll = ScrollView(act)
+        val root = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(AppTheme.BG_DEEP)
             setPadding(dp(20), dp(24), dp(20), dp(24))
         }
         scroll.addView(root)
 
-        root.addView(TextView(this).apply {
+        root.addView(TextView(act).apply {
             text = "Weak-key audit"
             textSize = 24f; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
         })
-        root.addView(TextView(this).apply {
+        root.addView(TextView(act).apply {
             text = "Kangaroo over a small range for public keys that have spent. " +
                    "Finds only keys generated with too little entropy (a private key " +
                    "that landed in [1, 2^bits)). A properly generated key will never " +
@@ -134,7 +118,7 @@ class WeakKeyActivity : Activity() {
         })
 
         root.addView(rotulo("Public keys (02…/03…/04…) or spent addresses, one per line"))
-        etClaves = EditText(this).apply {
+        etClaves = EditText(act).apply {
             hint = "02abc…\n03def…\n1Address…"
             setHorizontallyScrolling(false); maxLines = 8; minLines = 4
             gravity = Gravity.TOP or Gravity.START
@@ -148,15 +132,11 @@ class WeakKeyActivity : Activity() {
         }
         root.addView(etClaves)
 
-        // Además de pegar, se puede cargar un CSV/TXT: se sacan de él todas las
-        // claves públicas y direcciones que aparezcan, en cualquier columna,
-        // saltando cabeceras y comillas, y se añaden a la lista sin duplicar.
-        root.addView(Ui.ghost(this, "Load CSV / text file", AppTheme.TXT_PRI).apply {
+        root.addView(Ui.ghost(act, "Load CSV / text file", AppTheme.TXT_PRI).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
             setOnClickListener { elegirCsv() }
         })
-        // Resumen de la lista grande (oculto hasta que un fichero la active).
-        tvCargadas = TextView(this).apply {
+        tvCargadas = TextView(act).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
             typeface = AppTheme.medium(context); visibility = android.view.View.GONE
             setPadding(dp(2), dp(10), dp(2), 0)
@@ -167,25 +147,21 @@ class WeakKeyActivity : Activity() {
         }
         root.addView(tvCargadas)
 
-        // Selector de rango: un deslizador de 20 a 80 bits con su valor a la
-        // vista y una estimación viva de coste y tiempo por clave. 50 bits es
-        // la sugerencia: cubre las claves mal generadas más habituales (rand()
-        // de 32 bits, IDs de 40-48 bits) y a ~7 M op/s tarda segundos.
-        val cabRango = LinearLayout(this).apply {
+        val cabRango = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(16), 0, dp(2))
         }
         cabRango.addView(rotulo("Search range").apply {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        tvBits = TextView(this).apply {
+        tvBits = TextView(act).apply {
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.bold(context)
         }
         cabRango.addView(tvBits)
         root.addView(cabRango)
 
-        sbBits = SeekBar(this).apply {
+        sbBits = SeekBar(act).apply {
             max = BITS_MAX - BITS_MIN
             progress = BITS_SUG - BITS_MIN
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -197,27 +173,26 @@ class WeakKeyActivity : Activity() {
             })
         }
         root.addView(sbBits)
-        // Extremos del deslizador, para dar referencia sin tener que arrastrar.
-        val ejes = LinearLayout(this).apply {
+        val ejes = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(2), 0, 0)
         }
-        ejes.addView(TextView(this).apply {
+        ejes.addView(TextView(act).apply {
             text = "$BITS_MIN"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        ejes.addView(TextView(this).apply {
+        ejes.addView(TextView(act).apply {
             text = "suggested $BITS_SUG"; textSize = AppTheme.SP_MICRO
             setTextColor(AppTheme.TXT_MUTED); gravity = Gravity.CENTER
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
-        ejes.addView(TextView(this).apply {
+        ejes.addView(TextView(act).apply {
             text = "$BITS_MAX"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
             gravity = Gravity.END
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(ejes)
 
-        tvEstim = TextView(this).apply {
+        tvEstim = TextView(act).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
             typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
             setPadding(0, dp(10), 0, 0)
@@ -230,9 +205,6 @@ class WeakKeyActivity : Activity() {
         etPresu = entrada("2")
         root.addView(etPresu)
 
-        // Tope de tiempo por clave: en lotes grandes, una clave bien generada
-        // quema el presupuesto entero (minutos a rango alto); con un tope se
-        // corta antes y se pasa a la siguiente. 0 = sin tope (como hasta ahora).
         root.addView(rotulo("Max seconds per key (0 = no limit)").apply {
             setPadding(0, dp(16), 0, dp(6))
         })
@@ -246,16 +218,16 @@ class WeakKeyActivity : Activity() {
         }
         etPresu.addTextChangedListener(alEscribir)
         etTope.addTextChangedListener(alEscribir)
-        etClaves.addTextChangedListener(alEscribir)   // el ETA del lote sigue al nº de claves
+        etClaves.addTextChangedListener(alEscribir)
 
-        tvEstado = TextView(this).apply {
+        tvEstado = TextView(act).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
             setPadding(0, dp(16), 0, dp(16))
         }
         root.addView(tvEstado)
 
-        btn = Button(this).apply {
+        btn = Button(act).apply {
             text = "Start audit"; textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.ON_ACCENT); typeface = AppTheme.bold(context)
             isAllCaps = false; stateListAnimator = null
@@ -265,8 +237,7 @@ class WeakKeyActivity : Activity() {
         }
         root.addView(btn)
 
-        // ── Tarjeta de rendimiento (oculta hasta arrancar) ────────────────
-        statsCard = LinearLayout(this).apply {
+        statsCard = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
             setPadding(dp(18), dp(18), dp(18), dp(18))
@@ -274,20 +245,20 @@ class WeakKeyActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
         }
-        statsCard.addView(TextView(this).apply {
+        statsCard.addView(TextView(act).apply {
             text = "Performance"; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
             setPadding(0, 0, 0, dp(12))
         })
-        val filaVel = LinearLayout(this).apply {
+        val filaVel = LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
         }
-        tvSpeed = TextView(this).apply {
+        tvSpeed = TextView(act).apply {
             text = "0"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context); letterSpacing = -0.04f
         }
         filaVel.addView(tvSpeed)
-        tvSpeedU = TextView(this).apply {
+        tvSpeedU = TextView(act).apply {
             text = "keys/s"; textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -295,41 +266,41 @@ class WeakKeyActivity : Activity() {
         }
         filaVel.addView(tvSpeedU)
         statsCard.addView(filaVel)
-        tvPeak = TextView(this).apply {
+        tvPeak = TextView(act).apply {
             text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(10), 0, dp(4))
         }
         statsCard.addView(tvPeak)
-        chart = SpeedChartView(this).apply {
+        chart = SpeedChartView(act).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110))
                 .apply { topMargin = dp(8) }
         }
         statsCard.addView(chart)
 
-        fun mini(label: String, tv: TextView) = LinearLayout(this).apply {
+        fun mini(label: String, tv: TextView) = LinearLayout(act).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
                 setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
             setPadding(dp(14), dp(14), dp(14), dp(14))
-            addView(TextView(this@WeakKeyActivity).apply {
+            addView(TextView(act).apply {
                 text = label; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
             })
             addView(tv)
         }
-        fun valor(ini: String) = TextView(this).apply {
+        fun valor(ini: String) = TextView(act).apply {
             text = ini; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context); letterSpacing = -0.02f
             setPadding(0, dp(6), 0, 0)
         }
         tvOps = valor("0"); tvTime = valor("00:00:00"); tvProg = valor("—"); tvKeys = valor("—")
-        val r1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL
+        val r1 = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) } }
-        val r2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL
+        val r2 = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
         r1.addView(mini("Operations", tvOps).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
@@ -339,11 +310,10 @@ class WeakKeyActivity : Activity() {
         statsCard.addView(r1); statsCard.addView(r2)
         root.addView(statsCard)
 
-        setContentView(scroll)
         estimar()
+        return scroll
     }
 
-    /** Cifra + unidad escaladas para una velocidad en operaciones/s. */
     private fun escala(v: Double): Pair<String, String> = when {
         v >= 1e9 -> "%.2f".format(v / 1e9) to "G op"
         v >= 1e6 -> "%.2f".format(v / 1e6) to "M op"
@@ -355,12 +325,10 @@ class WeakKeyActivity : Activity() {
         return "%02d:%02d:%02d".format(h1, m, s)
     }
 
-    /** El valor del deslizador y la estimación de coste/tiempo por clave. */
     private fun estimar() {
         val b = sbBits.progress + BITS_MIN
         tvBits.text = "$b bits"
         val c = etPresu.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 2.0
-        // Kangaroo cuesta del orden de c·√(2^b) operaciones.
         val ops = c * Math.pow(2.0, b / 2.0)
         val seg = ops / ritmoDisp
         fun log2(x: Double) = "2^%.1f".format(Math.log(x) / Math.log(2.0))
@@ -373,14 +341,11 @@ class WeakKeyActivity : Activity() {
             s < 3.15e10 -> "~${(s / 3.15e7).toInt()} years"
             else -> "millennia"
         }
-        // Tope por clave: recorta el tiempo de una clave que quemaría el
-        // presupuesto entero, así que el ETA del lote lo usa como techo.
         val tope = etTope.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
         val porClave = if (tope > 0) Math.min(seg, tope) else seg
         val (rv, ru) = escala(ritmoDisp)
         var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~$rv $ru/s.\n" +
             "Only finds keys whose private value is below 2^$b."
-        // ETA del lote: nº de claves (editor + lista grande) × tiempo por clave.
         val n = contarClaves()
         if (n > 1) {
             txt += "\nBatch: ${"%,d".format(n)} keys" +
@@ -390,18 +355,17 @@ class WeakKeyActivity : Activity() {
         tvEstim.text = txt
     }
 
-    /** Cuántas claves entrarían en la cola: lo escrito más la lista grande. */
     private fun contarClaves(): Int {
         val lineas = etClaves.text.toString().split('\n')
             .map { it.trim() }.filter { it.isNotEmpty() }
         return LinkedHashSet<String>(lineas).apply { addAll(cargadas) }.size
     }
 
-    private fun rotulo(t: String) = TextView(this).apply {
+    private fun rotulo(t: String) = TextView(act).apply {
         text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.medium(context); setPadding(0, 0, 0, dp(6))
     }
-    private fun entrada(hintTxt: String) = EditText(this).apply {
+    private fun entrada(hintTxt: String) = EditText(act).apply {
         hint = hintTxt; inputType = android.text.InputType.TYPE_CLASS_NUMBER or
             android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
@@ -412,7 +376,6 @@ class WeakKeyActivity : Activity() {
             ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
-    /** Clave pública comprimida (02/03) a partir de comprimida o sin comprimir. */
     private fun comprimida(k: String): String? = when {
         Regex("^0[23][0-9a-fA-F]{64}$").matches(k) -> k.lowercase()
         Regex("^04[0-9a-fA-F]{128}$").matches(k) ->
@@ -421,39 +384,31 @@ class WeakKeyActivity : Activity() {
         else -> null
     }
 
-    /** Abre el selector de archivos del sistema para elegir un CSV o TXT. */
     private fun elegirCsv() {
         val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(android.content.Intent.CATEGORY_OPENABLE)
-            type = "*/*"   // muchos CSV llegan como text/comma-separated o application/octet-stream
+            type = "*/*"
         }
-        try { startActivityForResult(i, REQ_CSV) }
+        try { act.startActivityForResult(i, act.REQ_WEAK_CSV) }
         catch (e: Exception) { aviso("No file picker available on this device.") }
     }
 
-    override fun onActivityResult(req: Int, res: Int, data: android.content.Intent?) {
-        super.onActivityResult(req, res, data)
-        if (req != REQ_CSV || res != RESULT_OK) return
-        val uri = data?.data ?: return
+    /** Lo llama MainActivity.onActivityResult cuando vuelve el selector. */
+    fun onCsvResult(uri: Uri) {
         aviso("Reading file…")
-        // En otro hilo, y por LÍNEAS: leer un CSV grande entero a un solo String
-        // (readText) puede reventar con OutOfMemory —un Error, no una Exception,
-        // así que el catch de antes lo dejaba pasar y la pantalla se quedaba en
-        // "Reading file…" para siempre—. Streaming: una línea a la vez, el regex
-        // sobre cada una, progreso en vivo y captura de cualquier fallo.
         Thread {
             val vistos = LinkedHashSet<String>()
             var error: String? = null
             var lineas = 0L
             try {
-                val ins = contentResolver.openInputStream(uri)
+                val ins = act.contentResolver.openInputStream(uri)
                 if (ins == null) error = "Could not open the file."
                 else ins.bufferedReader().use { br ->
                     br.forEachLine { linea ->
                         for (m in reClaves.findAll(linea)) vistos.add(m.value)
                         if (++lineas % 20000L == 0L) {
                             val n = vistos.size
-                            runOnUiThread { aviso("Reading file… ${"%,d".format(n)} found") }
+                            act.runOnUiThread { aviso("Reading file… ${"%,d".format(n)} found") }
                         }
                     }
                 }
@@ -461,7 +416,7 @@ class WeakKeyActivity : Activity() {
                 error = "Could not read the file (${e.javaClass.simpleName})."
             }
             val encontrados = vistos.toList()
-            runOnUiThread {
+            act.runOnUiThread {
                 if (error != null) { aviso(error!!); return@runOnUiThread }
                 if (encontrados.isEmpty()) {
                     aviso("No public keys or addresses found in the file."); return@runOnUiThread
@@ -470,13 +425,9 @@ class WeakKeyActivity : Activity() {
                     .map { it.trim() }.filter { it.isNotEmpty() }
                 val visibles = LinkedHashSet<String>(previas).apply { addAll(encontrados) }
                 if (visibles.size <= UMBRAL_LISTA) {
-                    // Caben: al editor, en orden y sin duplicar.
                     etClaves.setText(visibles.joinToString("\n"))
                     aviso("Loaded ${encontrados.size} from file · ${visibles.size} in the list.")
                 } else {
-                    // Demasiadas para el editor: a la lista grande (fundida, sin
-                    // duplicar) y en pantalla solo el resumen. El editor se deja
-                    // como estaba; la auditoría unirá ambas.
                     cargadas = LinkedHashSet<String>(cargadas).apply { addAll(encontrados) }.toList()
                     mostrarResumenCargadas()
                     aviso("Large list: ${"%,d".format(encontrados.size)} loaded, kept out of the editor to stay responsive.")
@@ -485,14 +436,12 @@ class WeakKeyActivity : Activity() {
         }.start()
     }
 
-    /** Pinta (u oculta) el resumen de la lista grande cargada de fichero. */
     private fun mostrarResumenCargadas() {
         if (cargadas.isEmpty()) { tvCargadas.visibility = android.view.View.GONE; estimar(); return }
         tvCargadas.text = "file · ${"%,d".format(cargadas.size)} keys loaded, kept out of the editor · tap to clear"
         tvCargadas.visibility = android.view.View.VISIBLE
-        estimar()   // el ETA del lote incluye ahora esta lista
+        estimar()
     }
-
 
     private fun arrancar() {
         bits = sbBits.progress + BITS_MIN
@@ -500,9 +449,6 @@ class WeakKeyActivity : Activity() {
         topeSeg = etTope.text.toString().trim().replace(',', '.').toDoubleOrNull() ?: 0.0
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
         if (presupuesto <= 0) { aviso("Budget: a number above 0 (2 is a good start)."); return }
-        // Cada línea: una clave pública directa, o una dirección que se resolverá
-        // en la red al llegarle el turno. Se une lo escrito con la lista grande
-        // cargada de fichero, sin duplicar y en orden.
         val lineas = etClaves.text.toString().split('\n')
             .map { it.trim() }.filter { it.isNotEmpty() }
         val cola = LinkedHashSet<String>(lineas).apply { addAll(cargadas) }
@@ -521,13 +467,10 @@ class WeakKeyActivity : Activity() {
 
     private fun parar(motivo: String) {
         corriendo = false
-        h.removeCallbacksAndMessages(this)
-        h.removeCallbacksAndMessages(tickToken)
+        h.removeCallbacksAndMessages(null)
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-        // Guardar el ritmo medido para la próxima vez y refrescar la estimación
-        // (ya vuelve a verse la línea) con la velocidad real de este aparato.
         try {
-            getSharedPreferences("weakkey", MODE_PRIVATE).edit()
+            act.getSharedPreferences("weakkey", android.content.Context.MODE_PRIVATE).edit()
                 .putFloat("ritmo", ritmoDisp.toFloat()).apply()
         } catch (e: Throwable) {}
         estimar()
@@ -544,13 +487,12 @@ class WeakKeyActivity : Activity() {
         val bruta = claves[indice].removePrefix("0x")
         val directa = comprimida(bruta)
         if (directa != null) { lanzar(directa); return }
-        // Dirección: buscar su clave pública en la red (solo existe si gastó).
         if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
             aviso("Key ${indice + 1}/${claves.size}: looking up its public key…")
             Thread {
-                val r = try { PubKeyFinder.buscar(this, bruta, false) }
+                val r = try { PubKeyFinder.buscar(act, bruta, false) }
                         catch (e: Exception) { PubKeyFinder.Resultado.SinRed }
-                runOnUiThread {
+                act.runOnUiThread {
                     if (!corriendo) return@runOnUiThread
                     val pub = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex?.let { comprimida(it) }
                     if (pub != null) lanzar(pub) else { indice++; siguiente() }
@@ -558,21 +500,21 @@ class WeakKeyActivity : Activity() {
             }.start()
             return
         }
-        indice++; siguiente()   // línea que no es clave ni dirección
+        indice++; siguiente()
     }
 
     private fun lanzar(pub: String) {
         val fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
         val ini = BigInteger.ONE
         try { if (HunterEngine.kangarooRunning()) HunterEngine.kangarooStop() } catch (e: Throwable) {}
-        val ruta = java.io.File(filesDir, "weakkey.dat").absolutePath   // una sola, se pisa por clave
+        val ruta = java.io.File(act.filesDir, "weakkey.dat").absolutePath
         java.io.File(ruta).delete()
         val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
         val ok = try {
             HunterEngine.kangarooStart(pub, ini.toString(16), fin.toString(16),
-                nucleos, 1024, ruta, HunterEngine.topeTablaBits(this))
+                nucleos, 1024, ruta, HunterEngine.topeTablaBits(act))
         } catch (e: Throwable) { false }
-        if (!ok) { indice++; siguiente(); return }   // rango imposible para esa clave
+        if (!ok) { indice++; siguiente(); return }
         presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
         claveInicioMs = System.currentTimeMillis()
         programarTick()
@@ -583,8 +525,6 @@ class WeakKeyActivity : Activity() {
         h.postAtTime({ tick() }, tickToken, android.os.SystemClock.uptimeMillis() + 1000)
     }
 
-    /** Cada segundo: mira si apareció la clave o se agotó el presupuesto, y
-     *  refresca la tarjeta de rendimiento. */
     private fun tick() {
         if (!corriendo) return
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
@@ -597,8 +537,6 @@ class WeakKeyActivity : Activity() {
             refresco(0.0, 100)
             indice++; siguiente(); return
         }
-        // Se acabó el presupuesto, el motor paró, o se alcanzó el tope de
-        // tiempo por clave (si hay uno): a la siguiente sin encontrarla.
         val segClave = (System.currentTimeMillis() - claveInicioMs) / 1000.0
         val topeAlcanzado = topeSeg > 0 && segClave >= topeSeg
         if (!HunterEngine.kangarooRunning() || ops >= presuActual || topeAlcanzado) {
@@ -614,7 +552,6 @@ class WeakKeyActivity : Activity() {
         programarTick()
     }
 
-    /** Actualiza velocidad, gráfica y las cuatro cifras. */
     private fun refresco(opsClave: Double, pct: Int) {
         val ahora = System.currentTimeMillis()
         val total = opsPrevias + opsClave
@@ -625,12 +562,7 @@ class WeakKeyActivity : Activity() {
             val (sv, su) = escala(vel)
             tvSpeed.text = sv; tvSpeedU.text = "$su/s"
             if (vel > pico) { pico = vel; val (pv, pu) = escala(pico); tvPeak.text = "Peak $pv $pu/s" }
-            // Afinar el ritmo del aparato con la velocidad de crucero (solo
-            // mientras se está machacando una clave, opsClave>0; en el intervalo
-            // en que una aparece el salto de ops falsearía la media). EMA suave.
             if (opsClave > 0 && vel > 1e5) ritmoDisp = ritmoDisp * 0.8 + vel * 0.2
-            // Una muestra cada 5 s: la búsqueda dura y lo que importa es la
-            // tendencia, no el segundo a segundo.
             if (ahora - ultChartMs > 5000) { ultChartMs = ahora; chart.addPoint((vel / 1e6).toFloat()) }
         }
         val (ov, ou) = escala(total)
@@ -647,21 +579,21 @@ class WeakKeyActivity : Activity() {
             if (d.contains("|")) { wif = d.substringBefore("|"); addr = d.substringAfter("|") }
         } catch (e: Throwable) {}
         try {
-            MatchVault.add(this, MatchVault.Entry(
+            MatchVault.add(act, MatchVault.Entry(
                 ts = System.currentTimeMillis(), source = "weak-key",
                 addr = addr, wif = wif, privHex = claveHex, btc = 0.0,
                 extra = "WEAKKEY audit ($bits-bit range)", checkedTs = 0L))
         } catch (e: Exception) {}
         try {
-            Avisos.hallazgo(this, "Weak key found!", "A key was in the audited range. In the finds vault.")
+            Avisos.hallazgo(act, "Weak key found!", "A key was in the audited range. In the finds vault.")
         } catch (e: Throwable) {}
     }
 
     private fun aviso(t: String) { tvEstado.text = t }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    /** Se llama al destruir MainActivity: para el motor y los ticks. */
+    fun detener() {
         if (corriendo) { corriendo = false; try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }
-        h.removeCallbacksAndMessages(this)
+        h.removeCallbacksAndMessages(null)
     }
 }

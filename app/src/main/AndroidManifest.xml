@@ -69,10 +69,6 @@
         <activity android:name=".DebugActivity"
             android:theme="@style/AppThemeDark" />
 
-        <activity android:name=".WeakKeyActivity"
-            android:theme="@style/AppThemeDark"
-            android:screenOrientation="portrait" />
-
         <activity android:name=".HelpActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
