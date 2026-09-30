@@ -129,7 +129,8 @@ class HelpActivity : Activity() {
 
         seccion(root, "More")
         parrafo(root, "Appearance switches light/dark. Debug shows the engine log and files. " +
-            "And this Help screen. Recovery and the weak-key audit are opened from here too.")
+            "And this Help screen. (Scanner, Puzzle, Wallet, Recovery and Weak-key each have " +
+            "their own tab in the bottom bar.)")
 
         setContentView(scroll)
     }

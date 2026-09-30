@@ -73,8 +73,8 @@ A properly generated key (256 bits of entropy) will never show up here — the
 range is an infinitesimal slice of the space. Use it to check **your own**
 addresses, or a system you audit, not to sweep third parties'.
 
-Open it from **More → Weak-key audit**. There's also an in-app **Help** screen
-(More → Help) with this same flow.
+Open it from the **Weak** tab in the bottom bar. There's also an in-app **Help**
+screen (More → Help) with this same flow.
 
 ### 1. Input
 
@@ -138,5 +138,5 @@ wallets, or delete it. It's encrypted on the device.
 ## More
 
 **Appearance** switches light/dark. **Debug** shows the engine log and files. And
-the **Help** screen, which mirrors this document in the app. Recovery and the
-weak-key audit are opened from here too.
+the **Help** screen, which mirrors this document in the app. (Scanner, Puzzle,
+Wallet, Recovery and Weak-key each have their own tab in the bottom bar.)

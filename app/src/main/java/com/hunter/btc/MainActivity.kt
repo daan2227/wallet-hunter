@@ -61,14 +61,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         paginaActual = idx
         if (idx == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
-        // Recovery no tiene pestaña propia: se entra desde More, así que es
-        // More la que se queda marcada. Si no, la barra no marcaría ninguna y
-        // no se sabría dónde se está.
+        // Recovery ya tiene su propia pestaña en la barra; Weak-key no es una
+        // página (abre su Activity), así que no aparece aquí.
         barra?.seleccionar(when (idx) {
-            PAG_PUZZLE -> BottomBar.PUZZLE
-            PAG_WALLET -> BottomBar.WALLET
-            PAG_RECOVERY, PAG_MORE -> BottomBar.MORE
-            else -> BottomBar.SCANNER
+            PAG_PUZZLE   -> BottomBar.PUZZLE
+            PAG_WALLET   -> BottomBar.WALLET
+            PAG_RECOVERY -> BottomBar.RECOVERY
+            PAG_MORE     -> BottomBar.MORE
+            else         -> BottomBar.SCANNER
         })
     }
 
@@ -87,6 +87,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     PinAuthHelper.show(this) { ok -> if (ok) goTab(PAG_WALLET) }
                 else goTab(PAG_WALLET)
             }
+            BottomBar.RECOVERY -> goTab(PAG_RECOVERY)
+            // Weak-key es su propia pantalla, no una página: se abre sin cambiar
+            // la pestaña marcada, así al volver la barra sigue donde estaba.
+            BottomBar.WEAK -> startActivity(Intent(this, WeakKeyActivity::class.java))
             BottomBar.MORE -> goTab(PAG_MORE)
         }
     }
@@ -119,16 +123,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     /**
-     * Atrás: de Recovery a More, que es de donde se entra; de cualquier otra
-     * pestaña al Scanner; y desde el Scanner, salir. Es lo que hacen las apps
-     * con pestañas abajo. Sin esto, atrás desde Puzzle cerraba la app entera.
+     * Atrás: de cualquier pestaña al Scanner; y desde el Scanner, salir. Es lo
+     * que hacen las apps con pestañas abajo. Sin esto, atrás desde Puzzle
+     * cerraba la app entera.
      */
     @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
         when (paginaActual) {
-            PAG_RECOVERY -> goTab(PAG_MORE)
-            PAG_SCANNER  -> super.onBackPressed()
-            else         -> goTab(PAG_SCANNER)
+            PAG_SCANNER -> super.onBackPressed()
+            else        -> goTab(PAG_SCANNER)
         }
     }
 

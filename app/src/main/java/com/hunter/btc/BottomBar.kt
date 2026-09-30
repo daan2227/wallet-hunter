@@ -23,10 +23,12 @@ import android.widget.TextView
 class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (Int) -> Unit) {
 
     companion object {
-        const val SCANNER = 0
-        const val PUZZLE  = 1
-        const val WALLET  = 2
-        const val MORE    = 3
+        const val SCANNER  = 0
+        const val PUZZLE   = 1
+        const val WALLET   = 2
+        const val RECOVERY = 3
+        const val WEAK     = 4
+        const val MORE     = 5
 
         /** Qué pestaña pedir al volver a MainActivity desde otra pantalla. */
         const val EXTRA_TAB = "com.hunter.btc.TAB"
@@ -35,10 +37,12 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
     private data class Item(val icono: Int, val rotulo: String)
 
     private val items = listOf(
-        Item(R.drawable.ic_scan,    "Scanner"),
-        Item(R.drawable.ic_puzzle,  "Puzzle"),
-        Item(R.drawable.ic_wallet,  "Wallet"),
-        Item(R.drawable.ic_more,    "More")
+        Item(R.drawable.ic_scan,     "Scanner"),
+        Item(R.drawable.ic_puzzle,   "Puzzle"),
+        Item(R.drawable.ic_wallet,   "Wallet"),
+        Item(R.drawable.ic_recovery, "Recovery"),
+        Item(R.drawable.ic_target,   "Weak"),
+        Item(R.drawable.ic_more,     "More")
     )
 
     private val pildoras = mutableListOf<FrameLayout>()
@@ -70,7 +74,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         })
         val fila = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(4), dp(6), dp(4), dp(8))
+            setPadding(dp(2), dp(6), dp(2), dp(8))
         }
         items.forEachIndexed { i, item -> fila.addView(celda(i, item)) }
         vista.addView(fila, LinearLayout.LayoutParams(
@@ -90,7 +94,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         pildora.addView(icono)
         val rotulo = TextView(ctx).apply {
             text = item.rotulo
-            textSize = AppTheme.SP_MICRO + 1f
+            textSize = AppTheme.SP_MICRO
             maxLines = 1
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
