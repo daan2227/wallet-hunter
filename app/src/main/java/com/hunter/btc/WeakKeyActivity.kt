@@ -41,7 +41,6 @@ class WeakKeyActivity : Activity() {
     private var presupuesto = 2.0
     private var corriendo = false
     private var hallados = 0
-    private var pubActual = ""
 
     private lateinit var etClaves: EditText
     private lateinit var sbBits: SeekBar
@@ -50,6 +49,26 @@ class WeakKeyActivity : Activity() {
     private lateinit var etPresu: EditText
     private lateinit var tvEstado: TextView
     private lateinit var btn: Button
+
+    // Tarjeta de rendimiento, como la del puzzle.
+    private lateinit var statsCard: LinearLayout
+    private lateinit var tvSpeed: TextView
+    private lateinit var tvSpeedU: TextView
+    private lateinit var tvPeak: TextView
+    private lateinit var chart: SpeedChartView
+    private lateinit var tvOps: TextView
+    private lateinit var tvTime: TextView
+    private lateinit var tvProg: TextView
+    private lateinit var tvKeys: TextView
+
+    private val tickToken = Any()
+    private var inicioMs = 0L
+    private var opsPrevias = 0.0     // operaciones de las claves ya terminadas
+    private var presuActual = 0.0    // presupuesto de la clave en curso
+    private var ultTotalOps = 0.0
+    private var ultMs = 0L
+    private var pico = 0.0
+    private var ultChartMs = 0L
 
     companion object {
         private const val BITS_MIN = 20
@@ -188,8 +207,94 @@ class WeakKeyActivity : Activity() {
         }
         root.addView(btn)
 
+        // ── Tarjeta de rendimiento (oculta hasta arrancar) ────────────────
+        statsCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
+            setPadding(dp(18), dp(18), dp(18), dp(18))
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
+        }
+        statsCard.addView(TextView(this).apply {
+            text = "Performance"; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
+            setPadding(0, 0, 0, dp(12))
+        })
+        val filaVel = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+        }
+        tvSpeed = TextView(this).apply {
+            text = "0"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.display(context); letterSpacing = -0.04f
+        }
+        filaVel.addView(tvSpeed)
+        tvSpeedU = TextView(this).apply {
+            text = "keys/s"; textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8); bottomMargin = dp(4) }
+        }
+        filaVel.addView(tvSpeedU)
+        statsCard.addView(filaVel)
+        tvPeak = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setPadding(0, dp(10), 0, dp(4))
+        }
+        statsCard.addView(tvPeak)
+        chart = SpeedChartView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110))
+                .apply { topMargin = dp(8) }
+        }
+        statsCard.addView(chart)
+
+        fun mini(label: String, tv: TextView) = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+            }
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            addView(TextView(this@WeakKeyActivity).apply {
+                text = label; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
+            })
+            addView(tv)
+        }
+        fun valor(ini: String) = TextView(this).apply {
+            text = ini; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context); letterSpacing = -0.02f
+            setPadding(0, dp(6), 0, 0)
+        }
+        tvOps = valor("0"); tvTime = valor("00:00:00"); tvProg = valor("—"); tvKeys = valor("—")
+        val r1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) } }
+        val r2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
+        r1.addView(mini("Operations", tvOps).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        r1.addView(mini("Time", tvTime))
+        r2.addView(mini("Key budget", tvProg).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        r2.addView(mini("Keys · found", tvKeys))
+        statsCard.addView(r1); statsCard.addView(r2)
+        root.addView(statsCard)
+
         setContentView(scroll)
         estimar()
+    }
+
+    /** Cifra + unidad escaladas para una velocidad en operaciones/s. */
+    private fun escala(v: Double): Pair<String, String> = when {
+        v >= 1e9 -> "%.2f".format(v / 1e9) to "G op"
+        v >= 1e6 -> "%.2f".format(v / 1e6) to "M op"
+        v >= 1e3 -> "%.1f".format(v / 1e3) to "K op"
+        else     -> "%.0f".format(v) to "op"
+    }
+    private fun reloj(seg: Long): String {
+        val h1 = seg / 3600; val m = (seg % 3600) / 60; val s = seg % 60
+        return "%02d:%02d:%02d".format(h1, m, s)
     }
 
     /** El valor del deslizador y la estimación de coste/tiempo por clave. */
@@ -250,6 +355,12 @@ class WeakKeyActivity : Activity() {
         if (lineas.isEmpty()) { aviso("Paste at least one public key or address."); return }
         claves = lineas
         indice = 0; hallados = 0; corriendo = true
+        inicioMs = System.currentTimeMillis()
+        opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
+        chart.reset()
+        tvSpeed.text = "0"; tvPeak.text = ""; tvOps.text = "0"; tvTime.text = "00:00:00"
+        tvProg.text = "—"; tvKeys.text = "0/${claves.size} · 0"
+        statsCard.visibility = android.view.View.VISIBLE
         btn.text = "Stop"
         siguiente()
     }
@@ -257,6 +368,7 @@ class WeakKeyActivity : Activity() {
     private fun parar(motivo: String) {
         corriendo = false
         h.removeCallbacksAndMessages(this)
+        h.removeCallbacksAndMessages(tickToken)
         try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
         btn.text = "Start audit"
         aviso(motivo + (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
@@ -289,7 +401,6 @@ class WeakKeyActivity : Activity() {
     }
 
     private fun lanzar(pub: String) {
-        pubActual = pub
         val fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
         val ini = BigInteger.ONE
         try { if (HunterEngine.kangarooRunning()) HunterEngine.kangarooStop() } catch (e: Throwable) {}
@@ -301,32 +412,61 @@ class WeakKeyActivity : Activity() {
                 nucleos, 1024, ruta, HunterEngine.topeTablaBits(this))
         } catch (e: Throwable) { false }
         if (!ok) { indice++; siguiente(); return }   // rango imposible para esa clave
-        val presuOps = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
-        vigilar(presuOps)
+        presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
+        programarTick()
     }
 
-    private fun vigilar(presuOps: Double) {
-        h.postAtTime({ paso(presuOps) }, this, android.os.SystemClock.uptimeMillis() + 2000)
+    private fun programarTick() {
+        h.removeCallbacksAndMessages(tickToken)
+        h.postAtTime({ tick() }, tickToken, android.os.SystemClock.uptimeMillis() + 1000)
     }
 
-    private fun paso(presuOps: Double) {
+    /** Cada segundo: mira si apareció la clave o se agotó el presupuesto, y
+     *  refresca la tarjeta de rendimiento. */
+    private fun tick() {
         if (!corriendo) return
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+        val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
         if (clave.length == 64) {
             hallados++
             guardar(clave)
+            opsPrevias += ops
+            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+            refresco(0.0, 100)
+            indice++; siguiente(); return
+        }
+        if (!HunterEngine.kangarooRunning() || ops >= presuActual) {
+            opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
             indice++; siguiente(); return
         }
-        val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
-        if (!HunterEngine.kangarooRunning() || ops >= presuOps) {
-            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-            indice++; siguiente(); return
-        }
-        val pct = if (presuOps > 0) (100 * ops / presuOps).toInt() else 0
+        val pct = if (presuActual > 0) (100 * ops / presuActual).toInt() else 0
+        refresco(ops, pct)
         aviso("Key ${indice + 1}/${claves.size} · $bits-bit range · $pct % of its budget" +
               (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
-        vigilar(presuOps)
+        programarTick()
+    }
+
+    /** Actualiza velocidad, gráfica y las cuatro cifras. */
+    private fun refresco(opsClave: Double, pct: Int) {
+        val ahora = System.currentTimeMillis()
+        val total = opsPrevias + opsClave
+        val dt = (ahora - ultMs) / 1000.0
+        if (dt > 0.2) {
+            val vel = ((total - ultTotalOps) / dt).coerceAtLeast(0.0)
+            ultTotalOps = total; ultMs = ahora
+            val (sv, su) = escala(vel)
+            tvSpeed.text = sv; tvSpeedU.text = "$su/s"
+            if (vel > pico) { pico = vel; val (pv, pu) = escala(pico); tvPeak.text = "Peak $pv $pu/s" }
+            // Una muestra cada 5 s: la búsqueda dura y lo que importa es la
+            // tendencia, no el segundo a segundo.
+            if (ahora - ultChartMs > 5000) { ultChartMs = ahora; chart.addPoint((vel / 1e6).toFloat()) }
+        }
+        val (ov, ou) = escala(total)
+        tvOps.text = "$ov $ou"
+        tvTime.text = reloj((ahora - inicioMs) / 1000)
+        tvProg.text = "$pct %"
+        tvKeys.text = "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
     }
 
     private fun guardar(claveHex: String) {
