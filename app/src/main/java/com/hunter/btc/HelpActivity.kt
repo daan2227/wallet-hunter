@@ -128,9 +128,10 @@ class HelpActivity : Activity() {
             "your wallets, or delete it. It's encrypted on the device.")
 
         seccion(root, "More")
-        parrafo(root, "Appearance switches light/dark. Debug shows the engine log and files. " +
-            "And this Help screen. (Scanner, Puzzle, Wallet, Recovery and Weak-key each have " +
-            "their own tab in the bottom bar.)")
+        parrafo(root, "Notifications toggles the find alert, vibration and the coin sound " +
+            "on a find, each on its own. Appearance switches light/dark. Debug shows the " +
+            "engine log and files. And this Help screen. (Scanner, Puzzle, Wallet, Recovery " +
+            "and Weak-key each have their own tab in the bottom bar.)")
 
         setContentView(scroll)
     }

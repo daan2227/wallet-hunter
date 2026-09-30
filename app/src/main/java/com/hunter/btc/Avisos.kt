@@ -19,17 +19,32 @@ import androidx.core.app.NotificationCompat
  * recuperar una frase sonaba nada.
  */
 object Avisos {
-    const val CANAL = "hunter_match"
+    // Canal nuevo (v2): silencioso y sin vibración propias, porque ahora la
+    // vibración y el sonido los controla el usuario con sus interruptores y los
+    // hacemos a mano. Un canal ya creado no cambia sus ajustes, así que hace
+    // falta un id nuevo para que esto se aplique en instalaciones antiguas.
+    const val CANAL = "hunter_match2"
     private const val ID = 4242
+
+    private const val PREFS = "avisos"
+    private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    fun notifOn(ctx: Context) = prefs(ctx).getBoolean("notif", true)
+    fun vibrarOn(ctx: Context) = prefs(ctx).getBoolean("vibrar", true)
+    fun sonidoOn(ctx: Context) = prefs(ctx).getBoolean("sonido", true)
+    fun setNotif(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("notif", v).apply()
+    fun setVibrar(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("vibrar", v).apply()
+    fun setSonido(ctx: Context, v: Boolean) = prefs(ctx).edit().putBoolean("sonido", v).apply()
 
     fun crearCanal(ctx: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        // Borra el canal viejo (vibraba y sonaba por su cuenta) si sigue ahí.
+        try { nm.deleteNotificationChannel("hunter_match") } catch (e: Exception) {}
         if (nm.getNotificationChannel(CANAL) != null) return
         nm.createNotificationChannel(NotificationChannel(CANAL, "Match Found!",
             NotificationManager.IMPORTANCE_HIGH).apply {
-            enableVibration(true)
-            vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
+            enableVibration(false)
+            setSound(null, null)
             enableLights(true)
         })
     }
@@ -69,11 +84,15 @@ object Avisos {
      */
     fun hallazgo(ctx: Context, titulo: String, texto: String): Boolean {
         crearCanal(ctx)
-        try {
+        // Vibración y sonido son independientes del aviso visual y de que haya
+        // permiso de notificaciones: cada uno lo enciende su propio interruptor.
+        if (vibrarOn(ctx)) try {
             val vib = ctx.getSystemService(android.os.Vibrator::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 vib?.vibrate(android.os.VibrationEffect.createWaveform(longArrayOf(0, 500, 200, 500, 200, 500), -1))
         } catch (e: Exception) {}
+        if (sonidoOn(ctx)) try { Sonido.moneda(ctx) } catch (e: Throwable) {}
+        if (!notifOn(ctx)) return false        // el usuario desactivó el aviso visual
         if (!permitidos(ctx)) return false
         return try {
             val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, MainActivity::class.java),

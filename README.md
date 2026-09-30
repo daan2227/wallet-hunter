@@ -137,6 +137,8 @@ wallets, or delete it. It's encrypted on the device.
 
 ## More
 
-**Appearance** switches light/dark. **Debug** shows the engine log and files. And
-the **Help** screen, which mirrors this document in the app. (Scanner, Puzzle,
-Wallet, Recovery and Weak-key each have their own tab in the bottom bar.)
+**Notifications** toggles the find alert, vibration and the coin sound on a find,
+each independently. **Appearance** switches light/dark. **Debug** shows the engine
+log and files. And the **Help** screen, which mirrors this document in the app.
+(Scanner, Puzzle, Wallet, Recovery and Weak-key each have their own tab in the
+bottom bar.)

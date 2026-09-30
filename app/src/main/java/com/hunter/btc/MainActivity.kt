@@ -2790,23 +2790,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     // ── Export / Import Configuración ────────────────────────────────────────
     internal fun setupNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Canal normal
+            // Canal normal (servicio en primer plano). El de hallazgos lo crea
+            // Avisos (hunter_match2), silencioso: la vibración y el sonido los
+            // controla el usuario con sus interruptores.
             val ch = android.app.NotificationChannel(
                 "hunter", "Hunter", android.app.NotificationManager.IMPORTANCE_LOW
             )
-            // Canal de match — alta prioridad con sonido
-            val matchCh = android.app.NotificationChannel(
-                "hunter_match", "Match Found!",
-                android.app.NotificationManager.IMPORTANCE_HIGH
-            ).apply {
-                enableVibration(true)
-                vibrationPattern = longArrayOf(0, 500, 200, 500, 200, 500)
-                enableLights(true)
-                lightColor = AppTheme.AMBER
-            }
             val nm = getSystemService(NOTIFICATION_SERVICE) as android.app.NotificationManager
             nm.createNotificationChannel(ch)
-            nm.createNotificationChannel(matchCh)
+            Avisos.crearCanal(this)
         }
     }
 

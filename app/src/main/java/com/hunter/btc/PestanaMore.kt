@@ -137,7 +137,68 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         caja.addView(row)
     }
 
-    // Recovery y Weak-key ya viven en la barra de abajo, no aquí.
+    // Fila con interruptor a la derecha (para ajustes de sí/no). Tocar toda la
+    // fila lo cambia, no solo el interruptor.
+    fun filaSwitch(caja: LinearLayout, titulo: String, detalle: String?,
+                   inicial: Boolean, onChange: (Boolean) -> Unit) {
+        if (caja.childCount > 0) caja.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BG_ELEV)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { marginStart = dp(16) }
+        })
+        val sw = android.widget.Switch(this).apply {
+            isChecked = inicial
+            val on = AppTheme.ACCENT; val off = AppTheme.TXT_MUTED
+            thumbTintList = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf(on, AppTheme.TXT_SEC))
+            trackTintList = android.content.res.ColorStateList(
+                arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf()),
+                intArrayOf((on and 0x00FFFFFF) or (0x80 shl 24), (off and 0x00FFFFFF) or (0x60 shl 24)))
+            setOnCheckedChangeListener { _, v -> onChange(v) }
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(64)
+            setPadding(dp(16), dp(12), dp(14), dp(12))
+            isClickable = true; isFocusable = true
+            foreground = Ui.toque()
+            contentDescription = if (detalle != null) "$titulo. $detalle" else titulo
+            setOnClickListener { sw.toggle() }
+        }
+        val textos = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        textos.addView(TextView(this).apply {
+            text = titulo; textSize = AppTheme.SP_BODY + 2f
+            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+        })
+        if (detalle != null) textos.addView(TextView(this).apply {
+            text = detalle; textSize = AppTheme.SP_CAPTION + 1f
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+            setPadding(0, dp(2), 0, 0)
+        })
+        row.addView(textos)
+        row.addView(sw)
+        caja.addView(row)
+    }
+
+    val avisos = grupo("Notifications")
+    filaSwitch(avisos, "Notifications", "Alert when a key is found", Avisos.notifOn(this)) { on ->
+        Avisos.setNotif(this, on)
+        // Si lo enciende pero el sistema las tiene bloqueadas, llévale a los ajustes.
+        if (on && Build.VERSION.SDK_INT >= 33 && Avisos.faltaPermiso(this)) Avisos.abrirAjustes(this)
+    }
+    filaSwitch(avisos, "Vibrate on find", null, Avisos.vibrarOn(this)) { Avisos.setVibrar(this, it) }
+    filaSwitch(avisos, "Coin sound on find", "Play a sound when a key is found",
+        Avisos.sonidoOn(this)) { on ->
+        Avisos.setSonido(this, on)
+        if (on) Sonido.moneda(this)   // muestra cómo suena al activarlo
+    }
+
     val app = grupo("App")
     /* Tema claro / oscuro.
      *
