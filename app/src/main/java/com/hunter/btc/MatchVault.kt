@@ -157,6 +157,23 @@ object MatchVault {
         return tocadas
     }
 
+    /**
+     * Borra un hallazgo del baúl. Identifica por clave privada (única e
+     * irrepetible) y, si no la hay, por dirección + momento. Devuelve true si
+     * se quitó algo.
+     */
+    @Synchronized
+    fun eliminar(ctx: Context, e: Entry): Boolean {
+        val actual = leer(ctx) ?: return false
+        val quedan = actual.filterNot {
+            if (e.privHex.isNotEmpty()) it.privHex == e.privHex
+            else it.addr == e.addr && it.ts == e.ts
+        }
+        if (quedan.size == actual.size) return false
+        write(ctx, quedan, seguro = true)
+        return true
+    }
+
     fun clear(ctx: Context) {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
         try {

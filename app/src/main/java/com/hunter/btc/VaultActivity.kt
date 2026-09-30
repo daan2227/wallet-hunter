@@ -451,6 +451,35 @@ class VaultActivity : AppCompatActivity() {
             v.addView(bCartera)
         }
 
+        // Borrar el hallazgo del baúl. Va dentro del cuerpo y no como botón del
+        // diálogo, que ya tiene ocupados sus tres huecos (Close / Copy WIF /
+        // Copy HEX). Pide confirmación: borrar la clave del baúl, sin backup ni
+        // haberla pasado a la cartera, no tiene vuelta.
+        Ui.ghost(this, "Delete from vault", AppTheme.RED, 44).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(10) }
+            setOnClickListener {
+                AlertDialog.Builder(this@VaultActivity)
+                    .setTitle("Delete this find?")
+                    .setMessage(
+                        if (secretos.isNotEmpty())
+                            "This removes it from the vault for good. If you have not " +
+                            "backed up or added it to your wallet, its key is lost."
+                        else "This removes it from the vault.")
+                    .setPositiveButton("Delete") { _, _ ->
+                        val ok = try { MatchVault.eliminar(this@VaultActivity, e) } catch (t: Throwable) { false }
+                        Toast.makeText(this@VaultActivity,
+                            if (ok) "Removed from the vault" else "Could not remove it",
+                            Toast.LENGTH_SHORT).show()
+                        dialogo?.dismiss()
+                        if (ok) mostrar()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            v.addView(this)
+        }
+
         val b = AlertDialog.Builder(this)
             .setTitle("Find")
             .setView(ScrollView(this).apply { addView(v) })
