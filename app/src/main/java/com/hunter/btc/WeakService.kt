@@ -16,7 +16,7 @@ import android.os.PowerManager
  * pare al apagar la pantalla o minimizar la app.
  *
  * Solo mantiene el proceso vivo (primer plano) y la CPU despierta (WakeLock); el
- * trabajo sigue en WeakPage, en el proceso principal. A diferencia de
+ * trabajo sigue en WeakController, en el proceso principal. A diferencia de
  * HunterService NO lleva gobernador térmico/batería ni toca el motor: ese
  * gobernador está pensado para el motor único del scanner/puzzle y chocaría con
  * el bucle por claves del weak (podría dar por "no encontrada" una clave que

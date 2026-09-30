@@ -52,8 +52,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal val PAG_MORE     = 5
     internal var tabPages: List<android.view.View?> = emptyList()
     internal var barra: BottomBar? = null
-    /** La página Weak-key: guarda su estado y para el motor al destruir. */
-    internal var weakPage: WeakPage? = null
+    // El estado del Weak-key vive en el singleton WeakController (sobrevive a
+    // recrear la Activity); esta pantalla solo enlaza sus vistas.
     internal val REQ_WEAK_CSV = 1004
     internal var paginaActual = PAG_SCANNER
     /** Vuelve a leer el baúl y los totales de la pestaña Cartera. */
@@ -1716,7 +1716,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return
         }
         if (req == REQ_WEAK_CSV && res == RESULT_OK) {
-            data?.data?.let { weakPage?.onCsvResult(it) }
+            data?.data?.let { WeakController.onCsvResult(it) }
             return
         }
         if (req == 1001 && res == RESULT_OK) {
@@ -2907,7 +2907,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         savePuzzleCheckpoint()
-        weakPage?.detener()
+        // Soltar las vistas del Weak-key para no filtrar esta Activity; la
+        // auditoría NO se para (sigue viva en WeakController + WeakService).
+        WeakController.desmontar(this)
         batteryReceiver?.let { unregisterReceiver(it) }
     }
 
