@@ -44,6 +44,9 @@ object WeakController {
     // medida que la auditoría avanza (para ficheros de cientos de MB o GB).
     private const val UMBRAL_STREAM_BYTES = 80L * 1024 * 1024
     private const val FIN = "\u0000FIN"   // centinela de fin de la cola en streaming
+    // Valores del deslizador de "max seconds per key": 0 = sin tope, y luego
+    // saltos útiles (no una regla lineal con cientos de posiciones inútiles).
+    private val TOPES = intArrayOf(0, 1, 2, 3, 5, 10, 15, 30, 60, 120, 300)
 
     private val h = Handler(Looper.getMainLooper())
     // La Activity actual (para el selector de archivos, que necesita una); el
@@ -101,8 +104,10 @@ object WeakController {
     private var sbBits: SeekBar? = null
     private var tvBits: TextView? = null
     private var tvEstim: TextView? = null
-    private var etPresu: EditText? = null
-    private var etTope: EditText? = null
+    private var sbPresu: SeekBar? = null
+    private var tvPresu: TextView? = null
+    private var sbTope: SeekBar? = null
+    private var tvTope: TextView? = null
     private var tvEstado: TextView? = null
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
@@ -138,16 +143,6 @@ object WeakController {
         fun rotulo(t: String) = TextView(a).apply {
             text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context); setPadding(0, 0, 0, dp(6))
-        }
-        fun entrada(hintTxt: String) = EditText(a).apply {
-            hint = hintTxt; inputType = android.text.InputType.TYPE_CLASS_NUMBER or
-                android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
-            setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
-            textSize = AppTheme.SP_BODY
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT)
         }
 
         val scroll = ScrollView(a)
@@ -261,27 +256,61 @@ object WeakController {
         tvEstim = vEstim
         root.addView(vEstim)
 
-        root.addView(rotulo("Budget × √ (2–4; higher = surer, slower)").apply {
-            setPadding(0, dp(16), 0, dp(6))
-        })
-        val vPresu = entrada("2").apply { if (corriendo) setText(fmt(presupuesto)) }
-        etPresu = vPresu
-        root.addView(vPresu)
+        // Deslizadores de presupuesto y de tope por clave, como el del rango.
+        fun bloqueSlider(titulo: String, maxProg: Int, prog0: Int,
+                         minTxt: String, maxTxt: String): Pair<SeekBar, TextView> {
+            val cab = LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, dp(16), 0, dp(2))
+            }
+            cab.addView(rotulo(titulo).apply {
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val tv = TextView(a).apply {
+                textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+            }
+            cab.addView(tv)
+            root.addView(cab)
+            val sb = SeekBar(a).apply {
+                max = maxProg; progress = prog0
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT)
+                setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                    override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { estimar() }
+                    override fun onStartTrackingTouch(s: SeekBar?) {}
+                    override fun onStopTrackingTouch(s: SeekBar?) {}
+                })
+            }
+            root.addView(sb)
+            val ax = LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(2), 0, 0)
+            }
+            ax.addView(TextView(a).apply {
+                text = minTxt; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            ax.addView(TextView(a).apply {
+                text = maxTxt; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); gravity = Gravity.END
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            root.addView(ax)
+            return sb to tv
+        }
 
-        root.addView(rotulo("Max seconds per key (0 = no limit)").apply {
-            setPadding(0, dp(16), 0, dp(6))
-        })
-        val vTope = entrada("0").apply { if (corriendo && topeSeg > 0) setText(fmt(topeSeg)) }
-        etTope = vTope
-        root.addView(vTope)
+        val presuProg0 = if (corriendo) Math.round((presupuesto - 2.0) / 0.5).toInt().coerceIn(0, 4) else 0
+        val (vSbPresu, vTvPresu) = bloqueSlider("Budget × √ (surer, slower →)", 4, presuProg0, "2.0", "4.0")
+        sbPresu = vSbPresu; tvPresu = vTvPresu
+
+        val topeProg0 = if (corriendo && topeSeg > 0)
+            TOPES.indexOfFirst { it.toDouble() >= topeSeg }.let { if (it < 0) TOPES.size - 1 else it } else 0
+        val (vSbTope, vTvTope) = bloqueSlider("Max seconds per key", TOPES.size - 1, topeProg0, "no limit", "${TOPES.last()} s")
+        sbTope = vSbTope; tvTope = vTvTope
 
         val alEscribir = object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { estimar() }
             override fun beforeTextChanged(s: CharSequence?, a2: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a2: Int, b: Int, c: Int) {}
         }
-        vPresu.addTextChangedListener(alEscribir)
-        vTope.addTextChangedListener(alEscribir)
         vClaves.addTextChangedListener(alEscribir)
 
         val vEstado = TextView(a).apply {
@@ -398,7 +427,7 @@ object WeakController {
         if (act !== a) return
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
-        etPresu = null; etTope = null; tvEstado = null; btn = null
+        sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -416,11 +445,18 @@ object WeakController {
         return "%02d:%02d:%02d".format(h1, m, s)
     }
 
+    /** Presupuesto del deslizador: de 2,0 a 4,0 en pasos de 0,5. */
+    private fun budgetActual(): Double = 2.0 + (sbPresu?.progress ?: 0) * 0.5
+    /** Tope por clave del deslizador, en segundos (0 = sin tope). */
+    private fun topeActual(): Double =
+        TOPES[(sbTope?.progress ?: 0).coerceIn(0, TOPES.size - 1)].toDouble()
+
     private fun estimar() {
         val sb = sbBits ?: return   // sin pantalla no hay nada que estimar
         val b = sb.progress + BITS_MIN
         tvBits?.text = "$b bits"
-        val c = etPresu?.text?.toString()?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: 2.0
+        val c = budgetActual()
+        tvPresu?.text = "×${fmt(c)}"
         val ops = c * Math.pow(2.0, b / 2.0)
         val seg = ops / ritmoDisp
         fun log2(x: Double) = "2^%.1f".format(Math.log(x) / Math.log(2.0))
@@ -433,7 +469,8 @@ object WeakController {
             s < 3.15e10 -> "~${(s / 3.15e7).toInt()} years"
             else -> "millennia"
         }
-        val tope = etTope?.text?.toString()?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+        val tope = topeActual()
+        tvTope?.text = if (tope <= 0) "no limit" else "${tope.toInt()} s"
         val porClave = if (tope > 0) Math.min(seg, tope) else seg
         val (rv, ru) = escala(ritmoDisp)
         var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~$rv $ru/s.\n" +
@@ -586,10 +623,9 @@ object WeakController {
     private fun arrancar() {
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
-        presupuesto = etPresu?.text?.toString()?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
-        topeSeg = etTope?.text?.toString()?.trim()?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+        presupuesto = budgetActual()
+        topeSeg = topeActual()
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
-        if (presupuesto <= 0) { aviso("Budget: a number above 0 (2 is a good start)."); return }
         if (streamMode && streamUri != null) {
             // Fichero enorme: las claves se leen del disco, no hay lista en RAM.
             claves = emptyList()
