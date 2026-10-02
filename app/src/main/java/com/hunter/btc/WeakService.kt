@@ -46,15 +46,24 @@ class WeakService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            getSystemService(NotificationManager::class.java).createNotificationChannel(
-                NotificationChannel(CANAL, "Weak-key audit", NotificationManager.IMPORTANCE_LOW)
-                    .apply { setSound(null, null); enableVibration(false) })
+        // startForeground lo PRIMERO y protegido: si falla (restricción de primer
+        // plano, etc.) se para solo en vez de dejar que el sistema tumbe la app.
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                getSystemService(NotificationManager::class.java).createNotificationChannel(
+                    NotificationChannel(CANAL, "Weak-key audit", NotificationManager.IMPORTANCE_LOW)
+                        .apply { setSound(null, null); enableVibration(false) })
+            }
+            startForeground(NOTIF, notif())
+        } catch (e: Throwable) {
+            try { stopSelf() } catch (e2: Throwable) {}
+            return
         }
-        startForeground(NOTIF, notif())
-        val pm = getSystemService(POWER_SERVICE) as PowerManager
-        wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WalletHunter::WeakWakeLock")
-            .also { it.acquire() }
+        try {
+            val pm = getSystemService(POWER_SERVICE) as PowerManager
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WalletHunter::WeakWakeLock")
+                .also { it.acquire() }
+        } catch (e: Throwable) {}
     }
 
     override fun onDestroy() {
