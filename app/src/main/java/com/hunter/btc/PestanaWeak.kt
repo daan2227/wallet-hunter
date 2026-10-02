@@ -61,6 +61,11 @@ object WeakController {
     private var ritmoDisp = OPS_POR_SEG
     private var corriendo = false
     private var hallados = 0
+    // Desglose del resultado de resolver cada entrada: direcciones sin clave
+    // pública publicada (nunca gastaron → nada que auditar) y las que no se
+    // pudieron comprobar por red. Son AtomicInteger porque los tocan los hilos.
+    private val sinPubkey = java.util.concurrent.atomic.AtomicInteger(0)
+    private val fallosRed = java.util.concurrent.atomic.AtomicInteger(0)
 
     private var cargadas: List<String> = emptyList()
 
@@ -459,6 +464,31 @@ object WeakController {
         else -> null
     }
 
+    /** Resuelve una entrada a su clave pública comprimida, o "" si no da clave.
+     *  De paso lleva la cuenta de por qué no la da: dirección sin clave pública
+     *  publicada (nunca gastó) o fallo de red. Lo llaman los hilos resolutores. */
+    private fun resolver(bruta: String): String {
+        comprimida(bruta)?.let { return it }   // ya es una clave pública
+        if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
+            val r = try { PubKeyFinder.buscar(appCtx, bruta, false) }
+                    catch (e: Throwable) { PubKeyFinder.Resultado.SinRed }
+            return when (r) {
+                is PubKeyFinder.Resultado.Encontrada ->
+                    comprimida(r.pubHex) ?: run { sinPubkey.incrementAndGet(); "" }
+                is PubKeyFinder.Resultado.SinRed -> { fallosRed.incrementAndGet(); "" }
+                else -> { sinPubkey.incrementAndGet(); "" }   // NoRevelada / Publicada
+            }
+        }
+        return ""   // ni clave ni dirección
+    }
+
+    /** Resumen del desglose para los avisos, solo las partes que importan. */
+    private fun desglose(): String {
+        val sp = sinPubkey.get(); val fr = fallosRed.get()
+        return (if (sp > 0) " · ${"%,d".format(sp)} with no public key" else "") +
+               (if (fr > 0) " · ${"%,d".format(fr)} unreachable" else "")
+    }
+
     private fun elegirCsv() {
         val a = act ?: return
         val i = android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT).apply {
@@ -592,6 +622,7 @@ object WeakController {
 
     private fun resetContadores() {
         indice = 0; hallados = 0; corriendo = true
+        sinPubkey.set(0); fallosRed.set(0)
         inicioMs = System.currentTimeMillis()
         opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
         chart?.reset()
@@ -619,13 +650,7 @@ object WeakController {
                     while (linea != null && corriendo && generacion.get() == gen) {
                         for (m in reClaves.findAll(linea)) {
                             if (!corriendo || generacion.get() != gen) break
-                            val bruta = m.value.removePrefix("0x")
-                            val pub = comprimida(bruta) ?: (
-                                if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
-                                    val r = try { PubKeyFinder.buscar(ctx, bruta, false) }
-                                            catch (e: Throwable) { PubKeyFinder.Resultado.SinRed }
-                                    (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex?.let { comprimida(it) } ?: ""
-                                } else "")
+                            val pub = resolver(m.value.removePrefix("0x"))
                             var puesto = false
                             while (corriendo && generacion.get() == gen && !puesto)
                                 puesto = colaStream.offer(pub, 200, java.util.concurrent.TimeUnit.MILLISECONDS)
@@ -649,20 +674,12 @@ object WeakController {
         val gen = generacion.incrementAndGet()
         val total = claves.size
         val cola = claves
-        val ctx = appCtx
         repeat(NUCLEOS_RED) {
             Thread {
                 while (corriendo && generacion.get() == gen) {
                     val i = prefetchIdx.getAndIncrement()
                     if (i >= total) break
-                    val bruta = cola[i].removePrefix("0x")
-                    val pub = comprimida(bruta) ?: (
-                        if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
-                            val r = try { PubKeyFinder.buscar(ctx, bruta, false) }
-                                    catch (e: Throwable) { PubKeyFinder.Resultado.SinRed }
-                            (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex?.let { comprimida(it) } ?: ""
-                        } else ""
-                    )
+                    val pub = resolver(cola[i].removePrefix("0x"))
                     if (generacion.get() == gen) resueltas[i] = pub
                 }
             }.apply { isDaemon = true; start() }
@@ -680,7 +697,8 @@ object WeakController {
         } catch (e: Throwable) {}
         estimar()
         btn?.text = "Start audit"
-        aviso(motivo + (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
+        aviso(motivo + desglose() +
+              (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
     }
 
     private fun siguiente() {
@@ -716,7 +734,8 @@ object WeakController {
                 }
                 val msg = if (streamMode) "Streaming from disk… ${"%,d".format(indice)} checked"
                           else "Key ${indice + 1}/${claves.size}: looking up its public key…"
-                aviso(msg + (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
+                aviso(msg + desglose() +
+                      (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
                 tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                 h.postDelayed({ recoger() }, if (streamMode) 40 else 80)
                 return
@@ -804,7 +823,7 @@ object WeakController {
         val pct = if (presuActual > 0) (100 * ops / presuActual).toInt() else 0
         refresco(ops, pct)
         aviso("Key ${indice + 1}/${claves.size} · $bits-bit range · $pct % of its budget" +
-              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s" else "") +
+              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s" else "") + desglose() +
               (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
         programarTick()
     }
