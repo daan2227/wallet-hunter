@@ -46,19 +46,13 @@ class WeakService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        // startForeground lo PRIMERO y protegido: si falla (restricción de primer
-        // plano, etc.) se para solo en vez de dejar que el sistema tumbe la app.
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 getSystemService(NotificationManager::class.java).createNotificationChannel(
                     NotificationChannel(CANAL, "Weak-key audit", NotificationManager.IMPORTANCE_LOW)
                         .apply { setSound(null, null); enableVibration(false) })
             }
-            startForeground(NOTIF, notif())
-        } catch (e: Throwable) {
-            try { stopSelf() } catch (e2: Throwable) {}
-            return
-        }
+        } catch (e: Throwable) {}
         try {
             val pm = getSystemService(POWER_SERVICE) as PowerManager
             wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "WalletHunter::WeakWakeLock")
@@ -73,9 +67,17 @@ class WeakService : Service() {
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
-    // No sticky: es solo un keep-alive mientras dura la auditoría; si muere el
-    // proceso, la auditoría se pierde igual (reanudar tras morir sería otra cosa).
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_NOT_STICKY
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // startForeground en CADA arranque, no solo en onCreate: si se llamó a
+        // startForegroundService con el servicio YA vivo (p. ej. Start→Stop→Start
+        // rápido), Android ejecuta onStartCommand y NO onCreate — y si aquí no se
+        // cumple la promesa de primer plano, mata la app con
+        // ForegroundServiceDidNotStartInTimeException. Era el crash.
+        try { startForeground(NOTIF, notif()) } catch (e: Throwable) {}
+        // No sticky: es solo keep-alive mientras dura la auditoría.
+        return START_NOT_STICKY
+    }
 
     private fun notif(): Notification {
         val pi = PendingIntent.getActivity(this, 0,

@@ -564,7 +564,7 @@ object WeakController {
             // Fichero enorme: las claves se leen del disco, no hay lista en RAM.
             claves = emptyList()
             resetContadores()
-            appCtx?.let { WeakService.iniciar(it) }
+            programarServicio()
             arrancarProductorStream()
             siguiente()
             return
@@ -576,9 +576,18 @@ object WeakController {
         claves = cola.toList()
         resetContadores()
         tvKeys?.text = "0/${claves.size} · 0"
-        appCtx?.let { WeakService.iniciar(it) }   // primer plano + WakeLock
+        programarServicio()
         arrancarPrefetch()
         siguiente()
+    }
+
+    /** Arranca el servicio de primer plano (keep-alive) SOLO si la auditoría
+     *  sigue viva tras un momento. Una auditoría que termina al instante (p. ej.
+     *  un fichero de direcciones sin red: todas se saltan) no lo arranca, y así
+     *  no hay carrera entre arrancar el servicio y pararlo —que tumbaba la app
+     *  con ForegroundServiceDidNotStartInTimeException—. */
+    private fun programarServicio() {
+        h.postDelayed({ if (corriendo) appCtx?.let { WeakService.iniciar(it) } }, 1500)
     }
 
     private fun resetContadores() {
