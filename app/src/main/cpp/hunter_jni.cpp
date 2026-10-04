@@ -246,9 +246,6 @@ static int64_t buscar_p2tr(const uint8_t *xonly32){
     if(!g_xonly) return -1;
     int64_t r=bsearch_xonly(xonly32); if(r>=0) g_tipo_hallado=3; return r;
 }
-/* Cuantas direcciones hay cargadas, sea cual sea el formato. */
-static uint64_t direcciones_cargadas(){ return g_i9.d?g_i9.n:g_total+g_total_tr; }
-
 static char g_sep=',';
 static int split_line(char *line,char **f,int mx){
     int n=0;char *p=line;
@@ -320,26 +317,6 @@ static void derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *pa
     }
 }
 static void pk_to_h160(secp256k1_context *ctx,const uint8_t *pk,uint8_t *out){uint8_t pub[33];get_pub33(ctx,pk,pub);hash160_inline(pub,out);}
-static void read_row_by_h160(const uint8_t *h160,char *sats,char *type){
-    strcpy(sats,"0");strcpy(type,"?");
-    FILE *f=fopen(g_csv_path,"r");if(!f)return;
-    char line[MAX_LINE],*fields[8];
-    // skip header
-    fgets(line,sizeof(line),f);
-    while(fgets(line,sizeof(line),f)){
-        char tmp[MAX_LINE];strncpy(tmp,line,MAX_LINE-1);
-        int n=split_line(tmp,fields,8);if(n<1)continue;
-        char addr[MAX_ADDR];strncpy(addr,fields[0],MAX_ADDR-1);trim_str(addr);
-        uint8_t h[HASH160_BYTES];
-        if(!addr_to_h160(addr,h))continue;
-        if(memcmp(h,h160,HASH160_BYTES)==0){
-            if(n>=2){strncpy(sats,fields[1],23);trim_str(sats);}
-            if(n>=3){strncpy(type,fields[2],11);trim_str(type);}
-            break;
-        }
-    }
-    fclose(f);
-}
 
 /* =========================================================
    Rango hex -> bytes
@@ -784,10 +761,6 @@ static void *worker_bip39_fn(void *arg){
     secp256k1_context_destroy(ctx); return nullptr;
 }
 
-static void privkey_increment(uint8_t *k){
-    for(int i=31;i>=0;i--){if(++k[i])break;}
-}
-
 /* Callback para jac_batch: hash160 + check match por cada clave del batch */
 struct PuzzleBatchCtx {
     uint8_t priv_base[32]; /* privkey del punto[0] */
@@ -842,12 +815,6 @@ static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
         parar_motor();
     }
 }
-static void puzzle_on_key(int idx, const uint8_t *pub33, void *raw){
-    uint8_t h160[HASH160_BYTES];
-    hash160_inline(pub33,h160);
-    puzzle_h160((PuzzleBatchCtx*)raw,idx,h160);
-}
-
 /* Para esc_grupo: la clave es base + g*ESC_GRUPO + ESC_M + j. Lo que se sale
  * del lote (el final del rango) se ignora. */
 struct PuzzleGrupoCtx { PuzzleBatchCtx *pb; long g, cuenta; };

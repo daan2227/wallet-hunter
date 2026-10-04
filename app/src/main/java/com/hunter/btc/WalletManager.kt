@@ -312,7 +312,6 @@ object WalletManager {
 
     /* -- MULTI-WALLET -- */
     private const val PREF_WALLET_LIST = "wallet_list"
-    private const val PREF_ACTIVE_ID   = "active_wallet_id"
 
     // ── Nombres ──────────────────────────────────────────────────────────
     //

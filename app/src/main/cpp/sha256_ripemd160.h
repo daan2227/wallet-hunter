@@ -255,13 +255,6 @@ static inline void ripemd160_32w(const uint32_t *w, uint32_t *h){
     h[3]=0xC3D2E1F0u+al+br; h[4]=0x67452301u+bl+cr;
 }
 
-static inline void ripemd160_32(const uint8_t *in, uint8_t *out){
-    uint32_t w[8],h[5];
-    for(int i=0;i<8;i++) w[i]=(uint32_t)in[4*i]|((uint32_t)in[4*i+1]<<8)|((uint32_t)in[4*i+2]<<16)|((uint32_t)in[4*i+3]<<24);
-    ripemd160_32w(w,h);
-    for(int i=0;i<5;i++){out[i*4]=(uint8_t)h[i];out[i*4+1]=(uint8_t)(h[i]>>8);out[i*4+2]=(uint8_t)(h[i]>>16);out[i*4+3]=(uint8_t)(h[i]>>24);}
-}
-
 /* La de antes, tal cual: solo para comprobar la nueva y medirlas. */
 static inline void ripemd160_32_ref(const uint8_t *in, uint8_t *out){
 

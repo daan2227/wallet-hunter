@@ -225,8 +225,6 @@ class HunterService : Service() {
             .build()
     }
 
-    // Cuándo se le mandó la velocidad al master por última vez.
-    private var ultimoProgresoMs = 0L
     /** Última velocidad calculada, en operaciones por segundo. */
     private var ultimaVel = 0.0
     // Para sacar los saltos por segundo de Kangaroo, que sólo da el total.
