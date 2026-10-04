@@ -89,8 +89,9 @@ class HunterService : Service() {
         // Restaurar el modo de segundo plano (10 % CPU) por si el proceso murió
         // y Android relevanta el servicio sin pantalla: el techo debe seguir.
         try {
-            Termico.modoAhorro(getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
-                .getBoolean("modo_ahorro", false))
+            val hp = getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
+            Termico.ponerTecho(hp.getInt("modo_ahorro_pct", Termico.ECO_PCT))
+            Termico.modoAhorro(hp.getBoolean("modo_ahorro", false))
         } catch (e: Throwable) {}
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))

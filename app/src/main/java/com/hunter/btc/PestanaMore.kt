@@ -200,14 +200,55 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     }
 
     val rendimiento = grupo("Performance")
+    val ahorroPct0 = prefs.getInt("modo_ahorro_pct", Termico.ECO_PCT).coerceIn(1, 100)
+
+    // Etiqueta + deslizador para ELEGIR el techo de CPU en segundo plano.
+    val lblTecho = TextView(this).apply {
+        text = "Background CPU limit · $ahorroPct0 %"
+        textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.bold(context)
+    }
+    val sbTecho = android.widget.SeekBar(this).apply {
+        max = 100; progress = ahorroPct0
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, u: Boolean) {
+                lblTecho.text = "Background CPU limit · ${p.coerceAtLeast(1)} %"
+            }
+            override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
+            override fun onStopTrackingTouch(s: android.widget.SeekBar?) {
+                val v = (s?.progress ?: ahorroPct0).coerceAtLeast(1)
+                prefs.edit().putInt("modo_ahorro_pct", v).apply()
+                Termico.ponerTecho(v)
+                pintarTermico()
+            }
+        })
+    }
+    val cajaTecho = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        setPadding(dp(16), dp(2), dp(16), dp(14))
+        addView(lblTecho)
+        addView(sbTecho)
+        addView(TextView(this@buildMoreTab).apply {
+            text = "Only applies while Background mode is on."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(0, dp(2), 0, 0)
+        })
+    }
+    fun habilitarTecho(on: Boolean) { sbTecho.isEnabled = on; cajaTecho.alpha = if (on) 1f else 0.4f }
+
     filaSwitch(rendimiento, "Background mode",
-        "For long runs: caps the engine at ${Termico.ECO_PCT} % CPU so the phone " +
-        "stays cool and the battery lasts. Applies right away and to the next search.",
+        "For long runs: caps the engine CPU so the phone stays cool and the " +
+        "battery lasts. Applies right away and to the next search.",
         prefs.getBoolean("modo_ahorro", false)) { on ->
         prefs.edit().putBoolean("modo_ahorro", on).apply()
         Termico.modoAhorro(on)
+        habilitarTecho(on)
         pintarTermico()
     }
+    rendimiento.addView(cajaTecho)
+    habilitarTecho(prefs.getBoolean("modo_ahorro", false))
 
     val app = grupo("App")
     /* Tema claro / oscuro.

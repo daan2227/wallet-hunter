@@ -614,8 +614,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         window.statusBarColor = BG_DEEP
         s = Strings.EN
         csvPath = prefs.getString("csvPath", "") ?: ""
-        // Restaurar el modo de segundo plano (10 % CPU) guardado.
-        try { Termico.modoAhorro(prefs.getBoolean("modo_ahorro", false)) } catch (e: Throwable) {}
+        // Restaurar el modo de segundo plano (techo de CPU) guardado.
+        try {
+            Termico.ponerTecho(prefs.getInt("modo_ahorro_pct", Termico.ECO_PCT))
+            Termico.modoAhorro(prefs.getBoolean("modo_ahorro", false))
+        } catch (e: Throwable) {}
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

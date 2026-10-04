@@ -61,7 +61,7 @@ object Termico {
      */
     private const val HISTERESIS = 2f
 
-    /** El techo del modo de segundo plano: como mucho este % de CPU. */
+    /** El techo del modo de segundo plano por defecto, en % de CPU. */
     const val ECO_PCT = 10
 
     /** El porcentaje que ha pedido el usuario. Lo que se respeta en frío. */
@@ -70,11 +70,15 @@ object Termico {
 
     /**
      * Modo de segundo plano / bajo consumo. Para procesos largos (días): deja
-     * el motor al [ECO_PCT] % como mucho para no calentar ni gastar batería.
+     * el motor a [techo] % como mucho para no calentar ni gastar batería.
      * No pelea con [deseado]: sólo pone un techo. El gobernador térmico sigue
      * recortando por encima de esto si hiciera falta.
      */
     @Volatile var ahorro: Boolean = false
+        private set
+
+    /** El techo elegido para el modo de segundo plano, en %. Lo fija el usuario. */
+    @Volatile var techo: Int = ECO_PCT
         private set
 
     /** Escalón actual, 0 = sin limitar, [FACTOR].size-1 = parado. */
@@ -93,7 +97,7 @@ object Termico {
 
     /** El límite base: lo que ha pedido el usuario, con el techo del modo
      *  ahorro si está puesto. Nunca sube el ritmo, sólo lo acota. */
-    private fun base(): Int = if (ahorro) minOf(deseado, ECO_PCT) else deseado
+    private fun base(): Int = if (ahorro) minOf(deseado, techo) else deseado
 
     /** El porcentaje que toca aplicar de verdad. */
     fun efectivo(): Int = (base() * FACTOR[paso] / 100).coerceIn(0, 100)
@@ -116,6 +120,17 @@ object Termico {
         if (ahorro == on) return
         ahorro = on
         aplicar()
+    }
+
+    /**
+     * Fija el techo del modo de segundo plano, en %. Se aplica al momento si el
+     * modo está puesto, así se puede ajustar con una búsqueda en marcha.
+     */
+    fun ponerTecho(pct: Int) {
+        val v = pct.coerceIn(1, 100)
+        if (techo == v) return
+        techo = v
+        if (ahorro) aplicar()
     }
 
     /**
@@ -155,7 +170,7 @@ object Termico {
         return when {
             parado    -> "${sep}paused to cool down"
             limitando -> "${sep}throttled to ${efectivo()} % CPU"
-            ahorro    -> "${sep}background mode · ${ECO_PCT} % CPU"
+            ahorro    -> "${sep}background mode · ${techo} % CPU"
             else      -> t
         }
     }
