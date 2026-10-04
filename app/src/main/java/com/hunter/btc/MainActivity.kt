@@ -256,6 +256,15 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Reinicios hechos por el watchdog en esta sesión; se muestra en su etiqueta. */
     internal var watchdogRestarts = 0
     internal var activeToggleBtn: Button? = null
+    // Vistas de configuración que se bloquean mientras corre una búsqueda, para
+    // que no se cambie un parámetro a mitad y acabe en un estado raro. Las
+    // rellenan buildScanTab() y buildPuzzleTab().
+    internal var scannerConfigViews: List<android.view.View> = emptyList()
+    internal var puzzleConfigViews: List<android.view.View> = emptyList()
+    // El interruptor de GPU es especial: su "enabled" lo decide la detección de
+    // Vulkan, así que el bloqueo en cascada lo salta y lo gestiona aparte.
+    internal var gpuSwitch: android.view.View? = null
+    internal var gpuDisponible = false
     internal var tvWpsPuzzle: TextView? = null
     internal var tvPctPuzzle: TextView? = null
     internal var tvSpeedUnitPuzzle: TextView? = null
@@ -1157,6 +1166,31 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_SEC)
         (scanStateDot?.background as? android.graphics.drawable.GradientDrawable)
             ?.setColor(if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_MUTED)
+        refrescarBloqueos()
+    }
+
+    /** Habilita o deshabilita, en cascada, un árbol de vistas (y lo atenúa). */
+    private fun ponerArbol(v: android.view.View, activo: Boolean) {
+        if (v === gpuSwitch) return   // su "enabled" lo decide la detección de Vulkan
+        v.isEnabled = activo
+        if (v is android.view.ViewGroup)
+            for (i in 0 until v.childCount) ponerArbol(v.getChildAt(i), activo)
+    }
+
+    private fun aplicarBloqueo(vistas: List<android.view.View>, bloqueado: Boolean) {
+        for (v in vistas) { ponerArbol(v, !bloqueado); v.alpha = if (bloqueado) 0.5f else 1f }
+    }
+
+    /** Bloquea los parámetros de configuración de la pestaña cuya búsqueda esté
+     *  corriendo (fuerza bruta o Kangaroo) y desbloquea la otra. Así no se puede
+     *  tocar la config hasta pulsar Stop. */
+    internal fun refrescarBloqueos() {
+        val motor = try { HunterEngine.isRunning() } catch (e: Throwable) { false }
+        val kg = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        aplicarBloqueo(scannerConfigViews, motor && !puzzleMode)
+        val puzzleBloqueado = (motor && puzzleMode) || kg
+        aplicarBloqueo(puzzleConfigViews, puzzleBloqueado)
+        gpuSwitch?.isEnabled = !puzzleBloqueado && gpuDisponible
     }
 
     /** Resumen de las filas de ajuste, con el valor que tienen ahora mismo. */
@@ -1685,6 +1719,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val bg2 = callerBtn?.tag as? Array<GradientDrawable>
                 callerBtn?.text = s.stop
                 if (bg2 != null && bg2.size > 1) callerBtn?.background = bg2[1]
+                refrescarBloqueos()   // bloquea la config nada más arrancar
 
                 try {
                     startForegroundService(Intent(this, HunterService::class.java))
@@ -2140,6 +2175,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                                   "pressing again continues from there."
             tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
             kgInicio = 0L
+            refrescarBloqueos()
             return
         }
         if (puzzlePubHex.length != 66) {
@@ -2280,6 +2316,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         lblEscaneadas?.text = "Operations"
         lblRestantes?.text = "Estimated"
         btnKangaroo?.text = "Stop Kangaroo"
+        refrescarBloqueos()
         cardCobertura?.visibility = android.view.View.GONE
         // El watchdog lo relanza si Android se lo lleva por delante. Con el
         // trabajo guardado, relanzar continúa donde estaba en vez de empezar.

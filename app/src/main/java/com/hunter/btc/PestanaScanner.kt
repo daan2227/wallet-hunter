@@ -601,6 +601,10 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     btnToggle?.tag = arrayOf(startBg, stopRed)
     page.addView(btnToggle)
 
+    // Mientras escanea, estos parámetros quedan bloqueados (hasta pulsar Stop).
+    scannerConfigViews = listOf(settingsCard, modeRow)
+    refrescarBloqueos()
+
     scroll.addView(page)
     return scroll
 }

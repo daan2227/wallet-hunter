@@ -67,6 +67,7 @@ object WeakController {
     // Desglose del resultado de resolver cada entrada: direcciones sin clave
     // pública publicada (nunca gastaron → nada que auditar) y las que no se
     // pudieron comprobar por red. Son AtomicInteger porque los tocan los hilos.
+    private val conPubkey = java.util.concurrent.atomic.AtomicInteger(0)
     private val sinPubkey = java.util.concurrent.atomic.AtomicInteger(0)
     private val fallosRed = java.util.concurrent.atomic.AtomicInteger(0)
 
@@ -87,6 +88,12 @@ object WeakController {
     private var streamUri: Uri? = null
     private var streamTotal = 0   // 0 = desconocido (no se cuenta un fichero enorme)
     private val colaStream = java.util.concurrent.LinkedBlockingQueue<String>(1024)
+    // Pipeline del streaming: un lector mete claves CRUDAS en colaRaw, y varios
+    // resolutores (NUCLEOS_RED) las resuelven en paralelo a colaStream. Así los
+    // lookups de direcciones van en paralelo también en streaming.
+    private val colaRaw = java.util.concurrent.LinkedBlockingQueue<String>(1024)
+    private val lectorVivo = java.util.concurrent.atomic.AtomicBoolean(false)
+    private val resolviendo = java.util.concurrent.atomic.AtomicInteger(0)
     // El productor está vivo: si muere (fin de fichero o error) y la cola se
     // vacía, el consumidor da por terminado en vez de sondear null para siempre.
     private val productorVivo = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -109,6 +116,7 @@ object WeakController {
     private var sbTope: SeekBar? = null
     private var tvTope: TextView? = null
     private var tvEstado: TextView? = null
+    private var btnCsv: android.view.View? = null
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -187,6 +195,7 @@ object WeakController {
         root.addView(Ui.ghost(a, "Load CSV / text file", AppTheme.TXT_PRI).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
             setOnClickListener { elegirCsv() }
+            btnCsv = this
         })
         val vCargadas = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
@@ -399,9 +408,8 @@ object WeakController {
         val vOps = valor("0"); tvOps = vOps
         val vTime = valor("00:00:00"); tvTime = vTime
         val vProg = valor("—"); tvProg = vProg
-        val vKeys = valor(if (corriendo)
-            "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados" else "—")
-        tvKeys = vKeys
+        val vKeys = valor("—"); tvKeys = vKeys
+        if (corriendo) vKeys.text = cuentaTexto()
         val r1 = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) } }
@@ -416,6 +424,7 @@ object WeakController {
         root.addView(vStats)
 
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
+        bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
         estimar()
         return scroll
     }
@@ -428,6 +437,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
+        btnCsv = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -505,13 +515,14 @@ object WeakController {
      *  De paso lleva la cuenta de por qué no la da: dirección sin clave pública
      *  publicada (nunca gastó) o fallo de red. Lo llaman los hilos resolutores. */
     private fun resolver(bruta: String): String {
-        comprimida(bruta)?.let { return it }   // ya es una clave pública
+        comprimida(bruta)?.let { conPubkey.incrementAndGet(); return it }   // ya es una clave pública
         if (bruta.startsWith("1") || bruta.startsWith("3") || bruta.startsWith("bc1", true)) {
             val r = try { PubKeyFinder.buscar(appCtx, bruta, false) }
                     catch (e: Throwable) { PubKeyFinder.Resultado.SinRed }
             return when (r) {
                 is PubKeyFinder.Resultado.Encontrada ->
-                    comprimida(r.pubHex) ?: run { sinPubkey.incrementAndGet(); "" }
+                    comprimida(r.pubHex)?.also { conPubkey.incrementAndGet() }
+                        ?: run { sinPubkey.incrementAndGet(); "" }
                 is PubKeyFinder.Resultado.SinRed -> { fallosRed.incrementAndGet(); "" }
                 else -> { sinPubkey.incrementAndGet(); "" }   // NoRevelada / Publicada
             }
@@ -521,8 +532,9 @@ object WeakController {
 
     /** Resumen del desglose para los avisos, solo las partes que importan. */
     private fun desglose(): String {
-        val sp = sinPubkey.get(); val fr = fallosRed.get()
-        return (if (sp > 0) " · ${"%,d".format(sp)} with no public key" else "") +
+        val cp = conPubkey.get(); val sp = sinPubkey.get(); val fr = fallosRed.get()
+        return (if (cp > 0) " · ${"%,d".format(cp)} with pubkey" else "") +
+               (if (sp > 0) " · ${"%,d".format(sp)} no pubkey" else "") +
                (if (fr > 0) " · ${"%,d".format(fr)} unreachable" else "")
     }
 
@@ -556,11 +568,21 @@ object WeakController {
                 ctx.contentResolver.takePersistableUriPermission(uri,
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             } catch (e: Throwable) {}
-            streamMode = true; streamUri = uri; streamTotal = 0
+            streamMode = true; streamUri = uri
+            // Total APROXIMADO por tamaño ÷ longitud media de línea (muestra de 50
+            // líneas). Solo para el progreso/%, no hace falta que sea exacto.
+            streamTotal = try {
+                ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { br ->
+                    var suma = 0L; var n = 0; var l = br.readLine()
+                    while (l != null && n < 50) { suma += l.length + 1; n++; l = br.readLine() }
+                    if (n > 0 && suma > 0) (bytes / (suma / n)).toInt() else 0
+                } ?: 0
+            } catch (e: Throwable) { 0 }
             cargadas = emptyList()
             mostrarResumenCargadas()
-            aviso("Huge file (${"%,d".format(bytes / 1024 / 1024)} MB): keys will be read from " +
-                  "disk as the audit runs. Start when ready.")
+            aviso("Huge file (${"%,d".format(bytes / 1024 / 1024)} MB" +
+                  (if (streamTotal > 0) ", ~${"%,d".format(streamTotal)} keys" else "") +
+                  "): keys will be read from disk as the audit runs. Start when ready.")
             return
         }
         streamMode = false; streamUri = null   // fichero pequeño: modo normal
@@ -620,6 +642,19 @@ object WeakController {
         estimar()
     }
 
+    /** Bloquea (o desbloquea) los parámetros de configuración mientras corre la
+     *  auditoría: no se puede tocar nada hasta pulsar Stop. */
+    private fun bloquear(corriendo: Boolean) {
+        val activo = !corriendo
+        etClaves?.isEnabled = activo
+        sbBits?.isEnabled = activo
+        sbPresu?.isEnabled = activo
+        sbTope?.isEnabled = activo
+        btnCsv?.isEnabled = activo
+        btnCsv?.alpha = if (activo) 1f else 0.4f
+        tvCargadas?.isEnabled = activo   // el chip que limpia la lista
+    }
+
     private fun arrancar() {
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
@@ -658,7 +693,7 @@ object WeakController {
 
     private fun resetContadores() {
         indice = 0; hallados = 0; corriendo = true
-        sinPubkey.set(0); fallosRed.set(0)
+        conPubkey.set(0); sinPubkey.set(0); fallosRed.set(0)
         inicioMs = System.currentTimeMillis()
         opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
         chart?.reset()
@@ -666,17 +701,21 @@ object WeakController {
         tvProg?.text = "—"; tvKeys?.text = "0 · 0"
         statsCard?.visibility = android.view.View.VISIBLE
         btn?.text = "Stop"
+        bloquear(true)
     }
 
-    /** Hilo productor del modo streaming: lee el fichero enorme línea a línea,
-     *  resuelve cada clave (directa, o lookup de red si es dirección) y la deja
-     *  en la cola acotada. Se bloquea si la cola se llena (backpressure), así la
-     *  memoria queda limitada por más grande que sea el fichero. */
+    /** Productor del modo streaming, en pipeline: un LECTOR lee el fichero y mete
+     *  claves crudas en colaRaw; NUCLEOS_RED RESOLUTORES las resuelven en paralelo
+     *  (los lookups de direcciones ya no van de una en una) y dejan la clave
+     *  pública en colaStream. Todo con colas acotadas (backpressure), así la
+     *  memoria queda limitada por grande que sea el fichero. */
     private fun arrancarProductorStream() {
-        colaStream.clear()
+        colaStream.clear(); colaRaw.clear()
         val gen = generacion.incrementAndGet()
-        productorVivo.set(true)
+        productorVivo.set(true); lectorVivo.set(true); resolviendo.set(NUCLEOS_RED)
         val ctx = appCtx; val uri = streamUri
+        val ms = java.util.concurrent.TimeUnit.MILLISECONDS
+        // Lector.
         Thread {
             try {
                 // Buffer de 1 MB: menos viajes al proveedor de archivos (SAF) que
@@ -686,21 +725,39 @@ object WeakController {
                     while (linea != null && corriendo && generacion.get() == gen) {
                         for (m in reClaves.findAll(linea)) {
                             if (!corriendo || generacion.get() != gen) break
-                            val pub = resolver(m.value.removePrefix("0x"))
                             var puesto = false
                             while (corriendo && generacion.get() == gen && !puesto)
-                                puesto = colaStream.offer(pub, 200, java.util.concurrent.TimeUnit.MILLISECONDS)
+                                puesto = colaRaw.offer(m.value, 200, ms)
                         }
                         linea = br.readLine()
                     }
                 }
             } catch (e: Throwable) {}
-            productorVivo.set(false)
-            // Solo si sigue corriendo (fin normal): así el consumidor sigue
-            // vaciando la cola y put no se bloquea. En un Stop no se pone FIN.
-            // (Si no llega, el consumidor termina igual al ver productorVivo=false.)
-            try { if (corriendo && generacion.get() == gen) colaStream.offer(FIN) } catch (e: Throwable) {}
+            lectorVivo.set(false)
         }.apply { isDaemon = true; start() }
+        // Resolutores en paralelo.
+        repeat(NUCLEOS_RED) {
+            Thread {
+                try {
+                    while (corriendo && generacion.get() == gen) {
+                        val bruta = try { colaRaw.poll(200, ms) } catch (e: Throwable) { null }
+                        if (bruta == null) {
+                            if (!lectorVivo.get() && colaRaw.isEmpty()) break
+                            continue
+                        }
+                        val pub = resolver(bruta.removePrefix("0x"))
+                        var puesto = false
+                        while (corriendo && generacion.get() == gen && !puesto)
+                            puesto = colaStream.offer(pub, 200, ms)
+                    }
+                } catch (e: Throwable) {}
+                // El último resolutor marca el fin del productor y pone el centinela.
+                if (resolviendo.decrementAndGet() == 0) {
+                    productorVivo.set(false)
+                    try { if (corriendo && generacion.get() == gen) colaStream.offer(FIN) } catch (e: Throwable) {}
+                }
+            }.apply { isDaemon = true; start() }
+        }
     }
 
     /** Lanza [NUCLEOS_RED] hilos que resuelven la cola por adelantado. */
@@ -733,6 +790,7 @@ object WeakController {
         } catch (e: Throwable) {}
         estimar()
         btn?.text = "Start audit"
+        bloquear(false)
         aviso(motivo + desglose() +
               (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
     }
@@ -780,14 +838,13 @@ object WeakController {
             if (pub.isEmpty()) {   // esta línea no da clave: saltar
                 indice++
                 if (++procesados >= 512) {   // ceder el hilo y continuar
-                    tvKeys?.text = "${"%,d".format(indice)} · $hallados"
+                    tvKeys?.text = cuentaTexto()
                     tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                     h.post { recoger() }; return
                 }
                 continue
             }
-            val tot = if (streamMode) streamTotal else claves.size
-            tvKeys?.text = "${(indice + 1)}${if (tot > 0) "/" + "%,d".format(tot) else ""} · $hallados"
+            tvKeys?.text = cuentaTexto()
             lanzar(pub)
             return
         }
@@ -881,7 +938,16 @@ object WeakController {
         tvOps?.text = "$ov $ou"
         tvTime?.text = reloj((ahora - inicioMs) / 1000)
         tvProg?.text = "$pct %"
-        tvKeys?.text = "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
+        tvKeys?.text = cuentaTexto()
+    }
+
+    /** Texto del contador de claves. En streaming no hay lista en RAM, así que
+     *  mostramos las procesadas frente al total aproximado (si se pudo estimar). */
+    private fun cuentaTexto(): String = if (streamMode) {
+        val tot = if (streamTotal > 0) "~${"%,d".format(streamTotal)}" else "?"
+        "${"%,d".format(indice)}/$tot · $hallados"
+    } else {
+        "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
     }
 
     private fun guardar(claveHex: String) {

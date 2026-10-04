@@ -62,6 +62,25 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
         }
 
+    /** Un campo FIJO: se ve pero no se edita (lo rellena el puzzle elegido, no
+     *  el usuario). Al tocarlo copia su contenido al portapapeles, para poder
+     *  pegarlo donde haga falta sin poder cambiarlo por error. */
+    fun campoFijo(hint: String): EditText = styledInput(hint).apply {
+        isFocusable = false
+        isFocusableInTouchMode = false
+        isCursorVisible = false
+        keyListener = null   // no se puede teclear ni pegar encima
+        setOnClickListener {
+            val t = text?.toString()?.trim() ?: ""
+            if (t.isEmpty()) return@setOnClickListener
+            try {
+                val cb = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                cb.setPrimaryClip(android.content.ClipData.newPlainText("hex", t))
+                android.widget.Toast.makeText(this@buildPuzzleTab, "Copied", android.widget.Toast.LENGTH_SHORT).show()
+            } catch (e: Throwable) {}
+        }
+    }
+
     fun collapsibleSection(icon: Int, title: String, build: LinearLayout.() -> Unit) =
         Ui.section(this, icon, title, build)
 
@@ -439,26 +458,26 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(8) }
         }
         colStart.addView(TextView(this@buildPuzzleTab).apply { text = "From"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
-        etRangeStart = styledInput("0x...")
+        etRangeStart = campoFijo("0x...")
         colStart.addView(etRangeStart)
         val colEnd = LinearLayout(this@buildPuzzleTab).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         colEnd.addView(TextView(this@buildPuzzleTab).apply { text = "To"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
-        etRangeEnd = styledInput("0x...")
+        etRangeEnd = campoFijo("0x...")
         colEnd.addView(etRangeEnd)
         rangeRow.addView(colStart); rangeRow.addView(colEnd)
         addView(rangeRow)
         addView(TextView(this@buildPuzzleTab).apply { text = "Target address"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
-        etTarget = styledInput("1A2B3C…")
+        etTarget = campoFijo("1A2B3C…")
         addView(etTarget)
     })
 
     // ── KANGAROO PERSONALIZADO ────────────────────────────────────────
     // Cualquier clave pública y cualquier rango, no solo los de la lista:
     // por ejemplo un trozo del #135, o una clave propia para probar.
-    page.addView(collapsibleSection(R.drawable.ic_target, "Custom Kangaroo") {
+    val customKgSection = collapsibleSection(R.drawable.ic_target, "Custom Kangaroo") {
         addView(TextView(this@buildPuzzleTab).apply {
             text = "Public key (02…/03…/04…) or an address that has spent"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
@@ -621,7 +640,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 kangarooPersonalizado(etPub.text.toString(), etDesde.text.toString(), etHasta.text.toString(), auto)
             }
         })
-    })
+    }
+    page.addView(customKgSection)
 
     // ── CHECKPOINT ────────────────────────────────────────────────────
     tvCheckpointLive = TextView(this).apply {
@@ -890,6 +910,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         isChecked = prefs.getBoolean("usar_gpu", false)
         isEnabled = false
     }
+    gpuSwitch = swGpu   // el bloqueo en cascada lo salta y lo gestiona aparte
     filaGpu.addView(swGpu)
     powerCard.addView(filaGpu)
     HunterEngine.setUsarGpu(swGpu.isChecked)
@@ -907,12 +928,15 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             if (p.size >= 5 && p[0].isNotBlank()) {
                 tvGpu.text = "${p[0]} · ${p[1]} · Vulkan ${p[2]} · ${p[4]} MB. " +
                              "Kangaroo only; runs next to the CPU threads."
+                gpuDisponible = true
                 swGpu.isEnabled = true
             } else {
                 tvGpu.text = "No Vulkan GPU on this phone."
+                gpuDisponible = false
                 swGpu.isChecked = false; swGpu.isEnabled = false
                 HunterEngine.setUsarGpu(false)
             }
+            refrescarBloqueos()   // respeta el bloqueo si ya hay algo corriendo
         }
     }.start()
 
@@ -1070,9 +1094,10 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     })
 
     page.addView(powerCard)
-    page.addView(collapsibleSection(R.drawable.ic_dice, "Fine tuning") {
+    val fineTuningSection = collapsibleSection(R.drawable.ic_dice, "Fine tuning") {
         addView(tuningCard)
-    })
+    }
+    page.addView(fineTuningSection)
     updatePuzzleLabels()
 
     // ── HERRAMIENTAS ──────────────────────────────────────────────────
@@ -1356,6 +1381,12 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             }
         }
     }.start()
+
+    // Mientras corre una búsqueda (fuerza bruta o Kangaroo) estos parámetros
+    // quedan bloqueados hasta pulsar Stop. El "Hex range" no se incluye: ya es
+    // de solo lectura y debe poder copiarse al tocarlo aunque esté corriendo.
+    puzzleConfigViews = listOf(chipSection, customKgSection, powerCard, fineTuningSection)
+    refrescarBloqueos()
 
     scroll.addView(page)
     return scroll
