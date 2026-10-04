@@ -200,25 +200,30 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     }
 
     val rendimiento = grupo("Performance")
+    // Pasos redondos de %, no de uno en uno: para segundo plano lo que importa
+    // es el extremo bajo, así que hay más escalones ahí.
+    val PASOS = intArrayOf(5, 10, 15, 25, 50, 75, 100)
     val ahorroPct0 = prefs.getInt("modo_ahorro_pct", Termico.ECO_PCT).coerceIn(1, 100)
+    fun idxPaso(pct: Int) = PASOS.indexOfFirst { it >= pct }.let { if (it < 0) PASOS.size - 1 else it }
+    val idx0 = idxPaso(ahorroPct0)
 
     // Etiqueta + deslizador para ELEGIR el techo de CPU en segundo plano.
     val lblTecho = TextView(this).apply {
-        text = "Background CPU limit · $ahorroPct0 %"
+        text = "Background CPU limit · ${PASOS[idx0]} %"
         textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
         typeface = AppTheme.bold(context)
     }
     val sbTecho = android.widget.SeekBar(this).apply {
-        max = 100; progress = ahorroPct0
+        max = PASOS.size - 1; progress = idx0
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
         setOnSeekBarChangeListener(object : android.widget.SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(s: android.widget.SeekBar?, p: Int, u: Boolean) {
-                lblTecho.text = "Background CPU limit · ${p.coerceAtLeast(1)} %"
+                lblTecho.text = "Background CPU limit · ${PASOS[p.coerceIn(0, PASOS.size - 1)]} %"
             }
             override fun onStartTrackingTouch(s: android.widget.SeekBar?) {}
             override fun onStopTrackingTouch(s: android.widget.SeekBar?) {
-                val v = (s?.progress ?: ahorroPct0).coerceAtLeast(1)
+                val v = PASOS[(s?.progress ?: idx0).coerceIn(0, PASOS.size - 1)]
                 prefs.edit().putInt("modo_ahorro_pct", v).apply()
                 Termico.ponerTecho(v)
                 pintarTermico()
