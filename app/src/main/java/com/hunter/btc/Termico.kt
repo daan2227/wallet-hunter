@@ -61,8 +61,20 @@ object Termico {
      */
     private const val HISTERESIS = 2f
 
+    /** El techo del modo de segundo plano: como mucho este % de CPU. */
+    const val ECO_PCT = 10
+
     /** El porcentaje que ha pedido el usuario. Lo que se respeta en frío. */
     @Volatile var deseado: Int = 70
+        private set
+
+    /**
+     * Modo de segundo plano / bajo consumo. Para procesos largos (días): deja
+     * el motor al [ECO_PCT] % como mucho para no calentar ni gastar batería.
+     * No pelea con [deseado]: sólo pone un techo. El gobernador térmico sigue
+     * recortando por encima de esto si hiciera falta.
+     */
+    @Volatile var ahorro: Boolean = false
         private set
 
     /** Escalón actual, 0 = sin limitar, [FACTOR].size-1 = parado. */
@@ -79,8 +91,12 @@ object Termico {
     /** ¿Se ha parado la búsqueda por calor? */
     val parado: Boolean get() = paso >= FACTOR.size - 1
 
+    /** El límite base: lo que ha pedido el usuario, con el techo del modo
+     *  ahorro si está puesto. Nunca sube el ritmo, sólo lo acota. */
+    private fun base(): Int = if (ahorro) minOf(deseado, ECO_PCT) else deseado
+
     /** El porcentaje que toca aplicar de verdad. */
-    fun efectivo(): Int = (deseado * FACTOR[paso] / 100).coerceIn(0, 100)
+    fun efectivo(): Int = (base() * FACTOR[paso] / 100).coerceIn(0, 100)
 
     /**
      * El usuario ha pedido un límite. Se guarda y se aplica ya, recortado si
@@ -88,6 +104,17 @@ object Termico {
      */
     fun pedir(pct: Int) {
         deseado = pct.coerceIn(1, 100)
+        aplicar()
+    }
+
+    /**
+     * Enciende o apaga el modo de segundo plano. Se aplica al momento, así que
+     * se puede activar con una búsqueda ya en marcha y baja el ritmo sin
+     * reiniciar nada.
+     */
+    fun modoAhorro(on: Boolean) {
+        if (ahorro == on) return
+        ahorro = on
         aplicar()
     }
 
@@ -123,12 +150,13 @@ object Termico {
 
     /** Para la pantalla: "48 °C · paused to cool down". */
     fun resumen(): String {
-        val t = "${"%.0f".format(tempC)} °C"
+        val t = if (tempC > 0f) "${"%.0f".format(tempC)} °C" else ""
+        val sep = if (t.isNotEmpty()) "$t · " else ""
         return when {
-            tempC <= 0f -> ""
-            parado      -> "$t · paused to cool down"
-            limitando   -> "$t · throttled to ${efectivo()} % CPU"
-            else        -> t
+            parado    -> "${sep}paused to cool down"
+            limitando -> "${sep}throttled to ${efectivo()} % CPU"
+            ahorro    -> "${sep}background mode · ${ECO_PCT} % CPU"
+            else      -> t
         }
     }
 }

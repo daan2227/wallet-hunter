@@ -875,6 +875,11 @@ object WeakController {
                 nucleos, porHilo, "", HunterEngine.topeTablaBits(ctx))
         } catch (e: Throwable) { false }
         if (!ok) { indice++; siguiente(); return }
+        // El weak arranca Kangaroo de cero por cada clave. Si el modo de segundo
+        // plano está puesto (o el calor ya está recortando), se aplica el techo
+        // de CPU en el acto; si no, se deja al ritmo normal.
+        if (Termico.ahorro || Termico.limitando)
+            try { HunterEngine.kangarooSetCpu(Termico.efectivo().coerceAtLeast(1)) } catch (e: Throwable) {}
         presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
         claveInicioMs = System.currentTimeMillis()
         // Ritmo de sondeo adaptado a lo que se espera que tarde la clave: en

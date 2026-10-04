@@ -199,6 +199,16 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         if (on) Sonido.moneda(this)   // muestra cómo suena al activarlo
     }
 
+    val rendimiento = grupo("Performance")
+    filaSwitch(rendimiento, "Background mode",
+        "For long runs: caps the engine at ${Termico.ECO_PCT} % CPU so the phone " +
+        "stays cool and the battery lasts. Applies right away and to the next search.",
+        prefs.getBoolean("modo_ahorro", false)) { on ->
+        prefs.edit().putBoolean("modo_ahorro", on).apply()
+        Termico.modoAhorro(on)
+        pintarTermico()
+    }
+
     val app = grupo("App")
     /* Tema claro / oscuro.
      *

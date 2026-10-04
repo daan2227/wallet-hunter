@@ -86,6 +86,12 @@ class HunterService : Service() {
         // El motor puede estar corriendo sin ninguna pantalla abierta: el baúl
         // tiene que poder abrirse desde aquí.
         HunterEngine.conectarBaul(this)
+        // Restaurar el modo de segundo plano (10 % CPU) por si el proceso murió
+        // y Android relevanta el servicio sin pantalla: el techo debe seguir.
+        try {
+            Termico.modoAhorro(getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
+                .getBoolean("modo_ahorro", false))
+        } catch (e: Throwable) {}
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
         startForeground(NOTIF_FG, buildFgNotif("BTC Hunter running", "Starting..."))

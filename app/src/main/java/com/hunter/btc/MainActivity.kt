@@ -614,6 +614,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         window.statusBarColor = BG_DEEP
         s = Strings.EN
         csvPath = prefs.getString("csvPath", "") ?: ""
+        // Restaurar el modo de segundo plano (10 % CPU) guardado.
+        try { Termico.modoAhorro(prefs.getBoolean("modo_ahorro", false)) } catch (e: Throwable) {}
 
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1215,13 +1217,19 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Solo se ensena cuando el gobernador esta haciendo algo. Si el movil
         // va fresco no hay nada que contar, y la temperatura a secas ya sale en
         // la notificacion para quien la quiera.
-        if (txt.isEmpty() || !Termico.limitando) {
+        val corriendo = try { HunterEngine.isRunning() || HunterEngine.kangarooRunning() }
+                        catch (e: Throwable) { false }
+        if (txt.isEmpty() || (!Termico.limitando && !(Termico.ahorro && corriendo))) {
             tv.visibility = android.view.View.GONE
             return
         }
         tv.visibility = android.view.View.VISIBLE
         tv.text = txt
-        tv.setTextColor(if (Termico.parado) AppTheme.RED else AppTheme.WARN)
+        tv.setTextColor(when {
+            Termico.parado -> AppTheme.RED
+            Termico.limitando -> AppTheme.WARN
+            else -> AppTheme.TXT_SEC   // modo ahorro sin recorte térmico
+        })
     }
 
     internal fun updateUI() {
