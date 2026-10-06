@@ -231,8 +231,18 @@ object Ui {
 
         header.setOnClickListener {
             val opening = body.visibility == View.GONE
+            // Micro-transición: el cuerpo se despliega (alto + desvanecido) en
+            // vez de aparecer de golpe. La raíz de la animación es el padre si
+            // ya está enganchado, para que lo que queda debajo se recoloque
+            // deslizándose en vez de dar un salto.
+            val raiz = (container.parent as? android.view.ViewGroup) ?: container
+            android.transition.TransitionManager.beginDelayedTransition(raiz,
+                android.transition.AutoTransition().apply {
+                    duration = 180
+                    interpolator = android.view.animation.DecelerateInterpolator()
+                })
             body.visibility = if (opening) View.VISIBLE else View.GONE
-            chevron.animate().rotation(if (opening) 90f else 0f).setDuration(140).start()
+            chevron.animate().rotation(if (opening) 90f else 0f).setDuration(180).start()
         }
         return container
     }

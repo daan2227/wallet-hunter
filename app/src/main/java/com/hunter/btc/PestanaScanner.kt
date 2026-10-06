@@ -308,8 +308,14 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         settingsCard.addView(body)
         head.setOnClickListener {
             val abriendo = body.visibility == android.view.View.GONE
+            val raiz = (settingsCard.parent as? android.view.ViewGroup) ?: settingsCard
+            android.transition.TransitionManager.beginDelayedTransition(raiz,
+                android.transition.AutoTransition().apply {
+                    duration = 180
+                    interpolator = android.view.animation.DecelerateInterpolator()
+                })
             body.visibility = if (abriendo) android.view.View.VISIBLE else android.view.View.GONE
-            chevron.animate().rotation(if (abriendo) 90f else 0f).setDuration(140).start()
+            chevron.animate().rotation(if (abriendo) 90f else 0f).setDuration(180).start()
         }
         return value
     }
