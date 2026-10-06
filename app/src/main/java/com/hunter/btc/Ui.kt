@@ -123,6 +123,30 @@ object Ui {
             android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
     }
 
+    /** Aclara un color mezclándolo con blanco [f] (0..1). */
+    private fun aclarar(color: Int, f: Float): Int {
+        val r = android.graphics.Color.red(color)
+        val g = android.graphics.Color.green(color)
+        val b = android.graphics.Color.blue(color)
+        return android.graphics.Color.rgb(
+            (r + (255 - r) * f).toInt().coerceIn(0, 255),
+            (g + (255 - g) * f).toInt().coerceIn(0, 255),
+            (b + (255 - b) * f).toInt().coerceIn(0, 255))
+    }
+
+    /**
+     * Fondo de un botón principal: un degradado vertical MUY sutil, un punto
+     * más claro arriba que abajo. Da algo de relieve al único botón que pone la
+     * app en marcha sin romper el plano del resto —no es un color nuevo, es el
+     * mismo acento con una luz suave encima—.
+     */
+    fun botonAccento(ctx: Context, radius: Int = AppTheme.R_KEY, base: Int = AppTheme.ACCENT):
+            GradientDrawable =
+        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(aclarar(base, 0.16f), base)).apply {
+            cornerRadius = dp(ctx, radius).toFloat()
+        }
+
     /**
      * Confirmación táctil al pulsar una acción importante (Start/Stop): un
      * toque háptico corto y un pulso de escala. No cambia nada del estado, sólo
@@ -360,7 +384,7 @@ object Ui {
         textSize = if (mono) AppTheme.SP_CAPTION else AppTheme.SP_BODY
         setTextColor(AppTheme.TXT_PRI)
         setHintTextColor(AppTheme.TXT_MUTED)
-        typeface = if (mono) android.graphics.Typeface.MONOSPACE else AppTheme.body(ctx)
+        typeface = if (mono) AppTheme.mono(ctx) else AppTheme.body(ctx)
         background = cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, ctx)
         setPadding(dp(ctx, 14), dp(ctx, 13), dp(ctx, 14), dp(ctx, 13))
         layoutParams = LinearLayout.LayoutParams(

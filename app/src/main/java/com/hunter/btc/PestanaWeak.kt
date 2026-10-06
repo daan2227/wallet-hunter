@@ -185,7 +185,7 @@ object WeakController {
             gravity = Gravity.TOP or Gravity.START
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
-            typeface = android.graphics.Typeface.MONOSPACE
+            typeface = AppTheme.mono(context)
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
             setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -336,7 +336,7 @@ object WeakController {
             text = if (corriendo) "Stop" else "Start audit"; textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.ON_ACCENT); typeface = AppTheme.bold(context)
             isAllCaps = false; stateListAnimator = null
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, context)
+            background = Ui.botonAccento(context, AppTheme.R_INNER, AppTheme.ACCENT)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
             setOnClickListener { Ui.pulso(this); if (corriendo) parar("Stopped.") else arrancar() }
         }

@@ -332,7 +332,7 @@ class VaultActivity : AppCompatActivity() {
         arriba.addView(Ui.icon(this, R.drawable.ic_chevron, 16, AppTheme.TXT_MUTED))
         c.addView(arriba)
 
-        c.addView(texto(e.addr, AppTheme.SP_CAPTION, AppTheme.TXT_PRI, Typeface.MONOSPACE).apply {
+        c.addView(texto(e.addr, AppTheme.SP_CAPTION, AppTheme.TXT_PRI, AppTheme.mono(this)).apply {
             setPadding(0, dp(10), 0, dp(6))
         })
         // "0.00000000 BTC" a secas se lee como "vacía", cuando puede ser sólo
@@ -381,7 +381,7 @@ class VaultActivity : AppCompatActivity() {
                 setPadding(0, dp(12), 0, dp(4))
             })
             val t = texto(valor, if (mono) AppTheme.SP_CAPTION else AppTheme.SP_BODY, AppTheme.TXT_PRI,
-                          if (mono) Typeface.MONOSPACE else null).apply { setTextIsSelectable(false) }
+                          if (mono) AppTheme.mono(this) else null).apply { setTextIsSelectable(false) }
             v.addView(t)
             return t
         }

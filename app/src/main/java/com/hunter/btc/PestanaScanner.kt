@@ -349,7 +349,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
                 java.io.File(csvPath).name else "No file"
             setTextColor(AppTheme.TXT_SEC)
             textSize = AppTheme.SP_CAPTION
-            typeface = Typeface.MONOSPACE   // es un nombre de fichero
+            typeface = AppTheme.mono(context)   // es un nombre de fichero
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
             setPadding(dp(12), 0, 0, 0)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -585,10 +585,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     // Era un rectángulo de #1A1A1A con un filo blanco: exactamente el mismo
     // peso visual que las tarjetas que tiene encima. El único botón que
     // pone la app en marcha tiene que ser lo más sólido de la pantalla.
-    val startBg = GradientDrawable().apply {
-        setColor(AppTheme.ACCENT)
-        cornerRadius = dp(AppTheme.R_CARD).toFloat()
-    }
+    val startBg = Ui.botonAccento(this, AppTheme.R_CARD)
     // Parar no es la acción principal, es la destructiva: fondo tenue y
     // texto rojo. Antes era un rectángulo rojo entero, que pide que lo
     // pulses.

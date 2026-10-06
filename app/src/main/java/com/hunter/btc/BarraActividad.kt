@@ -55,7 +55,9 @@ class BarraActividad(ctx: android.content.Context) : android.view.View(ctx) {
         val r = h / 2f
         pTrack.color = AppTheme.BG_ELEV
         c.drawRoundRect(0f, 0f, w, h, r, r, pTrack)
-        pSeg.color = AppTheme.ACCENT
+        // Mismo degradado BLUE→ACCENT que el resto de barras; los segmentos
+        // cambian de tono según por dónde cruzan, lo que da sensación de vida.
+        pSeg.shader = Barras.degradado(w)
         // Dos segmentos a media fase: casi siempre hay uno a la vista, así que
         // el barrido se lee continuo y no "a tirones".
         seg(c, w, h, r, fase)

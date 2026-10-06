@@ -105,7 +105,7 @@ class DebugActivity : AppCompatActivity() {
         val tvLive = TextView(this).apply {
             text = "No logs yet... Start a scan or a puzzle to see activity."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = Typeface.MONOSPACE   // son datos del sistema
+            typeface = AppTheme.mono(context)   // son datos del sistema
             background = GradientDrawable().apply {
                 setColor(AppTheme.BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
             }
@@ -186,7 +186,7 @@ class DebugActivity : AppCompatActivity() {
                 })
                 addView(TextView(this@DebugActivity).apply {
                     text = value; textSize = AppTheme.SP_CAPTION; setTextColor(color)
-                    typeface = Typeface.MONOSPACE
+                    typeface = AppTheme.mono(context)
                 })
             }
         }
@@ -212,7 +212,7 @@ class DebugActivity : AppCompatActivity() {
                    "jumps per second on this phone. Takes about 5 seconds; stop any " +
                    "search first."
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
-            typeface = Typeface.MONOSPACE
+            typeface = AppTheme.mono(context)
             setTextIsSelectable(true)
             setPadding(0, 0, 0, dp(8))
         }

@@ -30,7 +30,10 @@ class BarraProgreso(ctx: android.content.Context) : android.view.View(ctx) {
         pTrack.color = AppTheme.BG_ELEV
         c.drawRoundRect(0f, 0f, w, h, r, r, pTrack)
         if (frac > 0f) {
-            pFill.color = AppTheme.ACCENT
+            // Mismo degradado BLUE→ACCENT que la barra de cobertura del puzzle,
+            // a lo ancho de TODO el carril: así el relleno parcial enseña el
+            // tramo izquierdo del degradado y todas las barras se ven iguales.
+            pFill.shader = Barras.degradado(w)
             // Al menos un punto redondo cuando acaba de arrancar, para que se
             // vea que ya hay algo en vez de una barra vacía.
             val fw = (w * frac).coerceAtLeast(h)

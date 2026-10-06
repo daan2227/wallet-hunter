@@ -316,7 +316,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     tvCurrentBlock = TextView(this).apply {
         text = "Current block: —"
         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-        typeface = Typeface.MONOSPACE   // lleva el índice en hex
+        typeface = AppTheme.mono(context)   // lleva el índice en hex
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(8) }
@@ -436,7 +436,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         typeface = AppTheme.bold(context)
         isAllCaps = false
         stateListAnimator = null
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, this@buildPuzzleTab)
+        background = Ui.botonAccento(this@buildPuzzleTab, AppTheme.R_INNER, AppTheme.ACCENT)
         visibility = android.view.View.GONE
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
@@ -1150,12 +1150,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     page.addView(tvThermalPuzzle)
 
     // ── START BUTTON ──────────────────────────────────────────────────
-    val startBg = android.graphics.drawable.GradientDrawable().apply {
-        setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_KEY).toFloat()
-    }
-    val stopRed = android.graphics.drawable.GradientDrawable().apply {
-        setColor(AppTheme.RED); cornerRadius = dp(AppTheme.R_KEY).toFloat()
-    }
+    val startBg = Ui.botonAccento(this, AppTheme.R_KEY, AppTheme.ACCENT)
+    val stopRed = Ui.botonAccento(this, AppTheme.R_KEY, AppTheme.RED)
     btnPuzzleToggle = Button(this).apply {
         text = "Start puzzle"
         textSize = AppTheme.SP_TITLE

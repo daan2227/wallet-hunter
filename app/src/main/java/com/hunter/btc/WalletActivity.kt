@@ -751,7 +751,7 @@ class WalletActivity : FragmentActivity() {
                     })
                     card.addView(TextView(this).apply {
                         text = addr; textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
-                        typeface = Typeface.MONOSPACE
+                        typeface = AppTheme.mono(context)
                         setPadding(0, dp(3), 0, dp(7))
                     })
                     card.addView(TextView(this).apply {
@@ -931,7 +931,7 @@ class WalletActivity : FragmentActivity() {
         fun row(k:String,v:String,vc:Int=TXT_PRI){
             val r=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(0,0,0,dp(10))}
             r.addView(TextView(this).apply{text=k;textSize=AppTheme.SP_CAPTION;setTextColor(TXT_SEC);typeface=AppTheme.medium(context);setPadding(0,0,0,dp(5))})
-            val tv=TextView(this).apply{text=v;textSize=AppTheme.SP_CAPTION;setTextColor(vc);typeface=Typeface.MONOSPACE;background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};setPadding(dp(14),dp(12),dp(14),dp(12))}
+            val tv=TextView(this).apply{text=v;textSize=AppTheme.SP_CAPTION;setTextColor(vc);typeface=AppTheme.mono(context);background=GradientDrawable().apply{setColor(BG_ELEV);cornerRadius=dp(AppTheme.R_INNER).toFloat()};setPadding(dp(14),dp(12),dp(14),dp(12))}
             r.addView(tv);sheet.addView(r)
             tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
         }
@@ -1240,7 +1240,7 @@ class WalletActivity : FragmentActivity() {
         fromCol.addView(cap("From").apply { textSize = AppTheme.SP_MICRO })
         val tvFromAddr = TextView(this).apply {
             textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
-            typeface = Typeface.MONOSPACE   // es una dirección
+            typeface = AppTheme.mono(context)   // es una dirección
             maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
             setPadding(0, dp(3), 0, 0)
         }
@@ -1282,7 +1282,7 @@ class WalletActivity : FragmentActivity() {
             hint = "bc1… o 1… o 3…"
             textSize = AppTheme.SP_CAPTION
             setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
-            typeface = Typeface.MONOSPACE
+            typeface = AppTheme.mono(context)
             background = null
             setPadding(0, dp(8), 0, 0)
             minHeight = dp(44)

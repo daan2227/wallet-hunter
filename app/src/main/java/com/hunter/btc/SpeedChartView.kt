@@ -29,7 +29,7 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
     }
     private val paintDot = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.ACCENT }
     private val paintLbl = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = AppTheme.TXT_SEC; textSize = 9f * d; typeface = Typeface.MONOSPACE
+        color = AppTheme.TXT_SEC; textSize = 9f * d; typeface = AppTheme.mono(context)
     }
     private val paintMedia = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = AppTheme.TXT_SEC; strokeWidth = 1f * d; style = Paint.Style.STROKE
@@ -111,7 +111,12 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         val fill = Path(ps)
         fill.lineTo(xDe(suave.size - 1), y1); fill.lineTo(xDe(0), y1); fill.close()
         canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            shader = LinearGradient(0f, y0, 0f, y1, 0x3341D9A0, 0x0041D9A0, Shader.TileMode.CLAMP)
+            // Derivado del acento real (#00C896), no un verde aparte: el relleno
+            // va del acento al 20 % arriba a transparente abajo, así cuadra con
+            // la línea, que también es ACCENT.
+            val a = AppTheme.ACCENT and 0x00FFFFFF
+            shader = LinearGradient(0f, y0, 0f, y1,
+                (0x33 shl 24) or a, a and 0x00FFFFFF, Shader.TileMode.CLAMP)
             style = Paint.Style.FILL
         })
         canvas.drawPath(ps, paintLine)

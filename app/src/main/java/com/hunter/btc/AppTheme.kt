@@ -176,6 +176,7 @@ object AppTheme {
     @Volatile private var fBody:    android.graphics.Typeface? = null
     @Volatile private var fMedium:  android.graphics.Typeface? = null
     @Volatile private var fBold:    android.graphics.Typeface? = null
+    @Volatile private var fMono:    android.graphics.Typeface? = null
 
     private fun load(ctx: Context, res: Int, fallback: String, weight: Int):
             android.graphics.Typeface =
@@ -212,4 +213,17 @@ object AppTheme {
     fun bold(ctx: Context) = fBold
         ?: load(ctx, R.font.public_sans_semibold, "sans-serif", android.graphics.Typeface.BOLD)
             .also { fBold = it }
+
+    /**
+     * JetBrains Mono — para datos de ancho fijo: claves, direcciones, hashes.
+     *
+     * Antes todo esto usaba [android.graphics.Typeface.MONOSPACE], la mono del
+     * sistema, que cambia con cada fabricante (una Droid Sans Mono vieja en
+     * unos, otra en otros) y no alinea con el resto de la tipografía. Con una
+     * propia, un hex se ve idéntico en todos los móviles y las columnas de
+     * cifras no bailan. Si faltara el recurso, cae a la mono del sistema.
+     */
+    fun mono(ctx: Context) = fMono
+        ?: load(ctx, R.font.jetbrains_mono, "monospace", android.graphics.Typeface.NORMAL)
+            .also { fMono = it }
 }

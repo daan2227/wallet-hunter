@@ -305,7 +305,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     val etTarget = android.widget.EditText(this).apply {
         hint = "1A2B3C... o bc1q..."
         setHintTextColor(AppTheme.TXT_MUTED); setTextColor(AppTheme.TXT_PRI)
-        textSize = AppTheme.SP_BODY; typeface = Typeface.MONOSPACE
+        textSize = AppTheme.SP_BODY; typeface = AppTheme.mono(context)
         background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
         minHeight = dp(48)
         setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -362,7 +362,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     val tvRecoveryResult = TextView(this).apply {
         // Un resultado encontrado SÍ merece el acento: es el hallazgo.
         text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
-        typeface = Typeface.MONOSPACE   // lleva la seed entera
+        typeface = AppTheme.mono(context)   // lleva la seed entera
         background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
         setPadding(dp(16), dp(16), dp(16), dp(16))
         setLineSpacing(0f, 1.35f)
