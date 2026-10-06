@@ -118,6 +118,7 @@ object WeakController {
     private var tvEstado: TextView? = null
     private var btnCsv: android.view.View? = null
     private var barraProg: BarraProgreso? = null
+    private var vacioWeak: android.view.View? = null
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -433,6 +434,20 @@ object WeakController {
         if (corriendo) actualizarBarra()
         root.addView(vStats)
 
+        // Estado vacío: cuando aún no se ha auditado nada, en vez de dejar un
+        // hueco bajo el botón. Al arrancar se oculta y aparece la tarjeta de
+        // estadísticas en su lugar.
+        val vVacio = Ui.estadoVacio(a, R.drawable.ic_target,
+            "Nothing audited yet",
+            "Paste a public key (02/03/04) or a spent address above, or load a " +
+            "file. Then press Start audit.").apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
+            visibility = if (corriendo) android.view.View.GONE else android.view.View.VISIBLE
+        }
+        vacioWeak = vVacio
+        root.addView(vVacio)
+
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
         bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
         estimar()
@@ -447,7 +462,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
-        btnCsv = null; barraProg = null
+        btnCsv = null; barraProg = null; vacioWeak = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -710,6 +725,7 @@ object WeakController {
         tvSpeed?.text = "0"; tvPeak?.text = ""; tvOps?.text = "0"; tvTime?.text = "00:00:00"
         tvProg?.text = "—"; tvKeys?.text = "0 · 0"
         statsCard?.visibility = android.view.View.VISIBLE
+        vacioWeak?.visibility = android.view.View.GONE
         btn?.text = "Stop"
         barraProg?.set(0f)
         bloquear(true)

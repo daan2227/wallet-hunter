@@ -242,6 +242,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var rutasScanBox: android.view.View? = null
     internal var tvBinInfoRef: TextView? = null
     internal var tvDatasetStat: TextView? = null
+    /** Estado vacío del scanner: visible cuando no hay lista cargada. */
+    internal var vacioScan: android.view.View? = null
     internal var peakWps: Double = 0.0
     /** Cuándo arrancó el motor por última vez: los primeros segundos la
      *  velocidad sale mal medida (picos y ceros) y no se pintan. */
@@ -1509,9 +1511,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         // Actualizar dataset status si está cargando
         if (HunterEngine.isLoading()) {
+            vacioScan?.visibility = android.view.View.GONE
             val status = HunterEngine.getLoadStatus()
             tvCsvName?.text = status; tvCsvName?.setTextColor(AppTheme.CYAN)
         } else if (HunterEngine.isCsvLoaded()) {
+            vacioScan?.visibility = android.view.View.GONE
             // La tarjeta DATASET sólo se refrescaba si csvPath seguía apuntando a
             // un fichero, así que tras reinstalar o mover el .bin mostraba "—"
             // con el dataset cargado y buscando. Lo que importa es lo que el
@@ -1534,6 +1538,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             tvDatasetStat?.text = "not loaded"
             tvDatasetStat?.textSize = AppTheme.SP_BODY
             tvDatasetStat?.setTextColor(AppTheme.WARN)
+            vacioScan?.visibility = android.view.View.VISIBLE
         }
         } catch (e: Exception) {
             // vars no inicializadas aún

@@ -146,6 +146,36 @@ object Ui {
         }
 
     /**
+     * Estado vacío: una tarjeta centrada con un icono tenue, un título y una
+     * línea de ayuda. Para cuando una pantalla todavía no tiene nada que
+     * enseñar, en vez de dejar un hueco mudo. Se puede hacer pulsable (p. ej.
+     * para abrir el cargador) con setOnClickListener encima del resultado.
+     */
+    fun estadoVacio(ctx: Context, iconRes: Int, titulo: String, detalle: String): LinearLayout =
+        LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER_HORIZONTAL
+            background = cardBg(ctx = ctx)
+            setPadding(dp(ctx, 24), dp(ctx, 30), dp(ctx, 24), dp(ctx, 30))
+            addView(ImageView(ctx).apply {
+                setImageResource(iconRes); setColorFilter(AppTheme.TXT_MUTED)
+                alpha = 0.7f
+                layoutParams = LinearLayout.LayoutParams(dp(ctx, 40), dp(ctx, 40))
+            })
+            addView(TextView(ctx).apply {
+                text = titulo; textSize = AppTheme.SP_BODY + 1f
+                setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(ctx)
+                gravity = Gravity.CENTER; setPadding(0, dp(ctx, 12), 0, 0)
+            })
+            addView(TextView(ctx).apply {
+                text = detalle; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(ctx)
+                gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f)
+                setPadding(0, dp(ctx, 6), 0, 0)
+            })
+        }
+
+    /**
      * Sección plegable.
      *
      * Cambia respecto a la anterior: el icono es un vector del juego en vez de

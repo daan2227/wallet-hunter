@@ -190,6 +190,18 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     }
     page.addView(side(statRow, bottom = 14))
 
+    // Estado vacío: sin lista cargada el motor no puede encontrar nada, así que
+    // en vez de dejar la cifra en 0 muda, se dice qué falta y se ofrece cargar.
+    val vacio = Ui.estadoVacio(this, R.drawable.ic_scan,
+        "No address list loaded",
+        "Load a list of addresses to scan against — without one the engine has " +
+        "nothing to compare and can't find anything.\n\nTap to load a file.")
+    vacio.setOnClickListener { Ui.pulso(it); pickCsv() }
+    vacio.visibility = if (HunterEngine.isCsvLoaded()) android.view.View.GONE
+                       else android.view.View.VISIBLE
+    vacioScan = vacio
+    page.addView(side(vacio, bottom = 14))
+
     // ── RITMO, EN LENGUAJE LLANO ──────────────────────────────────────
     //
     // Decía "159B/día" bajo un rótulo que ponía "SESIÓN". Ni era de la
