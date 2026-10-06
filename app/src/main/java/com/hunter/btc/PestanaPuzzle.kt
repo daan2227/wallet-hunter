@@ -447,6 +447,17 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     }
     page.addView(btnKangaroo)
 
+    // Indicador de actividad del Kangaroo: barre mientras busca. El Kangaroo no
+    // tiene porcentaje honesto (ver BarraActividad), así que esto sólo dice que
+    // sigue vivo. Oculto salvo mientras corre (lo gobierna refrescarBloqueos()).
+    actividadPuzzle = BarraActividad(this).apply {
+        visibility = android.view.View.GONE
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(4)
+        ).apply { setMargins(dp(AppTheme.PAD_SIDE), dp(10), dp(AppTheme.PAD_SIDE), 0) }
+    }
+    page.addView(actividadPuzzle)
+
     // ── RANGE CONFIG ──────────────────────────────────────────────────
     page.addView(collapsibleSection(R.drawable.ic_target, "Hex range") {
         val rangeRow = LinearLayout(this@buildPuzzleTab).apply {

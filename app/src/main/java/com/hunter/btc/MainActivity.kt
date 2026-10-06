@@ -184,6 +184,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var tvPuzzleAtajo: TextView? = null
     /** Botón de Kangaroo: sólo aparece si la clave pública es conocida. */
     internal var btnKangaroo: Button? = null
+    /** Indicador de actividad del Kangaroo (indeterminado): sólo mientras corre. */
+    internal var actividadPuzzle: BarraActividad? = null
     /** Clave pública del puzzle elegido, si está publicada. */
     internal var puzzlePubHex: String = ""
     internal var puzzleIniHex: String = ""
@@ -1245,6 +1247,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val puzzleBloqueado = (motor && puzzleMode) || kg
         aplicarBloqueo(puzzleConfigViews, puzzleBloqueado)
         gpuSwitch?.isEnabled = !puzzleBloqueado && gpuDisponible
+        // El indicador de actividad sólo tiene sentido en Kangaroo: la fuerza
+        // bruta ya tiene su barra de cobertura.
+        actividadPuzzle?.let { if (kg) it.arrancar() else it.parar() }
     }
 
     /** Resumen de las filas de ajuste, con el valor que tienen ahora mismo. */
