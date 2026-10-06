@@ -443,7 +443,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         ).apply {
             setMargins(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), 0)
         }
-        setOnClickListener { alternarKangaroo() }
+        setOnClickListener { Ui.pulso(this); alternarKangaroo() }
     }
     page.addView(btnKangaroo)
 
@@ -1160,6 +1160,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         }
         setOnClickListener {
             try {
+                Ui.pulso(this)
                 puzzleMode = true
                 HunterEngine.setMode(1)
                 doToggle(btnPuzzleToggle)

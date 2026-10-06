@@ -117,6 +117,7 @@ object WeakController {
     private var tvTope: TextView? = null
     private var tvEstado: TextView? = null
     private var btnCsv: android.view.View? = null
+    private var barraProg: BarraProgreso? = null
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -336,7 +337,7 @@ object WeakController {
             isAllCaps = false; stateListAnimator = null
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.ACCENT, context)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
-            setOnClickListener { if (corriendo) parar("Stopped.") else arrancar() }
+            setOnClickListener { Ui.pulso(this); if (corriendo) parar("Stopped.") else arrancar() }
         }
         btn = vBtn
         root.addView(vBtn)
@@ -421,6 +422,15 @@ object WeakController {
         r2.addView(mini("Key budget", vProg).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
         r2.addView(mini("Keys · found", vKeys))
         vStats.addView(r1); vStats.addView(r2)
+        // Barra de progreso general: claves hechas / total. Sólo tiene sentido
+        // aquí, donde hay un total real (una lista finita).
+        val vBarra = BarraProgreso(a).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(5))
+                .apply { topMargin = dp(16) }
+        }
+        barraProg = vBarra
+        vStats.addView(vBarra)
+        if (corriendo) actualizarBarra()
         root.addView(vStats)
 
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
@@ -437,7 +447,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
-        btnCsv = null
+        btnCsv = null; barraProg = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -701,6 +711,7 @@ object WeakController {
         tvProg?.text = "—"; tvKeys?.text = "0 · 0"
         statsCard?.visibility = android.view.View.VISIBLE
         btn?.text = "Stop"
+        barraProg?.set(0f)
         bloquear(true)
     }
 
@@ -839,12 +850,14 @@ object WeakController {
                 indice++
                 if (++procesados >= 512) {   // ceder el hilo y continuar
                     tvKeys?.text = cuentaTexto()
+                    actualizarBarra()
                     tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                     h.post { recoger() }; return
                 }
                 continue
             }
             tvKeys?.text = cuentaTexto()
+            actualizarBarra()
             lanzar(pub)
             return
         }
@@ -944,6 +957,7 @@ object WeakController {
         tvTime?.text = reloj((ahora - inicioMs) / 1000)
         tvProg?.text = "$pct %"
         tvKeys?.text = cuentaTexto()
+        actualizarBarra()
     }
 
     /** Texto del contador de claves. En streaming no hay lista en RAM, así que
@@ -953,6 +967,12 @@ object WeakController {
         "${"%,d".format(indice)}/$tot · $hallados"
     } else {
         "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
+    }
+
+    /** Barra general: claves hechas / total (aprox. en streaming). */
+    private fun actualizarBarra() {
+        val total = if (streamMode) streamTotal else claves.size
+        barraProg?.set(if (total > 0) indice.toFloat() / total else 0f)
     }
 
     private fun guardar(claveHex: String) {

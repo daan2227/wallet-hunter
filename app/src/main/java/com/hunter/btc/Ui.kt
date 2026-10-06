@@ -123,6 +123,19 @@ object Ui {
             android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
     }
 
+    /**
+     * Confirmación táctil al pulsar una acción importante (Start/Stop): un
+     * toque háptico corto y un pulso de escala. No cambia nada del estado, sólo
+     * acusa el toque, así que da igual llamarlo antes o después de la acción.
+     */
+    fun pulso(v: View) {
+        try { v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) } catch (e: Throwable) {}
+        v.animate().cancel()
+        v.scaleX = 0.96f; v.scaleY = 0.96f
+        v.animate().scaleX(1f).scaleY(1f).setDuration(180)
+            .setInterpolator(android.view.animation.OvershootInterpolator(2f)).start()
+    }
+
     fun icon(ctx: Context, res: Int, size: Int = 20, tint: Int = AppTheme.TXT_SEC) =
         ImageView(ctx).apply {
             setImageResource(res)

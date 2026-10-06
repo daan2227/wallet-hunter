@@ -60,8 +60,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var refrescoCartera: (() -> Unit)? = null
 
     internal fun goTab(idx: Int) {
+        val cambioDePagina = idx != paginaActual
         tabPages.forEachIndexed { i, v ->
-            v?.visibility = if (i == idx) android.view.View.VISIBLE else android.view.View.GONE
+            if (i == idx) {
+                if (v != null && v.visibility != android.view.View.VISIBLE) {
+                    v.visibility = android.view.View.VISIBLE
+                    // Un fundido corto al mostrar la página: el corte seco entre
+                    // pestañas se notaba como un parpadeo.
+                    if (cambioDePagina) {
+                        v.animate().cancel()
+                        v.alpha = 0f
+                        v.animate().alpha(1f).setDuration(150).start()
+                    }
+                }
+            } else v?.visibility = android.view.View.GONE
         }
         paginaActual = idx
         if (idx == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
@@ -940,6 +952,41 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     internal fun formatCount(v: Long): String = numberFmt.format(v)
 
+    // El último valor MOSTRADO y el animador en curso de cada cifra grande, para
+    // que el número ruede entre muestras en vez de saltar de golpe.
+    private val ultimaCifra = java.util.WeakHashMap<TextView, Long>()
+    private val animCifra = java.util.WeakHashMap<TextView, android.animation.ValueAnimator>()
+
+    /**
+     * Pone [destino] en [tv] rodando desde lo último que mostró, con [fmt] para
+     * darle formato. Un salto hacia atrás (reset) o enorme (primer dato) se pone
+     * directo, sin animar, que si no iría a trompicones.
+     */
+    internal fun cifraAnimada(tv: TextView?, destino: Long, fmt: (Long) -> String) {
+        tv ?: return
+        animCifra.remove(tv)?.cancel()
+        val desde = ultimaCifra[tv]
+        if (desde == null || destino <= desde || destino - desde > 5_000_000_000L) {
+            ultimaCifra[tv] = destino
+            tv.text = fmt(destino)
+            return
+        }
+        val an = android.animation.ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 600
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener {
+                // En la última llamada la fracción es 1.0, así que acaba justo
+                // en [destino]; si se cancela antes, se queda donde iba y la
+                // siguiente muestra continúa desde ahí (sin saltos).
+                val v = desde + ((destino - desde) * it.animatedFraction).toLong()
+                ultimaCifra[tv] = v
+                tv.text = fmt(v)
+            }
+        }
+        animCifra[tv] = an
+        an.start()
+    }
+
     /**
      * El mismo número, pero que quepa.
      *
@@ -1268,7 +1315,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvWpsPuzzle?.text = spdTxt.replace('.', ',')
                     tvSpeedUnitPuzzle?.text = "$spdUnit/s"
                     val scannedNow = HunterEngine.getCount() + cuentaBloquesPrevios
-                    tvCountPuzzle?.text = formatCount(scannedNow)
+                    cifraAnimada(tvCountPuzzle, scannedNow) { formatCount(it) }
                     tvTimePuzzle?.text = formatElapsed(sessionStartTime)
                     // PROGRESO era un literal fijo que nunca se recalculaba.
                     tvPctPuzzle?.text = formatPuzzleProgress(
@@ -1329,7 +1376,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     // "MKeys/s" y no "MKEYS / SEG": la unidad va junto a la
                     // cifra, no de rótulo debajo, así que se lee como una frase.
                     tvSpeedUnitScan?.text = "$su/s"
-                    tvCount?.text = formatCount(HunterEngine.getCount())
+                    cifraAnimada(tvCount, HunterEngine.getCount()) { formatCount(it) }
                     tvTime?.text = formatElapsed(sessionStartTime)
                     val found = HunterEngine.getCount() - sessionStartCount
                     tvMatches?.text = "$found"
@@ -2695,7 +2742,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvWpsPuzzle?.text = v
         tvSpeedUnitPuzzle?.text = "$u op/s"
         tvPeakWpsPuzzle?.text = textoDeLaTabla(dps) + lineaGpu(ahoraMs)
-        tvCountPuzzle?.text = formatCorto(ops)
+        cifraAnimada(tvCountPuzzle, ops) { formatCorto(it) }
         val segTotal = kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000
         tvTimePuzzle?.text = formatSegundos(segTotal)
         // Se guarda sobre la marcha y no sólo al parar: Android puede matar la

@@ -593,6 +593,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             setMargins(dp(AppTheme.PAD_SIDE), dp(18), dp(AppTheme.PAD_SIDE), dp(8))
         }
         setOnClickListener {
+            Ui.pulso(this)
             puzzleMode = false
             HunterEngine.setMode(selectedScanMode)
             doToggle(btnToggle)
