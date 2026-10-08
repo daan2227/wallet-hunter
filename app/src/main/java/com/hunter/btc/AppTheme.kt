@@ -28,34 +28,39 @@ object AppTheme {
      * un azul-tinta nuevo; AUTO es el híbrido día/noche: claro de día, oscuro
      * de noche, según la hora del móvil.
      */
-    enum class Modo { OSCURO, CLARO, MEDIANOCHE, AUTO }
+    enum class Modo { OSCURO, CLARO, MEDIANOCHE, NEON, EXCHANGE, AUTO }
 
     /** El modo elegido por el usuario. AUTO no es una paleta en sí: se resuelve
      *  a clara u oscura al arrancar cada pantalla. */
     @Volatile var modo: Modo = Modo.OSCURO
         private set
 
-    /** Una paleta concreta. Sólo cambian superficies y texto; el acento y los
-     *  semánticos son fijos (un color, un significado) en todos los temas. */
+    /** Una paleta concreta. Las superficies y el texto cambian siempre; el
+     *  acento lo lleva cada tema (el verde de siempre, o uno futurista) pero
+     *  SIGUE siendo un solo acento con un solo significado. Los otros
+     *  semánticos (rojo, naranja, azul) son fijos. */
     private class Paleta(
         val bgDeep: Int, val bgPanel: Int, val bgCard: Int, val bgElev: Int, val bgKey: Int,
         val border: Int, val txtPri: Int, val txtSec: Int, val txtMuted: Int, val bgStop: Int,
-        val oscuro: Boolean
+        val accent: Int, val onAccent: Int, val oscuro: Boolean
     )
 
     private fun c(hex: String) = Color.parseColor(hex)
+
+    private const val VERDE = 0xFF00C896.toInt()        // el acento histórico
+    private const val SOBRE_VERDE = 0xFF0F1210.toInt()
 
     private val OSCURA = Paleta(
         bgDeep = c("#191919"), bgPanel = c("#232323"), bgCard = c("#232323"),
         bgElev = c("#2D2D2D"), bgKey = c("#282828"), border = c("#383838"),
         txtPri = c("#F2F2F2"), txtSec = c("#A4A4A4"), txtMuted = c("#6C6C6C"),
-        bgStop = c("#331F1F"), oscuro = true)
+        bgStop = c("#331F1F"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = true)
 
     private val CLARA = Paleta(
         bgDeep = c("#F4F4F4"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
         bgElev = c("#E8E8E8"), bgKey = c("#EDEDED"), border = c("#E0E0E0"),
         txtPri = c("#0A0A0A"), txtSec = c("#444444"), txtMuted = c("#909090"),
-        bgStop = c("#FBE3E3"), oscuro = false)
+        bgStop = c("#FBE3E3"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = false)
 
     /**
      * MEDIANOCHE: azul-tinta profundo. Mantiene los mismos escalones de
@@ -67,7 +72,28 @@ object AppTheme {
         bgDeep = c("#10131A"), bgPanel = c("#181D27"), bgCard = c("#181D27"),
         bgElev = c("#232A39"), bgKey = c("#1E2430"), border = c("#2C3444"),
         txtPri = c("#ECEFF6"), txtSec = c("#9AA6BD"), txtMuted = c("#5E6880"),
-        bgStop = c("#3A1E26"), oscuro = true)
+        bgStop = c("#3A1E26"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = true)
+
+    /**
+     * NEON: cibernético. Negro violáceo con textos en lavanda y un acento cian
+     * eléctrico. El acento sí cambia aquí —es el punto del tema— pero sigue
+     * marcando lo mismo: acción, positivo, corriendo.
+     */
+    private val NEON = Paleta(
+        bgDeep = c("#0B0712"), bgPanel = c("#140C20"), bgCard = c("#140C20"),
+        bgElev = c("#1F1433"), bgKey = c("#190F2A"), border = c("#2E1F48"),
+        txtPri = c("#ECE6FF"), txtSec = c("#A79AC8"), txtMuted = c("#6C5E8C"),
+        bgStop = c("#36132A"), accent = c("#1FE3FF"), onAccent = c("#05141A"), oscuro = true)
+
+    /**
+     * EXCHANGE: terminal de trading. Carbón muy oscuro, texto claro frío y el
+     * verde "vela" de los exchanges. Es el tema que va con el gráfico de velas.
+     */
+    private val EXCHANGE = Paleta(
+        bgDeep = c("#0B0E11"), bgPanel = c("#161A1E"), bgCard = c("#161A1E"),
+        bgElev = c("#1E2329"), bgKey = c("#1B2026"), border = c("#2B3139"),
+        txtPri = c("#EAECEF"), txtSec = c("#9AA3AF"), txtMuted = c("#5E6673"),
+        bgStop = c("#2A1518"), accent = c("#0ECB81"), onAccent = c("#06130D"), oscuro = true)
 
     @Volatile private var activa: Paleta = OSCURA
 
@@ -89,6 +115,8 @@ object AppTheme {
     private fun paletaFija(m: Modo): Paleta = when (m) {
         Modo.CLARO -> CLARA
         Modo.MEDIANOCHE -> MEDIANOCHE
+        Modo.NEON -> NEON
+        Modo.EXCHANGE -> EXCHANGE
         else -> OSCURA
     }
 
@@ -182,7 +210,9 @@ object AppTheme {
     val TXT_MUTED get() = activa.txtMuted
 
     /* ── Semánticos: un color, un significado ─────────────────────────── */
-    val ACCENT get() = Color.parseColor("#00C896")   // acción / positivo / corriendo
+    /** Acción / positivo / corriendo. Lo pone el tema (verde salvo en los
+     *  futuristas), pero sigue siendo un único acento con un único significado. */
+    val ACCENT get() = activa.accent
 
     /**
      * Lo que va ENCIMA del acento: texto de un botón principal, un icono
@@ -195,10 +225,11 @@ object AppTheme {
      * arrancar el escaneo y el de revisar un envío— se quedaban sin texto
      * visible en cuanto se cambiaba de tema.
      *
-     * Es fijo a propósito: el acento no cambia con el tema, así que lo que va
-     * encima tampoco debe.
+     * Va con el acento del tema (cada paleta trae su pareja acento/sobre-acento),
+     * así que un botón verde, uno cian o uno "exchange" siempre tienen el texto
+     * legible encima.
      */
-    val ON_ACCENT get() = Color.parseColor("#0F1210")
+    val ON_ACCENT get() = activa.onAccent
     val RED    get() = Color.parseColor("#F04040")   // destructivo / error
     val WARN   get() = Color.parseColor("#FF6B35")   // aviso, no error
     val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo

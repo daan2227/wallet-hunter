@@ -266,10 +266,14 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         AppTheme.Modo.OSCURO -> "Dark"
         AppTheme.Modo.CLARO -> "Light"
         AppTheme.Modo.MEDIANOCHE -> "Midnight"
+        AppTheme.Modo.NEON -> "Neon"
+        AppTheme.Modo.EXCHANGE -> "Exchange"
         AppTheme.Modo.AUTO -> "Auto · day / night"
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
+        AppTheme.Modo.NEON -> "Cyberpunk cyan"
+        AppTheme.Modo.EXCHANGE -> "Trading terminal · candles"
         AppTheme.Modo.AUTO -> "Follows system · dark at night"
         else -> null
     }
@@ -298,12 +302,16 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
             }
-            fila.addView(MuestraTema(this).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(54), dp(38)).apply { marginEnd = dp(14) }
+            val preview: android.view.View = if (m == AppTheme.Modo.EXCHANGE) {
+                val mu = AppTheme.muestra(AppTheme.Modo.EXCHANGE)
+                Velas(this).apply { colores(mu.bg, mu.accent, AppTheme.RED) }
+            } else MuestraTema(this).apply {
                 if (m == AppTheme.Modo.AUTO)
                     partida(AppTheme.muestra(AppTheme.Modo.CLARO), AppTheme.muestra(AppTheme.Modo.OSCURO))
                 else individual(AppTheme.muestra(m))
-            })
+            }
+            preview.layoutParams = LinearLayout.LayoutParams(dp(54), dp(38)).apply { marginEnd = dp(14) }
+            fila.addView(preview)
             val col = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)

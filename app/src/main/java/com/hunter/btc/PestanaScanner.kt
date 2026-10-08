@@ -86,6 +86,16 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     // El título lo decía la cabecera, que ya no existe: ahora lo dice la
     // página, como todas.
     page.addView(Ui.pageTitle(this, "Scanner", lados = true))
+    // Guiño del tema Exchange: una cinta de velas bajo el título. Decorativa (no
+    // hay precios en un escáner), sólo aparece con ese tema puesto.
+    if (AppTheme.modo == AppTheme.Modo.EXCHANGE) {
+        page.addView(Velas(this).apply {
+            colores(AppTheme.BG_CARD, AppTheme.ACCENT, AppTheme.RED)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(46)
+            ).apply { setMargins(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(16)) }
+        })
+    }
     page.addView(side(statusRow, top = 0, bottom = 18))
 
     // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
