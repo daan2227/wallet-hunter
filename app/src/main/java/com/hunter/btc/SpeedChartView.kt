@@ -41,6 +41,8 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         strokeWidth = 1f * d; style = Paint.Style.STROKE
         strokeJoin = Paint.Join.ROUND
     }
+    /** Para las velas del tema Exchange (color y estilo se fijan por vela). */
+    private val pVela = Paint(Paint.ANTI_ALIAS_FLAG)
 
     fun addPoint(wps: Float) {
         wpsPoints.addLast(wps); if (wpsPoints.size > maxPoints) wpsPoints.removeFirst()
@@ -91,38 +93,67 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         fun yDe(v: Float) = y1 - (y1 - y0) * ((v - lo) / rango)
         fun xDe(i: Int) = pad + (w - pad * 2) * i / (wpsPoints.size - 1).coerceAtLeast(1)
 
-        // El dato crudo, en fino y apagado. A diez segundos por muestra, en un
-        // movil de 2 nucleos grandes y 6 pequenos, la linea salta de 14 a 4
-        // millones segun donde ponga el planificador cada hilo: es real, pero
-        // dibujada sola parece que algo va mal.
-        val crudo = wpsPoints.toList()
-        val pc = Path()
-        crudo.forEachIndexed { i, v -> if (i == 0) pc.moveTo(xDe(i), yDe(v)) else pc.lineTo(xDe(i), yDe(v)) }
-        canvas.drawPath(pc, paintCrudo)
+        val datos = wpsPoints.toList()
+        val nowVal: Float
 
-        // Y encima la media movil de un minuto, que es la que se lee.
-        // Antes habia ademas una banda gris entre el minimo y el maximo; con la
-        // linea cruda de fondo sobra, porque la dispersion ya se ve, y las dos
-        // cosas juntas emborronaban el dibujo.
-        val suave = suavizado(6)
-        val ps = Path()
-        suave.forEachIndexed { i, v -> if (i == 0) ps.moveTo(xDe(i), yDe(v)) else ps.lineTo(xDe(i), yDe(v)) }
-        // Relleno suave bajo la media, para que la linea tenga peso.
-        val fill = Path(ps)
-        fill.lineTo(xDe(suave.size - 1), y1); fill.lineTo(xDe(0), y1); fill.close()
-        canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            // Derivado del acento real (#00C896), no un verde aparte: el relleno
-            // va del acento al 20 % arriba a transparente abajo, así cuadra con
-            // la línea, que también es ACCENT.
-            val a = AppTheme.ACCENT and 0x00FFFFFF
-            shader = LinearGradient(0f, y0, 0f, y1,
-                (0x33 shl 24) or a, a and 0x00FFFFFF, Shader.TileMode.CLAMP)
-            style = Paint.Style.FILL
-        })
-        canvas.drawPath(ps, paintLine)
-        canvas.drawCircle(xDe(crudo.size - 1), yDe(suave.last()), 3f * d, paintDot)
+        if (AppTheme.modo == AppTheme.Modo.EXCHANGE) {
+            // VELAS: el MISMO histórico de velocidad, agrupado en OHLC —apertura,
+            // máximo, mínimo y cierre de cada grupo de muestras—. Verde si el
+            // ritmo subió en el grupo, rojo si bajó. Son datos reales del motor,
+            // sólo que dibujados como un gráfico de exchange.
+            val n = datos.size
+            val objetivo = ((w - pad * 2) / (13f * d)).toInt().coerceIn(3, 26)
+            val porVela = Math.ceil(n.toDouble() / objetivo).toInt().coerceAtLeast(1)
+            val nVelas = (n + porVela - 1) / porVela
+            val slot = (w - pad * 2) / nVelas
+            val cuerpo = (slot * 0.6f).coerceIn(2f * d, 16f * d)
+            for (k in 0 until nVelas) {
+                val a = k * porVela; val b = minOf(n, a + porVela)
+                if (a >= b) break
+                var hiV = datos[a]; var loV = datos[a]
+                for (j in a until b) { val x = datos[j]; if (x > hiV) hiV = x; if (x < loV) loV = x }
+                val open = datos[a]; val close = datos[b - 1]
+                val cx = pad + slot * (k + 0.5f)
+                pVela.color = if (close >= open) AppTheme.ACCENT else AppTheme.RED
+                pVela.style = Paint.Style.STROKE; pVela.strokeWidth = 1.4f * d
+                canvas.drawLine(cx, yDe(hiV), cx, yDe(loV), pVela)   // mecha
+                pVela.style = Paint.Style.FILL
+                val yO = yDe(open); val yC = yDe(close)
+                val top = minOf(yO, yC)
+                canvas.drawRect(cx - cuerpo / 2f, top, cx + cuerpo / 2f,
+                    maxOf(maxOf(yO, yC), top + 1.5f * d), pVela)   // cuerpo
+            }
+            nowVal = datos.last()
+        } else {
+            // El dato crudo, en fino y apagado. A diez segundos por muestra, en
+            // un movil de 2 nucleos grandes y 6 pequenos, la linea salta de 14 a
+            // 4 millones segun donde ponga el planificador cada hilo: es real,
+            // pero dibujada sola parece que algo va mal.
+            val pc = Path()
+            datos.forEachIndexed { i, v -> if (i == 0) pc.moveTo(xDe(i), yDe(v)) else pc.lineTo(xDe(i), yDe(v)) }
+            canvas.drawPath(pc, paintCrudo)
 
-        // La media de todo, en trazos.
+            // Y encima la media movil de un minuto, que es la que se lee.
+            val suave = suavizado(6)
+            val ps = Path()
+            suave.forEachIndexed { i, v -> if (i == 0) ps.moveTo(xDe(i), yDe(v)) else ps.lineTo(xDe(i), yDe(v)) }
+            // Relleno suave bajo la media, para que la linea tenga peso.
+            val fill = Path(ps)
+            fill.lineTo(xDe(suave.size - 1), y1); fill.lineTo(xDe(0), y1); fill.close()
+            canvas.drawPath(fill, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                // Derivado del acento real: del acento al 20 % arriba a
+                // transparente abajo, así cuadra con la línea, que es ACCENT.
+                val a = AppTheme.ACCENT and 0x00FFFFFF
+                shader = LinearGradient(0f, y0, 0f, y1,
+                    (0x33 shl 24) or a, a and 0x00FFFFFF, Shader.TileMode.CLAMP)
+                style = Paint.Style.FILL
+            })
+            canvas.drawPath(ps, paintLine)
+            canvas.drawCircle(xDe(datos.size - 1), yDe(suave.last()), 3f * d, paintDot)
+            nowVal = suave.last()
+        }
+
+        // La media de todo, en trazos (vale para los dos modos).
         canvas.drawLine(pad, yDe(med), w - pad, yDe(med), paintMedia)
 
         canvas.drawText("max ${corto(mx)}", pad, topTxt - 2f * d, paintLbl)
@@ -133,7 +164,7 @@ class SpeedChartView(context: android.content.Context) : android.view.View(conte
         canvas.drawText(
             if (min >= 1) "$min min ago" else "${wpsPoints.size * SEG_MUESTRA} s ago",
             pad, h - 2f * d, paintLbl)
-        val tAhora = "now ${corto(suave.last())}"
+        val tAhora = "now ${corto(nowVal)}"
         canvas.drawText(tAhora, w - pad - paintLbl.measureText(tAhora), h - 2f * d, paintLbl)
     }
 }
