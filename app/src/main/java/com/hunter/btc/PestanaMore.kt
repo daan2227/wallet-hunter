@@ -256,20 +256,31 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     habilitarTecho(prefs.getBoolean("modo_ahorro", false))
 
     val app = grupo("App")
-    /* Tema claro / oscuro.
+    /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).
      *
-     * La paleta clara estaba ENTERA en AppTheme —fondos, textos, bordes— y
-     * AppTheme.toggle() no lo llamaba nadie: no habia forma de llegar a
-     * ella. Un tema que existe y no se puede elegir es lo mismo que no
-     * tenerlo. Estaba en el menu lateral; con el menu fuera, vive aqui.
-     *
-     * Hace falta recrear la pantalla: los colores se leen al construir cada
-     * vista, asi que las que ya estan puestas no cambian solas. La pagina
-     * se conserva por onSaveInstanceState, asi que se vuelve a More. */
-    fila(app, R.drawable.ic_gear, "Appearance", null,
-         if (AppTheme.isDark) "Dark" else "Light") {
-        AppTheme.toggle(this)
-        recreate()
+     * Un toque abre el selector; al elegir se guarda el modo y se recrea la
+     * pantalla, porque los colores se leen al construir cada vista y las que ya
+     * están puestas no cambian solas. La página se conserva por
+     * onSaveInstanceState, así que se vuelve a More. */
+    fun nombreModo(m: AppTheme.Modo) = when (m) {
+        AppTheme.Modo.OSCURO -> "Dark"
+        AppTheme.Modo.CLARO -> "Light"
+        AppTheme.Modo.MEDIANOCHE -> "Midnight"
+        AppTheme.Modo.AUTO -> "Auto · day / night"
+    }
+    fila(app, R.drawable.ic_gear, "Appearance", null, nombreModo(AppTheme.modo)) {
+        val modos = AppTheme.Modo.values()
+        val etiquetas = modos.map { nombreModo(it) }.toTypedArray()
+        val actual = modos.indexOf(AppTheme.modo).coerceAtLeast(0)
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Appearance")
+            .setSingleChoiceItems(etiquetas, actual) { d, which ->
+                AppTheme.ponerModo(this, modos[which])
+                d.dismiss()
+                recreate()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
     }
     fila(app, R.drawable.ic_help, "Help", "How the weak-key audit works", null) {
         startActivity(Intent(this, HelpActivity::class.java))

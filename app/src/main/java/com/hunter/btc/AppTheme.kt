@@ -22,32 +22,104 @@ import android.graphics.Color
  * significa cinco cosas deja de significar ninguna.
  */
 object AppTheme {
-    var isDark = true
+
+    /**
+     * Los temas disponibles. OSCURO y CLARO son los de siempre; MEDIANOCHE es
+     * un azul-tinta nuevo; AUTO es el híbrido día/noche: claro de día, oscuro
+     * de noche, según la hora del móvil.
+     */
+    enum class Modo { OSCURO, CLARO, MEDIANOCHE, AUTO }
+
+    /** El modo elegido por el usuario. AUTO no es una paleta en sí: se resuelve
+     *  a clara u oscura al arrancar cada pantalla. */
+    @Volatile var modo: Modo = Modo.OSCURO
+        private set
+
+    /** Una paleta concreta. Sólo cambian superficies y texto; el acento y los
+     *  semánticos son fijos (un color, un significado) en todos los temas. */
+    private class Paleta(
+        val bgDeep: Int, val bgPanel: Int, val bgCard: Int, val bgElev: Int, val bgKey: Int,
+        val border: Int, val txtPri: Int, val txtSec: Int, val txtMuted: Int, val bgStop: Int,
+        val oscuro: Boolean
+    )
+
+    private fun c(hex: String) = Color.parseColor(hex)
+
+    private val OSCURA = Paleta(
+        bgDeep = c("#191919"), bgPanel = c("#232323"), bgCard = c("#232323"),
+        bgElev = c("#2D2D2D"), bgKey = c("#282828"), border = c("#383838"),
+        txtPri = c("#F2F2F2"), txtSec = c("#A4A4A4"), txtMuted = c("#6C6C6C"),
+        bgStop = c("#331F1F"), oscuro = true)
+
+    private val CLARA = Paleta(
+        bgDeep = c("#F4F4F4"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
+        bgElev = c("#E8E8E8"), bgKey = c("#EDEDED"), border = c("#E0E0E0"),
+        txtPri = c("#0A0A0A"), txtSec = c("#444444"), txtMuted = c("#909090"),
+        bgStop = c("#FBE3E3"), oscuro = false)
+
+    /**
+     * MEDIANOCHE: azul-tinta profundo. Mantiene los mismos escalones de
+     * elevación que el oscuro (unos diez valores por nivel) pero con tinte frío
+     * y textos en blanco azulado. El acento verde resalta más sobre azul que
+     * sobre gris, así que el tema se siente distinto sin tocar la semántica.
+     */
+    private val MEDIANOCHE = Paleta(
+        bgDeep = c("#10131A"), bgPanel = c("#181D27"), bgCard = c("#181D27"),
+        bgElev = c("#232A39"), bgKey = c("#1E2430"), border = c("#2C3444"),
+        txtPri = c("#ECEFF6"), txtSec = c("#9AA6BD"), txtMuted = c("#5E6880"),
+        bgStop = c("#3A1E26"), oscuro = true)
+
+    @Volatile private var activa: Paleta = OSCURA
+
+    /** ¿La paleta activa es oscura? Lo usan los diálogos XML y el teclado PIN. */
+    val isDark get() = activa.oscuro
+
+    /** Día = 07:00–19:59 locales. Simple y predecible; es lo que espera quien
+     *  pide "claro de día, oscuro de noche". */
+    private fun esDeDia(): Boolean =
+        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) in 7..19
+
+    private fun paletaDe(m: Modo): Paleta = when (m) {
+        Modo.OSCURO -> OSCURA
+        Modo.CLARO -> CLARA
+        Modo.MEDIANOCHE -> MEDIANOCHE
+        Modo.AUTO -> if (esDeDia()) CLARA else OSCURA
+    }
+
+    private fun leerModo(p: android.content.SharedPreferences): Modo {
+        p.getString("theme_mode", null)?.let { s ->
+            try { return Modo.valueOf(s) } catch (e: Exception) {}
+        }
+        // Compatibilidad con el ajuste booleano antiguo (dark_mode).
+        return if (p.getBoolean("dark_mode", true)) Modo.OSCURO else Modo.CLARO
+    }
 
     fun init(ctx: Context) {
-        val prefs = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-        isDark = prefs.getBoolean("dark_mode", true)
+        val p = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        modo = leerModo(p)
+        // AUTO se resuelve aquí: una vez por pantalla, igual que el tema XML de
+        // los diálogos, así toda la pantalla usa la misma paleta.
+        activa = paletaDe(modo)
     }
 
     /**
-     * El tema de XML que toca: oscuro o claro.
-     *
-     * Casi toda la interfaz se colorea en código con esta paleta, pero los
-     * diálogos los dibuja Android con el tema de la actividad, y un tema de XML
-     * no puede leer [isDark]. Por eso cada actividad llama a esto con
-     * setTheme() ANTES de super.onCreate —el único momento en que el tema
-     * todavía se puede cambiar— y así sus diálogos salen del mismo color que
-     * la pantalla que los abre.
+     * El tema de XML que toca: oscuro o claro. Casi toda la interfaz se colorea
+     * en código con esta paleta, pero los diálogos los dibuja Android con el
+     * tema de la actividad, que no puede leer [isDark]; por eso cada actividad
+     * llama a esto con setTheme() ANTES de super.onCreate.
      */
     fun estilo(ctx: Context): Int {
         init(ctx)
         return if (isDark) R.style.AppThemeDark else R.style.AppThemeLight
     }
 
-    fun toggle(ctx: Context) {
-        isDark = !isDark
+    /** Guarda el tema elegido. Quien llama recrea la pantalla para repintarla
+     *  (los colores se leen al construir cada vista). */
+    fun ponerModo(ctx: Context, m: Modo) {
+        modo = m
+        activa = paletaDe(m)
         ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
-            .edit().putBoolean("dark_mode", isDark).apply()
+            .edit().putString("theme_mode", m.name).apply()
     }
 
     /* ── Superficies ──────────────────────────────────────────────────────
@@ -66,22 +138,22 @@ object AppTheme {
        sin mirar fijamente. El más oscuro sube de #0E a #19, porque el negro
        casi puro no es "elegante" en una pantalla OLED: es el sitio donde el
        resto de tonos no tiene contra qué destacar. */
-    val BG_DEEP   get() = if (isDark) Color.parseColor("#191919") else Color.parseColor("#F4F4F4")
-    val BG_PANEL  get() = if (isDark) Color.parseColor("#232323") else Color.parseColor("#FFFFFF")
-    val BG_CARD   get() = if (isDark) Color.parseColor("#232323") else Color.parseColor("#FFFFFF")
-    val BG_ELEV   get() = if (isDark) Color.parseColor("#2D2D2D") else Color.parseColor("#E8E8E8")
+    val BG_DEEP   get() = activa.bgDeep
+    val BG_PANEL  get() = activa.bgPanel
+    val BG_CARD   get() = activa.bgCard
+    val BG_ELEV   get() = activa.bgElev
     /** Superficie de un control pulsable en reposo (teclas, botones secundarios). */
-    val BG_KEY    get() = if (isDark) Color.parseColor("#282828") else Color.parseColor("#EDEDED")
-    val BORDER_C  get() = if (isDark) Color.parseColor("#383838") else Color.parseColor("#E0E0E0")
+    val BG_KEY    get() = activa.bgKey
+    val BORDER_C  get() = activa.border
 
     /* ── Texto ───────────────────────────────────────────────────────────
        TXT_SEC sube de #8A a #A4 y TXT_MUTED de #4A a #6C: al aclarar el
        fondo, los grises de antes perdían el contraste que tenían. #A4 sobre
        la tarjeta da 6,3:1 y #F2 da 16:1, los dos por encima del mínimo que
        se lee con el móvil al sol. */
-    val TXT_PRI   get() = if (isDark) Color.parseColor("#F2F2F2") else Color.parseColor("#0A0A0A")
-    val TXT_SEC   get() = if (isDark) Color.parseColor("#A4A4A4") else Color.parseColor("#444444")
-    val TXT_MUTED get() = if (isDark) Color.parseColor("#6C6C6C") else Color.parseColor("#909090")
+    val TXT_PRI   get() = activa.txtPri
+    val TXT_SEC   get() = activa.txtSec
+    val TXT_MUTED get() = activa.txtMuted
 
     /* ── Semánticos: un color, un significado ─────────────────────────── */
     val ACCENT get() = Color.parseColor("#00C896")   // acción / positivo / corriendo
@@ -114,8 +186,7 @@ object AppTheme {
      * una tarjeta blanca, un fondo oscuro con el texto en rojo encima no se
      * lee ni pega con nada.
      */
-    val BG_STOP get() = if (isDark) Color.parseColor("#331F1F")
-                        else Color.parseColor("#FBE3E3")
+    val BG_STOP get() = activa.bgStop
 
     /* Compatibilidad: AMBER y GREEN eran el mismo verde con dos nombres. */
     val AMBER  get() = ACCENT
