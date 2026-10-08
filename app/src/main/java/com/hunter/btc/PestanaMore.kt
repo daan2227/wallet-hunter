@@ -270,7 +270,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
-        AppTheme.Modo.AUTO -> "Light by day, dark at night"
+        AppTheme.Modo.AUTO -> "Follows system · dark at night"
         else -> null
     }
     fila(app, R.drawable.ic_gear, "Appearance", null, nombreModo(AppTheme.modo)) {

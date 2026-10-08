@@ -74,17 +74,34 @@ object AppTheme {
     /** ¿La paleta activa es oscura? Lo usan los diálogos XML y el teclado PIN. */
     val isDark get() = activa.oscuro
 
-    /** Día = 07:00–19:59 locales. Simple y predecible; es lo que espera quien
-     *  pide "claro de día, oscuro de noche". */
+    /** Día = 07:00–19:59 locales. Simple y predecible. */
     private fun esDeDia(): Boolean =
         java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) in 7..19
 
-    private fun paletaDe(m: Modo): Paleta = when (m) {
-        Modo.OSCURO -> OSCURA
+    /** ¿El sistema está en modo oscuro? (Ajuste de tema del móvil.) */
+    private fun sistemaOscuro(ctx: Context): Boolean {
+        val f = ctx.resources.configuration.uiMode and
+                android.content.res.Configuration.UI_MODE_NIGHT_MASK
+        return f == android.content.res.Configuration.UI_MODE_NIGHT_YES
+    }
+
+    /** La paleta de un modo CONCRETO (no AUTO). */
+    private fun paletaFija(m: Modo): Paleta = when (m) {
         Modo.CLARO -> CLARA
         Modo.MEDIANOCHE -> MEDIANOCHE
-        Modo.AUTO -> if (esDeDia()) CLARA else OSCURA
+        else -> OSCURA
     }
+
+    /**
+     * Resuelve el modo a una paleta. AUTO sigue al sistema Y además a la hora:
+     * claro sólo si el sistema está en claro y es de día; oscuro si el sistema
+     * ya está en oscuro, o si es de noche aunque el sistema esté en claro. Así
+     * respeta el ajuste del móvil y encima baja la luz por la noche.
+     */
+    private fun resolver(ctx: Context, m: Modo): Paleta =
+        if (m == Modo.AUTO) {
+            if (sistemaOscuro(ctx) || !esDeDia()) OSCURA else CLARA
+        } else paletaFija(m)
 
     private fun leerModo(p: android.content.SharedPreferences): Modo {
         p.getString("theme_mode", null)?.let { s ->
@@ -99,7 +116,7 @@ object AppTheme {
         modo = leerModo(p)
         // AUTO se resuelve aquí: una vez por pantalla, igual que el tema XML de
         // los diálogos, así toda la pantalla usa la misma paleta.
-        activa = paletaDe(modo)
+        activa = resolver(ctx, modo)
     }
 
     /**
@@ -118,7 +135,7 @@ object AppTheme {
      *  (no es una paleta): el selector dibuja su muestra con CLARO + OSCURO. */
     class Muestra(val bg: Int, val card: Int, val accent: Int, val texto: Int, val oscuro: Boolean)
 
-    fun muestra(m: Modo): Muestra = paletaDe(m).let {
+    fun muestra(m: Modo): Muestra = paletaFija(m).let {
         Muestra(it.bgDeep, it.bgCard, ACCENT, it.txtPri, it.oscuro)
     }
 
@@ -126,7 +143,7 @@ object AppTheme {
      *  (los colores se leen al construir cada vista). */
     fun ponerModo(ctx: Context, m: Modo) {
         modo = m
-        activa = paletaDe(m)
+        activa = resolver(ctx, m)
         ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             .edit().putString("theme_mode", m.name).apply()
     }
