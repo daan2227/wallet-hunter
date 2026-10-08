@@ -113,6 +113,15 @@ object AppTheme {
         return if (isDark) R.style.AppThemeDark else R.style.AppThemeLight
     }
 
+    /** Colores de muestra para la vista previa del selector de tema: el fondo,
+     *  una tarjeta encima, el acento y el color del texto. AUTO no se pide aquí
+     *  (no es una paleta): el selector dibuja su muestra con CLARO + OSCURO. */
+    class Muestra(val bg: Int, val card: Int, val accent: Int, val texto: Int, val oscuro: Boolean)
+
+    fun muestra(m: Modo): Muestra = paletaDe(m).let {
+        Muestra(it.bgDeep, it.bgCard, ACCENT, it.txtPri, it.oscuro)
+    }
+
     /** Guarda el tema elegido. Quien llama recrea la pantalla para repintarla
      *  (los colores se leen al construir cada vista). */
     fun ponerModo(ctx: Context, m: Modo) {

@@ -268,19 +268,73 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         AppTheme.Modo.MEDIANOCHE -> "Midnight"
         AppTheme.Modo.AUTO -> "Auto · day / night"
     }
+    fun subModo(m: AppTheme.Modo) = when (m) {
+        AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
+        AppTheme.Modo.AUTO -> "Light by day, dark at night"
+        else -> null
+    }
     fila(app, R.drawable.ic_gear, "Appearance", null, nombreModo(AppTheme.modo)) {
-        val modos = AppTheme.Modo.values()
-        val etiquetas = modos.map { nombreModo(it) }.toTypedArray()
-        val actual = modos.indexOf(AppTheme.modo).coerceAtLeast(0)
-        androidx.appcompat.app.AlertDialog.Builder(this)
+        val cont = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(8), dp(14), dp(4))
+        }
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this)
             .setTitle("Appearance")
-            .setSingleChoiceItems(etiquetas, actual) { d, which ->
-                AppTheme.ponerModo(this, modos[which])
-                d.dismiss()
-                recreate()
-            }
+            .setView(cont)
             .setNegativeButton("Cancel", null)
-            .show()
+            .create()
+        AppTheme.Modo.values().forEach { m ->
+            val sel = m == AppTheme.modo
+            val fila = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), dp(10), dp(12), dp(10))
+                isClickable = true; isFocusable = true
+                foreground = Ui.toque()
+                background = GradientDrawable().apply {
+                    setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                }
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+            }
+            fila.addView(MuestraTema(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(54), dp(38)).apply { marginEnd = dp(14) }
+                if (m == AppTheme.Modo.AUTO)
+                    partida(AppTheme.muestra(AppTheme.Modo.CLARO), AppTheme.muestra(AppTheme.Modo.OSCURO))
+                else individual(AppTheme.muestra(m))
+            })
+            val col = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+            col.addView(TextView(this).apply {
+                text = nombreModo(m); textSize = AppTheme.SP_BODY + 1f
+                setTextColor(if (sel) AppTheme.ACCENT else AppTheme.TXT_PRI)
+                typeface = AppTheme.bold(context)
+            })
+            subModo(m)?.let { s -> col.addView(TextView(this).apply {
+                text = s; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context); setPadding(0, dp(2), 0, 0)
+            }) }
+            fila.addView(col)
+            // Punto de selección: relleno de acento si es el activo, borde tenue si no.
+            fila.addView(android.view.View(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(10) }
+                background = GradientDrawable().apply {
+                    shape = GradientDrawable.OVAL
+                    if (sel) setColor(AppTheme.ACCENT)
+                    else { setColor(0x00000000); setStroke(dp(2), AppTheme.TXT_MUTED) }
+                }
+            })
+            fila.setOnClickListener {
+                AppTheme.ponerModo(this@buildMoreTab, m)
+                dlg.dismiss()
+                this@buildMoreTab.recreate()
+            }
+            cont.addView(fila)
+        }
+        dlg.show()
     }
     fila(app, R.drawable.ic_help, "Help", "How the weak-key audit works", null) {
         startActivity(Intent(this, HelpActivity::class.java))
