@@ -91,6 +91,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     if (AppTheme.modo == AppTheme.Modo.EXCHANGE) {
         page.addView(Velas(this).apply {
             colores(AppTheme.BG_CARD, AppTheme.ACCENT, AppTheme.RED)
+            animar(true)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(46)
             ).apply { setMargins(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(16)) }

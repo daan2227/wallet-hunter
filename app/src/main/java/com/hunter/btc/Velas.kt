@@ -24,8 +24,43 @@ class Velas(ctx: android.content.Context) : android.view.View(ctx) {
     private var baja = 0     // vela bajista (rojo)
     private var redondo = true
 
+    private var fase = 0f    // deriva lenta de la animación
+    private var animado = false
+    private var anim: android.animation.ValueAnimator? = null
+
     fun colores(fondo: Int, verde: Int, rojo: Int, esquinas: Boolean = true) {
         bg = fondo; sube = verde; baja = rojo; redondo = esquinas; invalidate()
+    }
+
+    /** Enciende (o apaga) la animación: las velas van morfando despacio, como
+     *  un gráfico vivo, pero el movimiento sale de un seno que recorre su ciclo
+     *  y vuelve —no hay datos detrás—. Se para sola al salir de pantalla. */
+    fun animar(on: Boolean) {
+        animado = on
+        if (on) arrancar() else parar()
+    }
+
+    private fun arrancar() {
+        if (anim != null) return
+        anim = android.animation.ValueAnimator.ofFloat(0f, (2.0 * Math.PI).toFloat()).apply {
+            duration = 8000                 // un ciclo completo bien lento
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.LinearInterpolator()
+            addUpdateListener { fase = it.animatedValue as Float; postInvalidateOnAnimation() }
+            start()
+        }
+    }
+
+    private fun parar() { anim?.cancel(); anim = null }
+
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); if (animado) arrancar() }
+    override fun onDetachedFromWindow() { super.onDetachedFromWindow(); parar() }
+
+    /** Pausa cuando la pestaña no se ve (otra pestaña delante) y reanuda al
+     *  volver: nada de animar en segundo plano gastando batería. */
+    override fun onVisibilityAggregated(isVisible: Boolean) {
+        super.onVisibilityAggregated(isVisible)
+        if (animado) { if (isVisible) arrancar() else parar() }
     }
 
     private fun dp(v: Float) = v * d
@@ -55,8 +90,8 @@ class Velas(ctx: android.content.Context) : android.view.View(ctx) {
             val cx = paso * (i + 0.5f)
             // Patrón fijo y suave: dos senos desfasados dan apertura y cierre, y
             // la mecha asoma un poco por encima y por debajo del cuerpo.
-            val o = 0.5f + 0.30f * Math.sin(i * 0.9).toFloat()
-            val cl = 0.5f + 0.30f * Math.sin(i * 0.9 + 0.8).toFloat()
+            val o = 0.5f + 0.30f * Math.sin(i * 0.9 + fase).toFloat()
+            val cl = 0.5f + 0.30f * Math.sin(i * 0.9 + 0.8 + fase).toFloat()
             val cuerpoTop = maxOf(o, cl)      // más arriba en pantalla = fracción mayor
             val cuerpoBot = minOf(o, cl)
             val hi = (cuerpoTop + 0.07f + 0.04f * Math.abs(Math.sin(i * 2.1)).toFloat())
