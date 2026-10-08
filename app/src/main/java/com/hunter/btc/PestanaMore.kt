@@ -268,12 +268,14 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         AppTheme.Modo.MEDIANOCHE -> "Midnight"
         AppTheme.Modo.NEON -> "Neon"
         AppTheme.Modo.EXCHANGE -> "Exchange"
+        AppTheme.Modo.SYNTHWAVE -> "Synthwave"
         AppTheme.Modo.AUTO -> "Auto · day / night"
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
         AppTheme.Modo.NEON -> "Cyberpunk cyan"
         AppTheme.Modo.EXCHANGE -> "Trading terminal · candles"
+        AppTheme.Modo.SYNTHWAVE -> "Retro magenta"
         AppTheme.Modo.AUTO -> "Follows system · dark at night"
         else -> null
     }

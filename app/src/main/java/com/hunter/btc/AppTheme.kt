@@ -28,7 +28,7 @@ object AppTheme {
      * un azul-tinta nuevo; AUTO es el híbrido día/noche: claro de día, oscuro
      * de noche, según la hora del móvil.
      */
-    enum class Modo { OSCURO, CLARO, MEDIANOCHE, NEON, EXCHANGE, AUTO }
+    enum class Modo { OSCURO, CLARO, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO }
 
     /** El modo elegido por el usuario. AUTO no es una paleta en sí: se resuelve
      *  a clara u oscura al arrancar cada pantalla. */
@@ -95,6 +95,17 @@ object AppTheme {
         txtPri = c("#EAECEF"), txtSec = c("#9AA3AF"), txtMuted = c("#5E6673"),
         bgStop = c("#2A1518"), accent = c("#0ECB81"), onAccent = c("#06130D"), oscuro = true)
 
+    /**
+     * SYNTHWAVE: retro-ochentero. Noche índigo-púrpura, texto en lavanda cálido
+     * y un acento magenta de neón. Primo del NEON pero cálido donde aquél es
+     * frío. Sigue siendo un solo acento con un solo significado.
+     */
+    private val SYNTHWAVE = Paleta(
+        bgDeep = c("#160E26"), bgPanel = c("#221539"), bgCard = c("#221539"),
+        bgElev = c("#301E50"), bgKey = c("#281747"), border = c("#3E2A63"),
+        txtPri = c("#F6E9FF"), txtSec = c("#B59BD6"), txtMuted = c("#74619A"),
+        bgStop = c("#3A1230"), accent = c("#FF2E88"), onAccent = c("#1A0612"), oscuro = true)
+
     @Volatile private var activa: Paleta = OSCURA
 
     /** ¿La paleta activa es oscura? Lo usan los diálogos XML y el teclado PIN. */
@@ -117,6 +128,7 @@ object AppTheme {
         Modo.MEDIANOCHE -> MEDIANOCHE
         Modo.NEON -> NEON
         Modo.EXCHANGE -> EXCHANGE
+        Modo.SYNTHWAVE -> SYNTHWAVE
         else -> OSCURA
     }
 
