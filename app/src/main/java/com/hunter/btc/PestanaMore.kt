@@ -306,7 +306,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
             }
             val preview: android.view.View = if (m == AppTheme.Modo.EXCHANGE) {
                 val mu = AppTheme.muestra(AppTheme.Modo.EXCHANGE)
-                Velas(this).apply { colores(mu.bg, mu.accent, AppTheme.RED) }
+                // Se anima también en la miniatura; al cerrar el diálogo la vista
+                // se desengancha y la animación se para sola.
+                Velas(this).apply { colores(mu.bg, mu.accent, AppTheme.RED); animar(true) }
             } else MuestraTema(this).apply {
                 if (m == AppTheme.Modo.AUTO)
                     partida(AppTheme.muestra(AppTheme.Modo.CLARO), AppTheme.muestra(AppTheme.Modo.OSCURO))
