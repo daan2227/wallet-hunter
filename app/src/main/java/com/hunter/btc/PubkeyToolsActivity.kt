@@ -52,9 +52,13 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
         seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
+        seccion(page, R.drawable.ic_import, "Mnemonic tools (BIP39)") { construirMnemonic() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
         seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
+        seccion(page, R.drawable.ic_clock,  "Fee estimator")        { construirFee() }
+        seccion(page, R.drawable.ic_play,   "Broadcast raw tx")     { construirBroadcast() }
+        seccion(page, R.drawable.ic_export, "Transaction decoder")  { construirDecoder() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
@@ -633,6 +637,102 @@ class PubkeyToolsActivity : Activity() {
         root.addView(card)
     }
 
+    // ── Mnemonic tools (BIP39) ─────────────────────────────────────────────
+    private fun construirMnemonic() {
+        desc("Validate a BIP39 seed phrase, generate a fresh one, and see its first " +
+             "addresses. The phrase never leaves the device.")
+        val et = entrada("12 or 24 words — or tap Generate", varias = true)
+        val salida = salidaBox()
+        boton("Generate new (12 words)") { et.setText(Bip39.generate(12)); salida.removeAllViews() }
+        boton("Validate & derive") {
+            salida.removeAllViews()
+            val m = et.text.toString().trim().lowercase().replace(Regex("\\s+"), " ")
+            when (val r = Bip39.validate(m)) {
+                is Bip39.Result.Invalid -> salida.addView(filaResultado("Invalid phrase", r.reason))
+                else -> {
+                    salida.addView(filaResultado("Valid BIP39 phrase", "checksum OK", true))
+                    val json = try { HunterEngine.deriveWallet(m, false) } catch (e: Throwable) { "" }
+                    try {
+                        val o = org.json.JSONObject(json)
+                        listOf("p2pkh_0" to "P2PKH (BIP44)", "p2sh_0" to "P2SH-P2WPKH (BIP49)",
+                               "p2wpkh_0" to "P2WPKH (BIP84)", "p2tr_0" to "P2TR (BIP86)").forEach { (k, lbl) ->
+                            if (o.has(k)) salida.addView(filaResultado(lbl, o.getString(k)))
+                        }
+                    } catch (e: Throwable) {}
+                }
+            }
+        }
+        nota(AppTheme.WARN, "A generated phrase controls real funds if you send to it. " +
+             "Write it down offline; anyone with the phrase has the money.")
+    }
+
+    // ── Fee estimator ──────────────────────────────────────────────────────
+    private fun construirFee() {
+        desc("Current recommended fee rates (sat/vB) from a public explorer.")
+        val salida = salidaBox()
+        boton("Fetch fees") {
+            salida.removeAllViews()
+            salida.addView(TextView(this).apply { text = "Fetching…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val s = ChainApi.get("/fee-estimates")
+                runOnUiThread {
+                    salida.removeAllViews()
+                    if (s == null) { salida.addView(TextView(this).apply { text = "No network."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context) }); return@runOnUiThread }
+                    try {
+                        val o = org.json.JSONObject(s)
+                        fun tier(block: String, label: String) { if (o.has(block))
+                            salida.addView(filaResultado(label, "%.1f sat/vB".format(o.getDouble(block)))) }
+                        tier("1", "Next block (~10 min)"); tier("3", "~30 min"); tier("6", "~1 hour"); tier("144", "~1 day")
+                    } catch (e: Throwable) { salida.addView(TextView(this).apply { text = "Could not read fees."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context) }) }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+    }
+
+    // ── Broadcast raw tx ───────────────────────────────────────────────────
+    @Volatile private var bcCorriendo = false
+    private fun construirBroadcast() {
+        desc("Paste a signed raw transaction (hex) and push it to the network. For a tx " +
+             "signed elsewhere.")
+        val et = entrada("signed raw tx hex", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
+        boton("Broadcast") {
+            if (bcCorriendo) return@boton
+            val raw = et.text.toString().trim().removePrefix("0x")
+            if (raw.length < 20 || raw.any { it.lowercaseChar() !in "0123456789abcdef" }) {
+                Toast.makeText(this, "Enter a raw tx in hex", Toast.LENGTH_SHORT).show(); return@boton }
+            bcCorriendo = true; tv.text = "Broadcasting…"
+            Thread {
+                val r = ChainApi.broadcast(raw)
+                runOnUiThread { bcCorriendo = false
+                    tv.text = when (r) {
+                        is ChainApi.Envio.Ok -> "✓ Sent · txid ${r.txid}"
+                        is ChainApi.Envio.Rechazada -> "Rejected: ${r.motivo}"
+                        else -> "No response — try again."
+                    } }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+    }
+
+    // ── Transaction decoder ────────────────────────────────────────────────
+    private fun construirDecoder() {
+        desc("Paste a raw transaction (hex) to read it: version, inputs, outputs with " +
+             "amount and type, locktime and size. Offline — no signatures checked.")
+        val et = entrada("raw tx hex", varias = true)
+        val salida = salidaBox()
+        boton("Decode") {
+            salida.removeAllViews()
+            val filas = TxDecoder.decode(et.text.toString())
+            if (filas == null) Toast.makeText(this, "Not a valid raw transaction", Toast.LENGTH_SHORT).show()
+            else filas.forEach { (l, v) -> salida.addView(filaResultado(l, v)) }
+        }
+    }
+
     // ── Brainwallet ─────────────────────────────────────────────────────────
     @Volatile private var bwCorriendo = false
     private fun sha256Hex(s: String): String {
@@ -810,7 +910,7 @@ class PubkeyToolsActivity : Activity() {
 
     override fun onDestroy() {
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
-        balCorriendo = false; sweepCorriendo = false; watchCorriendo = false
+        balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false
         super.onDestroy()
     }
 }
