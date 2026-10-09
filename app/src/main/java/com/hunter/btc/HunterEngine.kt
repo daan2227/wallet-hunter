@@ -87,6 +87,9 @@ object HunterEngine {
     /** Verifica una firma (65 bytes hex) sobre un mensaje: devuelve la dirección
      *  P2PKH que la firmó, o "". */
     external fun verificarMensaje(msg: String, sigHex: String): String
+    /** Primeras [n] direcciones de recepción (m/0/i) de un xpub/ypub/zpub.
+     *  Líneas "i=direccion", o "" si el extended key no vale. */
+    external fun xpubDirecciones(xpub: String, n: Int): String
     /**
      * Las direcciones principales de la cartera.
      *

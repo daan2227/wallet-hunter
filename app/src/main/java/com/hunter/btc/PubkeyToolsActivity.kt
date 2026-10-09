@@ -51,6 +51,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_copy,   "Hex ↔ WIF")            { construirWifHex() }
         seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
+        seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
@@ -308,6 +309,35 @@ class PubkeyToolsActivity : Activity() {
                 }
             }
         }
+    }
+
+    // ── xpub → addresses ───────────────────────────────────────────────────
+    private fun construirXpub() {
+        desc("First receiving addresses (m/0/i) of an extended public key. The address " +
+             "type follows the key: xpub→P2PKH, ypub→P2SH-segwit, zpub→bech32.")
+        val et = entrada("xpub…/ypub…/zpub…", varias = true)
+        root.addView(rotulo("How many"))
+        val etN = EditText(this).apply {
+            setText("10"); inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.mono(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(dp(90), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(etN)
+        val salida = salidaBox()
+        boton("Derive") {
+            salida.removeAllViews()
+            val n = etN.text.toString().toIntOrNull()?.coerceIn(1, 50) ?: 10
+            val txt = try { HunterEngine.xpubDirecciones(et.text.toString().trim(), n) } catch (e: Throwable) { "" }
+            if (txt.isBlank()) Toast.makeText(this, "Not a valid xpub/ypub/zpub", Toast.LENGTH_SHORT).show()
+            else txt.trim().split('\n').forEach { l ->
+                val i = l.indexOf('='); if (i > 0) salida.addView(filaResultado("m/0/${l.substring(0, i)}", l.substring(i + 1)))
+            }
+        }
+        nota(AppTheme.BLUE, "Watch-only: an xpub derives addresses but never the private keys. " +
+             "Handy to audit or monitor a hardware/watch-only wallet.")
     }
 
     // ── Balance & UTXOs (watch-only) ───────────────────────────────────────

@@ -1701,6 +1701,63 @@ Java_com_hunter_btc_HunterEngine_verificarMensaje(JNIEnv *env,jobject,jstring jm
     return env->NewStringUTF(out.c_str());
 }
 
+/* Derivación pública no endurecida (CKDpub): hijo i de un nodo (pub, chain). */
+static bool ckd_pub(secp256k1_context *ctx, const secp256k1_pubkey *par,
+                    const uint8_t parChain[32], uint32_t i,
+                    secp256k1_pubkey *out, uint8_t outChain[32]){
+    uint8_t comp[33]; size_t l=33;
+    secp256k1_ec_pubkey_serialize(ctx,comp,&l,par,SECP256K1_EC_COMPRESSED);
+    uint8_t data[37]; memcpy(data,comp,33);
+    data[33]=(uint8_t)((i>>24)&0xff); data[34]=(uint8_t)((i>>16)&0xff);
+    data[35]=(uint8_t)((i>>8)&0xff);  data[36]=(uint8_t)(i&0xff);
+    uint8_t I[64]; hmac_sha512(parChain,32,data,37,I);
+    *out=*par;
+    if(!secp256k1_ec_pubkey_tweak_add(ctx,out,I)) return false;   // + IL·G
+    memcpy(outChain,I+32,32);
+    return true;
+}
+
+/* Primeras [n] direcciones de recepción (m/0/i) de un xpub/ypub/zpub. El tipo
+ * de dirección sale de la versión del extended key. Líneas "i=direccion". */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_xpubDirecciones(JNIEnv *env,jobject,jstring jx,jint jn){
+    const char *xp=env->GetStringUTFChars(jx,nullptr); std::string x=xp?xp:""; if(xp) env->ReleaseStringUTFChars(jx,xp);
+    int n=jn; if(n<1)n=1; if(n>50)n=50;
+    // base58 → bytes
+    BIGNUM *bn=BN_new(),*t=BN_new(),*b=BN_new(); BN_CTX *bc=BN_CTX_new(); BN_zero(bn); BN_set_word(b,58);
+    bool okb=true;
+    for(char ch: x){ const char *p=strchr(B58A,ch); if(!p){okb=false;break;} BN_mul(bn,bn,b,bc); BN_set_word(t,(unsigned long)(p-B58A)); BN_add(bn,bn,t); }
+    std::string res="";
+    if(okb && BN_num_bytes(bn)==82){
+        uint8_t raw[82]; BN_bn2binpad(bn,raw,82);
+        uint8_t h1[32],h2[32]; SHA256(raw,78,h1); SHA256(h1,32,h2);
+        if(memcmp(h2,raw+78,4)==0){
+            uint32_t ver=((uint32_t)raw[0]<<24)|((uint32_t)raw[1]<<16)|((uint32_t)raw[2]<<8)|raw[3];
+            int tipo = (ver==0x049d7cb2u)?1 : (ver==0x04b24746u)?2 : 0;  // ypub / zpub / xpub
+            const uint8_t *chain=raw+13; const uint8_t *key=raw+45;
+            secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+            secp256k1_pubkey acct;
+            if(secp256k1_ec_pubkey_parse(ctx,&acct,key,33)){
+                secp256k1_pubkey ext; uint8_t extChain[32];
+                if(ckd_pub(ctx,&acct,chain,0,&ext,extChain)){   // cadena externa /0
+                    for(int i=0;i<n;i++){
+                        secp256k1_pubkey child; uint8_t cch[32];
+                        if(!ckd_pub(ctx,&ext,extChain,(uint32_t)i,&child,cch)) break;
+                        uint8_t c33[33]; size_t cl=33; secp256k1_ec_pubkey_serialize(ctx,c33,&cl,&child,SECP256K1_EC_COMPRESSED);
+                        uint8_t sha[32],h160[20]; SHA256(c33,33,sha); RIPEMD160(sha,32,h160);
+                        char a[MAX_ADDR]={0};
+                        if(tipo==2) h160_to_bech32(h160,a); else if(tipo==1) h160_to_p2sh(h160,a); else h160_to_addr(h160,a);
+                        char pre[8]; snprintf(pre,8,"%d=",i); res+=pre; res+=a; res+="\n";
+                    }
+                }
+            }
+            secp256k1_context_destroy(ctx);
+        }
+    }
+    BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
+    return env->NewStringUTF(res.c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     const char *a=env->GetStringUTFChars(addr,nullptr);
