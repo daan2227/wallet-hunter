@@ -176,10 +176,99 @@ class PubkeyToolsActivity : Activity() {
             "Funds could sit on any of them.")
     }
 
-    // ── 1 · Brainwallet (siguiente etapa) ─────────────────────────────────
-    private fun construirBrainwallet() {
-        titulo("Brainwallet check", "")
+    // ── 1 · Brainwallet ───────────────────────────────────────────────────
+    @Volatile private var bwCorriendo = false
+
+    private fun sha256Hex(s: String): String {
+        val d = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
+        val sb = StringBuilder(64); for (b in d) sb.append("%02x".format(b)); return sb.toString()
     }
+
+    /** Las direcciones de una clave (priv o pub) como conjunto, para cruzar. */
+    private fun dirsDe(entrada: String): Set<String> {
+        val t = try { HunterEngine.direccionesDe(entrada) } catch (e: Throwable) { "" }
+        if (t.isBlank()) return emptySet()
+        return t.trim().split('\n').mapNotNull { l ->
+            val i = l.indexOf('='); if (i > 0) l.substring(i + 1).trim() else null
+        }.toSet()
+    }
+
+    private fun construirBrainwallet() {
+        titulo("Brainwallet check",
+            "Many funds are lost to keys made from a passphrase (private key = " +
+            "SHA-256 of the phrase). This tests phrases against a target and tells you " +
+            "if that address came from a weak one. Use it on your own addresses.")
+        root.addView(rotulo("Target address or public key"))
+        val etTarget = entrada("1…/3…/bc1… or 02…/03…/04…")
+        root.addView(etTarget)
+        root.addView(rotulo("Phrases to try (one per line)"))
+        val etFrases = entrada("correct horse battery staple\npassword\n…", varias = true)
+        root.addView(etFrases)
+
+        val tvEstado = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0)
+        }
+        val salida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (bwCorriendo) { bwCorriendo = false; return@boton }
+            val objetivo = dirsDe(etTarget.text.toString().trim())
+            if (objetivo.isEmpty()) {
+                Toast.makeText(this, "Enter a valid target address or public key", Toast.LENGTH_SHORT).show()
+                return@boton
+            }
+            val frases = etFrases.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            if (frases.isEmpty()) {
+                Toast.makeText(this, "Paste some phrases to try", Toast.LENGTH_SHORT).show()
+                return@boton
+            }
+            salida.removeAllViews()
+            bwCorriendo = true; btn.text = "Stop"
+            Thread {
+                var n = 0; var hits = 0
+                for (frase in frases) {
+                    if (!bwCorriendo) break
+                    n++
+                    val priv = sha256Hex(frase)
+                    val dirs = dirsDe(priv)
+                    if (dirs.any { it in objetivo }) {
+                        hits++
+                        val wif = try { HunterEngine.datosDeClave(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                        runOnUiThread {
+                            salida.addView(filaResultado("MATCH · \"$frase\"",
+                                "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else ""), destacado = true))
+                        }
+                    }
+                    if (n % 25 == 0 || n == frases.size) {
+                        val hechas = n; val encontr = hits
+                        runOnUiThread { tvEstado.text = "Checked $hechas / ${frases.size} · $encontr found" }
+                    }
+                }
+                runOnUiThread {
+                    bwCorriendo = false; btn.text = "Check"
+                    if (hits == 0) salida.addView(TextView(this).apply {
+                        text = "No match. The address did not come from any of these phrases."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+                        typeface = AppTheme.body(context); setPadding(dp(2), dp(8), 0, 0)
+                    })
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(btn)
+        root.addView(tvEstado)
+        root.addView(salida)
+        nota(AppTheme.WARN,
+            "Only tests the exact phrases you paste (SHA-256 brainwallets). It won't " +
+            "find a key made some other way. Meant to audit whether your own address " +
+            "used a guessable phrase.")
+    }
+
+    override fun onDestroy() { bwCorriendo = false; super.onDestroy() }
 
     // ── 2 · Nonce audit (siguiente etapa) ─────────────────────────────────
     private fun construirNonce() {

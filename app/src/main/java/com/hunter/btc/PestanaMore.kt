@@ -261,6 +261,11 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         startActivity(Intent(this, PubkeyToolsActivity::class.java)
             .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 0))
     }
+    fila(claves, R.drawable.ic_target, "Brainwallet check",
+         "Test passphrases against an address", null) {
+        startActivity(Intent(this, PubkeyToolsActivity::class.java)
+            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 1))
+    }
 
     val app = grupo("App")
     /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).
