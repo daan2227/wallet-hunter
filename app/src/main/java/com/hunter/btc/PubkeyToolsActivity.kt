@@ -54,6 +54,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
+        seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
@@ -473,6 +474,54 @@ class PubkeyToolsActivity : Activity() {
              "destination. Only use keys you control.")
     }
 
+    // ── Watch addresses ────────────────────────────────────────────────────
+    @Volatile private var watchCorriendo = false
+    private fun construirWatch() {
+        desc("Keep an eye on addresses: it stores their balance and flags any change since " +
+             "the last check. Checks when you open this screen and when you tap Check.")
+        val wp = getSharedPreferences("watchlist", MODE_PRIVATE)
+        val et = entrada("addresses to watch, one per line", varias = true)
+        et.setText(wp.getString("addrs", "") ?: "")
+        val salida = salidaBox()
+        fun chequear() {
+            if (watchCorriendo) return
+            val addrs = et.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+            wp.edit().putString("addrs", addrs.joinToString("\n")).apply()
+            if (addrs.isEmpty()) { salida.removeAllViews(); return }
+            watchCorriendo = true; salida.removeAllViews()
+            salida.addView(TextView(this).apply { text = "Checking…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val filas = ArrayList<Triple<String, Long, Long>>()
+                var cambios = 0
+                for (a in addrs) {
+                    val info = ChainApi.get("/address/$a") ?: continue
+                    val saldo = try { val o = org.json.JSONObject(info); val cs = o.getJSONObject("chain_stats")
+                        cs.getLong("funded_txo_sum") - cs.getLong("spent_txo_sum") } catch (e: Throwable) { continue }
+                    val prev = wp.getLong("bal_$a", Long.MIN_VALUE)
+                    if (prev != Long.MIN_VALUE && prev != saldo) cambios++
+                    wp.edit().putLong("bal_$a", saldo).apply()
+                    filas.add(Triple(a, saldo, prev))
+                }
+                runOnUiThread {
+                    watchCorriendo = false; salida.removeAllViews()
+                    for ((a, saldo, prev) in filas) {
+                        val marca = when { prev == Long.MIN_VALUE -> "" ; saldo > prev -> " ▲" ; saldo < prev -> " ▼" ; else -> "" }
+                        salida.addView(filaResultado(a.take(22) + (if (a.length > 22) "…" else "") + marca, satsABtc(saldo)))
+                    }
+                    if (filas.isEmpty()) salida.addView(TextView(this).apply { text = "No network, or no addresses resolved."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context) })
+                    if (cambios > 0 && Avisos.notifOn(this))
+                        Avisos.hallazgo(this, "Balance changed", "$cambios watched address(es) changed since last check")
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        boton("Save & check") { chequear() }
+        if ((wp.getString("addrs", "") ?: "").isNotBlank()) chequear()   // chequeo automático al abrir
+        nota(AppTheme.BLUE, "Checks happen when this screen is open or you tap Check — there's " +
+             "no always-on background polling. A change fires a notification if alerts are on.")
+    }
+
     // ── Vanity address ─────────────────────────────────────────────────────
     @Volatile private var vanCorriendo = false
     private fun construirVanity() {
@@ -760,7 +809,8 @@ class PubkeyToolsActivity : Activity() {
     }
 
     override fun onDestroy() {
-        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; balCorriendo = false; sweepCorriendo = false
+        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
+        balCorriendo = false; sweepCorriendo = false; watchCorriendo = false
         super.onDestroy()
     }
 }
