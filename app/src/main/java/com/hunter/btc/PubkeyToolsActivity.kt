@@ -54,6 +54,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
+        seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
     }
@@ -429,6 +430,39 @@ class PubkeyToolsActivity : Activity() {
         }
         nota(AppTheme.WARN, "A 2-of-2 XOR split: you need BOTH halves to restore the key. " +
              "It is not Shamir — there is no 2-of-3. Store the halves in different places.")
+    }
+
+    // ── QR code ─────────────────────────────────────────────────────────────
+    private fun qrBitmap(content: String, size: Int): android.graphics.Bitmap {
+        val m = com.google.zxing.qrcode.QRCodeWriter()
+            .encode(content, com.google.zxing.BarcodeFormat.QR_CODE, size, size)
+        val w = m.width; val h = m.height; val px = IntArray(w * h)
+        for (y in 0 until h) { val row = y * w; for (x in 0 until w)
+            px[row + x] = if (m.get(x, y)) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
+        return android.graphics.Bitmap.createBitmap(px, w, h, android.graphics.Bitmap.Config.RGB_565)
+    }
+    private fun construirQr() {
+        desc("A QR for any address, key or bitcoin: URI — to scan or print on paper.")
+        val et = entrada("address, key, or bitcoin:… URI", varias = true)
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.WHITE); cornerRadius = dp(16).toFloat() }
+            setPadding(dp(16), dp(16), dp(16), dp(16)); visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(12); gravity = Gravity.CENTER_HORIZONTAL }
+        }
+        val iv = ImageView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(220), dp(220))
+        }
+        card.addView(iv)
+        boton("Make QR") {
+            val txt = et.text.toString().trim()
+            if (txt.isEmpty()) { Toast.makeText(this, "Enter something", Toast.LENGTH_SHORT).show(); return@boton }
+            try { iv.setImageBitmap(qrBitmap(txt, 512)); card.visibility = android.view.View.VISIBLE }
+            catch (e: Throwable) { Toast.makeText(this, "Too long for a QR", Toast.LENGTH_SHORT).show() }
+        }
+        root.addView(card)
     }
 
     // ── Brainwallet ─────────────────────────────────────────────────────────
