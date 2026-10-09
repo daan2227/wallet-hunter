@@ -266,6 +266,11 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         startActivity(Intent(this, PubkeyToolsActivity::class.java)
             .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 1))
     }
+    fila(claves, R.drawable.ic_warning, "Nonce-reuse audit",
+         "Scan an address for a reused signature nonce", null) {
+        startActivity(Intent(this, PubkeyToolsActivity::class.java)
+            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 2))
+    }
 
     val app = grupo("App")
     /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).

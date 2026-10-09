@@ -268,10 +268,145 @@ class PubkeyToolsActivity : Activity() {
             "used a guessable phrase.")
     }
 
-    override fun onDestroy() { bwCorriendo = false; super.onDestroy() }
+    // ── 2 · Nonce-reuse audit ─────────────────────────────────────────────
+    @Volatile private var nonceCorriendo = false
 
-    // ── 2 · Nonce audit (siguiente etapa) ─────────────────────────────────
-    private fun construirNonce() {
-        titulo("Nonce-reuse audit", "")
+    private fun hexABytes(h: String): ByteArray? {
+        if (h.length % 2 != 0) return null
+        val o = ByteArray(h.length / 2)
+        for (i in o.indices) {
+            val v = h.substring(i * 2, i * 2 + 2).toIntOrNull(16) ?: return null
+            o[i] = v.toByte()
+        }
+        return o
     }
+
+    /** La r de una firma DER (sin el byte de sighash final), en hex sin ceros. */
+    private fun derR(sigHex: String): String? {
+        val b = hexABytes(sigHex) ?: return null
+        if (b.size < 8 || (b[0].toInt() and 0xFF) != 0x30 || (b[2].toInt() and 0xFF) != 0x02) return null
+        val rlen = b[3].toInt() and 0xFF
+        if (4 + rlen > b.size) return null
+        var start = 4; var len = rlen
+        while (len > 1 && b[start].toInt() == 0) { start++; len-- }   // quitar ceros de relleno
+        val sb = StringBuilder()
+        for (i in start until start + len) sb.append("%02x".format(b[i].toInt() and 0xFF))
+        return sb.toString()
+    }
+
+    private fun esPub(t: String) =
+        (t.length == 66 && (t.startsWith("02") || t.startsWith("03"))) ||
+        (t.length == 130 && t.startsWith("04"))
+
+    /** (pubkey, r) de un input, de su witness o de su scriptsig_asm. */
+    private fun firmaDe(vin: org.json.JSONObject): Pair<String, String>? {
+        val w = vin.optJSONArray("witness")
+        if (w != null && w.length() >= 2) {
+            val sig = w.optString(0, ""); val pub = w.optString(w.length() - 1, "")
+            val r = derR(sig)
+            if (r != null && esPub(pub.lowercase())) return pub.lowercase() to r
+        }
+        val asm = vin.optString("scriptsig_asm", "")
+        if (asm.isNotEmpty()) {
+            val toks = asm.split(' ').filter { !it.startsWith("OP_") && it.all { c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F' } }
+            val pub = toks.firstOrNull { esPub(it.lowercase()) }?.lowercase()
+            val sig = toks.firstOrNull { it.startsWith("30") && it.length > 16 }
+            if (pub != null && sig != null) { val r = derR(sig); if (r != null) return pub to r }
+        }
+        return null
+    }
+
+    private fun construirNonce() {
+        titulo("Nonce-reuse audit",
+            "The deadliest ECDSA flaw: if an address signs two inputs with the same " +
+            "random k (nonce), its private key can be recovered from those signatures. " +
+            "This scans a spent address's transactions and flags a reused nonce.")
+        root.addView(rotulo("Spent address"))
+        val etAddr = entrada("1…/3…/bc1… (must have spent at least once)")
+        root.addView(etAddr)
+
+        val tvEstado = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0)
+        }
+        val salida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        lateinit var btn: Button
+        btn = boton("Scan signatures") {
+            if (nonceCorriendo) { nonceCorriendo = false; return@boton }
+            val addr = etAddr.text.toString().trim()
+            if (addr.isEmpty()) { Toast.makeText(this, "Enter an address", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews()
+            nonceCorriendo = true; btn.text = "Stop"
+            tvEstado.text = "Fetching transactions…"
+            Thread {
+                // pub -> (r -> txid de la primera vez que se vio)
+                val visto = HashMap<String, HashMap<String, String>>()
+                val reusos = ArrayList<Triple<String, String, Pair<String, String>>>() // pub, r, (txid1,txid2)
+                var firmas = 0; var txs = 0; var ultimo = ""; var paginas = 0; var red = true
+                bucle@ while (nonceCorriendo && paginas < 6) {
+                    val ruta = "/address/$addr/txs" + (if (ultimo.isEmpty()) "" else "/chain/$ultimo")
+                    val cuerpo = ChainApi.get(ruta) ?: run { if (txs == 0) red = false; null } ?: break@bucle
+                    paginas++
+                    val arr = try { org.json.JSONArray(cuerpo) } catch (e: Throwable) { break@bucle }
+                    if (arr.length() == 0) break@bucle
+                    for (ti in 0 until arr.length()) {
+                        if (!nonceCorriendo) break@bucle
+                        val tx = arr.optJSONObject(ti) ?: continue
+                        val txid = tx.optString("txid", "")
+                        ultimo = txid
+                        val vins = tx.optJSONArray("vin") ?: continue
+                        for (vi in 0 until vins.length()) {
+                            val par = firmaDe(vins.optJSONObject(vi) ?: continue) ?: continue
+                            firmas++
+                            val (pub, r) = par
+                            val m = visto.getOrPut(pub) { HashMap() }
+                            val previo = m[r]
+                            if (previo != null && previo != txid + "#" + vi) {
+                                reusos.add(Triple(pub, r, previo.substringBefore("#") to txid))
+                            } else if (previo == null) m[r] = txid + "#" + vi
+                        }
+                        txs++
+                    }
+                    val hechas = txs
+                    runOnUiThread { tvEstado.text = "Scanned $hechas tx · $firmas signatures" }
+                    if (arr.length() < 25) break@bucle   // última página
+                }
+                runOnUiThread {
+                    nonceCorriendo = false; btn.text = "Scan signatures"
+                    when {
+                        !red -> tvEstado.text = "No network, or address not found / never spent."
+                        reusos.isNotEmpty() -> {
+                            tvEstado.text = "⚠ Reused nonce found · $txs tx · $firmas signatures"
+                            reusos.distinctBy { it.first + it.second }.forEach { (pub, r, txs2) ->
+                                salida.addView(filaResultado("VULNERABLE · reused r",
+                                    "pubkey ${pub.take(16)}…\nr ${r.take(20)}…\ntx1 ${txs2.first.take(16)}…\ntx2 ${txs2.second.take(16)}…",
+                                    destacado = true))
+                            }
+                            salida.addView(TextView(this).apply {
+                                text = "The private key is recoverable from these two signatures " +
+                                       "(same r ⇒ same k). This address is compromised — move any funds."
+                                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                                typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
+                                setPadding(dp(2), dp(10), 0, 0)
+                            })
+                        }
+                        else -> tvEstado.text = "Clean · $txs tx · $firmas signatures · no nonce reuse"
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(btn)
+        root.addView(tvEstado)
+        root.addView(salida)
+        nota(AppTheme.BLUE,
+            "Reads the address's transactions from a public explorer and compares the r " +
+            "value of every signature. Two equal r for the same public key means the " +
+            "nonce repeated. Scans the most recent transactions (several pages).")
+    }
+
+    override fun onDestroy() { bwCorriendo = false; nonceCorriendo = false; super.onDestroy() }
 }
