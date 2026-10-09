@@ -26,6 +26,7 @@
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
 #include <secp256k1_schnorrsig.h>
+#include <secp256k1_recovery.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -1628,6 +1629,76 @@ Java_com_hunter_btc_HunterEngine_recuperarNonce(JNIEnv *env,jobject,
     if(n)BN_free(n); if(r)BN_free(r); if(s1)BN_free(s1); if(z1)BN_free(z1);
     if(s2)BN_free(s2); if(z2)BN_free(z2); if(c)BN_CTX_free(c);
     return env->NewStringUTF(res.c_str());
+}
+
+/* Hash de un mensaje al estilo Bitcoin: dSHA256( 0x18 "Bitcoin Signed
+ * Message:\n" + varint(len) + msg ). */
+static void msg_hash(const std::string &msg, uint8_t out32[32]){
+    std::string pre; pre += (char)0x18; pre += "Bitcoin Signed Message:\n";
+    size_t n=msg.size();
+    if(n<0xfd) pre+=(char)n;
+    else if(n<=0xffff){ pre+=(char)0xfd; pre+=(char)(n&0xff); pre+=(char)((n>>8)&0xff); }
+    else { pre+=(char)0xfe; for(int i=0;i<4;i++) pre+=(char)((n>>(8*i))&0xff); }
+    pre+=msg;
+    uint8_t h1[32]; SHA256((const uint8_t*)pre.data(),pre.size(),h1); SHA256(h1,32,out32);
+}
+
+/* Firma un mensaje con una privada hex (64). Devuelve la firma compacta
+ * recuperable en 65 bytes hex (cabecera 27+recid+4 comprimida, + r + s). */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_firmarMensaje(JNIEnv *env,jobject,jstring jhex,jstring jmsg){
+    const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
+    const char *mg=env->GetStringUTFChars(jmsg,nullptr); std::string m=mg?mg:""; if(mg) env->ReleaseStringUTFChars(jmsg,mg);
+    if(h.size()!=64) return env->NewStringUTF("");
+    uint8_t k[32];
+    for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return env->NewStringUTF(""); k[i]=(uint8_t)((a<<4)|b); }
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    uint8_t hash[32]; msg_hash(m,hash);
+    secp256k1_ecdsa_recoverable_signature rsig;
+    std::string out="";
+    if(secp256k1_ec_seckey_verify(ctx,k) &&
+       secp256k1_ecdsa_sign_recoverable(ctx,&rsig,hash,k,nullptr,nullptr)){
+        uint8_t comp[64]; int recid=0;
+        secp256k1_ecdsa_recoverable_signature_serialize_compact(ctx,comp,&recid,&rsig);
+        uint8_t full[65]; full[0]=(uint8_t)(27+recid+4);  // +4: clave comprimida
+        memcpy(full+1,comp,64);
+        char hex[131]; for(int i=0;i<65;i++) snprintf(hex+i*2,3,"%02x",full[i]); out=hex;
+    }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out.c_str());
+}
+
+/* Verifica una firma (65 bytes hex) sobre un mensaje: recupera la pública y
+ * devuelve su dirección P2PKH (comprimida o no según la cabecera), o "". Quien
+ * llama compara esa dirección con la que dice ser el firmante. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_verificarMensaje(JNIEnv *env,jobject,jstring jmsg,jstring jsig){
+    const char *mg=env->GetStringUTFChars(jmsg,nullptr); std::string m=mg?mg:""; if(mg) env->ReleaseStringUTFChars(jmsg,mg);
+    const char *sg=env->GetStringUTFChars(jsig,nullptr); std::string s=sg?sg:""; if(sg) env->ReleaseStringUTFChars(jsig,sg);
+    if(s.size()!=130) return env->NewStringUTF("");
+    uint8_t full[65];
+    for(int i=0;i<65;i++){ int a=-1,b=-1; char c1=tolower(s[i*2]),c2=tolower(s[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return env->NewStringUTF(""); full[i]=(uint8_t)((a<<4)|b); }
+    int hdr=full[0]; if(hdr<27||hdr>34) return env->NewStringUTF("");
+    int recid=(hdr-27)&3; bool comp=((hdr-27)&4)!=0;
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+    uint8_t hash[32]; msg_hash(m,hash);
+    secp256k1_ecdsa_recoverable_signature rsig; secp256k1_pubkey pub;
+    std::string out="";
+    if(secp256k1_ecdsa_recoverable_signature_parse_compact(ctx,&rsig,full+1,recid) &&
+       secp256k1_ecdsa_recover(ctx,&pub,&rsig,hash)){
+        uint8_t ser[65]; size_t len=comp?33:65;
+        secp256k1_ec_pubkey_serialize(ctx,ser,&len,&pub,comp?SECP256K1_EC_COMPRESSED:SECP256K1_EC_UNCOMPRESSED);
+        uint8_t sha[32],h160[20]; SHA256(ser,len,sha); RIPEMD160(sha,32,h160);
+        char addr[MAX_ADDR]={0}; h160_to_addr(h160,addr); out=addr;
+    }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out.c_str());
 }
 
 JNIEXPORT void JNICALL

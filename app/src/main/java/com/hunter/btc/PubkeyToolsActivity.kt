@@ -49,6 +49,7 @@ class PubkeyToolsActivity : Activity() {
 
         seccion(page, R.drawable.ic_search, "Addresses from a key") { construirDirecciones() }
         seccion(page, R.drawable.ic_copy,   "Hex ↔ WIF")            { construirWifHex() }
+        seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
@@ -213,6 +214,66 @@ class PubkeyToolsActivity : Activity() {
                 else salida.addView(filaResultado("Private key (hex)", h, true))
             }
         }
+    }
+
+    // ── Sign & verify message ─────────────────────────────────────────────
+    private fun hexClave(k: String): String {
+        val t = k.trim().removePrefix("0x")
+        if (t.length == 64 && t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return t.lowercase()
+        return try { HunterEngine.hexDeWif(t) } catch (e: Throwable) { "" }
+    }
+    private fun construirFirma() {
+        desc("Prove you control an address by signing a message with its key — and verify " +
+             "anyone else's signed message. Bitcoin's standard signed-message format.")
+        root.addView(rotulo("Sign — private key (hex or WIF)"))
+        val etKey = entrada("64-hex or WIF")
+        root.addView(rotulo("Message"))
+        val etMsg = entrada("your message", varias = true)
+        val salFirma = salidaBox()
+        boton("Sign") {
+            salFirma.removeAllViews()
+            val hx = hexClave(etKey.text.toString())
+            if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
+            val sigHex = try { HunterEngine.firmarMensaje(hx, etMsg.text.toString()) } catch (e: Throwable) { "" }
+            if (sigHex.isBlank()) { Toast.makeText(this, "Could not sign", Toast.LENGTH_SHORT).show(); return@boton }
+            val b64 = try {
+                val raw = ByteArray(65) { sigHex.substring(it*2, it*2+2).toInt(16).toByte() }
+                android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP)
+            } catch (e: Throwable) { "" }
+            val quien = try { HunterEngine.verificarMensaje(etMsg.text.toString(), sigHex) } catch (e: Throwable) { "" }
+            salFirma.addView(filaResultado("Signature (base64)", b64, true))
+            if (quien.isNotEmpty()) salFirma.addView(filaResultado("Signed by address", quien))
+        }
+
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) }
+        })
+        root.addView(rotulo("Verify — address"))
+        val etA = entrada("1… address that claims to have signed")
+        root.addView(rotulo("Message"))
+        val etM2 = entrada("the message", varias = true)
+        root.addView(rotulo("Signature (base64)"))
+        val etS = entrada("H…/I… base64 signature", varias = true)
+        val salVer = salidaBox()
+        boton("Verify") {
+            salVer.removeAllViews()
+            val sigHex = try {
+                val raw = android.util.Base64.decode(etS.text.toString().trim(), android.util.Base64.DEFAULT)
+                if (raw.size != 65) "" else raw.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+            } catch (e: Throwable) { "" }
+            if (sigHex.isBlank()) { Toast.makeText(this, "Signature must be 65 bytes base64", Toast.LENGTH_SHORT).show(); return@boton }
+            val quien = try { HunterEngine.verificarMensaje(etM2.text.toString(), sigHex) } catch (e: Throwable) { "" }
+            val addr = etA.text.toString().trim()
+            when {
+                quien.isBlank() -> salVer.addView(filaResultado("Invalid signature", "could not recover a key"))
+                quien == addr -> salVer.addView(filaResultado("✓ VALID", "signed by $quien", true))
+                else -> salVer.addView(filaResultado("✗ Does NOT match", "recovered $quien"))
+            }
+        }
+        nota(AppTheme.BLUE, "Signing never touches funds — it just proves control of the key. " +
+             "Verify recovers the signer's address from the signature and compares it.")
     }
 
     // ── Inspector ─────────────────────────────────────────────────────────

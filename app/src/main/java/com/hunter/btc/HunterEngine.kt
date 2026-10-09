@@ -81,6 +81,12 @@ object HunterEngine {
      */
     external fun recuperarNonce(r: String, s1: String, z1: String,
                                 s2: String, z2: String): String
+    /** Firma un mensaje (estilo Bitcoin) con una privada hex: firma compacta
+     *  recuperable de 65 bytes en hex, o "". */
+    external fun firmarMensaje(privHex: String, msg: String): String
+    /** Verifica una firma (65 bytes hex) sobre un mensaje: devuelve la dirección
+     *  P2PKH que la firmó, o "". */
+    external fun verificarMensaje(msg: String, sigHex: String): String
     /**
      * Las direcciones principales de la cartera.
      *

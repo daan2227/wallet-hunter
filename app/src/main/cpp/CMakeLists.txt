@@ -28,6 +28,9 @@ target_compile_definitions(secp256k1 PRIVATE
     # depende de extrakeys.
     ENABLE_MODULE_EXTRAKEYS
     ENABLE_MODULE_SCHNORRSIG
+    # Recuperar la pública de una firma: para "sign/verify message" al estilo
+    # Bitcoin (firma compacta recuperable) y para comprobar quién firmó.
+    ENABLE_MODULE_RECOVERY
 )
 
 target_compile_options(secp256k1 PRIVATE
