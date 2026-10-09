@@ -319,46 +319,67 @@ class PubkeyToolsActivity : Activity() {
         return o
     }
 
-    /** La r de una firma DER (sin el byte de sighash final), en hex sin ceros. */
-    private fun derR(sigHex: String): String? {
+    /** pubkey, r, s y tipo de sighash de un input. */
+    private class FirmaRS(val pub: String, val r: String, val s: String, val htype: Int)
+    /** Lo guardado la primera vez que se vio una (pubkey, r), para recuperar. */
+    private class RegFirma(val tx: org.json.JSONObject, val vin: Int, val s: String, val htype: Int)
+
+    /** Parsea una firma (DER + byte de sighash) a (r, s, htype), r y s sin ceros. */
+    private fun parseSig(sigHex: String): Triple<String, String, Int>? {
         val b = hexABytes(sigHex) ?: return null
-        if (b.size < 8 || (b[0].toInt() and 0xFF) != 0x30 || (b[2].toInt() and 0xFF) != 0x02) return null
+        if (b.size < 9 || (b[0].toInt() and 0xFF) != 0x30 || (b[2].toInt() and 0xFF) != 0x02) return null
+        val htype = b[b.size - 1].toInt() and 0xFF
         val rlen = b[3].toInt() and 0xFF
-        if (4 + rlen > b.size) return null
-        var start = 4; var len = rlen
-        while (len > 1 && b[start].toInt() == 0) { start++; len-- }   // quitar ceros de relleno
-        val sb = StringBuilder()
-        for (i in start until start + len) sb.append("%02x".format(b[i].toInt() and 0xFF))
-        return sb.toString()
+        val sPos = 4 + rlen
+        if (sPos + 2 > b.size || (b[sPos].toInt() and 0xFF) != 0x02) return null
+        val slen = b[sPos + 1].toInt() and 0xFF
+        if (sPos + 2 + slen > b.size) return null
+        var rs = 4; var rl = rlen; while (rl > 1 && b[rs].toInt() == 0) { rs++; rl-- }
+        var ss = sPos + 2; var sl = slen; while (sl > 1 && b[ss].toInt() == 0) { ss++; sl-- }
+        fun hx(a: Int, n: Int): String { val sb = StringBuilder(); for (i in a until a + n) sb.append("%02x".format(b[i].toInt() and 0xFF)); return sb.toString() }
+        return Triple(hx(rs, rl), hx(ss, sl), htype)
     }
 
     private fun esPub(t: String) =
         (t.length == 66 && (t.startsWith("02") || t.startsWith("03"))) ||
         (t.length == 130 && t.startsWith("04"))
 
-    /** (pubkey, r) de un input, de su witness o de su scriptsig_asm. */
-    private fun firmaDe(vin: org.json.JSONObject): Pair<String, String>? {
+    /** La firma de un input, de su witness o de su scriptsig_asm. */
+    private fun firmaDe(vin: org.json.JSONObject): FirmaRS? {
         val w = vin.optJSONArray("witness")
         if (w != null && w.length() >= 2) {
-            val sig = w.optString(0, ""); val pub = w.optString(w.length() - 1, "")
-            val r = derR(sig)
-            if (r != null && esPub(pub.lowercase())) return pub.lowercase() to r
+            val sig = w.optString(0, ""); val pub = w.optString(w.length() - 1, "").lowercase()
+            val p = parseSig(sig)
+            if (p != null && esPub(pub)) return FirmaRS(pub, p.first, p.second, p.third)
         }
         val asm = vin.optString("scriptsig_asm", "")
         if (asm.isNotEmpty()) {
             val toks = asm.split(' ').filter { !it.startsWith("OP_") && it.all { c -> c.isDigit() || c in 'a'..'f' || c in 'A'..'F' } }
             val pub = toks.firstOrNull { esPub(it.lowercase()) }?.lowercase()
             val sig = toks.firstOrNull { it.startsWith("30") && it.length > 16 }
-            if (pub != null && sig != null) { val r = derR(sig); if (r != null) return pub to r }
+            if (pub != null && sig != null) { val p = parseSig(sig); if (p != null) return FirmaRS(pub, p.first, p.second, p.third) }
         }
         return null
     }
 
+    /** Intenta recuperar la privada de dos firmas con el mismo nonce y la
+     *  VERIFICA (sus direcciones deben coincidir con las de la pública). Null
+     *  si no se pudo calcular el z, o si la clave no verifica. */
+    private fun recuperar(pub: String, r: String, a: RegFirma, bTx: org.json.JSONObject, bVin: Int, bS: String, bHtype: Int): String? {
+        val z1 = FirmaTx.z(a.tx, a.vin, a.htype) ?: return null
+        val z2 = FirmaTx.z(bTx, bVin, bHtype) ?: return null
+        val d = try { HunterEngine.recuperarNonce(r, a.s, z1, bS, z2) } catch (e: Throwable) { "" }
+        if (d.isBlank()) return null
+        // Verificación dura: la privada recuperada debe dar la misma pública.
+        val dirPub = dirsDe(pub); val dirD = dirsDe(d)
+        return if (dirPub.isNotEmpty() && dirD.any { it in dirPub }) d else null
+    }
+
     private fun construirNonce() {
         titulo("Nonce-reuse audit",
-            "The deadliest ECDSA flaw: if an address signs two inputs with the same " +
-            "random k (nonce), its private key can be recovered from those signatures. " +
-            "This scans a spent address's transactions and flags a reused nonce.")
+            "The deadliest ECDSA flaw: if an address signs with the same random k (nonce) " +
+            "twice, its private key falls out of the two signatures. This scans a spent " +
+            "address, flags a reused nonce and recovers the key (P2PKH / P2WPKH).")
         root.addView(rotulo("Spent address"))
         val etAddr = entrada("1…/3…/bc1… (must have spent at least once)")
         root.addView(etAddr)
@@ -381,9 +402,9 @@ class PubkeyToolsActivity : Activity() {
             nonceCorriendo = true; btn.text = "Stop"
             tvEstado.text = "Fetching transactions…"
             Thread {
-                // pub -> (r -> txid de la primera vez que se vio)
-                val visto = HashMap<String, HashMap<String, String>>()
-                val reusos = ArrayList<Triple<String, String, Pair<String, String>>>() // pub, r, (txid1,txid2)
+                val visto = HashMap<String, HashMap<String, RegFirma>>()
+                val reusos = ArrayList<Array<String?>>()   // [pub, r, tx1, tx2, privOrNull]
+                val yaVisto = HashSet<String>()             // pub:r ya reportados
                 var firmas = 0; var txs = 0; var ultimo = ""; var paginas = 0; var red = true
                 bucle@ while (nonceCorriendo && paginas < 6) {
                     val ruta = "/address/$addr/txs" + (if (ultimo.isEmpty()) "" else "/chain/$ultimo")
@@ -398,41 +419,56 @@ class PubkeyToolsActivity : Activity() {
                         ultimo = txid
                         val vins = tx.optJSONArray("vin") ?: continue
                         for (vi in 0 until vins.length()) {
-                            val par = firmaDe(vins.optJSONObject(vi) ?: continue) ?: continue
+                            val f = firmaDe(vins.optJSONObject(vi) ?: continue) ?: continue
                             firmas++
-                            val (pub, r) = par
-                            val m = visto.getOrPut(pub) { HashMap() }
-                            val previo = m[r]
-                            if (previo != null && previo != txid + "#" + vi) {
-                                reusos.add(Triple(pub, r, previo.substringBefore("#") to txid))
-                            } else if (previo == null) m[r] = txid + "#" + vi
+                            val m = visto.getOrPut(f.pub) { HashMap() }
+                            val previo = m[f.r]
+                            if (previo == null) {
+                                m[f.r] = RegFirma(tx, vi, f.s, f.htype)
+                            } else if (previo.tx.optString("txid") + "#" + previo.vin != txid + "#" + vi
+                                       && yaVisto.add(f.pub + ":" + f.r)) {
+                                // Mismo nonce en dos inputs distintos: intentar recuperar.
+                                val priv = recuperar(f.pub, f.r, previo, tx, vi, f.s, f.htype)
+                                reusos.add(arrayOf(f.pub, f.r, previo.tx.optString("txid"), txid, priv))
+                            }
                         }
                         txs++
                     }
-                    val hechas = txs
-                    runOnUiThread { tvEstado.text = "Scanned $hechas tx · $firmas signatures" }
+                    val ht = txs; val hf = firmas
+                    runOnUiThread { tvEstado.text = "Scanned $ht tx · $hf signatures" }
                     if (arr.length() < 25) break@bucle   // última página
                 }
+                val fin = txs; val sigs = firmas
                 runOnUiThread {
                     nonceCorriendo = false; btn.text = "Scan signatures"
                     when {
                         !red -> tvEstado.text = "No network, or address not found / never spent."
                         reusos.isNotEmpty() -> {
-                            tvEstado.text = "⚠ Reused nonce found · $txs tx · $firmas signatures"
-                            reusos.distinctBy { it.first + it.second }.forEach { (pub, r, txs2) ->
-                                salida.addView(filaResultado("VULNERABLE · reused r",
-                                    "pubkey ${pub.take(16)}…\nr ${r.take(20)}…\ntx1 ${txs2.first.take(16)}…\ntx2 ${txs2.second.take(16)}…",
-                                    destacado = true))
+                            val rec = reusos.count { it[4] != null }
+                            tvEstado.text = "⚠ Reused nonce · $fin tx · $sigs sig · $rec key(s) recovered"
+                            for (x in reusos) {
+                                val pub = x[0] ?: ""; val r = x[1] ?: ""
+                                val t1 = x[2] ?: ""; val t2 = x[3] ?: ""; val priv = x[4]
+                                if (priv != null) {
+                                    val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                                    salida.addView(filaResultado("RECOVERED PRIVATE KEY",
+                                        "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") +
+                                        "\npubkey ${pub.take(16)}…", destacado = true))
+                                } else {
+                                    salida.addView(filaResultado("VULNERABLE · reused r (recovery n/a)",
+                                        "pubkey ${pub.take(16)}…\nr ${r.take(20)}…\ntx1 ${t1.take(16)}…\ntx2 ${t2.take(16)}…",
+                                        destacado = true))
+                                }
                             }
                             salida.addView(TextView(this).apply {
-                                text = "The private key is recoverable from these two signatures " +
-                                       "(same r ⇒ same k). This address is compromised — move any funds."
+                                text = "Same r ⇒ same nonce ⇒ the private key is recoverable. " +
+                                       "This address is compromised — move any funds immediately."
                                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                                 typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
                                 setPadding(dp(2), dp(10), 0, 0)
                             })
                         }
-                        else -> tvEstado.text = "Clean · $txs tx · $firmas signatures · no nonce reuse"
+                        else -> tvEstado.text = "Clean · $fin tx · $sigs signatures · no nonce reuse"
                     }
                 }
             }.apply { isDaemon = true; start() }
