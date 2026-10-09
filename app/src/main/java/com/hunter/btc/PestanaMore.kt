@@ -255,26 +255,10 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     rendimiento.addView(cajaTecho)
     habilitarTecho(prefs.getBoolean("modo_ahorro", false))
 
-    val claves = grupo("Public-key tools")
-    fila(claves, R.drawable.ic_search, "Addresses from a key",
-         "Every address a public or private key maps to", null) {
-        startActivity(Intent(this, PubkeyToolsActivity::class.java)
-            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 0))
-    }
-    fila(claves, R.drawable.ic_target, "Brainwallet check",
-         "Test passphrases against an address", null) {
-        startActivity(Intent(this, PubkeyToolsActivity::class.java)
-            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 1))
-    }
-    fila(claves, R.drawable.ic_warning, "Nonce-reuse audit",
-         "Scan an address for a reused signature nonce", null) {
-        startActivity(Intent(this, PubkeyToolsActivity::class.java)
-            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 2))
-    }
-    fila(claves, R.drawable.ic_copy, "Hex ↔ WIF",
-         "Convert a private key between hex and WIF", null) {
-        startActivity(Intent(this, PubkeyToolsActivity::class.java)
-            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 3))
+    val claves = grupo("Tools")
+    fila(claves, R.drawable.ic_search, "Tools",
+         "Addresses, Hex↔WIF, inspector, balance, vanity, split, brainwallet, nonce audit", null) {
+        startActivity(Intent(this, PubkeyToolsActivity::class.java))
     }
 
     val app = grupo("App")
