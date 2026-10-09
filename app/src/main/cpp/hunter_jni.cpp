@@ -1560,6 +1560,76 @@ Java_com_hunter_btc_HunterEngine_direccionesDe(JNIEnv *env,jobject,jstring jin){
     return env->NewStringUTF(r.c_str());
 }
 
+/* De una privada hex (64) a sus dos WIF: comprimida | sin comprimir. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_wifDeHex(JNIEnv *env,jobject,jstring jhex){
+    const char *hex=env->GetStringUTFChars(jhex,nullptr);
+    std::string h=hex?hex:""; if(hex) env->ReleaseStringUTFChars(jhex,hex);
+    if(h.rfind("0x",0)==0) h=h.substr(2);
+    if(h.size()!=64) return env->NewStringUTF("");
+    uint8_t k[32];
+    for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return env->NewStringUTF(""); k[i]=(uint8_t)((a<<4)|b); }
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    bool okk=secp256k1_ec_seckey_verify(ctx,k)!=0; secp256k1_context_destroy(ctx);
+    if(!okk) return env->NewStringUTF("");
+    char wc[60]={0}; pk_to_wif(k,wc);                       // comprimida (sufijo 0x01)
+    uint8_t v[33]; v[0]=0x80; memcpy(v+1,k,32); char wu[60]={0}; b58enc(v,33,wu,60); // sin comprimir
+    std::string r=std::string(wc)+"|"+wu;
+    return env->NewStringUTF(r.c_str());
+}
+
+/* De un WIF a su privada en hex (64), o "" si el WIF no vale. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_hexDeWif(JNIEnv *env,jobject,jstring jwif){
+    const char *w=env->GetStringUTFChars(jwif,nullptr);
+    std::string s=w?w:""; if(w) env->ReleaseStringUTFChars(jwif,w);
+    uint8_t k[32];
+    if(!wif_decode(s.c_str(),k)) return env->NewStringUTF("");
+    char out[65]; for(int i=0;i<32;i++) snprintf(out+i*2,3,"%02x",k[i]);
+    return env->NewStringUTF(out);
+}
+
+/* Recuperación por nonce reutilizado. Dadas dos firmas (misma r) con sus s y
+ * sus hashes de mensaje z, despeja la privada:
+ *   k = (z1 - z2) / (s1 - s2)   mod n
+ *   d = (s1·k - z1) / r         mod n
+ * Devuelve la privada en 64 hex, o "" si no se puede (p. ej. s1==s2). Toda la
+ * aritmética va mod n (orden de secp256k1) con BIGNUM de OpenSSL. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_recuperarNonce(JNIEnv *env,jobject,
+        jstring jr,jstring js1,jstring jz1,jstring js2,jstring jz2){
+    auto bn=[&](jstring js)->BIGNUM*{ const char*c=env->GetStringUTFChars(js,nullptr);
+        BIGNUM*b=nullptr; if(c) BN_hex2bn(&b,c); if(c) env->ReleaseStringUTFChars(js,c); return b; };
+    BIGNUM *n=nullptr; BN_hex2bn(&n,"FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141");
+    BIGNUM *r=bn(jr),*s1=bn(js1),*z1=bn(jz1),*s2=bn(js2),*z2=bn(jz2);
+    std::string res="";
+    BN_CTX *c=BN_CTX_new();
+    if(n&&r&&s1&&z1&&s2&&z2&&c){
+        BIGNUM *ds=BN_new(),*inv=BN_new(),*dz=BN_new(),*k=BN_new();
+        BIGNUM *sk=BN_new(),*num=BN_new(),*rinv=BN_new(),*d=BN_new();
+        BN_mod_sub(ds,s1,s2,n,c);
+        if(!BN_is_zero(ds) && BN_mod_inverse(inv,ds,n,c) && BN_mod_inverse(rinv,r,n,c)){
+            BN_mod_sub(dz,z1,z2,n,c);
+            BN_mod_mul(k,dz,inv,n,c);
+            BN_mod_mul(sk,s1,k,n,c);
+            BN_mod_sub(num,sk,z1,n,c);
+            BN_mod_mul(d,num,rinv,n,c);
+            if(!BN_is_zero(d)){
+                uint8_t raw[32]={0}; int nb=BN_num_bytes(d);
+                if(nb<=32){ BN_bn2bin(d,raw+(32-nb));
+                    char out[65]; for(int i=0;i<32;i++) snprintf(out+i*2,3,"%02x",raw[i]); res=out; }
+            }
+        }
+        BN_free(ds);BN_free(inv);BN_free(dz);BN_free(k);BN_free(sk);BN_free(num);BN_free(rinv);BN_free(d);
+    }
+    if(n)BN_free(n); if(r)BN_free(r); if(s1)BN_free(s1); if(z1)BN_free(z1);
+    if(s2)BN_free(s2); if(z2)BN_free(z2); if(c)BN_CTX_free(c);
+    return env->NewStringUTF(res.c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     const char *a=env->GetStringUTFChars(addr,nullptr);

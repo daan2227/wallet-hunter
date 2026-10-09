@@ -71,6 +71,16 @@ object HunterEngine {
      * bech32 y taproot. Líneas "etiqueta=direccion"; vacío si la entrada no vale.
      */
     external fun direccionesDe(entrada: String): String
+    /** De una privada hex (64) a sus dos WIF: "comprimida|sin_comprimir", o "". */
+    external fun wifDeHex(privHex: String): String
+    /** De un WIF a su privada en hex (64), o "" si no vale. */
+    external fun hexDeWif(wif: String): String
+    /**
+     * Recupera la privada de dos firmas con el MISMO nonce: r común, sus s y
+     * los hashes de mensaje z. Devuelve la privada en 64 hex, o "" si no puede.
+     */
+    external fun recuperarNonce(r: String, s1: String, z1: String,
+                                s2: String, z2: String): String
     /**
      * Las direcciones principales de la cartera.
      *

@@ -271,6 +271,11 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         startActivity(Intent(this, PubkeyToolsActivity::class.java)
             .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 2))
     }
+    fila(claves, R.drawable.ic_copy, "Hex ↔ WIF",
+         "Convert a private key between hex and WIF", null) {
+        startActivity(Intent(this, PubkeyToolsActivity::class.java)
+            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 3))
+    }
 
     val app = grupo("App")
     /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).

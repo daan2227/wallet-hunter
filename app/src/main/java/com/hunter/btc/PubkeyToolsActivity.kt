@@ -40,8 +40,46 @@ class PubkeyToolsActivity : Activity() {
         when (intent.getIntExtra(EXTRA_TOOL, 0)) {
             1 -> construirBrainwallet()
             2 -> construirNonce()
+            3 -> construirWifHex()
             else -> construirDirecciones()
         }
+    }
+
+    // ── 3 · Hex ↔ WIF ─────────────────────────────────────────────────────
+    private fun construirWifHex() {
+        titulo("Hex ↔ WIF",
+            "Convert a private key between raw 64-hex and WIF. Paste either; it detects " +
+            "which and gives the other.")
+        root.addView(rotulo("Private key — 64 hex, or a WIF"))
+        val et = entrada("64-hex private key, or 5…/K…/L… WIF", varias = true)
+        root.addView(et)
+        val salida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        }
+        root.addView(boton("Convert") {
+            salida.removeAllViews()
+            val txt = et.text.toString().trim().removePrefix("0x")
+            val esHex = txt.length == 64 && txt.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+            if (esHex) {
+                val wifs = try { HunterEngine.wifDeHex(txt) } catch (e: Throwable) { "" }
+                if (wifs.isBlank()) { Toast.makeText(this, "Not a valid private key", Toast.LENGTH_SHORT).show() }
+                else {
+                    val p = wifs.split('|')
+                    salida.addView(filaResultado("WIF (compressed)", p.getOrElse(0){""}, destacado = true))
+                    if (p.size > 1) salida.addView(filaResultado("WIF (uncompressed)", p[1]))
+                }
+            } else {
+                val hex = try { HunterEngine.hexDeWif(txt) } catch (e: Throwable) { "" }
+                if (hex.isBlank()) { Toast.makeText(this, "Not a valid WIF or 64-hex key", Toast.LENGTH_SHORT).show() }
+                else salida.addView(filaResultado("Private key (hex)", hex, destacado = true))
+            }
+        })
+        root.addView(salida)
+        nota(AppTheme.BLUE,
+            "WIF is just the private key in Base58 with a checksum: compressed adds a " +
+            "0x01 suffix (modern wallets), uncompressed omits it. Same key, different text.")
     }
 
     // ── Marco común ───────────────────────────────────────────────────────
