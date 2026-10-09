@@ -66,6 +66,12 @@ object HunterEngine {
      */
     external fun datosDeClave(privHex: String): String
     /**
+     * Todas las direcciones de una clave privada (64 hex) o pública
+     * (02/03 + 64, o 04 + 128): P2PKH comprimida y sin comprimir, P2SH-P2WPKH,
+     * bech32 y taproot. Líneas "etiqueta=direccion"; vacío si la entrada no vale.
+     */
+    external fun direccionesDe(entrada: String): String
+    /**
      * Las direcciones principales de la cartera.
      *
      * @param testnet cambia la rama del árbol (coin type 1' en vez de 0') y los

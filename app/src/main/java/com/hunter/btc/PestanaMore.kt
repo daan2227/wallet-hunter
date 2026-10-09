@@ -255,6 +255,13 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     rendimiento.addView(cajaTecho)
     habilitarTecho(prefs.getBoolean("modo_ahorro", false))
 
+    val claves = grupo("Public-key tools")
+    fila(claves, R.drawable.ic_search, "Addresses from a key",
+         "Every address a public or private key maps to", null) {
+        startActivity(Intent(this, PubkeyToolsActivity::class.java)
+            .putExtra(PubkeyToolsActivity.EXTRA_TOOL, 0))
+    }
+
     val app = grupo("App")
     /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).
      *

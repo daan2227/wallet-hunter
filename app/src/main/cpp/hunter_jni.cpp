@@ -1512,6 +1512,54 @@ Java_com_hunter_btc_HunterEngine_datosDeClave(JNIEnv *env, jobject, jstring jhex
 
 
 
+/* Todas las direcciones de una clave: privada (64 hex) o pública (02/03 + 64, o
+ * 04 + 128). Devuelve líneas "etiqueta=direccion". Reutiliza los codificadores
+ * de addr_encode.h y OpenSSL para el hash160 de la pública sin comprimir. */
+static void h160_de(const uint8_t *pub, size_t len, uint8_t out20[20]){
+    uint8_t sha[32]; SHA256(pub, len, sha); RIPEMD160(sha, 32, out20);
+}
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_direccionesDe(JNIEnv *env,jobject,jstring jin){
+    const char *in = env->GetStringUTFChars(jin, nullptr);
+    std::string s = in ? in : "";
+    if(in) env->ReleaseStringUTFChars(jin, in);
+    // Quitar espacios y 0x, pasar a minúsculas.
+    std::string hex; for(char c: s){ if(c=='\n'||c==' '||c=='\t'||c=='\r') continue; hex+=(char)tolower(c); }
+    if(hex.rfind("0x",0)==0) hex=hex.substr(2);
+    auto hexbytes=[&](const std::string &h, uint8_t *o, size_t n)->bool{
+        if(h.size()!=n*2) return false;
+        for(size_t i=0;i<n;i++){ int a=-1,b=-1; char c1=h[i*2],c2=h[i*2+1];
+            if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+            if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+            if(a<0||b<0) return false; o[i]=(uint8_t)((a<<4)|b); }
+        return true;
+    };
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+    secp256k1_pubkey pub; bool ok=false;
+    if(hex.size()==64){                       // privada hex
+        uint8_t pk[32];
+        if(hexbytes(hex,pk,32) && secp256k1_ec_seckey_verify(ctx,pk))
+            ok = secp256k1_ec_pubkey_create(ctx,&pub,pk)!=0;
+    } else if(hex.size()==66 && (hex.rfind("02",0)==0||hex.rfind("03",0)==0)){
+        uint8_t p[33]; if(hexbytes(hex,p,33)) ok=secp256k1_ec_pubkey_parse(ctx,&pub,p,33)!=0;
+    } else if(hex.size()==130 && hex.rfind("04",0)==0){
+        uint8_t p[65]; if(hexbytes(hex,p,65)) ok=secp256k1_ec_pubkey_parse(ctx,&pub,p,65)!=0;
+    }
+    if(!ok){ secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
+    uint8_t comp[33]; size_t lc=33; secp256k1_ec_pubkey_serialize(ctx,comp,&lc,&pub,SECP256K1_EC_COMPRESSED);
+    uint8_t unc[65];  size_t lu=65; secp256k1_ec_pubkey_serialize(ctx,unc,&lu,&pub,SECP256K1_EC_UNCOMPRESSED);
+    uint8_t hC[20],hU[20]; h160_de(comp,33,hC); h160_de(unc,65,hU);
+    std::string r; char a[MAX_ADDR];
+    a[0]=0; h160_to_addr(hC,a);   r+="P2PKH (compressed)="; r+=a; r+="\n";
+    a[0]=0; h160_to_addr(hU,a);   r+="P2PKH (uncompressed)="; r+=a; r+="\n";
+    a[0]=0; h160_to_p2sh(hC,a);   r+="P2SH-P2WPKH="; r+=a; r+="\n";
+    a[0]=0; h160_to_bech32(hC,a); r+="P2WPKH (bech32)="; r+=a; r+="\n";
+    uint8_t tw[32];
+    if(taproot_tweak_pubkey(ctx,comp+1,tw)){ a[0]=0; xonly_to_p2tr(tw,a); r+="P2TR (taproot)="; r+=a; r+="\n"; }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(r.c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     const char *a=env->GetStringUTFChars(addr,nullptr);
