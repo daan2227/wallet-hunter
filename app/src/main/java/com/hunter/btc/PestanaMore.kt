@@ -257,7 +257,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
 
     val claves = grupo("Tools")
     fila(claves, R.drawable.ic_search, "Tools",
-         "Addresses, Hex↔WIF, sign/verify, inspector, balance, vanity, split, brainwallet, nonce", null) {
+         "Addresses, Hex↔WIF, sign/verify, xpub, inspector, balance, sweep, vanity, split, QR, brainwallet, nonce", null) {
         startActivity(Intent(this, PubkeyToolsActivity::class.java))
     }
 

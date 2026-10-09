@@ -53,6 +53,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
         seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
+        seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
@@ -384,6 +385,94 @@ class PubkeyToolsActivity : Activity() {
         }
     }
 
+    // ── Sweep a key ────────────────────────────────────────────────────────
+    @Volatile private var sweepCorriendo = false
+    private fun construirSweep() {
+        desc("Move ALL funds from a private key you control to an address. For compressed " +
+             "P2PKH keys (hex or K/L WIF) — e.g. a find from the vault. Shows a confirmation " +
+             "before broadcasting.")
+        root.addView(rotulo("Private key (hex or WIF)"))
+        val etKey = entrada("64-hex or K/L WIF")
+        root.addView(rotulo("Destination address"))
+        val etTo = entrada("where to send everything")
+        root.addView(rotulo("Fee (sats)"))
+        val etFee = EditText(this).apply {
+            setText("500"); inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.mono(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(dp(110), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(etFee)
+        val tvEstado = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
+        lateinit var btn: Button
+        btn = boton("Prepare sweep") {
+            if (sweepCorriendo) return@boton
+            val hx = hexClave(etKey.text.toString())
+            val to = etTo.text.toString().trim()
+            val fee = etFee.text.toString().toLongOrNull() ?: 500L
+            if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
+            if (BtcAddress.validate(to, false) !is BtcAddress.Result.Valid) { Toast.makeText(this, "Invalid destination", Toast.LENGTH_SHORT).show(); return@boton }
+            sweepCorriendo = true; btn.text = "…"; tvEstado.text = "Reading UTXOs…"
+            Thread {
+                val wif = try { HunterEngine.wifDeHex(hx).substringBefore("|") } catch (e: Throwable) { "" }
+                val dirTxt = try { HunterEngine.direccionesDe(hx) } catch (e: Throwable) { "" }
+                val addr = dirTxt.split('\n').firstOrNull { it.startsWith("P2PKH (compressed)=") }?.substringAfter('=') ?: ""
+                if (wif.isBlank() || !(wif[0] == 'K' || wif[0] == 'L') || addr.isBlank()) {
+                    runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "Only compressed P2PKH keys are supported here." }; return@Thread
+                }
+                val utxoStr = ChainApi.get("/address/$addr/utxo")
+                val tip = ChainApi.get("/blocks/tip/height")?.trim()?.toIntOrNull() ?: 0
+                if (utxoStr == null) { runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "No network." }; return@Thread }
+                try {
+                    val a = org.json.JSONArray(utxoStr); var total = 0L
+                    val arr = org.json.JSONArray()
+                    for (i in 0 until a.length()) {
+                        val u = a.getJSONObject(i); val v = u.optLong("value", 0); total += v
+                        arr.put(org.json.JSONObject().put("txid", u.getString("txid"))
+                            .put("vout", u.getInt("vout")).put("amount", v))
+                    }
+                    val envio = total - fee
+                    if (a.length() == 0 || envio <= 0) {
+                        runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"
+                            tvEstado.text = if (a.length() == 0) "No funds on ${addr.take(12)}…" else "Fee is larger than the balance." }; return@Thread
+                    }
+                    val req = org.json.JSONObject().put("wif", wif).put("utxos", arr)
+                        .put("to", to).put("amount", envio).put("fee", fee).put("locktime", tip)
+                    val raw = try { HunterEngine.buildAndSignTx(req.toString()) } catch (e: Throwable) { "ERROR:build" }
+                    runOnUiThread {
+                        sweepCorriendo = false; btn.text = "Prepare sweep"
+                        if (raw.startsWith("ERROR") || raw.length < 20) { tvEstado.text = "Could not build: $raw"; return@runOnUiThread }
+                        tvEstado.text = "Ready: ${satsABtc(envio)} to ${to.take(14)}…"
+                        androidx.appcompat.app.AlertDialog.Builder(this)
+                            .setTitle("Broadcast sweep?")
+                            .setMessage("Send ${satsABtc(envio)} (fee ${fee} sats) to\n$to\n\nThis is irreversible.")
+                            .setNegativeButton("Cancel", null)
+                            .setPositiveButton("Broadcast") { _, _ ->
+                                tvEstado.text = "Broadcasting…"
+                                Thread {
+                                    val r = ChainApi.broadcast(raw)
+                                    runOnUiThread {
+                                        tvEstado.text = when (r) {
+                                            is ChainApi.Envio.Ok -> "✓ Sent · txid ${r.txid.take(20)}…"
+                                            is ChainApi.Envio.Rechazada -> "Rejected: ${r.motivo}"
+                                            else -> "No response — try again."
+                                        }
+                                    }
+                                }.apply { isDaemon = true; start() }
+                            }.show()
+                    }
+                } catch (e: Throwable) {
+                    runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "Could not read UTXOs." }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tvEstado)
+        nota(AppTheme.WARN, "Sweeping spends real funds and cannot be undone. Double-check the " +
+             "destination. Only use keys you control.")
+    }
+
     // ── Vanity address ─────────────────────────────────────────────────────
     @Volatile private var vanCorriendo = false
     private fun construirVanity() {
@@ -595,7 +684,7 @@ class PubkeyToolsActivity : Activity() {
     private fun construirNonce() {
         desc("If an address signs with the same random k (nonce) twice, its private key " +
              "falls out of the two signatures. Scans a spent address and recovers the key " +
-             "(P2PKH / P2WPKH).")
+             "(P2PKH / P2WPKH / P2SH-P2WPKH).")
         val etAddr = entrada("spent 1…/3…/bc1… address")
         val tvEstado = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
@@ -671,7 +760,7 @@ class PubkeyToolsActivity : Activity() {
     }
 
     override fun onDestroy() {
-        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; balCorriendo = false
+        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; balCorriendo = false; sweepCorriendo = false
         super.onDestroy()
     }
 }

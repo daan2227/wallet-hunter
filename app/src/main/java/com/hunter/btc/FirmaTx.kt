@@ -41,7 +41,11 @@ object FirmaTx {
             val prevSpk = thisIn.getJSONObject("prevout").getString("scriptpubkey").lowercase()
             val esSegwit = prevSpk.startsWith("0014") && prevSpk.length == 44
             val esLegacy = prevSpk.startsWith("76a914") && prevSpk.endsWith("88ac") && prevSpk.length == 50
-            if (!esSegwit && !esLegacy) return null
+            // P2SH-P2WPKH: el prevout es P2SH, pero si el input lleva witness es
+            // un segwit envuelto y se firma con BIP-143.
+            val esP2sh = prevSpk.startsWith("a914") && prevSpk.endsWith("87") && prevSpk.length == 46 &&
+                         (thisIn.optJSONArray("witness")?.length() ?: 0) >= 2
+            if (!esSegwit && !esLegacy && !esP2sh) return null
 
             if (esLegacy) {
                 val b = java.io.ByteArrayOutputStream()
@@ -79,7 +83,14 @@ object FirmaTx {
                     outs.write(le(vo.getLong("value"), 8))
                     outs.write(varStr(vo.getString("scriptpubkey")))
                 }
-                val h160 = prevSpk.substring(4)   // tras "0014"
+                // h160 del scriptCode: del propio scriptPubKey en P2WPKH nativo,
+                // o del hash160 de la pública del witness en P2SH-P2WPKH.
+                val h160 = if (esSegwit) prevSpk.substring(4) else {
+                    val w = thisIn.optJSONArray("witness") ?: return null
+                    val pub = w.optString(w.length() - 1, "")
+                    if (pub.length != 66 && pub.length != 130) return null
+                    hex(Ripemd160.hash160(bytes(pub)))
+                }
                 val scriptCode = "1976a914" + h160 + "88ac"
                 val amount = thisIn.getJSONObject("prevout").getLong("value")
                 val b = java.io.ByteArrayOutputStream()
