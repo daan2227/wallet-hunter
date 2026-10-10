@@ -102,6 +102,12 @@ object HunterEngine {
     /** BIP38: descifra una clave "6P…" → "privhex|1" (comp) o "privhex|0", o ""
      *  si la contraseña no es correcta. */
     external fun bip38Descifrar(clave: String, pass: String): String
+    /** BIP38 EC-multiplied: código intermedio "passphrase…" desde la contraseña
+     *  (lot/seq opcionales; lot<0 = sin ellos). */
+    external fun bip38Intermediate(pass: String, lot: Int, seq: Int): String
+    /** BIP38 EC-multiplied: de un código intermedio genera una clave cifrada
+     *  nueva → "6P…|direccion", sin conocer la contraseña. */
+    external fun bip38GenerarCifrada(intermediate: String, comprimida: Boolean): String
     /**
      * Las direcciones principales de la cartera.
      *

@@ -1038,6 +1038,54 @@ class PubkeyToolsActivity : Activity() {
                     } }
             }.apply { isDaemon = true; start() }
         }
+
+        // ── EC-multiplied (código intermedio + generación por un tercero) ──
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) } })
+        root.addView(TextView(this).apply {
+            text = "EC-multiplied"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.bold(context); setPadding(0, dp(4), 0, dp(4)) })
+        root.addView(rotulo("Owner — password → intermediate code"))
+        val etIcP = entrada("passphrase")
+        val salIc = salidaBox()
+        boton("Make intermediate code") {
+            if (bip38Corriendo) return@boton
+            val pw = etIcP.text.toString()
+            if (pw.isEmpty()) { Toast.makeText(this, "Enter a password", Toast.LENGTH_SHORT).show(); return@boton }
+            salIc.removeAllViews(); bip38Corriendo = true
+            salIc.addView(TextView(this).apply { text = "Working…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val ic = try { HunterEngine.bip38Intermediate(pw, -1, 0) } catch (e: Throwable) { "" }
+                runOnUiThread { bip38Corriendo = false; salIc.removeAllViews()
+                    if (ic.isBlank()) Toast.makeText(this, "Could not generate", Toast.LENGTH_SHORT).show()
+                    else salIc.addView(filaResultado("Intermediate code", ic, true)) }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(rotulo("Generator — intermediate code → new encrypted key"))
+        val etIc2 = entrada("passphrase… (intermediate code)", varias = true)
+        var compEc = true
+        root.addView(Ui.segmented(this, listOf("Compressed" to null, "Uncompressed" to null), 0) { compEc = it == 0 })
+        val salGen = salidaBox()
+        boton("Generate encrypted key") {
+            if (bip38Corriendo) return@boton
+            val ic = etIc2.text.toString().trim()
+            if (!ic.startsWith("passphrase")) { Toast.makeText(this, "Paste an intermediate code (starts with 'passphrase')", Toast.LENGTH_SHORT).show(); return@boton }
+            salGen.removeAllViews(); bip38Corriendo = true
+            salGen.addView(TextView(this).apply { text = "Working…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val r = try { HunterEngine.bip38GenerarCifrada(ic, compEc) } catch (e: Throwable) { "" }
+                runOnUiThread { bip38Corriendo = false; salGen.removeAllViews()
+                    if (r.isBlank()) Toast.makeText(this, "Could not generate", Toast.LENGTH_SHORT).show()
+                    else { salGen.addView(filaResultado("Encrypted key (6P…)", r.substringBefore("|"), true))
+                           salGen.addView(filaResultado("Address", r.substringAfter("|"))) } }
+            }.apply { isDaemon = true; start() }
+        }
+        nota(AppTheme.BLUE, "EC-multiplied lets a third party mint an encrypted key + address from " +
+             "your intermediate code without knowing your password. Decrypt it above with the password.")
     }
 
     // ── BTC ↔ sat ──────────────────────────────────────────────────────────

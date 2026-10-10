@@ -28,6 +28,7 @@
 #include <secp256k1_schnorrsig.h>
 #include <secp256k1_recovery.h>
 #include <openssl/aes.h>
+#include <openssl/rand.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -1625,6 +1626,13 @@ Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstri
 /* ── BIP38: clave privada cifrada con contraseña (no multiplicada por EC) ──
  * scrypt estándar (EVP_PBE_scrypt) + AES-256-ECB, para que las "6P..." sean
  * compatibles con otras carteras. */
+static void sha256d(const uint8_t *d, size_t n, uint8_t out32[32]){
+    uint8_t h[32]; SHA256(d,n,h); SHA256(h,32,out32);
+}
+/* La dirección P2PKH (comprimida o no) de una pública ya serializada. */
+static void pub_to_addr(const uint8_t *ser, size_t l, char *addr){
+    uint8_t sha[32],h160[20]; SHA256(ser,l,sha); RIPEMD160(sha,32,h160); h160_to_addr(h160,addr);
+}
 static void bip38_addrhash(secp256k1_context *ctx, const uint8_t *priv, bool comp, uint8_t out4[4]){
     secp256k1_pubkey pub; secp256k1_ec_pubkey_create(ctx,&pub,priv);
     uint8_t ser[65]; size_t l=comp?33:65;
@@ -1669,7 +1677,8 @@ Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey
     if(okb && BN_num_bytes(bn)<=43){
         uint8_t raw[43]={0}; BN_bn2binpad(bn,raw,43);
         uint8_t h1[32],h2[32]; SHA256(raw,39,h1); SHA256(h1,32,h2);
-        if(memcmp(h2,raw+39,4)==0 && raw[0]==0x01 && raw[1]==0x42){
+        bool okck=(memcmp(h2,raw+39,4)==0 && raw[0]==0x01);
+        if(okck && raw[1]==0x42){
             bool comp=(raw[2]&0x20)!=0; uint8_t ah[4]; memcpy(ah,raw+3,4);
             uint8_t dk[64];
             if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ah,4,16384,8,8,0,dk,64)==1){
@@ -1681,6 +1690,131 @@ Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey
                     if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); } }
                 secp256k1_context_destroy(ctx);
             }
+        } else if(okck && raw[1]==0x43){
+            // EC-multiplied
+            uint8_t flag=raw[2]; bool comp=(flag&0x20)!=0; bool hasLot=(flag&0x04)!=0;
+            uint8_t ah[4]; memcpy(ah,raw+3,4);
+            uint8_t ownerentropy[8]; memcpy(ownerentropy,raw+7,8);
+            uint8_t enc1a[8]; memcpy(enc1a,raw+15,8);
+            uint8_t enc2[16]; memcpy(enc2,raw+23,16);
+            uint8_t passfactor[32]={0};
+            if(hasLot){
+                uint8_t prefactor[32];
+                if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ownerentropy,4,16384,8,8,0,prefactor,32)==1){
+                    uint8_t buf[40]; memcpy(buf,prefactor,32); memcpy(buf+32,ownerentropy,8); sha256d(buf,40,passfactor);
+                }
+            } else EVP_PBE_scrypt(pass.c_str(),pass.size(),ownerentropy,8,16384,8,8,0,passfactor,32);
+            secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+            secp256k1_pubkey pp;
+            if(secp256k1_ec_seckey_verify(ctx,passfactor) && secp256k1_ec_pubkey_create(ctx,&pp,passfactor)){
+                uint8_t passpoint[33]; size_t l=33; secp256k1_ec_pubkey_serialize(ctx,passpoint,&l,&pp,SECP256K1_EC_COMPRESSED);
+                uint8_t salt[12]; memcpy(salt,ah,4); memcpy(salt+4,ownerentropy,8);
+                uint8_t dk[64];
+                if(EVP_PBE_scrypt((const char*)passpoint,33,salt,12,1024,1,1,0,dk,64)==1){
+                    AES_KEY ak; AES_set_decrypt_key(dk+32,256,&ak);
+                    uint8_t d2[16]; AES_decrypt(enc2,d2,&ak); for(int i=0;i<16;i++) d2[i]^=dk[16+i];
+                    uint8_t enc1full[16]; memcpy(enc1full,enc1a,8); memcpy(enc1full+8,d2,8);
+                    uint8_t d1[16]; AES_decrypt(enc1full,d1,&ak); for(int i=0;i<16;i++) d1[i]^=dk[i];
+                    uint8_t seedb[24]; memcpy(seedb,d1,16); memcpy(seedb+16,d2+8,8);
+                    uint8_t factorb[32]; sha256d(seedb,24,factorb);
+                    uint8_t priv[32]; memcpy(priv,passfactor,32);
+                    if(secp256k1_ec_seckey_tweak_mul(ctx,priv,factorb)){
+                        uint8_t ah2[4]; bip38_addrhash(ctx,priv,comp,ah2);
+                        if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); }
+                    }
+                }
+            }
+            secp256k1_context_destroy(ctx);
+        }
+    }
+    BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
+    return env->NewStringUTF(res.c_str());
+}
+
+/* BIP38 EC-multiplied, paso 1 (dueño): código intermedio "passphrase…" a
+ * partir de la contraseña. lot/seq opcionales (lot<0 = sin ellos). */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bip38Intermediate(JNIEnv *env,jobject,jstring jpass,jint jlot,jint jseq){
+    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+    bool useLot=(jlot>=0);
+    uint8_t ownerentropy[8]={0}; uint8_t passfactor[32]={0};
+    if(!useLot){
+        uint8_t salt[8]; RAND_bytes(salt,8); memcpy(ownerentropy,salt,8);
+        if(EVP_PBE_scrypt(pass.c_str(),pass.size(),salt,8,16384,8,8,0,passfactor,32)!=1) return env->NewStringUTF("");
+    } else {
+        uint8_t salt[4]; RAND_bytes(salt,4);
+        uint32_t ls=(uint32_t)jlot*4096u+(uint32_t)jseq;
+        memcpy(ownerentropy,salt,4);
+        ownerentropy[4]=(uint8_t)((ls>>24)&0xff); ownerentropy[5]=(uint8_t)((ls>>16)&0xff);
+        ownerentropy[6]=(uint8_t)((ls>>8)&0xff);  ownerentropy[7]=(uint8_t)(ls&0xff);
+        uint8_t prefactor[32];
+        if(EVP_PBE_scrypt(pass.c_str(),pass.size(),salt,4,16384,8,8,0,prefactor,32)!=1) return env->NewStringUTF("");
+        uint8_t buf[40]; memcpy(buf,prefactor,32); memcpy(buf+32,ownerentropy,8); sha256d(buf,40,passfactor);
+    }
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    std::string res="";
+    secp256k1_pubkey pp;
+    if(secp256k1_ec_seckey_verify(ctx,passfactor) && secp256k1_ec_pubkey_create(ctx,&pp,passfactor)){
+        uint8_t passpoint[33]; size_t l=33; secp256k1_ec_pubkey_serialize(ctx,passpoint,&l,&pp,SECP256K1_EC_COMPRESSED);
+        uint8_t rec[49]={0x2C,0xE9,0xB3,0xE1,0xFF,0x39,0xE2,(uint8_t)(useLot?0x51:0x53)};
+        memcpy(rec+8,ownerentropy,8); memcpy(rec+16,passpoint,33);
+        char out[128]={0}; b58enc(rec,49,out,128); res=out;
+    }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(res.c_str());
+}
+
+/* BIP38 EC-multiplied, paso 2 (tercero): del código intermedio genera una
+ * clave cifrada "6P…" NUEVA y su dirección, sin conocer la contraseña.
+ * Devuelve "6P…|direccion", o "". */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bip38GenerarCifrada(JNIEnv *env,jobject,jstring jinter,jboolean comp){
+    const char *ic=env->GetStringUTFChars(jinter,nullptr); std::string code=ic?ic:""; if(ic) env->ReleaseStringUTFChars(jinter,ic);
+    // base58check decode → 53 bytes (49 + 4 checksum)
+    BIGNUM *bn=BN_new(),*t=BN_new(),*b=BN_new(); BN_CTX *bc=BN_CTX_new(); BN_zero(bn); BN_set_word(b,58);
+    bool okb=true; for(char ch: code){ const char *p=strchr(B58A,ch); if(!p){okb=false;break;} BN_mul(bn,bn,b,bc); BN_set_word(t,(unsigned long)(p-B58A)); BN_add(bn,bn,t); }
+    std::string res="";
+    if(okb && BN_num_bytes(bn)<=53){
+        uint8_t rec[53]={0}; BN_bn2binpad(bn,rec,53);
+        uint8_t h1[32],h2[32]; SHA256(rec,49,h1); SHA256(h1,32,h2);
+        bool magicOk = rec[0]==0x2C&&rec[1]==0xE9&&rec[2]==0xB3&&rec[3]==0xE1&&rec[4]==0xFF&&rec[5]==0x39&&rec[6]==0xE2&&(rec[7]==0x51||rec[7]==0x53);
+        if(memcmp(h2,rec+49,4)==0 && magicOk){
+            bool hasLot=(rec[7]==0x51);
+            uint8_t ownerentropy[8]; memcpy(ownerentropy,rec+8,8);
+            uint8_t passpoint[33]; memcpy(passpoint,rec+16,33);
+            secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+            secp256k1_pubkey pp;
+            if(secp256k1_ec_pubkey_parse(ctx,&pp,passpoint,33)){
+                uint8_t seedb[24],factorb[32]; secp256k1_pubkey gen; bool ok=false;
+                for(int tries=0;tries<8 && !ok;tries++){
+                    RAND_bytes(seedb,24); sha256d(seedb,24,factorb);
+                    gen=pp; if(secp256k1_ec_pubkey_tweak_mul(ctx,&gen,factorb)) ok=true;
+                }
+                if(ok){
+                    uint8_t pub[65]; size_t l=comp?33:65;
+                    secp256k1_ec_pubkey_serialize(ctx,pub,&l,&gen,comp?SECP256K1_EC_COMPRESSED:SECP256K1_EC_UNCOMPRESSED);
+                    char address[MAX_ADDR]={0}; pub_to_addr(pub,l,address);
+                    uint8_t ah32[32]; sha256d((const uint8_t*)address,strlen(address),ah32);
+                    uint8_t ah[4]; memcpy(ah,ah32,4);
+                    uint8_t salt[12]; memcpy(salt,ah,4); memcpy(salt+4,ownerentropy,8);
+                    uint8_t dk[64];
+                    if(EVP_PBE_scrypt((const char*)passpoint,33,salt,12,1024,1,1,0,dk,64)==1){
+                        AES_KEY ak; AES_set_encrypt_key(dk+32,256,&ak);
+                        uint8_t block1[16],enc1[16]; for(int i=0;i<16;i++) block1[i]=seedb[i]^dk[i]; AES_encrypt(block1,enc1,&ak);
+                        uint8_t block2[16],enc2[16];
+                        for(int i=0;i<8;i++) block2[i]=enc1[8+i]^dk[16+i];
+                        for(int i=0;i<8;i++) block2[8+i]=seedb[16+i]^dk[24+i];
+                        AES_encrypt(block2,enc2,&ak);
+                        uint8_t out39[39]; out39[0]=0x01; out39[1]=0x43;
+                        out39[2]=(uint8_t)((comp?0x20:0)|(hasLot?0x04:0));
+                        memcpy(out39+3,ah,4); memcpy(out39+7,ownerentropy,8);
+                        memcpy(out39+15,enc1,8); memcpy(out39+23,enc2,16);
+                        char six[128]={0}; b58enc(out39,39,six,128);
+                        res=std::string(six)+"|"+address;
+                    }
+                }
+            }
+            secp256k1_context_destroy(ctx);
         }
     }
     BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
