@@ -47,33 +47,53 @@ class PubkeyToolsActivity : Activity() {
             setPadding(dp(20), 0, dp(20), dp(8))
         })
 
+        cabecera(page, "Keys & addresses")
         seccion(page, R.drawable.ic_search, "Addresses from a key") { construirDirecciones() }
         seccion(page, R.drawable.ic_copy,   "Hex ↔ WIF")            { construirWifHex() }
-        seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
-        seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
         seccion(page, R.drawable.ic_import, "Mnemonic tools (BIP39)") { construirMnemonic() }
         seccion(page, R.drawable.ic_recovery, "Custom derivation path") { construirDerivacion() }
+        seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
+
+        cabecera(page, "Sign, encrypt & backup")
+        seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
+        seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
+        seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
+        seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
+
+        cabecera(page, "Transactions")
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
-        seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
-        seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
         seccion(page, R.drawable.ic_clock,  "Fee estimator")        { construirFee() }
         seccion(page, R.drawable.ic_gear,   "Tx size & fee calc")   { construirFeeCalc() }
+        seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
         seccion(page, R.drawable.ic_play,   "Broadcast raw tx")     { construirBroadcast() }
         seccion(page, R.drawable.ic_export, "Transaction decoder")  { construirDecoder() }
         seccion(page, R.drawable.ic_import, "PSBT (decode / sign)") { construirPsbt() }
         seccion(page, R.drawable.ic_search, "Script decoder")       { construirScript() }
+
+        cabecera(page, "Monitor & generate")
+        seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_dice,   "Dice / coin → key")    { construirDados() }
-        seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
-        seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
-        seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
-        seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
-        seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
-        seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
-        seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
+
+        cabecera(page, "Audit & analysis")
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
+        seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
+        seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
+        seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
+
+        cabecera(page, "Utility")
+        seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
+    }
+
+    /** Cabecera de categoría entre grupos de herramientas. */
+    private fun cabecera(page: LinearLayout, t: String) {
+        page.addView(TextView(this).apply {
+            text = t.uppercase(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.bold(context); letterSpacing = 0.08f
+            setPadding(dp(20), dp(22), dp(20), dp(6))
+        })
     }
 
     /** Añade una sección plegable y construye su cuerpo apuntando [root] a él. */
