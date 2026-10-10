@@ -452,15 +452,23 @@ object WeakController {
         bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
         // Reanudar tras cerrar la app: si hay un checkpoint con su lista y el
         // editor está vacío, la recarga y avisa de que puede continuar.
-        if (!corriendo && cargadas.isEmpty() && !streamMode) {
+        if (!corriendo && cargadas.isEmpty() && !streamMode && (etClaves?.text?.isEmpty() != false)) {
             val p = prefsWeak()
-            val ckClaves = p?.getString("ck_claves", "") ?: ""
+            val firma = p?.getString("ck_firma", "") ?: ""
             val ckIdx = p?.getInt("ck_indice", 0) ?: 0
             val ckTot = p?.getInt("ck_total", 0) ?: 0
-            if (ckClaves.isNotBlank() && ckIdx > 0 && (etClaves?.text?.isEmpty() != false)) {
-                etClaves?.setText(ckClaves)
-                tvEstado?.text = "Paused audit: $ckIdx/$ckTot checked. Press Start audit to resume " +
-                                 "from key ${ckIdx + 1}, or clear the list to start over."
+            val f = archivoCk()
+            if (firma.isNotBlank() && ckIdx > 0 && f != null && f.exists()) {
+                val lista = try { f.readText() } catch (e: Throwable) { "" }
+                val items = lista.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+                if (items.isNotEmpty()) {
+                    // Lista grande (como un CSV de 20k): fuera del editor para no
+                    // ralentizar; pequeña: al editor, como se cargó.
+                    if (items.size > UMBRAL_LISTA) { cargadas = items; mostrarResumenCargadas() }
+                    else etClaves?.setText(items.joinToString("\n"))
+                    tvEstado?.text = "Paused audit: $ckIdx/$ckTot checked. Press Start audit to resume " +
+                                     "from key ${ckIdx + 1}, or clear the list to start over."
+                }
             }
         }
         estimar()
@@ -699,22 +707,24 @@ object WeakController {
         else "list:${claves.size}:${claves.joinToString("\n").hashCode()}"
 
     private fun prefsWeak() = appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)
+    private fun archivoCk() = appCtx?.let { java.io.File(it.filesDir, "weak_ck.txt") }
 
-    /** Guarda dónde va la auditoría (sólo en modo lista; el streaming no reanuda). */
-    private fun guardarCheckpoint() {
+    /** La LISTA se escribe una sola vez (no cambia durante la auditoría) en un
+     *  fichero interno, así reanuda tras cerrar la app aunque tenga 20k claves. */
+    private fun guardarLista() {
         if (streamMode) return
-        prefsWeak()?.edit()
-            ?.putString("ck_firma", firmaLista())
-            ?.putInt("ck_indice", indice)
-            ?.putInt("ck_hallados", hallados)
-            ?.putInt("ck_total", claves.size)
-            // La lista entera sólo si es manejable, para reanudar tras cerrar la app.
-            ?.putString("ck_claves", if (claves.size in 1..3000) claves.joinToString("\n") else "")
-            ?.apply()
+        try { archivoCk()?.writeText(claves.joinToString("\n")) } catch (e: Throwable) {}
+        prefsWeak()?.edit()?.putString("ck_firma", firmaLista())?.putInt("ck_total", claves.size)?.apply()
+    }
+    /** El AVANCE se guarda a menudo: sólo índice y hallazgos (barato). */
+    private fun guardarProgreso() {
+        if (streamMode) return
+        prefsWeak()?.edit()?.putInt("ck_indice", indice)?.putInt("ck_hallados", hallados)?.apply()
     }
     private fun limpiarCheckpoint() {
+        try { archivoCk()?.delete() } catch (e: Throwable) {}
         prefsWeak()?.edit()?.remove("ck_firma")?.remove("ck_indice")
-            ?.remove("ck_hallados")?.remove("ck_total")?.remove("ck_claves")?.apply()
+            ?.remove("ck_hallados")?.remove("ck_total")?.apply()
     }
     /** Índice guardado si el checkpoint es de ESTA misma lista; 0 si no. */
     private fun checkpointDe(): Int {
@@ -749,6 +759,7 @@ object WeakController {
         val h0 = if (reanudar) (prefsWeak()?.getInt("ck_hallados", 0) ?: 0) else 0
         resetContadores(if (reanudar) ck else 0, h0)
         tvKeys?.text = cuentaTexto()
+        guardarLista()             // la lista a disco (una vez)
         programarServicio()
         arrancarPrefetch()
         if (reanudar) aviso("Resuming from key ${ck + 1}/${claves.size} · $h0 found so far.")
@@ -863,9 +874,9 @@ object WeakController {
             appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)?.edit()
                 ?.putFloat("ritmo", ritmoDisp.toFloat())?.apply()
         } catch (e: Throwable) {}
-        // Al terminar la lista, borra el checkpoint; al parar a mano, lo guarda
-        // para poder continuar desde la misma clave.
-        if (terminado) limpiarCheckpoint() else guardarCheckpoint()
+        // Al terminar la lista, borra el checkpoint; al parar a mano, guarda el
+        // avance para poder continuar desde la misma clave.
+        if (terminado) limpiarCheckpoint() else guardarProgreso()
         estimar()
         btn?.text = "Start audit"
         bloquear(false)
@@ -879,7 +890,7 @@ object WeakController {
             parar("Done: ${claves.size} key(s) checked.", terminado = true)
             return
         }
-        if (!streamMode && indice % 5 == 0) guardarCheckpoint()   // por si se corta
+        if (!streamMode && indice % 5 == 0) guardarProgreso()   // por si se corta
         tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
         recoger()
     }
