@@ -130,6 +130,9 @@ object WeakController {
     private var resultadosBox: LinearLayout? = null
     private var logBox: LinearLayout? = null
     private var fuenteNombre = "pasted keys"   // de dónde salió la lista actual
+    private var logExpandido = false           // si el terminal muestra el historial antiguo
+    private const val LOG_RECIENTES = 10       // líneas visibles sin desplegar
+    private const val LOG_CAP = 50             // cuántas auditorías se recuerdan
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -685,7 +688,7 @@ object WeakController {
     // Una fila por lista: de qué CSV/xpub salió, cuántas direcciones se revisaron,
     // cuántas faltan y si hubo hallazgo. Se persiste en prefs ("ck_log") como JSON
     // para que sobreviva a cerrar la app. Clave por id de lista (upsert): reauditar
-    // la misma lista actualiza su fila en vez de duplicarla. Se guardan 30.
+    // la misma lista actualiza su fila en vez de duplicarla. Se guardan LOG_CAP.
 
     /** Total de la lista actual (aprox. en streaming, donde no hay lista en RAM). */
     private fun totalActual(): Int = if (streamMode) streamTotal else claves.size
@@ -714,7 +717,7 @@ object WeakController {
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
             if (id.isNotBlank() && o.optString("id") == id) continue   // reemplazada por la nueva
-            if (nueva.length() >= 30) break
+            if (nueva.length() >= LOG_CAP) break
             nueva.put(o)
         }
         p.edit().putString("ck_log", nueva.toString()).apply()
@@ -726,7 +729,24 @@ object WeakController {
         pintarLog(); aviso("Audit log cleared.")
     }
 
-    /** Pinta el historial (de qué lista, revisadas/faltan, hallazgo, estado, fecha). */
+    /** Una auditoría en una sola línea de terminal: fecha, fuente, progreso,
+     *  cuántas faltan, hallazgo y estado. */
+    private fun lineaLog(o: org.json.JSONObject, fmt: java.text.SimpleDateFormat): String {
+        val fuente = o.optString("fuente", "list")
+        val total = o.optInt("total", 0); val rev = o.optInt("rev", 0)
+        val found = o.optInt("found", 0); val estado = o.optString("estado", "")
+        val t = o.optLong("t", 0L)
+        val faltan = (total - rev).coerceAtLeast(0)
+        val fecha = if (t > 0) fmt.format(java.util.Date(t)) else "--/-- --:--"
+        val prog = if (total > 0) "${"%,d".format(rev)}/${"%,d".format(total)}" else "%,d".format(rev)
+        val faltanTxt = if (total > 0) "  ${"%,d".format(faltan)} left" else ""
+        val hitTxt = if (found > 0) "  ✓ $found found" else "  · no finds"
+        val estTxt = if (estado.isNotBlank()) "  [$estado]" else ""
+        return "$fecha  $fuente  $prog$faltanTxt$hitTxt$estTxt"
+    }
+
+    /** El historial como un TERMINAL: últimas [LOG_RECIENTES] líneas (una por
+     *  auditoría), con una línea para desplegar/plegar el historial anterior. */
     private fun pintarLog() {
         val box = logBox ?: return
         box.removeAllViews()
@@ -738,40 +758,67 @@ object WeakController {
         // Ya hay historial: no tiene sentido el vacío "Nothing audited yet"
         // ocupando toda la pantalla y dejando el log debajo del pliegue.
         if (!corriendo) vacioWeak?.visibility = android.view.View.GONE
+
         box.addView(TextView(ctx).apply {
             text = "Audit log"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context); setPadding(dp(2), dp(8), 0, dp(6))
         })
-        val fmtFecha = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US)
-        for (i in 0 until arr.length()) {
-            val o = arr.optJSONObject(i) ?: continue
-            val fuente = o.optString("fuente", "list")
-            val total = o.optInt("total", 0); val rev = o.optInt("rev", 0)
-            val found = o.optInt("found", 0); val estado = o.optString("estado", "")
-            val t = o.optLong("t", 0L)
-            val faltan = (total - rev).coerceAtLeast(0)
-            val linea = buildString {
-                append(fuente); append(" · "); append("%,d".format(rev))
-                if (total > 0) append("/${"%,d".format(total)}")
-                append(" checked")
-                if (total > 0) append(" · ${"%,d".format(faltan)} left")
-                append(" · "); append(if (found > 0) "$found found" else "no finds")
-                if (estado.isNotBlank()) append(" · $estado")
-                if (t > 0) append(" · ${fmtFecha.format(java.util.Date(t))}")
+
+        val n = arr.length()
+        val mostrar = if (logExpandido) n else Math.min(n, LOG_RECIENTES)
+        val fmt = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US)
+
+        // Panel del terminal: mono, fondo oscuro, borde tenue y esquinas suaves.
+        val panel = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(AppTheme.BG_DEEP); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                setStroke(dp(1), (AppTheme.TXT_MUTED and 0x00FFFFFF) or 0x40000000)
             }
-            box.addView(TextView(ctx).apply {
-                text = linea; textSize = AppTheme.SP_CAPTION
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        // Cabecera estilo consola.
+        panel.addView(TextView(ctx).apply {
+            text = "$ weak-audit.log  ·  ${"%,d".format(n)} run(s)"
+            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.mono(context); setPadding(0, 0, 0, dp(8))
+        })
+        // Cuerpo: una sola línea por auditoría (desplazable en horizontal para no
+        // cortar las listas con nombres largos). Verde si hubo hallazgo.
+        val cuerpo = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+        for (i in 0 until mostrar) {
+            val o = arr.optJSONObject(i) ?: continue
+            val found = o.optInt("found", 0)
+            cuerpo.addView(TextView(ctx).apply {
+                text = lineaLog(o, fmt); maxLines = 1
+                setHorizontallyScrolling(true); ellipsize = null
+                textSize = AppTheme.SP_MICRO
                 setTextColor(if (found > 0) AppTheme.ACCENT else AppTheme.TXT_SEC)
-                typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
-                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
-                setPadding(dp(14), dp(12), dp(14), dp(12))
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+                typeface = AppTheme.mono(context)
+                setPadding(0, dp(3), 0, dp(3))
             })
         }
+        panel.addView(android.widget.HorizontalScrollView(ctx).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(cuerpo)
+        })
+        // Desplegar / plegar el historial anterior a las recientes.
+        if (n > LOG_RECIENTES) {
+            panel.addView(TextView(ctx).apply {
+                text = if (logExpandido) "  ▾ hide older" else "  ▸ ${n - LOG_RECIENTES} older run(s)…"
+                textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.mono(context); setPadding(0, dp(10), 0, dp(2))
+                isClickable = true; isFocusable = true
+                setOnClickListener { logExpandido = !logExpandido; pintarLog() }
+            })
+        }
+        box.addView(panel)
+
         box.addView(Ui.ghost(ctx, "Clear log", AppTheme.TXT_SEC).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
-            setOnClickListener { Ui.pulso(this); borrarLog() }
+            setOnClickListener { Ui.pulso(this); logExpandido = false; borrarLog() }
         })
     }
 
