@@ -70,6 +70,14 @@ object WeakController {
     private val conPubkey = java.util.concurrent.atomic.AtomicInteger(0)
     private val sinPubkey = java.util.concurrent.atomic.AtomicInteger(0)
     private val fallosRed = java.util.concurrent.atomic.AtomicInteger(0)
+    // Las entradas que NO dieron clave, para exportar o reintentar: por red
+    // (se pueden reintentar) y sin clave pública publicada. Acotadas por si la
+    // lista es enorme. Las tocan los hilos resolutores.
+    private val noResueltas = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    private val sinClave = java.util.concurrent.ConcurrentLinkedQueue<String>()
+    private fun capAdd(q: java.util.concurrent.ConcurrentLinkedQueue<String>, e: String) {
+        if (q.size < 100000) q.add(e)
+    }
 
     private var cargadas: List<String> = emptyList()
 
@@ -119,6 +127,7 @@ object WeakController {
     private var btnCsv: android.view.View? = null
     private var barraProg: BarraProgreso? = null
     private var vacioWeak: android.view.View? = null
+    private var resultadosBox: LinearLayout? = null
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -448,6 +457,15 @@ object WeakController {
         vacioWeak = vVacio
         root.addView(vVacio)
 
+        val vRes = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+        }
+        resultadosBox = vRes
+        root.addView(vRes)
+
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
         bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
         // Reanudar tras cerrar la app: si hay un checkpoint con su lista y el
@@ -484,7 +502,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
-        btnCsv = null; barraProg = null; vacioWeak = null
+        btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -555,6 +573,8 @@ object WeakController {
         Regex("^04[0-9a-fA-F]{128}$").matches(k) ->
             (if (BigInteger(k.substring(66), 16).testBit(0)) "03" else "02") +
             k.substring(2, 66).lowercase()
+        // x-only (taproot): la clave del output es x-only, se levanta a y par.
+        Regex("^[0-9a-fA-F]{64}$").matches(k) -> "02" + k.lowercase()
         else -> null
     }
 
@@ -569,12 +589,68 @@ object WeakController {
             return when (r) {
                 is PubKeyFinder.Resultado.Encontrada ->
                     comprimida(r.pubHex)?.also { conPubkey.incrementAndGet() }
-                        ?: run { sinPubkey.incrementAndGet(); "" }
-                is PubKeyFinder.Resultado.SinRed -> { fallosRed.incrementAndGet(); "" }
-                else -> { sinPubkey.incrementAndGet(); "" }   // NoRevelada / Publicada
+                        ?: run { sinPubkey.incrementAndGet(); capAdd(sinClave, bruta); "" }
+                is PubKeyFinder.Resultado.SinRed -> {
+                    fallosRed.incrementAndGet(); capAdd(noResueltas, bruta)
+                    try { Thread.sleep(250) } catch (e: Throwable) {}   // respiro: no martillear el explorador
+                    ""
+                }
+                else -> { sinPubkey.incrementAndGet(); capAdd(sinClave, bruta); "" }   // NoRevelada / Publicada
             }
         }
         return ""   // ni clave ni dirección
+    }
+
+    private fun copiar(q: Collection<String>) {
+        val ctx = appCtx ?: return
+        try {
+            val cb = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+            cb.setPrimaryClip(android.content.ClipData.newPlainText("keys", q.joinToString("\n")))
+            aviso("Copied ${"%,d".format(q.size)} to the clipboard.")
+        } catch (e: Throwable) {}
+    }
+
+    /** Vuelve a auditar SOLO las que fallaron por red. */
+    private fun reintentarNoResueltas() {
+        val reintentar = noResueltas.toList()
+        if (reintentar.isEmpty() || corriendo) return
+        cargadas = emptyList(); streamMode = false; streamUri = null
+        if (reintentar.size <= UMBRAL_LISTA) { etClaves?.setText(reintentar.joinToString("\n")) }
+        else { etClaves?.setText(""); cargadas = reintentar; mostrarResumenCargadas() }
+        resultadosBox?.visibility = android.view.View.GONE
+        arrancar()
+    }
+
+    /** Tras una auditoría, ofrece exportar/reintentar lo que no dio clave. */
+    private fun pintarResultados() {
+        val box = resultadosBox ?: return
+        box.removeAllViews()
+        val ctx = act ?: return
+        val nr = noResueltas.size; val sc = sinClave.size
+        if (nr == 0 && sc == 0) { box.visibility = android.view.View.GONE; return }
+        box.visibility = android.view.View.VISIBLE
+        box.addView(TextView(ctx).apply {
+            text = "Not resolved"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context); setPadding(dp(2), 0, 0, dp(6))
+        })
+        fun fila(txt: String, onTap: () -> Unit) = box.addView(TextView(ctx).apply {
+            text = txt; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.body(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+            isClickable = true; isFocusable = true; foreground = Ui.toque()
+            setOnClickListener { onTap() }
+        })
+        if (nr > 0) {
+            fila("Unreachable (network): ${"%,d".format(nr)} · tap to copy") { copiar(noResueltas) }
+            box.addView(Ui.ghost(ctx, "Retry unreachable", AppTheme.ACCENT).apply {
+                (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+                setOnClickListener { Ui.pulso(this); reintentarNoResueltas() }
+            })
+        }
+        if (sc > 0) fila("No public key published: ${"%,d".format(sc)} · tap to copy") { copiar(sinClave) }
     }
 
     /** Resumen del desglose para los avisos, solo las partes que importan. */
@@ -804,6 +880,7 @@ object WeakController {
     private fun resetContadores(desdeIndice: Int = 0, desdeHallados: Int = 0) {
         indice = desdeIndice; hallados = desdeHallados; corriendo = true
         conPubkey.set(0); sinPubkey.set(0); fallosRed.set(0)
+        noResueltas.clear(); sinClave.clear()
         inicioMs = System.currentTimeMillis()
         opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
         chart?.reset()
@@ -811,6 +888,7 @@ object WeakController {
         tvProg?.text = "—"; tvKeys?.text = "0 · 0"
         statsCard?.visibility = android.view.View.VISIBLE
         vacioWeak?.visibility = android.view.View.GONE
+        resultadosBox?.visibility = android.view.View.GONE
         btn?.text = "Stop"
         barraProg?.set(0f)
         bloquear(true)
@@ -908,6 +986,7 @@ object WeakController {
         bloquear(false)
         aviso(motivo + desglose() +
               (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
+        pintarResultados()
     }
 
     private fun siguiente() {
