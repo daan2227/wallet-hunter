@@ -80,6 +80,7 @@ static void install_crash_handlers() {
 #define MAX_ADDR      64
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
 #include "vanity.h"        /* generador de direcciones vanity (motor del escaner) */
+#include "bsgs.h"          /* baby-step/giant-step para rangos pequenos */
 #define N_PATHS       9
 
 /* Paths BIP44 para modo BIP39 */
@@ -3150,6 +3151,93 @@ Java_com_hunter_btc_HunterEngine_vanityResult(JNIEnv *env, jobject){
     if(g_van_found.load()){
         std::lock_guard<std::mutex> lk(g_van_mx);
         if(!g_van_priv.empty()) r=g_van_priv+"|"+g_van_addr;
+    }
+    return env->NewStringUTF(r.c_str());
+}
+
+/* ---------- BSGS (rango pequeno conocido) ---------- */
+static std::atomic<bool>     g_bsgs_run{false};
+static std::atomic<bool>     g_bsgs_done{false};
+static std::atomic<uint64_t> g_bsgs_count{0};
+static std::atomic<int>      g_bsgs_ret{0};
+static std::mutex            g_bsgs_mx;
+static std::string           g_bsgs_priv;
+static std::thread           g_bsgs_th;
+
+/* hex -> bytes; devuelve la longitud en bytes, o -1 si es invalido. */
+static int bsgs_hex(const char *h, uint8_t *out, int maxb){
+    int n=0; while(h[n]) n++; if(n&1 || n/2>maxb) return -1;
+    for(int i=0;i<n/2;i++){
+        auto nib=[&](char c)->int{ if(c>='0'&&c<='9')return c-'0'; c|=32; if(c>='a'&&c<='f')return c-'a'+10; return -1; };
+        int hi=nib(h[i*2]), lo=nib(h[i*2+1]); if(hi<0||lo<0) return -1;
+        out[i]=(uint8_t)((hi<<4)|lo);
+    }
+    return n/2;
+}
+/* hex de hasta 64 chars -> 32 bytes big-endian (alineado a la derecha). */
+static int bsgs_hex_be32(const char *h, uint8_t out[32]){
+    char buf[65]; int n=0; while(h[n]) n++; if(n>64) return -1;
+    int pad=64-n; for(int i=0;i<pad;i++) buf[i]='0'; for(int i=0;i<n;i++) buf[pad+i]=h[i]; buf[64]=0;
+    return bsgs_hex(buf,out,32);
+}
+
+static void bsgs_stop_join(){
+    g_bsgs_run.store(false);
+    if(g_bsgs_th.joinable()) g_bsgs_th.join();
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsStart(JNIEnv *env, jobject, jstring pubS, jstring iniS, jstring finS, jint capBits){
+    bsgs_stop_join();
+    const char *ps=env->GetStringUTFChars(pubS,nullptr);
+    const char *is=env->GetStringUTFChars(iniS,nullptr);
+    const char *fs=env->GetStringUTFChars(finS,nullptr);
+    uint8_t pub[65]; int publen=bsgs_hex(ps?ps:"",pub,65);
+    uint8_t a[32],b[32]; int ra=bsgs_hex_be32(is?is:"",a), rb=bsgs_hex_be32(fs?fs:"",b);
+    if(ps) env->ReleaseStringUTFChars(pubS,ps);
+    if(is) env->ReleaseStringUTFChars(iniS,is);
+    if(fs) env->ReleaseStringUTFChars(finS,fs);
+    g_bsgs_count.store(0); g_bsgs_done.store(false); g_bsgs_ret.store(0);
+    { std::lock_guard<std::mutex> lk(g_bsgs_mx); g_bsgs_priv.clear(); }
+    if((publen!=33 && publen!=65) || ra!=32 || rb!=32){
+        g_bsgs_ret.store(BSGS_ERROR); g_bsgs_done.store(true); return;
+    }
+    int cap=(int)capBits;
+    uint8_t pubc[65]; memcpy(pubc,pub,publen);
+    uint8_t ac[32],bc[32]; memcpy(ac,a,32); memcpy(bc,b,32);
+    g_bsgs_run.store(true);
+    g_bsgs_th=std::thread([pubc,publen,ac,bc,cap](){
+        secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+        uint8_t out[32]={0};
+        int r=bsgs_solve(ctx,pubc,(size_t)publen,ac,bc,cap,&g_bsgs_run,&g_bsgs_count,out);
+        if(r==BSGS_HALLADO){
+            char ph[65]; for(int i=0;i<32;i++) sprintf(ph+i*2,"%02x",out[i]);
+            std::lock_guard<std::mutex> lk(g_bsgs_mx); g_bsgs_priv=ph;
+        }
+        g_bsgs_ret.store(r); g_bsgs_done.store(true);
+        secp256k1_context_destroy(ctx);
+    });
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsStop(JNIEnv *, jobject){ bsgs_stop_join(); }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsRunning(JNIEnv *, jobject){
+    return (g_bsgs_run.load() && !g_bsgs_done.load()) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsCount(JNIEnv *, jobject){ return (jlong)g_bsgs_count.load(); }
+
+/* "" aun corriendo; "privhex" hallado; "NOT_FOUND"/"RANGE_TOO_BIG"/"ERROR". */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsResult(JNIEnv *env, jobject){
+    std::string r;
+    if(g_bsgs_done.load()){
+        int rc=g_bsgs_ret.load();
+        if(rc==BSGS_HALLADO){ std::lock_guard<std::mutex> lk(g_bsgs_mx); r=g_bsgs_priv; }
+        else if(rc==BSGS_NO) r="NOT_FOUND";
+        else if(rc==BSGS_RANGO_GRANDE) r="RANGE_TOO_BIG";
+        else r="ERROR";
     }
     return env->NewStringUTF(r.c_str());
 }

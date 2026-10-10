@@ -252,6 +252,15 @@ object HunterEngine {
     external fun vanityRunning(): Boolean
     external fun vanityCount(): Long
     external fun vanityResult(): String
+
+    // BSGS: resuelve P = k·G con k en un rango [ini, fin] PEQUEÑO y conocido, de
+    // forma determinista. ini/fin en hex. capBits acota la tabla (m ≤ 2^capBits).
+    // result: "" corriendo; privHex hallado; "NOT_FOUND"/"RANGE_TOO_BIG"/"ERROR".
+    external fun bsgsStart(pub: String, ini: String, fin: String, capBits: Int)
+    external fun bsgsStop()
+    external fun bsgsRunning(): Boolean
+    external fun bsgsCount(): Long
+    external fun bsgsResult(): String
     /**
      * ¿Ha aparecido ya el objetivo único?
      *

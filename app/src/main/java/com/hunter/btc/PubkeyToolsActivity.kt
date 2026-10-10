@@ -80,6 +80,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
 
         cabecera(page, "Audit & analysis")
+        seccion(page, R.drawable.ic_target, "Solve key in range (BSGS)") { construirBsgs() }
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
@@ -556,6 +557,64 @@ class PubkeyToolsActivity : Activity() {
         if ((wp.getString("addrs", "") ?: "").isNotBlank()) chequear()   // chequeo automático al abrir
         nota(AppTheme.BLUE, "Checks happen when this screen is open or you tap Check — there's " +
              "no always-on background polling. A change fires a notification if alerts are on.")
+    }
+
+    // ── BSGS: resolver clave en un rango pequeño ───────────────────────────
+    @Volatile private var bsgsCorriendo = false
+    private fun construirBsgs() {
+        desc("Given a PUBLIC key that spent (02/03/04…) and a SMALL known range for " +
+             "its private key, solve it deterministically (baby-step/giant-step). " +
+             "Best for ranges up to ~2^40. For big ranges use the Weak-key / Puzzle " +
+             "Kangaroo instead. Only works on keys you own.")
+        val etPub = entrada("public key hex (02/03 + 64, or 04 + 128)")
+        val etIni = entrada("range start (hex), e.g. 1")
+        val etFin = entrada("range end (hex), e.g. fffff")
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
+        val salida = salidaBox()
+        val poll = Handler(Looper.getMainLooper())
+        val t0 = longArrayOf(0L)
+        lateinit var btn: Button
+        lateinit var tick: Runnable
+        tick = Runnable {
+            if (!bsgsCorriendo) return@Runnable
+            val res = try { HunterEngine.bsgsResult() } catch (e: Throwable) { "ERROR" }
+            if (res.isEmpty()) {
+                val n = try { HunterEngine.bsgsCount() } catch (e: Throwable) { 0L }
+                val secs = ((System.currentTimeMillis() - t0[0]) / 1000.0).coerceAtLeast(0.001)
+                tv.text = "Searching… ${"%,d".format(n)} tried · ~${"%,d".format((n / secs).toLong())}/s"
+                poll.postDelayed(tick, 300); return@Runnable
+            }
+            bsgsCorriendo = false; btn.text = "Solve"
+            when (res) {
+                "NOT_FOUND"     -> tv.text = "Not found: the key is not in that range."
+                "RANGE_TOO_BIG" -> tv.text = "Range too big for BSGS. Use the Weak-key / Puzzle Kangaroo."
+                "ERROR"         -> tv.text = "Invalid public key or range."
+                else -> {
+                    val wif = try { HunterEngine.wifDeHex(res).substringBefore("|") } catch (e: Throwable) { "" }
+                    salida.addView(filaResultado("Private key", res, true))
+                    if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                    val n = try { HunterEngine.bsgsCount() } catch (e: Throwable) { 0L }
+                    tv.text = "Solved after ${"%,d".format(n)} giant steps."
+                }
+            }
+        }
+        btn = boton("Solve") {
+            if (bsgsCorriendo) { bsgsCorriendo = false; try { HunterEngine.bsgsStop() } catch (e: Throwable) {}; btn.text = "Solve"; return@boton }
+            val pub = etPub.text.toString().trim().removePrefix("0x").lowercase()
+            val ini = etIni.text.toString().trim().removePrefix("0x").ifEmpty { "1" }
+            val fin = etFin.text.toString().trim().removePrefix("0x")
+            if (pub.isEmpty() || fin.isEmpty()) { Toast.makeText(this, "Fill the key and the range", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews(); bsgsCorriendo = true; btn.text = "Stop"
+            t0[0] = System.currentTimeMillis()
+            try { HunterEngine.bsgsStart(pub, ini, fin, 21) } catch (e: Throwable) {
+                bsgsCorriendo = false; btn.text = "Solve"; Toast.makeText(this, "Engine error", Toast.LENGTH_SHORT).show(); return@boton
+            }
+            poll.postDelayed(tick, 300)
+        }
+        root.addView(tv)
+        nota(AppTheme.WARN, "Deterministic: if the key really is in the range, it WILL be found. " +
+             "Needs the public key (a spent address), not just the address.")
     }
 
     // ── Vanity address ─────────────────────────────────────────────────────
@@ -1380,6 +1439,8 @@ class PubkeyToolsActivity : Activity() {
 
     override fun onDestroy() {
         try { HunterEngine.vanityStop() } catch (e: Throwable) {}
+        try { HunterEngine.bsgsStop() } catch (e: Throwable) {}
+        bsgsCorriendo = false
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
         balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
         super.onDestroy()
