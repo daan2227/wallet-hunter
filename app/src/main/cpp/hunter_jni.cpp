@@ -3129,9 +3129,9 @@ Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
 
 /* ---------- Generador vanity ---------- */
 extern "C" JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_vanityStart(JNIEnv *env, jobject, jstring pref, jint hilos){
+Java_com_hunter_btc_HunterEngine_vanityStart(JNIEnv *env, jobject, jstring pref, jint hilos, jint mode){
     const char *p=env->GetStringUTFChars(pref,nullptr);
-    vanity_arrancar(p?p:"", (int)hilos);
+    vanity_arrancar(p?p:"", (int)hilos, (int)mode);
     if(p) env->ReleaseStringUTFChars(pref,p);
 }
 extern "C" JNIEXPORT void JNICALL

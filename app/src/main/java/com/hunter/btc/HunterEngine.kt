@@ -247,7 +247,7 @@ object HunterEngine {
     // Generador de direcciones vanity (P2PKH): corre en el motor nativo del
     // escáner (curva por lotes + endomorfismo + hash160x4). start recibe el
     // prefijo DESPUÉS del "1" y cuántos hilos; result devuelve "privHex|addr".
-    external fun vanityStart(prefix: String, threads: Int)
+    external fun vanityStart(prefix: String, threads: Int, mode: Int)   // 0=P2PKH,1=P2SH,2=bech32
     external fun vanityStop()
     external fun vanityRunning(): Boolean
     external fun vanityCount(): Long

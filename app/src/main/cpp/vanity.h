@@ -56,26 +56,37 @@ static int                   g_van_tlen=0;
 static std::vector<std::thread> g_van_hilos;
 static EscTabla              g_van_tabla;
 static std::atomic<bool>     g_van_tabla_lista{false};
+static int                   g_van_mode=0;   /* 0=P2PKH(1), 1=P2SH(3), 2=bech32(bc1q) */
 
 struct VanCtx {
     secp256k1_context *ctx;
     const uint8_t     *kc;   /* escalar del centro actual (32 bytes big-endian) */
 };
 
-/* Visitante de cada hash160 producido por el grupo. */
+/* Visitante de cada hash160 producido por el grupo. Segun el modo, compara el
+ * prefijo contra una direccion P2PKH (1), P2SH-P2WPKH (3) o bech32 (bc1q). */
 static void van_visto(const uint8_t *h160, int j, int v, void *vp){
     if(g_van_found.load()) return;
     VanCtx *c=(VanCtx*)vp;
-    uint8_t buf[25]; buf[0]=0x00; memcpy(buf+1,h160,20); memset(buf+21,0,4);
-    char addr[40]; van_b58_25(buf,addr);
-    if(memcmp(addr,g_van_target,g_van_tlen)!=0) return;
-    /* Prefiltro OK: confirmar con el checksum real. */
-    uint8_t ck[32]; SHA256_CTX sc;
-    SHA256_Init(&sc); SHA256_Update(&sc,buf,21); SHA256_Final(ck,&sc);
-    SHA256_Init(&sc); SHA256_Update(&sc,ck,32); SHA256_Final(ck,&sc);
-    memcpy(buf+21,ck,4);
-    van_b58_25(buf,addr);
-    if(memcmp(addr,g_van_target,g_van_tlen)!=0) return;   /* falso positivo del prefiltro */
+    char addr[110];
+    if(g_van_mode==2){
+        h160_to_bech32(h160,addr,false);                 /* bc1q… (determinista) */
+        if(memcmp(addr,g_van_target,g_van_tlen)!=0) return;
+    } else if(g_van_mode==1){
+        h160_to_p2sh(h160,addr,false);                   /* 3… (base58check, exacto) */
+        if(memcmp(addr,g_van_target,g_van_tlen)!=0) return;
+    } else {
+        /* P2PKH: prefiltro rapido con checksum a cero y confirmacion real. */
+        uint8_t buf[25]; buf[0]=0x00; memcpy(buf+1,h160,20); memset(buf+21,0,4);
+        char a2[40]; van_b58_25(buf,a2);
+        if(memcmp(a2,g_van_target,g_van_tlen)!=0) return;
+        uint8_t ck[32]; SHA256_CTX sc;
+        SHA256_Init(&sc); SHA256_Update(&sc,buf,21); SHA256_Final(ck,&sc);
+        SHA256_Init(&sc); SHA256_Update(&sc,ck,32); SHA256_Final(ck,&sc);
+        memcpy(buf+21,ck,4); van_b58_25(buf,a2);
+        if(memcmp(a2,g_van_target,g_van_tlen)!=0) return; /* falso positivo del prefiltro */
+        memcpy(addr,a2,strlen(a2)+1);
+    }
     /* Recuperar la clave privada del candidato (centro kc, desplazamiento j, variante v). */
     uint8_t priv[32];
     if(!esc_clave(c->ctx,c->kc,j,v,priv)) return;
@@ -136,12 +147,14 @@ static void vanity_parar(){
     for(auto &t:g_van_hilos) if(t.joinable()) t.join();
     g_van_hilos.clear();
 }
-static void vanity_arrancar(const char *prefijo, int hilos){
+static void vanity_arrancar(const char *prefijo, int hilos, int mode){
     vanity_parar();
     if(!g_van_tabla_lista.load()){ esc_tabla_crear(&g_van_tabla); g_van_tabla_lista.store(true); }
-    g_van_target[0]='1';
-    int n=0; while(prefijo[n] && n<70){ g_van_target[1+n]=prefijo[n]; n++; }
-    g_van_tlen=n+1; g_van_target[g_van_tlen]='\0';
+    g_van_mode = (mode<0||mode>2)?0:mode;
+    const char *pre = (g_van_mode==1)?"3":(g_van_mode==2)?"bc1q":"1";
+    int pl=0; while(pre[pl]){ g_van_target[pl]=pre[pl]; pl++; }
+    int n=0; while(prefijo[n] && pl+n<70){ g_van_target[pl+n]=prefijo[n]; n++; }
+    g_van_tlen=pl+n; g_van_target[g_van_tlen]='\0';
     g_van_count.store(0); g_van_found.store(false);
     { std::lock_guard<std::mutex> lk(g_van_mx); g_van_priv.clear(); g_van_addr.clear(); }
     if(hilos<1) hilos=1; if(hilos>32) hilos=32;

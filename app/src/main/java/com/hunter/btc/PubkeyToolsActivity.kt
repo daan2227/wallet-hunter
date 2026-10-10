@@ -621,10 +621,23 @@ class PubkeyToolsActivity : Activity() {
     // Corre en el motor nativo del escáner (curva por lotes + endomorfismo +
     // hash160 ×4), unas 100× más rápido que probar clave a clave por JNI.
     @Volatile private var vanCorriendo = false
+    private var vanMode = 0   // 0=P2PKH(1), 1=P2SH(3), 2=bech32(bc1q)
     private fun construirVanity() {
-        desc("Grind a P2PKH address (starts with 1) that contains your text right after " +
-             "the 1. Longer prefixes take exponentially longer. Base58 has no 0, O, I or l.")
+        desc("Grind an address that contains your text right after the fixed start. " +
+             "Longer prefixes take exponentially longer. Runs on the native engine.")
+        // Selector de tipo de dirección.
+        val tipos = arrayOf("P2PKH (1…)", "P2SH (3…)", "bech32 (bc1q…)")
+        lateinit var btnTipo: Button
         val et = entrada("desired prefix, e.g. Love")
+        fun hintDe() { et.hint = when (vanMode) {
+            2 -> "prefix after bc1q (chars: qpzry9x8gf2tvdw0s3jn54khce6mua7l)"
+            else -> "prefix after ${if (vanMode==1) "3" else "1"} (base58, no 0 O I l)" } }
+        btnTipo = boton("Type: ${tipos[vanMode]}") {
+            if (vanCorriendo) return@boton
+            vanMode = (vanMode + 1) % 3
+            btnTipo.text = "Type: ${tipos[vanMode]}"; hintDe()
+        }
+        hintDe()
         val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
         val salida = salidaBox()
@@ -655,13 +668,18 @@ class PubkeyToolsActivity : Activity() {
         }
         btn = boton("Generate") {
             if (vanCorriendo) { vanCorriendo = false; try { HunterEngine.vanityStop() } catch (e: Throwable) {}; btn.text = "Generate"; return@boton }
-            val pref = et.text.toString().trim()
+            var pref = et.text.toString().trim()
             if (pref.isEmpty()) { Toast.makeText(this, "Enter a prefix", Toast.LENGTH_SHORT).show(); return@boton }
-            if (pref.any { it in "0OIl" }) { Toast.makeText(this, "Base58 excludes 0 O I l", Toast.LENGTH_LONG).show(); return@boton }
+            if (vanMode == 2) {
+                pref = pref.lowercase()
+                if (pref.any { it !in "qpzry9x8gf2tvdw0s3jn54khce6mua7l" }) {
+                    Toast.makeText(this, "bech32 chars: qpzry9x8gf2tvdw0s3jn54khce6mua7l", Toast.LENGTH_LONG).show(); return@boton }
+            } else if (pref.any { it in "0OIl" }) {
+                Toast.makeText(this, "Base58 excludes 0 O I l", Toast.LENGTH_LONG).show(); return@boton }
             salida.removeAllViews(); vanCorriendo = true; btn.text = "Stop"
             t0[0] = System.currentTimeMillis()
             val hilos = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
-            try { HunterEngine.vanityStart(pref, hilos) } catch (e: Throwable) {
+            try { HunterEngine.vanityStart(pref, hilos, vanMode) } catch (e: Throwable) {
                 vanCorriendo = false; btn.text = "Generate"
                 Toast.makeText(this, "Engine error", Toast.LENGTH_SHORT).show(); return@boton
             }
