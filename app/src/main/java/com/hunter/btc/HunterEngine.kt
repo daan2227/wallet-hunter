@@ -261,6 +261,15 @@ object HunterEngine {
     external fun bsgsRunning(): Boolean
     external fun bsgsCount(): Long
     external fun bsgsResult(): String
+
+    // BSGS multi-objetivo: una tabla baby compartida para varias pubkeys del
+    // mismo rango (auditar una lista de golpe). pubs = pubkeys hex, una por línea.
+    // bsgsMultiInfo: primera línea "<status>\t<hechas>\t<total>\t<giant>", luego
+    // líneas "pubhex|privhex" por cada hallazgo. status: running/done/range_too_big/error.
+    external fun bsgsMultiStart(pubs: String, ini: String, fin: String, capBits: Int)
+    external fun bsgsMultiStop()
+    external fun bsgsMultiRunning(): Boolean
+    external fun bsgsMultiInfo(): String
     /**
      * ¿Ha aparecido ya el objetivo único?
      *

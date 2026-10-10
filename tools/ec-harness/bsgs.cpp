@@ -48,6 +48,27 @@ int main(){
         if(r==BSGS_NO) printf("  OK   fuera de rango: no encontrado\n");
         else { printf("  MAL  fuera de rango r=%d\n",r); fallos++; }
     }
+    /* Multi-objetivo: UNA tabla baby compartida, varias pubkeys del mismo rango. */
+    {
+        uint8_t a32[32],b32[32]; be(1, a32); be(1ULL<<22, b32);
+        BsgsCtx c; std::atomic<bool> run{true};
+        int rb=bsgs_build(ctx,a32,b32,22,&run,&c);
+        if(rb!=BSGS_HALLADO){ printf("  MAL  build multi rb=%d\n",rb); fallos++; }
+        else {
+            uint64_t ks[]={ 7, 1234567, (1ULL<<22), 3000001, 999999 };
+            int ok=0;
+            for(uint64_t k:ks){
+                uint8_t pub[33]; pub_de_k(ctx,k,pub); uint8_t out[32]={0};
+                std::atomic<uint64_t> prog{0};
+                int r=bsgs_giant(ctx,&c,pub,33,&run,&prog,out);
+                uint64_t got=0; for(int i=24;i<32;i++) got=(got<<8)|out[i];
+                if(r==BSGS_HALLADO && got==k) ok++; else printf("  MAL  multi k=%llu r=%d got=%llu\n",(unsigned long long)k,r,(unsigned long long)got);
+            }
+            bsgs_ctx_free(&c);
+            if(ok==(int)(sizeof(ks)/sizeof(ks[0]))) printf("  OK   multi-objetivo: %d/%d con tabla compartida\n",ok,ok);
+            else fallos++;
+        }
+    }
     printf(fallos? "FALLOS %d\n" : "TODO CORRECTO\n", fallos);
     secp256k1_context_destroy(ctx);
     return fallos?1:0;

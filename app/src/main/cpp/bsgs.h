@@ -80,61 +80,50 @@ static int bsgs_menos_aG(secp256k1_context *ctx, const secp256k1_pubkey *obj,
 /* Intento BSGS. a32/b32: [a,b] inclusivo, big-endian. cap_bits acota la tabla
  * (m <= 2^cap_bits). run: bandera de parada (puede ser null). progress: claves
  * tanteadas (puede ser null). out32: la clave si BSGS_HALLADO. */
-static int bsgs_solve(secp256k1_context *ctx,
-                      const uint8_t *pub, size_t publen,
-                      const uint8_t a32[32], const uint8_t b32[32],
-                      int cap_bits,
-                      std::atomic<bool> *run, std::atomic<uint64_t> *progress,
-                      uint8_t out32[32]){
-    secp256k1_pubkey obj;
-    if(!secp256k1_ec_pubkey_parse(ctx,&obj,pub,publen)) return BSGS_ERROR;
-    uint8_t obj33[33]; size_t l33=33; secp256k1_ec_pubkey_serialize(ctx,obj33,&l33,&obj,SECP256K1_EC_COMPRESSED);
+/* Contexto REUTILIZABLE: tabla baby + S=m·G. Permite auditar varias pubkeys del
+ * mismo rango sin reconstruir la tabla (amortiza el coste baby). BSGS_HALLADO
+ * aquí significa "construida"; no implica que haya ninguna clave. */
+struct BsgsCtx { BsgsTabla t; uint64_t m, M; uint8_t a32[32]; fe_t Sx, negSy; int ok; };
 
-    /* W = b - a + 1, exigiendo que quepa en 64 bits (rangos grandes -> Kangaroo). */
-    for(int i=0;i<24;i++) if(a32[i]||b32[i]) return BSGS_RANGO_GRANDE;   /* > 2^64 de a o b */
+static int bsgs_build(secp256k1_context *ctx,
+                      const uint8_t a32[32], const uint8_t b32[32], int cap_bits,
+                      std::atomic<bool> *run, BsgsCtx *out){
+    memset(out,0,sizeof(*out));
+    for(int i=0;i<24;i++) if(a32[i]||b32[i]) return BSGS_RANGO_GRANDE;
     uint64_t a64=0,b64=0; for(int i=24;i<32;i++){ a64=(a64<<8)|a32[i]; b64=(b64<<8)|b32[i]; }
     if(b64<a64) return BSGS_ERROR;
     if(b64-a64 > (1ULL<<62)) return BSGS_RANGO_GRANDE;
-    uint64_t W = b64 - a64 + 1;
-
-    /* m = min(ceil(raiz(W)), 2^cap). M = ceil(W/m). */
-    uint64_t m = (uint64_t)ceil(sqrt((double)W)); if(m<1) m=1;
-    uint64_t cap = (cap_bits>0 && cap_bits<40) ? (1ULL<<cap_bits) : (1ULL<<22);
+    uint64_t W=b64-a64+1;
+    uint64_t m=(uint64_t)ceil(sqrt((double)W)); if(m<1) m=1;
+    uint64_t cap=(cap_bits>0&&cap_bits<40)?(1ULL<<cap_bits):(1ULL<<22);
     if(m>cap) m=cap;
-    uint64_t M = (W + m - 1) / m;
-    if(M > (1ULL<<40)) return BSGS_RANGO_GRANDE;   /* demasiados pasos giant */
+    uint64_t M=(W+m-1)/m;
+    if(M>(1ULL<<40)) return BSGS_RANGO_GRANDE;
 
-    /* Tabla hash: tam potencia de dos, factor de carga ~0.6. */
-    uint64_t cells=4; while(cells < m*5/3) cells<<=1;
+    uint64_t cells=4; while(cells<m*5/3) cells<<=1;
     BsgsTabla t; t.mask=cells-1;
     t.key=(uint64_t*)calloc(cells,sizeof(uint64_t));
     t.val=(uint32_t*)malloc(cells*sizeof(uint32_t));
     if(!t.key||!t.val){ free(t.key); free(t.val); return BSGS_ERROR; }
     for(uint64_t i=0;i<cells;i++) t.val[i]=0xFFFFFFFFu;
 
-    /* ---- Baby steps: B_j = j*G, j en [1,m) ---- */
     const int CH=1024;
     JP *buf=(JP*)malloc(sizeof(JP)*CH);
     fe_t *pf=(fe_t*)malloc(sizeof(fe_t)*CH);
     if(!buf||!pf){ free(buf);free(pf);free(t.key);free(t.val); return BSGS_ERROR; }
-    JP cur; memcpy(cur.x,FIELD_GX,32); memcpy(cur.y,FIELD_GY,32); memset(cur.z,0,32); cur.z[0]=1; /* 1*G */
-    auto insertar=[&](uint64_t xl, uint32_t j){
+    JP cur; memcpy(cur.x,FIELD_GX,32); memcpy(cur.y,FIELD_GY,32); memset(cur.z,0,32); cur.z[0]=1;
+    auto insertar=[&](uint64_t xl,uint32_t j){
         uint64_t h=bsgs_mix(xl)&t.mask;
         while(t.val[h]!=0xFFFFFFFFu){ if(t.key[h]==xl) return; h=(h+1)&t.mask; }
         t.key[h]=xl; t.val[h]=j;
     };
     uint64_t j=1;
     while(j<m){
-        if(run && !run->load()) { free(buf);free(pf);free(t.key);free(t.val); return BSGS_NO; }
+        if(run && !run->load()){ free(buf);free(pf);free(t.key);free(t.val); return BSGS_NO; }
         int n=0;
-        for(; j<m && n<CH; j++,n++){
-            buf[n]=cur;
-            /* siguiente: 2G con doblado, el resto +G */
-            if(j==1) jp_dbl(&cur,&cur); else jp_add_G(&cur,&cur);
-        }
-        /* normalizar el lote (una inversion) y sacar x afin low64 */
+        for(; j<m && n<CH; j++,n++){ buf[n]=cur; if(j==1) jp_dbl(&cur,&cur); else jp_add_G(&cur,&cur); }
         bool bad=false; for(int i=0;i<n;i++){ bool z=true; for(int w=0;w<4;w++) if(buf[i].z[w]){z=false;break;} if(z){bad=true;break;} }
-        if(bad){ for(int i=0;i<n;i++) insertar(bsgs_xlow(&buf[i]), (uint32_t)(j-n+i)); continue; }
+        if(bad){ for(int i=0;i<n;i++) insertar(bsgs_xlow(&buf[i]),(uint32_t)(j-n+i)); continue; }
         memcpy(pf[0],buf[0].z,32);
         for(int i=1;i<n;i++) fe_mul(pf[i],pf[i-1],buf[i].z);
         fe_t inv; fe_inv(inv,pf[n-1]);
@@ -142,63 +131,75 @@ static int bsgs_solve(secp256k1_context *ctx,
             fe_t zi,z2,x;
             if(i){ fe_mul(zi,inv,pf[i-1]); fe_mul(inv,inv,buf[i].z); } else memcpy(zi,inv,32);
             fe_sqr(z2,zi); fe_mul(x,buf[i].x,z2);
-            insertar(x[0], (uint32_t)(j-n+i));
+            insertar(x[0],(uint32_t)(j-n+i));
         }
     }
     free(buf); free(pf);
 
-    /* ---- Giant steps ---- */
-    /* S = m*G (afin), y -S para restar. */
     uint8_t m32[32]={0}; { uint64_t v=m; for(int i=0;i<8;i++) m32[31-i]=(uint8_t)(v>>(8*i)); }
     secp256k1_pubkey Spk; if(!secp256k1_ec_pubkey_create(ctx,&Spk,m32)){ free(t.key);free(t.val); return BSGS_ERROR; }
     uint8_t s65[65]; size_t ls=65; secp256k1_ec_pubkey_serialize(ctx,s65,&ls,&Spk,SECP256K1_EC_UNCOMPRESSED);
     JP SJ; jp_from_affine(&SJ,s65);
-    fe_t Sx,Sy,negSy; memcpy(Sx,SJ.x,32); memcpy(Sy,SJ.y,32);
-    static const fe_t CERO={0,0,0,0}; fe_sub(negSy,CERO,Sy);
+    fe_t Sy; memcpy(out->Sx,SJ.x,32); memcpy(Sy,SJ.y,32);
+    static const fe_t CERO={0,0,0,0}; fe_sub(out->negSy,CERO,Sy);
+    out->t=t; out->m=m; out->M=M; memcpy(out->a32,a32,32); out->ok=1;
+    return BSGS_HALLADO;
+}
 
-    /* Q0 = obj - a*G */
+static void bsgs_ctx_free(BsgsCtx *c){ if(c&&c->ok){ free(c->t.key); free(c->t.val); c->ok=0; } }
+
+/* Busca UNA pubkey reutilizando una tabla ya construida. */
+static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
+                      const uint8_t *pub, size_t publen,
+                      std::atomic<bool> *run, std::atomic<uint64_t> *progress,
+                      uint8_t out32[32]){
+    secp256k1_pubkey obj;
+    if(!secp256k1_ec_pubkey_parse(ctx,&obj,pub,publen)) return BSGS_ERROR;
+    uint8_t obj33[33]; size_t l33=33; secp256k1_ec_pubkey_serialize(ctx,obj33,&l33,&obj,SECP256K1_EC_COMPRESSED);
+    const BsgsTabla &t=c->t; uint64_t m=c->m, M=c->M; const uint8_t *a32=c->a32;
     int inf=0; uint8_t q65[65];
-    if(!bsgs_menos_aG(ctx,&obj,a32,q65,&inf)){ free(t.key);free(t.val); return BSGS_ERROR; }
-    int ret=BSGS_NO;
-    if(inf){ if(bsgs_verifica(ctx,a32,obj33)){ memcpy(out32,a32,32); ret=BSGS_HALLADO; } }
-    if(ret!=BSGS_HALLADO){
-        JP Q; jp_from_affine(&Q,q65);
-        for(uint64_t i=0;i<M;i++){
-            if(run && !run->load()){ ret=BSGS_NO; break; }
-            /* ¿Q es el infinito? -> k = a + i*m */
-            bool zz=true; for(int w=0;w<4;w++) if(Q.z[w]){zz=false;break;}
-            if(zz){ uint8_t k[32]; if(bsgs_k_mas(a32,i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); ret=BSGS_HALLADO; break; } }
-            else {
-                fe_t xa; bsgs_xaff(&Q,xa);
-                uint64_t h=bsgs_mix(xa[0])&t.mask;
-                while(t.val[h]!=0xFFFFFFFFu){
-                    if(t.key[h]==xa[0]){
-                        uint32_t jj=t.val[h];
-                        uint8_t k[32];
-                        if(bsgs_k_mas(a32, i*m + jj, k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); ret=BSGS_HALLADO; break; }
-                        /* k = a + i*m - jj (simetria de negacion; puede caer por debajo de a) */
-                        if(i*m>=jj){ if(bsgs_k_mas(a32, i*m - jj, k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); ret=BSGS_HALLADO; break; } }
-                        else { if(bsgs_k_menos(a32, jj - i*m, k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); ret=BSGS_HALLADO; break; } }
-                    }
-                    h=(h+1)&t.mask;
+    if(!bsgs_menos_aG(ctx,&obj,a32,q65,&inf)) return BSGS_ERROR;
+    if(inf){ if(bsgs_verifica(ctx,a32,obj33)){ memcpy(out32,a32,32); return BSGS_HALLADO; } }
+    JP Q; jp_from_affine(&Q,q65);
+    for(uint64_t i=0;i<M;i++){
+        if(run && !run->load()) return BSGS_NO;
+        bool zz=true; for(int w=0;w<4;w++) if(Q.z[w]){zz=false;break;}
+        if(zz){ uint8_t k[32]; if(bsgs_k_mas(a32,i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
+        else {
+            fe_t xa; bsgs_xaff(&Q,xa);
+            uint64_t h=bsgs_mix(xa[0])&t.mask;
+            while(t.val[h]!=0xFFFFFFFFu){
+                if(t.key[h]==xa[0]){
+                    uint32_t jj=t.val[h]; uint8_t k[32];
+                    if(bsgs_k_mas(a32,i*m+jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; }
+                    if(i*m>=jj){ if(bsgs_k_mas(a32,i*m-jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
+                    else { if(bsgs_k_menos(a32,jj-i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
                 }
-                if(ret==BSGS_HALLADO) break;
+                h=(h+1)&t.mask;
             }
-            /* Q -= m*G. Caso degenerado (x(Q)==Sx): recomponer desde secp. */
-            fe_t xcur; bsgs_xaff(&Q,xcur);
-            if(memcmp(xcur,Sx,32)==0){
-                uint8_t off[32]={0}; uint64_t v=(i+1)*m; for(int q=0;q<8;q++) off[31-q]=(uint8_t)(v>>(8*q));
-                uint8_t k[32]; bsgs_k_mas(a32,(i+1)*m,k);
-                uint8_t q2[65]; int inf2=0;
-                /* Q_{i+1} = obj - (a+(i+1)m)G */
-                if(bsgs_menos_aG(ctx,&obj,k,q2,&inf2) && !inf2) jp_from_affine(&Q,q2);
-                else { memset(Q.z,0,32); }  /* infinito: el bucle lo coge arriba la proxima */
-            } else {
-                jp_add_affine(&Q,&Q,Sx,negSy);
-            }
-            if(progress) progress->fetch_add(m, std::memory_order_relaxed);
         }
+        fe_t xcur; bsgs_xaff(&Q,xcur);
+        if(memcmp(xcur,c->Sx,32)==0){
+            uint8_t k[32]; bsgs_k_mas(a32,(i+1)*m,k);
+            uint8_t q2[65]; int inf2=0;
+            if(bsgs_menos_aG(ctx,&obj,k,q2,&inf2) && !inf2) jp_from_affine(&Q,q2);
+            else memset(Q.z,0,32);
+        } else jp_add_affine(&Q,&Q,c->Sx,c->negSy);
+        if(progress) progress->fetch_add(m,std::memory_order_relaxed);
     }
-    free(t.key); free(t.val);
-    return ret;
+    return BSGS_NO;
+}
+
+/* Conveniencia single-target: construye, busca, libera. */
+static int bsgs_solve(secp256k1_context *ctx,
+                      const uint8_t *pub, size_t publen,
+                      const uint8_t a32[32], const uint8_t b32[32],
+                      int cap_bits,
+                      std::atomic<bool> *run, std::atomic<uint64_t> *progress,
+                      uint8_t out32[32]){
+    BsgsCtx c; int rb=bsgs_build(ctx,a32,b32,cap_bits,run,&c);
+    if(rb!=BSGS_HALLADO) return rb;
+    int r=bsgs_giant(ctx,&c,pub,publen,run,progress,out32);
+    bsgs_ctx_free(&c);
+    return r;
 }

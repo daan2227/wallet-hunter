@@ -131,6 +131,7 @@ object WeakController {
     private var logBox: LinearLayout? = null
     private var fuenteNombre = "pasted keys"   // de dónde salió la lista actual
     private var logExpandido = false           // si el terminal muestra el historial antiguo
+    @Volatile private var bsgsBatchOn = false   // auditoría BSGS por lotes en curso
     private const val LOG_RECIENTES = 10       // líneas visibles sin desplegar
     private const val LOG_CAP = 50             // cuántas auditorías se recuerdan
     private var btn: Button? = null
@@ -216,6 +217,10 @@ object WeakController {
         root.addView(Ui.ghost(a, "From xpub / ypub / zpub…", AppTheme.TXT_PRI).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
             setOnClickListener { dialogoXpub() }
+        })
+        root.addView(Ui.ghost(a, "Solve all with BSGS (small range)", AppTheme.TXT_PRI).apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+            setOnClickListener { solveBsgsBatch() }
         })
         val vCargadas = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
@@ -1048,7 +1053,56 @@ object WeakController {
         val id = idDe(firmaLista()); return prefsWeak()?.getInt("ck_${id}_hallados", 0) ?: 0
     }
 
+    /** BSGS por lotes: una tabla baby compartida resuelve TODAS las claves
+     *  públicas cargadas sobre [1, 2^bits) de forma determinista. Offline (no
+     *  resuelve direcciones por red: solo entradas que YA son clave pública).
+     *  Corre aparte del Kangaroo; los hallazgos van al baúl igual. */
+    private fun solveBsgsBatch() {
+        if (corriendo) { aviso("Stop the audit first."); return }
+        if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; aviso("BSGS stopped."); return }
+        val b = (sbBits?.progress ?: 0) + BITS_MIN
+        if (b > 44) { aviso("Range too big for BSGS ($b bits). Use Start audit (Kangaroo)."); return }
+        val lineas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+        val pubs = LinkedHashSet<String>()
+        for (l in lineas) comprimida(l)?.let { pubs.add(it) }
+        for (l in cargadas) comprimida(l)?.let { pubs.add(it) }
+        if (pubs.isEmpty()) { aviso("BSGS needs public keys (02/03/04 or x-only), not addresses."); return }
+        bits = b
+        val fin = BigInteger.ONE.shiftLeft(b).subtract(BigInteger.ONE).toString(16)
+        bsgsBatchOn = true
+        try { HunterEngine.bsgsMultiStart(pubs.joinToString("\n"), "1", fin, 21) }
+        catch (e: Throwable) { bsgsBatchOn = false; aviso("Engine error."); return }
+        val vistos = HashSet<String>()
+        lateinit var tick: Runnable
+        tick = Runnable {
+            if (!bsgsBatchOn) return@Runnable
+            val info = try { HunterEngine.bsgsMultiInfo() } catch (e: Throwable) { "" }
+            val lines = info.split('\n')
+            val head = (lines.firstOrNull() ?: "").split('\t')
+            val estado = head.getOrNull(0) ?: "running"
+            val hechas = head.getOrNull(1) ?: "0"; val total = head.getOrNull(2) ?: "0"; val giant = head.getOrNull(3) ?: "0"
+            for (i in 1 until lines.size) {
+                val ln = lines[i]; if (ln.contains("|")) { val priv = ln.substringAfter("|").trim()
+                    if (priv.length == 64 && vistos.add(priv)) guardar(priv) }
+            }
+            if (estado == "running") {
+                aviso("BSGS $hechas/$total keys · ${"%,d".format(giant.toLongOrNull() ?: 0)} giant steps · ${vistos.size} found")
+                h.postDelayed(tick, 400)
+            } else {
+                bsgsBatchOn = false
+                aviso(when (estado) {
+                    "range_too_big" -> "Range too big for BSGS."
+                    "error"         -> "BSGS error (bad key or range)."
+                    else            -> "BSGS done: ${vistos.size} weak key(s) found over $total key(s)" +
+                                       (if (vistos.isNotEmpty()) " → in the finds vault." else ".")
+                })
+            }
+        }
+        h.postDelayed(tick, 400)
+    }
+
     private fun arrancar() {
+        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; bsgsBatchOn = false
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
         presupuesto = budgetActual()

@@ -3242,6 +3242,79 @@ Java_com_hunter_btc_HunterEngine_bsgsResult(JNIEnv *env, jobject){
     return env->NewStringUTF(r.c_str());
 }
 
+/* ---------- BSGS multi-objetivo (tabla baby compartida) ---------- */
+static std::atomic<bool>     g_bm_run{false};
+static std::atomic<bool>     g_bm_done{false};
+static std::atomic<uint64_t> g_bm_count{0};     /* pasos giant totales */
+static std::atomic<int>      g_bm_total{0};      /* pubkeys a auditar */
+static std::atomic<int>      g_bm_hechas{0};     /* pubkeys ya procesadas */
+static std::atomic<int>      g_bm_status{0};     /* 0 run/done, -1 rango, -2 error */
+static std::mutex            g_bm_mx;
+static std::string           g_bm_res;           /* "pubhex|privhex\n" por hallazgo */
+static std::thread           g_bm_th;
+
+static void bm_stop_join(){ g_bm_run.store(false); if(g_bm_th.joinable()) g_bm_th.join(); }
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pubsS, jstring iniS, jstring finS, jint capBits){
+    bm_stop_join();
+    const char *ps=env->GetStringUTFChars(pubsS,nullptr);
+    const char *is=env->GetStringUTFChars(iniS,nullptr);
+    const char *fs=env->GetStringUTFChars(finS,nullptr);
+    std::string pubs = ps?ps:"";
+    uint8_t a[32],b[32]; int ra=bsgs_hex_be32(is?is:"",a), rb=bsgs_hex_be32(fs?fs:"",b);
+    if(ps) env->ReleaseStringUTFChars(pubsS,ps);
+    if(is) env->ReleaseStringUTFChars(iniS,is);
+    if(fs) env->ReleaseStringUTFChars(finS,fs);
+    g_bm_count.store(0); g_bm_total.store(0); g_bm_hechas.store(0); g_bm_done.store(false); g_bm_status.store(0);
+    { std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res.clear(); }
+    if(ra!=32||rb!=32){ g_bm_status.store(BSGS_ERROR); g_bm_done.store(true); return; }
+    int cap=(int)capBits;
+    uint8_t ac[32],bc[32]; memcpy(ac,a,32); memcpy(bc,b,32);
+    g_bm_run.store(true);
+    g_bm_th=std::thread([pubs,ac,bc,cap](){
+        /* trocear las pubkeys por lineas */
+        std::vector<std::string> lst; { std::string cur; for(char c:pubs){ if(c=='\n'||c=='\r'){ if(!cur.empty()){lst.push_back(cur); cur.clear();} } else cur+=c; } if(!cur.empty()) lst.push_back(cur); }
+        g_bm_total.store((int)lst.size());
+        secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+        BsgsCtx bc_ctx; int rbld=bsgs_build(ctx,ac,bc,cap,&g_bm_run,&bc_ctx);
+        if(rbld!=BSGS_HALLADO){ g_bm_status.store(rbld==BSGS_RANGO_GRANDE?BSGS_RANGO_GRANDE:BSGS_ERROR); g_bm_done.store(true); secp256k1_context_destroy(ctx); return; }
+        for(size_t i=0;i<lst.size() && g_bm_run.load();i++){
+            uint8_t pub[65]; int pl=bsgs_hex(lst[i].c_str(),pub,65);
+            if(pl==33||pl==65){
+                uint8_t out[32]={0};
+                int r=bsgs_giant(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out);
+                if(r==BSGS_HALLADO){
+                    char ph[65]; for(int q=0;q<32;q++) sprintf(ph+q*2,"%02x",out[q]);
+                    std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res += lst[i]; g_bm_res += "|"; g_bm_res += ph; g_bm_res += "\n";
+                }
+            }
+            g_bm_hechas.fetch_add(1);
+        }
+        bsgs_ctx_free(&bc_ctx);
+        g_bm_done.store(true);
+        secp256k1_context_destroy(ctx);
+    });
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsMultiStop(JNIEnv *, jobject){ bm_stop_join(); }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsMultiRunning(JNIEnv *, jobject){ return (g_bm_run.load() && !g_bm_done.load())?JNI_TRUE:JNI_FALSE; }
+
+/* "<status>\t<hechas>\t<total>\t<giant>\n" + lineas "pubhex|privhex". status:
+ * running / done / range_too_big / error. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bsgsMultiInfo(JNIEnv *env, jobject){
+    const char *st = !g_bm_done.load() ? "running"
+        : (g_bm_status.load()==BSGS_RANGO_GRANDE ? "range_too_big"
+        : (g_bm_status.load()==BSGS_ERROR ? "error" : "done"));
+    char head[96];
+    snprintf(head,sizeof(head),"%s\t%d\t%d\t%llu\n", st, g_bm_hechas.load(), g_bm_total.load(), (unsigned long long)g_bm_count.load());
+    std::string out=head;
+    { std::lock_guard<std::mutex> lk(g_bm_mx); out+=g_bm_res; }
+    return env->NewStringUTF(out.c_str());
+}
+
 
 
 /* ---------- Prueba de rendimiento del motor (pantalla Debug) ----------
