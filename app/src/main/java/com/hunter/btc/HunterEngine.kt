@@ -90,6 +90,9 @@ object HunterEngine {
     /** Primeras [n] direcciones de recepción (m/0/i) de un xpub/ypub/zpub.
      *  Líneas "i=direccion", o "" si el extended key no vale. */
     external fun xpubDirecciones(xpub: String, n: Int): String
+    /** Claves públicas hijas de un xpub (recepción y cambio), comprimidas, para
+     *  auditar un monedero sin esperar a gastos. Líneas "c/i=pubhex", o "". */
+    external fun xpubPubkeys(xpub: String, n: Int): String
     /** Privada (64 hex) de una ruta BIP32 concreta desde una frase semilla, o "". */
     external fun deriveRuta(mnemonic: String, path: String): String
     /** Pública comprimida (66 hex) de una privada hex, o "". */

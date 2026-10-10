@@ -208,6 +208,10 @@ object WeakController {
             setOnClickListener { elegirCsv() }
             btnCsv = this
         })
+        root.addView(Ui.ghost(a, "From xpub / ypub / zpub…", AppTheme.TXT_PRI).apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+            setOnClickListener { dialogoXpub() }
+        })
         val vCargadas = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
             typeface = AppTheme.medium(context); visibility = android.view.View.GONE
@@ -679,6 +683,56 @@ object WeakController {
             if (it.moveToFirst() && idx >= 0 && !it.isNull(idx)) it.getLong(idx) else -1L
         } ?: -1L
     } catch (e: Throwable) { -1L }
+
+    /** Deriva las claves públicas de un xpub y las añade a la lista a auditar. */
+    private fun dialogoXpub() {
+        val a = act ?: return
+        fun campo(hint: String, numero: Boolean, ini: String) = EditText(a).apply {
+            this.hint = hint; setText(ini)
+            if (numero) inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            else { setHorizontallyScrolling(false); maxLines = 4 }
+            textSize = AppTheme.SP_CAPTION; typeface = android.graphics.Typeface.MONOSPACE
+            setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+        }
+        val etX = campo("xpub… / ypub… / zpub…", false, "")
+        val etN = campo("50", true, "50")
+        val cont = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(10), dp(20), dp(4))
+            addView(TextView(a).apply { text = "Extended public key"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(4), 0, dp(4)) })
+            addView(etX)
+            addView(TextView(a).apply { text = "Keys per chain (receive + change)"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(12), 0, dp(4)) })
+            addView(etN)
+        }
+        androidx.appcompat.app.AlertDialog.Builder(a)
+            .setTitle("Audit an xpub")
+            .setView(cont)
+            .setPositiveButton("Add") { _, _ ->
+                val n = etN.text.toString().toIntOrNull()?.coerceIn(1, 500) ?: 50
+                val xp = etX.text.toString().trim()
+                aviso("Deriving keys from the xpub…")
+                Thread {
+                    val txt = try { HunterEngine.xpubPubkeys(xp, n) } catch (e: Throwable) { "" }
+                    val pubs = txt.split('\n').mapNotNull { val i = it.indexOf('='); if (i > 0) it.substring(i + 1).trim() else null }
+                        .filter { it.isNotEmpty() }
+                    h.post {
+                        if (pubs.isEmpty()) { aviso("Not a valid xpub/ypub/zpub."); return@post }
+                        val previas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+                        val todas = LinkedHashSet<String>(previas).apply { addAll(cargadas); addAll(pubs) }
+                        if (todas.size <= UMBRAL_LISTA) {
+                            etClaves?.setText(todas.joinToString("\n"))
+                            aviso("Added ${pubs.size} keys from the xpub (receive + change).")
+                        } else {
+                            cargadas = LinkedHashSet<String>(cargadas).apply { addAll(pubs) }.toList()
+                            mostrarResumenCargadas()
+                            aviso("Added ${pubs.size} keys from the xpub · large list.")
+                        }
+                    }
+                }.apply { isDaemon = true; start() }
+            }
+            .setNegativeButton("Cancel", null).show()
+    }
 
     /** Lo llama MainActivity.onActivityResult cuando vuelve el selector. */
     fun onCsvResult(uri: Uri) {

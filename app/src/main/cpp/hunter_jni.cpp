@@ -2018,6 +2018,44 @@ Java_com_hunter_btc_HunterEngine_xpubDirecciones(JNIEnv *env,jobject,jstring jx,
     return env->NewStringUTF(res.c_str());
 }
 
+/* Claves PÚBLICAS hijas de un xpub (cadenas /0/i y /1/i), comprimidas. Para
+ * auditar un monedero sin esperar a que las direcciones gasten. Líneas
+ * "c/i=pubhex". */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_xpubPubkeys(JNIEnv *env,jobject,jstring jx,jint jn){
+    const char *xp=env->GetStringUTFChars(jx,nullptr); std::string x=xp?xp:""; if(xp) env->ReleaseStringUTFChars(jx,xp);
+    int n=jn; if(n<1)n=1; if(n>500)n=500;
+    BIGNUM *bn=BN_new(),*t=BN_new(),*b=BN_new(); BN_CTX *bc=BN_CTX_new(); BN_zero(bn); BN_set_word(b,58);
+    bool okb=true; for(char ch: x){ const char *p=strchr(B58A,ch); if(!p){okb=false;break;} BN_mul(bn,bn,b,bc); BN_set_word(t,(unsigned long)(p-B58A)); BN_add(bn,bn,t); }
+    std::string res="";
+    if(okb && BN_num_bytes(bn)==82){
+        uint8_t raw[82]; BN_bn2binpad(bn,raw,82);
+        uint8_t h1[32],h2[32]; SHA256(raw,78,h1); SHA256(h1,32,h2);
+        if(memcmp(h2,raw+78,4)==0){
+            const uint8_t *chain=raw+13; const uint8_t *key=raw+45;
+            secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
+            secp256k1_pubkey acct;
+            if(secp256k1_ec_pubkey_parse(ctx,&acct,key,33)){
+                for(int c=0;c<2;c++){   // 0 = recepción, 1 = cambio
+                    secp256k1_pubkey node; uint8_t nch[32];
+                    if(!ckd_pub(ctx,&acct,chain,(uint32_t)c,&node,nch)) continue;
+                    for(int i=0;i<n;i++){
+                        secp256k1_pubkey child; uint8_t cch[32];
+                        if(!ckd_pub(ctx,&node,nch,(uint32_t)i,&child,cch)) break;
+                        uint8_t c33[33]; size_t cl=33; secp256k1_ec_pubkey_serialize(ctx,c33,&cl,&child,SECP256K1_EC_COMPRESSED);
+                        char pre[12]; snprintf(pre,12,"%d/%d=",c,i); res+=pre;
+                        for(int k=0;k<33;k++){ char hh[3]; snprintf(hh,3,"%02x",c33[k]); res+=hh; }
+                        res+="\n";
+                    }
+                }
+            }
+            secp256k1_context_destroy(ctx);
+        }
+    }
+    BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
+    return env->NewStringUTF(res.c_str());
+}
+
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     const char *a=env->GetStringUTFChars(addr,nullptr);
