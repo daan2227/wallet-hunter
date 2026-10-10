@@ -1561,6 +1561,25 @@ Java_com_hunter_btc_HunterEngine_direccionesDe(JNIEnv *env,jobject,jstring jin){
     return env->NewStringUTF(r.c_str());
 }
 
+/* Deriva la privada de una ruta BIP32 concreta desde una frase semilla.
+ * Devuelve la privada en 64 hex, o "" si la ruta no da una clave válida. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstring jp){
+    const char *mn=env->GetStringUTFChars(jm,nullptr); std::string m=mn?mn:""; if(mn) env->ReleaseStringUTFChars(jm,mn);
+    const char *pp=env->GetStringUTFChars(jp,nullptr); std::string path=pp?pp:""; if(pp) env->ReleaseStringUTFChars(jp,pp);
+    if(m.empty()||path.empty()) return env->NewStringUTF("");
+    uint8_t seed[64]; bip39_semilla(m.c_str(),m.size(),"",0,seed);
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    HDKey hd; memset(&hd,0,sizeof(hd));
+    derive_path(ctx,seed,path.c_str(),&hd);
+    std::string out="";
+    if(secp256k1_ec_seckey_verify(ctx,hd.key)){
+        char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",hd.key[i]); out=hx;
+    }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out.c_str());
+}
+
 /* De una privada hex (64) a sus dos WIF: comprimida | sin comprimir. */
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_wifDeHex(JNIEnv *env,jobject,jstring jhex){

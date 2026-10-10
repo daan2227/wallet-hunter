@@ -53,6 +53,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
         seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
         seccion(page, R.drawable.ic_import, "Mnemonic tools (BIP39)") { construirMnemonic() }
+        seccion(page, R.drawable.ic_recovery, "Custom derivation path") { construirDerivacion() }
         seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
         seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
         seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
@@ -664,6 +665,40 @@ class PubkeyToolsActivity : Activity() {
         }
         nota(AppTheme.WARN, "A generated phrase controls real funds if you send to it. " +
              "Write it down offline; anyone with the phrase has the money.")
+    }
+
+    // ── Custom derivation path ─────────────────────────────────────────────
+    private fun construirDerivacion() {
+        desc("Derive the key at an exact BIP32 path from a seed phrase — e.g. the 6th " +
+             "receiving address of your native-segwit account.")
+        root.addView(rotulo("Seed phrase"))
+        val etM = entrada("12 or 24 words", varias = true)
+        root.addView(rotulo("Path"))
+        val etP = entrada("m/84'/0'/0'/0/0")
+        val salida = salidaBox()
+        boton("Derive") {
+            salida.removeAllViews()
+            val m = etM.text.toString().trim().lowercase().replace(Regex("\\s+"), " ")
+            val p = etP.text.toString().trim()
+            if (m.isEmpty() || p.isEmpty()) { Toast.makeText(this, "Enter a phrase and a path", Toast.LENGTH_SHORT).show(); return@boton }
+            val priv = try { HunterEngine.deriveRuta(m, p) } catch (e: Throwable) { "" }
+            if (priv.isBlank()) { Toast.makeText(this, "That path gives no valid key", Toast.LENGTH_SHORT).show(); return@boton }
+            val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+            salida.addView(filaResultado("Private key", priv, true))
+            if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+            val txt = try { HunterEngine.direccionesDe(priv) } catch (e: Throwable) { "" }
+            // La dirección que corresponde a la ruta: por el propósito del path.
+            val lbl = when {
+                p.contains("/86'") -> "P2TR (taproot)"
+                p.contains("/84'") -> "P2WPKH (bech32)"
+                p.contains("/49'") -> "P2SH-P2WPKH"
+                else -> "P2PKH (compressed)"
+            }
+            val addr = txt.split('\n').firstOrNull { it.startsWith("$lbl=") }?.substringAfter('=')
+            if (addr != null) salida.addView(filaResultado("Address · ${lbl.substringBefore(' ')}", addr))
+        }
+        nota(AppTheme.BLUE, "Hardened levels use ' (or h). Common accounts: BIP44 m/44'/0'/0'/0/i, " +
+             "BIP49 m/49'/0'/0'/0/i, BIP84 m/84'/0'/0'/0/i, BIP86 m/86'/0'/0'/0/i.")
     }
 
     // ── Fee estimator ──────────────────────────────────────────────────────
