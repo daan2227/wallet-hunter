@@ -1286,6 +1286,20 @@ class PubkeyToolsActivity : Activity() {
         val d = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
         val sb = StringBuilder(64); for (b in d) sb.append("%02x".format(b.toInt() and 0xFF)); return sb.toString()
     }
+    // Expansión de variaciones (estilo BTCRecover/brainflayer): a partir de una
+    // frase base genera un conjunto ACOTADO de candidatos comunes.
+    private fun variaciones(f: String): List<String> {
+        val out = LinkedHashSet<String>()
+        out.add(f); out.add(f.lowercase()); out.add(f.uppercase())
+        val cap = f.replaceFirstChar { if (it.isLowerCase()) it.titlecase() else it.toString() }
+        out.add(cap)
+        out.add(f.map { when (it.lowercaseChar()) { 'a'->'4';'e'->'3';'i'->'1';'o'->'0';'s'->'5';'t'->'7'; else->it } }.joinToString(""))
+        val sufijos = listOf("0","1","2","3","4","5","6","7","8","9",
+            "12","123","1234","2020","2021","2022","2023","2024","2025","69","666","777","111","!","!!","?",".","#","$")
+        for (s in sufijos) { out.add(f + s); out.add(cap + s) }
+        return out.toList()
+    }
+    @Volatile private var bwVar = false
     private fun construirBrainwallet() {
         desc("Tests phrases (private key = SHA-256 of the phrase) against target " +
              "address(es)/public key(s). Leave the targets empty to just LIST the address " +
@@ -1294,6 +1308,11 @@ class PubkeyToolsActivity : Activity() {
         val etTarget = entrada("1…/3…/bc1… or 02…/03…/04…, one per line", varias = true)
         root.addView(rotulo("Phrases to try (one per line)"))
         val etFrases = entrada("correct horse battery staple\npassword\n…", varias = true)
+        lateinit var btnVar: Button
+        btnVar = boton("Variations: off") {
+            if (bwCorriendo) return@boton
+            bwVar = !bwVar; btnVar.text = "Variations: ${if (bwVar) "on (~60×)" else "off"}"
+        }
         val tvEstado = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
         val salida = salidaBox()
@@ -1305,8 +1324,9 @@ class PubkeyToolsActivity : Activity() {
             // Conjunto de direcciones objetivo: lo derivado de cada diana + la propia línea.
             val objetivo = HashSet<String>()
             for (d in dianas) { objetivo.addAll(dirsDe(d)); objetivo.add(d) }
-            val frases = etFrases.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
-            if (frases.isEmpty()) { Toast.makeText(this, "Paste some phrases", Toast.LENGTH_SHORT).show(); return@boton }
+            val base = etFrases.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            if (base.isEmpty()) { Toast.makeText(this, "Paste some phrases", Toast.LENGTH_SHORT).show(); return@boton }
+            val frases = if (bwVar) base.flatMap { variaciones(it) }.distinct() else base
             salida.removeAllViews(); bwCorriendo = true; btn.text = "Stop"
             Thread {
                 var n = 0; var hits = 0; var mostrados = 0
