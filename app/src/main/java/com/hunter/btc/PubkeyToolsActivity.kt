@@ -2,6 +2,8 @@ package com.hunter.btc
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.ViewGroup
 import android.widget.*
@@ -557,6 +559,8 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── Vanity address ─────────────────────────────────────────────────────
+    // Corre en el motor nativo del escáner (curva por lotes + endomorfismo +
+    // hash160 ×4), unas 100× más rápido que probar clave a clave por JNI.
     @Volatile private var vanCorriendo = false
     private fun construirVanity() {
         desc("Grind a P2PKH address (starts with 1) that contains your text right after " +
@@ -566,38 +570,43 @@ class PubkeyToolsActivity : Activity() {
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
         val salida = salidaBox()
         lateinit var btn: Button
+        val poll = Handler(Looper.getMainLooper())
+        val t0 = longArrayOf(0L)
+        lateinit var tick: Runnable
+        tick = Runnable {
+            if (!vanCorriendo) return@Runnable
+            val res = try { HunterEngine.vanityResult() } catch (e: Throwable) { "" }
+            if (res.contains("|")) {
+                vanCorriendo = false; btn.text = "Generate"
+                val priv = res.substringBefore("|"); val addr = res.substringAfter("|")
+                val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                salida.removeAllViews()
+                salida.addView(filaResultado("Address", addr, true))
+                salida.addView(filaResultado("Private key", priv))
+                if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                val n = try { HunterEngine.vanityCount() } catch (e: Throwable) { 0L }
+                tv.text = "Found after ${"%,d".format(n)} tries."
+                return@Runnable
+            }
+            val n = try { HunterEngine.vanityCount() } catch (e: Throwable) { 0L }
+            val secs = ((System.currentTimeMillis() - t0[0]) / 1000.0).coerceAtLeast(0.001)
+            val rate = (n / secs).toLong()
+            tv.text = "Tried ${"%,d".format(n)} · ~${"%,d".format(rate)}/s"
+            poll.postDelayed(tick, 300)
+        }
         btn = boton("Generate") {
-            if (vanCorriendo) { vanCorriendo = false; return@boton }
+            if (vanCorriendo) { vanCorriendo = false; try { HunterEngine.vanityStop() } catch (e: Throwable) {}; btn.text = "Generate"; return@boton }
             val pref = et.text.toString().trim()
             if (pref.isEmpty()) { Toast.makeText(this, "Enter a prefix", Toast.LENGTH_SHORT).show(); return@boton }
             if (pref.any { it in "0OIl" }) { Toast.makeText(this, "Base58 excludes 0 O I l", Toast.LENGTH_LONG).show(); return@boton }
             salida.removeAllViews(); vanCorriendo = true; btn.text = "Stop"
-            Thread {
-                val rnd = java.security.SecureRandom()
-                val buscado = "1$pref"
-                var intentos = 0L
-                while (vanCorriendo) {
-                    val b = ByteArray(32); rnd.nextBytes(b)
-                    val priv = b.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-                    intentos++
-                    val dirs = try { HunterEngine.direccionesDe(priv) } catch (e: Throwable) { "" }
-                    val p2pkh = dirs.trim().split('\n').firstOrNull { it.startsWith("P2PKH (compressed)=") }
-                        ?.substringAfter('=')
-                    if (p2pkh != null && p2pkh.startsWith(buscado)) {
-                        val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
-                        runOnUiThread {
-                            vanCorriendo = false; btn.text = "Generate"
-                            salida.addView(filaResultado("Address", p2pkh, true))
-                            salida.addView(filaResultado("Private key", priv))
-                            if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
-                            tv.text = "Found after $intentos tries."
-                        }
-                        break
-                    }
-                    if (intentos % 500 == 0L) { val n = intentos; runOnUiThread { tv.text = "Tried $n…" } }
-                }
-                if (!vanCorriendo) runOnUiThread { btn.text = "Generate" }
-            }.apply { isDaemon = true; start() }
+            t0[0] = System.currentTimeMillis()
+            val hilos = Runtime.getRuntime().availableProcessors().coerceIn(1, 8)
+            try { HunterEngine.vanityStart(pref, hilos) } catch (e: Throwable) {
+                vanCorriendo = false; btn.text = "Generate"
+                Toast.makeText(this, "Engine error", Toast.LENGTH_SHORT).show(); return@boton
+            }
+            poll.postDelayed(tick, 300)
         }
         root.addView(tv)
     }
@@ -1370,6 +1379,7 @@ class PubkeyToolsActivity : Activity() {
     }
 
     override fun onDestroy() {
+        try { HunterEngine.vanityStop() } catch (e: Throwable) {}
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
         balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
         super.onDestroy()

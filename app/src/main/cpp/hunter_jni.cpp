@@ -79,6 +79,7 @@ static void install_crash_handlers() {
 #define MAX_LINE      256
 #define MAX_ADDR      64
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "vanity.h"        /* generador de direcciones vanity (motor del escaner) */
 #define N_PATHS       9
 
 /* Paths BIP44 para modo BIP39 */
@@ -3123,6 +3124,34 @@ Java_com_hunter_btc_HunterEngine_kangarooOps(JNIEnv *, jobject){
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooRunning(JNIEnv *, jobject){
     return (g_kg_vivo && !g_kg.encontrado.load()) ? JNI_TRUE : JNI_FALSE;
+}
+
+/* ---------- Generador vanity ---------- */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_vanityStart(JNIEnv *env, jobject, jstring pref, jint hilos){
+    const char *p=env->GetStringUTFChars(pref,nullptr);
+    vanity_arrancar(p?p:"", (int)hilos);
+    if(p) env->ReleaseStringUTFChars(pref,p);
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_vanityStop(JNIEnv *, jobject){ vanity_parar(); }
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_vanityRunning(JNIEnv *, jobject){
+    return (g_van_run.load() || g_van_vivos.load()>0) ? JNI_TRUE : JNI_FALSE;
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_vanityCount(JNIEnv *, jobject){
+    return (jlong)g_van_count.load();
+}
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_vanityResult(JNIEnv *env, jobject){
+    std::string r;
+    if(g_van_found.load()){
+        std::lock_guard<std::mutex> lk(g_van_mx);
+        if(!g_van_priv.empty()) r=g_van_priv+"|"+g_van_addr;
+    }
+    return env->NewStringUTF(r.c_str());
 }
 
 
