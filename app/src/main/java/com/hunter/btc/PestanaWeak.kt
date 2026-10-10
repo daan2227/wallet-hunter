@@ -454,11 +454,12 @@ object WeakController {
         // editor está vacío, la recarga y avisa de que puede continuar.
         if (!corriendo && cargadas.isEmpty() && !streamMode && (etClaves?.text?.isEmpty() != false)) {
             val p = prefsWeak()
-            val firma = p?.getString("ck_firma", "") ?: ""
-            val ckIdx = p?.getInt("ck_indice", 0) ?: 0
-            val ckTot = p?.getInt("ck_total", 0) ?: 0
-            val f = archivoCk()
-            if (firma.isNotBlank() && ckIdx > 0 && f != null && f.exists()) {
+            val last = p?.getString("ck_last", "") ?: ""
+            val firma = p?.getString("ck_${last}_firma", "") ?: ""
+            val ckIdx = p?.getInt("ck_${last}_indice", 0) ?: 0
+            val ckTot = p?.getInt("ck_${last}_total", 0) ?: 0
+            val f = if (last.isNotBlank()) archivoCk(last) else null
+            if (last.isNotBlank() && firma.isNotBlank() && ckIdx > 0 && f != null && f.exists()) {
                 val lista = try { f.readText() } catch (e: Throwable) { "" }
                 val items = lista.split('\n').map { it.trim() }.filter { it.isNotEmpty() }
                 if (items.isNotEmpty()) {
@@ -707,30 +708,55 @@ object WeakController {
         else "list:${claves.size}:${claves.joinToString("\n").hashCode()}"
 
     private fun prefsWeak() = appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)
-    private fun archivoCk() = appCtx?.let { java.io.File(it.filesDir, "weak_ck.txt") }
+    // Checkpoint POR LISTA: cada CSV guarda su propio progreso bajo un id que
+    // sale de su contenido, así al intercambiar listas cada una reanuda la suya.
+    private fun idDe(firma: String) = Integer.toHexString(firma.hashCode())
+    private fun archivoCk(id: String) = appCtx?.let { java.io.File(it.filesDir, "weak_ck_$id.txt") }
+    private fun idsCk(): MutableList<String> {
+        val s = prefsWeak()?.getString("ck_ids", "") ?: ""
+        return if (s.isBlank()) mutableListOf() else s.split(",").filter { it.isNotBlank() }.toMutableList()
+    }
+    private fun borrarId(id: String) {
+        try { archivoCk(id)?.delete() } catch (e: Throwable) {}
+        prefsWeak()?.edit()?.remove("ck_${id}_firma")?.remove("ck_${id}_indice")
+            ?.remove("ck_${id}_hallados")?.remove("ck_${id}_total")?.apply()
+    }
 
-    /** La LISTA se escribe una sola vez (no cambia durante la auditoría) en un
-     *  fichero interno, así reanuda tras cerrar la app aunque tenga 20k claves. */
+    /** La LISTA se escribe una vez (no cambia) en su fichero, y se registra el
+     *  id. Se recuerdan hasta 10 listas; la más antigua se poda. */
     private fun guardarLista() {
         if (streamMode) return
-        try { archivoCk()?.writeText(claves.joinToString("\n")) } catch (e: Throwable) {}
-        prefsWeak()?.edit()?.putString("ck_firma", firmaLista())?.putInt("ck_total", claves.size)?.apply()
+        val firma = firmaLista(); val id = idDe(firma)
+        try { archivoCk(id)?.writeText(claves.joinToString("\n")) } catch (e: Throwable) {}
+        prefsWeak()?.edit()
+            ?.putString("ck_${id}_firma", firma)?.putInt("ck_${id}_total", claves.size)
+            ?.putString("ck_last", id)?.apply()
+        val ids = idsCk().apply { remove(id); add(id) }
+        while (ids.size > 10) borrarId(ids.removeAt(0))
+        prefsWeak()?.edit()?.putString("ck_ids", ids.joinToString(","))?.apply()
     }
-    /** El AVANCE se guarda a menudo: sólo índice y hallazgos (barato). */
+    /** El AVANCE (índice/hallados) de la lista actual, barato y frecuente. */
     private fun guardarProgreso() {
         if (streamMode) return
-        prefsWeak()?.edit()?.putInt("ck_indice", indice)?.putInt("ck_hallados", hallados)?.apply()
+        val id = idDe(firmaLista())
+        prefsWeak()?.edit()?.putInt("ck_${id}_indice", indice)?.putInt("ck_${id}_hallados", hallados)?.apply()
     }
+    /** Borra el checkpoint de la lista ACTUAL (al terminarla). */
     private fun limpiarCheckpoint() {
-        try { archivoCk()?.delete() } catch (e: Throwable) {}
-        prefsWeak()?.edit()?.remove("ck_firma")?.remove("ck_indice")
-            ?.remove("ck_hallados")?.remove("ck_total")?.apply()
+        val id = idDe(firmaLista()); borrarId(id)
+        val ids = idsCk().apply { remove(id) }
+        val e = prefsWeak()?.edit()?.putString("ck_ids", ids.joinToString(","))
+        if (prefsWeak()?.getString("ck_last", "") == id) e?.remove("ck_last")
+        e?.apply()
     }
-    /** Índice guardado si el checkpoint es de ESTA misma lista; 0 si no. */
+    /** Índice guardado para ESTA lista; 0 si no hay checkpoint suyo. */
     private fun checkpointDe(): Int {
-        val p = prefsWeak() ?: return 0
-        if (p.getString("ck_firma", "") != firmaLista()) return 0
-        return p.getInt("ck_indice", 0)
+        val id = idDe(firmaLista()); val p = prefsWeak() ?: return 0
+        if (p.getString("ck_${id}_firma", "") != firmaLista()) return 0
+        return p.getInt("ck_${id}_indice", 0)
+    }
+    private fun ckHallados(): Int {
+        val id = idDe(firmaLista()); return prefsWeak()?.getInt("ck_${id}_hallados", 0) ?: 0
     }
 
     private fun arrancar() {
@@ -756,7 +782,7 @@ object WeakController {
         // Reanudar: si hay un checkpoint de ESTA lista, seguir desde donde quedó.
         val ck = checkpointDe()
         val reanudar = ck in 1 until claves.size
-        val h0 = if (reanudar) (prefsWeak()?.getInt("ck_hallados", 0) ?: 0) else 0
+        val h0 = if (reanudar) ckHallados() else 0
         resetContadores(if (reanudar) ck else 0, h0)
         tvKeys?.text = cuentaTexto()
         guardarLista()             // la lista a disco (una vez)
