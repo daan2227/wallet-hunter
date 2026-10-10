@@ -960,12 +960,18 @@ class PubkeyToolsActivity : Activity() {
             if (sec == null || sec.size != 32) { Toast.makeText(this, "Secret must be 64 hex", Toast.LENGTH_SHORT).show(); return@boton }
             if (k < 2 || n < k || n > 255) { Toast.makeText(this, "Need 2 ≤ k ≤ n ≤ 255", Toast.LENGTH_SHORT).show(); return@boton }
             val rnd = java.security.SecureRandom()
+            // Un ÚNICO polinomio de grado k-1 por byte: el término independiente
+            // es el byte del secreto y los coeficientes c1..c_{k-1} son fijos, y
+            // se evalúan luego en cada x. Antes se regeneraban dentro del bucle de
+            // shares, así que cada share caía en un polinomio distinto y no había
+            // forma de recombinarlas: el combine devolvía una clave equivocada.
+            val coef = Array(32) { bi -> IntArray(k) { c -> if (c == 0) sec[bi].toInt() and 0xFF else rnd.nextInt(256) } }
             for (x in 1..n) {
                 val y = ByteArray(32)
                 for (bi in 0 until 32) {
-                    var acc = sec[bi].toInt() and 0xFF           // c0 = byte del secreto
+                    var acc = coef[bi][0]                        // c0 = byte del secreto
                     var xp = 1
-                    for (c in 1 until k) { xp = gmul(xp, x); val coef = rnd.nextInt(256); acc = acc xor gmul(coef, xp) }
+                    for (c in 1 until k) { xp = gmul(xp, x); acc = acc xor gmul(coef[bi][c], xp) }
                     y[bi] = acc.toByte()
                 }
                 val hex = "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
