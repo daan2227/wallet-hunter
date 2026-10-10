@@ -128,6 +128,8 @@ object WeakController {
     private var barraProg: BarraProgreso? = null
     private var vacioWeak: android.view.View? = null
     private var resultadosBox: LinearLayout? = null
+    private var logBox: LinearLayout? = null
+    private var fuenteNombre = "pasted keys"   // de dónde salió la lista actual
     private var btn: Button? = null
     private var statsCard: LinearLayout? = null
     private var tvSpeed: TextView? = null
@@ -218,6 +220,7 @@ object WeakController {
             setPadding(dp(2), dp(10), dp(2), 0)
             setOnClickListener {
                 cargadas = emptyList(); streamMode = false; streamUri = null
+                fuenteNombre = "pasted keys"
                 mostrarResumenCargadas()
                 aviso("List cleared.")
             }
@@ -470,7 +473,19 @@ object WeakController {
         resultadosBox = vRes
         root.addView(vRes)
 
+        // Historial de auditorías: de qué lista salió, cuántas revisó / faltan y
+        // si hubo hallazgo. Se rellena en pintarLog (oculto si no hay nada).
+        val vLog = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        }
+        logBox = vLog
+        root.addView(vLog)
+
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
+        pintarLog()                // historial de auditorías anteriores
         bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
         // Reanudar tras cerrar la app: si hay un checkpoint con su lista y el
         // editor está vacío, la recarga y avisa de que puede continuar.
@@ -506,7 +521,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
-        btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null
+        btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null; logBox = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -619,6 +634,7 @@ object WeakController {
         val reintentar = noResueltas.toList()
         if (reintentar.isEmpty() || corriendo) return
         cargadas = emptyList(); streamMode = false; streamUri = null
+        fuenteNombre = "retry unreachable"
         if (reintentar.size <= UMBRAL_LISTA) { etClaves?.setText(reintentar.joinToString("\n")) }
         else { etClaves?.setText(""); cargadas = reintentar; mostrarResumenCargadas() }
         resultadosBox?.visibility = android.view.View.GONE
@@ -663,6 +679,97 @@ object WeakController {
         return (if (cp > 0) " · ${"%,d".format(cp)} with pubkey" else "") +
                (if (sp > 0) " · ${"%,d".format(sp)} no pubkey" else "") +
                (if (fr > 0) " · ${"%,d".format(fr)} unreachable" else "")
+    }
+
+    // ───────── Historial de auditorías ─────────
+    // Una fila por lista: de qué CSV/xpub salió, cuántas direcciones se revisaron,
+    // cuántas faltan y si hubo hallazgo. Se persiste en prefs ("ck_log") como JSON
+    // para que sobreviva a cerrar la app. Clave por id de lista (upsert): reauditar
+    // la misma lista actualiza su fila en vez de duplicarla. Se guardan 30.
+
+    /** Total de la lista actual (aprox. en streaming, donde no hay lista en RAM). */
+    private fun totalActual(): Int = if (streamMode) streamTotal else claves.size
+
+    /** Nombre visible de un fichero elegido (para mostrar de dónde salió la lista). */
+    private fun nombreDe(uri: Uri): String = try {
+        appCtx?.contentResolver?.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+            null, null, null)?.use {
+            val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (it.moveToFirst() && idx >= 0 && !it.isNull(idx)) it.getString(idx) else null
+        } ?: uri.lastPathSegment ?: "file"
+    } catch (e: Throwable) { uri.lastPathSegment ?: "file" }
+
+    /** Anota en el historial el resultado de la auditoría actual. */
+    private fun registrarLog(estado: String) {
+        val p = prefsWeak() ?: return
+        val id = try { idDe(firmaLista()) } catch (e: Throwable) { "" }
+        val entrada = org.json.JSONObject().apply {
+            put("id", id); put("fuente", fuenteNombre)
+            put("total", totalActual()); put("rev", indice)
+            put("found", hallados); put("estado", estado)
+            put("t", System.currentTimeMillis())
+        }
+        val arr = try { org.json.JSONArray(p.getString("ck_log", "[]")) } catch (e: Throwable) { org.json.JSONArray() }
+        val nueva = org.json.JSONArray().put(entrada)
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            if (id.isNotBlank() && o.optString("id") == id) continue   // reemplazada por la nueva
+            if (nueva.length() >= 30) break
+            nueva.put(o)
+        }
+        p.edit().putString("ck_log", nueva.toString()).apply()
+        pintarLog()
+    }
+
+    private fun borrarLog() {
+        prefsWeak()?.edit()?.remove("ck_log")?.apply()
+        pintarLog(); aviso("Audit log cleared.")
+    }
+
+    /** Pinta el historial (de qué lista, revisadas/faltan, hallazgo, estado, fecha). */
+    private fun pintarLog() {
+        val box = logBox ?: return
+        box.removeAllViews()
+        val ctx = act ?: return
+        val arr = try { org.json.JSONArray(prefsWeak()?.getString("ck_log", "[]") ?: "[]") }
+                  catch (e: Throwable) { org.json.JSONArray() }
+        if (arr.length() == 0) { box.visibility = android.view.View.GONE; return }
+        box.visibility = android.view.View.VISIBLE
+        box.addView(TextView(ctx).apply {
+            text = "Audit log"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context); setPadding(dp(2), dp(8), 0, dp(6))
+        })
+        val fmtFecha = java.text.SimpleDateFormat("dd/MM HH:mm", java.util.Locale.US)
+        for (i in 0 until arr.length()) {
+            val o = arr.optJSONObject(i) ?: continue
+            val fuente = o.optString("fuente", "list")
+            val total = o.optInt("total", 0); val rev = o.optInt("rev", 0)
+            val found = o.optInt("found", 0); val estado = o.optString("estado", "")
+            val t = o.optLong("t", 0L)
+            val faltan = (total - rev).coerceAtLeast(0)
+            val linea = buildString {
+                append(fuente); append(" · "); append("%,d".format(rev))
+                if (total > 0) append("/${"%,d".format(total)}")
+                append(" checked")
+                if (total > 0) append(" · ${"%,d".format(faltan)} left")
+                append(" · "); append(if (found > 0) "$found found" else "no finds")
+                if (estado.isNotBlank()) append(" · $estado")
+                if (t > 0) append(" · ${fmtFecha.format(java.util.Date(t))}")
+            }
+            box.addView(TextView(ctx).apply {
+                text = linea; textSize = AppTheme.SP_CAPTION
+                setTextColor(if (found > 0) AppTheme.ACCENT else AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
+                background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+                setPadding(dp(14), dp(12), dp(14), dp(12))
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+            })
+        }
+        box.addView(Ui.ghost(ctx, "Clear log", AppTheme.TXT_SEC).apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+            setOnClickListener { Ui.pulso(this); borrarLog() }
+        })
     }
 
     private fun elegirCsv() {
@@ -718,6 +825,7 @@ object WeakController {
                         .filter { it.isNotEmpty() }
                     h.post {
                         if (pubs.isEmpty()) { aviso("Not a valid xpub/ypub/zpub."); return@post }
+                        fuenteNombre = "xpub"
                         val previas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
                         val todas = LinkedHashSet<String>(previas).apply { addAll(cargadas); addAll(pubs) }
                         if (todas.size <= UMBRAL_LISTA) {
@@ -745,7 +853,7 @@ object WeakController {
                 ctx.contentResolver.takePersistableUriPermission(uri,
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             } catch (e: Throwable) {}
-            streamMode = true; streamUri = uri
+            streamMode = true; streamUri = uri; fuenteNombre = nombreDe(uri)
             // Total APROXIMADO por tamaño ÷ longitud media de línea (muestra de 50
             // líneas). Solo para el progreso/%, no hace falta que sea exacto.
             streamTotal = try {
@@ -789,6 +897,7 @@ object WeakController {
                 if (encontrados.isEmpty()) {
                     aviso("No public keys or addresses found in the file."); return@post
                 }
+                fuenteNombre = nombreDe(uri)
                 val previas = (etClaves?.text?.toString() ?: "").split('\n')
                     .map { it.trim() }.filter { it.isNotEmpty() }
                 val visibles = LinkedHashSet<String>(previas).apply { addAll(encontrados) }
@@ -1035,6 +1144,7 @@ object WeakController {
         // Al terminar la lista, borra el checkpoint; al parar a mano, guarda el
         // avance para poder continuar desde la misma clave.
         if (terminado) limpiarCheckpoint() else guardarProgreso()
+        registrarLog(if (terminado) "done" else "paused")   // anota en el historial
         estimar()
         btn?.text = "Start audit"
         bloquear(false)
@@ -1083,7 +1193,7 @@ object WeakController {
                 h.postDelayed({ recoger() }, if (streamMode) 40 else 80)
                 return
             }
-            if (streamMode && pub == FIN) { parar("Done: ${"%,d".format(indice)} key(s) checked."); return }
+            if (streamMode && pub == FIN) { parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return }
             if (pub.isEmpty()) {   // esta línea no da clave: saltar
                 indice++
                 if (++procesados >= 512) {   // ceder el hilo y continuar
