@@ -450,6 +450,19 @@ object WeakController {
 
         mostrarResumenCargadas()   // restaura el chip de lista grande si la hay
         bloquear(corriendo)        // si vuelve corriendo, deja los parámetros bloqueados
+        // Reanudar tras cerrar la app: si hay un checkpoint con su lista y el
+        // editor está vacío, la recarga y avisa de que puede continuar.
+        if (!corriendo && cargadas.isEmpty() && !streamMode) {
+            val p = prefsWeak()
+            val ckClaves = p?.getString("ck_claves", "") ?: ""
+            val ckIdx = p?.getInt("ck_indice", 0) ?: 0
+            val ckTot = p?.getInt("ck_total", 0) ?: 0
+            if (ckClaves.isNotBlank() && ckIdx > 0 && (etClaves?.text?.isEmpty() != false)) {
+                etClaves?.setText(ckClaves)
+                tvEstado?.text = "Paused audit: $ckIdx/$ckTot checked. Press Start audit to resume " +
+                                 "from key ${ckIdx + 1}, or clear the list to start over."
+            }
+        }
         estimar()
         return scroll
     }
@@ -680,6 +693,36 @@ object WeakController {
         tvCargadas?.isEnabled = activo   // el chip que limpia la lista
     }
 
+    /** Firma de la lista actual, para no reanudar un checkpoint de OTRA lista. */
+    private fun firmaLista(): String =
+        if (streamMode) "stream:${streamUri}"
+        else "list:${claves.size}:${claves.joinToString("\n").hashCode()}"
+
+    private fun prefsWeak() = appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)
+
+    /** Guarda dónde va la auditoría (sólo en modo lista; el streaming no reanuda). */
+    private fun guardarCheckpoint() {
+        if (streamMode) return
+        prefsWeak()?.edit()
+            ?.putString("ck_firma", firmaLista())
+            ?.putInt("ck_indice", indice)
+            ?.putInt("ck_hallados", hallados)
+            ?.putInt("ck_total", claves.size)
+            // La lista entera sólo si es manejable, para reanudar tras cerrar la app.
+            ?.putString("ck_claves", if (claves.size in 1..3000) claves.joinToString("\n") else "")
+            ?.apply()
+    }
+    private fun limpiarCheckpoint() {
+        prefsWeak()?.edit()?.remove("ck_firma")?.remove("ck_indice")
+            ?.remove("ck_hallados")?.remove("ck_total")?.remove("ck_claves")?.apply()
+    }
+    /** Índice guardado si el checkpoint es de ESTA misma lista; 0 si no. */
+    private fun checkpointDe(): Int {
+        val p = prefsWeak() ?: return 0
+        if (p.getString("ck_firma", "") != firmaLista()) return 0
+        return p.getInt("ck_indice", 0)
+    }
+
     private fun arrancar() {
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
@@ -700,10 +743,15 @@ object WeakController {
         val cola = LinkedHashSet<String>(lineas).apply { addAll(cargadas) }
         if (cola.isEmpty()) { aviso("Paste a key/address, or load a file."); return }
         claves = cola.toList()
-        resetContadores()
-        tvKeys?.text = "0/${claves.size} · 0"
+        // Reanudar: si hay un checkpoint de ESTA lista, seguir desde donde quedó.
+        val ck = checkpointDe()
+        val reanudar = ck in 1 until claves.size
+        val h0 = if (reanudar) (prefsWeak()?.getInt("ck_hallados", 0) ?: 0) else 0
+        resetContadores(if (reanudar) ck else 0, h0)
+        tvKeys?.text = cuentaTexto()
         programarServicio()
         arrancarPrefetch()
+        if (reanudar) aviso("Resuming from key ${ck + 1}/${claves.size} · $h0 found so far.")
         siguiente()
     }
 
@@ -716,8 +764,8 @@ object WeakController {
         h.postDelayed({ if (corriendo) appCtx?.let { WeakService.iniciar(it) } }, 1500)
     }
 
-    private fun resetContadores() {
-        indice = 0; hallados = 0; corriendo = true
+    private fun resetContadores(desdeIndice: Int = 0, desdeHallados: Int = 0) {
+        indice = desdeIndice; hallados = desdeHallados; corriendo = true
         conPubkey.set(0); sinPubkey.set(0); fallosRed.set(0)
         inicioMs = System.currentTimeMillis()
         opsPrevias = 0.0; ultTotalOps = 0.0; ultMs = inicioMs; pico = 0.0; ultChartMs = 0L
@@ -790,7 +838,7 @@ object WeakController {
     /** Lanza [NUCLEOS_RED] hilos que resuelven la cola por adelantado. */
     private fun arrancarPrefetch() {
         resueltas.clear()
-        prefetchIdx.set(0)
+        prefetchIdx.set(indice)   // al reanudar, no re-resolver las ya hechas
         val gen = generacion.incrementAndGet()
         val total = claves.size
         val cola = claves
@@ -806,7 +854,7 @@ object WeakController {
         }
     }
 
-    private fun parar(motivo: String) {
+    private fun parar(motivo: String, terminado: Boolean = false) {
         corriendo = false
         h.removeCallbacksAndMessages(null)
         appCtx?.let { WeakService.parar(it) }   // suelta el primer plano y el WakeLock
@@ -815,6 +863,9 @@ object WeakController {
             appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)?.edit()
                 ?.putFloat("ritmo", ritmoDisp.toFloat())?.apply()
         } catch (e: Throwable) {}
+        // Al terminar la lista, borra el checkpoint; al parar a mano, lo guarda
+        // para poder continuar desde la misma clave.
+        if (terminado) limpiarCheckpoint() else guardarCheckpoint()
         estimar()
         btn?.text = "Start audit"
         bloquear(false)
@@ -825,9 +876,10 @@ object WeakController {
     private fun siguiente() {
         if (!corriendo) return
         if (!streamMode && indice >= claves.size) {
-            parar("Done: ${claves.size} key(s) checked.")
+            parar("Done: ${claves.size} key(s) checked.", terminado = true)
             return
         }
+        if (!streamMode && indice % 5 == 0) guardarCheckpoint()   // por si se corta
         tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
         recoger()
     }
@@ -844,14 +896,14 @@ object WeakController {
         var procesados = 0
         while (true) {
             if (!streamMode && indice >= claves.size) {   // fin de la lista
-                parar("Done: ${claves.size} key(s) checked."); return
+                parar("Done: ${claves.size} key(s) checked.", terminado = true); return
             }
             val pub: String? = if (streamMode) colaStream.poll() else resueltas[indice]
             if (pub == null) {
                 // En streaming, si el productor ya terminó y la cola está vacía,
                 // hemos acabado; si no, es que va por detrás: reintentar.
                 if (streamMode && !productorVivo.get() && colaStream.isEmpty()) {
-                    parar("Done: ${"%,d".format(indice)} key(s) checked."); return
+                    parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return
                 }
                 val msg = if (streamMode) "Streaming from disk… ${"%,d".format(indice)} checked"
                           else "Key ${indice + 1}/${claves.size}: looking up its public key…"
