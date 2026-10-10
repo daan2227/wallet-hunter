@@ -61,6 +61,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_gear,   "Tx size & fee calc")   { construirFeeCalc() }
         seccion(page, R.drawable.ic_play,   "Broadcast raw tx")     { construirBroadcast() }
         seccion(page, R.drawable.ic_export, "Transaction decoder")  { construirDecoder() }
+        seccion(page, R.drawable.ic_import, "PSBT (decode / sign)") { construirPsbt() }
         seccion(page, R.drawable.ic_search, "Script decoder")       { construirScript() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
         seccion(page, R.drawable.ic_dice,   "Dice / coin → key")    { construirDados() }
@@ -811,6 +812,45 @@ class PubkeyToolsActivity : Activity() {
         }
         nota(AppTheme.BLUE, "Rough estimate: ~148 vB per P2PKH input, ~68 P2WPKH, ~91 P2SH-P2WPKH, " +
              "~58 P2TR, ~31 per output, +10.5 overhead.")
+    }
+
+    // ── PSBT (decode / sign) ───────────────────────────────────────────────
+    private fun construirPsbt() {
+        desc("Read and sign a PSBT (BIP-174). Paste base64 or hex. Decode shows the " +
+             "transaction; Sign adds your partial signatures for the inputs you control.")
+        val et = entrada("cHNidP8… (base64) or hex", varias = true)
+        val salida = salidaBox()
+        fun leer(): Psbt.Doc? {
+            val t = et.text.toString().trim()
+            val data = try {
+                if (t.isNotEmpty() && t.length % 2 == 0 && t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) hexABytes(t)
+                else android.util.Base64.decode(t, android.util.Base64.DEFAULT)
+            } catch (e: Throwable) { null } ?: return null
+            return Psbt.parse(data)
+        }
+        boton("Decode") {
+            salida.removeAllViews()
+            val d = leer()
+            if (d == null) { Toast.makeText(this, "Not a valid PSBT", Toast.LENGTH_SHORT).show(); return@boton }
+            Psbt.resumen(d).forEach { (l, v) -> salida.addView(filaResultado(l, v)) }
+        }
+        root.addView(rotulo("Sign — private key (hex or WIF)"))
+        val etKey = entrada("64-hex or WIF")
+        boton("Sign") {
+            salida.removeAllViews()
+            val d = leer()
+            if (d == null) { Toast.makeText(this, "Not a valid PSBT", Toast.LENGTH_SHORT).show(); return@boton }
+            val hx = hexClave(etKey.text.toString())
+            if (hx.isBlank()) { Toast.makeText(this, "Invalid key", Toast.LENGTH_SHORT).show(); return@boton }
+            val n = Psbt.sign(d, hx)
+            if (n == 0) salida.addView(filaResultado("Nothing signed", "no inputs match this key, or unsupported type"))
+            else {
+                val out = android.util.Base64.encodeToString(Psbt.serialize(d), android.util.Base64.NO_WRAP)
+                salida.addView(filaResultado("Signed $n input(s) · updated PSBT", out, true))
+            }
+        }
+        nota(AppTheme.BLUE, "Signs P2WPKH and P2PKH inputs whose key you hold (from witness_utxo " +
+             "or non_witness_utxo). Adds partial signatures — it does not finalize or broadcast.")
     }
 
     // ── Script decoder ─────────────────────────────────────────────────────

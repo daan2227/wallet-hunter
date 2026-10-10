@@ -92,6 +92,11 @@ object HunterEngine {
     external fun xpubDirecciones(xpub: String, n: Int): String
     /** Privada (64 hex) de una ruta BIP32 concreta desde una frase semilla, o "". */
     external fun deriveRuta(mnemonic: String, path: String): String
+    /** Pública comprimida (66 hex) de una privada hex, o "". */
+    external fun pubDeHex(privHex: String): String
+    /** Firma un hash de 32 bytes (hex) con una privada hex → DER hex (sin byte
+     *  de sighash), para firmar PSBT. */
+    external fun firmarHash(privHex: String, hashHex: String): String
     /** BIP38: cifra una privada hex con contraseña → clave "6P…", o "". */
     external fun bip38Cifrar(privHex: String, pass: String, comprimida: Boolean): String
     /** BIP38: descifra una clave "6P…" → "privhex|1" (comp) o "privhex|0", o ""

@@ -1562,6 +1562,47 @@ Java_com_hunter_btc_HunterEngine_direccionesDe(JNIEnv *env,jobject,jstring jin){
     return env->NewStringUTF(r.c_str());
 }
 
+/* Pública comprimida (66 hex) de una privada hex, o "". */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_pubDeHex(JNIEnv *env,jobject,jstring jhex){
+    const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
+    if(h.size()!=64) return env->NewStringUTF("");
+    uint8_t k[32]; for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return env->NewStringUTF(""); k[i]=(uint8_t)((a<<4)|b); }
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    std::string out="";
+    if(secp256k1_ec_seckey_verify(ctx,k)){ uint8_t p33[33]; get_pub33(ctx,k,p33);
+        char hex[67]; for(int i=0;i<33;i++) snprintf(hex+i*2,3,"%02x",p33[i]); out=hex; }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out.c_str());
+}
+
+/* Firma un hash de 32 bytes (hex) con una privada hex → firma DER (hex, sin el
+ * byte de sighash). Para firmar PSBT. */
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_firmarHash(JNIEnv *env,jobject,jstring jpriv,jstring jhash){
+    const char *pv=env->GetStringUTFChars(jpriv,nullptr); std::string ps=pv?pv:""; if(pv) env->ReleaseStringUTFChars(jpriv,pv);
+    const char *hs=env->GetStringUTFChars(jhash,nullptr); std::string hh=hs?hs:""; if(hs) env->ReleaseStringUTFChars(jhash,hs);
+    if(ps.size()!=64||hh.size()!=64) return env->NewStringUTF("");
+    uint8_t k[32],z[32];
+    auto hx=[&](const std::string&s,uint8_t*o)->bool{ for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(s[i*2]),c2=tolower(s[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10; if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return false; o[i]=(uint8_t)((a<<4)|b);} return true; };
+    if(!hx(ps,k)||!hx(hh,z)) return env->NewStringUTF("");
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    std::string out="";
+    secp256k1_ecdsa_signature sig;
+    if(secp256k1_ec_seckey_verify(ctx,k) && secp256k1_ecdsa_sign(ctx,&sig,z,k,nullptr,nullptr)){
+        uint8_t der[72]; size_t dl=72;
+        if(secp256k1_ecdsa_signature_serialize_der(ctx,der,&dl,&sig)){
+            char hex[160]; for(size_t i=0;i<dl;i++) snprintf(hex+i*2,3,"%02x",der[i]); out=hex; }
+    }
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out.c_str());
+}
+
 /* Deriva la privada de una ruta BIP32 concreta desde una frase semilla.
  * Devuelve la privada en 64 hex, o "" si la ruta no da una clave válida. */
 JNIEXPORT jstring JNICALL
