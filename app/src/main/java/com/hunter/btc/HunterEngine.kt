@@ -92,6 +92,11 @@ object HunterEngine {
     external fun xpubDirecciones(xpub: String, n: Int): String
     /** Privada (64 hex) de una ruta BIP32 concreta desde una frase semilla, o "". */
     external fun deriveRuta(mnemonic: String, path: String): String
+    /** BIP38: cifra una privada hex con contraseña → clave "6P…", o "". */
+    external fun bip38Cifrar(privHex: String, pass: String, comprimida: Boolean): String
+    /** BIP38: descifra una clave "6P…" → "privhex|1" (comp) o "privhex|0", o ""
+     *  si la contraseña no es correcta. */
+    external fun bip38Descifrar(clave: String, pass: String): String
     /**
      * Las direcciones principales de la cartera.
      *

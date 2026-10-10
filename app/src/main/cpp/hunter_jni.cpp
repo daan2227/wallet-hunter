@@ -27,6 +27,7 @@
 #include <secp256k1_extrakeys.h>
 #include <secp256k1_schnorrsig.h>
 #include <secp256k1_recovery.h>
+#include <openssl/aes.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -1578,6 +1579,71 @@ Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstri
     }
     secp256k1_context_destroy(ctx);
     return env->NewStringUTF(out.c_str());
+}
+
+/* ── BIP38: clave privada cifrada con contraseña (no multiplicada por EC) ──
+ * scrypt estándar (EVP_PBE_scrypt) + AES-256-ECB, para que las "6P..." sean
+ * compatibles con otras carteras. */
+static void bip38_addrhash(secp256k1_context *ctx, const uint8_t *priv, bool comp, uint8_t out4[4]){
+    secp256k1_pubkey pub; secp256k1_ec_pubkey_create(ctx,&pub,priv);
+    uint8_t ser[65]; size_t l=comp?33:65;
+    secp256k1_ec_pubkey_serialize(ctx,ser,&l,&pub,comp?SECP256K1_EC_COMPRESSED:SECP256K1_EC_UNCOMPRESSED);
+    uint8_t sha[32],h160[20]; SHA256(ser,l,sha); RIPEMD160(sha,32,h160);
+    char addr[MAX_ADDR]={0}; h160_to_addr(h160,addr);
+    uint8_t a1[32],a2[32]; SHA256((const uint8_t*)addr,strlen(addr),a1); SHA256(a1,32,a2);
+    memcpy(out4,a2,4);
+}
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bip38Cifrar(JNIEnv *env,jobject,jstring jhex,jstring jpass,jboolean comp){
+    const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
+    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+    if(h.size()!=64) return env->NewStringUTF("");
+    uint8_t priv[32];
+    for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
+        if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
+        if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
+        if(a<0||b<0) return env->NewStringUTF(""); priv[i]=(uint8_t)((a<<4)|b); }
+    secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    if(!secp256k1_ec_seckey_verify(ctx,priv)){ secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
+    uint8_t ah[4]; bip38_addrhash(ctx,priv,comp,ah);
+    uint8_t dk[64];
+    if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ah,4,16384,8,8,0,dk,64)!=1){ secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
+    uint8_t x1[16],x2[16]; for(int i=0;i<16;i++){ x1[i]=priv[i]^dk[i]; x2[i]=priv[16+i]^dk[16+i]; }
+    AES_KEY ak; AES_set_encrypt_key(dk+32,256,&ak);
+    uint8_t e1[16],e2[16]; AES_encrypt(x1,e1,&ak); AES_encrypt(x2,e2,&ak);
+    uint8_t rec[39]; rec[0]=0x01; rec[1]=0x42; rec[2]=(uint8_t)(0xC0|(comp?0x20:0));
+    memcpy(rec+3,ah,4); memcpy(rec+7,e1,16); memcpy(rec+23,e2,16);
+    char out[128]={0}; b58enc(rec,39,out,128);
+    secp256k1_context_destroy(ctx);
+    return env->NewStringUTF(out);
+}
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey,jstring jpass){
+    const char *ky=env->GetStringUTFChars(jkey,nullptr); std::string k=ky?ky:""; if(ky) env->ReleaseStringUTFChars(jkey,ky);
+    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+    // base58check decode → 43 bytes (39 payload + 4 checksum)
+    BIGNUM *bn=BN_new(),*t=BN_new(),*b=BN_new(); BN_CTX *bc=BN_CTX_new(); BN_zero(bn); BN_set_word(b,58);
+    bool okb=true; for(char ch: k){ const char *p=strchr(B58A,ch); if(!p){okb=false;break;} BN_mul(bn,bn,b,bc); BN_set_word(t,(unsigned long)(p-B58A)); BN_add(bn,bn,t); }
+    std::string res="";
+    if(okb && BN_num_bytes(bn)<=43){
+        uint8_t raw[43]={0}; BN_bn2binpad(bn,raw,43);
+        uint8_t h1[32],h2[32]; SHA256(raw,39,h1); SHA256(h1,32,h2);
+        if(memcmp(h2,raw+39,4)==0 && raw[0]==0x01 && raw[1]==0x42){
+            bool comp=(raw[2]&0x20)!=0; uint8_t ah[4]; memcpy(ah,raw+3,4);
+            uint8_t dk[64];
+            if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ah,4,16384,8,8,0,dk,64)==1){
+                AES_KEY ak; AES_set_decrypt_key(dk+32,256,&ak);
+                uint8_t d1[16],d2[16]; AES_decrypt(raw+7,d1,&ak); AES_decrypt(raw+23,d2,&ak);
+                uint8_t priv[32]; for(int i=0;i<16;i++){ priv[i]=d1[i]^dk[i]; priv[16+i]=d2[i]^dk[16+i]; }
+                secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+                uint8_t ah2[4]; if(secp256k1_ec_seckey_verify(ctx,priv)){ bip38_addrhash(ctx,priv,comp,ah2);
+                    if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); } }
+                secp256k1_context_destroy(ctx);
+            }
+        }
+    }
+    BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
+    return env->NewStringUTF(res.c_str());
 }
 
 /* De una privada hex (64) a sus dos WIF: comprimida | sin comprimir. */

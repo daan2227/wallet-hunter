@@ -66,6 +66,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_dice,   "Dice / coin → key")    { construirDados() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
         seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
+        seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
         seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
         seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
@@ -938,6 +939,67 @@ class PubkeyToolsActivity : Activity() {
         }
     }
 
+    // ── BIP38 (encrypt / decrypt a key) ────────────────────────────────────
+    @Volatile private var bip38Corriendo = false
+    private fun construirBip38() {
+        desc("Password-protect a private key (BIP38). Encrypt turns a key into a 6P… string; " +
+             "Decrypt needs the same password. Standard scrypt, so it's compatible with other " +
+             "wallets. Slow on purpose (a second or two).")
+        root.addView(rotulo("Encrypt — private key (hex or WIF)"))
+        val etKey = entrada("64-hex or WIF")
+        root.addView(rotulo("Password"))
+        val etP1 = entrada("passphrase")
+        var comp = true
+        root.addView(Ui.segmented(this, listOf("Compressed" to null, "Uncompressed" to null), 0) { comp = it == 0 })
+        val salE = salidaBox()
+        boton("Encrypt") {
+            if (bip38Corriendo) return@boton
+            salE.removeAllViews()
+            val hx = hexClave(etKey.text.toString())
+            val pw = etP1.text.toString()
+            if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
+            if (pw.isEmpty()) { Toast.makeText(this, "Enter a password", Toast.LENGTH_SHORT).show(); return@boton }
+            bip38Corriendo = true
+            salE.addView(TextView(this).apply { text = "Encrypting…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val enc = try { HunterEngine.bip38Cifrar(hx, pw, comp) } catch (e: Throwable) { "" }
+                runOnUiThread { bip38Corriendo = false; salE.removeAllViews()
+                    if (enc.isBlank()) Toast.makeText(this, "Could not encrypt", Toast.LENGTH_SHORT).show()
+                    else salE.addView(filaResultado("Encrypted key (BIP38)", enc, true)) }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) } })
+        root.addView(rotulo("Decrypt — 6P… key"))
+        val etEnc = entrada("6P…", varias = true)
+        root.addView(rotulo("Password"))
+        val etP2 = entrada("passphrase")
+        val salD = salidaBox()
+        boton("Decrypt") {
+            if (bip38Corriendo) return@boton
+            salD.removeAllViews()
+            val key = etEnc.text.toString().trim(); val pw = etP2.text.toString()
+            if (!key.startsWith("6P")) { Toast.makeText(this, "A BIP38 key starts with 6P", Toast.LENGTH_SHORT).show(); return@boton }
+            bip38Corriendo = true
+            salD.addView(TextView(this).apply { text = "Decrypting…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val r = try { HunterEngine.bip38Descifrar(key, pw) } catch (e: Throwable) { "" }
+                runOnUiThread { bip38Corriendo = false; salD.removeAllViews()
+                    if (r.isBlank()) salD.addView(filaResultado("Wrong password", "or not a valid BIP38 key"))
+                    else {
+                        val priv = r.substringBefore("|")
+                        val wif = try { HunterEngine.wifDeHex(priv).let { if (r.endsWith("|1")) it.substringBefore("|") else it.substringAfter("|") } } catch (e: Throwable) { "" }
+                        salD.addView(filaResultado("Private key", priv, true))
+                        if (wif.isNotEmpty()) salD.addView(filaResultado("WIF", wif))
+                    } }
+            }.apply { isDaemon = true; start() }
+        }
+    }
+
     // ── BTC ↔ sat ──────────────────────────────────────────────────────────
     private fun construirUnidades() {
         desc("Convert between BTC and satoshis. Type a value with a dot for BTC (0.0005) " +
@@ -1195,7 +1257,7 @@ class PubkeyToolsActivity : Activity() {
 
     override fun onDestroy() {
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
-        balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false
+        balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
         super.onDestroy()
     }
 }
