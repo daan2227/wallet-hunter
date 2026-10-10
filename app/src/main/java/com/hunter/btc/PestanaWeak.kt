@@ -735,6 +735,9 @@ object WeakController {
                   catch (e: Throwable) { org.json.JSONArray() }
         if (arr.length() == 0) { box.visibility = android.view.View.GONE; return }
         box.visibility = android.view.View.VISIBLE
+        // Ya hay historial: no tiene sentido el vacío "Nothing audited yet"
+        // ocupando toda la pantalla y dejando el log debajo del pliegue.
+        if (!corriendo) vacioWeak?.visibility = android.view.View.GONE
         box.addView(TextView(ctx).apply {
             text = "Audit log"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context); setPadding(dp(2), dp(8), 0, dp(6))
