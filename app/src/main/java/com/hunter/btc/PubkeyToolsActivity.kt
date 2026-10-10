@@ -1287,9 +1287,11 @@ class PubkeyToolsActivity : Activity() {
         val sb = StringBuilder(64); for (b in d) sb.append("%02x".format(b.toInt() and 0xFF)); return sb.toString()
     }
     private fun construirBrainwallet() {
-        desc("Tests phrases (private key = SHA-256 of the phrase) against a target address " +
-             "or public key. Audits whether an address came from a guessable phrase.")
-        val etTarget = entrada("target 1…/3…/bc1… or 02…/03…/04…")
+        desc("Tests phrases (private key = SHA-256 of the phrase) against target " +
+             "address(es)/public key(s). Leave the targets empty to just LIST the address " +
+             "each phrase maps to. Audits whether an address came from a guessable phrase.")
+        root.addView(rotulo("Targets (one per line) — empty = list addresses"))
+        val etTarget = entrada("1…/3…/bc1… or 02…/03…/04…, one per line", varias = true)
         root.addView(rotulo("Phrases to try (one per line)"))
         val etFrases = entrada("correct horse battery staple\npassword\n…", varias = true)
         val tvEstado = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
@@ -1298,29 +1300,42 @@ class PubkeyToolsActivity : Activity() {
         lateinit var btn: Button
         btn = boton("Check") {
             if (bwCorriendo) { bwCorriendo = false; return@boton }
-            val objetivo = dirsDe(etTarget.text.toString().trim())
-            if (objetivo.isEmpty()) { Toast.makeText(this, "Enter a valid target", Toast.LENGTH_SHORT).show(); return@boton }
+            val dianas = etTarget.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
+            val listMode = dianas.isEmpty()
+            // Conjunto de direcciones objetivo: lo derivado de cada diana + la propia línea.
+            val objetivo = HashSet<String>()
+            for (d in dianas) { objetivo.addAll(dirsDe(d)); objetivo.add(d) }
             val frases = etFrases.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }
             if (frases.isEmpty()) { Toast.makeText(this, "Paste some phrases", Toast.LENGTH_SHORT).show(); return@boton }
             salida.removeAllViews(); bwCorriendo = true; btn.text = "Stop"
             Thread {
-                var n = 0; var hits = 0
+                var n = 0; var hits = 0; var mostrados = 0
                 for (frase in frases) {
                     if (!bwCorriendo) break
                     n++
                     val priv = sha256Hex(frase)
-                    if (dirsDe(priv).any { it in objetivo }) {
+                    if (listMode) {
+                        if (mostrados < 300) {
+                            val p2pkh = try { HunterEngine.direccionesDe(priv).split('\n')
+                                .firstOrNull { it.startsWith("P2PKH (compressed)=") }?.substringAfter('=')?.trim() ?: "" } catch (e: Throwable) { "" }
+                            mostrados++
+                            runOnUiThread { salida.addView(filaResultado("\"$frase\"", p2pkh)) }
+                        }
+                    } else if (dirsDe(priv).any { it in objetivo }) {
                         hits++
                         val wif = try { HunterEngine.datosDeClave(priv).substringBefore("|") } catch (e: Throwable) { "" }
                         runOnUiThread { salida.addView(filaResultado("MATCH · \"$frase\"",
                             "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else ""), true)) }
                     }
                     if (n % 25 == 0 || n == frases.size) { val h = n; val f = hits
-                        runOnUiThread { tvEstado.text = "Checked $h / ${frases.size} · $f found" } }
+                        runOnUiThread { tvEstado.text = if (listMode) "Listed $h / ${frases.size}" else "Checked $h / ${frases.size} · $f found" } }
                 }
                 runOnUiThread { bwCorriendo = false; btn.text = "Check"
-                    if (hits == 0) salida.addView(TextView(this).apply {
+                    if (!listMode && hits == 0) salida.addView(TextView(this).apply {
                         text = "No match for those phrases."; textSize = AppTheme.SP_CAPTION
+                        setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context); setPadding(dp(2), dp(8), 0, 0) })
+                    if (listMode && frases.size > 300) salida.addView(TextView(this).apply {
+                        text = "Showing first 300 of ${frases.size}."; textSize = AppTheme.SP_CAPTION
                         setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context); setPadding(dp(2), dp(8), 0, 0) }) }
             }.apply { isDaemon = true; start() }
         }
