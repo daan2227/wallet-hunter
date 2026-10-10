@@ -19,6 +19,10 @@
 #define HASH160_X4 1
 
 static inline void hash160_x4(const uint8_t *const pub[4], uint8_t out[4][20]){
+    /* Sin las instrucciones SHA-256 (crypto ext ausente): camino en software,
+     * para no ejecutar vsha256* y caer en SIGILL. El RIPEMD-160 de abajo es
+     * NEON puro (obligatorio en ARMv8), así que el problema es solo SHA-256. */
+    if (!sha256_tiene_hw()) { for(int h=0;h<4;h++) hash160_inline(pub[h],out[h]); return; }
     static const uint32_t IV[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
     const uint32x4_t IV0=vld1q_u32(IV), IV1=vld1q_u32(IV+4);
     uint32x4_t S0[4],S1[4],M0[4],M1[4],M2[4],M3[4];

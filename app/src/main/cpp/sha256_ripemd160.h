@@ -2,6 +2,28 @@
 #include <stdint.h>
 #include <string.h>
 
+#if defined(__aarch64__) && defined(__linux__)
+#include <sys/auxv.h>
+#ifndef HWCAP_SHA2
+#define HWCAP_SHA2 (1UL << 6)
+#endif
+#endif
+
+/* ¿El procesador tiene las instrucciones SHA-256 de ARMv8? Las extensiones
+ * "crypto" son OPCIONALES en ARMv8-A: casi todos los móviles las tienen, pero
+ * algunos de gama baja no, y ejecutar vsha256* sin ellas es una instrucción
+ * ilegal (SIGILL → cierre). Se le pregunta una vez al kernel (igual que hace
+ * sha512.cpp con HWCAP_SHA512) y, si no están, se usa el camino en software. */
+static inline int sha256_tiene_hw(){
+#if defined(__aarch64__) && defined(__linux__)
+    static int v = -1;
+    if (v < 0) v = (getauxval(AT_HWCAP) & HWCAP_SHA2) ? 1 : 0;
+    return v;
+#else
+    return 0;
+#endif
+}
+
 /* =========================================================
    SHA256 inline optimizado para ARM
    ========================================================= */
@@ -97,7 +119,8 @@ static inline void sha256_33_st(const uint8_t *in, uint32_t *st){
     blk[33]=0x80;
     blk[62]=0x01; blk[63]=0x08; /* length = 33*8 = 264 bits = 0x108 */
 #ifdef SHA256_HW
-    sha256_block_hw(st,blk);
+    if (sha256_tiene_hw()) sha256_block_hw(st,blk);
+    else                   sha256_block(st,blk);
 #else
     sha256_block(st,blk);
 #endif
