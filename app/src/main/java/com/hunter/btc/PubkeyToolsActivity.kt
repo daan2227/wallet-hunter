@@ -58,11 +58,18 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
         seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
         seccion(page, R.drawable.ic_clock,  "Fee estimator")        { construirFee() }
+        seccion(page, R.drawable.ic_gear,   "Tx size & fee calc")   { construirFeeCalc() }
         seccion(page, R.drawable.ic_play,   "Broadcast raw tx")     { construirBroadcast() }
         seccion(page, R.drawable.ic_export, "Transaction decoder")  { construirDecoder() }
+        seccion(page, R.drawable.ic_search, "Script decoder")       { construirScript() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
+        seccion(page, R.drawable.ic_dice,   "Dice / coin → key")    { construirDados() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
+        seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
         seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
+        seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
+        seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
+        seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
     }
@@ -766,6 +773,249 @@ class PubkeyToolsActivity : Activity() {
             if (filas == null) Toast.makeText(this, "Not a valid raw transaction", Toast.LENGTH_SHORT).show()
             else filas.forEach { (l, v) -> salida.addView(filaResultado(l, v)) }
         }
+    }
+
+    private fun campoNum(ini: String, ancho: Int = 90): EditText {
+        val e = EditText(this).apply {
+            setText(ini); inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.mono(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(dp(ancho), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(e); return e
+    }
+
+    // ── Tx size & fee calculator ───────────────────────────────────────────
+    private fun construirFeeCalc() {
+        desc("Estimate a transaction's vsize and fee from its shape. Pick the input type, " +
+             "the counts and a fee rate.")
+        var tipo = 1   // 0 P2PKH, 1 P2WPKH, 2 P2SH-P2WPKH, 3 P2TR
+        root.addView(Ui.segmented(this, listOf("P2PKH" to null, "P2WPKH" to null, "P2SH" to null, "P2TR" to null), 1) { tipo = it })
+        root.addView(rotulo("Inputs"));  val etIn = campoNum("1")
+        root.addView(rotulo("Outputs")); val etOut = campoNum("2")
+        root.addView(rotulo("Fee rate (sat/vB)")); val etR = campoNum("10", 110)
+        val salida = salidaBox()
+        boton("Calculate") {
+            salida.removeAllViews()
+            val nin = etIn.text.toString().toIntOrNull()?.coerceIn(1, 5000) ?: 1
+            val nout = etOut.text.toString().toIntOrNull()?.coerceIn(1, 5000) ?: 1
+            val rate = etR.text.toString().toDoubleOrNull() ?: 1.0
+            val vin = when (tipo) { 0 -> 148.0; 2 -> 91.0; 3 -> 57.5; else -> 68.0 }
+            val vout = 31.0   // salida bech32 típica
+            val vsize = (10.5 + nin * vin + nout * vout)
+            val fee = Math.ceil(vsize * rate).toLong()
+            salida.addView(filaResultado("Estimated vsize", "${Math.ceil(vsize).toInt()} vB", true))
+            salida.addView(filaResultado("Fee", "$fee sats (${"%.8f".format(fee / 1e8).trimEnd('0').trimEnd('.')} BTC)"))
+        }
+        nota(AppTheme.BLUE, "Rough estimate: ~148 vB per P2PKH input, ~68 P2WPKH, ~91 P2SH-P2WPKH, " +
+             "~58 P2TR, ~31 per output, +10.5 overhead.")
+    }
+
+    // ── Script decoder ─────────────────────────────────────────────────────
+    private val opNames = mapOf(0x00 to "OP_0", 0x4c to "OP_PUSHDATA1", 0x4d to "OP_PUSHDATA2", 0x4e to "OP_PUSHDATA4",
+        0x4f to "OP_1NEGATE", 0x61 to "OP_NOP", 0x63 to "OP_IF", 0x64 to "OP_NOTIF", 0x67 to "OP_ELSE", 0x68 to "OP_ENDIF",
+        0x69 to "OP_VERIFY", 0x6a to "OP_RETURN", 0x6f to "OP_3DUP", 0x76 to "OP_DUP", 0x78 to "OP_SWAP",
+        0x87 to "OP_EQUAL", 0x88 to "OP_EQUALVERIFY", 0x8b to "OP_1ADD", 0xa6 to "OP_RIPEMD160", 0xa7 to "OP_SHA1",
+        0xa8 to "OP_SHA256", 0xa9 to "OP_HASH160", 0xaa to "OP_HASH256", 0xac to "OP_CHECKSIG", 0xad to "OP_CHECKSIGVERIFY",
+        0xae to "OP_CHECKMULTISIG", 0xaf to "OP_CHECKMULTISIGVERIFY", 0xb1 to "OP_CLTV", 0xb2 to "OP_CSV")
+    private fun construirScript() {
+        desc("Disassemble a Bitcoin script (hex) — scriptPubKey, scriptSig or redeem — into " +
+             "its opcodes and pushes.")
+        val et = entrada("script hex", varias = true)
+        val salida = salidaBox()
+        boton("Decode") {
+            salida.removeAllViews()
+            val b = hexABytes(et.text.toString().trim().removePrefix("0x"))
+            if (b == null) { Toast.makeText(this, "Not valid hex", Toast.LENGTH_SHORT).show(); return@boton }
+            val out = StringBuilder(); var p = 0
+            try {
+                while (p < b.size) {
+                    val op = b[p].toInt() and 0xFF; p++
+                    when {
+                        op in 0x01..0x4b -> { val n = op; val d = b.copyOfRange(p, minOf(b.size, p+n)); p += n
+                            out.append("PUSH($n) ").append(d.joinToString("") { "%02x".format(it.toInt() and 0xFF) }).append('\n') }
+                        op == 0x4c -> { val n = b[p].toInt() and 0xFF; p++; val d = b.copyOfRange(p, minOf(b.size, p+n)); p += n
+                            out.append("OP_PUSHDATA1 ").append(d.joinToString("") { "%02x".format(it.toInt() and 0xFF) }).append('\n') }
+                        op in 0x51..0x60 -> out.append("OP_").append(op - 0x50).append('\n')
+                        else -> out.append(opNames[op] ?: "OP_%02x".format(op)).append('\n')
+                    }
+                }
+                salida.addView(filaResultado("Disassembly", out.toString().trim()))
+            } catch (e: Throwable) { Toast.makeText(this, "Could not parse", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    // ── Dice / coin → key ──────────────────────────────────────────────────
+    private fun construirDados() {
+        desc("Build a private key from PHYSICAL entropy — dice (1-6) or coin flips (0/1) you " +
+             "roll yourself. Trustless: no RNG involved. The key is SHA-256 of your rolls.")
+        val et = entrada("e.g. 4 2 6 1 5 3 …  or  0 1 1 0 1 …", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(8), 0, 0) }
+        val salida = salidaBox()
+        et.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) {
+                var bits = 0.0
+                for (c in (s?.toString() ?: "")) bits += when { c in '1'..'6' -> 2.585; c == '0' || c == '1' -> 1.0; else -> 0.0 }
+                tv.text = "≈ ${bits.toInt()} bits of entropy" + (if (bits < 128) " — roll more (aim for 128+)" else " ✓")
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+        root.addView(tv)
+        boton("Make key") {
+            salida.removeAllViews()
+            val seq = et.text.toString().filter { it in '0'..'9' }
+            if (seq.length < 20) { Toast.makeText(this, "Give more rolls", Toast.LENGTH_SHORT).show(); return@boton }
+            val priv = sha256Hex(seq)
+            val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+            salida.addView(filaResultado("Private key", priv, true))
+            if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+            val txt = try { HunterEngine.direccionesDe(priv) } catch (e: Throwable) { "" }
+            txt.split('\n').firstOrNull { it.startsWith("P2WPKH") }?.let { salida.addView(filaResultado("Address (bech32)", it.substringAfter('='))) }
+        }
+        nota(AppTheme.WARN, "Only trustless if YOU roll real dice/coins and type them. Don't reuse " +
+             "a sequence, and keep it secret — it IS the key.")
+    }
+
+    // ── Shamir split (k-of-n) ──────────────────────────────────────────────
+    private val gfExp by lazy { val e = IntArray(512); var a = 1; for (i in 0 until 255) { e[i] = a; var b = a shl 1; if (a and 0x80 != 0) b = b xor 0x11b; a = (b xor a) and 0xff }; for (i in 255 until 512) e[i] = e[i-255]; e }
+    private val gfLog by lazy { val l = IntArray(256); for (i in 0 until 255) l[gfExp[i]] = i; l }
+    private fun gmul(x: Int, y: Int) = if (x == 0 || y == 0) 0 else gfExp[gfLog[x] + gfLog[y]]
+    private fun construirShamir() {
+        desc("Real secret sharing: split a key into n shares so any k of them restore it " +
+             "(k-of-n over GF(256)). Fewer than k reveal nothing. Paste k shares to combine.")
+        root.addView(rotulo("Secret (64-hex) to split"))
+        val etK = entrada("64-hex private key")
+        root.addView(rotulo("Threshold k"));  val etT = campoNum("2")
+        root.addView(rotulo("Shares n"));      val etN = campoNum("3")
+        val salS = salidaBox()
+        boton("Split") {
+            salS.removeAllViews()
+            val h = etK.text.toString().trim().removePrefix("0x")
+            val sec = hexABytes(h)
+            val k = etT.text.toString().toIntOrNull() ?: 2; val n = etN.text.toString().toIntOrNull() ?: 3
+            if (sec == null || sec.size != 32) { Toast.makeText(this, "Secret must be 64 hex", Toast.LENGTH_SHORT).show(); return@boton }
+            if (k < 2 || n < k || n > 255) { Toast.makeText(this, "Need 2 ≤ k ≤ n ≤ 255", Toast.LENGTH_SHORT).show(); return@boton }
+            val rnd = java.security.SecureRandom()
+            for (x in 1..n) {
+                val y = ByteArray(32)
+                for (bi in 0 until 32) {
+                    var acc = sec[bi].toInt() and 0xFF           // c0 = byte del secreto
+                    var xp = 1
+                    for (c in 1 until k) { xp = gmul(xp, x); val coef = rnd.nextInt(256); acc = acc xor gmul(coef, xp) }
+                    y[bi] = acc.toByte()
+                }
+                val hex = "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+                salS.addView(filaResultado("Share $x of $n", hex, true))
+            }
+        }
+        root.addView(rotulo("Combine — paste k shares (one per line)"))
+        val etC = entrada("share hex per line", varias = true)
+        val salC = salidaBox()
+        boton("Combine") {
+            salC.removeAllViews()
+            val sh = etC.text.toString().split('\n').map { it.trim().removePrefix("0x") }.filter { it.length == 66 }
+            if (sh.size < 2) { Toast.makeText(this, "Paste at least 2 valid shares", Toast.LENGTH_SHORT).show(); return@boton }
+            val xs = IntArray(sh.size); val ys = Array(sh.size) { ByteArray(32) }
+            var okp = true
+            for (i in sh.indices) { val bb = hexABytes(sh[i]) ?: run { okp = false; null } ?: break
+                xs[i] = bb[0].toInt() and 0xFF; for (j in 0 until 32) ys[i][j] = bb[j+1] }
+            if (!okp) { Toast.makeText(this, "A share is not valid hex", Toast.LENGTH_SHORT).show(); return@boton }
+            val out = ByteArray(32)
+            for (bi in 0 until 32) {
+                var s = 0
+                for (i in sh.indices) {
+                    var num = 1; var den = 1
+                    for (j in sh.indices) if (j != i) { num = gmul(num, xs[j]); den = gmul(den, xs[j] xor xs[i]) }
+                    val lag = gmul(num, if (den == 0) 0 else gfExp[255 - gfLog[den]])   // num/den
+                    s = s xor gmul(ys[i][bi].toInt() and 0xFF, lag)
+                }
+                out[bi] = s.toByte()
+            }
+            salC.addView(filaResultado("Recombined key", out.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
+        }
+    }
+
+    // ── BTC ↔ sat ──────────────────────────────────────────────────────────
+    private fun construirUnidades() {
+        desc("Convert between BTC and satoshis. Type a value with a dot for BTC (0.0005) " +
+             "or a whole number for sats (50000).")
+        val et = entrada("0.0005  or  50000")
+        val salida = salidaBox()
+        boton("Convert") {
+            salida.removeAllViews()
+            val t = et.text.toString().trim().replace(",", "")
+            if (t.contains('.')) {
+                val btc = t.toDoubleOrNull() ?: return@boton
+                salida.addView(filaResultado("Satoshis", "%,d".format(Math.round(btc * 1e8))))
+            } else {
+                val sat = t.toLongOrNull() ?: return@boton
+                salida.addView(filaResultado("BTC", "%.8f".format(sat / 1e8).trimEnd('0').trimEnd('.')))
+            }
+        }
+    }
+
+    // ── Difficulty / time ──────────────────────────────────────────────────
+    private fun construirDificultad() {
+        desc("How long to brute-force a key whose private value lives in a range of N bits, " +
+             "at a given speed. Shows why a full 256-bit key is impossible.")
+        root.addView(rotulo("Range (bits)")); val etB = campoNum("64")
+        root.addView(rotulo("Speed (keys/s)")); val etS = campoNum("10000000", 150)
+        val salida = salidaBox()
+        boton("Estimate") {
+            salida.removeAllViews()
+            val bits = etB.text.toString().toIntOrNull()?.coerceIn(1, 256) ?: 64
+            val rate = etS.text.toString().toDoubleOrNull()?.coerceAtLeast(1.0) ?: 1e7
+            val media = Math.pow(2.0, bits.toDouble()) / 2.0   // esperado: medio espacio
+            val seg = media / rate
+            salida.addView(filaResultado("Keys to try (avg)", "2^${bits - 1}"))
+            salida.addView(filaResultado("Time (average)", tiempoHumano(seg), true))
+        }
+        nota(AppTheme.BLUE, "The age of the universe is ~4×10^17 s. Anything far beyond that is, " +
+             "in practice, impossible — which is the whole point of 256-bit keys.")
+    }
+    private fun tiempoHumano(seg: Double): String {
+        if (seg < 1) return "< 1 second"
+        var v = seg
+        if (v < 60) return "${v.toLong()} s"
+        v /= 60; if (v < 60) return "${v.toLong()} min"
+        v /= 60; if (v < 24) return "${v.toLong()} h"
+        v /= 24; if (v < 365) return "${v.toLong()} days"
+        val years = v / 365
+        return when {
+            years < 1e3 -> "${years.toLong()} years"
+            years < 1e9 -> "%.1f thousand years".format(years / 1e3)
+            years < 1e15 -> "%.1f billion years".format(years / 1e9)
+            else -> "%.1e years (longer than the universe)".format(years)
+        }
+    }
+
+    // ── Entropy checker ────────────────────────────────────────────────────
+    private fun construirEntropia() {
+        desc("Paste a private key (64 hex) and it flags obvious weaknesses — the kind that " +
+             "make a key findable. A good key triggers none of these.")
+        val et = entrada("64-hex private key", varias = true)
+        val salida = salidaBox()
+        boton("Check") {
+            salida.removeAllViews()
+            val h = et.text.toString().trim().removePrefix("0x").lowercase()
+            if (h.length != 64 || h.any { it !in "0123456789abcdef" }) { Toast.makeText(this, "Need 64 hex", Toast.LENGTH_SHORT).show(); return@boton }
+            val b = hexABytes(h)!!
+            val avisos = ArrayList<String>()
+            if (b.all { it == b[0] }) avisos.add("All bytes identical")
+            val distinct = b.map { it }.toSet().size
+            if (distinct <= 4) avisos.add("Only $distinct distinct byte values")
+            if (b.take(28).all { it.toInt() == 0 }) avisos.add("Tiny value (fits in 32 bits) — trivially findable")
+            var asc = true; for (i in 1 until 32) if ((b[i].toInt() and 0xFF) != ((b[i-1].toInt() and 0xFF) + 1) and 0xFF) { asc = false; break }
+            if (asc) avisos.add("Sequential bytes")
+            if (h.startsWith("0000000000000000")) avisos.add("Leading zero run")
+            if (avisos.isEmpty()) salida.addView(filaResultado("No obvious weakness", "looks random · $distinct distinct bytes", true))
+            else avisos.forEach { salida.addView(filaResultado("⚠ Weak", it)) }
+        }
+        nota(AppTheme.BLUE, "This only catches gross patterns. Passing it does NOT prove a key is " +
+             "strong — it just means it isn't obviously broken.")
     }
 
     // ── Brainwallet ─────────────────────────────────────────────────────────
