@@ -193,9 +193,15 @@ card. Everything runs on-device; the few that need the network are watch-only.
   prefix on the native engine; P2PKH `1…`, P2SH `3…` or bech32 `bc1q…`) ·
   Dice / coin → key · QR code.
 - **Audit & analysis** — **Solve key in range (BSGS)** · **Nonce-reuse audit**
-  (recovers a key from two signatures that reused `k`) · **Brainwallet check**
-  (phrase list vs. target(s), or just list addresses; optional `~60×` variation
-  expansion — case, leet, common suffixes) · Entropy checker · Difficulty / time.
+  (scans a spent address; recovers the key from two signatures that reused `k`,
+  and if there's no reuse it tries the lattice attack) · **Nonce-leak recovery
+  (lattice)** (recovers a key when several signatures from the same key used
+  short/biased nonces — the "Biased Nonce Sense" HNP + LLL attack, validated in
+  `tools/ec-harness/lattice_hnp.py`) · **RFC6979 nonce check** (deterministic vs.
+  random nonce) · **Signature low-S / malleability** (BIP62/BIP146) · **Brainwallet
+  check** (phrase list vs. target(s), or just list addresses; optional `~60×`
+  variation expansion — case, leet, common suffixes) · **Mnemonic strength**
+  (low-entropy red flags in a BIP39 phrase) · Entropy checker · Difficulty / time.
 - **Utility** — BTC ↔ sat.
 
 ## Finds vault

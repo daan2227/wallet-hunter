@@ -122,6 +122,29 @@ class HelpActivity : Activity() {
             "In short: paste or load keys → set range, budget and cap → Kangaroo runs key by " +
             "key over a small range → whatever it finds (badly generated keys) goes to the vault.")
 
+        seccion(root, "Tools")
+        parrafo(root, "More → Tools is a grouped screen of standalone utilities, each a " +
+            "collapsible card: Keys & addresses, Sign/encrypt/backup (BIP38, Shamir, PSBT…), " +
+            "Transactions, Monitor & generate (Vanity for 1…/3…/bc1q…), and Audit & analysis.")
+
+        seccion(root, "Audit & analysis")
+        parrafo(root, "• Solve key in range (BSGS): resolves a public key whose private key " +
+            "is in a small known range, deterministically.\n" +
+            "• Nonce-reuse audit: scans a spent address; if it ever signed with the same r " +
+            "(reused nonce) the private key falls out — and if not, it tries the lattice attack.\n" +
+            "• Nonce-leak recovery (lattice): recovers a key when several signatures from the " +
+            "same key used short or biased nonces (Hidden Number Problem + LLL).\n" +
+            "• RFC6979 nonce check: tells whether a signature used the safe deterministic nonce " +
+            "or a random one (a weak RNG is how keys leak).\n" +
+            "• Signature low-S / malleability: flags high-S (malleable) and non-strict DER.\n" +
+            "• Brainwallet check: tests passphrases (and ~60× variations) against targets, or " +
+            "lists their addresses.\n" +
+            "• Mnemonic strength: low-entropy red flags in a BIP39 phrase.")
+        tarjeta(root, AppTheme.WARN,
+            "The audits recover keys only from genuinely weak signing or weak generation " +
+            "(reused/short nonces, bad RNG, guessable phrases). They cannot break a properly " +
+            "generated key. Use them on your own addresses, or a system you audit.")
+
         seccion(root, "Finds vault")
         parrafo(root, "Every hit — from the scanner, a puzzle or the weak-key audit — lands " +
             "here with its WIF and address. From a find you can check its balance, move it to " +
