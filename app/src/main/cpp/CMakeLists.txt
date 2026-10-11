@@ -21,7 +21,7 @@ target_compile_definitions(secp256k1 PRIVATE
     USE_FIELD_INV_BUILTIN
     USE_SCALAR_INV_BUILTIN
     ECMULT_WINDOW_SIZE=15
-    ECMULT_GEN_PREC_BITS=4
+    ECMULT_GEN_PREC_BITS=8
     # Taproot: firmas Schnorr (BIP340) y el API x-only para tocar el par de
     # claves. secp256k1.c incluye estos módulos sólo si están definidos, así que
     # sin ellos el enlazado falla al llamar a schnorrsig_sign32. schnorrsig
@@ -39,6 +39,7 @@ target_compile_options(secp256k1 PRIVATE
     -ffast-math
     -funroll-loops
     -fomit-frame-pointer
+    -flto=thin
 )
 
 add_library(hunter_jni SHARED hunter_jni.cpp
@@ -63,7 +64,10 @@ target_compile_options(hunter_jni PRIVATE
     -fvectorize
     -finline-functions
     -fomit-frame-pointer
+    -flto=thin
 )
+# LTO también al enlazar (optimización entre ficheros, incl. secp256k1).
+target_link_options(hunter_jni PRIVATE -flto=thin)
 
 target_include_directories(hunter_jni PRIVATE secp256k1/include)
 

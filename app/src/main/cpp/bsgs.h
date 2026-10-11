@@ -164,9 +164,11 @@ static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
     for(uint64_t i=0;i<M;i++){
         if(run && !run->load()) return BSGS_NO;
         bool zz=true; for(int w=0;w<4;w++) if(Q.z[w]){zz=false;break;}
+        /* UNA sola inversion por paso: la x afin vale para el lookup Y para el
+           chequeo del caso degenerado (antes se calculaba dos veces). */
+        fe_t xa; if(!zz) bsgs_xaff(&Q,xa);
         if(zz){ uint8_t k[32]; if(bsgs_k_mas(a32,i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
         else {
-            fe_t xa; bsgs_xaff(&Q,xa);
             uint64_t h=bsgs_mix(xa[0])&t.mask;
             while(t.val[h]!=0xFFFFFFFFu){
                 if(t.key[h]==xa[0]){
@@ -178,8 +180,7 @@ static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
                 h=(h+1)&t.mask;
             }
         }
-        fe_t xcur; bsgs_xaff(&Q,xcur);
-        if(memcmp(xcur,c->Sx,32)==0){
+        if(zz || memcmp(xa,c->Sx,32)==0){   /* degenerado (infinito o x==Sx): recomponer */
             uint8_t k[32]; bsgs_k_mas(a32,(i+1)*m,k);
             uint8_t q2[65]; int inf2=0;
             if(bsgs_menos_aG(ctx,&obj,k,q2,&inf2) && !inf2) jp_from_affine(&Q,q2);

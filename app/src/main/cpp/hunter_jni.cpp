@@ -3276,24 +3276,41 @@ Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pu
         /* trocear las pubkeys por lineas */
         std::vector<std::string> lst; { std::string cur; for(char c:pubs){ if(c=='\n'||c=='\r'){ if(!cur.empty()){lst.push_back(cur); cur.clear();} } else cur+=c; } if(!cur.empty()) lst.push_back(cur); }
         g_bm_total.store((int)lst.size());
-        secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-        BsgsCtx bc_ctx; int rbld=bsgs_build(ctx,ac,bc,cap,&g_bm_run,&bc_ctx);
-        if(rbld!=BSGS_HALLADO){ g_bm_status.store(rbld==BSGS_RANGO_GRANDE?BSGS_RANGO_GRANDE:BSGS_ERROR); g_bm_done.store(true); secp256k1_context_destroy(ctx); return; }
-        for(size_t i=0;i<lst.size() && g_bm_run.load();i++){
-            uint8_t pub[65]; int pl=bsgs_hex(lst[i].c_str(),pub,65);
-            if(pl==33||pl==65){
-                uint8_t out[32]={0};
-                int r=bsgs_giant(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out);
-                if(r==BSGS_HALLADO){
-                    char ph[65]; for(int q=0;q<32;q++) sprintf(ph+q*2,"%02x",out[q]);
-                    std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res += lst[i]; g_bm_res += "|"; g_bm_res += ph; g_bm_res += "\n";
+        /* La tabla baby se construye UNA vez; luego los giant walks de cada
+           pubkey son independientes y la tabla es de SOLO lectura, así que se
+           reparten las claves entre varios hilos (cada uno con su contexto). */
+        secp256k1_context *ctx0=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+        BsgsCtx bc_ctx; int rbld=bsgs_build(ctx0,ac,bc,cap,&g_bm_run,&bc_ctx);
+        secp256k1_context_destroy(ctx0);
+        if(rbld!=BSGS_HALLADO){ g_bm_status.store(rbld==BSGS_RANGO_GRANDE?BSGS_RANGO_GRANDE:BSGS_ERROR); g_bm_done.store(true); return; }
+        unsigned hw=std::thread::hardware_concurrency(); int nt=(int)(hw?hw:2); if(nt<1)nt=1; if(nt>8)nt=8;
+        if((size_t)nt>lst.size()) nt=(int)lst.size(); if(nt<1)nt=1;
+        std::atomic<size_t> idx{0};
+        std::vector<std::thread> ws;
+        for(int w=0;w<nt;w++){
+            ws.emplace_back([&](){
+                secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+                for(;;){
+                    if(!g_bm_run.load()) break;
+                    size_t i=idx.fetch_add(1);
+                    if(i>=lst.size()) break;
+                    uint8_t pub[65]; int pl=bsgs_hex(lst[i].c_str(),pub,65);
+                    if(pl==33||pl==65){
+                        uint8_t out[32]={0};
+                        int r=bsgs_giant(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out);
+                        if(r==BSGS_HALLADO){
+                            char ph[65]; for(int q=0;q<32;q++) sprintf(ph+q*2,"%02x",out[q]);
+                            std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res += lst[i]; g_bm_res += "|"; g_bm_res += ph; g_bm_res += "\n";
+                        }
+                    }
+                    g_bm_hechas.fetch_add(1);
                 }
-            }
-            g_bm_hechas.fetch_add(1);
+                secp256k1_context_destroy(ctx);
+            });
         }
+        for(auto &th:ws) th.join();
         bsgs_ctx_free(&bc_ctx);
         g_bm_done.store(true);
-        secp256k1_context_destroy(ctx);
     });
 }
 extern "C" JNIEXPORT void JNICALL
