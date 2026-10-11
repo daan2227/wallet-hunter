@@ -83,7 +83,10 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_target, "Solve key in range (BSGS)") { construirBsgs() }
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
         seccion(page, R.drawable.ic_warning,"Nonce-leak recovery (lattice)") { construirLattice() }
+        seccion(page, R.drawable.ic_finger, "RFC6979 nonce check")  { construirRfc6979() }
+        seccion(page, R.drawable.ic_search, "Signature low-S / malleability") { construirMalleability() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
+        seccion(page, R.drawable.ic_recovery, "Mnemonic strength")  { construirMnemonicStrength() }
         seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
         seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
 
@@ -688,6 +691,140 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tv)
         nota(AppTheme.WARN, "Self-verifying: it only returns a key whose d·G matches the public key. " +
              "Short-nonce case (128-bit) needs ~2–4 signatures; smaller bias needs more.")
+    }
+
+    // ── RFC6979 deterministic-nonce check ─────────────────────────────────
+    private val SECP_N = java.math.BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEBAAEDCE6AF48A03BBFD25E8CD0364141", 16)
+    private fun hmac256(key: ByteArray, msg: ByteArray): ByteArray {
+        val m = javax.crypto.Mac.getInstance("HmacSHA256")
+        m.init(javax.crypto.spec.SecretKeySpec(key, "HmacSHA256")); return m.doFinal(msg)
+    }
+    private fun i2o(x: java.math.BigInteger): ByteArray {
+        val b = x.toByteArray(); val o = ByteArray(32)
+        if (b.size >= 32) System.arraycopy(b, b.size - 32, o, 0, 32)
+        else System.arraycopy(b, 0, o, 32 - b.size, b.size)
+        return o
+    }
+    /** Nonce determinista RFC6979 (SHA-256) para secp256k1. */
+    private fun rfc6979(priv: java.math.BigInteger, z: java.math.BigInteger): java.math.BigInteger {
+        val x = i2o(priv.mod(SECP_N)); val h = i2o(z.mod(SECP_N))
+        var v = ByteArray(32) { 1 }; var k = ByteArray(32) { 0 }
+        k = hmac256(k, v + byteArrayOf(0) + x + h); v = hmac256(k, v)
+        k = hmac256(k, v + byteArrayOf(1) + x + h); v = hmac256(k, v)
+        while (true) {
+            v = hmac256(k, v)
+            val cand = java.math.BigInteger(1, v)
+            if (cand.signum() > 0 && cand < SECP_N) return cand
+            k = hmac256(k, v + byteArrayOf(0)); v = hmac256(k, v)
+        }
+    }
+    private fun construirRfc6979() {
+        desc("Checks whether a signature used the RFC6979 DETERMINISTIC nonce (the modern, " +
+             "safe standard) or a random one (RNG-dependent — a bad RNG is how keys leak). " +
+             "Give the private key and lines of 'r s z' (hex). With only 'z' it signs it " +
+             "deterministically so you can see the expected r/s.")
+        val etPriv = entrada("private key (64 hex)")
+        root.addView(rotulo("r s z per line (hex) — or just z to sign"))
+        val etSigs = entrada("r s z\n…", varias = true)
+        val salida = salidaBox()
+        boton("Check") {
+            salida.removeAllViews()
+            val pv = etPriv.text.toString().trim().removePrefix("0x").lowercase()
+            if (pv.length != 64) { Toast.makeText(this, "Enter a 64-hex private key", Toast.LENGTH_SHORT).show(); return@boton }
+            val d = try { java.math.BigInteger(pv, 16) } catch (e: Throwable) { null } ?: return@boton
+            for (ln in etSigs.text.toString().split('\n')) {
+                val t = ln.split(Regex("[^0-9a-fA-Fx]+")).map { it.removePrefix("0x").trim() }.filter { it.isNotEmpty() }
+                if (t.isEmpty()) continue
+                try {
+                    if (t.size == 1) {   // sólo z → firmar
+                        val z = java.math.BigInteger(t[0], 16)
+                        val k = rfc6979(d, z)
+                        val rx = HunterEngine.pubDeHex(k.toString(16).padStart(64, '0')).substring(2)
+                        val r = java.math.BigInteger(rx, 16).mod(SECP_N)
+                        val s = k.modInverse(SECP_N).multiply(z.add(r.multiply(d))).mod(SECP_N)
+                        salida.addView(filaResultado("RFC6979 signature", "r ${r.toString(16)}\ns ${s.toString(16)}", true))
+                    } else if (t.size >= 3) {
+                        val r = java.math.BigInteger(t[0], 16); val z = java.math.BigInteger(t[2], 16)
+                        val k = rfc6979(d, z)
+                        val rx = HunterEngine.pubDeHex(k.toString(16).padStart(64, '0')).substring(2)
+                        val rDet = java.math.BigInteger(rx, 16).mod(SECP_N)
+                        val det = rDet == r
+                        salida.addView(filaResultado(if (det) "✓ Deterministic (RFC6979)" else "⚠ Random nonce (not RFC6979)",
+                            "r ${r.toString(16).take(20)}…"))
+                    }
+                } catch (e: Throwable) {}
+            }
+            if (salida.childCount == 0) salida.addView(filaResultado("—", "No valid r s z / z lines."))
+        }
+        nota(AppTheme.TXT_MUTED, "A deterministic nonce (RFC6979) is safe even with a weak RNG. A random one " +
+             "is only as safe as the device's RNG — the source of most nonce-reuse leaks.")
+    }
+
+    // ── Signature low-S / malleability auditor ─────────────────────────────
+    private fun construirMalleability() {
+        desc("Audits ECDSA signatures for BIP62/BIP146 'low-S' and strict DER. A high-S " +
+             "signature is third-party malleable (its txid can change before confirmation) " +
+             "and non-standard on today's network. Paste DER signatures (hex) or 'r s' per line.")
+        val et = entrada("DER sig hex, or 'r s' (hex), one per line", varias = true)
+        val salida = salidaBox()
+        val half = SECP_N.shiftRight(1)
+        boton("Audit") {
+            salida.removeAllViews()
+            var n = 0; var high = 0
+            for (ln in et.text.toString().split('\n')) {
+                val raw = ln.trim().removePrefix("0x")
+                if (raw.isEmpty()) continue
+                var s: java.math.BigInteger? = null; var der = false
+                val p = parseSig(raw.lowercase())
+                if (p != null) { der = true; s = try { java.math.BigInteger(p.second, 16) } catch (e: Throwable) { null } }
+                else {
+                    val t = ln.split(Regex("[^0-9a-fA-Fx]+")).map { it.removePrefix("0x").trim() }.filter { it.isNotEmpty() }
+                    if (t.size >= 2) s = try { java.math.BigInteger(t[1], 16) } catch (e: Throwable) { null }
+                }
+                if (s == null) { salida.addView(filaResultado("? unparseable", ln.take(24))); continue }
+                n++
+                val low = s <= half
+                if (!low) high++
+                salida.addView(filaResultado(
+                    (if (low) "✓ low-S" else "⚠ HIGH-S (malleable)") + (if (der) " · DER ok" else " · raw"),
+                    "s ${s.toString(16).take(24)}…"))
+            }
+            if (n > 0) salida.addView(filaResultado("Summary", "$n checked · $high high-S (malleable)"))
+            else if (salida.childCount == 0) Toast.makeText(this, "Paste signatures", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // ── Mnemonic strength audit ────────────────────────────────────────────
+    private fun construirMnemonicStrength() {
+        desc("Audits a BIP39 phrase for low-entropy red flags: bad checksum, repeated words, " +
+             "dictionary order, a tiny range of words, too few distinct words. A phrase that " +
+             "trips these was likely hand-picked and is brute-forceable. The phrase stays on-device.")
+        val et = entrada("12 / 15 / 18 / 21 / 24 words", varias = true)
+        val salida = salidaBox()
+        boton("Audit") {
+            salida.removeAllViews()
+            val words = Bip39.normalize(et.text.toString())
+            if (words.size < 12) { salida.addView(filaResultado("Too short", "${words.size} words")); return@boton }
+            val idx = words.map { Bip39Words.WORDS.indexOf(it) }
+            if (idx.any { it < 0 }) { salida.addView(filaResultado("Not all BIP39 words", "some words are not in the list")); return@boton }
+            val flags = ArrayList<String>()
+            val cs = Bip39.validate(words.joinToString(" "))
+            if (cs is Bip39.Result.Invalid) flags.add("checksum fails (${cs.reason})")
+            val distinct = words.toSet().size
+            if (distinct <= words.size / 2) flags.add("only $distinct distinct words of ${words.size}")
+            if (words.toSet().size == 1) flags.add("all the same word")
+            if (idx == idx.sorted()) flags.add("words in dictionary order")
+            if (idx.zipWithNext().all { (a, b) -> b - a == 1 }) flags.add("consecutive dictionary indices")
+            val span = (idx.maxOrNull()!! - idx.minOrNull()!!)
+            if (span in 1..63) flags.add("all words within a tiny range ($span)")
+            if (flags.isEmpty()) {
+                salida.addView(filaResultado("✓ Looks strong", "checksum OK, no obvious low-entropy pattern", true))
+            } else {
+                salida.addView(filaResultado("⚠ Weak / guessable", flags.joinToString("\n• ", "• "), true))
+            }
+        }
+        nota(AppTheme.TXT_MUTED, "This only catches obvious human patterns. Passing it does NOT prove the phrase " +
+             "was generated with real entropy — only a trusted generator does.")
     }
 
     // ── Vanity address ─────────────────────────────────────────────────────
