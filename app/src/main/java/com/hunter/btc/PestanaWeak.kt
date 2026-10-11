@@ -132,6 +132,8 @@ object WeakController {
     private var fuenteNombre = "pasted keys"   // de dónde salió la lista actual
     private var logExpandido = false           // si el terminal muestra el historial antiguo
     @Volatile private var bsgsBatchOn = false   // auditoría BSGS por lotes en curso
+    private var btnBsgs: Button? = null
+    private const val BSGS_LABEL = "Solve with BSGS (small range)"
     private const val LOG_RECIENTES = 10       // líneas visibles sin desplegar
     private const val LOG_CAP = 50             // cuántas auditorías se recuerdan
     private var btn: Button? = null
@@ -217,10 +219,6 @@ object WeakController {
         root.addView(Ui.ghost(a, "From xpub / ypub / zpub…", AppTheme.TXT_PRI).apply {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
             setOnClickListener { dialogoXpub() }
-        })
-        root.addView(Ui.ghost(a, "Solve all with BSGS (small range)", AppTheme.TXT_PRI).apply {
-            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
-            setOnClickListener { solveBsgsBatch() }
         })
         val vCargadas = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
@@ -366,6 +364,20 @@ object WeakController {
         }
         btn = vBtn
         root.addView(vBtn)
+
+        // Mismo estilo que "Start audit" (acento), debajo. Resuelve de forma
+        // determinista todas las claves públicas cargadas en rangos pequeños.
+        val vBsgs = Button(a).apply {
+            text = if (bsgsBatchOn) "Stop BSGS" else BSGS_LABEL; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.ON_ACCENT); typeface = AppTheme.bold(context)
+            isAllCaps = false; stateListAnimator = null
+            background = Ui.botonAccento(context, AppTheme.R_INNER, AppTheme.ACCENT)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
+                .apply { topMargin = dp(10) }
+            setOnClickListener { Ui.pulso(this); solveBsgsBatch() }
+        }
+        btnBsgs = vBsgs
+        root.addView(vBsgs)
 
         val vStats = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -529,7 +541,7 @@ object WeakController {
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
-        btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null; logBox = null
+        btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null; logBox = null; btnBsgs = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -1060,7 +1072,7 @@ object WeakController {
     private fun solveBsgsBatch() {
         if (corriendo) { aviso("Stop the audit first."); return }
         if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
-            bloquear(false); aviso("BSGS stopped."); return }
+            bloquear(false); btnBsgs?.text = BSGS_LABEL; aviso("BSGS stopped."); return }
         val b = (sbBits?.progress ?: 0) + BITS_MIN
         if (b > 44) { aviso("Range too big for BSGS ($b bits). Use Start audit (Kangaroo)."); return }
         val lineas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
@@ -1073,6 +1085,7 @@ object WeakController {
         bsgsBatchOn = true
         try { HunterEngine.bsgsMultiStart(pubs.joinToString("\n"), "1", fin, 21) }
         catch (e: Throwable) { bsgsBatchOn = false; aviso("Engine error."); return }
+        btnBsgs?.text = "Stop BSGS"
         // Mismo cuadro de mando que una auditoría: tarjeta de rendimiento, cifra
         // grande (giant steps/s), operaciones, tiempo, barra de progreso y el
         // contador claves/hallazgos. Así se ve igual que el Kangaroo.
@@ -1118,7 +1131,7 @@ object WeakController {
             barraProg?.set(if (total > 0) hechas.toFloat() / total else 0f)
             if (estado == "running") { h.postDelayed(tick, 400) }
             else {
-                bsgsBatchOn = false; bloquear(false)
+                bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_LABEL
                 aviso(when (estado) {
                     "range_too_big" -> "Range too big for BSGS."
                     "error"         -> "BSGS error (bad key or range)."
@@ -1131,7 +1144,7 @@ object WeakController {
     }
 
     private fun arrancar() {
-        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; bsgsBatchOn = false
+        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; bsgsBatchOn = false; btnBsgs?.text = BSGS_LABEL
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
         presupuesto = budgetActual()
