@@ -82,6 +82,7 @@ class PubkeyToolsActivity : Activity() {
         cabecera(page, "Audit & analysis")
         seccion(page, R.drawable.ic_target, "Solve key in range (BSGS)") { construirBsgs() }
         seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
+        seccion(page, R.drawable.ic_warning,"Nonce-leak recovery (lattice)") { construirLattice() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
         seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
@@ -615,6 +616,78 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tv)
         nota(AppTheme.WARN, "Deterministic: if the key really is in the range, it WILL be found. " +
              "Needs the public key (a spent address), not just the address.")
+    }
+
+    // ── Nonce-leak recovery (lattice / HNP) ───────────────────────────────
+    @Volatile private var latCorriendo = false
+    private fun normalizaPubComprimida(pub: String): String? {
+        val p = pub.trim().removePrefix("0x").lowercase()
+        return when {
+            p.length == 66 && (p.startsWith("02") || p.startsWith("03")) && p.drop(2).all { it in "0123456789abcdef" } -> p
+            p.length == 130 && p.startsWith("04") -> {
+                val x = p.substring(2, 66); val y = p.substring(66)
+                val yOdd = java.math.BigInteger(y, 16).testBit(0)
+                (if (yOdd) "03" else "02") + x
+            }
+            else -> null
+        }
+    }
+    private fun construirLattice() {
+        desc("Recovers a private key when several signatures from the SAME key used " +
+             "SHORT or biased nonces (top bits zero — e.g. a 128-bit RNG on a 256-bit " +
+             "curve). This is the 'Biased Nonce Sense' lattice attack (HNP + LLL). " +
+             "Enter the public key and the signatures as 'r s z' per line (hex), where z " +
+             "is the message hash each signature signed. Only works on your own keys.")
+        val etPub = entrada("public key 02…/03…/04…")
+        root.addView(rotulo("Signatures: r s z (hex), one per line"))
+        val etSigs = entrada("r s z\nr s z\n…", varias = true)
+        root.addView(rotulo("Nonce size (bits) — the attack assumes k < 2^bits"))
+        val etBits = entrada("128")
+        val salida = salidaBox()
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
+        lateinit var btn: Button
+        btn = boton("Recover") {
+            if (latCorriendo) return@boton
+            val target = normalizaPubComprimida(etPub.text.toString())
+            if (target == null) { Toast.makeText(this, "Enter a valid public key", Toast.LENGTH_SHORT).show(); return@boton }
+            val bbits = etBits.text.toString().trim().toIntOrNull()?.coerceIn(1, 255) ?: 128
+            val sigs = ArrayList<Triple<java.math.BigInteger, java.math.BigInteger, java.math.BigInteger>>()
+            for (ln in etSigs.text.toString().split('\n')) {
+                val toks = ln.split(Regex("[^0-9a-fA-Fx]+")).map { it.removePrefix("0x").trim() }.filter { it.isNotEmpty() }
+                if (toks.size < 3) continue
+                try { sigs.add(Triple(java.math.BigInteger(toks[0], 16), java.math.BigInteger(toks[1], 16), java.math.BigInteger(toks[2], 16))) } catch (e: Throwable) {}
+            }
+            if (sigs.size < 2) { Toast.makeText(this, "Need at least 2 signatures (r s z)", Toast.LENGTH_LONG).show(); return@boton }
+            if (sigs.size > 40) { Toast.makeText(this, "Too many signatures (max 40 here)", Toast.LENGTH_LONG).show(); return@boton }
+            salida.removeAllViews(); latCorriendo = true; btn.text = "…"
+            tv.text = "Reducing lattice (${sigs.size} sigs, 2^$bbits nonces)…"
+            Thread {
+                val d = try {
+                    Lattice.recover(sigs, bbits) { cand ->
+                        val priv = cand.toString(16).padStart(64, '0')
+                        val pc = try { HunterEngine.pubDeHex(priv) } catch (e: Throwable) { "" }
+                        pc.equals(target, ignoreCase = true)
+                    }
+                } catch (e: Throwable) { null }
+                runOnUiThread {
+                    latCorriendo = false; btn.text = "Recover"
+                    if (d != null) {
+                        val priv = d.toString(16).padStart(64, '0')
+                        val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                        salida.addView(filaResultado("Private key", priv, true))
+                        if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                        tv.text = "Recovered — the nonces were weak."
+                    } else {
+                        tv.text = "Not recovered. The nonces may not be that short, or you need " +
+                                  "more signatures (try a larger bit value, or add more sigs)."
+                    }
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+        nota(AppTheme.WARN, "Self-verifying: it only returns a key whose d·G matches the public key. " +
+             "Short-nonce case (128-bit) needs ~2–4 signatures; smaller bias needs more.")
     }
 
     // ── Vanity address ─────────────────────────────────────────────────────
