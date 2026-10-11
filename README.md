@@ -45,6 +45,20 @@ point, reset). If the puzzle's public key is published it switches to **Kangaroo
 over the From–To range, finding it in `√` of the range. It also checks the
 balance and whether the public key is published.
 
+> **Note — there is no hidden "pattern" to exploit.** A recurring claim on the
+> puzzle forums is that the keys are a deterministic, hand-built sequence you can
+> derive one from another. Tested against the 70 published solved keys, that is
+> false: each key sits in `[2^(N-1), 2^N)` (the *only* real structure, and it's
+> already what every tool searches), but **within** that range the normalized
+> positions are uniform and uncorrelated (lag-1 correlation ≈ 0.06). The
+> "single truncated seed" theory fails too — `k(m) mod 2^n == k(n)` holds for
+> only 66 of 2415 pairs, decaying as `1/2^n` exactly like chance, not the
+> near-100% a nested construction would give. Append-bit, parity and digit tests
+> show nothing either. In short: an unsolved puzzle can only be attacked by
+> searching its range (Kangaroo / BSGS / brute force) — anyone claiming to
+> derive "any key regardless of length" would simply have swept the unclaimed
+> prizes, which are still there.
+
 ## Wallet
 
 Your wallets: create or import them, see balances (checked when the screen opens,
