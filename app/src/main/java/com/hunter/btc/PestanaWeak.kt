@@ -1059,7 +1059,8 @@ object WeakController {
      *  Corre aparte del Kangaroo; los hallazgos van al baúl igual. */
     private fun solveBsgsBatch() {
         if (corriendo) { aviso("Stop the audit first."); return }
-        if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; aviso("BSGS stopped."); return }
+        if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
+            bloquear(false); aviso("BSGS stopped."); return }
         val b = (sbBits?.progress ?: 0) + BITS_MIN
         if (b > 44) { aviso("Range too big for BSGS ($b bits). Use Start audit (Kangaroo)."); return }
         val lineas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
@@ -1072,7 +1073,21 @@ object WeakController {
         bsgsBatchOn = true
         try { HunterEngine.bsgsMultiStart(pubs.joinToString("\n"), "1", fin, 21) }
         catch (e: Throwable) { bsgsBatchOn = false; aviso("Engine error."); return }
+        // Mismo cuadro de mando que una auditoría: tarjeta de rendimiento, cifra
+        // grande (giant steps/s), operaciones, tiempo, barra de progreso y el
+        // contador claves/hallazgos. Así se ve igual que el Kangaroo.
+        val nPubs = pubs.size
+        statsCard?.visibility = android.view.View.VISIBLE
+        vacioWeak?.visibility = android.view.View.GONE
+        resultadosBox?.visibility = android.view.View.GONE
+        chart?.reset()
+        tvSpeed?.text = "0"; tvSpeedU?.text = "op/s"; tvPeak?.text = ""
+        tvOps?.text = "0"; tvProg?.text = "BSGS"; tvKeys?.text = "0/$nPubs · 0"
+        tvTime?.text = "00:00:00"; barraProg?.set(0f)
+        bloquear(true)
         val vistos = HashSet<String>()
+        val ini0 = System.currentTimeMillis()
+        var ultMs = ini0; var ultCnt = 0L; var pico = 0.0; var ultChart = 0L
         lateinit var tick: Runnable
         tick = Runnable {
             if (!bsgsBatchOn) return@Runnable
@@ -1080,16 +1095,30 @@ object WeakController {
             val lines = info.split('\n')
             val head = (lines.firstOrNull() ?: "").split('\t')
             val estado = head.getOrNull(0) ?: "running"
-            val hechas = head.getOrNull(1) ?: "0"; val total = head.getOrNull(2) ?: "0"; val giant = head.getOrNull(3) ?: "0"
+            val hechas = head.getOrNull(1)?.toIntOrNull() ?: 0
+            val total = head.getOrNull(2)?.toIntOrNull() ?: nPubs
+            val giant = head.getOrNull(3)?.toLongOrNull() ?: 0L
             for (i in 1 until lines.size) {
                 val ln = lines[i]; if (ln.contains("|")) { val priv = ln.substringAfter("|").trim()
                     if (priv.length == 64 && vistos.add(priv)) guardar(priv) }
             }
-            if (estado == "running") {
-                aviso("BSGS $hechas/$total keys · ${"%,d".format(giant.toLongOrNull() ?: 0)} giant steps · ${vistos.size} found")
-                h.postDelayed(tick, 400)
-            } else {
-                bsgsBatchOn = false
+            val ahora = System.currentTimeMillis()
+            val dt = (ahora - ultMs) / 1000.0
+            if (dt > 0.2) {
+                val vel = ((giant - ultCnt) / dt).coerceAtLeast(0.0)
+                ultCnt = giant; ultMs = ahora
+                val (sv, su) = escala(vel); tvSpeed?.text = sv; tvSpeedU?.text = "$su/s"
+                if (vel > pico) { pico = vel; val (pv, pu) = escala(pico); tvPeak?.text = "Peak $pv $pu/s" }
+                if (ahora - ultChart > 5000) { ultChart = ahora; chart?.addPoint((vel / 1e6).toFloat()) }
+            }
+            val (ov, ou) = escala(giant.toDouble()); tvOps?.text = "$ov $ou"
+            tvTime?.text = reloj((ahora - ini0) / 1000)
+            tvProg?.text = "${vistos.size} found"
+            tvKeys?.text = "$hechas/$total · ${vistos.size}"
+            barraProg?.set(if (total > 0) hechas.toFloat() / total else 0f)
+            if (estado == "running") { h.postDelayed(tick, 400) }
+            else {
+                bsgsBatchOn = false; bloquear(false)
                 aviso(when (estado) {
                     "range_too_big" -> "Range too big for BSGS."
                     "error"         -> "BSGS error (bad key or range)."
