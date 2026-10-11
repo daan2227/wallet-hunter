@@ -141,4 +141,23 @@ object Lattice {
         }
         return null
     }
+
+    /** Tamaños de nonce que se prueban cuando no se conoce de antemano. */
+    private val SWEEP = intArrayOf(64, 80, 96, 110, 120, 128, 140, 152, 168, 184, 200, 216, 232, 244)
+
+    /**
+     * Como [recover] pero SIN saber el tamaño del nonce: barre [SWEEP] (de menos
+     * a más bits) y devuelve la clave junto con los bits con los que salió, o
+     * null. `cancel` permite abortar el barrido (puede ser null).
+     */
+    fun recoverAuto(sigs: List<Triple<BigInteger, BigInteger, BigInteger>>,
+                    cancel: (() -> Boolean)? = null,
+                    verify: (BigInteger) -> Boolean): Pair<BigInteger, Int>? {
+        for (bb in SWEEP) {
+            if (cancel?.invoke() == true) return null
+            val d = recover(sigs, bb, verify) ?: continue
+            return d to bb
+        }
+        return null
+    }
 }

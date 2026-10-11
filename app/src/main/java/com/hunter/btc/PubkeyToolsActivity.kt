@@ -644,8 +644,8 @@ class PubkeyToolsActivity : Activity() {
         val etPub = entrada("public key 02…/03…/04…")
         root.addView(rotulo("Signatures: r s z (hex), one per line"))
         val etSigs = entrada("r s z\nr s z\n…", varias = true)
-        root.addView(rotulo("Nonce size (bits) — the attack assumes k < 2^bits"))
-        val etBits = entrada("128")
+        root.addView(rotulo("Nonce size (bits) — leave blank to auto-detect"))
+        val etBits = entrada("blank = auto")
         val salida = salidaBox()
         val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
@@ -654,7 +654,7 @@ class PubkeyToolsActivity : Activity() {
             if (latCorriendo) return@boton
             val target = normalizaPubComprimida(etPub.text.toString())
             if (target == null) { Toast.makeText(this, "Enter a valid public key", Toast.LENGTH_SHORT).show(); return@boton }
-            val bbits = etBits.text.toString().trim().toIntOrNull()?.coerceIn(1, 255) ?: 128
+            val fixed = etBits.text.toString().trim().toIntOrNull()?.coerceIn(1, 255)   // null = auto-detect
             val sigs = ArrayList<Triple<java.math.BigInteger, java.math.BigInteger, java.math.BigInteger>>()
             for (ln in etSigs.text.toString().split('\n')) {
                 val toks = ln.split(Regex("[^0-9a-fA-Fx]+")).map { it.removePrefix("0x").trim() }.filter { it.isNotEmpty() }
@@ -664,26 +664,28 @@ class PubkeyToolsActivity : Activity() {
             if (sigs.size < 2) { Toast.makeText(this, "Need at least 2 signatures (r s z)", Toast.LENGTH_LONG).show(); return@boton }
             if (sigs.size > 40) { Toast.makeText(this, "Too many signatures (max 40 here)", Toast.LENGTH_LONG).show(); return@boton }
             salida.removeAllViews(); latCorriendo = true; btn.text = "…"
-            tv.text = "Reducing lattice (${sigs.size} sigs, 2^$bbits nonces)…"
+            tv.text = if (fixed != null) "Reducing lattice (2^$fixed nonces)…" else "Auto-detecting nonce size…"
             Thread {
-                val d = try {
-                    Lattice.recover(sigs, bbits) { cand ->
-                        val priv = cand.toString(16).padStart(64, '0')
-                        val pc = try { HunterEngine.pubDeHex(priv) } catch (e: Throwable) { "" }
-                        pc.equals(target, ignoreCase = true)
-                    }
-                } catch (e: Throwable) { null }
+                val verify = { cand: java.math.BigInteger ->
+                    val priv = cand.toString(16).padStart(64, '0')
+                    (try { HunterEngine.pubDeHex(priv) } catch (e: Throwable) { "" }).equals(target, ignoreCase = true)
+                }
+                var d: java.math.BigInteger? = null
+                try {
+                    if (fixed != null) d = Lattice.recover(sigs, fixed, verify)
+                    else Lattice.recoverAuto(sigs, { !latCorriendo }, verify)?.let { d = it.first }
+                } catch (e: Throwable) {}
+                val dd = d
                 runOnUiThread {
                     latCorriendo = false; btn.text = "Recover"
-                    if (d != null) {
-                        val priv = d.toString(16).padStart(64, '0')
+                    if (dd != null) {
+                        val priv = dd.toString(16).padStart(64, '0')
                         val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
                         salida.addView(filaResultado("Private key", priv, true))
                         if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
-                        tv.text = "Recovered — the nonces were weak."
+                        tv.text = "Recovered — the nonces were weak" + (if (fixed == null) " (auto-detected)." else ".")
                     } else {
-                        tv.text = "Not recovered. The nonces may not be that short, or you need " +
-                                  "more signatures (try a larger bit value, or add more sigs)."
+                        tv.text = "Not recovered. The nonces may not be short/biased, or you need more signatures."
                     }
                 }
             }.apply { isDaemon = true; start() }
@@ -1691,14 +1693,11 @@ class PubkeyToolsActivity : Activity() {
                             try { tri.add(Triple(java.math.BigInteger(sr.r, 16), java.math.BigInteger(sr.s, 16), java.math.BigInteger(z, 16))) } catch (e: Throwable) {}
                         }
                         if (target != null && tri.size >= 3) {
-                            for (bb in intArrayOf(128, 176, 220)) {
-                                if (!nonceCorriendo) break
-                                val d = try { Lattice.recover(tri, bb) { cand ->
-                                    val pv = cand.toString(16).padStart(64, '0')
-                                    (try { HunterEngine.pubDeHex(pv) } catch (e: Throwable) { "" }).equals(target, ignoreCase = true)
-                                } } catch (e: Throwable) { null }
-                                if (d != null) { latPriv = d.toString(16).padStart(64, '0'); latPub = best.key; break }
-                            }
+                            val pr = try { Lattice.recoverAuto(tri, { !nonceCorriendo }) { cand ->
+                                val pv = cand.toString(16).padStart(64, '0')
+                                (try { HunterEngine.pubDeHex(pv) } catch (e: Throwable) { "" }).equals(target, ignoreCase = true)
+                            } } catch (e: Throwable) { null }
+                            if (pr != null) { latPriv = pr.first.toString(16).padStart(64, '0'); latPub = best.key }
                         }
                     }
                 }
