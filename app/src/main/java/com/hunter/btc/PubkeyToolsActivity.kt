@@ -27,6 +27,38 @@ class PubkeyToolsActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private lateinit var root: LinearLayout   // contenedor actual (cuerpo de la sección en construcción)
 
+    // Índice plegable: cada categoría es una cabecera que abre/cierra su caja de
+    // herramientas. El buscador filtra por nombre y despliega las que coinciden.
+    private class Cat(val header: LinearLayout, val body: LinearLayout,
+                      val titulo: String, val chevron: ImageView) {
+        val tools = ArrayList<Pair<String, android.view.View>>()
+    }
+    private val cats = ArrayList<Cat>()
+    private var catActual: Cat? = null
+    private fun abrirCat(c: Cat, abierta: Boolean) {
+        c.body.visibility = if (abierta) android.view.View.VISIBLE else android.view.View.GONE
+        c.chevron.rotation = if (abierta) 90f else 0f
+    }
+    private fun filtrar(qRaw: String) {
+        val q = qRaw.trim().lowercase()
+        for (c in cats) {
+            if (q.isEmpty()) {
+                for ((_, v) in c.tools) v.visibility = android.view.View.VISIBLE
+                c.header.visibility = android.view.View.VISIBLE
+                abrirCat(c, false)
+            } else {
+                var alguna = false
+                for ((t, v) in c.tools) {
+                    val m = t.lowercase().contains(q)
+                    v.visibility = if (m) android.view.View.VISIBLE else android.view.View.GONE
+                    if (m) alguna = true
+                }
+                c.header.visibility = if (alguna) android.view.View.VISIBLE else android.view.View.GONE
+                abrirCat(c, alguna)
+            }
+        }
+    }
+
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
@@ -47,6 +79,19 @@ class PubkeyToolsActivity : Activity() {
             text = "Tools"; textSize = 24f; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.title(context)
             setPadding(dp(20), 0, dp(20), dp(8))
+        })
+        page.addView(EditText(this).apply {
+            hint = "Search tools…"; isSingleLine = true
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(20), dp(4), dp(20), dp(10)) }
+            addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(e: android.text.Editable?) { filtrar(e?.toString() ?: "") }
+                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            })
         })
 
         cabecera(page, "Keys & addresses")
@@ -94,20 +139,41 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
     }
 
-    /** Cabecera de categoría entre grupos de herramientas. */
+    /** Cabecera de categoría: fila que abre/cierra su caja de herramientas. */
     private fun cabecera(page: LinearLayout, t: String) {
-        page.addView(TextView(this).apply {
-            text = t.uppercase(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.bold(context); letterSpacing = 0.08f
-            setPadding(dp(20), dp(22), dp(20), dp(6))
-        })
+        val chevron = ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron); setColorFilter(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
+        }
+        val header = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(10))
+            isClickable = true; isFocusable = true; foreground = Ui.toque()
+            addView(TextView(this@PubkeyToolsActivity).apply {
+                text = t.uppercase(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.bold(context); letterSpacing = 0.08f
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(chevron)
+        }
+        val body = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; visibility = android.view.View.GONE
+        }
+        val cat = Cat(header, body, t, chevron)
+        header.setOnClickListener { abrirCat(cat, cat.body.visibility != android.view.View.VISIBLE) }
+        page.addView(header); page.addView(body)
+        cats.add(cat); catActual = cat
     }
 
-    /** Añade una sección plegable y construye su cuerpo apuntando [root] a él. */
+    /** Añade una sección plegable a la categoría actual; su cuerpo apunta [root] a él. */
     private fun seccion(page: LinearLayout, icon: Int, title: String, build: () -> Unit) {
-        page.addView(Ui.section(this, icon, title) {
+        val card = Ui.section(this, icon, title) {
             val prev = root; root = this; build(); root = prev
-        })
+        }
+        val c = catActual
+        if (c == null) { page.addView(card); return }
+        c.body.addView(card)
+        c.tools.add(title to card)
     }
 
     // ── Piezas comunes (operan sobre [root]) ──────────────────────────────
