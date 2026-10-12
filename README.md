@@ -179,8 +179,11 @@ small range → whatever it finds (badly generated keys) goes to the vault.
 
 ## Tools
 
-A grouped screen of standalone utilities (More → Tools), each a collapsible
-card. Everything runs on-device; the few that need the network are watch-only.
+A grouped screen of standalone utilities (More → Tools). It opens as a tidy
+index: six **collapsible categories** (collapsed by default, a chevron per
+header) plus a **search box** at the top that filters tools by name and expands
+the categories that match. Everything runs on-device; the few that need the
+network are watch-only.
 
 - **Keys & addresses** — Addresses from a key · Hex ↔ WIF · Key / address
   inspector · Mnemonic tools (BIP39) · Custom derivation path · xpub → addresses.

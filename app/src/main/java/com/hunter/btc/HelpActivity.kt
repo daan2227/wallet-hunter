@@ -123,9 +123,11 @@ class HelpActivity : Activity() {
             "key over a small range → whatever it finds (badly generated keys) goes to the vault.")
 
         seccion(root, "Tools")
-        parrafo(root, "More → Tools is a grouped screen of standalone utilities, each a " +
-            "collapsible card: Keys & addresses, Sign/encrypt/backup (BIP38, Shamir, PSBT…), " +
-            "Transactions, Monitor & generate (Vanity for 1…/3…/bc1q…), and Audit & analysis.")
+        parrafo(root, "More → Tools is a grouped screen of standalone utilities. It opens as " +
+            "a tidy index: six collapsible categories (collapsed by default, tap a header to " +
+            "open it) and a search box on top that filters tools by name. The categories are " +
+            "Keys & addresses, Sign/encrypt/backup (BIP38, Shamir, PSBT…), Transactions, " +
+            "Monitor & generate (Vanity for 1…/3…/bc1q…), Audit & analysis, and Utility.")
 
         seccion(root, "Audit & analysis")
         parrafo(root, "• Solve key in range (BSGS): resolves a public key whose private key " +
