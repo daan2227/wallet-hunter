@@ -258,14 +258,15 @@ object AppTheme {
     /** Fondo de pantalla con un degradado radial muy sutil arriba (propuesta B).
      *  En temas claros es un degradado igual de leve hacia el blanco. */
     fun fondoApp(): android.graphics.drawable.Drawable {
-        val top = if (activa.oscuro) mezcla(activa.bgDeep, Color.parseColor("#1E2A3A"), 0.55f)
-                  else mezcla(activa.bgDeep, Color.WHITE, 0.5f)
+        // Glow superior más marcado (como el mockup de la propuesta B).
+        val top = if (activa.oscuro) mezcla(activa.bgDeep, Color.parseColor("#2A3B57"), 0.92f)
+                  else mezcla(activa.bgDeep, Color.WHITE, 0.72f)
         val g = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(top, activa.bgDeep, activa.bgDeep))
         g.gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
-        g.gradientRadius = 1400f
-        g.setGradientCenter(0.5f, -0.05f)
+        g.gradientRadius = 1500f
+        g.setGradientCenter(0.5f, -0.06f)
         return g
     }
     /** Mezcla lineal de dos colores (t=0 → a, t=1 → b). */
