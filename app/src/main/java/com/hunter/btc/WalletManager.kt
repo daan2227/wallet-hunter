@@ -209,7 +209,7 @@ object WalletManager {
      * clave no se escribe ni se lee nada: ver claveSemilla.
      */
     fun saveSeed(ctx: Context, mnemonic: String) {
-        val k = claveSemilla ?: throw IllegalStateException("Desbloquea con el PIN antes de guardar una semilla")
+        val k = claveSemilla ?: throw IllegalStateException("Unlock with the PIN before saving a seed")
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val enc = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
@@ -531,7 +531,7 @@ object WalletManager {
     }
 
     fun saveWallet(ctx: Context, id: String, name: String, mnemonic: String) {
-        val k = claveSemilla ?: throw IllegalStateException("Desbloquea con el PIN antes de guardar una semilla")
+        val k = claveSemilla ?: throw IllegalStateException("Unlock with the PIN before saving a seed")
         // Keystore propio de la cartera (como antes), y encima el sobre del PIN.
         val alias = "hunter_wallet_$id"
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }

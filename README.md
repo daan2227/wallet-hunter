@@ -213,6 +213,32 @@ Every hit — from the scanner, a puzzle or the weak-key audit — lands here wi
 its WIF and address. From a find you can check its balance, move it to your
 wallets, or delete it. It's encrypted on the device.
 
+## Security and the PIN
+
+You choose a 6-digit PIN. The app locks when the screen turns off or when you
+leave it for more than 30 seconds, and asks for the PIN again.
+
+- **Seeds are sealed twice**: once by the phone's secure hardware, and once with a
+  key derived from your PIN. That PIN key only lives in memory while you are in
+  the app and is wiped when it locks, so after a lock or a restart you type the
+  PIN again before any seed can be read.
+- **The fingerprint is not used.** It can't provide the PIN, and the PIN is what
+  opens the seeds.
+- **Too many wrong PINs** lock the whole app behind a countdown (30 s, doubling
+  with each extra failure, up to 1 h). A correct PIN is not even checked during
+  the wait. The wait runs on the phone's uptime clock, so changing the date
+  doesn't skip it; a reboot starts it over, never shorter.
+- **Change the PIN** in More › Profile. It re-seals every seed with the new code in
+  a single step: either both change or neither does. The keys themselves don't.
+- **The PIN can't be recovered.** If you forget it the seeds can't be opened, so
+  keep your seed phrase written down.
+- **Not covered by the PIN**: WIF keys, watch-only wallets and the finds vault are
+  protected by the secure hardware only. The scanner saves finds while the app is
+  locked, when no PIN key exists.
+
+The Profile screen also holds an optional name, stored encrypted on the device.
+Nothing else about you is kept; there is no account and no network use.
+
 ## More
 
 **Tools** opens the grouped utilities screen above. **Notifications** toggles the

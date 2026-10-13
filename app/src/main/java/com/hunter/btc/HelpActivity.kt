@@ -152,6 +152,22 @@ class HelpActivity : Activity() {
             "here with its WIF and address. From a find you can check its balance, move it to " +
             "your wallets, or delete it. It's encrypted on the device.")
 
+        seccion(root, "Security and the PIN")
+        parrafo(root, "You choose a 6-digit PIN. The app locks when the screen turns off or " +
+            "when you leave it for more than 30 seconds, and asks for the PIN again.")
+        parrafo(root, "Seeds are sealed twice: by the phone's secure hardware and by a key " +
+            "derived from your PIN. That key lives only in memory while you are in the app and " +
+            "is wiped when it locks, so after a lock or a restart you type the PIN again before " +
+            "any seed can be read. The fingerprint is not used: it can't provide the PIN.")
+        parrafo(root, "Too many wrong PINs lock the whole app behind a countdown (30 s, " +
+            "doubling with each extra failure, up to 1 h). A correct PIN is not checked during " +
+            "the wait, and changing the phone's date doesn't skip it.")
+        parrafo(root, "Change the PIN in More › Profile. It re-seals every seed with the new " +
+            "code in one step: both change or neither does. The PIN can't be recovered, so keep " +
+            "your seed phrase written down. WIF keys, watch-only wallets and the finds vault are " +
+            "protected by the secure hardware only, because the scanner saves finds while the " +
+            "app is locked.")
+
         seccion(root, "More")
         parrafo(root, "Notifications toggles the find alert, vibration and the coin sound " +
             "on a find, each on its own. Appearance switches light/dark. Debug shows the " +
