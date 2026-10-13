@@ -40,7 +40,7 @@ import com.hunter.btc.MainActivity.PuzzleInfo
  */
 internal fun MainActivity.buildMoreTab(): ScrollView {
     val scroll = ScrollView(this).apply {
-        setBackgroundColor(AppTheme.BG_DEEP)
+        background = AppTheme.fondoApp()
         visibility = android.view.View.GONE
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -49,7 +49,6 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     }
     val page = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(AppTheme.BG_DEEP)
         setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(32))
     }
     page.addView(Ui.pageTitle(this, "More", lados = false))

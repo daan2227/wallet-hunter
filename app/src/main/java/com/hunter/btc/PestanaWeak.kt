@@ -172,10 +172,9 @@ object WeakController {
             typeface = AppTheme.medium(context); setPadding(0, 0, 0, dp(6))
         }
 
-        val scroll = ScrollView(a)
+        val scroll = ScrollView(a).apply { background = AppTheme.fondoApp() }
         val root = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(AppTheme.BG_DEEP)
             setPadding(dp(20), dp(24), dp(20), dp(24))
         }
         scroll.addView(root)

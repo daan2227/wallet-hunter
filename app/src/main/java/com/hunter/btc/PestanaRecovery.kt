@@ -36,7 +36,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     val ACCENT2 = AppTheme.BLUE
 
     val recoveryScroll = ScrollView(this).apply {
-        setBackgroundColor(AppTheme.BG_DEEP)
+        background = AppTheme.fondoApp()
         visibility = android.view.View.GONE
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -45,7 +45,6 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     }
     val recoveryPage = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(AppTheme.BG_DEEP)
         setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(80))
     }
 
