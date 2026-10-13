@@ -7,7 +7,7 @@ import android.widget.*
 
 /**
  * Perfil local y privado. Lo ÚNICO que guarda del usuario es un nombre (cifrado
- * con el Keystore), y permite cambiar el PIN. Sin cuenta, sin correo, sin red.
+ * con el Keystore y el PIN), y permite cambiar el PIN. Sin cuenta, sin correo, sin red.
  */
 class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
 
@@ -100,8 +100,9 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
         val cPin = card()
         cPin.addView(rotulo("Security"))
         cPin.addView(TextView(this).apply {
-            text = "The PIN gates the vault, wallets and seeds. Changing it never touches your " +
-                   "keys — they are protected by the device's secure hardware, not the PIN."
+            text = "The PIN opens your wallet seeds. They stay locked until you enter it in each " +
+                   "session, and the device's secure hardware protects them as well. Changing the " +
+                   "PIN re-locks them with the new code; the keys themselves do not change."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f); setPadding(0, 0, 0, dp(12))
         })

@@ -90,8 +90,12 @@ object PinAuthHelper {
         val bm = androidx.biometric.BiometricManager.from(activity)
         // La huella no se ofrece mientras esté vetada por demasiados intentos:
         // ni tecla, ni lanzamiento automático. Sólo un PIN correcto la reactiva.
+        // La huella no puede dar el PIN, y la clave de las semillas sólo sale del
+        // PIN (ver WalletManager.claveSemillaLista). Sin clave en la sesión, la
+        // huella no se ofrece: así no hay un "acierto" que no abra nada.
         val hayHuella = !isSetup && activity is androidx.fragment.app.FragmentActivity &&
             !WalletManager.bioBloqueada(activity) &&
+            WalletManager.claveSemillaLista() &&
             bm.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
                 androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
 
@@ -229,8 +233,15 @@ object PinAuthHelper {
                             tvPista.setTextColor(MUTED); tvPista.text = "To make sure it is the one you want"
                         }
                         primero == pin.toString() -> {
-                            WalletManager.savePin(activity, pin.toString())
-                            cerrar(true)
+                            if (WalletManager.savePin(activity, pin.toString())) cerrar(true)
+                            else {
+                                // No se pudo fijar el PIN (no hay clave para reabrir las
+                                // semillas). Nada cambió: se vuelve a empezar.
+                                primero = ""; pin.clear(); pintarPuntos(error = true); sacudir()
+                                tvTitulo.text = "Pick a code"
+                                tvPista.setTextColor(RED)
+                                tvPista.text = "The code could not be saved. Try again."
+                            }
                         }
                         else -> {
                             primero = ""; pintarPuntos(error = true); sacudir()

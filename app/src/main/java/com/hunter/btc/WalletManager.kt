@@ -28,6 +28,10 @@ object WalletManager {
     private const val PREF_SALT  = "pin_salt"
     private const val PREF_VER   = "pin_verify"
     private const val PREF_VIV   = "pin_verify_iv"
+    // Sobre de cada semilla bajo el PIN (ver SeedEnvelope). PREF_SEED/PREF_IV
+    // son las de antes: se leen como legado y desaparecen al envolverlas.
+    private const val PREF_SEED_P   = "seed_pin"
+    private const val PREF_SEED_PIV = "seed_pin_iv"
     private const val PREF_ADDRS = "wallet_addrs"
     private const val PBKDF2_ITER = 100000
 
@@ -44,6 +48,20 @@ object WalletManager {
             .setKeySize(256).build())
         return kg.generateKey()
     }
+
+    /**
+     * Clave del PIN de ESTA sesión, sólo en memoria. Es la que abre el sobre de
+     * las semillas: sin ella no se lee ni escribe ninguna. La pone checkPin al
+     * acertar el PIN y la borra olvidarClaveSemilla al bloquearse la app.
+     */
+    @Volatile private var claveSemilla: SecretKey? = null
+
+    fun claveSemillaLista(): Boolean = claveSemilla != null
+
+    fun olvidarClaveSemilla() { claveSemilla = null }
+
+    private fun b64e(b: ByteArray): String = Base64.encodeToString(b, Base64.NO_WRAP)
+    private fun b64d(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
 
     /* Deriva clave AES-256 del PIN usando PBKDF2 */
     private fun pinToKey(pin: String, salt: ByteArray): SecretKey {
@@ -185,20 +203,29 @@ object WalletManager {
             .putString("watch_list", list.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" }).apply()
     }
 
+    /*
+     * Semilla principal, en dos capas: dentro el Keystore (como antes, no sale
+     * del chip) y fuera el sobre con la clave del PIN de la sesión. Sin esa
+     * clave no se escribe ni se lee nada: ver claveSemilla.
+     */
     fun saveSeed(ctx: Context, mnemonic: String) {
+        val k = claveSemilla ?: throw IllegalStateException("Desbloquea con el PIN antes de guardar una semilla")
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey())
         val enc = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
+        val (e2, i2) = SeedEnvelope.sellar(k, SeedEnvelope.empaquetar(cipher.iv, enc))
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(PREF_SEED, Base64.encodeToString(enc, Base64.NO_WRAP))
-            .putString(PREF_IV,   Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+            .putString(PREF_SEED_P, b64e(e2))
+            .putString(PREF_SEED_PIV, b64e(i2))
+            .remove(PREF_SEED).remove(PREF_IV)
             .apply()
     }
 
     fun loadSeed(ctx: Context): String? {
+        val k = claveSemilla ?: return null
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enc = Base64.decode(prefs.getString(PREF_SEED, null) ?: return null, Base64.NO_WRAP)
-        val iv  = Base64.decode(prefs.getString(PREF_IV,   null) ?: return null, Base64.NO_WRAP)
+        val inner = innerDe(prefs, k, PREF_SEED_P, PREF_SEED_PIV, PREF_SEED, PREF_IV) ?: return null
+        val (iv, enc) = SeedEnvelope.desempaquetar(inner) ?: return null
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
@@ -206,24 +233,83 @@ object WalletManager {
         } catch(e: Exception) { null }
     }
 
-    fun hasSeed(ctx: Context) =
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SEED)
+    /** Blob interior de una semilla: abre el sobre, o usa el formato de antes. */
+    private fun innerDe(prefs: android.content.SharedPreferences, k: SecretKey,
+                        encK: String, ivK: String, legE: String, legI: String): ByteArray? {
+        val pe = prefs.getString(encK, null); val pi = prefs.getString(ivK, null)
+        if (pe != null && pi != null) return SeedEnvelope.abrir(k, b64d(pe), b64d(pi))
+        val le = prefs.getString(legE, null) ?: return null
+        val li = prefs.getString(legI, null) ?: return null
+        return SeedEnvelope.empaquetar(b64d(li), b64d(le))
+    }
+
+    fun hasSeed(ctx: Context): Boolean {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return p.contains(PREF_SEED_P) || p.contains(PREF_SEED)
+    }
 
     /* PIN: guarda salt + texto de verificacion cifrado con clave derivada del PIN
        Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false
        No hay hash almacenado -> no hay brute-force offline directo */
-    fun savePin(ctx: Context, pin: String) {
+    /**
+     * Fija o cambia el PIN. Las semillas se vuelven a cerrar con la clave nueva
+     * en el MISMO commit que el PIN: o cambian las dos cosas, o ninguna. false si
+     * no se pudo (con un PIN previo, hace falta la clave vigente para reabrirlas).
+     */
+    fun savePin(ctx: Context, pin: String): Boolean {
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val hayPin = hasPin(ctx)
+        val antigua = claveSemilla
+        if (hayPin && antigua == null) return false
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-        val key  = pinToKey(pin, salt)
-        val (enc, iv) = aesEncrypt(key, "wallet_ok".toByteArray())
-        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(PREF_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
-            .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
-            .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
-            // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
-            .remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
-            .apply()
+        val nueva = pinToKey(pin, salt)
+        val (enc, iv) = aesEncrypt(nueva, "wallet_ok".toByteArray())
+        val ed = prefs.edit()
+        if (!reenvolver(ctx, if (hayPin) antigua else null, nueva, ed)) return false
+        ed.putString(PREF_SALT, b64e(salt))
+          .putString(PREF_VER,  b64e(enc))
+          .putString(PREF_VIV,  b64e(iv))
+          // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
+          .remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+        if (!ed.commit()) return false
+        claveSemilla = nueva
+        return true
     }
+
+    /**
+     * Pone cada semilla bajo la clave `nueva`. Con sobre previo lo abre con
+     * `antigua` y lo vuelve a cerrar; sin `antigua` da por hecho que ya va con la
+     * vigente (checkPin). Las que sólo tienen Keystore se envuelven ahora.
+     * Escribe en `ed` sin confirmar: el que llama decide. false si una semilla no
+     * se puede abrir con `antigua`; entonces no debe confirmarse nada.
+     */
+    private fun reenvolver(ctx: Context, antigua: SecretKey?, nueva: SecretKey,
+                           ed: android.content.SharedPreferences.Editor): Boolean {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ranuras = mutableListOf(Ranura(PREF_SEED_P, PREF_SEED_PIV, PREF_SEED, PREF_IV))
+        listWallets(ctx).forEach { w ->
+            ranuras.add(Ranura("seed_pin_${w.first}", "seed_pin_iv_${w.first}",
+                               "seed_enc_${w.first}", "seed_iv_${w.first}"))
+        }
+        for (r in ranuras) {
+            val pe = p.getString(r.encK, null); val pi = p.getString(r.ivK, null)
+            if (pe != null && pi != null) {
+                if (antigua == null) continue                 // ya va con la clave vigente
+                val inner = SeedEnvelope.abrir(antigua, b64d(pe), b64d(pi)) ?: return false
+                val (e2, i2) = SeedEnvelope.sellar(nueva, inner)
+                ed.putString(r.encK, b64e(e2)).putString(r.ivK, b64e(i2))
+            } else {
+                val le = p.getString(r.legE, null) ?: continue
+                val li = p.getString(r.legI, null) ?: continue
+                val (e2, i2) = SeedEnvelope.sellar(nueva, SeedEnvelope.empaquetar(b64d(li), b64d(le)))
+                ed.putString(r.encK, b64e(e2)).putString(r.ivK, b64e(i2))
+                ed.remove(r.legE).remove(r.legI)
+            }
+        }
+        return true
+    }
+
+    private data class Ranura(val encK: String, val ivK: String, val legE: String, val legI: String)
 
     // ── Perfil local (cifrado) ──────────────────────────────────────────────
     // Por privacidad, lo ÚNICO que se guarda del usuario es un nombre, y va
@@ -259,8 +345,7 @@ object WalletManager {
      *  no es correcto. No toca las carteras (van con Keystore, no con el PIN). */
     fun changePin(ctx: Context, actual: String, nuevo: String): Boolean {
         if (!checkPin(ctx, actual)) return false
-        savePin(ctx, nuevo)
-        return true
+        return savePin(ctx, nuevo)
     }
 
     // ── Intentos de PIN ──────────────────────────────────────────────────
@@ -331,11 +416,17 @@ object WalletManager {
         // Durante la espera no se comprueba nada: ni el PIN correcto entra.
         // Si no, la espera sería sólo un aviso.
         if (esperaPin(ctx) > 0) return false
-        val ok = comprobarPin(ctx, pin)
+        val clave = claveDelPin(ctx, pin)
+        val ok = clave != null
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        if (ok) {
-            // El PIN correcto es lo ÚNICO que vuelve a habilitar la huella.
-            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ).apply()
+        if (clave != null) {
+            // El PIN correcto es lo ÚNICO que vuelve a habilitar la huella, y lo
+            // que abre las semillas de esta sesión. Aprovecha para envolver las
+            // que aún estén sólo con el Keystore (las de antes del PIN).
+            claveSemilla = clave
+            val ed = prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+            reenvolver(ctx, null, clave, ed)
+            ed.commit()
         } else {
             val fallos = prefs.getInt(PREF_FALLOS, 0) + 1
             val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
@@ -351,14 +442,15 @@ object WalletManager {
         return ok
     }
 
-    private fun comprobarPin(ctx: Context, pin: String): Boolean {
+    /** La clave del PIN si es el correcto, o null. Es la que abre las semillas. */
+    private fun claveDelPin(ctx: Context, pin: String): SecretKey? {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val salt = Base64.decode(prefs.getString(PREF_SALT, null) ?: return false, Base64.NO_WRAP)
-        val enc  = Base64.decode(prefs.getString(PREF_VER,  null) ?: return false, Base64.NO_WRAP)
-        val iv   = Base64.decode(prefs.getString(PREF_VIV,  null) ?: return false, Base64.NO_WRAP)
+        val salt = b64d(prefs.getString(PREF_SALT, null) ?: return null)
+        val enc  = b64d(prefs.getString(PREF_VER,  null) ?: return null)
+        val iv   = b64d(prefs.getString(PREF_VIV,  null) ?: return null)
         val key  = pinToKey(pin, salt)
-        val dec  = aesDecrypt(key, enc, iv) ?: return false
-        return String(dec) == "wallet_ok"
+        val dec  = aesDecrypt(key, enc, iv) ?: return null
+        return if (String(dec) == "wallet_ok") key else null
     }
 
     /* encryptData()/decryptData() vivían aquí para el exportador de matches de
@@ -439,7 +531,8 @@ object WalletManager {
     }
 
     fun saveWallet(ctx: Context, id: String, name: String, mnemonic: String) {
-        // Encrypt seed under id-specific key
+        val k = claveSemilla ?: throw IllegalStateException("Desbloquea con el PIN antes de guardar una semilla")
+        // Keystore propio de la cartera (como antes), y encima el sobre del PIN.
         val alias = "hunter_wallet_$id"
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
         if (!ks.containsAlias(alias)) {
@@ -454,9 +547,11 @@ object WalletManager {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key)
         val enc = cipher.doFinal(mnemonic.toByteArray(Charsets.UTF_8))
+        val (e2, i2) = SeedEnvelope.sellar(k, SeedEnvelope.empaquetar(cipher.iv, enc))
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-        prefs.putString("seed_enc_$id", Base64.encodeToString(enc, Base64.NO_WRAP))
-        prefs.putString("seed_iv_$id",  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+        prefs.putString("seed_pin_$id", b64e(e2))
+        prefs.putString("seed_pin_iv_$id", b64e(i2))
+        prefs.remove("seed_enc_$id").remove("seed_iv_$id")
         // Add to list
         val list = listWallets(ctx).toMutableList()
         if (list.none { it.first == id }) list.add(Pair(id, name))
@@ -465,13 +560,13 @@ object WalletManager {
     }
 
     fun loadWalletSeed(ctx: Context, id: String): String? {
-        val alias = "hunter_wallet_$id"
+        val k = claveSemilla ?: return null
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val enc = Base64.decode(prefs.getString("seed_enc_$id", null) ?: return null, Base64.NO_WRAP)
-        val iv  = Base64.decode(prefs.getString("seed_iv_$id",  null) ?: return null, Base64.NO_WRAP)
+        val inner = innerDe(prefs, k, "seed_pin_$id", "seed_pin_iv_$id", "seed_enc_$id", "seed_iv_$id") ?: return null
+        val (iv, enc) = SeedEnvelope.desempaquetar(inner) ?: return null
         return try {
             val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-            val key = (ks.getEntry(alias, null) as KeyStore.SecretKeyEntry).secretKey
+            val key = (ks.getEntry("hunter_wallet_$id", null) as KeyStore.SecretKeyEntry).secretKey
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
             String(cipher.doFinal(enc), Charsets.UTF_8)
@@ -484,6 +579,7 @@ object WalletManager {
         borrarOrigen(ctx, id)
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
         prefs.remove("seed_enc_$id"); prefs.remove("seed_iv_$id")
+        prefs.remove("seed_pin_$id"); prefs.remove("seed_pin_iv_$id")
         val list = listWallets(ctx).filter { it.first != id }
         prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
         prefs.apply()
@@ -601,7 +697,9 @@ object WalletManager {
         // la seed y ya esta, asi que el PIN ni se toca. Guardar a un lado algo
         // que nadie restaura solo sirve para que el siguiente que lo lea crea
         // que esta funcion borra mas de lo que borra.
-        prefs.edit().remove(PREF_SEED).remove("seed_iv").apply()
+        // Antes se borraba "seed_iv", que no es la clave del IV (PREF_IV): el IV
+        // se quedaba huérfano. Ahora se quitan todas las claves de la semilla.
+        prefs.edit().remove(PREF_SEED).remove(PREF_IV).remove(PREF_SEED_P).remove(PREF_SEED_PIV).apply()
         borrarOrigen(ctx, CLAVE_PRINCIPAL)
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
@@ -623,6 +721,9 @@ object WalletManager {
      * que un acierto se perdía al desinstalar.
      */
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
+        // Sin la clave del PIN de la sesión, loadSeed devuelve null y la copia
+        // saldría sin semillas sin avisar. Mejor no hacerla.
+        if (hasSeed(ctx) && !claveSemillaLista()) return null
         // "pin" es ya la contraseña de la copia: ver cifrarCopia.
         return try {
             // Recoge lo que el motor no haya podido entregar al baúl todavía,

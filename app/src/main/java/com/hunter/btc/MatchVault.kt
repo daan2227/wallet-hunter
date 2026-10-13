@@ -410,6 +410,9 @@ object MatchVault {
         }
         val seed = seedDe(e)
         if (seed.isEmpty()) return false
+        // La semilla de una cartera sólo se escribe con el PIN de la sesión. Sin
+        // ella no se guarda y se avisa (false), en vez de lanzar una excepción.
+        if (!WalletManager.claveSemillaLista()) return false
         WalletManager.agregarSeed(ctx, seed,
             nombreDe(e).ifEmpty { "$origen ${e.addr.take(8)}" }, e.source)
         return true

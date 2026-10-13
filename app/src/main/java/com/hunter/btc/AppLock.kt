@@ -132,5 +132,7 @@ object AppLock {
      */
     fun bloquear() {
         PinAuthHelper.lastAuthTime = 0L
+        // Sin sesión, la clave que abre las semillas también se va de memoria.
+        WalletManager.olvidarClaveSemilla()
     }
 }
