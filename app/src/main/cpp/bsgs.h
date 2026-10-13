@@ -148,34 +148,94 @@ static int bsgs_build(secp256k1_context *ctx,
 
 static void bsgs_ctx_free(BsgsCtx *c){ if(c&&c->ok){ free(c->t.key); free(c->t.val); c->ok=0; } }
 
-/* Busca UNA pubkey reutilizando una tabla ya construida. */
-static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
-                      const uint8_t *pub, size_t publen,
-                      std::atomic<bool> *run, std::atomic<uint64_t> *progress,
-                      uint8_t out32[32]){
+/* ── Reanudar una búsqueda gigante ─────────────────────────────────────────
+ * Un barrido largo puede parar (la app se cierra, el móvil se reinicia). El
+ * estado que hace falta es pequeño: el índice i del siguiente paso y el punto
+ * Q_i = objetivo - (a + i·m)·G, en afín. La tabla baby se reconstruye igual.
+ *
+ * Al reanudar se COMPRUEBA que Q_i sea de ESTE objetivo (una multiplicación):
+ * si no lo es, se ignora el estado y se empieza de cero. Así un estado de otra
+ * pubkey nunca produce una respuesta equivocada, sólo más trabajo. */
+struct BsgsReanuda { int valido; uint64_t i; uint8_t inf; uint8_t q[65]; };
+
+/* Limbs a bytes big-endian en el mismo formato que lee jp_from_affine. */
+static void fe_a_be32(const fe_t a, uint8_t out[32]){
+    for(int L=0;L<4;L++) for(int j=0;j<8;j++) out[(3-L)*8+j]=(uint8_t)(a[L]>>(56-8*j));
+}
+
+/* Lleva a [0, p) un elemento que puede venir sin reducir del todo: sin esto,
+ * el mismo punto podría guardarse con bytes distintos y no compararse igual. */
+static void fe_canon(fe_t a){
+    static const uint64_t P[4]={0xFFFFFFFEFFFFFC2FULL,~0ULL,~0ULL,~0ULL};
+    uint64_t t[4]; unsigned __int128 b=0;
+    for(int i=0;i<4;i++){
+        unsigned __int128 d=(unsigned __int128)a[i]-P[i]-(uint64_t)b;
+        t[i]=(uint64_t)d; b=(d>>64)&1;
+    }
+    if(!b) memcpy(a,t,32);   /* a >= p: nos quedamos con a - p */
+}
+
+/* Guarda el Jacobiano Q como afín en re (pub65). */
+static void bsgs_punto_a_estado(const JP *Q, BsgsReanuda *re){
+    int inf=1; for(int w=0;w<4;w++) if(Q->z[w]){inf=0;break;}
+    re->inf=(uint8_t)inf; memset(re->q,0,65);
+    if(inf) return;
+    fe_t zi,z2,z3,x,y;
+    fe_inv(zi,Q->z); fe_sqr(z2,zi); fe_mul(z3,z2,zi);
+    fe_mul(x,Q->x,z2); fe_mul(y,Q->y,z3);
+    fe_canon(x); fe_canon(y);
+    re->q[0]=0x04; fe_a_be32(x,re->q+1); fe_a_be32(y,re->q+33);
+}
+
+/* Busca UNA pubkey reutilizando una tabla ya construida, pudiendo reanudar.
+ *   re        : estado de reanudación (puede ser null). Si está válido y es de
+ *               este objetivo, se continúa desde su índice; al parar (bandera
+ *               run o pasos_max) se guarda aquí el punto donde se quedó.
+ *   pasos_max : 0 = sin límite. Si >0, para tras ese número de pasos (para
+ *               trocear el barrido y guardar entre trozos). */
+static int bsgs_giant_ck(secp256k1_context *ctx, const BsgsCtx *c,
+                         const uint8_t *pub, size_t publen,
+                         std::atomic<bool> *run, std::atomic<uint64_t> *progress,
+                         uint8_t out32[32], BsgsReanuda *re, uint64_t pasos_max){
     secp256k1_pubkey obj;
     if(!secp256k1_ec_pubkey_parse(ctx,&obj,pub,publen)) return BSGS_ERROR;
     uint8_t obj33[33]; size_t l33=33; secp256k1_ec_pubkey_serialize(ctx,obj33,&l33,&obj,SECP256K1_EC_COMPRESSED);
     const BsgsTabla &t=c->t; uint64_t m=c->m, M=c->M; const uint8_t *a32=c->a32;
-    int inf=0; uint8_t q65[65];
-    if(!bsgs_menos_aG(ctx,&obj,a32,q65,&inf)) return BSGS_ERROR;
-    if(inf){ if(bsgs_verifica(ctx,a32,obj33)){ memcpy(out32,a32,32); return BSGS_HALLADO; } }
-    JP Q; jp_from_affine(&Q,q65);
-    for(uint64_t i=0;i<M;i++){
-        if(run && !run->load()) return BSGS_NO;
+
+    JP Q; uint64_t i0=0; int reanudado=0;
+    if(re && re->valido && re->i>0 && re->i<M){
+        uint8_t k[32]; bsgs_k_mas(a32,re->i*m,k);
+        uint8_t qesp[65]; int inf_esp=0;
+        if(bsgs_menos_aG(ctx,&obj,k,qesp,&inf_esp) && inf_esp==(int)re->inf &&
+           (inf_esp || memcmp(qesp,re->q,65)==0)){
+            i0=re->i; reanudado=1;
+            if(re->inf) memset(&Q,0,sizeof(Q)); else jp_from_affine(&Q,re->q);
+        }
+    }
+    if(!reanudado){
+        int inf=0; uint8_t q65[65];
+        if(!bsgs_menos_aG(ctx,&obj,a32,q65,&inf)) return BSGS_ERROR;
+        if(inf){ if(bsgs_verifica(ctx,a32,obj33)){ memcpy(out32,a32,32); return BSGS_HALLADO; } }
+        jp_from_affine(&Q,q65);
+    }
+
+    auto guardar=[&](uint64_t i){ if(re){ re->valido=1; re->i=i; bsgs_punto_a_estado(&Q,re); } };
+    for(uint64_t i=i0;i<M;i++){
+        if(pasos_max && i-i0>=pasos_max){ guardar(i); return BSGS_NO; }
+        if(run && !run->load()){ guardar(i); return BSGS_NO; }
         bool zz=true; for(int w=0;w<4;w++) if(Q.z[w]){zz=false;break;}
         /* UNA sola inversion por paso: la x afin vale para el lookup Y para el
            chequeo del caso degenerado (antes se calculaba dos veces). */
         fe_t xa; if(!zz) bsgs_xaff(&Q,xa);
-        if(zz){ uint8_t k[32]; if(bsgs_k_mas(a32,i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
+        if(zz){ uint8_t k[32]; if(bsgs_k_mas(a32,i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); if(re) re->valido=0; return BSGS_HALLADO; } }
         else {
             uint64_t h=bsgs_mix(xa[0])&t.mask;
             while(t.val[h]!=0xFFFFFFFFu){
                 if(t.key[h]==xa[0]){
                     uint32_t jj=t.val[h]; uint8_t k[32];
-                    if(bsgs_k_mas(a32,i*m+jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; }
-                    if(i*m>=jj){ if(bsgs_k_mas(a32,i*m-jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
-                    else { if(bsgs_k_menos(a32,jj-i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); return BSGS_HALLADO; } }
+                    if(bsgs_k_mas(a32,i*m+jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); if(re) re->valido=0; return BSGS_HALLADO; }
+                    if(i*m>=jj){ if(bsgs_k_mas(a32,i*m-jj,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); if(re) re->valido=0; return BSGS_HALLADO; } }
+                    else { if(bsgs_k_menos(a32,jj-i*m,k) && bsgs_verifica(ctx,k,obj33)){ memcpy(out32,k,32); if(re) re->valido=0; return BSGS_HALLADO; } }
                 }
                 h=(h+1)&t.mask;
             }
@@ -188,7 +248,16 @@ static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
         } else jp_add_affine(&Q,&Q,c->Sx,c->negSy);
         if(progress) progress->fetch_add(m,std::memory_order_relaxed);
     }
+    if(re) re->valido=0;   /* barrido completo sin hallazgo */
     return BSGS_NO;
+}
+
+/* Como antes: una búsqueda, sin reanudar. */
+static int bsgs_giant(secp256k1_context *ctx, const BsgsCtx *c,
+                      const uint8_t *pub, size_t publen,
+                      std::atomic<bool> *run, std::atomic<uint64_t> *progress,
+                      uint8_t out32[32]){
+    return bsgs_giant_ck(ctx,c,pub,publen,run,progress,out32,nullptr,0);
 }
 
 /* Conveniencia single-target: construye, busca, libera. */

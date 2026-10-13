@@ -69,6 +69,40 @@ int main(){
             else fallos++;
         }
     }
+    /* Reanudar: el barrido se trocea (100 pasos por trozo), se guarda el estado
+       y se reanuda hasta el final. Tiene que dar LA MISMA clave que sin cortes. */
+    {
+        struct RC{ uint64_t a,b,k; };
+        RC rcs[]={ {1,(1ULL<<20),700000}, {1,(1ULL<<20),1}, {0,(1ULL<<20)-1,(1ULL<<20)-1}, {1,(1ULL<<24),12000000} };
+        for(auto &c:rcs){
+            uint8_t a32[32],b32[32],pub[33],out[32]={0}; be(c.a,a32); be(c.b,b32); pub_de_k(ctx,c.k,pub);
+            BsgsCtx bc; std::atomic<bool> run{true};
+            if(bsgs_build(ctx,a32,b32,22,&run,&bc)!=BSGS_HALLADO){ printf("  MAL  reanudar: build\n"); fallos++; continue; }
+            BsgsReanuda re; memset(&re,0,sizeof(re));
+            int r=BSGS_NO; int trozos=0;
+            do { r=bsgs_giant_ck(ctx,&bc,pub,33,&run,nullptr,out,&re,100); trozos++; }
+            while(r==BSGS_NO && re.valido && trozos<100000);
+            uint64_t got=0; for(int i=24;i<32;i++) got=(got<<8)|out[i];
+            if(r==BSGS_HALLADO && got==c.k) printf("  OK   reanudar k=%llu en %d trozos\n",(unsigned long long)c.k,trozos);
+            else { printf("  MAL  reanudar k=%llu r=%d got=%llu\n",(unsigned long long)c.k,r,(unsigned long long)got); fallos++; }
+            bsgs_ctx_free(&bc);
+        }
+        /* Un estado de OTRO objetivo no debe torcer el resultado: se descarta. */
+        {
+            uint8_t a32[32],b32[32]; be(1,a32); be(1ULL<<20,b32);
+            BsgsCtx bc; std::atomic<bool> run{true};
+            bsgs_build(ctx,a32,b32,22,&run,&bc);
+            uint8_t pub1[33],pub2[33],out[32]={0};
+            pub_de_k(ctx,300000,pub1); pub_de_k(ctx,654321,pub2);
+            BsgsReanuda re; memset(&re,0,sizeof(re));
+            bsgs_giant_ck(ctx,&bc,pub1,33,&run,nullptr,out,&re,50);   /* estado de la clave 300000 */
+            int r=bsgs_giant_ck(ctx,&bc,pub2,33,&run,nullptr,out,&re,0); /* se busca 654321 con ese estado */
+            uint64_t got=0; for(int i=24;i<32;i++) got=(got<<8)|out[i];
+            if(r==BSGS_HALLADO && got==654321) printf("  OK   estado de otro objetivo descartado\n");
+            else { printf("  MAL  estado ajeno r=%d got=%llu\n",r,(unsigned long long)got); fallos++; }
+            bsgs_ctx_free(&bc);
+        }
+    }
     printf(fallos? "FALLOS %d\n" : "TODO CORRECTO\n", fallos);
     secp256k1_context_destroy(ctx);
     return fallos?1:0;
