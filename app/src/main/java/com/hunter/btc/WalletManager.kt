@@ -220,8 +220,8 @@ object WalletManager {
             .putString(PREF_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
             .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
             .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
-            // Un PIN nuevo empieza sin fallos a cuestas.
-            .remove(PREF_FALLOS).remove(PREF_ESPERA)
+            // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
+            .remove(PREF_FALLOS).remove(PREF_ESPERA).remove(PREF_BIO_BLOQ)
             .apply()
     }
 
@@ -278,7 +278,20 @@ object WalletManager {
 
     private const val PREF_FALLOS = "pin_fallos"
     private const val PREF_ESPERA = "pin_espera_hasta"
+    private const val PREF_BIO_BLOQ = "pin_bio_bloqueada"
     private const val FALLOS_LIBRES = 5
+
+    /**
+     * ¿Está la huella vetada por haber saltado el límite de intentos?
+     *
+     * Se activa en cuanto empieza la espera por demasiados fallos y NO se
+     * quita cuando la cuenta atrás llega a cero: sólo la reactiva un PIN
+     * correcto. Así, quien ha agotado los intentos no puede saltarse la espera
+     * ni, al acabar, volver a entrar con la huella sin demostrar primero que
+     * sabe el código. Va en disco, así que cerrar la app no la reactiva.
+     */
+    fun bioBloqueada(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_BIO_BLOQ, false)
 
     /** Segundos que faltan para poder volver a intentarlo; 0 si ya se puede. */
     fun esperaPin(ctx: Context): Long {
@@ -311,13 +324,16 @@ object WalletManager {
         val ok = comprobarPin(ctx, pin)
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (ok) {
-            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA).apply()
+            // El PIN correcto es lo ÚNICO que vuelve a habilitar la huella.
+            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA).remove(PREF_BIO_BLOQ).apply()
         } else {
             val fallos = prefs.getInt(PREF_FALLOS, 0) + 1
             val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
             if (fallos >= FALLOS_LIBRES) {
                 val seg = (30L shl (fallos - FALLOS_LIBRES).coerceAtMost(7)).coerceAtMost(3600L)
                 ed.putLong(PREF_ESPERA, System.currentTimeMillis() + seg * 1000)
+                // Al saltar el límite, la huella queda vetada hasta un PIN correcto.
+                ed.putBoolean(PREF_BIO_BLOQ, true)
             }
             ed.apply()
         }

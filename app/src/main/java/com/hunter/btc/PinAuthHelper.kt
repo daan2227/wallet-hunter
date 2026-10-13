@@ -88,7 +88,10 @@ object PinAuthHelper {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
         val bm = androidx.biometric.BiometricManager.from(activity)
+        // La huella no se ofrece mientras esté vetada por demasiados intentos:
+        // ni tecla, ni lanzamiento automático. Sólo un PIN correcto la reactiva.
         val hayHuella = !isSetup && activity is androidx.fragment.app.FragmentActivity &&
+            !WalletManager.bioBloqueada(activity) &&
             bm.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
                 androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
 
@@ -249,7 +252,10 @@ object PinAuthHelper {
         }
 
         fun huella() {
-            if (!hayHuella) return
+            // Defensa en vivo: aunque la tecla no debería existir, no se lanza
+            // la huella si hay espera en curso o sigue vetada.
+            if (!hayHuella || WalletManager.esperaPin(activity) > 0 ||
+                WalletManager.bioBloqueada(activity)) return
             androidx.biometric.BiometricPrompt(
                 activity as androidx.fragment.app.FragmentActivity,
                 androidx.core.content.ContextCompat.getMainExecutor(activity),

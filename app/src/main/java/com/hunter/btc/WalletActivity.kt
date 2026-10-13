@@ -312,7 +312,8 @@ class WalletActivity : FragmentActivity() {
     private fun authenticate(onSuccess: () -> Unit) {
         val exito = { PinAuthHelper.markAuthenticated(); onSuccess() }
         val bm = BiometricManager.from(this)
-        val canBio = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+        val canBio = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS &&
+            !WalletManager.bioBloqueada(this)
         if (canBio) {
             val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
                 object : BiometricPrompt.AuthenticationCallback() {
