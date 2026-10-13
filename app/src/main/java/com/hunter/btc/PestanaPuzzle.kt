@@ -84,7 +84,16 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         Ui.section(this, icon, title, build)
 
     // ── CABECERA ──────────────────────────────────────────────────────
-    page.addView(Ui.pageTitle(this, "Puzzle", lados = true))
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0)
+        addView(Ui.pageTitle(this@buildPuzzleTab, "Puzzle", lados = false).apply {
+            (layoutParams as LinearLayout.LayoutParams).let { it.width = 0; it.weight = 1f }
+        })
+        addView(Ui.avatarMark(this@buildPuzzleTab).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+        })
+    })
     // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
     // lista de puzzles lo que hace la lista de puzzles.
 

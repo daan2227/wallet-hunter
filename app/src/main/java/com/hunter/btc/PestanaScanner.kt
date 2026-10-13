@@ -84,7 +84,16 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     statusRow.addView(statusDot); statusRow.addView(stateLabel)
     // El título lo decía la cabecera, que ya no existe: ahora lo dice la
     // página, como todas.
-    page.addView(Ui.pageTitle(this, "Scanner", lados = true))
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0)
+        addView(Ui.pageTitle(this@buildScanTab, "Scanner", lados = false).apply {
+            (layoutParams as LinearLayout.LayoutParams).let { it.width = 0; it.weight = 1f }
+        })
+        addView(Ui.avatarMark(this@buildScanTab).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+        })
+    })
     page.addView(side(statusRow, top = 0, bottom = 18))
 
     // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
