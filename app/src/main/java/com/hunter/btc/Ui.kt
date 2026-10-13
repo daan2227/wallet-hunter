@@ -163,7 +163,7 @@ object Ui {
 
     /** Marca/avatar con degradado (propuesta B): cuadro redondeado acento→azul
      *  con un pequeño icono encima. El llamante le pone el tamaño por layoutParams. */
-    fun avatarMark(ctx: Context, icon: Int = R.drawable.ic_target): android.widget.FrameLayout {
+    fun avatarMark(ctx: Context, icon: Int = R.drawable.ic_incognito): android.widget.FrameLayout {
         val fl = android.widget.FrameLayout(ctx).apply {
             background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
                 intArrayOf(AppTheme.ACCENT, AppTheme.ACCENT2)).apply { cornerRadius = dp(ctx, 13).toFloat() }
