@@ -260,6 +260,13 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         startActivity(Intent(this, PubkeyToolsActivity::class.java))
     }
 
+    val cuenta = grupo("Account")
+    val uname = WalletManager.getUsername(this)
+    fila(cuenta, R.drawable.ic_incognito, "Profile", "Username and PIN · local only",
+         if (uname.isNotBlank()) uname else null) {
+        startActivity(Intent(this, PerfilActivity::class.java))
+    }
+
     val app = grupo("App")
     /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).
      *

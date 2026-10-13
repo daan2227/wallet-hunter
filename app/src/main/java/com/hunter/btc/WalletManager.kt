@@ -225,6 +225,44 @@ object WalletManager {
             .apply()
     }
 
+    // ── Perfil local (cifrado) ──────────────────────────────────────────────
+    // Por privacidad, lo ÚNICO que se guarda del usuario es un nombre, y va
+    // cifrado con una clave del Keystore (hardware). Nada de red, nada más.
+    private const val PROFILE_ALIAS = "hunter_profile_key"
+    private const val PREF_USER_C  = "perfil_user_c"
+    private const val PREF_USER_IV = "perfil_user_iv"
+
+    /** Nombre de usuario (descifrado), o "" si no hay. */
+    fun getUsername(ctx: Context): String {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val c  = p.getString(PREF_USER_C,  null) ?: return ""
+        val iv = p.getString(PREF_USER_IV, null) ?: return ""
+        return try {
+            val dec = aesDecrypt(getOrCreateKey(PROFILE_ALIAS),
+                Base64.decode(c, Base64.NO_WRAP), Base64.decode(iv, Base64.NO_WRAP)) ?: return ""
+            String(dec, Charsets.UTF_8)
+        } catch (e: Throwable) { "" }
+    }
+
+    /** Guarda el nombre de usuario cifrado con Keystore. Vacío = lo borra. */
+    fun setUsername(ctx: Context, nombre: String) {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (nombre.isBlank()) { p.edit().remove(PREF_USER_C).remove(PREF_USER_IV).apply(); return }
+        val (enc, iv) = aesEncrypt(getOrCreateKey(PROFILE_ALIAS), nombre.trim().toByteArray(Charsets.UTF_8))
+        p.edit()
+            .putString(PREF_USER_C,  Base64.encodeToString(enc, Base64.NO_WRAP))
+            .putString(PREF_USER_IV, Base64.encodeToString(iv,  Base64.NO_WRAP))
+            .apply()
+    }
+
+    /** Cambia el PIN: comprueba el actual y guarda el nuevo. false si el actual
+     *  no es correcto. No toca las carteras (van con Keystore, no con el PIN). */
+    fun changePin(ctx: Context, actual: String, nuevo: String): Boolean {
+        if (!checkPin(ctx, actual)) return false
+        savePin(ctx, nuevo)
+        return true
+    }
+
     // ── Intentos de PIN ──────────────────────────────────────────────────
     //
     // No había ningún límite. Son seis cifras, un millón de combinaciones, y

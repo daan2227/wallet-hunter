@@ -81,6 +81,10 @@
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
 
+        <activity android:name=".PerfilActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait" />
+
         <activity android:name=".QrScanActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
