@@ -132,6 +132,7 @@ object WeakController {
     private var fuenteNombre = "pasted keys"   // de dónde salió la lista actual
     private var logExpandido = false           // si el terminal muestra el historial antiguo
     @Volatile private var bsgsBatchOn = false   // auditoría BSGS por lotes en curso
+    private var bsgsCampana: String? = null     // identidad de la búsqueda BSGS en curso (punto de control)
     private var btnBsgs: Button? = null
     private var anilloCard: AnilloProgreso? = null   // anillo de progreso (propuesta B)
     private var chipHunting: android.view.View? = null
@@ -1099,7 +1100,7 @@ object WeakController {
      *  Corre aparte del Kangaroo; los hallazgos van al baúl igual. */
     private fun solveBsgsBatch() {
         if (corriendo) { aviso("Stop the audit first."); return }
-        if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
+        if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs()
             bloquear(false); btnBsgs?.text = BSGS_LABEL; chipHunting?.visibility = android.view.View.GONE
             aviso("BSGS stopped."); return }
         val b = (sbBits?.progress ?: 0) + BITS_MIN
@@ -1111,8 +1112,11 @@ object WeakController {
         if (pubs.isEmpty()) { aviso("BSGS needs public keys (02/03/04 or x-only), not addresses."); return }
         bits = b
         val fin = BigInteger.ONE.shiftLeft(b).subtract(BigInteger.ONE).toString(16)
+        val pubsStr = pubs.joinToString("\n")
+        val campana = BsgsCheckpoint.campana(pubsStr, "1", fin, 21)
+        bsgsCampana = campana
         bsgsBatchOn = true
-        try { HunterEngine.bsgsMultiStart(pubs.joinToString("\n"), "1", fin, 21) }
+        try { HunterEngine.bsgsMultiStart(pubsStr, "1", fin, 21, BsgsCheckpoint.cargar(appCtx, campana)) }
         catch (e: Throwable) { bsgsBatchOn = false; aviso("Engine error."); return }
         btnBsgs?.text = "Stop BSGS"
         // Mismo cuadro de mando que una auditoría: tarjeta de rendimiento, cifra
@@ -1130,7 +1134,7 @@ object WeakController {
         bloquear(true)
         val vistos = HashSet<String>()
         val ini0 = System.currentTimeMillis()
-        var ultMs = ini0; var ultCnt = 0L; var pico = 0.0; var ultChart = 0L
+        var ultMs = ini0; var ultCnt = 0L; var pico = 0.0; var ultChart = 0L; var ultGuardado = ini0
         lateinit var tick: Runnable
         tick = Runnable {
             if (!bsgsBatchOn) return@Runnable
@@ -1141,6 +1145,10 @@ object WeakController {
             val hechas = head.getOrNull(1)?.toIntOrNull() ?: 0
             val total = head.getOrNull(2)?.toIntOrNull() ?: nPubs
             val giant = head.getOrNull(3)?.toLongOrNull() ?: 0L
+            // Punto de control en disco cada 5 s: si la app muere, se reanuda desde ahí.
+            if (estado == "running" && System.currentTimeMillis() - ultGuardado > 5000) {
+                ultGuardado = System.currentTimeMillis(); BsgsCheckpoint.guardarDesdeInforme(appCtx, campana, info)
+            }
             for (i in 1 until lines.size) {
                 val ln = lines[i]; if (ln.contains("|")) { val priv = ln.substringAfter("|").trim()
                     if (priv.length == 64 && vistos.add(priv)) guardar(priv) }
@@ -1163,6 +1171,7 @@ object WeakController {
             else {
                 bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_LABEL
                 chipHunting?.visibility = android.view.View.GONE
+                BsgsCheckpoint.guardarDesdeInforme(appCtx, campana, info)
                 aviso(when (estado) {
                     "range_too_big" -> "Range too big for BSGS."
                     "error"         -> "BSGS error (bad key or range)."
@@ -1174,8 +1183,15 @@ object WeakController {
         h.postDelayed(tick, 400)
     }
 
+    /** Guarda el progreso de la búsqueda BSGS en curso (tras pararla). */
+    private fun persistirBsgs() {
+        val c = bsgsCampana ?: return
+        val info = try { HunterEngine.bsgsMultiInfo() } catch (e: Throwable) { return }
+        BsgsCheckpoint.guardarDesdeInforme(appCtx, c, info)
+    }
+
     private fun arrancar() {
-        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; bsgsBatchOn = false; btnBsgs?.text = BSGS_LABEL
+        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs(); bsgsBatchOn = false; btnBsgs?.text = BSGS_LABEL
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
         presupuesto = budgetActual()

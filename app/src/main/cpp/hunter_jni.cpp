@@ -7,6 +7,7 @@
 #include <sched.h>
 #include <sys/syscall.h>
 #include <string>
+#include <map>
 #include <atomic>
 #include <mutex>
 #include <deque>
@@ -3267,22 +3268,67 @@ static std::atomic<int>      g_bm_status{0};     /* 0 run/done, -1 rango, -2 err
 static std::mutex            g_bm_mx;
 static std::string           g_bm_res;           /* "pubhex|privhex\n" por hallazgo */
 static std::thread           g_bm_th;
+/* Punto de control por pubkey: pubhex -> BsgsReanuda en hex (148 digitos).
+   Se guarda cada BM_TROZO pasos y al parar; Kotlin lo persiste y lo devuelve
+   al arrancar, así que un corte no pierde más que el último trozo. */
+static const int BM_TROZO = 512;
+static std::map<std::string,std::string> g_bm_estados;   /* guarded by g_bm_mx */
+
+static int bm_hexval(char c){
+    if(c>='0'&&c<='9') return c-'0';
+    if(c>='a'&&c<='f') return c-'a'+10;
+    if(c>='A'&&c<='F') return c-'A'+10;
+    return -1;
+}
+static std::string bm_estado_a_hex(const BsgsReanuda &re){
+    uint8_t b[74];
+    for(int k=0;k<8;k++) b[k]=(uint8_t)(re.i>>(56-8*k));
+    b[8]=re.inf; memcpy(b+9,re.q,65);
+    static const char *d="0123456789abcdef";
+    std::string h; h.reserve(148);
+    for(int k=0;k<74;k++){ h+=d[b[k]>>4]; h+=d[b[k]&15]; }
+    return h;
+}
+static bool bm_estado_desde_hex(const std::string &h, BsgsReanuda &re){
+    if(h.size()!=148) return false;
+    uint8_t b[74];
+    for(int k=0;k<74;k++){
+        int hi=bm_hexval(h[2*k]), lo=bm_hexval(h[2*k+1]);
+        if(hi<0||lo<0) return false;
+        b[k]=(uint8_t)(hi*16+lo);
+    }
+    re.i=0; for(int k=0;k<8;k++) re.i=(re.i<<8)|b[k];
+    re.inf=b[8]; memcpy(re.q,b+9,65); re.valido=1;
+    return true;
+}
 
 static void bm_stop_join(){ g_bm_run.store(false); if(g_bm_th.joinable()) g_bm_th.join(); }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pubsS, jstring iniS, jstring finS, jint capBits){
+Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pubsS, jstring iniS, jstring finS, jint capBits, jstring estadosS){
     bm_stop_join();
     const char *ps=env->GetStringUTFChars(pubsS,nullptr);
     const char *is=env->GetStringUTFChars(iniS,nullptr);
     const char *fs=env->GetStringUTFChars(finS,nullptr);
+    const char *es=env->GetStringUTFChars(estadosS,nullptr);
     std::string pubs = ps?ps:"";
     uint8_t a[32],b[32]; int ra=bsgs_hex_be32(is?is:"",a), rb=bsgs_hex_be32(fs?fs:"",b);
     if(ps) env->ReleaseStringUTFChars(pubsS,ps);
     if(is) env->ReleaseStringUTFChars(iniS,is);
     if(fs) env->ReleaseStringUTFChars(finS,fs);
     g_bm_count.store(0); g_bm_total.store(0); g_bm_hechas.store(0); g_bm_done.store(false); g_bm_status.store(0);
-    { std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res.clear(); }
+    {
+        std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res.clear(); g_bm_estados.clear();
+        std::string est = es?es:"", cur;
+        for(size_t q=0;q<=est.size();q++){
+            char c = q<est.size()? est[q] : '\n';
+            if(c!='\n' && c!='\r'){ cur+=c; continue; }
+            size_t bar=cur.find('|');
+            if(bar!=std::string::npos) g_bm_estados[cur.substr(0,bar)] = cur.substr(bar+1);
+            cur.clear();
+        }
+    }
+    if(es) env->ReleaseStringUTFChars(estadosS,es);
     if(ra!=32||rb!=32){ g_bm_status.store(BSGS_ERROR); g_bm_done.store(true); return; }
     int cap=(int)capBits;
     uint8_t ac[32],bc[32]; memcpy(ac,a,32); memcpy(bc,b,32);
@@ -3312,10 +3358,22 @@ Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pu
                     uint8_t pub[65]; int pl=bsgs_hex(lst[i].c_str(),pub,65);
                     if(pl==33||pl==65){
                         uint8_t out[32]={0};
-                        int r=bsgs_giant(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out);
+                        BsgsReanuda re; memset(&re,0,sizeof(re));
+                        { std::lock_guard<std::mutex> lk(g_bm_mx); auto it=g_bm_estados.find(lst[i]); if(it!=g_bm_estados.end()) bm_estado_desde_hex(it->second,re); }
+                        int r=BSGS_NO;
+                        for(;;){
+                            r=bsgs_giant_ck(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out,&re,BM_TROZO);
+                            if(r!=BSGS_NO) break;
+                            std::lock_guard<std::mutex> lk(g_bm_mx);
+                            if(!re.valido){ g_bm_estados.erase(lst[i]); break; }   /* barrido completo */
+                            g_bm_estados[lst[i]] = bm_estado_a_hex(re);           /* punto de control */
+                            if(!g_bm_run.load()) break;
+                        }
                         if(r==BSGS_HALLADO){
                             char ph[65]; for(int q=0;q<32;q++) sprintf(ph+q*2,"%02x",out[q]);
-                            std::lock_guard<std::mutex> lk(g_bm_mx); g_bm_res += lst[i]; g_bm_res += "|"; g_bm_res += ph; g_bm_res += "\n";
+                            std::lock_guard<std::mutex> lk(g_bm_mx);
+                            g_bm_estados.erase(lst[i]);
+                            g_bm_res += lst[i]; g_bm_res += "|"; g_bm_res += ph; g_bm_res += "\n";
                         }
                     }
                     g_bm_hechas.fetch_add(1);
@@ -3343,7 +3401,11 @@ Java_com_hunter_btc_HunterEngine_bsgsMultiInfo(JNIEnv *env, jobject){
     char head[96];
     snprintf(head,sizeof(head),"%s\t%d\t%d\t%llu\n", st, g_bm_hechas.load(), g_bm_total.load(), (unsigned long long)g_bm_count.load());
     std::string out=head;
-    { std::lock_guard<std::mutex> lk(g_bm_mx); out+=g_bm_res; }
+    {
+        std::lock_guard<std::mutex> lk(g_bm_mx);
+        out+=g_bm_res;
+        for(auto &kv:g_bm_estados){ out+="E\t"; out+=kv.first; out+="\t"; out+=kv.second; out+="\n"; }
+    }
     return env->NewStringUTF(out.c_str());
 }
 

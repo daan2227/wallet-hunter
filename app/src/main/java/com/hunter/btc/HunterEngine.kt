@@ -267,7 +267,7 @@ object HunterEngine {
     // mismo rango (auditar una lista de golpe). pubs = pubkeys hex, una por línea.
     // bsgsMultiInfo: primera línea "<status>\t<hechas>\t<total>\t<giant>", luego
     // líneas "pubhex|privhex" por cada hallazgo. status: running/done/range_too_big/error.
-    external fun bsgsMultiStart(pubs: String, ini: String, fin: String, capBits: Int)
+    external fun bsgsMultiStart(pubs: String, ini: String, fin: String, capBits: Int, estados: String)
     external fun bsgsMultiStop()
     external fun bsgsMultiRunning(): Boolean
     external fun bsgsMultiInfo(): String
