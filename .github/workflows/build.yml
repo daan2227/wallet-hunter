@@ -58,7 +58,7 @@ jobs:
         fi
         # La reticula es Python y valida el algoritmo que usa Lattice.kt: sólo
         # se lanza si cambia ese código o su validador.
-        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
+        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|app/src/test/|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
           echo "lattice=1" >> "$GITHUB_OUTPUT"
         else
           echo "lattice=0" >> "$GITHUB_OUTPUT"
@@ -204,6 +204,15 @@ jobs:
             -validity 10000 -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US"
         fi
+
+    # Pruebas JVM de Lattice.kt (el ataque de retícula de verdad, no su
+    # réplica en Python): firmas fabricadas con una clave conocida. Sólo corre
+    # cuando cambia Lattice.kt o sus pruebas.
+    - name: Pruebas de la reticula (JVM)
+      if: steps.motor.outputs.lattice == '1'
+      run: |
+        chmod +x gradlew
+        ./gradlew :app:testDebugUnitTest --tests 'com.hunter.btc.LatticeTest'
 
     - name: Build Release APK
       env:
