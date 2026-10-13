@@ -1804,6 +1804,20 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /** Descarga el dataset del Scanner y libera su memoria. No se puede mientras
+     *  escanea. */
+    internal fun clearCsv() {
+        if (HunterEngine.isRunning()) {
+            android.widget.Toast.makeText(this, "Stop the scan first", android.widget.Toast.LENGTH_SHORT).show(); return
+        }
+        val ok = try { HunterEngine.unloadCsv() } catch (e: Throwable) { false }
+        if (!ok) { android.widget.Toast.makeText(this, "Busy — try again", android.widget.Toast.LENGTH_SHORT).show(); return }
+        csvPath = ""
+        prefs.edit().remove("csvPath").apply()
+        tvCsvName?.text = "No file"; tvCsvName?.setTextColor(AppTheme.TXT_SEC)
+        updateUI()
+    }
+
     internal fun pickCsv() {
         val i = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)

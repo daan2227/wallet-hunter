@@ -1334,6 +1334,21 @@ Java_com_hunter_btc_HunterEngine_getCsvCount(JNIEnv *,jobject){
 JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_isCsvLoaded(JNIEnv *,jobject){return (jboolean)g_csv_loaded.load();}
 
+/* Descarga el dataset y libera su memoria (bloom, hashes, el índice mmap).
+ * No hace nada si el motor está escaneando o cargando. Devuelve si descargó. */
+JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_unloadCsv(JNIEnv *,jobject){
+    if(g_running.load() || g_loading.load()) return JNI_FALSE;
+    g_csv_loaded.store(false);
+    if(g_h160){free(g_h160); g_h160=nullptr;} g_total=0;
+    if(g_xonly){free(g_xonly); g_xonly=nullptr;} g_total_tr=0;
+    if(g_bloom.bits){ bloom_free(&g_bloom); g_bloom.bits=nullptr; g_bloom.nbits=0; }
+    if(g_bloom_tr.bits){ bloom_free(&g_bloom_tr); g_bloom_tr.bits=nullptr; g_bloom_tr.nbits=0; }
+    if(g_i9.d) i9_cerrar(&g_i9);
+    g_csv_path[0]='\0';
+    return JNI_TRUE;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_isLoading(JNIEnv *,jobject){return (jboolean)g_loading.load();}
 

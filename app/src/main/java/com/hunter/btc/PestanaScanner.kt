@@ -354,7 +354,17 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
         tvCsvName = tvCsvLocal
-        dataRow.addView(btnCsv); dataRow.addView(tvCsvLocal)
+        val btnClear = Button(this@buildScanTab).apply {
+            text = "Clear"; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
+            isAllCaps = false; stateListAnimator = null
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), 0, dp(14), 0)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.WRAP_CONTENT, dp(44)).apply { marginStart = dp(8) }
+            setOnClickListener { clearCsv() }
+        }
+        dataRow.addView(btnCsv); dataRow.addView(tvCsvLocal); dataRow.addView(btnClear)
         addView(dataRow)
 
         // Aquí había una segunda caja con "📦 utxos.bin · N hashes · N MB",

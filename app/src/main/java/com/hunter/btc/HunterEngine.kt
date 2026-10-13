@@ -43,6 +43,7 @@ object HunterEngine {
     /** Rutas a derivar en modo BIP39: bit0=BIP44 (1...), bit1=BIP84 (bc1q...). */
     external fun setBip39Paths(mask: Int)
     external fun isCsvLoaded(): Boolean
+    external fun unloadCsv(): Boolean   // descarga el dataset; false si está ocupado
     external fun isLoading(): Boolean
     external fun isRunning(): Boolean
     /** Parada en curso: los workers aún no han terminado. */
