@@ -133,6 +133,8 @@ object WeakController {
     private var logExpandido = false           // si el terminal muestra el historial antiguo
     @Volatile private var bsgsBatchOn = false   // auditoría BSGS por lotes en curso
     private var btnBsgs: Button? = null
+    private var anilloCard: AnilloProgreso? = null   // anillo de progreso (propuesta B)
+    private var chipHunting: android.view.View? = null
     private const val BSGS_LABEL = "Solve with BSGS (small range)"
     private const val LOG_RECIENTES = 10       // líneas visibles sin desplegar
     private const val LOG_CAP = 50             // cuántas auditorías se recuerdan
@@ -179,10 +181,23 @@ object WeakController {
         }
         scroll.addView(root)
 
-        root.addView(TextView(a).apply {
-            text = "Weak-key audit"
-            textSize = 24f; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
+        root.addView(LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(a).apply {
+                text = "Weak-key audit"
+                textSize = 24f; setTextColor(AppTheme.TXT_PRI)
+                typeface = AppTheme.title(context)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(Ui.avatarMark(a).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+            })
+        })
+        root.addView(Ui.chipEstado(a, "Hunting").apply {
+            visibility = if (corriendo) android.view.View.VISIBLE else android.view.View.GONE
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+            chipHunting = this
         })
         root.addView(TextView(a).apply {
             text = "Kangaroo over a small range for public keys that have spent. " +
@@ -409,14 +424,27 @@ object WeakController {
         }
         tvSpeedU = vSpeedU
         filaVel.addView(vSpeedU)
-        vStats.addView(filaVel)
         val vPeak = TextView(a).apply {
             text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
             setPadding(0, dp(10), 0, dp(4))
         }
         tvPeak = vPeak
-        vStats.addView(vPeak)
+        // Cifra grande + peak a la izquierda, anillo de progreso a la derecha (B).
+        val colVel = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(filaVel); addView(vPeak)
+        }
+        val vAnillo = AnilloProgreso(a).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(66), dp(66)).apply { marginStart = dp(12) }
+        }
+        anilloCard = vAnillo
+        if (corriendo) vAnillo.set(actualizarBarraFrac())
+        vStats.addView(LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(colVel); addView(vAnillo)
+        })
         val vChart = SpeedChartView(a).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110))
                 .apply { topMargin = dp(8) }
@@ -428,7 +456,7 @@ object WeakController {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_CARD).toFloat()   // pills (B)
             }
             setPadding(dp(14), dp(14), dp(14), dp(14))
             addView(TextView(a).apply {
@@ -541,6 +569,7 @@ object WeakController {
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
         sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
         btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null; logBox = null; btnBsgs = null
+        anilloCard = null; chipHunting = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
         tvOps = null; tvTime = null; tvProg = null; tvKeys = null
     }
@@ -1071,7 +1100,8 @@ object WeakController {
     private fun solveBsgsBatch() {
         if (corriendo) { aviso("Stop the audit first."); return }
         if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
-            bloquear(false); btnBsgs?.text = BSGS_LABEL; aviso("BSGS stopped."); return }
+            bloquear(false); btnBsgs?.text = BSGS_LABEL; chipHunting?.visibility = android.view.View.GONE
+            aviso("BSGS stopped."); return }
         val b = (sbBits?.progress ?: 0) + BITS_MIN
         if (b > 44) { aviso("Range too big for BSGS ($b bits). Use Start audit (Kangaroo)."); return }
         val lineas = (etClaves?.text?.toString() ?: "").split('\n').map { it.trim() }.filter { it.isNotEmpty() }
@@ -1096,6 +1126,7 @@ object WeakController {
         tvSpeed?.text = "0"; tvSpeedU?.text = "op/s"; tvPeak?.text = ""
         tvOps?.text = "0"; tvProg?.text = "BSGS"; tvKeys?.text = "0/$nPubs · 0"
         tvTime?.text = "00:00:00"; barraProg?.set(0f)
+        chipHunting?.visibility = android.view.View.VISIBLE
         bloquear(true)
         val vistos = HashSet<String>()
         val ini0 = System.currentTimeMillis()
@@ -1131,6 +1162,7 @@ object WeakController {
             if (estado == "running") { h.postDelayed(tick, 400) }
             else {
                 bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_LABEL
+                chipHunting?.visibility = android.view.View.GONE
                 aviso(when (estado) {
                     "range_too_big" -> "Range too big for BSGS."
                     "error"         -> "BSGS error (bad key or range)."
@@ -1197,6 +1229,7 @@ object WeakController {
         statsCard?.visibility = android.view.View.VISIBLE
         vacioWeak?.visibility = android.view.View.GONE
         resultadosBox?.visibility = android.view.View.GONE
+        chipHunting?.visibility = android.view.View.VISIBLE
         btn?.text = "Stop"
         barraProg?.set(0f)
         bloquear(true)
@@ -1292,6 +1325,7 @@ object WeakController {
         registrarLog(if (terminado) "done" else "paused")   // anota en el historial
         estimar()
         btn?.text = "Start audit"
+        chipHunting?.visibility = android.view.View.GONE
         bloquear(false)
         aviso(motivo + desglose() +
               (if (hallados > 0) "  ·  $hallados key(s) found → in the finds vault." else ""))
@@ -1462,10 +1496,15 @@ object WeakController {
         "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
     }
 
-    /** Barra general: claves hechas / total (aprox. en streaming). */
-    private fun actualizarBarra() {
+    /** Fracción de progreso: claves hechas / total (aprox. en streaming). */
+    private fun actualizarBarraFrac(): Float {
         val total = if (streamMode) streamTotal else claves.size
-        barraProg?.set(if (total > 0) indice.toFloat() / total else 0f)
+        return if (total > 0) (indice.toFloat() / total).coerceIn(0f, 1f) else 0f
+    }
+    /** Barra general + anillo: claves hechas / total. */
+    private fun actualizarBarra() {
+        val f = actualizarBarraFrac()
+        barraProg?.set(f); anilloCard?.set(f)
     }
 
     private fun guardar(claveHex: String) {

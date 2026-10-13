@@ -161,6 +161,54 @@ object Ui {
             cornerRadius = dp(ctx, radius).toFloat()
         }
 
+    /** Marca/avatar con degradado (propuesta B): cuadro redondeado acento→azul
+     *  con un pequeño icono encima. El llamante le pone el tamaño por layoutParams. */
+    fun avatarMark(ctx: Context, icon: Int = R.drawable.ic_target): android.widget.FrameLayout {
+        val fl = android.widget.FrameLayout(ctx).apply {
+            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
+                intArrayOf(AppTheme.ACCENT, AppTheme.ACCENT2)).apply { cornerRadius = dp(ctx, 13).toFloat() }
+        }
+        fl.addView(android.widget.ImageView(ctx).apply {
+            setImageResource(icon); setColorFilter(AppTheme.ON_ACCENT)
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(ctx, 20), dp(ctx, 20),
+                android.view.Gravity.CENTER)
+        })
+        return fl
+    }
+
+    /** Chip de estado con punto pulsante (p. ej. "Hunting"). La animación arranca
+     *  al enganchar la vista y se detiene al soltarla (sin fugas). */
+    fun chipEstado(ctx: Context, texto: String): android.widget.LinearLayout {
+        val row = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            background = GradientDrawable().apply {
+                setColor((AppTheme.ACCENT and 0x00FFFFFF) or (0x24 shl 24))
+                cornerRadius = dp(ctx, 999).toFloat()
+            }
+            setPadding(dp(ctx, 12), dp(ctx, 6), dp(ctx, 14), dp(ctx, 6))
+        }
+        val dot = View(ctx).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(AppTheme.ACCENT) }
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(ctx, 8), dp(ctx, 8))
+                .apply { marginEnd = dp(ctx, 8) }
+        }
+        val anim = android.animation.ObjectAnimator.ofFloat(dot, View.ALPHA, 1f, 0.3f).apply {
+            duration = 700; repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE
+        }
+        dot.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+            override fun onViewAttachedToWindow(v: View) { anim.start() }
+            override fun onViewDetachedFromWindow(v: View) { anim.cancel() }
+        })
+        row.addView(dot)
+        row.addView(android.widget.TextView(ctx).apply {
+            text = texto; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.bold(ctx)
+        })
+        return row
+    }
+
     /**
      * Confirmación táctil al pulsar una acción importante (Start/Stop): un
      * toque háptico corto y un pulso de escala. No cambia nada del estado, sólo
