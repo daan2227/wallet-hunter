@@ -140,10 +140,24 @@ object Ui {
      * app en marcha sin romper el plano del resto —no es un color nuevo, es el
      * mismo acento con una luz suave encima—.
      */
+    /** Oscurece un color mezclándolo hacia negro (f=0 → igual, f=1 → negro). */
+    private fun oscurecer(color: Int, f: Float): Int {
+        val r = android.graphics.Color.red(color)
+        val g = android.graphics.Color.green(color)
+        val b = android.graphics.Color.blue(color)
+        return android.graphics.Color.rgb(
+            (r * (1 - f)).toInt().coerceIn(0, 255),
+            (g * (1 - f)).toInt().coerceIn(0, 255),
+            (b * (1 - f)).toInt().coerceIn(0, 255))
+    }
+
+    // Botón de acción: degradado DIAGONAL de dos tonos (propuesta B) — más claro
+    // arriba-izquierda, más oscuro abajo-derecha. Vale para cualquier base
+    // (acento verde, rojo de parar…): el texto ON_ACCENT sigue legible encima.
     fun botonAccento(ctx: Context, radius: Int = AppTheme.R_KEY, base: Int = AppTheme.ACCENT):
             GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(aclarar(base, 0.16f), base)).apply {
+        GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            intArrayOf(aclarar(base, 0.12f), oscurecer(base, 0.20f))).apply {
             cornerRadius = dp(ctx, radius).toFloat()
         }
 

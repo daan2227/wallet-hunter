@@ -59,27 +59,30 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
      * La barra, con su filo de arriba. Se añade al final de la pantalla con
      * MATCH_PARENT de ancho y WRAP_CONTENT de alto.
      */
+    // Transparente: el fondo con degradado de la pantalla se ve alrededor de la
+    // píldora flotante (propuesta B).
     val vista: LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(AppTheme.BG_PANEL)
     }
 
     init {
-        // Un filo de 1px y no una sombra: la elevación en este tema la hace el
-        // tono, y una sombra sobre fondo casi negro no se ve.
-        vista.addView(View(ctx).apply {
-            setBackgroundColor(AppTheme.BG_ELEV)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1)
-        })
+        // Barra tipo PÍLDORA FLOTANTE: panel casi opaco (efecto vidrio), muy
+        // redondeado, con un borde tenue y márgenes para que flote sobre el fondo.
         val fila = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(2), dp(6), dp(2), dp(8))
+            setPadding(dp(4), dp(6), dp(4), dp(6))
+            background = GradientDrawable().apply {
+                setColor((AppTheme.BG_PANEL and 0x00FFFFFF) or (0xF0 shl 24))
+                cornerRadius = dp(26).toFloat()
+                setStroke(dp(1), (AppTheme.TXT_MUTED and 0x00FFFFFF) or (0x33 shl 24))
+            }
         }
         items.forEachIndexed { i, item -> fila.addView(celda(i, item)) }
         vista.addView(fila, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT))
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(dp(14), dp(6), dp(14), dp(12))
+        })
         seleccionar(seleccion)
     }
 
