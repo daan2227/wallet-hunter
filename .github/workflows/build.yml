@@ -101,7 +101,24 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
+    # El NDK pesa ~1 GB y su descarga ha fallado a veces sin motivo (un
+    # sdkmanager que se corta). Se cachea por versión: en las compilaciones
+    # siguientes no se vuelve a bajar nada.
+    - name: Ruta del SDK de Android
+      id: sdk
+      run: echo "ruta=$ANDROID_SDK_ROOT" >> "$GITHUB_OUTPUT"
+
+    - name: Caché del NDK y CMake
+      id: ndk-cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ${{ steps.sdk.outputs.ruta }}/ndk/25.1.8937393
+          ${{ steps.sdk.outputs.ruta }}/cmake/3.22.1
+        key: ndk-25.1.8937393-cmake-3.22.1
+
     - name: Install NDK
+      if: steps.ndk-cache.outputs.cache-hit != 'true'
       run: |
         echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
           "ndk;25.1.8937393" "cmake;3.22.1"

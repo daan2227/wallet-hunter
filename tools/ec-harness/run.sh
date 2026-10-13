@@ -70,6 +70,20 @@ for t in $PRUEBAS; do
     echo
 done
 
+# lattice_hnp - el ataque de reticula (HNP + LLL) recupera la clave de 18/18
+# firmas con nonces cortos. Es Python puro; si no hay python3, no se salta en
+# silencio: se avisa.
+if command -v python3 >/dev/null 2>&1; then
+    echo "=== lattice_hnp ==="
+    if python3 -I lattice_hnp.py; then :; else
+        echo "*** lattice_hnp FALLA ***"
+        fallos=$((fallos+1))
+    fi
+    echo
+else
+    echo "*** python3 no disponible: se omite lattice_hnp ***"
+fi
+
 if [ "$fallos" -gt 0 ]; then
     printf '%s prueba(s) con fallos\n' "$fallos"
     exit 1

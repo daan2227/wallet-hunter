@@ -87,14 +87,12 @@ random.seed(1); ok=0; tot=0
 for trial in range(6):
     d=random.randrange(1,n); PUB=mul(d)
     for (m,Bbits) in [(3,110),(4,128),(5,160)]:
-        tot+=1; sigs=[]
-        for _ in range(m):
-            k=random.randrange(1,1<<Bbits); z=random.randrange(1,n)
-            sigs.append((*sign(d,z,k),z)) if False else sigs.append((sign(d,z,k)[0],sign(d,z,k)[1],z))
-        # fix: compute sign once
+        tot+=1
         sigs=[]
         for _ in range(m):
             k=random.randrange(1,1<<Bbits); z=random.randrange(1,n); r,s=sign(d,z,k); sigs.append((r,s,z))
         got=attack(sigs,Bbits,PUB); ok+=(got==d)
         print(f"  trial {trial} m={m} Bbits={Bbits}: {'OK' if got==d else '--'}")
 print(f"RECOVERED {ok}/{tot}")
+import sys
+sys.exit(0 if ok==tot else 1)

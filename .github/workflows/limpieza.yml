@@ -1,0 +1,46 @@
+name: Limpieza de ejecuciones y cachés
+
+# Antes esto se hacía a mano, y el repositorio llegó a 499 ejecuciones y a la
+# cuota de caché llena. Ahora corre cada semana y se queda con lo último:
+#   - las 10 ejecuciones más recientes del repositorio;
+#   - las cachés de más de 3 días, salvo la de la firma de respaldo, que se
+#     reutiliza para que los APK se actualicen en el sitio (ver build.yml).
+#
+# Las ejecuciones en curso no se pueden borrar: el error se ignora.
+
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+jobs:
+  limpiar:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      CONSERVAR: '10'
+      CACHE_FIRMA: 'firma-respaldo-v1'
+    steps:
+    - name: "Ejecuciones: borrar todo menos las 10 últimas"
+      run: |
+        IDS=$(gh api --paginate "repos/$REPO/actions/runs?per_page=100" --jq '.workflow_runs[].id' | tail -n +$((CONSERVAR + 1)))
+        N=0
+        for id in $IDS; do
+          if gh api -X DELETE "repos/$REPO/actions/runs/$id" >/dev/null 2>&1; then N=$((N + 1)); fi
+        done
+        echo "Borradas $N ejecuciones antiguas."
+
+    - name: "Cachés: borrar las de más de 3 días (menos la de firma)"
+      run: |
+        LIMITE=$(date -u -d '3 days ago' +%s)
+        gh api --paginate "repos/$REPO/actions/caches?per_page=100" \
+          --jq ".actions_caches[] | select(.key != \"$CACHE_FIRMA\") | \"\(.id) \(.last_accessed_at)\"" |
+        while read -r id fecha; do
+          if [ "$(date -u -d "$fecha" +%s)" -lt "$LIMITE" ]; then
+            gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null 2>&1 && echo "Caché $id borrada"
+          fi
+        done
