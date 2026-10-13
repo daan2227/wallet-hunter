@@ -75,6 +75,25 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
             WalletManager.setUsername(this, etUser.text.toString())
             Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) })
+        // Olvidar: borra el nombre del dispositivo. Nada más que eso: el PIN y
+        // las carteras no se tocan desde aquí.
+        cUser.addView(TextView(this).apply {
+            text = "Forget name"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.RED)
+            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, dp(4))
+            setOnClickListener {
+                android.app.AlertDialog.Builder(this@PerfilActivity)
+                    .setTitle("Forget your name?")
+                    .setMessage("It is deleted from this device. Your wallets and PIN stay as they are.")
+                    .setPositiveButton("Forget") { _, _ ->
+                        WalletManager.setUsername(this@PerfilActivity, "")
+                        etUser.setText("")
+                        Toast.makeText(this@PerfilActivity, "Name forgotten", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+        })
         root.addView(cUser)
 
         // Seguridad: cambiar / fijar PIN.

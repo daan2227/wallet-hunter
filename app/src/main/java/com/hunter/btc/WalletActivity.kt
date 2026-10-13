@@ -8,9 +8,6 @@ import android.os.*
 import android.view.*
 import android.widget.*
 import android.text.InputType
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import org.json.JSONArray
 import org.json.JSONObject
@@ -310,32 +307,10 @@ class WalletActivity : FragmentActivity() {
      * la huella otra vez — un bucle, y justo el fallo que se viene a quitar.
      */
     private fun authenticate(onSuccess: () -> Unit) {
-        val exito = { PinAuthHelper.markAuthenticated(); onSuccess() }
-        val bm = BiometricManager.from(this)
-        val canBio = bm.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS &&
-            !WalletManager.bioBloqueada(this)
-        if (canBio) {
-            val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
-                        exito()
-                    }
-                    override fun onAuthenticationError(code: Int, msg: CharSequence) {
-                        if (code == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                            code == BiometricPrompt.ERROR_USER_CANCELED) {
-                            showPinDialog(isSetup = false) { ok -> if (ok) exito() else finish() }
-                        } else finish()
-                    }
-                    override fun onAuthenticationFailed() {}
-                })
-            prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
-                .setTitle("Wallet Hunter")
-                .setSubtitle("Verify your identity")
-                .setNegativeButtonText("Use PIN")
-                .build())
-        } else {
-            showPinDialog(isSetup = false) { ok -> if (ok) exito() else finish() }
-        }
+        // Mismo camino que el resto de la app: PIN, con la huella como tecla y
+        // lanzamiento automático. Antes había una biometría propia aquí, y dos
+        // sitios que decidían cuándo ofrecer la huella se desincronizaban.
+        PinAuthHelper.show(this, autoBiometric = true) { ok -> if (ok) onSuccess() else finish() }
     }
 
     /* -- PIN DIALOG -- */

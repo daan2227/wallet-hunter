@@ -221,7 +221,7 @@ object WalletManager {
             .putString(PREF_VER,  Base64.encodeToString(enc,  Base64.NO_WRAP))
             .putString(PREF_VIV,  Base64.encodeToString(iv,   Base64.NO_WRAP))
             // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
-            .remove(PREF_FALLOS).remove(PREF_ESPERA).remove(PREF_BIO_BLOQ)
+            .remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
             .apply()
     }
 
@@ -277,7 +277,8 @@ object WalletManager {
     // cuenta.
 
     private const val PREF_FALLOS = "pin_fallos"
-    private const val PREF_ESPERA = "pin_espera_hasta"
+    private const val PREF_ESPERA_FIN = "pin_espera_fin"    // elapsedRealtime en que acaba
+    private const val PREF_ESPERA_MS  = "pin_espera_ms"     // espera completa (tope)
     private const val PREF_BIO_BLOQ = "pin_bio_bloqueada"
     private const val FALLOS_LIBRES = 5
 
@@ -293,11 +294,20 @@ object WalletManager {
     fun bioBloqueada(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_BIO_BLOQ, false)
 
-    /** Segundos que faltan para poder volver a intentarlo; 0 si ya se puede. */
+    /**
+     * Segundos que faltan para poder volver a intentarlo; 0 si ya se puede.
+     *
+     * Se mide con el reloj MONOTÓNICO (elapsedRealtime), no con el de pared: así
+     * adelantar la fecha del móvil no caduca la espera. Tras un reinicio ese
+     * reloj vuelve a cero, y el resto se limita a la espera completa guardada
+     * (PREF_ESPERA_MS): reiniciar nunca la acorta.
+     */
     fun esperaPin(ctx: Context): Long {
-        val hasta = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getLong(PREF_ESPERA, 0L)
-        val resto = hasta - System.currentTimeMillis()
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val fin = p.getLong(PREF_ESPERA_FIN, 0L)
+        if (fin == 0L) return 0
+        val cap = p.getLong(PREF_ESPERA_MS, 0L)
+        val resto = minOf(fin - android.os.SystemClock.elapsedRealtime(), cap)
         return if (resto > 0) (resto + 999) / 1000 else 0
     }
 
@@ -325,13 +335,14 @@ object WalletManager {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         if (ok) {
             // El PIN correcto es lo ÚNICO que vuelve a habilitar la huella.
-            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA).remove(PREF_BIO_BLOQ).apply()
+            prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ).apply()
         } else {
             val fallos = prefs.getInt(PREF_FALLOS, 0) + 1
             val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
             if (fallos >= FALLOS_LIBRES) {
                 val seg = (30L shl (fallos - FALLOS_LIBRES).coerceAtMost(7)).coerceAtMost(3600L)
-                ed.putLong(PREF_ESPERA, System.currentTimeMillis() + seg * 1000)
+                ed.putLong(PREF_ESPERA_FIN, android.os.SystemClock.elapsedRealtime() + seg * 1000)
+                ed.putLong(PREF_ESPERA_MS, seg * 1000)
                 // Al saltar el límite, la huella queda vetada hasta un PIN correcto.
                 ed.putBoolean(PREF_BIO_BLOQ, true)
             }
