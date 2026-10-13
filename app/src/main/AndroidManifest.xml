@@ -85,6 +85,12 @@
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
 
+        <activity android:name=".LockoutActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait"
+            android:excludeFromRecents="true"
+            android:exported="false" />
+
         <activity android:name=".QrScanActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />

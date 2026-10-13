@@ -95,7 +95,16 @@ object AppLock {
             }
 
             override fun onActivityCreated(a: Activity, b: Bundle?) {}
-            override fun onActivityResumed(a: Activity) {}
+            override fun onActivityResumed(a: Activity) {
+                // Lockout por demasiados intentos de PIN: cubre TODA la app. Sea
+                // cual sea la pantalla que se reanude, se le pone encima la de
+                // bloqueo mientras quede cuenta atrás.
+                if (a is LockoutActivity) return
+                if (WalletManager.esperaPin(a) > 0) {
+                    a.startActivity(Intent(a, LockoutActivity::class.java)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                }
+            }
             override fun onActivityPaused(a: Activity) {}
             override fun onActivitySaveInstanceState(a: Activity, b: Bundle) {}
             override fun onActivityDestroyed(a: Activity) {}
