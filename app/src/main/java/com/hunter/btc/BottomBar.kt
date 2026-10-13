@@ -127,9 +127,10 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
     fun seleccionar(i: Int) {
         for (k in items.indices) {
             val activa = k == i
-            pildoras[k].background = if (activa) GradientDrawable().apply {
-                setColor(acentoSuave); cornerRadius = dp(15).toFloat()
-            } else null
+            pildoras[k].background = if (activa) GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(acentoSuave, (AppTheme.ACCENT2 and 0x00FFFFFF) or (0x22 shl 24))
+            ).apply { cornerRadius = dp(15).toFloat() } else null
             iconos[k].setColorFilter(if (activa) AppTheme.ACCENT else AppTheme.TXT_SEC)
             rotulos[k].setTextColor(if (activa) AppTheme.ACCENT else AppTheme.TXT_SEC)
             rotulos[k].typeface = if (activa) AppTheme.bold(ctx) else AppTheme.medium(ctx)

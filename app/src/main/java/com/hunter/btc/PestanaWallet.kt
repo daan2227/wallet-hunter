@@ -35,7 +35,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     val ACCENT2 = AppTheme.BLUE
 
     val scroll = ScrollView(this).apply {
-        setBackgroundColor(AppTheme.BG_DEEP)
+        background = AppTheme.fondoApp()
         visibility = android.view.View.GONE
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
@@ -44,7 +44,6 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     }
     val page = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(AppTheme.BG_DEEP)
         setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(80))
     }
     // El título lo decía la cabecera, que ya no existe.

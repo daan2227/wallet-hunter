@@ -50,11 +50,17 @@ object AppTheme {
     private const val VERDE = 0xFF00C896.toInt()        // el acento histórico
     private const val SOBRE_VERDE = 0xFF0F1210.toInt()
 
+    // Propuesta B ("Soft dashboard"): verde menta sobre azul-carbón frío, con un
+    // azul secundario para degradados. Es el tema por defecto de la app.
+    private const val MENTA = 0xFF2DE3A6.toInt()
+    private const val SOBRE_MENTA = 0xFF06231A.toInt()
+    private const val AZUL_B = 0xFF5B8CFF.toInt()
+
     private val OSCURA = Paleta(
-        bgDeep = c("#191919"), bgPanel = c("#232323"), bgCard = c("#232323"),
-        bgElev = c("#2D2D2D"), bgKey = c("#282828"), border = c("#383838"),
-        txtPri = c("#F2F2F2"), txtSec = c("#A4A4A4"), txtMuted = c("#6C6C6C"),
-        bgStop = c("#331F1F"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = true)
+        bgDeep = c("#101317"), bgPanel = c("#181C22"), bgCard = c("#181C22"),
+        bgElev = c("#1E232B"), bgKey = c("#1A1F27"), border = c("#272D36"),
+        txtPri = c("#F4F6F8"), txtSec = c("#9AA6B2"), txtMuted = c("#616C78"),
+        bgStop = c("#2E1A1E"), accent = MENTA, onAccent = SOBRE_MENTA, oscuro = true)
 
     private val CLARA = Paleta(
         bgDeep = c("#F4F4F4"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
@@ -243,8 +249,32 @@ object AppTheme {
      */
     val ON_ACCENT get() = activa.onAccent
     val RED    get() = Color.parseColor("#F04040")   // destructivo / error
-    val WARN   get() = Color.parseColor("#FF6B35")   // aviso, no error
+    val WARN   get() = Color.parseColor("#FFB454")   // aviso, no error (ámbar suave, propuesta B)
     val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo
+    /** Acento secundario: sólo para degradados/realces (avatar, botón principal,
+     *  punto de pestaña activa). No tiene significado semántico propio. */
+    val ACCENT2 get() = if (activa.oscuro) Color.parseColor("#5B8CFF") else Color.parseColor("#3A6DF0")
+
+    /** Fondo de pantalla con un degradado radial muy sutil arriba (propuesta B).
+     *  En temas claros es un degradado igual de leve hacia el blanco. */
+    fun fondoApp(): android.graphics.drawable.Drawable {
+        val top = if (activa.oscuro) mezcla(activa.bgDeep, Color.parseColor("#1E2A3A"), 0.55f)
+                  else mezcla(activa.bgDeep, Color.WHITE, 0.5f)
+        val g = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(top, activa.bgDeep, activa.bgDeep))
+        g.gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
+        g.gradientRadius = 1400f
+        g.setGradientCenter(0.5f, -0.05f)
+        return g
+    }
+    /** Mezcla lineal de dos colores (t=0 → a, t=1 → b). */
+    private fun mezcla(a: Int, b: Int, t: Float): Int {
+        val r = (Color.red(a) * (1 - t) + Color.red(b) * t).toInt()
+        val g = (Color.green(a) * (1 - t) + Color.green(b) * t).toInt()
+        val bl = (Color.blue(a) * (1 - t) + Color.blue(b) * t).toInt()
+        return Color.rgb(r, g, bl)
+    }
     /**
      * Fondo tenue del botón de parar.
      *
@@ -289,10 +319,11 @@ object AppTheme {
        final para cornerRadius. Declararlos Float obligaba a recordar el orden
        exacto de las conversiones en cada uso, y bastaba equivocarse una vez
        para no compilar. */
-    const val R_CARD   = 14
-    const val R_INNER  = 12
-    const val R_CHIP   = 10
-    const val R_KEY    = 16
+    // Propuesta B: esquinas más redondeadas en todas las superficies.
+    const val R_CARD   = 20
+    const val R_INNER  = 15
+    const val R_CHIP   = 12
+    const val R_KEY    = 18
 
     const val PAD_SIDE = 22   // margen lateral de pantalla
     const val PAD_CARD = 18   // interior de tarjeta

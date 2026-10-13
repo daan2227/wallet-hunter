@@ -36,7 +36,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     val ACCENT2 = AppTheme.BLUE
 
     val scroll = ScrollView(this).apply {
-        setBackgroundColor(AppTheme.BG_DEEP)
+        background = AppTheme.fondoApp()
         layoutParams = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT,
             FrameLayout.LayoutParams.MATCH_PARENT
@@ -44,7 +44,6 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     }
     val page = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setBackgroundColor(AppTheme.BG_DEEP)
         setPadding(0, 0, 0, dp(80))
     }
 

@@ -94,7 +94,7 @@ object PinAuthHelper {
 
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(BG)
+            background = AppTheme.fondoApp()   // backdrop con degradado sutil (propuesta B)
             gravity = Gravity.CENTER_HORIZONTAL
         }
         fun hueco(peso: Float) = View(activity).apply {
