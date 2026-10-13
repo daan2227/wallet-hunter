@@ -57,10 +57,25 @@ args_de() {
     esac
 }
 
+# Compilar en paralelo: cada binario es independiente y la compilacion es lo
+# que mas tarda. Las pruebas en si corren en serie, porque algunas miden tiempo
+# (velocidad, ciclos) y con otras compitiendo darian cifras falsas.
+rm -f compila_fallo.txt
+compila() {
+    # shellcheck disable=SC2046
+    g++ -O2 -o "$1" "$1.cpp" $(flags_de "$1") 2>"$1.err" || echo "$1" >> compila_fallo.txt
+}
+for t in $PRUEBAS; do compila "$t" & done
+wait
+
 fallos=0
 for t in $PRUEBAS; do
-    # shellcheck disable=SC2046
-    g++ -O2 -o "$t" "$t.cpp" $(flags_de "$t")
+    if [ -f compila_fallo.txt ] && grep -qx "$t" compila_fallo.txt; then
+        printf '*** %s no compila ***\n' "$t"
+        cat "$t.err"
+        fallos=$((fallos+1))
+        continue
+    fi
     printf '=== %s ===\n' "$t"
     # shellcheck disable=SC2086
     if ./"$t" $(args_de "$t"); then :; else
@@ -69,20 +84,6 @@ for t in $PRUEBAS; do
     fi
     echo
 done
-
-# lattice_hnp - el ataque de reticula (HNP + LLL) recupera la clave de 18/18
-# firmas con nonces cortos. Es Python puro; si no hay python3, no se salta en
-# silencio: se avisa.
-if command -v python3 >/dev/null 2>&1; then
-    echo "=== lattice_hnp ==="
-    if python3 -I lattice_hnp.py; then :; else
-        echo "*** lattice_hnp FALLA ***"
-        fallos=$((fallos+1))
-    fi
-    echo
-else
-    echo "*** python3 no disponible: se omite lattice_hnp ***"
-fi
 
 if [ "$fallos" -gt 0 ]; then
     printf '%s prueba(s) con fallos\n' "$fallos"

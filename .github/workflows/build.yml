@@ -33,6 +33,7 @@ jobs:
            || [ "$ANTES" = "0000000000000000000000000000000000000000" ] \
            || ! git cat-file -e "$ANTES^{commit}" 2>/dev/null; then
           echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "arm=1" >> "$GITHUB_OUTPUT"
+          echo "gpu=1" >> "$GITHUB_OUTPUT"; echo "lattice=1" >> "$GITHUB_OUTPUT"
           echo "Sin commit anterior: se pasan los bancos."; exit 0
         fi
         CAMBIOS=$(git diff --name-only "$ANTES" "${{ github.sha }}")
@@ -47,6 +48,20 @@ jobs:
           echo "cambia=1" >> "$GITHUB_OUTPUT"; echo "Toca el motor o sus pruebas: se pasan los bancos."
         else
           echo "cambia=0" >> "$GITHUB_OUTPUT"; echo "No toca el motor: se saltan los bancos."
+        fi
+        # La GPU sólo cuando cambia su código, o el kangaroo.h que incluye su
+        # banco. Un cambio de pantallas no la despierta.
+        if echo "$CAMBIOS" | grep -qE '(app/src/main/cpp/gpu/|app/src/main/cpp/kangaroo\.h|tools/ec-harness/gpu_kangaroo|\.github/workflows/build\.yml)'; then
+          echo "gpu=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "gpu=0" >> "$GITHUB_OUTPUT"
+        fi
+        # La reticula es Python y valida el algoritmo que usa Lattice.kt: sólo
+        # se lanza si cambia ese código o su validador.
+        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
+          echo "lattice=1" >> "$GITHUB_OUTPUT"
+        else
+          echo "lattice=0" >> "$GITHUB_OUTPUT"
         fi
 
     # El banco de pruebas, ANTES de compilar nada.
@@ -75,12 +90,19 @@ jobs:
         sudo apt-get install -y libssl-dev 2>/dev/null || true
         tools/ec-harness/run.sh
 
+    # Reticula (HNP + LLL): recupera la clave de 18 de 18 firmas con nonces
+    # cortos. Va aparte del banco del motor para que cambiar Lattice.kt lo
+    # active aunque no toque el motor. Python puro, unos 7 s.
+    - name: Banco de la reticula (HNP + LLL)
+      if: steps.motor.outputs.lattice == '1'
+      run: python3 -I tools/ec-harness/lattice_hnp.py
+
     # Kangaroo en la GPU, con Vulkan por software (lavapipe): comprueba que
     # cada punto distinguido que devuelve el shader esta donde dice su
     # distancia y que resuelve claves conocidas SOLO con la GPU. El ritmo de
     # aqui no dice nada del movil; la exactitud si.
     - name: Banco de la GPU (Vulkan por software)
-      if: steps.motor.outputs.cambia == '1'
+      if: steps.motor.outputs.gpu == '1'
       run: |
         sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan-dev > /dev/null
         cd tools/ec-harness
