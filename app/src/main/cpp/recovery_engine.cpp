@@ -219,6 +219,9 @@ static AddrKind parse_target(const std::string& addr,uint8_t h160_out[20]){
  */
 static bool bip39_checksum_ok(const std::vector<int>& idx){
     int nw = (int)idx.size();
+    /* BIP39 llega a 24 palabras (256 bits de entropía): con más, ent[32] se
+       desbordaba. Hoy lo limita Kotlin, pero esto no debe fiarse de quien llame. */
+    if(nw < 12 || nw > 24 || nw % 3) return false;
     int total_bits = nw * 11;
     int cs_bits    = total_bits / 33;
     int ent_bits   = total_bits - cs_bits;
@@ -420,6 +423,12 @@ std::string recovery_run(const std::vector<std::string>& slots,
         word_idx[i]=(it==wpos.end())?0:it->second;
     }
 
+    /* Entradas fuera de rango: un hueco que no es una posición, o tantos huecos
+       que wc^mc desborda (con 6 huecos, 2048^6 = 2^66, total pasaba a 0 y luego
+       se dividía entre él). Hoy Kotlin limita a 4 huecos; aquí no se da por hecho. */
+    if(wc<=0 || sc<12 || sc>24) return "ERROR:BAD_INPUT";
+    for(int m: missing) if(m<0 || m>=sc) return "ERROR:BAD_INPUT";
+    if(mc<1 || mc>5) return "ERROR:TOO_MANY_MISSING";
     long long total=1;for(int i=0;i<mc;i++)total*=wc;
 
     uint8_t target_h160[20]={0};

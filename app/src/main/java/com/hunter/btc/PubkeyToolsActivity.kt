@@ -336,6 +336,13 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── Sign & verify message ─────────────────────────────────────────────
+    /**
+     * BIP38 exige la contraseña en forma NFC: "é" escrita como un carácter o como
+     * "e" + acento son la misma para el usuario, pero bytes distintos, y una clave
+     * cifrada con una no se abría con la otra (ni en otras carteras).
+     */
+    private fun nfc(s: String): String = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFC)
+
     /** ¿Es un WIF de mainnet SIN comprimir (5…)? Sus fondos van a otra dirección. */
     private fun esWifSinComprimir(k: String): Boolean {
         val t = k.trim()
@@ -1455,7 +1462,7 @@ class PubkeyToolsActivity : Activity() {
             salE.addView(TextView(this).apply { text = "Encrypting…"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
             Thread {
-                val enc = try { HunterEngine.bip38Cifrar(hx, pw, comp) } catch (e: Throwable) { "" }
+                val enc = try { HunterEngine.bip38Cifrar(hx, nfc(pw), comp) } catch (e: Throwable) { "" }
                 runOnUiThread { bip38Corriendo = false; salE.removeAllViews()
                     if (enc.isBlank()) Toast.makeText(this, "Could not encrypt", Toast.LENGTH_SHORT).show()
                     else salE.addView(filaResultado("Encrypted key (BIP38)", enc, true)) }
@@ -1479,7 +1486,7 @@ class PubkeyToolsActivity : Activity() {
             salD.addView(TextView(this).apply { text = "Decrypting…"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
             Thread {
-                val r = try { HunterEngine.bip38Descifrar(key, pw) } catch (e: Throwable) { "" }
+                val r = try { HunterEngine.bip38Descifrar(key, nfc(pw)) } catch (e: Throwable) { "" }
                 runOnUiThread { bip38Corriendo = false; salD.removeAllViews()
                     if (r.isBlank()) salD.addView(filaResultado("Wrong password", "or not a valid BIP38 key"))
                     else {
@@ -1510,7 +1517,7 @@ class PubkeyToolsActivity : Activity() {
             salIc.addView(TextView(this).apply { text = "Working…"; textSize = AppTheme.SP_CAPTION
                 setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
             Thread {
-                val ic = try { HunterEngine.bip38Intermediate(pw, -1, 0) } catch (e: Throwable) { "" }
+                val ic = try { HunterEngine.bip38Intermediate(nfc(pw), -1, 0) } catch (e: Throwable) { "" }
                 runOnUiThread { bip38Corriendo = false; salIc.removeAllViews()
                     if (ic.isBlank()) Toast.makeText(this, "Could not generate", Toast.LENGTH_SHORT).show()
                     else salIc.addView(filaResultado("Intermediate code", ic, true)) }

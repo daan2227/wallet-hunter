@@ -81,6 +81,8 @@ static void install_crash_handlers() {
 #define MAX_ADDR      64
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
+#include "ruta_bip32.h"    /* ruta BIP32 estricta */
+#include <openssl/crypto.h> /* OPENSSL_cleanse */
 #include "vanity.h"        /* generador de direcciones vanity (motor del escaner) */
 #include "bsgs.h"          /* baby-step/giant-step para rangos pequenos */
 #define N_PATHS       9
@@ -312,16 +314,40 @@ static void derive_child(secp256k1_context *ctx,const HDKey *par,uint32_t idx,HD
  *
  * El separador lo consume ya el `p++` de la cabecera del bucle.
  */
-static void derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *path,HDKey *o){
-    uint8_t seed[64];memcpy(seed,s64,64);derive_master(seed,o);
-    const char *p=path;while(*p&&*p!='/')p++;
-    while(*p=='/'){
-        p++;
-        uint32_t i=0;int h=0;
-        while(*p>='0'&&*p<='9') i=i*10+(uint32_t)(*p++-'0');
-        if(*p=='\''){h=1;p++;}
-        HDKey c;derive_child(ctx,o,i+(h?0x80000000u:0u),&c);*o=c;
+/* Texto de Java a UTF-8 DE VERDAD.
+ *
+ * GetStringUTFChars da el "UTF-8 modificado" de Java: un emoji sale como dos
+ * mitades sustitutas (CESU-8) y un NUL como C0 80. Para una contraseña de BIP38
+ * o un mensaje firmado esos bytes son el dato: cifrado o firmado aquí, no lo
+ * abría ni lo verificaba ninguna otra cartera. Se piden los bytes a Java con
+ * String.getBytes("UTF-8"). */
+static std::string utf8_de(JNIEnv *env, jstring js){
+    if(!js) return std::string();
+    jclass cs=env->FindClass("java/lang/String");
+    jmethodID gb=cs?env->GetMethodID(cs,"getBytes","(Ljava/lang/String;)[B"):nullptr;
+    jstring enc=env->NewStringUTF("UTF-8");
+    jbyteArray arr=(gb&&enc)?(jbyteArray)env->CallObjectMethod(js,gb,enc):nullptr;
+    std::string out;
+    if(env->ExceptionCheck()){ env->ExceptionClear(); arr=nullptr; }
+    if(arr){
+        jsize n=env->GetArrayLength(arr);
+        out.resize((size_t)n);
+        if(n>0) env->GetByteArrayRegion(arr,0,n,(jbyte*)&out[0]);
+        env->DeleteLocalRef(arr);
     }
+    if(enc) env->DeleteLocalRef(enc);
+    if(cs) env->DeleteLocalRef(cs);
+    return out;
+}
+
+/* false si la ruta no es válida (ver ruta_bip32.h): entonces NO hay clave. */
+static bool derive_path(secp256k1_context *ctx,const uint8_t *s64,const char *path,HDKey *o){
+    uint32_t idx[32]; int n=ruta_bip32_parse(path,idx,32);
+    if(n<0){ memset(o,0,sizeof(*o)); return false; }
+    uint8_t seed[64];memcpy(seed,s64,64);derive_master(seed,o);
+    for(int k=0;k<n;k++){ HDKey c;derive_child(ctx,o,idx[k],&c);*o=c; }
+    OPENSSL_cleanse(seed,sizeof seed);
+    return true;
 }
 static void pk_to_h160(secp256k1_context *ctx,const uint8_t *pk,uint8_t *out){uint8_t pub[33];get_pub33(ctx,pk,pub);hash160_inline(pub,out);}
 
@@ -355,10 +381,13 @@ static void tagged_hash(const char *tag, const uint8_t *msg, size_t mlen, uint8_
     /* Use precomputed tag hash for TapTweak */
     uint8_t tag_hash[32];
     if(strcmp(tag,"TapTweak")==0){
-        /* Precompute once */
-        static uint8_t cached[32]={0}; static int done=0;
-        if(!done){SHA256((const uint8_t*)"TapTweak",8,cached);done=1;}
-        memcpy(tag_hash,cached,32);
+        /* Una vez, de forma segura entre hilos: un static de función se inicializa
+           una sola vez aunque entren varios a la vez (C++11). Con el "done" de
+           antes, otro hilo podía ver done=1 antes que los bytes y usar un hash de
+           etiqueta a ceros: una dirección P2TR equivocada. */
+        struct Tag { uint8_t h[32]; Tag(){ SHA256((const uint8_t*)"TapTweak",8,h); } };
+        static const Tag cached;
+        memcpy(tag_hash,cached.h,32);
     } else {
         SHA256((const uint8_t*)tag,strlen(tag),tag_hash);
     }
@@ -1110,7 +1139,10 @@ static void* load_bin_fn(void*) {
     madvise(mapped,fsz,MADV_SEQUENTIAL);
     uint64_t n; memcpy(&n,mapped,8);
     add_log("BIN n="+std::to_string(n)+" fsz="+std::to_string(fsz));
-    if(fsz<8+n*HASH160_BYTES){snprintf(g_load_status,sizeof(g_load_status),"Error: .bin truncated n=%llu",(unsigned long long)n);munmap(mapped,fsz);g_loading.store(false);return nullptr;}
+    /* n viene del fichero: 8+n*20 desbordaba con un n enorme (p. ej.
+       0x199999999999999A da 8) y pasaba la comprobación, con malloc(8) y lecturas
+       fuera del montón. Se compara por división, que no desborda. */
+    if(n==0 || n>(uint64_t)(fsz-8)/HASH160_BYTES){snprintf(g_load_status,sizeof(g_load_status),"Error: .bin truncated n=%llu",(unsigned long long)n);munmap(mapped,fsz);g_loading.store(false);return nullptr;}
     if(g_h160){free(g_h160);g_h160=nullptr;}g_total=0;
     if(g_xonly){free(g_xonly);g_xonly=nullptr;}g_total_tr=0;
     if(g_bloom.bits){bloom_free(&g_bloom);g_bloom.bits=nullptr;g_bloom.nbits=0;}
@@ -1145,12 +1177,14 @@ static void *load_fn(void *){
     char line[MAX_LINE],*fields[8];
     if(!fgets(line,sizeof(line),f)){fclose(f);free(tmp);g_loading.store(false);return nullptr;}
     if(strchr(line,';'))g_sep=';';else if(strchr(line,'\t'))g_sep='\t';else g_sep=',';
-    int ca=0;{char hdr[MAX_LINE];strncpy(hdr,line,MAX_LINE-1);int n=split_line(hdr,fields,8);for(int i=0;i<n;i++){trim_str(fields[i]);if(!strcmp(fields[i],"address"))ca=i;}}
+    int ca=0;{char hdr[MAX_LINE];strncpy(hdr,line,MAX_LINE-1);hdr[MAX_LINE-1]='\0';int n=split_line(hdr,fields,8);for(int i=0;i<n;i++){trim_str(fields[i]);if(!strcmp(fields[i],"address"))ca=i;}}
     uint64_t rows=0,ok=0,skip=0;
     while(fgets(line,sizeof(line),f)&&ok<MAX_CSV_ROWS){
         uint64_t off=(uint64_t)ftello(f)-(uint64_t)strlen(line);rows++;
-        char tl[MAX_LINE];strncpy(tl,line,MAX_LINE-1);int n=split_line(tl,fields,8);if(n<=ca){skip++;continue;}
-        char addr[MAX_ADDR];strncpy(addr,fields[ca],MAX_ADDR-1);trim_str(addr);if(!addr[0]){skip++;continue;}
+        /* strncpy no pone el terminador si la línea (o el campo) llena el búfer:
+           split_line y trim_str seguían leyendo más allá de la pila. */
+        char tl[MAX_LINE];strncpy(tl,line,MAX_LINE-1);tl[MAX_LINE-1]='\0';int n=split_line(tl,fields,8);if(n<=ca){skip++;continue;}
+        char addr[MAX_ADDR];strncpy(addr,fields[ca],MAX_ADDR-1);addr[MAX_ADDR-1]='\0';trim_str(addr);if(!addr[0]){skip++;continue;}
         uint8_t h160[HASH160_BYTES];if(!addr_to_h160(addr,h160)){skip++;continue;}
         memcpy(tmp[ok].h,h160,HASH160_BYTES);ok++;
         if(rows%1000000==0)snprintf(g_load_status,sizeof(g_load_status),"Leyendo %.0fM... OK:%llu",(double)rows/1e6,(unsigned long long)ok);
@@ -1264,8 +1298,12 @@ Java_com_hunter_btc_HunterEngine_setMode(JNIEnv *,jobject,jint mode){
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstring end){
-    const char *s=env->GetStringUTFChars(start,nullptr);
-    const char *e=env->GetStringUTFChars(end,nullptr);
+    /* Los hilos leen g_range_* sin cerrojo: cambiarlo con el motor en marcha
+       daba claves fuera del rango elegido. Con el motor parado, sin problema. */
+    if(g_running.load()){ add_log("setRange ignored: the engine is running"); return; }
+    const char *s=start?env->GetStringUTFChars(start,nullptr):nullptr;
+    const char *e=end?env->GetStringUTFChars(end,nullptr):nullptr;
+    if(!s||!e){ if(s) env->ReleaseStringUTFChars(start,s); if(e) env->ReleaseStringUTFChars(end,e); return; }
     hex_to_bytes32(s,g_range_start);
     hex_to_bytes32(e,g_range_end);
     env->ReleaseStringUTFChars(start,s);
@@ -1280,17 +1318,20 @@ Java_com_hunter_btc_HunterEngine_setRange(JNIEnv *env,jobject,jstring start,jstr
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint cpuLimit){
     install_crash_handlers();
-    if(g_running.load())return;
     if(g_stopping.load())return;   /* workers de la sesión anterior aún vivos */
     if(g_loading.load())return;    /* el dataset se está cargando: g_h160 cambia */
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
+    /* Se reserva el motor de forma atómica: antes se miraba g_running aquí y se
+       ponía a true más abajo, y dos llamadas a la vez (la pantalla y el
+       watchdog) arrancaban dos tandas de hilos sobre el mismo g_workers[]. */
+    { bool libre=false; if(!g_running.compare_exchange_strong(libre,true)) return; }
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
     g_objetivo_hallado.store(0);
     g_seq_en_curso.store(0); g_seq_agotado.store(0); g_rango_completo.store(0);
     { std::lock_guard<std::mutex> lk(g_seq_mutex); memcpy(g_seq_pos,g_range_start,32); }
     g_last_count=0;g_last_wps_t=time(nullptr);
-    g_start_time=time(nullptr);g_running.store(true);
+    g_start_time=time(nullptr);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
     void *(*fn)(void*) = (g_mode.load()==1) ? worker_puzzle_fn :
                           (g_mode.load()==2) ? worker_rawkey_fn : worker_bip39_fn;
@@ -1663,12 +1704,14 @@ Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstri
     uint8_t seed[64]; bip39_semilla(m.c_str(),m.size(),"",0,seed);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     HDKey hd; memset(&hd,0,sizeof(hd));
-    derive_path(ctx,seed,path.c_str(),&hd);
+    derive_path(ctx,seed,path.c_str(),&hd);   /* ruta inválida: hd a cero y out vacío */
     std::string out="";
     if(secp256k1_ec_seckey_verify(ctx,hd.key)){
         char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",hd.key[i]); out=hx;
+        OPENSSL_cleanse(hx,sizeof hx);
     }
     secp256k1_context_destroy(ctx);
+    OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
     return env->NewStringUTF(out.c_str());
 }
 
@@ -1694,7 +1737,7 @@ static void bip38_addrhash(secp256k1_context *ctx, const uint8_t *priv, bool com
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_bip38Cifrar(JNIEnv *env,jobject,jstring jhex,jstring jpass,jboolean comp){
     const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
-    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+    std::string pass=utf8_de(env,jpass);   /* UTF-8 de verdad: ver utf8_de */
     if(h.size()!=64) return env->NewStringUTF("");
     uint8_t priv[32];
     for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
@@ -1715,10 +1758,8 @@ Java_com_hunter_btc_HunterEngine_bip38Cifrar(JNIEnv *env,jobject,jstring jhex,js
     secp256k1_context_destroy(ctx);
     return env->NewStringUTF(out);
 }
-JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey,jstring jpass){
-    const char *ky=env->GetStringUTFChars(jkey,nullptr); std::string k=ky?ky:""; if(ky) env->ReleaseStringUTFChars(jkey,ky);
-    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+/* Descifrado BIP38 con una contraseña en bytes. Ver el envoltorio JNI. */
+static std::string bip38_descifrar_con(const std::string &k, const std::string &pass){
     // base58check decode → 43 bytes (39 payload + 4 checksum)
     BIGNUM *bn=BN_new(),*t=BN_new(),*b=BN_new(); BN_CTX *bc=BN_CTX_new(); BN_zero(bn); BN_set_word(b,58);
     bool okb=true; for(char ch: k){ const char *p=strchr(B58A,ch); if(!p){okb=false;break;} BN_mul(bn,bn,b,bc); BN_set_word(t,(unsigned long)(p-B58A)); BN_add(bn,bn,t); }
@@ -1777,6 +1818,21 @@ Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey
         }
     }
     BN_free(bn);BN_free(t);BN_free(b);BN_CTX_free(bc);
+    return res;
+}
+
+JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey,jstring jpass){
+    const char *ky=env->GetStringUTFChars(jkey,nullptr); std::string k=ky?ky:""; if(ky) env->ReleaseStringUTFChars(jkey,ky);
+    /* Primero en UTF-8 de verdad (lo que hacen las demás carteras). Si no abre y
+       la contraseña tenía caracteres fuera del BMP (emoji), se prueba con los
+       bytes que usaba esta app antes, para no dejar inaccesible una clave que
+       se cifró aquí con la codificación anterior. */
+    std::string res=bip38_descifrar_con(k,utf8_de(env,jpass));
+    if(res.empty() && jpass){
+        const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string viejo=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+        if(viejo!=utf8_de(env,jpass)) res=bip38_descifrar_con(k,viejo);
+    }
     return env->NewStringUTF(res.c_str());
 }
 
@@ -1784,14 +1840,15 @@ Java_com_hunter_btc_HunterEngine_bip38Descifrar(JNIEnv *env,jobject,jstring jkey
  * partir de la contraseña. lot/seq opcionales (lot<0 = sin ellos). */
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_bip38Intermediate(JNIEnv *env,jobject,jstring jpass,jint jlot,jint jseq){
-    const char *pw=env->GetStringUTFChars(jpass,nullptr); std::string pass=pw?pw:""; if(pw) env->ReleaseStringUTFChars(jpass,pw);
+    std::string pass=utf8_de(env,jpass);   /* UTF-8 de verdad: ver utf8_de */
     bool useLot=(jlot>=0);
     uint8_t ownerentropy[8]={0}; uint8_t passfactor[32]={0};
     if(!useLot){
-        uint8_t salt[8]; RAND_bytes(salt,8); memcpy(ownerentropy,salt,8);
+        /* Si el generador falla, nada de usar memoria sin inicializar como sal. */
+        uint8_t salt[8]; if(RAND_bytes(salt,8)!=1) return env->NewStringUTF(""); memcpy(ownerentropy,salt,8);
         if(EVP_PBE_scrypt(pass.c_str(),pass.size(),salt,8,16384,8,8,0,passfactor,32)!=1) return env->NewStringUTF("");
     } else {
-        uint8_t salt[4]; RAND_bytes(salt,4);
+        uint8_t salt[4]; if(RAND_bytes(salt,4)!=1) return env->NewStringUTF("");
         uint32_t ls=(uint32_t)jlot*4096u+(uint32_t)jseq;
         memcpy(ownerentropy,salt,4);
         ownerentropy[4]=(uint8_t)((ls>>24)&0xff); ownerentropy[5]=(uint8_t)((ls>>16)&0xff);
@@ -1836,7 +1893,10 @@ Java_com_hunter_btc_HunterEngine_bip38GenerarCifrada(JNIEnv *env,jobject,jstring
             if(secp256k1_ec_pubkey_parse(ctx,&pp,passpoint,33)){
                 uint8_t seedb[24],factorb[32]; secp256k1_pubkey gen; bool ok=false;
                 for(int tries=0;tries<8 && !ok;tries++){
-                    RAND_bytes(seedb,24); sha256d(seedb,24,factorb);
+                    /* seedb es el factor de la clave privada nueva: si el generador
+                       falla, no se usa basura de la pila. */
+                    if(RAND_bytes(seedb,24)!=1) break;
+                    sha256d(seedb,24,factorb);
                     gen=pp; if(secp256k1_ec_pubkey_tweak_mul(ctx,&gen,factorb)) ok=true;
                 }
                 if(ok){
@@ -1957,7 +2017,7 @@ static void msg_hash(const std::string &msg, uint8_t out32[32]){
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_firmarMensaje(JNIEnv *env,jobject,jstring jhex,jstring jmsg){
     const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
-    const char *mg=env->GetStringUTFChars(jmsg,nullptr); std::string m=mg?mg:""; if(mg) env->ReleaseStringUTFChars(jmsg,mg);
+    std::string m=utf8_de(env,jmsg);   /* UTF-8 de verdad: ver utf8_de */
     if(h.size()!=64) return env->NewStringUTF("");
     uint8_t k[32];
     for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
@@ -1985,7 +2045,7 @@ Java_com_hunter_btc_HunterEngine_firmarMensaje(JNIEnv *env,jobject,jstring jhex,
  * llama compara esa dirección con la que dice ser el firmante. */
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_verificarMensaje(JNIEnv *env,jobject,jstring jmsg,jstring jsig){
-    const char *mg=env->GetStringUTFChars(jmsg,nullptr); std::string m=mg?mg:""; if(mg) env->ReleaseStringUTFChars(jmsg,mg);
+    std::string m=utf8_de(env,jmsg);   /* UTF-8 de verdad: ver utf8_de */
     const char *sg=env->GetStringUTFChars(jsig,nullptr); std::string s=sg?sg:""; if(sg) env->ReleaseStringUTFChars(jsig,sg);
     if(s.size()!=130) return env->NewStringUTF("");
     uint8_t full[65];
@@ -2119,7 +2179,10 @@ Java_com_hunter_btc_HunterEngine_xpubPubkeys(JNIEnv *env,jobject,jstring jx,jint
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
-    const char *a=env->GetStringUTFChars(addr,nullptr);
+    /* Los hilos comparan con g_target_h160 sin cerrojo: con el motor en marcha
+       se podía comparar contra un objetivo a medio escribir. */
+    if(g_running.load()){ add_log("setTarget ignored: the engine is running"); return; }
+    const char *a=addr?env->GetStringUTFChars(addr,nullptr):nullptr;
     if(a&&a[0]){
         uint8_t h160[20]={0};
         if(addr_to_h160(a,h160)){
@@ -2133,7 +2196,7 @@ Java_com_hunter_btc_HunterEngine_setTarget(JNIEnv *env,jobject,jstring addr){
     } else {
         g_has_target=0;
     }
-    env->ReleaseStringUTFChars(addr,a);
+    if(a) env->ReleaseStringUTFChars(addr,a);
 }
 
 JNIEXPORT jboolean JNICALL
@@ -2210,7 +2273,10 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_deriveWallet(JNIEnv *env, jobject, jstring jmn,
                                               jboolean jtestnet){
-    const char *mn=env->GetStringUTFChars(jmn,nullptr);
+    /* Sin comprobar null: con poca memoria GetStringUTFChars devuelve NULL y se
+       derivaba de un puntero nulo. */
+    const char *mn=jmn?env->GetStringUTFChars(jmn,nullptr):nullptr;
+    if(!mn) return env->NewStringUTF("");
     std::string result=derive_wallet_json(mn,jtestnet==JNI_TRUE);
     env->ReleaseStringUTFChars(jmn,mn);
     return env->NewStringUTF(result.c_str());
@@ -2401,7 +2467,10 @@ static std::string build_and_sign_tx(const std::string &req){
         stype=SP_LEGACY; is_segwit=false;
     }else{
         bip39_semilla(mnemonic.c_str(),mnemonic.size(),"",0,seed);
-        derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd);
+        if(!derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd)){
+            OPENSSL_cleanse(seed,sizeof seed);
+            secp256k1_context_destroy(ctx); return "ERROR:bad_path";
+        }
     }
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
     uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
@@ -2493,7 +2562,13 @@ static std::string build_and_sign_tx(const std::string &req){
        dirección. */
     std::string change_path = wif.empty() ? json_str(req,"change_path") : std::string();
     if(has_change && !change_path.empty()){
-        HDKey ch; derive_path(ctx,seed,change_path.c_str(),&ch);
+        HDKey ch;
+        /* Ruta de cambio inválida: no se manda el cambio a una clave que ninguna
+           cartera derivaría jamás. */
+        if(!derive_path(ctx,seed,change_path.c_str(),&ch)){
+            OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
+            secp256k1_context_destroy(ctx); return "ERROR:bad_change_path";
+        }
         if(stype==SP_P2TR){
             secp256k1_keypair kp; secp256k1_xonly_pubkey xo; int par=0;
             uint8_t internal[32], tw[32];
@@ -2591,6 +2666,8 @@ static std::string build_and_sign_tx(const std::string &req){
         }
         tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
+        /* La semilla y la clave no se quedan en la pila al volver. */
+        OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     }
     if(is_segwit){
@@ -2659,6 +2736,8 @@ static std::string build_and_sign_tx(const std::string &req){
         }
         tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
+        /* La semilla y la clave no se quedan en la pila al volver. */
+        OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     } else {
         // Legacy P2PKH
@@ -2701,15 +2780,21 @@ static std::string build_and_sign_tx(const std::string &req){
         tx+=outs_bytes;
         tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);
+        /* La semilla y la clave no se quedan en la pila al volver. */
+        OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
         return to_hex((const uint8_t*)tx.data(),(int)tx.size());
     }
 }
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq){
-    const char *req=env->GetStringUTFChars(jreq,nullptr);
-    std::string result=build_and_sign_tx(std::string(req));
+    const char *req=jreq?env->GetStringUTFChars(jreq,nullptr):nullptr;
+    if(!req) return env->NewStringUTF("ERROR:invalid_params");
+    std::string copia(req);
     env->ReleaseStringUTFChars(jreq,req);
+    std::string result=build_and_sign_tx(copia);
+    /* La petición lleva la semilla o el WIF: no se deja en la memoria del proceso. */
+    if(!copia.empty()) OPENSSL_cleanse(&copia[0],copia.size());
     return env->NewStringUTF(result.c_str());
 }
 
@@ -2857,9 +2942,15 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     std::lock_guard<std::mutex> lk(g_kg_mtx);
     if(g_kg_vivo) return JNI_FALSE;
 
-    const char *cp=env->GetStringUTFChars(jpub,0);
-    const char *ci=env->GetStringUTFChars(jini,0);
-    const char *cf=env->GetStringUTFChars(jfin,0);
+    const char *cp=jpub?env->GetStringUTFChars(jpub,0):nullptr;
+    const char *ci=jini?env->GetStringUTFChars(jini,0):nullptr;
+    const char *cf=jfin?env->GetStringUTFChars(jfin,0):nullptr;
+    if(!cp||!ci||!cf){
+        if(cp) env->ReleaseStringUTFChars(jpub,cp);
+        if(ci) env->ReleaseStringUTFChars(jini,ci);
+        if(cf) env->ReleaseStringUTFChars(jfin,cf);
+        return JNI_FALSE;
+    }
     uint8_t pub[33],ini[32],fin[32];
     memset(ini,0,32); memset(fin,0,32);
     int okp=(hex2bin(cp,pub,33)==33);

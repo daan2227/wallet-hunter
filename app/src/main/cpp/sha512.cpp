@@ -1,4 +1,5 @@
 /* SHA-512 / HMAC / PBKDF2: la parte comun y el software. Ver sha512.h. */
+#include <vector>
 #include "sha512.h"
 #include <string.h>
 #include <atomic>
@@ -282,26 +283,34 @@ void pbkdf2_sha512_x4(const uint8_t *const pw[4], const size_t n[4],
     pbkdf2_sha512_x2(pw[2],n[2],pw[3],n[3],sal,saln,vueltas,out[2],out[3]);
 }
 
-static size_t sal_bip39(const char *pass, size_t pn, uint8_t *buf, size_t cap){
-    if(8+pn>cap) pn=cap-8;
-    memcpy(buf,"mnemonic",8); if(pn) memcpy(buf+8,pass,pn);
-    return 8+pn;
-}
+/* Sal de BIP39: "mnemonic" + passphrase. Antes iba en un búfer de 1024 bytes y
+ * una passphrase más larga se CORTABA en silencio: salía otra semilla, de una
+ * cartera que no es la del usuario. Ahora en pila si cabe y en el montón si no. */
+struct SalBip39 {
+    uint8_t pila[1024]; std::vector<uint8_t> grande; const uint8_t *p; size_t n;
+    SalBip39(const char *pass, size_t pn){
+        n=8+pn;
+        uint8_t *d=pila;
+        if(n>sizeof pila){ grande.resize(n); d=grande.data(); }
+        memcpy(d,"mnemonic",8); if(pn) memcpy(d+8,pass,pn);
+        p=d;
+    }
+};
 void bip39_semilla(const char *frase, size_t n, const char *pass, size_t pn, uint8_t out[64]){
-    uint8_t sal[1024]; size_t sn=sal_bip39(pass,pn,sal,sizeof sal);
-    pbkdf2_sha512((const uint8_t*)frase,n,sal,sn,2048,out);
+    SalBip39 sal(pass,pn);
+    pbkdf2_sha512((const uint8_t*)frase,n,sal.p,sal.n,2048,out);
 }
 void bip39_semilla_x2(const char *fA, size_t nA, const char *fB, size_t nB,
                       const char *pass, size_t pn, uint8_t outA[64], uint8_t outB[64]){
-    uint8_t sal[1024]; size_t sn=sal_bip39(pass,pn,sal,sizeof sal);
-    pbkdf2_sha512_x2((const uint8_t*)fA,nA,(const uint8_t*)fB,nB,sal,sn,2048,outA,outB);
+    SalBip39 sal(pass,pn);
+    pbkdf2_sha512_x2((const uint8_t*)fA,nA,(const uint8_t*)fB,nB,sal.p,sal.n,2048,outA,outB);
 }
 
 void bip39_semilla_x4(const char *const f[4], const size_t n[4],
                       const char *pass, size_t pn, uint8_t out[4][64]){
-    uint8_t sal[1024]; size_t sn=sal_bip39(pass,pn,sal,sizeof sal);
+    SalBip39 sal(pass,pn);
     const uint8_t *pw[4]={(const uint8_t*)f[0],(const uint8_t*)f[1],(const uint8_t*)f[2],(const uint8_t*)f[3]};
-    pbkdf2_sha512_x4(pw,n,sal,sn,2048,out);
+    pbkdf2_sha512_x4(pw,n,sal.p,sal.n,2048,out);
 }
 
 /* ¿Que forma va mas rapido en ESTE procesador? Depende del nucleo: con

@@ -1,3 +1,4 @@
+#include <string>
 /* SHA-512, HMAC y PBKDF2 propios (sha512.cpp, sha512_hw.cpp) contra OpenSSL,
  * en todos los modos que tenga el procesador, y lo que tarda cada uno.
  *
@@ -108,5 +109,18 @@ int main(){
 #endif
     sha512_fijar_modo(-1);
     printf("modo elegido solo: %s\n", sha512_nombre_modo(sha512_modo()));
+#ifndef SIN_OPENSSL
+    /* Passphrase más larga que el búfer de 1024 de antes: tenía que dar la
+       semilla de BIP39 de verdad, no la de la passphrase cortada. */
+    {
+        std::string pass(2000,'x'); for(size_t i=0;i<pass.size();i++) pass[i]=(char)('a'+i%26);
+        uint8_t mia[64],ref[64];
+        bip39_semilla(FRASE,strlen(FRASE),pass.data(),pass.size(),mia);
+        std::string sal="mnemonic"+pass;
+        PKCS5_PBKDF2_HMAC(FRASE,(int)strlen(FRASE),(const uint8_t*)sal.data(),(int)sal.size(),2048,EVP_sha512(),64,ref);
+        bool ok=memcmp(mia,ref,64)==0;
+        printf("%s   passphrase de 2000 bytes == OpenSSL\n", ok?"OK ":"MAL"); fallos+=!ok;
+    }
+#endif
     return fallos;
 }

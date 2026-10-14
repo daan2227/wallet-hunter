@@ -46,6 +46,7 @@ static inline uint64_t bloom_hash4(const uint8_t *h, uint64_t nbits) {
 }
 
 static inline void bloom_set(Bloom *b, const uint8_t *h160) {
+    if(!b->bits) return;   /* sin memoria para el filtro: se busca sin él (bloom_check deja pasar) */
     uint64_t i1=bloom_hash1(h160,b->nbits);
     uint64_t i2=bloom_hash2(h160,b->nbits);
     uint64_t i3=bloom_hash3(h160,b->nbits);
@@ -75,6 +76,8 @@ static Bloom bloom_create(uint64_t n_entries) {
     b.nbits = n_entries * 10; /* 10 bits per entry ~1% FP */
     uint64_t nbytes = (b.nbits + 7) / 8;
     b.bits = (uint8_t*)calloc(nbytes, 1);
+    /* Antes no se miraba: con un calloc fallido, bloom_set escribía por NULL. */
+    if(!b.bits) b.nbits = 0;
     b.nset = 0;
     return b;
 }
