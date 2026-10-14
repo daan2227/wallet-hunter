@@ -23,7 +23,6 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       CONSERVAR: '10'
-      CACHE_FIRMA: 'firma-respaldo-v1'
     steps:
     - name: "Ejecuciones: borrar todo menos las 10 últimas"
       run: |
@@ -34,14 +33,16 @@ jobs:
         done
         echo "Borradas $N ejecuciones antiguas."
 
-    # La del NDK (ndk-*) tampoco se borra: es la que evita volver a bajar 1 GB
-    # con un sdkmanager que a veces se corta. GitHub ya caduca sola cualquier
-    # caché que pase 7 días sin usarse.
-    - name: "Cachés: borrar las de más de 3 días (menos la de firma y la del NDK)"
+    # La del NDK (ndk-*) no se borra: es la que evita volver a bajar 1 GB con un
+    # sdkmanager que a veces se corta. La de la clave de respaldo de firma
+    # (firma-respaldo-v1) ya no se usa: se borra como las demás, y con ella esa
+    # copia de una clave de firma. GitHub caduca sola cualquier caché que pase
+    # 7 días sin usarse.
+    - name: "Cachés: borrar las de más de 3 días (menos la del NDK)"
       run: |
         LIMITE=$(date -u -d '3 days ago' +%s)
         gh api --paginate "repos/$REPO/actions/caches?per_page=100" \
-          --jq ".actions_caches[] | select(.key != \"$CACHE_FIRMA\" and (.key | startswith(\"ndk-\") | not)) | \"\(.id) \(.last_accessed_at)\"" |
+          --jq ".actions_caches[] | select(.key | startswith(\"ndk-\") | not) | \"\(.id) \(.last_accessed_at)\"" |
         while read -r id fecha; do
           if [ "$(date -u -d "$fecha" +%s)" -lt "$LIMITE" ]; then
             gh api -X DELETE "repos/$REPO/actions/caches/$id" >/dev/null 2>&1 && echo "Caché $id borrada"

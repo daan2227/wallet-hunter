@@ -188,46 +188,24 @@ jobs:
     # restaura. Va la del repositorio, cuyo SHA-256 es el de english.txt (lo
     # comprueba Bip39WordsTest).
 
-    # Restaura el keystore real si el secret existe; si no, genera el de debug
-    # para que la compilación siga funcionando (APK no publicable).
-    # Sin el secret, la clave de respaldo se generaba NUEVA en cada ejecución:
-    # cada APK salía firmado con una clave distinta, y Android no deja
-    # instalar encima una app firmada con otra clave. Había que desinstalar
-    # para actualizar, y desinstalar borra el baúl, las carteras y el PIN.
+    # Firma SIEMPRE con la clave de publicación (secret RELEASE_KEYSTORE_B64).
     #
-    # Ahora la de respaldo se guarda en la caché y se reutiliza. Es un
-    # parche: la caché caduca si pasan 7 días sin compilar. Lo bueno es el
-    # secret RELEASE_KEYSTORE_B64, que no caduca nunca.
-    - name: Clave de respaldo estable
-      uses: actions/cache@v4
-      with:
-        path: app/debug.keystore
-        key: firma-respaldo-v1
-
-    # Para exigir el secret —y que la CI se niegue a firmar con la clave de
-    # respaldo de la caché— basta crear una VARIABLE del repositorio (no un
-    # secret) llamada REQUIRE_RELEASE_KEYSTORE con el valor "true". Está apagado
-    # por defecto: activarlo sin tener el secret dejaría la CI sin poder compilar.
+    # Antes, sin el secret, se firmaba con una clave de respaldo guardada en la
+    # caché de Actions: la leía cualquier paso de la compilación, y caducaba a
+    # los 7 días sin compilar — y entonces el siguiente APK salía con otra clave
+    # y no se podía instalar encima (desinstalar borra baúl, carteras y PIN).
+    # El secret existe, así que ya no hace falta ningún respaldo: si faltara,
+    # la compilación falla en vez de publicar un APK firmado con otra clave.
     - name: Restore signing keystore
       env:
         KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
-        EXIGIR_FIRMA: ${{ vars.REQUIRE_RELEASE_KEYSTORE }}
       run: |
-        if [ -n "$KEYSTORE_B64" ]; then
-          echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
-          echo "Using release keystore from secrets."
-        elif [ "$EXIGIR_FIRMA" = "true" ]; then
-          echo "::error::RELEASE_KEYSTORE_B64 is not set and REQUIRE_RELEASE_KEYSTORE=true: refusing to sign with the cached fallback key."
+        if [ -z "$KEYSTORE_B64" ]; then
+          echo "::error::RELEASE_KEYSTORE_B64 is not set: refusing to build an APK signed with another key."
           exit 1
-        elif [ -f app/debug.keystore ]; then
-          echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the cached fallback key (same as previous builds)."
-        else
-          echo "::warning::RELEASE_KEYSTORE_B64 not set and no cached fallback key — generating a NEW one. APKs from before will not update in place."
-          keytool -genkeypair -v -keystore app/debug.keystore \
-            -alias androiddebugkey -keyalg RSA -keysize 2048 \
-            -validity 10000 -storepass android -keypass android \
-            -dname "CN=Android Debug,O=Android,C=US"
         fi
+        echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
+        echo "Using release keystore from secrets."
 
     # Pruebas JVM de Lattice.kt (el ataque de retícula de verdad, no su
     # réplica en Python): firmas fabricadas con una clave conocida. Sólo corre

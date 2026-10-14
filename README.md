@@ -260,9 +260,9 @@ Wallet, Recovery and Weak-key each have their own tab in the bottom bar.)
 
 ## Release signing
 
-The APK is signed by the CI with the keystore in the `RELEASE_KEYSTORE_B64` secret.
-Without it the workflow falls back to a key kept in the GitHub Actions cache, which
-expires after 7 days without a build (the next APK would then be signed with a new
-key and could not update over the old one) and can be read by anyone with write
-access to the repository. To make the CI refuse that fallback, add the secret and
-then create a repository **variable** named `REQUIRE_RELEASE_KEYSTORE` set to `true`.
+The CI signs every APK with the keystore in the `RELEASE_KEYSTORE_B64` secret (plus
+`RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` and `RELEASE_KEY_PASSWORD`). There is
+no fallback key any more: if the secret is missing the build fails, instead of
+publishing an APK signed with a different key that could not update the installed
+app. Keep a copy of that keystore outside GitHub: without it, no future APK can
+update the app in place.
