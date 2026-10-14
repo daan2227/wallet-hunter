@@ -76,6 +76,7 @@ object PinAuthHelper {
         activity: android.app.Activity,
         isSetup: Boolean,
         autoBiometric: Boolean = true,
+        permitirHuella: Boolean = false,
         onResult: (Boolean) -> Unit
     ) {
         val ACCENT = AppTheme.ACCENT
@@ -90,10 +91,11 @@ object PinAuthHelper {
         val bm = androidx.biometric.BiometricManager.from(activity)
         // La huella no se ofrece mientras esté vetada por demasiados intentos:
         // ni tecla, ni lanzamiento automático. Sólo un PIN correcto la reactiva.
-        // La huella no puede dar el PIN, y la clave de las semillas sólo sale del
-        // PIN (ver WalletManager.claveSemillaLista). Sin clave en la sesión, la
-        // huella no se ofrece: así no hay un "acierto" que no abra nada.
-        val hayHuella = !isSetup && activity is androidx.fragment.app.FragmentActivity &&
+        // La huella no se ofrece salvo que quien llama lo pida (permitirHuella),
+        // y hoy nadie lo pide: la huella no puede dar el PIN, el PIN es lo que
+        // abre las semillas, y una confirmación (envío grande, mostrar semilla)
+        // que aceptara la huella no exigiría saber el PIN.
+        val hayHuella = permitirHuella && !isSetup && activity is androidx.fragment.app.FragmentActivity &&
             !WalletManager.bioBloqueada(activity) &&
             WalletManager.claveSemillaLista() &&
             bm.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
@@ -234,7 +236,15 @@ object PinAuthHelper {
                         }
                         primero == pin.toString() -> {
                             if (WalletManager.savePin(activity, pin.toString())) cerrar(true)
-                            else {
+                            else if (WalletManager.hasPin(activity) && !WalletManager.claveSemillaLista()) {
+                                // La app se bloqueó (pantalla apagada) entre el PIN viejo y el
+                                // nuevo: sin la clave de la sesión no se puede volver a cerrar
+                                // las semillas. Reintentar fallaría siempre: se sale, sin cambios.
+                                android.widget.Toast.makeText(activity,
+                                    "The app locked while changing the PIN. Nothing changed: start again.",
+                                    android.widget.Toast.LENGTH_LONG).show()
+                                cerrar(false)
+                            } else {
                                 // No se pudo fijar el PIN (no hay clave para reabrir las
                                 // semillas). Nada cambió: se vuelve a empezar.
                                 primero = ""; pin.clear(); pintarPuntos(error = true); sacudir()
@@ -370,8 +380,10 @@ object PinAuthHelper {
                    else android.R.style.Theme_Material_Light_NoActionBar
         dlg = android.app.Dialog(activity, tema).apply {
             setContentView(root)
-            setCancelable(!isSetup)
-            if (!isSetup) setOnCancelListener { handler.removeCallbacks(cuenta); onResult(false) }
+            // Fijar el PRIMER PIN no se puede saltar; cambiarlo sí (atrás = sin cambios).
+            val cancelable = !isSetup || WalletManager.hasPin(activity)
+            setCancelable(cancelable)
+            if (cancelable) setOnCancelListener { handler.removeCallbacks(cuenta); onResult(false) }
             window?.apply {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BG))
                 setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,

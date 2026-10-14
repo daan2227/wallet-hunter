@@ -1171,7 +1171,8 @@ object WeakController {
             else {
                 bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_LABEL
                 chipHunting?.visibility = android.view.View.GONE
-                BsgsCheckpoint.guardarDesdeInforme(appCtx, campana, info)
+                if (estado == "done") BsgsCheckpoint.borrar(appCtx, campana)
+                else BsgsCheckpoint.guardarDesdeInforme(appCtx, campana, info)
                 aviso(when (estado) {
                     "range_too_big" -> "Range too big for BSGS."
                     "error"         -> "BSGS error (bad key or range)."

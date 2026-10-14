@@ -1943,11 +1943,15 @@ class WalletActivity : FragmentActivity() {
 
                     // Por encima del umbral de Perfil, el PIN otra vez justo antes de
                     // firmar: la sesión abierta no basta para mover un importe grande.
-                    if (WalletManager.hasPin(this) && UmbralEnvio.exige(UmbralEnvio.leer(this), amtSat)) {
+                    // Lo que sale de verdad de la cartera: importe + comisión, y si no hay
+                    // cambio, el sobrante (que se va a la comisión).
+                    val debitoSat = totalIn - plan.changeSat
+                    if (WalletManager.hasPin(this) && UmbralEnvio.exige(UmbralEnvio.leer(this), debitoSat)) {
                         val pinOk = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                         runOnUiThread {
                             tvStatus.text = "Enter your PIN to confirm this send"; tvStatus.setTextColor(TXT_SEC)
-                            PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false) { ok -> pinOk.offer(ok) }
+                            PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false,
+                                                   permitirHuella = false) { ok -> pinOk.offer(ok) }
                         }
                         // Con tope: si la pantalla se cierra sin responder, el hilo no se queda colgado.
                         if (pinOk.poll(5, java.util.concurrent.TimeUnit.MINUTES) != true) {

@@ -3271,7 +3271,11 @@ static std::thread           g_bm_th;
 /* Punto de control por pubkey: pubhex -> BsgsReanuda en hex (148 digitos).
    Se guarda cada BM_TROZO pasos y al parar; Kotlin lo persiste y lo devuelve
    al arrancar, así que un corte no pierde más que el último trozo. */
-static const int BM_TROZO = 512;
+/* 4096 pasos: un corte pierde como mucho eso (milisegundos), y el coste de
+   guardar (una inversión, el hex y el mutex) queda en ~0,03 % del trozo. */
+static const int BM_TROZO = 4096;
+/* Pubkey ya barrida entera sin hallar su clave: al reanudar no se repite. */
+static const char *BM_HECHA = "DONE";
 static std::map<std::string,std::string> g_bm_estados;   /* guarded by g_bm_mx */
 
 static int bm_hexval(char c){
@@ -3359,13 +3363,15 @@ Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pu
                     if(pl==33||pl==65){
                         uint8_t out[32]={0};
                         BsgsReanuda re; memset(&re,0,sizeof(re));
-                        { std::lock_guard<std::mutex> lk(g_bm_mx); auto it=g_bm_estados.find(lst[i]); if(it!=g_bm_estados.end()) bm_estado_desde_hex(it->second,re); }
+                        bool hecha=false;
+                        { std::lock_guard<std::mutex> lk(g_bm_mx); auto it=g_bm_estados.find(lst[i]);
+                          if(it!=g_bm_estados.end()){ if(it->second==BM_HECHA) hecha=true; else bm_estado_desde_hex(it->second,re); } }
                         int r=BSGS_NO;
-                        for(;;){
+                        for(;!hecha;){
                             r=bsgs_giant_ck(ctx,&bc_ctx,pub,(size_t)pl,&g_bm_run,&g_bm_count,out,&re,BM_TROZO);
                             if(r!=BSGS_NO) break;
                             std::lock_guard<std::mutex> lk(g_bm_mx);
-                            if(!re.valido){ g_bm_estados.erase(lst[i]); break; }   /* barrido completo */
+                            if(!re.valido){ g_bm_estados[lst[i]] = BM_HECHA; break; }   /* barrida entera, sin hallazgo */
                             g_bm_estados[lst[i]] = bm_estado_a_hex(re);           /* punto de control */
                             if(!g_bm_run.load()) break;
                         }

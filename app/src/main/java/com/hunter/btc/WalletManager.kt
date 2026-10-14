@@ -270,7 +270,7 @@ object WalletManager {
           .putString(PREF_VER,  b64e(enc))
           .putString(PREF_VIV,  b64e(iv))
           // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
-          .remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+          .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
         if (!ed.commit()) return false
         claveSemilla = nueva
         return true
@@ -341,13 +341,6 @@ object WalletManager {
             .apply()
     }
 
-    /** Cambia el PIN: comprueba el actual y guarda el nuevo. false si el actual
-     *  no es correcto. No toca las carteras (van con Keystore, no con el PIN). */
-    fun changePin(ctx: Context, actual: String, nuevo: String): Boolean {
-        if (!checkPin(ctx, actual)) return false
-        return savePin(ctx, nuevo)
-    }
-
     // ── Intentos de PIN ──────────────────────────────────────────────────
     //
     // No había ningún límite. Son seis cifras, un millón de combinaciones, y
@@ -362,8 +355,10 @@ object WalletManager {
     // cuenta.
 
     private const val PREF_FALLOS = "pin_fallos"
-    private const val PREF_ESPERA_FIN = "pin_espera_fin"    // elapsedRealtime en que acaba
-    private const val PREF_ESPERA_MS  = "pin_espera_ms"     // espera completa (tope)
+    private const val PREF_ESPERA_INI  = "pin_espera_ini"   // reloj monotónico al empezar
+    private const val PREF_ESPERA_BOOT = "pin_espera_boot"  // número de arranque al empezar
+    private const val PREF_ESPERA_MS   = "pin_espera_ms"    // duración de la espera
+    private const val PREF_ESPERA_FIN_OLD = "pin_espera_fin" // de la versión anterior
     private const val PREF_BIO_BLOQ = "pin_bio_bloqueada"
     private const val FALLOS_LIBRES = 5
 
@@ -379,22 +374,29 @@ object WalletManager {
     fun bioBloqueada(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_BIO_BLOQ, false)
 
-    /**
-     * Segundos que faltan para poder volver a intentarlo; 0 si ya se puede.
-     *
-     * Se mide con el reloj MONOTÓNICO (elapsedRealtime), no con el de pared: así
-     * adelantar la fecha del móvil no caduca la espera. Tras un reinicio ese
-     * reloj vuelve a cero, y el resto se limita a la espera completa guardada
-     * (PREF_ESPERA_MS): reiniciar nunca la acorta.
-     */
+    /** Segundos que faltan para poder volver a intentarlo; 0 si ya se puede. Ver EsperaPin. */
     fun esperaPin(ctx: Context): Long {
         val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val fin = p.getLong(PREF_ESPERA_FIN, 0L)
-        if (fin == 0L) return 0
-        val cap = p.getLong(PREF_ESPERA_MS, 0L)
-        val resto = minOf(fin - android.os.SystemClock.elapsedRealtime(), cap)
-        return if (resto > 0) (resto + 999) / 1000 else 0
+        val ms = p.getLong(PREF_ESPERA_MS, 0L)
+        if (ms <= 0) return 0
+        val ini = if (p.contains(PREF_ESPERA_INI)) p.getLong(PREF_ESPERA_INI, 0L) else null
+        val ahora = android.os.SystemClock.elapsedRealtime()
+        val arranque = numeroArranque(ctx)
+        val (resto, ancla) = EsperaPin.resto(ms, ini, p.getInt(PREF_ESPERA_BOOT, -1), ahora, arranque)
+        // Otro arranque (o una espera de la versión anterior): vuelve a contar desde ahora.
+        if (ancla != null) p.edit().putLong(PREF_ESPERA_INI, ancla).putInt(PREF_ESPERA_BOOT, arranque)
+            .remove(PREF_ESPERA_FIN_OLD).apply()
+        // Terminada: se olvida, para que un reinicio posterior no la vuelva a
+        // poner entera. Los fallos se quedan: el siguiente error espera el doble.
+        else if (resto <= 0) p.edit().remove(PREF_ESPERA_MS).remove(PREF_ESPERA_INI)
+            .remove(PREF_ESPERA_BOOT).apply()
+        return EsperaPin.segundos(resto)
     }
+
+    /** Cuántas veces ha arrancado el móvil (Android 7+); -1 si no se puede saber. */
+    private fun numeroArranque(ctx: Context): Int = try {
+        android.provider.Settings.Global.getInt(ctx.contentResolver, android.provider.Settings.Global.BOOT_COUNT, -1)
+    } catch (e: Throwable) { -1 }
 
     /**
      * El mensaje para después de un PIN rechazado: cuánto hay que esperar, o
@@ -424,7 +426,7 @@ object WalletManager {
             // que abre las semillas de esta sesión. Aprovecha para envolver las
             // que aún estén sólo con el Keystore (las de antes del PIN).
             claveSemilla = clave
-            val ed = prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_FIN).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+            val ed = prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
             reenvolver(ctx, null, clave, ed)
             ed.commit()
         } else {
@@ -432,7 +434,8 @@ object WalletManager {
             val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
             if (fallos >= FALLOS_LIBRES) {
                 val seg = (30L shl (fallos - FALLOS_LIBRES).coerceAtMost(7)).coerceAtMost(3600L)
-                ed.putLong(PREF_ESPERA_FIN, android.os.SystemClock.elapsedRealtime() + seg * 1000)
+                ed.putLong(PREF_ESPERA_INI, android.os.SystemClock.elapsedRealtime())
+                ed.putInt(PREF_ESPERA_BOOT, numeroArranque(ctx))
                 ed.putLong(PREF_ESPERA_MS, seg * 1000)
                 // Al saltar el límite, la huella queda vetada hasta un PIN correcto.
                 ed.putBoolean(PREF_BIO_BLOQ, true)

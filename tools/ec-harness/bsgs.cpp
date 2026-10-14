@@ -103,6 +103,37 @@ int main(){
             bsgs_ctx_free(&bc);
         }
     }
+    /* Reanudar como si cada trozo viniera de disco (sin el punto en memoria):
+       pasa por la verificación en frío, y tiene que dar la misma clave. */
+    {
+        uint8_t a32[32],b32[32],pub[33],out[32]={0}; be(1,a32); be(1ULL<<20,b32); pub_de_k(ctx,777777,pub);
+        BsgsCtx bc; std::atomic<bool> run{true};
+        bsgs_build(ctx,a32,b32,22,&run,&bc);
+        BsgsReanuda re; memset(&re,0,sizeof(re));
+        int r=BSGS_NO, trozos=0;
+        do { re.confiable=0; r=bsgs_giant_ck(ctx,&bc,pub,33,&run,nullptr,out,&re,100); trozos++; }
+        while(r==BSGS_NO && re.valido && trozos<100000);
+        uint64_t got=0; for(int i=24;i<32;i++) got=(got<<8)|out[i];
+        if(r==BSGS_HALLADO && got==777777) printf("  OK   reanudar desde disco (verificado) en %d trozos\n",trozos);
+        else { printf("  MAL  reanudar desde disco r=%d got=%llu\n",r,(unsigned long long)got); fallos++; }
+        bsgs_ctx_free(&bc);
+    }
+    /* Estado en memoria (confiable) de otro objetivo: no debe reutilizarse. */
+    {
+        uint8_t a32[32],b32[32]; be(1,a32); be(1ULL<<20,b32);
+        BsgsCtx bc; std::atomic<bool> run{true};
+        bsgs_build(ctx,a32,b32,22,&run,&bc);
+        uint8_t pub1[33],pub2[33],out[32]={0};
+        pub_de_k(ctx,111111,pub1); pub_de_k(ctx,999999,pub2);
+        BsgsReanuda re; memset(&re,0,sizeof(re));
+        bsgs_giant_ck(ctx,&bc,pub1,33,&run,nullptr,out,&re,40);
+        int ok = re.confiable==1;
+        int r=bsgs_giant_ck(ctx,&bc,pub2,33,&run,nullptr,out,&re,0);
+        uint64_t got=0; for(int i=24;i<32;i++) got=(got<<8)|out[i];
+        if(ok && r==BSGS_HALLADO && got==999999) printf("  OK   estado en memoria de otro objetivo ignorado\n");
+        else { printf("  MAL  estado en memoria ajeno r=%d got=%llu\n",r,(unsigned long long)got); fallos++; }
+        bsgs_ctx_free(&bc);
+    }
     printf(fallos? "FALLOS %d\n" : "TODO CORRECTO\n", fallos);
     secp256k1_context_destroy(ctx);
     return fallos?1:0;

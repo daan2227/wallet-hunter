@@ -156,7 +156,13 @@ static void bsgs_ctx_free(BsgsCtx *c){ if(c&&c->ok){ free(c->t.key); free(c->t.v
  * Al reanudar se COMPRUEBA que Q_i sea de ESTE objetivo (una multiplicación):
  * si no lo es, se ignora el estado y se empieza de cero. Así un estado de otra
  * pubkey nunca produce una respuesta equivocada, sólo más trabajo. */
-struct BsgsReanuda { int valido; uint64_t i; uint8_t inf; uint8_t q[65]; };
+struct BsgsReanuda {
+    int valido; uint64_t i; uint8_t inf; uint8_t q[65];
+    /* Sólo en memoria, para trocear sin pagar la verificación en cada trozo:
+       el punto tal cual (Jacobiano) y de qué objetivo y tabla es. Un estado
+       leído de disco no lo trae (confiable=0) y se verifica una vez. */
+    uint8_t confiable; uint8_t obj33[33]; uint64_t m; JP qj;
+};
 
 /* Limbs a bytes big-endian en el mismo formato que lee jp_from_affine. */
 static void fe_a_be32(const fe_t a, uint8_t out[32]){
@@ -203,7 +209,11 @@ static int bsgs_giant_ck(secp256k1_context *ctx, const BsgsCtx *c,
     const BsgsTabla &t=c->t; uint64_t m=c->m, M=c->M; const uint8_t *a32=c->a32;
 
     JP Q; uint64_t i0=0; int reanudado=0;
-    if(re && re->valido && re->i>0 && re->i<M){
+    if(re && re->valido && re->confiable && re->i>0 && re->i<M &&
+       re->m==m && memcmp(re->obj33,obj33,33)==0){
+        /* Trozo siguiente en este mismo proceso: el punto ya es de ESTE objetivo. */
+        Q=re->qj; i0=re->i; reanudado=1;
+    } else if(re && re->valido && re->i>0 && re->i<M){
         uint8_t k[32]; bsgs_k_mas(a32,re->i*m,k);
         uint8_t qesp[65]; int inf_esp=0;
         if(bsgs_menos_aG(ctx,&obj,k,qesp,&inf_esp) && inf_esp==(int)re->inf &&
@@ -219,7 +229,11 @@ static int bsgs_giant_ck(secp256k1_context *ctx, const BsgsCtx *c,
         jp_from_affine(&Q,q65);
     }
 
-    auto guardar=[&](uint64_t i){ if(re){ re->valido=1; re->i=i; bsgs_punto_a_estado(&Q,re); } };
+    auto guardar=[&](uint64_t i){
+        if(!re) return;
+        re->valido=1; re->i=i; bsgs_punto_a_estado(&Q,re);
+        re->confiable=1; re->qj=Q; re->m=m; memcpy(re->obj33,obj33,33);
+    };
     for(uint64_t i=i0;i<M;i++){
         if(pasos_max && i-i0>=pasos_max){ guardar(i); return BSGS_NO; }
         if(run && !run->load()){ guardar(i); return BSGS_NO; }

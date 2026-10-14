@@ -32,6 +32,13 @@ object BsgsCheckpoint {
         } catch (e: Throwable) { "" }
     }
 
+    /** Olvida la campaña (terminada: volver a lanzarla la busca entera otra vez). */
+    fun borrar(ctx: Context?, campana: String) {
+        if (ctx == null) return
+        try { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove(campana).apply() }
+        catch (e: Throwable) { }
+    }
+
     /**
      * Toma del informe del motor las líneas "E\tpub\testado" y las guarda. Si no
      * queda ninguna (todo resuelto), borra la campaña.
