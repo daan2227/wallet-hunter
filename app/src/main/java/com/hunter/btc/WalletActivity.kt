@@ -2732,8 +2732,11 @@ class WalletActivity : FragmentActivity() {
                             else "Mainnet — addresses reloaded",
                             Toast.LENGTH_SHORT).show()
                     }
-                    "Backup vault" -> showBackupVault()
-                    "Restore from file" -> showRestoreDialog()
+                    // Con el PIN: desde una cartera vigilada (que no lo pide) se llegaba
+                    // al baúl de copias sin él, y se podían compartir, borrar o probar
+                    // contraseñas sin límite contra copias antiguas cifradas con el PIN.
+                    "Backup vault" -> PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) showBackupVault() }
+                    "Restore from file" -> PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) showRestoreDialog() }
                     "Delete wallet" -> {
                         val nombre = currentWalletName.ifEmpty { "this wallet" }
                         val aviso = buildString {
@@ -3364,7 +3367,8 @@ class WalletActivity : FragmentActivity() {
                                     Toast.makeText(this, "Backup saved to the vault", Toast.LENGTH_SHORT).show()
                                     showBackupVault()
                                 } else {
-                                    Toast.makeText(this, "Nothing to export: no wallets, no WIFs, no finds",
+                                    Toast.makeText(this, "No backup made: there is nothing to export, or something " +
+                                        "could not be read (the app may have locked). Unlock and try again.",
                                         Toast.LENGTH_SHORT).show()
                                 }
                             }
@@ -3540,6 +3544,9 @@ class WalletActivity : FragmentActivity() {
                             if (count >= 0) {
                                 Toast.makeText(this, "$count item(s) restored", Toast.LENGTH_SHORT).show()
                                 buildUI()
+                            } else if (count == WalletManager.RESTAURAR_SIN_SESION) {
+                                Toast.makeText(this, "Unlock with your PIN first: the backup has seeds. Nothing was restored.",
+                                    Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(this, "Restore failed", Toast.LENGTH_SHORT).show()
                             }

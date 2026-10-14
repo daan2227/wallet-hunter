@@ -61,8 +61,14 @@ object AppLock {
     /** Actividades nuestras arrancadas. Cero es "la app no se está viendo". */
     private var vivas = 0
 
+    /** ¿Hay alguna pantalla de la app a la vista? */
+    fun appVisible(): Boolean = vivas > 0
+
     /** Cuándo se fue la última actividad. 0 si nunca. */
     private var fondoDesde = 0L
+
+    /** Hay una pantalla de PIN abierta por AppLock: no se abre otra encima. */
+    private var pidiendo = false
 
     /**
      * Engancha los avisos del sistema. Idempotente: la llaman todas las
@@ -72,6 +78,7 @@ object AppLock {
     fun init(act: Activity) {
         if (registrado) return
         registrado = true
+        RegistroFallos.instalar(act)
         val app = act.application
 
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
@@ -82,19 +89,22 @@ object AppLock {
                 // vuelve en milisegundos. Por eso la condición es el tiempo
                 // fuera y no el hecho de haber salido: así no hay que
                 // distinguir un recreate de una salida de verdad.
+                // Reloj monotónico: con el de pared, atrasar la hora del móvil hacía
+                // el tiempo fuera negativo y la sesión no se cerraba nunca.
                 if (volviendo && fondoDesde > 0L &&
-                    System.currentTimeMillis() - fondoDesde > GRACIA_MS) bloquear()
+                    android.os.SystemClock.elapsedRealtime() - fondoDesde > GRACIA_MS) bloquear()
             }
 
             override fun onActivityStopped(a: Activity) {
                 vivas--
                 if (vivas <= 0) {
                     vivas = 0
-                    fondoDesde = System.currentTimeMillis()
+                    fondoDesde = android.os.SystemClock.elapsedRealtime()
                 }
             }
 
-            override fun onActivityCreated(a: Activity, b: Bundle?) {}
+            // Debug no aplicaba el ajuste de capturas (las demás lo hacen en su onCreate).
+            override fun onActivityCreated(a: Activity, b: Bundle?) { if (a is DebugActivity) PantallaSegura.aplicar(a) }
             override fun onActivityResumed(a: Activity) {
                 // Lockout por demasiados intentos de PIN: cubre TODA la app. Sea
                 // cual sea la pantalla que se reanude, se le pone encima la de
@@ -103,6 +113,16 @@ object AppLock {
                 if (WalletManager.esperaPin(a) > 0) {
                     a.startActivity(Intent(a, LockoutActivity::class.java)
                         .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP))
+                } else if ((a is PubkeyToolsActivity || a is DebugActivity || a is PerfilActivity) &&
+                           WalletManager.hasPin(a) && !PinAuthHelper.isSessionValid() && !pidiendo) {
+                    // Estas pantallas no volvían a pedir el PIN al volver tras un
+                    // bloqueo: Tools (donde se teclean claves y se barren fondos),
+                    // Debug y Perfil quedaban abiertas para quien cogiera el móvil.
+                    pidiendo = true
+                    PinAuthHelper.show(a, autoBiometric = false) { ok ->
+                        pidiendo = false
+                        if (!ok) a.finish()
+                    }
                 }
             }
             override fun onActivityPaused(a: Activity) {}

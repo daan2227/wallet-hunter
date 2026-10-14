@@ -307,8 +307,9 @@ class DebugActivity : AppCompatActivity() {
                 })
                 row.isClickable = true; row.isFocusable = true
                 row.setOnClickListener {
-                    val content = f.readText().takeLast(3000)
-                    tvLive.text = content
+                    // Sólo la cola: readText() cargaba el fichero entero (sin tope de
+                    // tamaño) en el hilo de la pantalla.
+                    tvLive.text = colaDe(f, 3000)
                 }
             } else {
                 row.addView(TextView(this).apply {
@@ -344,8 +345,26 @@ class DebugActivity : AppCompatActivity() {
         logRunnable = null
     }
 
+    @Volatile private var refrescando = false
+
+    /**
+     * Se monta en otro hilo: lanzaba `logcat` y leía ficheros en el hilo de la
+     * pantalla cada segundo, y con el motor usando todos los núcleos la pantalla
+     * iba a tirones o se daba por colgada.
+     */
     private fun refreshLogs() {
-        val tv = tvLiveLog ?: return
+        if (refrescando || tvLiveLog == null) return
+        refrescando = true
+        Thread {
+            val txt = try { construirLogs() } catch (e: Throwable) { "" }
+            runOnUiThread {
+                refrescando = false
+                if (!isFinishing && txt.isNotEmpty()) tvLiveLog?.text = txt
+            }
+        }.start()
+    }
+
+    private fun construirLogs(): String {
         val sb = StringBuilder()
 
         // Sistema
@@ -391,7 +410,7 @@ class DebugActivity : AppCompatActivity() {
             }
         }
 
-        if (sb.isNotEmpty()) tv.text = sb.toString()
+        return sb.toString()
     }
     /**
      * Los últimos [n] caracteres de un fichero, sin leerlo entero.

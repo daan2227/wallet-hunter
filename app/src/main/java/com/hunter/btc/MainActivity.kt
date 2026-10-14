@@ -612,18 +612,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // arrastra el mensaje de la excepción, que suele llevar el dato que la
         // provocó. Ahora sólo va a almacenamiento interno, que es privado de la
         // app, y se acota para que no crezca sin fin.
-        Thread.setDefaultUncaughtExceptionHandler { _, e ->
-            try {
-                val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-                val msg = "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n"
-                val f = java.io.File(filesDir, "crash_log.txt")
-                if (f.length() > 256 * 1024) f.writeText("")   // no crecer sin límite
-                f.appendText(msg)
-                // Arrastra el que dejaron las versiones anteriores fuera.
-                getExternalFilesDir(null)?.let { java.io.File(it, "crash_log.txt").delete() }
-            } catch (ex: Exception) {}
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }
+        RegistroFallos.instalar(this)   // también lo hace AppLock.init: ver RegistroFallos
         AppTheme.init(this)
         AppLock.init(this)
         migrarTablaPuzzles()
@@ -674,7 +663,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } catch (e: Throwable) {
                 val msg = "PUZZLE_BUILD: ${e.javaClass.simpleName}: ${e.message}"
                 android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
-                java.io.File(filesDir, "crash_log.txt").appendText("\n$msg\n${e.stackTraceToString()}\n")
+                RegistroFallos.anotar(this, "\n$msg\n${e.stackTraceToString()}\n")
             }
             fase = "wallet"
             walletScroll = buildWalletTab()
@@ -696,8 +685,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Throwable) {
             // Escribir error a archivo para diagnóstico
             try {
-                val errFile = java.io.File(filesDir, "crash_log.txt")
-                errFile.writeText("CRASH building $fase: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}")
+                RegistroFallos.anotar(this, "\nCRASH building $fase: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}\n")
             } catch (ex: Throwable) {}
             android.widget.Toast.makeText(this,
                 "CRASH building $fase: ${e.javaClass.simpleName}: ${e.message}",
@@ -1801,7 +1789,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {
             val errMsg = "${e.javaClass.simpleName}: ${e.message}"
             Toast.makeText(this, errMsg, Toast.LENGTH_LONG).show()
-            java.io.File(filesDir, "crash_log.txt").appendText("\ndoToggle: $errMsg\n${e.stackTraceToString()}\n")
+            RegistroFallos.anotar(this, "\ndoToggle: $errMsg\n${e.stackTraceToString()}\n")
         }
     }
 
@@ -2614,6 +2602,18 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // El resultado de una auditoría de claves débiles no es de un puzzle.
         if (KangarooDueno.actual == KangarooDueno.WEAK) return
         val tv = tvPuzzleAtajo ?: return
+        // Freno por calor (Termico baja la CPU) y parada por batería: antes sólo
+        // los tenía el escáner. Parar guarda la tabla y no deja que el watchdog
+        // lo relance.
+        if (try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }) {
+            val b = Termico.muestra(this)
+            if (Termico.bateriaBaja(b)) {
+                alternarKangaroo()
+                tv.text = "Paused: battery below 15 %. The work is saved; plug it in and search again."
+                tv.setTextColor(AppTheme.WARN)
+                return
+            }
+        }
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         if (clave.length == 64) {
             // Esto se repite en cada refresco mientras el motor siga teniendo

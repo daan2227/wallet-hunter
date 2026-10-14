@@ -32,7 +32,26 @@ object MatchVault {
     private const val PREFS     = "match_vault"
     private const val PREF_ENC  = "vault_enc"
     private const val PREF_IV   = "vault_iv"
-    private const val MAX_ENTRIES = 500
+    private const val MAX_ENTRIES = 2000
+
+    private fun tieneClave(e: Entry) = e.privHex.isNotEmpty() || e.wif.isNotEmpty() || e.extra.contains("SEED:")
+
+    /**
+     * Tope de entradas sin perder claves. Antes se cortaba a 500 por el final y
+     * los hallazgos más antiguos —con su clave privada— desaparecían sin aviso.
+     * Ahora sólo se descartan, de las más viejas a las más nuevas, las que no
+     * traen ninguna clave.
+     */
+    private fun recortar(lista: List<Entry>): List<Entry> {
+        if (lista.size <= MAX_ENTRIES) return lista
+        var sobran = lista.size - MAX_ENTRIES
+        val fuera = HashSet<Int>()
+        for (i in lista.indices.reversed()) {
+            if (sobran == 0) break
+            if (!tieneClave(lista[i])) { fuera.add(i); sobran-- }
+        }
+        return lista.filterIndexed { i, _ -> i !in fuera }
+    }
 
     data class Entry(
         val ts: Long,
@@ -64,6 +83,9 @@ object MatchVault {
     // ── Persistencia ──────────────────────────────────────────────────────────
 
     fun list(ctx: Context): List<Entry> = leer(ctx) ?: emptyList()
+
+    /** Como [list], pero null si hay baúl y no se pudo abrir (para no hacer copias incompletas). */
+    fun listaONull(ctx: Context): List<Entry>? = leer(ctx)
 
     /**
      * Lo que hay en el baúl, o null si HAY algo pero no se ha podido abrir.
@@ -117,9 +139,16 @@ object MatchVault {
         if (entries.isEmpty()) return 0
         val current = leer(ctx) ?: throw IllegalStateException("vault locked")
         val known = current.mapTo(HashSet()) { it.addr }
-        val nuevos = entries.filter { it.addr.isNotEmpty() && it.addr !in known }
+        val clavesConocidas = current.mapNotNullTo(HashSet()) { it.privHex.ifEmpty { null } }
+        // Un hallazgo sin dirección (no se pudo derivar) SE GUARDA si trae clave:
+        // antes se tiraba, y era una clave privada encontrada. Se identifica por
+        // la clave en vez de por la dirección.
+        val nuevos = entries.filter { e ->
+            if (e.addr.isNotEmpty()) e.addr !in known
+            else e.privHex.isNotEmpty() && e.privHex !in clavesConocidas
+        }
         if (nuevos.isEmpty()) return 0
-        write(ctx, (nuevos + current).take(MAX_ENTRIES), seguro)
+        write(ctx, recortar(nuevos + current), seguro)
         return nuevos.size
     }
 
@@ -286,7 +315,10 @@ object MatchVault {
                 extra     = o.optString("extra", ""),
                 checkedTs = o.optLong("checked", 0L)
             )
-        }.filter { it.addr.isNotEmpty() }
+        // Con dirección, o al menos con una clave: las de Kangaroo antiguas sólo
+        // tenían la privada, y filtrarlas aquí hacía que la siguiente escritura las
+        // borrara para siempre (completarClaves ni llegaba a verlas).
+        }.filter { it.addr.isNotEmpty() || it.privHex.isNotEmpty() || it.wif.isNotEmpty() || it.extra.contains("SEED:") }
 
     // ── Hallazgos del motor nativo ───────────────────────────────────────────
 

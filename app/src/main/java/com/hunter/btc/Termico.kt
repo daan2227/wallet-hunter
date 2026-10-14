@@ -138,6 +138,37 @@ object Termico {
      *
      * @return true si el escalón ha cambiado, para que quien llame avise.
      */
+    /** Batería ahora: nivel (%), si está cargando, y temperatura (°C). */
+    data class Bateria(val nivel: Int, val cargando: Boolean, val tempC: Float)
+
+    @Volatile private var ultMuestraMs = 0L
+
+    /**
+     * Lee la batería (el último aviso del sistema, sin registrar nada) y aplica el
+     * freno por calor. Sólo HunterService lo hacía, y sólo arranca con el escáner:
+     * un Kangaroo de Puzzle, la auditoría Weak o el BSGS por lotes corrían a tope
+     * toda la noche sin freno por calor ni por batería. Como mucho una vez cada
+     * 5 s. null si no se pudo leer.
+     */
+    fun muestra(ctx: android.content.Context): Bateria? {
+        val ahora = android.os.SystemClock.elapsedRealtime()
+        if (ahora - ultMuestraMs < 5_000) return null
+        ultMuestraMs = ahora
+        return try {
+            val i = ctx.registerReceiver(null,
+                android.content.IntentFilter(android.content.Intent.ACTION_BATTERY_CHANGED)) ?: return null
+            val nivel = i.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1)
+            val escala = i.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100).coerceAtLeast(1)
+            val enchufe = i.getIntExtra(android.os.BatteryManager.EXTRA_PLUGGED, 0) != 0
+            val t = i.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) / 10f
+            evaluar(t)
+            Bateria(if (nivel < 0) -1 else nivel * 100 / escala, enchufe, t)
+        } catch (e: Throwable) { null }
+    }
+
+    /** ¿Hay que parar por batería? Por debajo del 15 % y sin cargar. */
+    fun bateriaBaja(b: Bateria?): Boolean = b != null && b.nivel in 0 until 15 && !b.cargando
+
     fun evaluar(t: Float): Boolean {
         // Una lectura de cero es "todavía no ha llegado el broadcast", no un
         // móvil a cero grados. Actuar sobre ella devolvería el ritmo entero a

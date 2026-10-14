@@ -16,6 +16,8 @@ class RecoveryEngine(private val context: Context) {
         fun onFoundWithAddress(mnemonic: String, address: String)
         fun onNotFound()
         fun onCancelled()
+        /** El motor no pudo buscar (p. ej. dirección objetivo no soportada). */
+        fun onError(motivo: String) = onNotFound()
     }
 
     var listener: ProgressListener? = null
@@ -58,7 +60,11 @@ class RecoveryEngine(private val context: Context) {
                 missingArray,
                 targetAddress
             )
-            if (result != null) {
+            if (result != null && result.startsWith("ERROR")) {
+                // "ERROR:INVALID_TARGET" no lleva "|ADDR:", y se tomaba por una
+                // semilla encontrada: salía "✓ FOUND ERROR:…" y se guardaba en el baúl.
+                listener?.onError(result.removePrefix("ERROR:"))
+            } else if (result != null) {
                 // Si contiene |ADDR: es modo sin target
                 if (result.contains("|ADDR:")) {
                     val parts = result.split("|ADDR:")

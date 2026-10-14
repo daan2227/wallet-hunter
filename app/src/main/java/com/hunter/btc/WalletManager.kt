@@ -454,7 +454,9 @@ object WalletManager {
                 // Al saltar el límite, la huella queda vetada hasta un PIN correcto.
                 ed.putBoolean(PREF_BIO_BLOQ, true)
             }
-            ed.apply()
+            // commit y no apply: matar el proceso justo después de un fallo perdía
+            // la cuenta, y con ella el límite de intentos.
+            ed.commit()
         }
         return ok
     }
@@ -741,7 +743,8 @@ object WalletManager {
     fun exportBackup(ctx: Context, pin: String): java.io.File? {
         // Sin la clave del PIN de la sesión, loadSeed devuelve null y la copia
         // saldría sin semillas sin avisar. Mejor no hacerla.
-        if (hasSeed(ctx) && !claveSemillaLista()) return null
+        // También con sólo carteras secundarias (antes sólo miraba la principal).
+        if ((hasSeed(ctx) || listWallets(ctx).isNotEmpty()) && !claveSemillaLista()) return null
         // "pin" es ya la contraseña de la copia: ver cifrarCopia.
         return try {
             // Recoge lo que el motor no haya podido entregar al baúl todavía,
@@ -750,16 +753,21 @@ object WalletManager {
 
             val wallets = listWallets(ctx)
             val mainSeed = loadSeed(ctx)
-            val wifs = listWifs(ctx)
+            // Lo que no se pueda leer aborta la copia: una copia a la que le faltan
+            // claves sin avisar es peor que ninguna, y además desplaza (prune) a
+            // una buena de las que se guardan.
+            val wifs = leerWifs(ctx) ?: return null
             val watchers = listWatchers(ctx)
-            val matches = MatchVault.list(ctx)
+            val matches = MatchVault.listaONull(ctx) ?: return null
             if (wallets.isEmpty() && mainSeed == null && wifs.isEmpty() &&
                 watchers.isEmpty() && matches.isEmpty())
                 return null
 
             val backupData = org.json.JSONArray()
             for ((id, name) in wallets) {
-                val seed = loadWalletSeed(ctx, id) ?: continue
+                // Si se bloquea la app a mitad (pantalla apagada), la clave se borra
+                // y esto da null: antes se saltaba la cartera y la copia salía sin ella.
+                val seed = loadWalletSeed(ctx, id) ?: return null
                 backupData.put(org.json.JSONObject().apply {
                     put("id",   id)
                     put("name", name)
@@ -808,6 +816,9 @@ object WalletManager {
         } catch (e: Exception) { null }
     }
 
+    /** importBackup: la copia trae semillas y no hay sesión abierta con el PIN. */
+    const val RESTAURAR_SIN_SESION = -2
+
     fun importBackup(ctx: Context, pin: String, data: ByteArray): Int {
         return try {
             val json = descifrarCopia(pin, data)
@@ -820,17 +831,25 @@ object WalletManager {
             // El origen que traiga la copia; si no trae, "de una copia". No
             // pisa el que ya haya en este móvil.
             val ors = root.optJSONObject("origins")
-            fun origenDe(clave: String) {
+            fun origenDe(clave: String, enCopia: String = clave) {
                 if (origen(ctx, clave) == null)
-                    setOrigen(ctx, clave, ors?.optString(clave, "")?.ifEmpty { null } ?: O_BACKUP)
+                    setOrigen(ctx, clave, ors?.optString(enCopia, "")?.ifEmpty { null } ?: O_BACKUP)
             }
 
             val wallets = root.optJSONArray("wallets") ?: org.json.JSONArray()
+            // Las semillas sólo se pueden guardar con el PIN de la sesión. Se mira
+            // ANTES de tocar nada, para no dejar una restauración a medias.
+            if ((wallets.length() > 0 || root.optString("main_seed", "").isNotEmpty()) &&
+                !claveSemillaLista()) return RESTAURAR_SIN_SESION
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
-                saveWallet(ctx, w.getString("id"), w.getString("name"), w.getString("seed"))
-                origenDe(w.getString("id"))
-                count++
+                val mn = w.optString("seed")
+                if (mn.isEmpty()) continue
+                // agregarSeed: no pisa una cartera que ya haya con el mismo id, no
+                // duplica la misma semilla, y limpia el nombre (un ":" o "|" de la
+                // copia rompía la lista y dejaba la cartera invisible).
+                val g = agregarSeed(ctx, mn, w.optString("name"), null)
+                if (!g.yaEstaba) { origenDe(g.id.ifEmpty { CLAVE_PRINCIPAL }, w.optString("id")); count++ }
             }
 
             // Con agregarSeed y no saveSeed: restaurar una copia con otra seed

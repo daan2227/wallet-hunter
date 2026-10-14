@@ -510,6 +510,18 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                 btnStartRecovery.visibility = android.view.View.VISIBLE
             }
         }
+        override fun onError(motivo: String) {
+            runOnUiThread {
+                pbRecovery.visibility = android.view.View.GONE
+                tvRecoveryStatus.text = when (motivo) {
+                    "INVALID_TARGET" -> "That target address is not supported or has a typo " +
+                        "(supported: 1…, 3…, bc1q… with 20 bytes, bc1p…)."
+                    else -> "Could not search: $motivo"
+                }
+                btnCancelRecovery.visibility = android.view.View.GONE
+                btnStartRecovery.visibility = android.view.View.VISIBLE
+            }
+        }
         override fun onCancelled() {
             runOnUiThread {
                 pbRecovery.visibility = android.view.View.GONE

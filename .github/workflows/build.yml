@@ -16,6 +16,10 @@ jobs:
         # Historia entera: el paso siguiente compara con el commit anterior
         # para saber si hace falta pasar los bancos. El repositorio es pequeño.
         fetch-depth: 0
+        # Sin dejar el token (con permiso de escritura) en .git/config: ahí lo
+        # podía leer cualquier paso, incluido código de terceros (Gradle, apt,
+        # scripts). Sólo "Publish APK" lo necesita, y lo recibe por GH_TOKEN.
+        persist-credentials: false
 
     # ¿Toca este push el motor o sus pruebas?
     #

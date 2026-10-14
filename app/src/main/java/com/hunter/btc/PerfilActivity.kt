@@ -136,8 +136,14 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
             if (sat == null) {
                 Toast.makeText(this, "Not a valid amount", Toast.LENGTH_SHORT).show()
             } else {
-                UmbralEnvio.guardar(this, sat)
-                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                // Con el PIN: si no, quien tenga la app abierta lo quita ("nunca") y
+                // envía lo que quiera, que es justo lo que el umbral impide.
+                PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                    if (ok) {
+                        UmbralEnvio.guardar(this, sat)
+                        Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                    }
+                }
             }
         }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) })
         root.addView(cEnvio)

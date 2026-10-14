@@ -1182,7 +1182,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             } catch (e: Exception) {
                 val msg = "${e.javaClass.simpleName}: ${e.message}"
                 android.widget.Toast.makeText(this@buildPuzzleTab, msg, android.widget.Toast.LENGTH_LONG).show()
-                java.io.File(filesDir, "crash_log.txt").appendText("\nPUZZLE_BTN: $msg\n${e.stackTraceToString()}\n")
+                RegistroFallos.anotar(this, "\nPUZZLE_BTN: $msg\n${e.stackTraceToString()}\n")
             }
         }
     }
@@ -1238,6 +1238,9 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                         tvBalResult.setTextColor(AppTheme.WARN)
                         // Ocultar chip visualmente
                         chipView?.visibility = android.view.View.GONE
+                        // La consulta tarda: si mientras tanto se eligió otro puzzle,
+                        // no se le cambia la selección por uno que no ha pedido.
+                        if (puzzleSeleccionado != p.num) return@runOnUiThread
                         // Seleccionar el siguiente chip visible
                         var nextSelected = false
                         for (k in 0 until indivRow.childCount) {

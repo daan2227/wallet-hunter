@@ -1138,6 +1138,19 @@ object WeakController {
         lateinit var tick: Runnable
         tick = Runnable {
             if (!bsgsBatchOn) return@Runnable
+            appCtx?.let { ctx ->
+                val b = Termico.muestra(ctx)
+                if (Termico.parado || Termico.bateriaBaja(b)) {
+                    // Hasta 8 hilos a tope sin freno: se para guardando el progreso.
+                    bsgsBatchOn = false
+                    try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
+                    persistirBsgs(); bloquear(false); btnBsgs?.text = BSGS_LABEL
+                    chipHunting?.visibility = android.view.View.GONE
+                    aviso(if (Termico.parado) "BSGS paused: the phone is too hot. Run it again to continue."
+                          else "BSGS paused: battery below 15 %. Run it again to continue.")
+                    return@Runnable
+                }
+            }
             val info = try { HunterEngine.bsgsMultiInfo() } catch (e: Throwable) { "" }
             val lines = info.split('\n')
             val head = (lines.firstOrNull() ?: "").split('\t')
@@ -1464,7 +1477,17 @@ object WeakController {
 
     private fun tick() {
         if (!corriendo) return
-        val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+        // Freno por calor y por batería (antes sólo lo tenía el escáner). Parar
+        // aquí guarda el punto de control: se continúa luego desde la misma clave.
+        appCtx?.let { ctx ->
+            val b = Termico.muestra(ctx)
+            if (Termico.parado || Termico.bateriaBaja(b)) {
+                parar(if (Termico.parado) "Paused: the phone is too hot. Continue when it cools down."
+                      else "Paused: battery below 15 %. Plug it in and continue.")
+                return
+            }
+        }
+        var clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
         if (clave.length == 64) {
             hallados++
@@ -1476,7 +1499,21 @@ object WeakController {
         }
         val segClave = (System.currentTimeMillis() - claveInicioMs) / 1000.0
         val topeAlcanzado = topeSeg > 0 && segClave >= topeSeg
-        if (!HunterEngine.kangarooRunning() || ops >= presuActual || topeAlcanzado) {
+        val corre = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        if (!corre) {
+            // Se leyó el resultado ANTES de ver que había parado: si la clave salió
+            // justo entre las dos lecturas, se daba por "no encontrada". Se mira otra vez.
+            clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+            if (clave.length == 64) {
+                hallados++
+                guardar(clave)
+                opsPrevias += ops
+                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                refresco(0.0, 100)
+                indice++; siguiente(); return
+            }
+        }
+        if (!corre || ops >= presuActual || topeAlcanzado) {
             // Refresca ANTES de pasar: en claves rápidas (rango bajo) el
             // presupuesto se agota en el primer sondeo y sin esto la tarjeta se
             // quedaba en 0 aunque el motor sí estuviera trabajando.

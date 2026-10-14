@@ -98,10 +98,15 @@ class HunterService : Service() {
         startForeground(NOTIF_FG, buildFgNotif("BTC Hunter running", "Starting..."))
         // WakeLock para mantener CPU activo con pantalla apagada
         val pm = getSystemService(POWER_SERVICE) as PowerManager
+        // Con caducidad y sin contar referencias: se renueva en cada vuelta de
+        // statsUpdater mientras haya un motor en marcha y se suelta cuando no. Antes
+        // se cogía sin tope y sólo se soltaba al parar el escáner a mano: con el
+        // motor parado por sí solo (rango terminado, calor, batería) el móvil
+        // seguía despierto.
         wakeLock = pm.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
             "WalletHunter::ScanWakeLock"
-        ).also { it.acquire() }
+        ).also { it.setReferenceCounted(false); it.acquire(WAKE_MS) }
         handler.post(statsUpdater)
         recuperarTrasMorir()
     }
@@ -238,6 +243,9 @@ class HunterService : Service() {
     private var kangUltOps = 0L
     private var kangUltMs  = System.currentTimeMillis()
 
+    private val WAKE_MS = 10 * 60 * 1000L
+    private var ultimaClaveGuardada = ""
+
     private val statsUpdater = object : Runnable {
         override fun run() {
             val running = HunterEngine.isRunning()
@@ -269,6 +277,31 @@ class HunterService : Service() {
             val kangOps = try {
                 if (HunterEngine.kangarooRunning()) HunterEngine.kangarooOps() else -1L
             } catch (e: Throwable) { -1L }
+            // Wake lock: renovado mientras algo trabaje, suelto cuando no.
+            try {
+                val activo = running || kangOps >= 0
+                wakeLock?.let { if (activo) it.acquire(WAKE_MS) else if (it.isHeld) it.release() }
+            } catch (e: Throwable) {}
+            // Un Kangaroo que este servicio relanzó tras morir la app no tiene
+            // pantalla que lea su resultado: si la clave aparece con la app cerrada
+            // y luego se mata el proceso, se perdía. Se guarda aquí (el baúl no
+            // duplica). Con la app a la vista lo hace la pantalla del puzzle, que
+            // además sabe si era un puzzle de prueba.
+            if (!AppLock.appVisible() && KangarooDueno.actual != KangarooDueno.WEAK) {
+                val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
+                if (clave.length == 64 && clave != ultimaClaveGuardada) {
+                    ultimaClaveGuardada = clave
+                    try {
+                        val d = HunterEngine.datosDeClave(clave)
+                        MatchVault.add(this@HunterService, MatchVault.Entry(
+                            ts = System.currentTimeMillis(), source = "kangaroo",
+                            addr = d.substringAfter("|", ""), wif = d.substringBefore("|", ""),
+                            privHex = clave, btc = 0.0, extra = "PUZZLE kangaroo", checkedTs = 0L))
+                    } catch (e: Throwable) {
+                        android.util.Log.e("HunterService", "could not save the Kangaroo find: ${e.message}")
+                    }
+                }
+            }
             if (kangOps >= 0) {
                 val dt = (System.currentTimeMillis() - kangUltMs).coerceAtLeast(1L)
                 val porSeg = if (kangUltOps > 0) (kangOps - kangUltOps) * 1000.0 / dt else 0.0
