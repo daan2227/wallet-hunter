@@ -1941,6 +1941,24 @@ class WalletActivity : FragmentActivity() {
                         return@Thread
                     }
 
+                    // Por encima del umbral de Perfil, el PIN otra vez justo antes de
+                    // firmar: la sesión abierta no basta para mover un importe grande.
+                    if (WalletManager.hasPin(this) && UmbralEnvio.exige(UmbralEnvio.leer(this), amtSat)) {
+                        val pinOk = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
+                        runOnUiThread {
+                            tvStatus.text = "Enter your PIN to confirm this send"; tvStatus.setTextColor(TXT_SEC)
+                            PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false) { ok -> pinOk.offer(ok) }
+                        }
+                        // Con tope: si la pantalla se cierra sin responder, el hilo no se queda colgado.
+                        if (pinOk.poll(5, java.util.concurrent.TimeUnit.MINUTES) != true) {
+                            runOnUiThread {
+                                tvStatus.text = "Send cancelled"; tvStatus.setTextColor(TXT_SEC)
+                                btnSend.isEnabled = true
+                            }
+                            return@Thread
+                        }
+                    }
+
                     runOnUiThread { tvStatus.text = "Signing…"; tvStatus.setTextColor(TXT_SEC) }
                     val rawTx = HunterEngine.buildAndSignTx(req)
                     if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }

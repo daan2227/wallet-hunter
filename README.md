@@ -228,6 +228,8 @@ leave it for more than 30 seconds, and asks for the PIN again.
   with each extra failure, up to 1 h). A correct PIN is not even checked during
   the wait. The wait runs on the phone's uptime clock, so changing the date
   doesn't skip it; a reboot starts it over, never shorter.
+- **Large sends ask for the PIN again** before signing: from 0.01 BTC by default,
+  adjustable in More › Profile (empty = never, 0 = always).
 - **Change the PIN** in More › Profile. It re-seals every seed with the new code in
   a single step: either both change or neither does. The keys themselves don't.
 - **The PIN can't be recovered.** If you forget it the seeds can't be opened, so

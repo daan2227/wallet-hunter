@@ -166,6 +166,8 @@ class HelpActivity : Activity() {
             "in recent apps. A private key copied from the vault or the key tools is marked " +
             "sensitive and erased from the clipboard after 60 s. Backups use their own password " +
             "of at least 12 characters, and a strength meter rejects guessable ones.")
+        parrafo(root, "A send of 0.01 BTC or more asks for the PIN again just before signing; " +
+            "change that amount in More › Profile (empty = never ask, 0 = always ask).")
         parrafo(root, "Change the PIN in More › Profile. It re-seals every seed with the new " +
             "code in one step: both change or neither does. The PIN can't be recovered, so keep " +
             "your seed phrase written down. WIF keys, watch-only wallets and the finds vault are " +

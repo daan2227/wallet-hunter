@@ -109,6 +109,38 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
         })
         cPin.addView(boton(if (WalletManager.hasPin(this)) "Change PIN" else "Set PIN") { cambiarPin() })
         root.addView(cPin)
+
+        // Envíos grandes: el PIN otra vez antes de firmar.
+        val cEnvio = card()
+        cEnvio.addView(rotulo("Large sends"))
+        cEnvio.addView(TextView(this).apply {
+            text = "Ask for the PIN again before signing a send of this much or more (in BTC). " +
+                   "Leave it empty to never ask, or 0 to always ask."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f); setPadding(0, 0, 0, dp(12))
+        })
+        val etUmbral = EditText(this).apply {
+            hint = "e.g. 0.01"; setText(UmbralEnvio.aTexto(UmbralEnvio.leer(this@PerfilActivity)))
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            isSingleLine = true; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        cEnvio.addView(etUmbral)
+        cEnvio.addView(boton("Save") {
+            val sat = UmbralEnvio.parsear(etUmbral.text.toString())
+            if (sat == null) {
+                Toast.makeText(this, "Not a valid amount", Toast.LENGTH_SHORT).show()
+            } else {
+                UmbralEnvio.guardar(this, sat)
+                Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+            }
+        }.apply { (layoutParams as LinearLayout.LayoutParams).topMargin = dp(12) })
+        root.addView(cEnvio)
     }
 
     private fun boton(t: String, onClick: () -> Unit) = Button(this).apply {
