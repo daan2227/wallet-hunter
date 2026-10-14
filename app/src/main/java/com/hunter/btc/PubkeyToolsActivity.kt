@@ -336,6 +336,12 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── Sign & verify message ─────────────────────────────────────────────
+    /** ¿Es un WIF de mainnet SIN comprimir (5…)? Sus fondos van a otra dirección. */
+    private fun esWifSinComprimir(k: String): Boolean {
+        val t = k.trim()
+        return t.length == 51 && t.startsWith("5") && hexClave(t).isNotEmpty()
+    }
+
     private fun hexClave(k: String): String {
         val t = k.trim().removePrefix("0x")
         if (t.length == 64 && t.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }) return t.lowercase()
@@ -353,15 +359,22 @@ class PubkeyToolsActivity : Activity() {
             salFirma.removeAllViews()
             val hx = hexClave(etKey.text.toString())
             if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
-            val sigHex = try { HunterEngine.firmarMensaje(hx, etMsg.text.toString()) } catch (e: Throwable) { "" }
-            if (sigHex.isBlank()) { Toast.makeText(this, "Could not sign", Toast.LENGTH_SHORT).show(); return@boton }
+            val sigComp = try { HunterEngine.firmarMensaje(hx, etMsg.text.toString()) } catch (e: Throwable) { "" }
+            if (sigComp.isBlank()) { Toast.makeText(this, "Could not sign", Toast.LENGTH_SHORT).show(); return@boton }
+            // El motor firma con la cabecera de clave comprimida (31-34). Un WIF 5…
+            // es de la clave SIN comprimir: su cabecera es 27-30. Si no, la firma
+            // "verificaba" contra la dirección comprimida, que no es la del WIF.
+            val sigHex = if (esWifSinComprimir(etKey.text.toString())) {
+                val h = sigComp.substring(0, 2).toInt(16) - 4
+                "%02x".format(h) + sigComp.substring(2)
+            } else sigComp
             val b64 = try {
                 val raw = ByteArray(65) { sigHex.substring(it*2, it*2+2).toInt(16).toByte() }
                 android.util.Base64.encodeToString(raw, android.util.Base64.NO_WRAP)
             } catch (e: Throwable) { "" }
             val quien = try { HunterEngine.verificarMensaje(etMsg.text.toString(), sigHex) } catch (e: Throwable) { "" }
             salFirma.addView(filaResultado("Signature (base64)", b64, true))
-            if (quien.isNotEmpty()) salFirma.addView(filaResultado("Signed by address", quien))
+            if (quien.isNotEmpty()) salFirma.addView(filaResultado("Signed by address", quien.lines().joinToString("\n")))
         }
 
         root.addView(android.view.View(this).apply {
@@ -370,7 +383,7 @@ class PubkeyToolsActivity : Activity() {
                 .apply { topMargin = dp(18); bottomMargin = dp(6) }
         })
         root.addView(rotulo("Verify — address"))
-        val etA = entrada("1… address that claims to have signed")
+        val etA = entrada("1…, 3… or bc1q… address that claims to have signed")
         root.addView(rotulo("Message"))
         val etM2 = entrada("the message", varias = true)
         root.addView(rotulo("Signature (base64)"))
@@ -385,10 +398,14 @@ class PubkeyToolsActivity : Activity() {
             if (sigHex.isBlank()) { Toast.makeText(this, "Signature must be 65 bytes base64", Toast.LENGTH_SHORT).show(); return@boton }
             val quien = try { HunterEngine.verificarMensaje(etM2.text.toString(), sigHex) } catch (e: Throwable) { "" }
             val addr = etA.text.toString().trim()
+            // El motor devuelve la dirección de la clave recuperada y, si es
+            // comprimida, también su 3… y su bc1q… (BIP137 y Electrum).
+            val candidatas = quien.lines().map { it.trim() }.filter { it.isNotEmpty() }
             when {
-                quien.isBlank() -> salVer.addView(filaResultado("Invalid signature", "could not recover a key"))
-                quien == addr -> salVer.addView(filaResultado("✓ VALID", "signed by $quien", true))
-                else -> salVer.addView(filaResultado("✗ Does NOT match", "recovered $quien"))
+                candidatas.isEmpty() -> salVer.addView(filaResultado("Invalid signature", "could not recover a key"))
+                candidatas.any { it.equals(addr, ignoreCase = it.startsWith("bc1")) } ->
+                    salVer.addView(filaResultado("✓ VALID", "signed by $addr", true))
+                else -> salVer.addView(filaResultado("✗ Does NOT match", "recovered " + candidatas.joinToString(" / ")))
             }
         }
         nota(AppTheme.BLUE, "Signing never touches funds — it just proves control of the key. " +
@@ -529,6 +546,14 @@ class PubkeyToolsActivity : Activity() {
             val to = etTo.text.toString().trim()
             val fee = etFee.text.toString().toLongOrNull() ?: 500L
             if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
+            // Un 5… se convertía en su WIF comprimido y se barría la dirección
+            // comprimida, que no es donde están sus fondos: decía "sin fondos".
+            if (esWifSinComprimir(etKey.text.toString())) {
+                tvEstado.text = "This is an uncompressed key (5…): its coins are on its uncompressed " +
+                                "address, which this sweep can't spend. Use a wallet that supports " +
+                                "uncompressed keys, such as Electrum or Sparrow."
+                return@boton
+            }
             if (BtcAddress.validate(to, false) !is BtcAddress.Result.Valid) { Toast.makeText(this, "Invalid destination", Toast.LENGTH_SHORT).show(); return@boton }
             sweepCorriendo = true; btn.text = "…"; tvEstado.text = "Reading UTXOs…"
             Thread {
@@ -1629,9 +1654,17 @@ class PubkeyToolsActivity : Activity() {
                         }
                     } else if (dirsDe(priv).any { it in objetivo }) {
                         hits++
-                        val wif = try { HunterEngine.datosDeClave(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                        // El WIF de la dirección que coincidió: los brainwallets antiguos
+                        // solían ser SIN comprimir, y el WIF comprimido no controla esa
+                        // dirección.
+                        val linea = try { HunterEngine.direccionesDe(priv) } catch (e: Throwable) { "" }
+                            .split('\n').firstOrNull { l -> l.substringAfter('=', "").trim() in objetivo } ?: ""
+                        val wifs = try { HunterEngine.wifDeHex(priv).split('|') } catch (e: Throwable) { emptyList() }
+                        val sinComp = linea.substringBefore('=').contains("uncompressed", ignoreCase = true)
+                        val wif = (if (sinComp) wifs.getOrNull(1) else wifs.getOrNull(0)) ?: ""
                         runOnUiThread { salida.addView(filaResultado("MATCH · \"$frase\"",
-                            "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else ""), true)) }
+                            "priv $priv" + (if (linea.isNotEmpty()) "\n${linea.replace("=", ": ")}" else "") +
+                            (if (wif.isNotEmpty()) "\nWIF  $wif" else ""), true)) }
                     }
                     if (n % 25 == 0 || n == frases.size) { val h = n; val f = hits
                         runOnUiThread { tvEstado.text = if (listMode) "Listed $h / ${frases.size}" else "Checked $h / ${frases.size} · $f found" } }

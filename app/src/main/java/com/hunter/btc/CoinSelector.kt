@@ -105,6 +105,8 @@ object CoinSelector {
     /** Tamaño en vB de una salida según el tipo de dirección que la recibe. */
     fun outputVBytes(addr: String) = when {
         addr.startsWith("bc1p") || addr.startsWith("tb1p") -> 43
+        // P2WSH (bc1q de 62 caracteres): programa de 32 bytes, como Taproot.
+        (addr.startsWith("bc1") || addr.startsWith("tb1")) && addr.length > 50 -> 43
         addr.startsWith("bc1")  || addr.startsWith("tb1")  -> 31
         addr.startsWith("3")    || addr.startsWith("2")    -> 32
         else                                               -> 34

@@ -78,7 +78,11 @@ object ElectrumClient {
     fun getHistory(addr: String, testnet: Boolean = false): List<TxEntry> {
         val sh = addrToScripthash(addr) ?: return emptyList()
         return try {
-            val resp = requestArray("blockchain.scripthash.get_history", listOf(sh), testnet)
+            // OrNull: una dirección sin historial responde [] y eso ES la respuesta.
+            // Con requestArray se tomaba por fallo y la dirección se enviaba a los
+            // diez servidores (privacidad) con sus esperas.
+            val resp = requestArrayOrNull("blockchain.scripthash.get_history", listOf(sh), testnet)
+                ?: emptyList()
             resp.map { TxEntry(it.getString("tx_hash"), it.getInt("height")) }
                 .sortedByDescending { it.height }
         } catch (e: Exception) { emptyList() }
@@ -104,6 +108,9 @@ object ElectrumClient {
                 put("txid",  it.getString("tx_hash"))
                 put("vout",  it.getInt("tx_pos"))
                 put("value", it.getLong("value"))
+                // Fuente ajena: el importe no se puede comprobar (ver ChainInfo.utxos).
+                put("src", "electrum")
+                put("confirmed", it.optInt("height", 0) > 0)
             }
         }
     }
@@ -120,7 +127,11 @@ object ElectrumClient {
             as? Number)?.toDouble() ?: return null
         if (btcPerKb <= 0) return null
         // BTC/kB -> sat/vB: x1e8 para pasar a satoshis, /1000 por el kilobyte.
-        return Math.ceil(btcPerKb * 1e8 / 1000.0).toInt().coerceAtLeast(1)
+        val satVb = Math.ceil(btcPerKb * 1e8 / 1000.0)
+        // Un servidor ajeno puede decir cualquier cosa: por encima del tope no se
+        // cree (ver ChainInfo.TARIFA_MAX).
+        if (satVb > ChainInfo.TARIFA_MAX) return null
+        return satVb.toInt().coerceAtLeast(1)
     }
 
     /** Altura del último bloque. */
@@ -136,7 +147,36 @@ object ElectrumClient {
      *   y un "no se pudo enviar" genérico no dice nada.
      */
     fun broadcast(rawHex: String, testnet: Boolean = false): String? =
-        requestRaw("blockchain.transaction.broadcast", listOf(rawHex), testnet) as? String
+        // Sólo vale como éxito un txid de verdad (64 hex): un servidor que
+        // devolviera cualquier otra cosa hacía que la app dijera "enviado" sin
+        // que nada se hubiera difundido. Si no lo es, se prueba el siguiente.
+        requestRaw("blockchain.transaction.broadcast", listOf(rawHex), testnet) { r ->
+            r is String && TXID.matches(r)
+        } as? String
+
+    private val TXID = Regex("^[0-9a-fA-F]{64}$")
+
+    /** El nodo rechazó la petición (p. ej. una transacción inválida): no es un fallo de red. */
+    private class RechazoNodo(msg: String) : Exception(msg)
+
+    /** Tope de una respuesta: una línea de varios cientos de MB agotaba la memoria. */
+    private const val MAX_LINEA = 4 * 1024 * 1024
+    /** Tope de tiempo de una respuesta entera: el de lectura sólo cuenta entre bytes. */
+    private const val MAX_RESPUESTA_MS = 30_000L
+
+    /** readLine con tope de tamaño y de tiempo total. null si se cerró sin datos. */
+    private fun leerLinea(r: BufferedReader): String? {
+        val fin = System.currentTimeMillis() + MAX_RESPUESTA_MS
+        val sb = StringBuilder()
+        while (true) {
+            val c = r.read()
+            if (c < 0) return if (sb.isEmpty()) null else sb.toString()
+            if (c == '\n'.code) return sb.toString()
+            if (sb.length >= MAX_LINEA) throw java.io.IOException("response too long")
+            if (System.currentTimeMillis() > fin) throw java.io.IOException("response too slow")
+            sb.append(c.toChar())
+        }
+    }
 
     private fun request(method: String, params: List<Any>, testnet: Boolean): JSONObject? {
         val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
@@ -145,7 +185,7 @@ object ElectrumClient {
                 val result = connect(host, port) { reader, writer ->
                     val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
                     writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect null
+                    val line = leerLinea(reader) ?: return@connect null
                     JSONObject(line).optJSONObject("result")
                 }
                 if (result != null) {
@@ -167,7 +207,7 @@ object ElectrumClient {
                 val result = connect(host, port) { reader, writer ->
                     val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
                     writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect emptyList<JSONObject>()
+                    val line = leerLinea(reader) ?: return@connect emptyList<JSONObject>()
                     val arr = JSONObject(line).optJSONArray("result") ?: return@connect emptyList<JSONObject>()
                     (0 until arr.length()).map { arr.getJSONObject(it) }
                 }
@@ -186,28 +226,32 @@ object ElectrumClient {
      * Como [request], pero devuelve el "result" crudo: estimatefee da un número
      * y broadcast una cadena, ninguno de los dos es un objeto JSON.
      */
-    private fun requestRaw(method: String, params: List<Any>, testnet: Boolean): Any? {
+    private fun requestRaw(method: String, params: List<Any>, testnet: Boolean,
+                           acepta: (Any) -> Boolean = { true }): Any? {
         val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
         for ((host, port) in servers) {
             try {
                 val result = connect(host, port) { reader, writer ->
                     val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
                     writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect null
+                    val line = leerLinea(reader) ?: return@connect null
                     val o = JSONObject(line)
                     // Un nodo que rechaza la transacción responde con "error",
                     // no con "result": devolverlo como null diría "no hay red"
                     // cuando lo que hay es un motivo concreto.
                     o.opt("error")?.takeIf { it != JSONObject.NULL }?.let { err ->
                         val msg = (err as? JSONObject)?.optString("message") ?: err.toString()
-                        throw java.io.IOException(msg)
+                        throw RechazoNodo(msg)
                     }
                     o.opt("result")?.takeIf { it != JSONObject.NULL }
                 }
-                if (result != null) { Log.d("Electrum", "OK: $host"); return result }
-            } catch (e: java.io.IOException) {
-                // Rechazo del nodo, no fallo de conexión: no sirve reintentar en
-                // otro servidor, porque todos van a decir lo mismo.
+                if (result != null && acepta(result)) { Log.d("Electrum", "OK: $host"); return result }
+                if (result != null) Log.w("Electrum", "$host: unexpected answer, trying the next one")
+            } catch (e: RechazoNodo) {
+                // Rechazo del nodo: no sirve reintentar en otro servidor, porque
+                // todos van a decir lo mismo. Antes caía aquí también cualquier
+                // fallo de red (un timeout es IOException), y el primer servidor
+                // caído se daba por "rechazo": no se probaba ningún otro.
                 Log.w("Electrum", "$host rejected it: ${e.message}")
                 return "ERROR: ${e.message}"
             } catch (e: Exception) {
@@ -226,7 +270,7 @@ object ElectrumClient {
                 val result = connect(host, port) { reader, writer ->
                     val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
                     writer.write(req); writer.flush()
-                    val line = reader.readLine() ?: return@connect null
+                    val line = leerLinea(reader) ?: return@connect null
                     val arr = JSONObject(line).optJSONArray("result") ?: return@connect null
                     (0 until arr.length()).map { arr.getJSONObject(it) }
                 }

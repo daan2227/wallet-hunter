@@ -20,6 +20,14 @@ import org.json.JSONObject
  */
 object ChainInfo {
 
+    /**
+     * Tarifa máxima creíble, en sat/vB. Las fuentes son ajenas (y en el respaldo,
+     * diez servidores Electrum de cualquiera): una que dijera 50 000 sat/vB haría
+     * pagar de comisión una parte grande del envío. Por encima de esto la fuente
+     * no se cree y se pasa a la siguiente.
+     */
+    const val TARIFA_MAX = 2000
+
     /** Comisiones recomendadas, en sat/vB. */
     data class Fees(
         val fastest: Int,   // siguiente bloque
@@ -51,7 +59,7 @@ object ChainInfo {
             hour     = o.optInt("hourFee", 0),
             economy  = o.optInt("economyFee", 0),
             minimum  = o.optInt("minimumFee", 1)
-        ).takeIf { it.fastest > 0 && it.hour > 0 }
+        ).takeIf { it.fastest > 0 && it.hour > 0 && it.fastest <= TARIFA_MAX && it.halfHour <= TARIFA_MAX }
     } catch (e: Exception) {
         android.util.Log.w("ChainInfo", "fees via mempool.space failed: ${e.message}"); null
     }
@@ -86,16 +94,26 @@ object ChainInfo {
      *   "no tienes saldo" cuando lo que pasa es que no hay red.
      */
     fun utxos(addr: String, testnet: Boolean = false): List<JSONObject>? {
+        // Cada moneda lleva de dónde salió ("src") y si está confirmada
+        // ("confirmed"): Enviar lo necesita para no fiarse de un importe que no
+        // puede comprobar (ver fuenteFiable) ni gastar lo que aún no es firme.
         ChainApi.get("/address/$addr/utxo", testnet)?.let { txt ->
             try {
                 val arr = org.json.JSONArray(txt)
-                return (0 until arr.length()).map { arr.getJSONObject(it) }
+                return (0 until arr.length()).map {
+                    val o = arr.getJSONObject(it)
+                    o.put("src", "esplora")
+                    o.put("confirmed", o.optJSONObject("status")?.optBoolean("confirmed", false) ?: false)
+                }
             } catch (e: Exception) {
                 android.util.Log.w("ChainInfo", "utxos: unreadable answer: ${e.message}")
             }
         }
         return ElectrumClient.listUnspent(addr, testnet)
     }
+
+    /** ¿El importe de esta moneda viene de una fuente en la que se confía (Esplora)? */
+    fun fuenteFiable(u: JSONObject): Boolean = u.optString("src") == "esplora"
 
     /**
      * Difunde la transacción firmada.
@@ -129,7 +147,20 @@ object ChainInfo {
     fun tipHeight(testnet: Boolean = false): Int? {
         // Por encima de 500.000.000 el campo se interpreta como marca de tiempo.
         ChainApi.get("/blocks/tip/height", testnet)?.trim()?.toIntOrNull()
-            ?.takeIf { it in 1..499_999_999 }?.let { return it }
-        return ElectrumClient.tipHeight(testnet)?.takeIf { it in 1..499_999_999 }
+            ?.takeIf { it in 1..499_999_999 && creible(it, testnet) }?.let { return it }
+        return ElectrumClient.tipHeight(testnet)?.takeIf { it in 1..499_999_999 && creible(it, testnet) }
+    }
+
+    /**
+     * ¿Es creíble esa altura? Con nSequence 0xFFFFFFFD el locktime se aplica: una
+     * altura inflada por una fuente mala dejaba la transacción sin validez durante
+     * meses. En mainnet se compara con la esperada por la hora (un bloque cada
+     * ~10 min desde el bloque 840 000); una muy por encima no se cree, y se firma
+     * con locktime 0. En testnet no hay ritmo fiable y no se comprueba.
+     */
+    private fun creible(altura: Int, testnet: Boolean): Boolean {
+        if (testnet) return true
+        val esperada = 840_000 + (System.currentTimeMillis() - 1_713_571_767_000L) / 600_000L
+        return altura <= esperada + 2_000
     }
 }

@@ -1442,7 +1442,8 @@ static const char B58_ALPHA[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmno
  * Formato: 0x80 | privkey(32) | [0x01 si comprimida] | checksum(4)
  * El checksum son los 4 primeros bytes de SHA256(SHA256(resto)).
  */
-static bool wif_decode(const char *wif, uint8_t *privkey) {
+/* comprimida (si no es null): true para K/L (con la marca 0x01), false para 5... */
+static bool wif_decode(const char *wif, uint8_t *privkey, bool *comprimida=nullptr) {
     size_t wlen = strlen(wif);
     if (wlen < 50 || wlen > 53) return false;
 
@@ -1481,6 +1482,7 @@ static bool wif_decode(const char *wif, uint8_t *privkey) {
     if (memcmp(ck, payload + plen - 4, 4) != 0) return false;
 
     memcpy(privkey, payload + 1, 32);
+    if (comprimida) *comprimida = (plen == 38);
     return true;
 }
 
@@ -1489,7 +1491,8 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     const char *wif = env->GetStringUTFChars(jwif, nullptr);
     if (!wif || strlen(wif) < 50) { env->ReleaseStringUTFChars(jwif, wif); return env->NewStringUTF(""); }
     uint8_t privkey[32] = {0};
-    bool ok = wif_decode(wif, privkey);
+    bool comprimida = true;
+    bool ok = wif_decode(wif, privkey, &comprimida);
     env->ReleaseStringUTFChars(jwif, wif);
     if (!ok) return env->NewStringUTF("");
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -1501,7 +1504,16 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
         return env->NewStringUTF("");
     }
     uint8_t h160[20]; char addr[64] = {0};
-    pk_to_h160(ctx, privkey, h160);
+    if (comprimida) pk_to_h160(ctx, privkey, h160);
+    else {
+        /* Un WIF 5... es de la clave pública SIN comprimir: sus fondos están en
+           OTRA dirección. Antes se daba siempre la comprimida, y la cartera de un
+           WIF antiguo parecía vacía teniendo saldo. */
+        secp256k1_pubkey pk; uint8_t p65[65]; size_t l=65;
+        if (!secp256k1_ec_pubkey_create(ctx, &pk, privkey)) { secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
+        secp256k1_ec_pubkey_serialize(ctx, p65, &l, &pk, SECP256K1_EC_UNCOMPRESSED);
+        { uint8_t sh[32]; SHA256(p65, 65, sh); RIPEMD160(sh, 32, h160); }
+    }
     h160_to_addr(h160, addr);
     secp256k1_context_destroy(ctx);
     return env->NewStringUTF(addr);
@@ -1981,8 +1993,12 @@ Java_com_hunter_btc_HunterEngine_verificarMensaje(JNIEnv *env,jobject,jstring jm
         if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
         if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
         if(a<0||b<0) return env->NewStringUTF(""); full[i]=(uint8_t)((a<<4)|b); }
-    int hdr=full[0]; if(hdr<27||hdr>34) return env->NewStringUTF("");
-    int recid=(hdr-27)&3; bool comp=((hdr-27)&4)!=0;
+    /* Cabecera (BIP137): 27-30 sin comprimir (1...), 31-34 comprimida,
+       35-38 P2SH-P2WPKH (3...) y 39-42 P2WPKH (bc1q...). Antes se rechazaba
+       todo lo que pasara de 34, así que una firma válida de una dirección 3... o
+       bc1q... salía siempre "no coincide". */
+    int hdr=full[0]; if(hdr<27||hdr>42) return env->NewStringUTF("");
+    int recid=(hdr-27)&3; bool comp=hdr>=31;
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
     uint8_t hash[32]; msg_hash(m,hash);
     secp256k1_ecdsa_recoverable_signature rsig; secp256k1_pubkey pub;
@@ -1993,6 +2009,14 @@ Java_com_hunter_btc_HunterEngine_verificarMensaje(JNIEnv *env,jobject,jstring jm
         secp256k1_ec_pubkey_serialize(ctx,ser,&len,&pub,comp?SECP256K1_EC_COMPRESSED:SECP256K1_EC_UNCOMPRESSED);
         uint8_t sha[32],h160[20]; SHA256(ser,len,sha); RIPEMD160(sha,32,h160);
         char addr[MAX_ADDR]={0}; h160_to_addr(h160,addr); out=addr;
+        /* Una clave comprimida firma igual para sus tres direcciones (Electrum y
+           Sparrow usan 31-34 también para segwit): se devuelven todas, una por
+           línea, y quien llama mira si la que le dicen está entre ellas. */
+        if(comp){
+            char a3[MAX_ADDR]={0}; h160_to_p2sh(h160,a3);   /* calcula el redeemScript por dentro */
+            char ab[MAX_ADDR]={0}; h160_to_bech32(h160,ab);
+            out+="\n"; out+=a3; out+="\n"; out+=ab;
+        }
     }
     secp256k1_context_destroy(ctx);
     return env->NewStringUTF(out.c_str());

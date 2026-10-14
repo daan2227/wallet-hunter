@@ -74,7 +74,7 @@ object ChainApi {
                 val cuerpo = try {
                     if (conn.responseCode != 200)
                         throw java.io.IOException("HTTP ${conn.responseCode}")
-                    conn.inputStream.bufferedReader().readText()
+                    leerAcotado(conn.inputStream)
                 } finally { conn.disconnect() }
                 preferido = idx
                 return cuerpo
@@ -84,6 +84,39 @@ object ChainApi {
         }
         return null
     }
+
+    private val TXID = Regex("^[0-9a-fA-F]{64}$")
+
+    /** Tope de lo que se lee de una respuesta: un servidor podía mandar cientos de MB. */
+    private const val MAX_CUERPO = 8 * 1024 * 1024
+
+    private fun leerAcotado(ent: java.io.InputStream, max: Int = MAX_CUERPO): String {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(16 * 1024)
+        ent.use {
+            while (true) {
+                val n = it.read(buf); if (n < 0) break
+                if (out.size() + n > max) throw java.io.IOException("response too large")
+                out.write(buf, 0, n)
+            }
+        }
+        return out.toString("UTF-8")
+    }
+
+    /**
+     * La misma consulta a TODOS los hosts; devuelve las respuestas de los que
+     * contestaron. Para contrastar un dato que decide a dónde va el dinero.
+     */
+    fun getDeTodos(ruta: String, testnet: Boolean = false): List<String> =
+        HOSTS.mapNotNull { host ->
+            try {
+                val conn = java.net.URL(base(host, testnet) + ruta).openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = CONNECT_MS; conn.readTimeout = READ_MS
+                try {
+                    if (conn.responseCode != 200) null else leerAcotado(conn.inputStream)
+                } finally { conn.disconnect() }
+            } catch (e: Exception) { null }
+        }
 
     /** Lo que devuelve un intento de difundir. */
     sealed class Envio {
@@ -121,12 +154,20 @@ object ChainApi {
                 val code = conn.responseCode
                 val cuerpo = try {
                     (if (code == 200) conn.inputStream else conn.errorStream)
-                        ?.bufferedReader()?.readText()?.trim().orEmpty()
+                        ?.let { leerAcotado(it, 64 * 1024) }?.trim().orEmpty()
                 } finally { conn.disconnect() }
                 preferido = idx
                 // Esplora devuelve el txid en texto plano: 64 caracteres hex.
-                if (code == 200 && cuerpo.length == 64) return Envio.Ok(cuerpo)
-                if (cuerpo.isNotEmpty()) { huboRechazo = cuerpo; break }
+                if (code == 200 && TXID.matches(cuerpo)) return Envio.Ok(cuerpo)
+                // Sólo un 400 es el nodo diciendo "esta transacción no vale" (y
+                // eso lo diría cualquier otro). Un 429 (demasiadas peticiones),
+                // un 5xx o una página HTML de error son del servidor, no de la
+                // transacción: antes se tomaban por rechazo y no se probaba nada
+                // más. Ahora se pasa al siguiente.
+                if (code == 400 && cuerpo.isNotEmpty() && !cuerpo.startsWith("<")) {
+                    huboRechazo = cuerpo; break
+                }
+                android.util.Log.w("ChainApi", "broadcast via $host: HTTP $code, trying the next one")
             } catch (e: Exception) {
                 android.util.Log.w("ChainApi", "broadcast via $host failed: ${e.message}")
             }

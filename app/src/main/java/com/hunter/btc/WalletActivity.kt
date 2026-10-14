@@ -1003,6 +1003,25 @@ class WalletActivity : FragmentActivity() {
                 }
                 if (ajenas != 1) return@Thread aviso("Only simple sends (one recipient) can be sped up here.")
                 if (cambioAddr.isEmpty()) return@Thread aviso("It has no change output: there is nothing to take the extra fee from without paying the recipient less.")
+                // El destinatario y el importe salen de la API, y la nueva transacción
+                // vuelve a pagarlos: una respuesta manipulada redirigía el pago. Se
+                // valida la dirección y se contrasta con los dos servidores: si
+                // alguno dice otra cosa, no se firma.
+                if (BtcAddress.validate(destino, isTestnet) !is BtcAddress.Result.Valid)
+                    return@Thread aviso("The recipient address in that transaction is not valid.")
+                val txid = tx.optString("txid")
+                val versiones = ChainApi.getDeTodos("/tx/$txid", isTestnet).mapNotNull {
+                    try { JSONObject(it) } catch (e: Exception) { null }
+                }
+                val discrepa = versiones.any { o ->
+                    val vs = o.optJSONArray("vout") ?: return@any true
+                    (0 until vs.length()).none {
+                        val x = vs.getJSONObject(it)
+                        x.optString("scriptpubkey_address") == destino && x.optLong("value") == importe
+                    }
+                }
+                if (txid.length != 64 || discrepa)
+                    return@Thread aviso("The servers do not agree on who that transaction pays. Not rebuilding it.")
 
                 val vsize = (tx.optLong("weight", 0) + 3) / 4
                 val feeViejo = tx.optLong("fee", 0)
@@ -1269,8 +1288,15 @@ class WalletActivity : FragmentActivity() {
         // dinero a una dirección con uno cambiado.
         fun rellenar(texto: String) {
             val p = PagoUri.leer(texto)
+            if (p.error != null) {
+                Toast.makeText(this, p.error, Toast.LENGTH_LONG).show()
+                return
+            }
             etTo.setText(p.direccion)
+            // Una petición sin importe deja el campo vacío: antes se quedaba el
+            // importe del envío anterior, que no era el que pedía nadie.
             if (p.importeBtc != null) etAmt.setText(p.importeBtc)
+            else if (p.esPeticion) etAmt.setText("")
         }
         alLeerQr = { rellenar(it) }
         val filaAcciones = LinearLayout(this).apply {
@@ -1654,16 +1680,21 @@ class WalletActivity : FragmentActivity() {
                             "${Privacidad.monto(this, "%.8f BTC".format(u.getLong("value") / 1e8))} · ${u.getString("txid").take(12)}…"
                         }
                         val checked = BooleanArray(items.size) { true }
-                        selectedUtxos.clear()
-                        for (i in 0 until utxos.length()) selectedUtxos.add(utxos.getJSONObject(i))
+                        // La selección se edita en una copia y sólo pasa a
+                        // selectedUtxos con "Use these". Antes se rellenaba con
+                        // TODAS al abrir: "Cancel" las dejaba elegidas a mano y el
+                        // siguiente envío las gastaba todas, sin el selector.
+                        val borrador = ArrayList<org.json.JSONObject>()
+                        for (i in 0 until utxos.length()) borrador.add(utxos.getJSONObject(i))
                         AlertDialog.Builder(this)
                             .setTitle("Which coins are spent?")
                             .setMultiChoiceItems(items, checked) { _, idx, isChecked ->
                                 val u = utxos.getJSONObject(idx)
-                                if (isChecked) { if (!selectedUtxos.contains(u)) selectedUtxos.add(u) }
-                                else selectedUtxos.remove(u)
+                                if (isChecked) { if (!borrador.contains(u)) borrador.add(u) }
+                                else borrador.remove(u)
                             }
                             .setPositiveButton("Use these") { _, _ ->
+                                selectedUtxos.clear(); selectedUtxos.addAll(borrador)
                                 tvCoinCtl.text = if (selectedUtxos.isEmpty()) "automatic"
                                     else "%d · %.8f BTC".format(selectedUtxos.size,
                                         selectedUtxos.sumOf { it.getLong("value") } / 1e8)
@@ -1682,7 +1713,11 @@ class WalletActivity : FragmentActivity() {
 
         /* ── ENVIAR ────────────────────────────────────────────────────── */
         btnSend.setOnClickListener {
-            val toAddr = etTo.text.toString().trim()
+            // bech32 todo en mayúsculas (QR, o pegado a mano) es válido y es la misma
+            // dirección: se pasa a minúsculas antes de validarla y firmarla.
+            val toAddr = etTo.text.toString().trim().let {
+                if ((it.startsWith("BC1") || it.startsWith("TB1")) && it == it.uppercase()) it.lowercase() else it
+            }
             val amtBtc = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
             val fromKey = keys.getOrNull(fromIdx) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
@@ -1694,6 +1729,10 @@ class WalletActivity : FragmentActivity() {
             if (toAddr.isEmpty()) {
                 tvStatus.text = "The destination address is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
+            if (amtBtc.isNaN() || amtBtc.isInfinite() || amtBtc > 21_000_000.0) {
+                tvStatus.text = "That amount is not valid."
+                tvStatus.setTextColor(RED); return@setOnClickListener
             }
             if (amtBtc <= 0) {
                 tvStatus.text = "The amount is missing."
@@ -1743,7 +1782,19 @@ class WalletActivity : FragmentActivity() {
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }; return@Thread
                     }
-                    val fetched = JSONArray().also { a -> lista.forEach { a.put(it) } }
+                    // Sin Coin Control sólo se gastan monedas confirmadas: una sin
+                    // confirmar de un tercero puede desaparecer (RBF) y llevarse
+                    // con ella este envío después de que el destinatario lo viera.
+                    val firmes = if (selectedUtxos.isNotEmpty()) lista
+                                 else lista.filter { it.optBoolean("confirmed", true) }
+                    if (firmes.isEmpty()) {
+                        runOnUiThread {
+                            tvStatus.text = "The coins on that address are not confirmed yet. " +
+                                            "Wait for a confirmation, or pick them in Coin control."
+                            tvStatus.setTextColor(AppTheme.WARN); btnSend.isEnabled = true
+                        }; return@Thread
+                    }
+                    val fetched = JSONArray().also { a -> firmes.forEach { a.put(it) } }
 
                     // Coin Control rellenaba selectedUtxos y el envío lo ignoraba,
                     // gastando siempre todos los UTXOs: la función era decorativa.
@@ -1772,6 +1823,13 @@ class WalletActivity : FragmentActivity() {
                         // valor por defecto y sigue siendo un respaldo razonable.
                         else              -> 5L
                     }
+                    if (feeRate > ChainInfo.TARIFA_MAX) {
+                        runOnUiThread {
+                            tvStatus.text = "A fee of $feeRate sat/vB is above ${ChainInfo.TARIFA_MAX}: " +
+                                            "that is almost certainly a mistake. Check the fee."
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }; return@Thread
+                    }
                     val fuenteTarifa = when {
                         feeRateManual > 0 -> "the one you set"
                         red != null       -> "recommended, ~30 min"
@@ -1786,7 +1844,7 @@ class WalletActivity : FragmentActivity() {
 
                     // Sin Coin Control manual se gastaban TODOS los UTXOs, con lo
                     // que la comisión crecía con cada entrada innecesaria.
-                    val plan = if (selectedUtxos.isNotEmpty()) {
+                    val plan0 = if (selectedUtxos.isNotEmpty()) {
                         val vs = inVBytes * chosen.size + outVBytes + chgVBytes + 11
                         val f  = feeRate * vs
                         val tin = chosen.sumOf { it.getLong("value") }
@@ -1794,12 +1852,31 @@ class WalletActivity : FragmentActivity() {
                     } else {
                         CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes)
                     }
-                    if (plan == null || plan.chosen.isEmpty()) {
+                    if (plan0 == null || plan0.chosen.isEmpty()) {
                         runOnUiThread {
                             tvStatus.text = "Not enough balance for the amount plus the fee"
                             tvStatus.setTextColor(RED); btnSend.isEnabled = true
                         }
                         return@Thread
+                    }
+                    // El motor no crea un cambio de 546 sat o menos (polvo): se lo
+                    // da a la comisión. El diálogo enseñaba ese cambio y la comisión
+                    // menor; ahora cuenta lo mismo que se firma.
+                    val plan = if (plan0.changeSat in 1..CoinSelector.DUST)
+                        plan0.copy(feeSat = plan0.feeSat + plan0.changeSat, changeSat = 0L) else plan0
+                    // Entradas legacy (P2PKH): su firma NO compromete el importe de la
+                    // moneda. Si ese importe viene de un servidor Electrum de respaldo,
+                    // uno malicioso podía decir 0,01 BTC por una moneda de 1 BTC y el
+                    // resto se iba en comisión con una firma válida. No se firma.
+                    val entradaLegacy = fromKey.startsWith("p2pkh") ||
+                        (isWifMode && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
+                    if (entradaLegacy && plan.chosen.any { !ChainInfo.fuenteFiable(it) }) {
+                        runOnUiThread {
+                            tvStatus.text = "The coin amounts came from a fallback server and can't be checked " +
+                                            "for a legacy (1…) address. Try again when mempool.space or " +
+                                            "blockstream.info can be reached."
+                            tvStatus.setTextColor(AppTheme.WARN); btnSend.isEnabled = true
+                        }; return@Thread
                     }
                     val feeSat = plan.feeSat
                     val vsize  = plan.vsize
@@ -1903,6 +1980,10 @@ class WalletActivity : FragmentActivity() {
                         appendLine("Fee        %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
                         appendLine("Size       ~%d vB with %d input(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
                         appendLine("TOTAL      %.8f BTC".format(totalSat / 1e8))
+                        if (feeSat > amtSat) {
+                            appendLine()
+                            appendLine("⚠ The fee is LARGER than the amount you send.")
+                        }
                         appendLine()
                         appendLine(if (plan.changeSat == 0L)
                             "No change output: the remainder goes to the fee."
@@ -1957,7 +2038,15 @@ class WalletActivity : FragmentActivity() {
 
                     runOnUiThread { tvStatus.text = "Signing…"; tvStatus.setTextColor(TXT_SEC) }
                     val rawTx = HunterEngine.buildAndSignTx(req)
-                    if (rawTx.startsWith("ERROR")) { runOnUiThread { tvStatus.text = rawTx; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
+                    if (rawTx.startsWith("ERROR")) {
+                        val txt = when (rawTx) {
+                            "ERROR:uncompressed_wif" -> "This is an uncompressed key (5…). This wallet can only " +
+                                "spend compressed keys: move the coins with Electrum or Sparrow."
+                            "ERROR:bad_to_address" -> "The destination address is not valid."
+                            else -> rawTx
+                        }
+                        runOnUiThread { tvStatus.text = txt; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread
+                    }
                     runOnUiThread { tvStatus.text = "Broadcasting…"; tvStatus.setTextColor(TXT_SEC) }
                     // Difundir también tenía un único camino. Si la firma salió
                     // bien y no se puede difundir, la transacción se pierde sin
