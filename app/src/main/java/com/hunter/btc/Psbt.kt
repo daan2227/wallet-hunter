@@ -27,22 +27,96 @@ object Psbt {
     private fun varStr(h: String): ByteArray { val s = bytes(h); return varint(s.size.toLong()) + s }
 
     class Rec(val key: ByteArray, val value: ByteArray)
-    class TxIn(val txid: ByteArray, val vout: Long, val seq: Long)
+    class TxIn(val txid: ByteArray, val vout: Long, val seq: Long, val scriptSig: ByteArray = ByteArray(0))
     class TxOut(val value: Long, val spk: ByteArray)
     class Tx(val version: Long, val ins: List<TxIn>, val outs: List<TxOut>, val locktime: Long)
     class Doc(val globals: MutableList<Rec>, val inputs: List<MutableList<Rec>>,
               val outputs: List<MutableList<Rec>>, val tx: Tx)
 
-    private fun parseTx(b: ByteArray): Tx {
+    /**
+     * Transacción en formato de red, con o sin testigos (BIP144). Antes no
+     * entendía el marcador segwit (00 01): la transacción anterior de una entrada
+     * legacy —hoy casi siempre segwit— se leía con cero entradas y salidas basura.
+     */
+    internal fun parseTx(b: ByteArray): Tx {
         val c = TxDecoder.Cursor(b)
         val version = c.u32()
+        val segwit = b.size > c.p + 1 && b[c.p].toInt() == 0x00 && b[c.p + 1].toInt() == 0x01
+        if (segwit) c.p += 2
         val nin = c.varint().toInt()
+        require(nin in 0..100_000)
         val ins = ArrayList<TxIn>()
-        for (i in 0 until nin) { val txid = c.bytes(32); val vout = c.u32(); val sl = c.varint().toInt(); c.bytes(sl); val seq = c.u32(); ins.add(TxIn(txid, vout, seq)) }
+        for (i in 0 until nin) { val txid = c.bytes(32); val vout = c.u32(); val sl = c.varint().toInt(); val ss = c.bytes(sl); val seq = c.u32(); ins.add(TxIn(txid, vout, seq, ss)) }
         val nout = c.varint().toInt()
+        require(nout in 0..100_000)
         val outs = ArrayList<TxOut>()
         for (j in 0 until nout) { val v = c.u64(); val sl = c.varint().toInt(); outs.add(TxOut(v, c.bytes(sl))) }
+        if (segwit) for (i in 0 until nin) { val n = c.varint().toInt(); for (k in 0 until n) c.bytes(c.varint().toInt()) }
         return Tx(version, ins, outs, c.u32())
+    }
+
+    /** Serialización SIN testigos: la que define el txid. */
+    internal fun sinTestigos(tx: Tx): ByteArray {
+        val o = ByteArrayOutputStream()
+        o.write(le(tx.version, 4)); o.write(varint(tx.ins.size.toLong()))
+        for (i in tx.ins) { o.write(i.txid); o.write(le(i.vout, 4)); o.write(varint(i.scriptSig.size.toLong())); o.write(i.scriptSig); o.write(le(i.seq, 4)) }
+        o.write(varint(tx.outs.size.toLong()))
+        for (x in tx.outs) { o.write(le(x.value, 8)); o.write(varint(x.spk.size.toLong())); o.write(x.spk) }
+        o.write(le(tx.locktime, 4))
+        return o.toByteArray()
+    }
+
+    /** txid en el orden en que se escribe (big-endian, como en los exploradores). */
+    internal fun txidHex(tx: Tx): String = hex(rev(dsha(sinTestigos(tx))))
+
+    /** Lo que hay que enseñar antes de firmar, y lo que impide firmar. */
+    class Revision(val salidas: List<Pair<String, Long>>, val totalEntradas: Long?,
+                   val comision: Long?, val problemas: List<String>)
+
+    private fun importe(d: Doc, i: Int): Pair<Long, ByteArray>? {
+        val recs = d.inputs[i]
+        val wu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x01 }
+        if (wu != null) { val c = TxDecoder.Cursor(wu.value); val a = c.u64(); return a to c.bytes(c.varint().toInt()) }
+        val nwu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x00 } ?: return null
+        val prev = parseTx(nwu.value); val vo = d.tx.ins[i].vout.toInt()
+        return if (vo < prev.outs.size) prev.outs[vo].value to prev.outs[vo].spk else null
+    }
+
+    /**
+     * Revisa la PSBT antes de firmar. Antes se firmaba a ciegas: sin enseñar a
+     * quién paga ni cuánto se va en comisión. Y una entrada P2WPKH se firmaba sólo
+     * con witness_utxo, aunque viniera también la transacción anterior completa
+     * diciendo otro importe (el patrón de CVE-2020-14199: se paga de comisión lo
+     * que el atacante quiera).
+     */
+    fun revisar(d: Doc, testnet: Boolean = false): Revision {
+        val problemas = ArrayList<String>()
+        var total = 0L; var conocido = true
+        for (i in d.tx.ins.indices) {
+            val recs = d.inputs[i]
+            val nwu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x00 }
+            val wu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x01 }
+            if (nwu != null) {
+                val prev = try { parseTx(nwu.value) } catch (e: Throwable) { null }
+                if (prev == null) { problemas.add("Input #$i: its previous transaction can't be read."); continue }
+                if (txidHex(prev) != hex(rev(d.tx.ins[i].txid)))
+                    problemas.add("Input #$i: the previous transaction attached is not the one it spends.")
+                val vo = d.tx.ins[i].vout.toInt()
+                if (vo >= prev.outs.size) problemas.add("Input #$i: the output it spends doesn't exist.")
+                else if (wu != null) {
+                    val c = TxDecoder.Cursor(wu.value); val a = c.u64(); val spk = c.bytes(c.varint().toInt())
+                    if (a != prev.outs[vo].value || !spk.contentEquals(prev.outs[vo].spk))
+                        problemas.add("Input #$i: witness_utxo and the previous transaction disagree on the amount.")
+                }
+            }
+            val imp = try { importe(d, i) } catch (e: Throwable) { null }
+            if (imp == null) conocido = false else total += imp.first
+        }
+        val salidas = d.tx.outs.map { (SpkDireccion.de(it.spk, testnet) ?: "script ${hex(it.spk).take(20)}…") to it.value }
+        val sumaSal = d.tx.outs.sumOf { it.value }
+        val comision = if (conocido) total - sumaSal else null
+        if (comision != null && comision < 0) problemas.add("The outputs spend more than the inputs hold.")
+        return Revision(salidas, if (conocido) total else null, comision, problemas)
     }
 
     private fun readMap(c: TxDecoder.Cursor): MutableList<Rec> {
@@ -119,6 +193,8 @@ object Psbt {
 
     /** Firma las entradas que controla [privHex]. Devuelve cuántas firmó. */
     fun sign(d: Doc, privHex: String): Int {
+        // Nunca se firma lo que no pasa la revisión (ver revisar).
+        if (revisar(d).problemas.isNotEmpty()) return 0
         val pub = try { HunterEngine.pubDeHex(privHex) } catch (e: Throwable) { "" }
         if (pub.isBlank()) return 0
         val pubBytes = bytes(pub)

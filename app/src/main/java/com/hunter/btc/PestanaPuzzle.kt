@@ -1182,7 +1182,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             } catch (e: Exception) {
                 val msg = "${e.javaClass.simpleName}: ${e.message}"
                 android.widget.Toast.makeText(this@buildPuzzleTab, msg, android.widget.Toast.LENGTH_LONG).show()
-                RegistroFallos.anotar(this, "\nPUZZLE_BTN: $msg\n${e.stackTraceToString()}\n")
+                RegistroFallos.anotar(applicationContext, "\nPUZZLE_BTN: $msg\n${e.stackTraceToString()}\n")
             }
         }
     }

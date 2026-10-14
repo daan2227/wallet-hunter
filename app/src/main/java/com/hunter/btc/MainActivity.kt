@@ -663,7 +663,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } catch (e: Throwable) {
                 val msg = "PUZZLE_BUILD: ${e.javaClass.simpleName}: ${e.message}"
                 android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show()
-                RegistroFallos.anotar(this, "\n$msg\n${e.stackTraceToString()}\n")
+                RegistroFallos.anotar(applicationContext, "\n$msg\n${e.stackTraceToString()}\n")
             }
             fase = "wallet"
             walletScroll = buildWalletTab()
@@ -685,7 +685,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Throwable) {
             // Escribir error a archivo para diagnóstico
             try {
-                RegistroFallos.anotar(this, "\nCRASH building $fase: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}\n")
+                RegistroFallos.anotar(applicationContext, "\nCRASH building $fase: ${e.javaClass.simpleName}\n${e.message}\n${e.stackTraceToString()}\n")
             } catch (ex: Throwable) {}
             android.widget.Toast.makeText(this,
                 "CRASH building $fase: ${e.javaClass.simpleName}: ${e.message}",
@@ -1789,7 +1789,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Exception) {
             val errMsg = "${e.javaClass.simpleName}: ${e.message}"
             Toast.makeText(this, errMsg, Toast.LENGTH_LONG).show()
-            RegistroFallos.anotar(this, "\ndoToggle: $errMsg\n${e.stackTraceToString()}\n")
+            RegistroFallos.anotar(applicationContext, "\ndoToggle: $errMsg\n${e.stackTraceToString()}\n")
         }
     }
 

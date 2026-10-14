@@ -564,7 +564,9 @@ class PubkeyToolsActivity : Activity() {
                     runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "Only compressed P2PKH keys are supported here." }; return@Thread
                 }
                 val utxoStr = ChainApi.get("/address/$addr/utxo")
-                val tip = ChainApi.get("/blocks/tip/height")?.trim()?.toIntOrNull() ?: 0
+                // Con la comprobación de altura creíble (ver ChainInfo.tipHeight): una
+                // inflada dejaba la transacción sin validez durante meses.
+                val tip = ChainInfo.tipHeight() ?: 0
                 if (utxoStr == null) { runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "No network." }; return@Thread }
                 try {
                     val a = org.json.JSONArray(utxoStr); var total = 0L
@@ -583,7 +585,11 @@ class PubkeyToolsActivity : Activity() {
                         .put("to", to).put("amount", envio).put("fee", fee).put("locktime", tip)
                     val raw = try { HunterEngine.buildAndSignTx(req.toString()) } catch (e: Throwable) { "ERROR:build" }
                     runOnUiThread {
-                        sweepCorriendo = false; btn.text = "Prepare sweep"
+                        sweepCorriendo = false
+                        // Se tarda en leer la red: si se salió de la pantalla mientras, no se
+                        // abre un diálogo sobre una Activity muerta (cerraba la app).
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        btn.text = "Prepare sweep"
                         if (raw.startsWith("ERROR") || raw.length < 20) { tvEstado.text = "Could not build: $raw"; return@runOnUiThread }
                         tvEstado.text = "Ready: ${satsABtc(envio)} to ${to.take(14)}…"
                         androidx.appcompat.app.AlertDialog.Builder(this)
@@ -595,6 +601,7 @@ class PubkeyToolsActivity : Activity() {
                                 Thread {
                                     val r = ChainApi.broadcast(raw)
                                     runOnUiThread {
+                                        if (isFinishing || isDestroyed) return@runOnUiThread
                                         tvEstado.text = when (r) {
                                             is ChainApi.Envio.Ok -> "✓ Sent · txid ${r.txid.take(20)}…"
                                             is ChainApi.Envio.Rechazada -> "Rejected: ${r.motivo}"
@@ -750,7 +757,9 @@ class PubkeyToolsActivity : Activity() {
             setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(12), 0, 0) }
         lateinit var btn: Button
         btn = boton("Recover") {
-            if (latCorriendo) return@boton
+            // El mismo botón para: antes no había forma de parar el barrido
+            // (hasta 40 firmas por 14 tamaños de nonce), ni al salir de la pantalla.
+            if (latCorriendo) { latCorriendo = false; btn.text = "Stopping…"; return@boton }
             val target = normalizaPubComprimida(etPub.text.toString())
             if (target == null) { Toast.makeText(this, "Enter a valid public key", Toast.LENGTH_SHORT).show(); return@boton }
             val fixed = etBits.text.toString().trim().toIntOrNull()?.coerceIn(1, 255)   // null = auto-detect
@@ -762,7 +771,7 @@ class PubkeyToolsActivity : Activity() {
             }
             if (sigs.size < 2) { Toast.makeText(this, "Need at least 2 signatures (r s z)", Toast.LENGTH_LONG).show(); return@boton }
             if (sigs.size > 40) { Toast.makeText(this, "Too many signatures (max 40 here)", Toast.LENGTH_LONG).show(); return@boton }
-            salida.removeAllViews(); latCorriendo = true; btn.text = "…"
+            salida.removeAllViews(); latCorriendo = true; btn.text = "Stop"
             tv.text = if (fixed != null) "Reducing lattice (2^$fixed nonces)…" else "Auto-detecting nonce size…"
             Thread {
                 val verify = { cand: java.math.BigInteger ->
@@ -775,8 +784,11 @@ class PubkeyToolsActivity : Activity() {
                     else Lattice.recoverAuto(sigs, { !latCorriendo }, verify)?.let { d = it.first }
                 } catch (e: Throwable) {}
                 val dd = d
+                val parado = !latCorriendo
                 runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
                     latCorriendo = false; btn.text = "Recover"
+                    if (dd == null && parado) { tv.text = "Stopped."; return@runOnUiThread }
                     if (dd != null) {
                         val priv = dd.toString(16).padStart(64, '0')
                         val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
@@ -842,7 +854,10 @@ class PubkeyToolsActivity : Activity() {
                         val k = rfc6979(d, z)
                         val rx = HunterEngine.pubDeHex(k.toString(16).padStart(64, '0')).substring(2)
                         val r = java.math.BigInteger(rx, 16).mod(SECP_N)
-                        val s = k.modInverse(SECP_N).multiply(z.add(r.multiply(d))).mod(SECP_N)
+                        val s0 = k.modInverse(SECP_N).multiply(z.add(r.multiply(d))).mod(SECP_N)
+                        // s bajo (BIP62/BIP146): con s > n/2 la firma es maleable y la red
+                        // no la retransmite.
+                        val s = if (s0 > SECP_N.shiftRight(1)) SECP_N.subtract(s0) else s0
                         salida.addView(filaResultado("RFC6979 signature", "r ${r.toString(16)}\ns ${s.toString(16)}", true))
                     } else if (t.size >= 3) {
                         val r = java.math.BigInteger(t[0], 16); val z = java.math.BigInteger(t[2], 16)
@@ -850,8 +865,14 @@ class PubkeyToolsActivity : Activity() {
                         val rx = HunterEngine.pubDeHex(k.toString(16).padStart(64, '0')).substring(2)
                         val rDet = java.math.BigInteger(rx, 16).mod(SECP_N)
                         val det = rDet == r
-                        salida.addView(filaResultado(if (det) "✓ Deterministic (RFC6979)" else "⚠ Random nonce (not RFC6979)",
-                            "r ${r.toString(16).take(20)}…"))
+                        // Que no coincida NO prueba un nonce aleatorio: Bitcoin Core (y
+                        // otras) repiten RFC6979 con datos extra hasta sacar una r corta,
+                        // y así salen la mitad de sus firmas. Antes se marcaba como
+                        // "Random nonce" sin más.
+                        salida.addView(filaResultado(if (det) "✓ Deterministic (plain RFC6979)" else "• Not plain RFC6979",
+                            if (det) "r ${r.toString(16).take(20)}…"
+                            else "r ${r.toString(16).take(20)}…\nMay be RFC6979 with extra data (e.g. Bitcoin Core " +
+                                 "grinding for a short r) or a random nonce. This check can't tell them apart."))
                     }
                 } catch (e: Throwable) {}
             }
@@ -1259,12 +1280,39 @@ class PubkeyToolsActivity : Activity() {
             if (d == null) { Toast.makeText(this, "Not a valid PSBT", Toast.LENGTH_SHORT).show(); return@boton }
             val hx = hexClave(etKey.text.toString())
             if (hx.isBlank()) { Toast.makeText(this, "Invalid key", Toast.LENGTH_SHORT).show(); return@boton }
-            val n = Psbt.sign(d, hx)
-            if (n == 0) salida.addView(filaResultado("Nothing signed", "no inputs match this key, or unsupported type"))
-            else {
-                val out = android.util.Base64.encodeToString(Psbt.serialize(d), android.util.Base64.NO_WRAP)
-                salida.addView(filaResultado("Signed $n input(s) · updated PSBT", out, true))
+            // Antes se firmaba sin enseñar nada. Ahora: revisión (entradas que no
+            // cuadran = no se firma) y confirmación con destinos, importes y comisión.
+            val rev = try { Psbt.revisar(d) } catch (e: Throwable) { null }
+            if (rev == null) { salida.addView(filaResultado("Cannot sign", "The PSBT could not be read completely.")); return@boton }
+            if (rev.problemas.isNotEmpty()) {
+                salida.addView(filaResultado("Not signed — check this PSBT", rev.problemas.joinToString("\n")))
+                return@boton
             }
+            fun btcTxt(sat: Long) = "%.8f BTC".format(sat / 1e8)
+            val texto = buildString {
+                appendLine("It pays:")
+                for ((dir, v) in rev.salidas) appendLine("• ${btcTxt(v)} → $dir")
+                appendLine()
+                if (rev.comision != null) appendLine("Fee: ${btcTxt(rev.comision)}" +
+                    (if (rev.totalEntradas != null && rev.comision * 10 > rev.totalEntradas) "  ⚠ more than 10 % of the inputs" else ""))
+                else appendLine("Fee: unknown (some input amounts are missing)")
+                append("\nSign only if this is exactly what you expect.")
+            }
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("Sign this PSBT?")
+                .setMessage(texto)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Sign") { _, _ ->
+                    val n = try { Psbt.sign(d, hx) } catch (e: Throwable) { -1 }
+                    when {
+                        n < 0 -> salida.addView(filaResultado("Cannot sign", "The PSBT is malformed."))
+                        n == 0 -> salida.addView(filaResultado("Nothing signed", "no inputs match this key, or unsupported type"))
+                        else -> {
+                            val out = android.util.Base64.encodeToString(Psbt.serialize(d), android.util.Base64.NO_WRAP)
+                            salida.addView(filaResultado("Signed $n input(s) · updated PSBT", out, true))
+                        }
+                    }
+                }.show()
         }
         nota(AppTheme.BLUE, "Signs P2WPKH and P2PKH inputs whose key you hold (from witness_utxo " +
              "or non_witness_utxo). Adds partial signatures — it does not finalize or broadcast.")
@@ -1314,9 +1362,11 @@ class PubkeyToolsActivity : Activity() {
         val salida = salidaBox()
         et.addTextChangedListener(object : android.text.TextWatcher {
             override fun afterTextChanged(s: android.text.Editable?) {
-                var bits = 0.0
-                for (c in (s?.toString() ?: "")) bits += when { c in '1'..'6' -> 2.585; c == '0' || c == '1' -> 1.0; else -> 0.0 }
-                tv.text = "≈ ${bits.toInt()} bits of entropy" + (if (bits < 128) " — roll more (aim for 128+)" else " ✓")
+                val txt = s?.toString() ?: ""
+                val bits = EntropiaFisica.bits(txt)
+                tv.text = if (txt.any { it.isDigit() } && bits == 0.0)
+                    "Use only dice (1-6) or only coins (0/1), not both"
+                else "≈ ${bits.toInt()} bits of entropy" + (if (bits < 128) " — roll more (aim for 128+)" else " ✓")
             }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -1338,9 +1388,6 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── Shamir split (k-of-n) ──────────────────────────────────────────────
-    private val gfExp by lazy { val e = IntArray(512); var a = 1; for (i in 0 until 255) { e[i] = a; var b = a shl 1; if (a and 0x80 != 0) b = b xor 0x11b; a = (b xor a) and 0xff }; for (i in 255 until 512) e[i] = e[i-255]; e }
-    private val gfLog by lazy { val l = IntArray(256); for (i in 0 until 255) l[gfExp[i]] = i; l }
-    private fun gmul(x: Int, y: Int) = if (x == 0 || y == 0) 0 else gfExp[gfLog[x] + gfLog[y]]
     private fun construirShamir() {
         desc("Real secret sharing: split a key into n shares so any k of them restore it " +
              "(k-of-n over GF(256)). Fewer than k reveal nothing. Paste k shares to combine.")
@@ -1356,21 +1403,7 @@ class PubkeyToolsActivity : Activity() {
             val k = etT.text.toString().toIntOrNull() ?: 2; val n = etN.text.toString().toIntOrNull() ?: 3
             if (sec == null || sec.size != 32) { Toast.makeText(this, "Secret must be 64 hex", Toast.LENGTH_SHORT).show(); return@boton }
             if (k < 2 || n < k || n > 255) { Toast.makeText(this, "Need 2 ≤ k ≤ n ≤ 255", Toast.LENGTH_SHORT).show(); return@boton }
-            val rnd = java.security.SecureRandom()
-            // Un ÚNICO polinomio de grado k-1 por byte: el término independiente
-            // es el byte del secreto y los coeficientes c1..c_{k-1} son fijos, y
-            // se evalúan luego en cada x. Antes se regeneraban dentro del bucle de
-            // shares, así que cada share caía en un polinomio distinto y no había
-            // forma de recombinarlas: el combine devolvía una clave equivocada.
-            val coef = Array(32) { bi -> IntArray(k) { c -> if (c == 0) sec[bi].toInt() and 0xFF else rnd.nextInt(256) } }
-            for (x in 1..n) {
-                val y = ByteArray(32)
-                for (bi in 0 until 32) {
-                    var acc = coef[bi][0]                        // c0 = byte del secreto
-                    var xp = 1
-                    for (c in 1 until k) { xp = gmul(xp, x); acc = acc xor gmul(coef[bi][c], xp) }
-                    y[bi] = acc.toByte()
-                }
+            for ((x, y) in Shamir256.repartir(sec, k, n, java.security.SecureRandom())) {
                 val hex = "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
                 salS.addView(filaResultado("Share $x of $n", hex, true))
             }
@@ -1382,23 +1415,19 @@ class PubkeyToolsActivity : Activity() {
             salC.removeAllViews()
             val sh = etC.text.toString().split('\n').map { it.trim().removePrefix("0x") }.filter { it.length == 66 }
             if (sh.size < 2) { Toast.makeText(this, "Paste at least 2 valid shares", Toast.LENGTH_SHORT).show(); return@boton }
-            val xs = IntArray(sh.size); val ys = Array(sh.size) { ByteArray(32) }
-            var okp = true
-            for (i in sh.indices) { val bb = hexABytes(sh[i]) ?: run { okp = false; null } ?: break
-                xs[i] = bb[0].toInt() and 0xFF; for (j in 0 until 32) ys[i][j] = bb[j+1] }
-            if (!okp) { Toast.makeText(this, "A share is not valid hex", Toast.LENGTH_SHORT).show(); return@boton }
-            val out = ByteArray(32)
-            for (bi in 0 until 32) {
-                var s = 0
-                for (i in sh.indices) {
-                    var num = 1; var den = 1
-                    for (j in sh.indices) if (j != i) { num = gmul(num, xs[j]); den = gmul(den, xs[j] xor xs[i]) }
-                    val lag = gmul(num, if (den == 0) 0 else gfExp[255 - gfLog[den]])   // num/den
-                    s = s xor gmul(ys[i][bi].toInt() and 0xFF, lag)
+            val partes = sh.map { h -> hexABytes(h) ?: run {
+                Toast.makeText(this, "A share is not valid hex", Toast.LENGTH_SHORT).show(); return@boton } }
+                .map { bb -> (bb[0].toInt() and 0xFF) to bb.copyOfRange(1, 33) }
+            when (val r = Shamir256.combinar(partes)) {
+                is Shamir256.Resultado.Error -> salC.addView(filaResultado("Cannot combine", r.motivo))
+                is Shamir256.Resultado.Ok -> {
+                    salC.addView(filaResultado("Recombined key",
+                        r.secreto.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
+                    salC.addView(filaResultado("Check",
+                        "Only correct with at least k distinct shares: the share format doesn't carry k, " +
+                        "so fewer shares give a wrong key without any warning."))
                 }
-                out[bi] = s.toByte()
             }
-            salC.addView(filaResultado("Recombined key", out.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
         }
     }
 
@@ -1752,6 +1781,7 @@ class PubkeyToolsActivity : Activity() {
                 val reusos = ArrayList<Array<String?>>()
                 val yaVisto = HashSet<String>()
                 var firmas = 0; var txs = 0; var ultimo = ""; var paginas = 0; var red = true
+                var hayMas = false; var latticeHecho = false
                 bucle@ while (nonceCorriendo && paginas < 6) {
                     val ruta = "/address/$addr/txs" + (if (ultimo.isEmpty()) "" else "/chain/$ultimo")
                     val cuerpo = ChainApi.get(ruta) ?: run { if (txs == 0) red = false; null } ?: break@bucle
@@ -1781,9 +1811,11 @@ class PubkeyToolsActivity : Activity() {
                     }
                     val ht = txs; val hf = firmas
                     runOnUiThread { tvEstado.text = "Scanned $ht tx · $hf signatures" }
-                    if (arr.length() < 25) break@bucle
+                    hayMas = arr.length() >= 25
+                    if (!hayMas) break@bucle
                 }
                 val fin = txs; val sigs = firmas
+                val parado = !nonceCorriendo
                 // Si no hubo clave recuperada por reutilización, probar el ataque de
                 // retícula (nonces cortos/sesgados) sobre la pubkey con más firmas.
                 var latPriv: String? = null; var latPub: String? = null
@@ -1800,6 +1832,7 @@ class PubkeyToolsActivity : Activity() {
                             try { tri.add(Triple(java.math.BigInteger(sr.r, 16), java.math.BigInteger(sr.s, 16), java.math.BigInteger(z, 16))) } catch (e: Throwable) {}
                         }
                         if (target != null && tri.size >= 3) {
+                            latticeHecho = true
                             val pr = try { Lattice.recoverAuto(tri, { !nonceCorriendo }) { cand ->
                                 val pv = cand.toString(16).padStart(64, '0')
                                 (try { HunterEngine.pubDeHex(pv) } catch (e: Throwable) { "" }).equals(target, ignoreCase = true)
@@ -1840,6 +1873,14 @@ class PubkeyToolsActivity : Activity() {
                                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                                 typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
                         }
+                        // "Clean" sólo si de verdad se miró todo. Antes salía también al
+                        // pulsar Stop, al llegar al tope de 150 tx o sin haber podido
+                        // probar la retícula: un nonce reutilizado en la página 8 quedaba
+                        // como "limpio".
+                        parado -> tvEstado.text = "Incomplete (stopped) · $fin tx · $sigs signatures checked · no reuse in them"
+                        hayMas -> tvEstado.text = "Incomplete: only the latest $fin tx were checked (limit 150) · no reuse in them"
+                        !latticeHecho -> tvEstado.text = "No reuse · $fin tx · $sigs signatures · weak-nonce (lattice) check " +
+                                                         "not run: it needs at least 3 signatures from one key"
                         else -> tvEstado.text = "Clean · $fin tx · $sigs signatures · no reuse, no weak nonces"
                     }
                 }
@@ -1852,7 +1893,7 @@ class PubkeyToolsActivity : Activity() {
         try { HunterEngine.vanityStop() } catch (e: Throwable) {}
         try { HunterEngine.bsgsStop() } catch (e: Throwable) {}
         bsgsCorriendo = false
-        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false
+        bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; latCorriendo = false
         balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
         super.onDestroy()
     }
