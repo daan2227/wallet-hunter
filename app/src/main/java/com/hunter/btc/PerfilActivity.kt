@@ -16,6 +16,7 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
+        PantallaSegura.aplicar(this)
         AppTheme.init(this); AppLock.init(this)
 
         val scroll = ScrollView(this).apply { background = AppTheme.fondoApp() }

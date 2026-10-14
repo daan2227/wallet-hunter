@@ -198,6 +198,13 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         if (on) Sonido.moneda(this)   // muestra cómo suena al activarlo
     }
 
+    val privacidad = grupo("Privacy")
+    filaSwitch(privacidad, "Block screenshots",
+        "Hide the app in recent apps and stop screen capture", PantallaSegura.activa(this)) { on ->
+        PantallaSegura.poner(this, on)
+        PantallaSegura.aplicar(this)
+    }
+
     val rendimiento = grupo("Performance")
     // Pasos redondos de %, no de uno en uno: para segundo plano lo que importa
     // es el extremo bajo, así que hay más escalones ahí.

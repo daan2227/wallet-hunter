@@ -916,7 +916,7 @@ object WalletManager {
     private const val VUELTAS_COPIA_V1 = 100_000
 
     /** Longitud mínima de la contraseña de una copia nueva. */
-    const val MIN_CONTRASENA_COPIA = 10
+    const val MIN_CONTRASENA_COPIA = 12
 
     private fun claveCopia(secreto: String, salt: ByteArray, vueltas: Int): javax.crypto.SecretKey {
         val factory = javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")

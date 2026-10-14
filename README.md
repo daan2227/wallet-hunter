@@ -232,6 +232,15 @@ leave it for more than 30 seconds, and asks for the PIN again.
   a single step: either both change or neither does. The keys themselves don't.
 - **The PIN can't be recovered.** If you forget it the seeds can't be opened, so
   keep your seed phrase written down.
+- **Screenshots are blocked** (More › Privacy, on by default): the app shows black in
+  the recent-apps view and can't be captured. Screens that show a seed or a WIF
+  block capture regardless of that setting.
+- **Copied keys clean up after themselves**: a private key copied from the vault or
+  the key tools is marked sensitive and erased from the clipboard after 60 s.
+- **Backups use their own password** of at least 12 characters, with a strength
+  meter that rejects guessable ones (common words, sequences, repeats). Backups made
+  by old versions used the 6-digit PIN; the app warns you when you restore one,
+  so you can make a new one.
 - **Not covered by the PIN**: WIF keys, watch-only wallets and the finds vault are
   protected by the secure hardware only. The scanner saves finds while the app is
   locked, when no PIN key exists.
@@ -246,3 +255,12 @@ find alert, vibration and the coin sound on a find, each independently.
 **Appearance** switches light/dark. **Debug** shows the engine log and files. And
 the **Help** screen, which mirrors this document in the app. (Scanner, Puzzle,
 Wallet, Recovery and Weak-key each have their own tab in the bottom bar.)
+
+## Release signing
+
+The APK is signed by the CI with the keystore in the `RELEASE_KEYSTORE_B64` secret.
+Without it the workflow falls back to a key kept in the GitHub Actions cache, which
+expires after 7 days without a build (the next APK would then be signed with a new
+key and could not update over the old one) and can be read by anyone with write
+access to the repository. To make the CI refuse that fallback, add the secret and
+then create a repository **variable** named `REQUIRE_RELEASE_KEYSTORE` set to `true`.

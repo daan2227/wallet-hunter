@@ -603,6 +603,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // puede cambiar, y de él salen los colores de todos los diálogos.
         setTheme(AppTheme.estilo(this))
         super.onCreate(savedState)
+        PantallaSegura.aplicar(this)
         // Capturar crashes globales.
         //
         // Se escribía además una copia en getExternalFilesDir(). Con minSdk 26 y
@@ -1406,10 +1407,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 }
             }
-            // El motor sigue escribiendo los aciertos en claro —el Keystore es de
-            // la capa Java y C++ no llega a él—, así que se recogen en cuanto
-            // aparecen. Sólo cuando el contador sube: leer el fichero en cada
-            // tick de 800 ms sería I/O para nada.
+            // El motor entrega cada acierto al baúl cifrado en el momento
+            // (HunterEngine.alHallar); lo que no pueda entregar queda en memoria,
+            // nunca en disco, y se recoge aquí. Sólo cuando el contador sube:
+            // hacerlo en cada tick de 800 ms sería trabajo para nada.
             val foundNow = HunterEngine.getFound()
             if (foundNow != lastFoundSeen) {
                 lastFoundSeen = foundNow

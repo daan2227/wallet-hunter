@@ -58,7 +58,7 @@ jobs:
         fi
         # La reticula es Python y valida el algoritmo que usa Lattice.kt: sólo
         # se lanza si cambia ese código o su validador.
-        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|app/src/test/|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
+        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|SeedEnvelope\.kt|FuerzaContrasena\.kt|app/src/test/|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
           echo "lattice=1" >> "$GITHUB_OUTPUT"
         else
           echo "lattice=0" >> "$GITHUB_OUTPUT"
@@ -188,13 +188,21 @@ jobs:
         path: app/debug.keystore
         key: firma-respaldo-v1
 
+    # Para exigir el secret —y que la CI se niegue a firmar con la clave de
+    # respaldo de la caché— basta crear una VARIABLE del repositorio (no un
+    # secret) llamada REQUIRE_RELEASE_KEYSTORE con el valor "true". Está apagado
+    # por defecto: activarlo sin tener el secret dejaría la CI sin poder compilar.
     - name: Restore signing keystore
       env:
         KEYSTORE_B64: ${{ secrets.RELEASE_KEYSTORE_B64 }}
+        EXIGIR_FIRMA: ${{ vars.REQUIRE_RELEASE_KEYSTORE }}
       run: |
         if [ -n "$KEYSTORE_B64" ]; then
           echo "$KEYSTORE_B64" | base64 -d > app/release.keystore
           echo "Using release keystore from secrets."
+        elif [ "$EXIGIR_FIRMA" = "true" ]; then
+          echo "::error::RELEASE_KEYSTORE_B64 is not set and REQUIRE_RELEASE_KEYSTORE=true: refusing to sign with the cached fallback key."
+          exit 1
         elif [ -f app/debug.keystore ]; then
           echo "::warning::RELEASE_KEYSTORE_B64 not set — signing with the cached fallback key (same as previous builds)."
         else
@@ -208,11 +216,11 @@ jobs:
     # Pruebas JVM de Lattice.kt (el ataque de retícula de verdad, no su
     # réplica en Python): firmas fabricadas con una clave conocida. Sólo corre
     # cuando cambia Lattice.kt o sus pruebas.
-    - name: Pruebas de la reticula (JVM)
+    - name: Pruebas JVM (reticula, sobre de semillas, contraseñas)
       if: steps.motor.outputs.lattice == '1'
       run: |
         chmod +x gradlew
-        ./gradlew :app:testDebugUnitTest --tests 'com.hunter.btc.LatticeTest'
+        ./gradlew :app:testDebugUnitTest
 
     - name: Build Release APK
       env:

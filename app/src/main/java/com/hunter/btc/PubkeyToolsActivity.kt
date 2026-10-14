@@ -62,6 +62,7 @@ class PubkeyToolsActivity : Activity() {
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
+        PantallaSegura.aplicar(this)
         AppTheme.init(this)
         AppLock.init(this)
 
@@ -249,6 +250,13 @@ class PubkeyToolsActivity : Activity() {
 
     private fun copiar(texto: String) {
         try {
+            // Si lleva una clave privada (hex de 64, WIF, xprv) va como secreto:
+            // marcado como sensible para los teclados, y borrado a los 60 s.
+            if (Secretos.tachar(texto) != texto) {
+                Secretos.copiarClave(this, "btc", texto)
+                Toast.makeText(this, "Copied · cleared from the clipboard in 60 s", Toast.LENGTH_SHORT).show()
+                return
+            }
             val cb = getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager
             cb.setPrimaryClip(android.content.ClipData.newPlainText("btc", texto))
             Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()

@@ -385,6 +385,7 @@ object PinAuthHelper {
                 }
             }
         }
+        PantallaSegura.aplicarDialogo(dlg, activity)   // la entrada del PIN no sale en capturas
         dlg!!.show()
 
         if (WalletManager.esperaPin(activity) > 0) cuenta.run()

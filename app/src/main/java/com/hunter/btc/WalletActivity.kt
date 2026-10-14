@@ -115,6 +115,7 @@ class WalletActivity : FragmentActivity() {
         // puede cambiar, y de él salen los colores de todos los diálogos.
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
+        PantallaSegura.aplicar(this)
         // El tema es un objeto de proceso: lo fija la primera pantalla que
         // arranca. Si Android mata el proceso y lo revive directamente aqui
         // —desde una notificacion, o al volver a la tarea—, esa primera
@@ -3191,7 +3192,27 @@ class WalletActivity : FragmentActivity() {
         })
         val et1 = campoSecreto("Password")
         val et2 = campoSecreto("Repeat the password")
-        root.addView(et1); root.addView(et2)
+        // Medidor de fuerza: una estimación, no una garantía. Avisa mientras se escribe.
+        val tvFuerza = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; typeface = AppTheme.body(context)
+            setPadding(0, dp(6), 0, 0)
+        }
+        et1.addTextChangedListener(object : android.text.TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(s: android.text.Editable?) {
+                val p = s?.toString() ?: ""
+                if (p.isEmpty()) { tvFuerza.text = ""; return }
+                val r = FuerzaContrasena.evaluar(p)
+                tvFuerza.text = "Strength: ${r.nivel.texto} (about ${r.bits.toInt()} bits, an estimate)"
+                tvFuerza.setTextColor(when (r.nivel) {
+                    FuerzaContrasena.Nivel.DEBIL -> AppTheme.RED
+                    FuerzaContrasena.Nivel.JUSTA -> AppTheme.WARN
+                    else -> AppTheme.ACCENT
+                })
+            }
+        })
+        root.addView(et1); root.addView(tvFuerza); root.addView(et2)
 
         val d = AlertDialog.Builder(this)
             .setTitle("New backup")
@@ -3206,8 +3227,8 @@ class WalletActivity : FragmentActivity() {
                 when {
                     p1.length < WalletManager.MIN_CONTRASENA_COPIA ->
                         et1.error = "At least ${WalletManager.MIN_CONTRASENA_COPIA} characters"
-                    p1.all { it.isDigit() } && p1.length < 16 ->
-                        et1.error = "Only digits is too easy to guess: add letters"
+                    !FuerzaContrasena.aceptable(p1) ->
+                        et1.error = "Too easy to guess: use a longer phrase, or mix letters, digits and symbols"
                     p1 != p2 -> et2.error = "They do not match"
                     else -> {
                         d.dismiss()
@@ -3382,7 +3403,12 @@ class WalletActivity : FragmentActivity() {
                             "${resumen.matches} find(s)." +
                             (if (resumen.hasMainSeed) " Its main seed goes next to yours, " +
                                                       "without replacing it." else "") +
-                            " Nothing you have is deleted.")
+                            " Nothing you have is deleted." +
+                            // Las copias de antes se cifraron con el PIN de 6 dígitos: débil.
+                            (if (WalletManager.copiaConPin(data))
+                                "\n\nThis backup uses the old encryption (a 6-digit PIN, guessed in " +
+                                "hours). After restoring, create a new backup with a strong password " +
+                                "and delete this one." else ""))
                 .setPositiveButton("Restore") { _, _ ->
                     Thread {
                         val count = WalletManager.importBackup(this, pin, data)
