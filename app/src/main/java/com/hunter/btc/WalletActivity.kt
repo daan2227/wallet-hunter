@@ -674,6 +674,9 @@ class WalletActivity : FragmentActivity() {
                         totalSat += r.sat
                         rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} change [${f.index}]",
                                             f.addr, r.sat, r.source))
+                        // Gastable también: antes el cambio se veía en el saldo pero
+                        // ninguna dirección de Enviar podía moverlo.
+                        clavePorProposito[purpose]?.let { nuevasGastables[RutaClave.clave(it, f.index, true)] = f.addr }
                     }
                 }
                 if (nuevasGastables.isNotEmpty()) {
@@ -947,16 +950,7 @@ class WalletActivity : FragmentActivity() {
     }
 
     /** La ruta BIP32 de una dirección de la lista, por su clave (p2wpkh_3…). */
-    private fun rutaDeClave(k: String): String? {
-        val i = k.substringAfterLast('_').toIntOrNull() ?: 0
-        return when {
-            k.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$i"
-            k.startsWith("p2sh")   -> "m/49'/0'/0'/0/$i"
-            k.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$i"
-            k.startsWith("p2tr")   -> "m/86'/0'/0'/0/$i"
-            else -> null
-        }
-    }
+    private fun rutaDeClave(k: String): String? = RutaClave.ruta(k, isTestnet)
 
     /**
      * Sube la comisión de un envío atascado (RBF, BIP125).
@@ -1829,7 +1823,6 @@ class WalletActivity : FragmentActivity() {
                     // que enviar desde una bc1p firmaba con la clave de OTRA
                     // dirección. Además fromKey.last() tomaba un solo carácter:
                     // con índices de dos cifras habría derivado el índice 0.
-                    val addrIdx = fromKey.substringAfterLast('_').toIntOrNull() ?: 0
 
                     // Los cuatro tipos que la wallet deriva se pueden gastar:
                     // P2PKH heredado, P2SH-P2WPKH (BIP49), P2WPKH nativo y
@@ -1837,11 +1830,10 @@ class WalletActivity : FragmentActivity() {
                     val pathStr = when {
                         // Un WIF no tiene ruta: el motor firma con la clave del
                         // WIF (ver "wif" en la petición).
-                        isWifMode                    -> ""
-                        fromKey.startsWith("p2pkh")  -> "m/44'/0'/0'/0/$addrIdx"
-                        fromKey.startsWith("p2sh")   -> "m/49'/0'/0'/0/$addrIdx"
-                        fromKey.startsWith("p2wpkh") -> "m/84'/0'/0'/0/$addrIdx"
-                        fromKey.startsWith("p2tr")   -> "m/86'/0'/0'/0/$addrIdx"
+                        isWifMode -> ""
+                        // Recepción (…/0/i) o cambio (…/1/i), con el coin type de la red.
+                        // Un índice ilegible ya no se convierte en 0: no se firma.
+                        RutaClave.ruta(fromKey, isTestnet) != null -> RutaClave.ruta(fromKey, isTestnet)!!
                         else -> {
                             runOnUiThread {
                                 tvStatus.text = "Unsupported address type: $fromKey"
@@ -2282,6 +2274,9 @@ class WalletActivity : FragmentActivity() {
         wifKey = ""
         wifAddr = ""
         isWifMode = false
+        // También el id: se quedaba el de la cartera anterior, y "Delete wallet"
+        // en la principal borraba la secundaria que se había abierto antes.
+        currentWalletId = ""
         selectedUtxos.clear()
         // Ejecutar la carga de la nueva wallet
         onReady()
@@ -2665,18 +2660,36 @@ class WalletActivity : FragmentActivity() {
                         }
                         AlertDialog.Builder(this).setTitle("Delete the wallet?").setMessage(aviso)
                             .setPositiveButton("Delete") { _, _ ->
-                                when {
-                                    isWifMode && wifAddr.isNotEmpty() -> {
-                                        /* Borrar WIF o Watcher */
-                                        val wifList = WalletManager.listWifs(this)
-                                        val match = wifList.firstOrNull { it.second == wifKey || it.third.startsWith(wifAddr) }
-                                        if (match != null) WalletManager.removeWif(this, match.first)
-                                        val watchList = WalletManager.listWatchers(this)
-                                        val watchMatch = watchList.firstOrNull { it.second == wifAddr }
-                                        if (watchMatch != null) WalletManager.removeWatcher(this, watchMatch.first)
+                                // Sólo se borra lo que está en pantalla, y se comprueba
+                                // antes: con un id o un modo desfasados se borraba OTRA
+                                // cartera, sin vuelta atrás.
+                                val borrado: Boolean = if (isWifMode) {
+                                    /* WIF o vigilada: nunca cae al borrado de una semilla. */
+                                    val wifList = WalletManager.listWifs(this)
+                                    val match = wifList.firstOrNull {
+                                        (wifKey.isNotEmpty() && it.second == wifKey) ||
+                                        (wifKey.isEmpty() && wifAddr.isNotEmpty() && it.third.substringBefore('|') == wifAddr)
                                     }
-                                    currentWalletId.isNotEmpty() -> WalletManager.deleteWallet(this, currentWalletId)
-                                    else -> WalletManager.clearSeedOnly(this)
+                                    if (match != null) WalletManager.removeWif(this, match.first)
+                                    val watchMatch = if (wifAddr.isNotEmpty())
+                                        WalletManager.listWatchers(this).firstOrNull { it.second == wifAddr } else null
+                                    if (watchMatch != null) WalletManager.removeWatcher(this, watchMatch.first)
+                                    match != null || watchMatch != null
+                                } else if (mnemonic.isEmpty()) {
+                                    false
+                                } else if (currentWalletId.isNotEmpty()) {
+                                    if (WalletManager.loadWalletSeed(this, currentWalletId) == mnemonic) {
+                                        WalletManager.deleteWallet(this, currentWalletId); true
+                                    } else false
+                                } else {
+                                    if (WalletManager.loadSeed(this) == mnemonic) {
+                                        WalletManager.clearSeedOnly(this); true
+                                    } else false
+                                }
+                                if (!borrado) {
+                                    Toast.makeText(this, "Could not match this wallet to what is stored. Nothing was deleted.",
+                                        Toast.LENGTH_LONG).show()
+                                    return@setPositiveButton
                                 }
                                 finish()
                             }

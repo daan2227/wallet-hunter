@@ -27,7 +27,10 @@ static const char B58C[]="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuv
 static void b58enc(const uint8_t *pl,int plen,char *out,int osz){
     uint8_t buf[plen+4];memcpy(buf,pl,plen);uint8_t ck[32];SHA256_CTX sc;SHA256_Init(&sc);SHA256_Update(&sc,pl,plen);SHA256_Final(ck,&sc);SHA256_Init(&sc);SHA256_Update(&sc,ck,32);SHA256_Final(ck,&sc);memcpy(buf+plen,ck,4);
     BIGNUM *bn=BN_new(),*rem=BN_new(),*d58=BN_new();BN_CTX *bctx=BN_CTX_new();BN_bin2bn(buf,plen+4,bn);BN_set_word(d58,58);
-    char tmp[64];int tlen=0;while(!BN_is_zero(bn)){BN_div(bn,rem,bn,d58,bctx);tmp[tlen++]=B58C[BN_get_word(rem)];}
+    /* tmp a la medida del peor caso: 1,37 caracteres por byte + los '1' de los
+       ceros iniciales. Era tmp[64], y el intermedio de BIP38 (53 bytes -> 72
+       caracteres) escribía 8 bytes más allá de la pila. */
+    char tmp[2*(plen+4)+2];int tlen=0;while(!BN_is_zero(bn)){BN_div(bn,rem,bn,d58,bctx);tmp[tlen++]=B58C[BN_get_word(rem)];}
     for(int i=0;i<plen+4&&buf[i]==0;i++)tmp[tlen++]='1';int ol=0;for(int i=tlen-1;i>=0&&ol<osz-1;i--)out[ol++]=tmp[i];out[ol]='\0';BN_free(bn);BN_free(rem);BN_free(d58);BN_CTX_free(bctx);
 }
 /* Byte de version de la red. El escaner siempre es de mainnet, asi que va por

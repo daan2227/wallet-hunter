@@ -1192,6 +1192,13 @@ object WeakController {
     }
 
     private fun arrancar() {
+        // Un solo motor Kangaroo: si lo está usando la búsqueda de Puzzle, no se
+        // le para por debajo (ver KangarooDueno).
+        if (KangarooDueno.ocupadoPorOtro(KangarooDueno.WEAK)) {
+            aviso("A Puzzle Kangaroo search is running. Stop it first: both use the same engine.")
+            return
+        }
+        KangarooDueno.actual = KangarooDueno.WEAK
         try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs(); bsgsBatchOn = false; btnBsgs?.text = BSGS_LABEL
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
@@ -1331,7 +1338,10 @@ object WeakController {
         corriendo = false
         h.removeCallbacksAndMessages(null)
         appCtx?.let { WeakService.parar(it) }   // suelta el primer plano y el WakeLock
-        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+        if (KangarooDueno.actual == KangarooDueno.WEAK) {
+            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+            KangarooDueno.actual = null
+        }
         try {
             appCtx?.getSharedPreferences("weakkey", Context.MODE_PRIVATE)?.edit()
                 ?.putFloat("ritmo", ritmoDisp.toFloat())?.apply()

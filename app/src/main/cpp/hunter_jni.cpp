@@ -80,6 +80,7 @@ static void install_crash_handlers() {
 #define MAX_LINE      256
 #define MAX_ADDR      64
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "vanity.h"        /* generador de direcciones vanity (motor del escaner) */
 #include "bsgs.h"          /* baby-step/giant-step para rangos pequenos */
 #define N_PATHS       9
@@ -1190,10 +1191,27 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_loadCsv(JNIEnv *env,jobject,jstring path){
-    const char *p=env->GetStringUTFChars(path,nullptr);
-    strncpy(g_csv_path,p,sizeof(g_csv_path)-1);
+    /* La carga libera y vuelve a reservar (o desmapea) g_h160, el bloom y el
+       índice que leen los hilos del escáner. Con el escáner en marcha eso era
+       leer memoria liberada; y dos cargas seguidas liberaban lo mismo dos
+       veces. Se rechaza mientras corre, y la carga se reserva ANTES de lanzar
+       el hilo (no dentro), para que una segunda llamada vea que ya hay una. */
+    if(g_running.load()){
+        snprintf(g_load_status,sizeof(g_load_status),"Stop the scan before loading another dataset");
+        return;
+    }
+    bool libre=false;
+    if(!g_loading.compare_exchange_strong(libre,true)){
+        snprintf(g_load_status,sizeof(g_load_status),"A dataset is already loading");
+        return;
+    }
+    const char *p=path?env->GetStringUTFChars(path,nullptr):nullptr;
+    if(!p){ g_loading.store(false); return; }
+    strncpy(g_csv_path,p,sizeof(g_csv_path)-1); g_csv_path[sizeof(g_csv_path)-1]='\0';
     env->ReleaseStringUTFChars(path,p);
-    pthread_t t;pthread_create(&t,nullptr,load_fn,nullptr);pthread_detach(t);
+    pthread_t t;
+    if(pthread_create(&t,nullptr,load_fn,nullptr)!=0){ g_loading.store(false); return; }
+    pthread_detach(t);
 }
 
 /* Se llama al cargar la libreria, desde el hilo de System.loadLibrary y con el
@@ -1264,6 +1282,7 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     install_crash_handlers();
     if(g_running.load())return;
     if(g_stopping.load())return;   /* workers de la sesión anterior aún vivos */
+    if(g_loading.load())return;    /* el dataset se está cargando: g_h160 cambia */
     if(!g_csv_loaded.load()&&g_mode.load()!=1&&g_mode.load()!=2)return;
     g_nthreads.store(threads);g_cpu_limit.store(cpuLimit);
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
@@ -2289,46 +2308,9 @@ static int64_t json_int(const std::string &j,const char *key){
     return (int64_t)strtoll(j.c_str()+p,nullptr,10);
 }
 
-static std::string addr_to_spk(const char *addr) {
-    std::string spk;
-    // bech32 p2wpkh: bc1q... use existing bech32_to_h160
-    if (addr[0]=='b'&&addr[1]=='c'&&addr[2]=='1'&&addr[3]=='q') {
-        uint8_t h[20];
-        if (bech32_to_h160(addr, h) != 1) return "";
-        spk += '\x00'; spk += '\x14';
-        spk += std::string((char*)h, 20);
-        return spk;
-    }
-    /* bech32m p2tr: bc1p... -> OP_1 <32 bytes>. Antes caía en el return ""
-       de abajo, así que enviar a una Taproot daba "bad_to_address". */
-    if (addr[0]=='b'&&addr[1]=='c'&&addr[2]=='1'&&tolower(addr[3])=='p') {
-        uint8_t x[32];
-        if (!p2tr_addr_to_xonly(addr, x)) return "";
-        spk += '\x51'; spk += '\x20';
-        spk += std::string((char*)x, 32);
-        return spk;
-    }
-    // base58 decode
-    const char *B58A="123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-    uint8_t buf[25]={0};
-    for(int i=0;addr[i];i++){
-        const char *p=strchr(B58A,addr[i]); if(!p) return "";
-        int carry=(int)(p-B58A);
-        for(int j=24;j>=0;j--){carry+=58*buf[j];buf[j]=carry&0xff;carry>>=8;}
-    }
-    uint8_t ver=buf[0];
-    uint8_t *h=buf+1;
-    if(ver==0x00||ver==0x6f) { // P2PKH mainnet/testnet
-        spk+='\x76'; spk+='\xa9'; spk+='\x14';
-        spk+=std::string((char*)h,20);
-        spk+='\x88'; spk+='\xac';
-    } else if(ver==0x05||ver==0xc4) { // P2SH mainnet/testnet
-        spk+='\xa9'; spk+='\x14';
-        spk+=std::string((char*)h,20);
-        spk+='\x87';
-    }
-    return spk;
-}
+/* Destino del envío: ver addr_decode.h (estricto, con checksum). Antes
+   decodificaba base58 sin checksum y bech32 sin polymod. */
+static std::string addr_to_spk(const char *addr) { return addr_destino_spk(addr); }
 
 /* nSequence de las entradas.
  *
@@ -2959,7 +2941,8 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     memset(g_kg_ruta,0,sizeof(g_kg_ruta));
     if(jruta){
         const char *cr=env->GetStringUTFChars(jruta,0);
-        if(cr){ strncpy(g_kg_ruta,cr,sizeof(g_kg_ruta)-1);
+        /* Si en esa ruta hay la tabla de otro rango, ésta va aparte: ver kg_ruta_rango. */
+        if(cr){ kg_ruta_rango(cr,pub,ini,fin,g_kg_ruta,sizeof(g_kg_ruta));
                 env->ReleaseStringUTFChars(jruta,cr); }
     }
     memcpy(g_kg_pub,pub,33); memcpy(g_kg_ini,ini,32); memcpy(g_kg_fin,fin,32);

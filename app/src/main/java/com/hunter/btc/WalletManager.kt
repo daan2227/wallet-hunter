@@ -139,17 +139,30 @@ object WalletManager {
         return true
     }
 
-    fun listWifs(ctx: Context): List<Triple<String,String,String>> {
+    fun listWifs(ctx: Context): List<Triple<String,String,String>> = leerWifs(ctx) ?: emptyList()
+
+    /**
+     * Las WIF guardadas, o null si HAY algo cifrado pero no se ha podido abrir.
+     *
+     * listWifs() devuelve vacío en los dos casos, y quien la usaba para leer,
+     * cambiar y volver a escribir (borrar, renombrar, restaurar) escribía una
+     * lista vacía encima de todas las claves tras un solo fallo del Keystore.
+     * Todo lo que reescribe la lista usa esta, y con null no toca nada.
+     */
+    private fun leerWifs(ctx: Context): List<Triple<String,String,String>>? {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
         val encB64 = prefs.getString(PREF_WIF_ENC, null)
         if (encB64 != null) {
-            val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return emptyList()
+            val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return null
             return try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
                 cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS),
                     GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
                 parseWifs(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
-            } catch (e: Exception) { emptyList() }
+            } catch (e: Exception) {
+                android.util.Log.e("WalletManager", "could not open the WIF list: ${e.javaClass.simpleName}")
+                null
+            }
         }
         // Migración desde el formato legacy en claro. Si falla, las claves
         // privadas siguen sin cifrar en disco: hay que dejar rastro.
@@ -165,7 +178,8 @@ object WalletManager {
         return legacy
     }
     fun removeWif(ctx: Context, id: String) {
-        writeWifs(ctx, listWifs(ctx).filter { it.first != id })
+        val lista = leerWifs(ctx) ?: return   // sin poder leer, no se reescribe nada
+        writeWifs(ctx, lista.filter { it.first != id })
         borrarOrigen(ctx, id)
     }
     // Legacy single WIF support
@@ -509,7 +523,8 @@ object WalletManager {
 
     fun renameWif(ctx: Context, id: String, name: String) {
         val n = limpiarNombre(name); if (n.isEmpty()) return
-        writeWifs(ctx, listWifs(ctx).map {
+        val lista = leerWifs(ctx) ?: return
+        writeWifs(ctx, lista.map {
             if (it.first == id) Triple(it.first, it.second, "${it.third.substringBefore('|')}|$n")
             else it
         })
@@ -831,8 +846,11 @@ object WalletManager {
                     val o = arr.getJSONObject(it)
                     Triple(o.optString("id"), o.optString("wif"), o.optString("meta"))
                 }.filter { it.second.isNotEmpty() }
-                if (restored.isNotEmpty()) {
-                    writeWifs(ctx, listWifs(ctx) + restored)
+                // Sin poder leer las que hay, escribir taparía todas: se omiten las
+                // de la copia (no cuentan como restauradas) y sigue con lo demás.
+                val actuales = if (restored.isNotEmpty()) leerWifs(ctx) else null
+                if (actuales != null) {
+                    writeWifs(ctx, (actuales + restored).distinctBy { it.second })
                     restored.forEach { origenDe(it.first) }
                     count += restored.size
                 }

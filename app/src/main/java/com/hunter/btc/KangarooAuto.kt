@@ -74,6 +74,10 @@ private fun MainActivity.kgAutoLanzarParte() {
     val b = BigInteger(prefs.getString(KgAuto.FIN, "0") ?: "0", 16)
     val k = prefs.getInt(KgAuto.K, 1); val i = prefs.getInt(KgAuto.I, 0)
     val (pi, pf) = KgAuto.trozo(a, b, k, i)
+    if (KangarooDueno.ocupadoPorOtro(KangarooDueno.PUZZLE)) {
+        kgAutoParar("The weak-key audit is using the Kangaroo engine. Stop it first (Weak tab).")
+        return
+    }
     if (HunterEngine.kangarooRunning()) try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
     puzzleSeleccionado = 0
     puzzlePubHex = pub; puzzleIniHex = pi.toString(16); puzzleFinHex = pf.toString(16)

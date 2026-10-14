@@ -137,7 +137,7 @@ class HunterService : Service() {
                 HunterEngine.kangarooStart(pub, ini, fin, hilos, porHilo, ruta,
                                            HunterEngine.topeTablaBits(this))
             } catch (e: Throwable) { false }
-            if (ok) Termico.pedir(cpu)
+            if (ok) { Termico.pedir(cpu); KangarooDueno.actual = KangarooDueno.PUZZLE }
             android.util.Log.i("HunterService", "Kangaroo restarted after the app died: $ok")
         } catch (e: Throwable) {
             android.util.Log.e("HunterService", "recover: ${e.message}", e)

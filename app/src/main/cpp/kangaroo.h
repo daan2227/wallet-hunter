@@ -454,6 +454,34 @@ typedef struct {
     uint64_t n;
 } KgCab;
 
+/* Ruta de la tabla para ESTE rango.
+ *
+ * El fichero se nombraba sólo por la clave pública, y guardar no miraba qué
+ * había: trabajar un trozo del rango (Split, Auto-advance) del mismo puzzle
+ * escribía encima de la tabla del rango completo, con días de puntos
+ * distinguidos dentro. Cargar sí rechazaba otro rango, así que el trabajo del
+ * completo se perdía en el primer guardado.
+ *
+ * Ahora, si en `base` ya hay una tabla de OTRA clave o de otro rango, este rango
+ * usa `base.r<hash del rango>`. Lo que ya había no se toca, y volver al rango
+ * completo lo encuentra donde estaba. */
+static void kg_ruta_rango(const char *base,const uint8_t *pub,const uint8_t *ini,
+                          const uint8_t *fin,char *out,size_t osz){
+    snprintf(out,osz,"%s",base?base:"");
+    if(!base||!base[0]) return;
+    FILE *f=fopen(base,"rb");
+    if(!f) return;                                   /* no hay nada: se usa tal cual */
+    KgCab c; int leido=(fread(&c,sizeof(c),1,f)==1); fclose(f);
+    if(leido && c.magic==KG_MAGIC && memcmp(c.pub,pub,33)==0 &&
+       memcmp(c.ini,ini,32)==0 && memcmp(c.fin,fin,32)==0) return;   /* es de este rango */
+    if(leido && c.magic!=KG_MAGIC) return;           /* no es una tabla: se reescribe como antes */
+    uint32_t h=2166136261u;                          /* FNV-1a de pub|ini|fin */
+    for(int i=0;i<33;i++){ h^=pub[i]; h*=16777619u; }
+    for(int i=0;i<32;i++){ h^=ini[i]; h*=16777619u; }
+    for(int i=0;i<32;i++){ h^=fin[i]; h*=16777619u; }
+    snprintf(out,osz,"%s.r%08x",base,h);
+}
+
 /* Se escribe en un fichero aparte y se renombra al final: si el sistema mata la
  * app a mitad, el guardado anterior sigue entero en vez de quedar a medias. */
 static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,

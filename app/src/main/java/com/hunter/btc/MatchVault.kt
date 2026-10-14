@@ -139,8 +139,11 @@ object MatchVault {
      *
      * @return cuántas se han podido completar.
      */
-    fun completarClaves(ctx: Context): Int {
-        val todas = list(ctx)
+    fun completarClaves(ctx: Context): Int { synchronized(this) {
+        // Dentro del cerrojo (como add y eliminar): si no, un hallazgo que
+        // entrara mientras se derivan las claves se perdía al escribir la lista
+        // vieja. Y con leer(): si el baúl no se puede abrir, no se escribe nada.
+        val todas = leer(ctx) ?: return 0
         var tocadas = 0
         val nuevas = todas.map { e ->
             if (e.privHex.length != 64 || (e.addr.isNotEmpty() && e.wif.isNotEmpty())) e
@@ -155,7 +158,7 @@ object MatchVault {
         }
         if (tocadas > 0) write(ctx, nuevas)
         return tocadas
-    }
+    } }
 
     /**
      * Borra un hallazgo del baúl. Identifica por clave privada (única e
@@ -245,7 +248,10 @@ object MatchVault {
         synchronized(this) {
             // Se relee dentro del cerrojo: mientras se consultaba la red pudo
             // entrar un hallazgo nuevo, y escribir la lista vieja lo perdería.
-            write(ctx, list(ctx).map { e ->
+            // leer() y no list(): si el Keystore falla aquí, list() da vacío y se
+            // escribía un baúl vacío encima de todos los hallazgos.
+            val actuales = leer(ctx) ?: return consultadas to 0
+            write(ctx, actuales.map { e ->
                 val sat = saldos[e.addr]
                 if (sat == null) e else e.copy(btc = sat / 1e8, checkedTs = now)
             })

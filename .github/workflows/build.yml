@@ -58,7 +58,7 @@ jobs:
         fi
         # La reticula es Python y valida el algoritmo que usa Lattice.kt: sólo
         # se lanza si cambia ese código o su validador.
-        if echo "$CAMBIOS" | grep -qE '(Lattice\.kt|SeedEnvelope\.kt|FuerzaContrasena\.kt|UmbralEnvio\.kt|EsperaPin\.kt|app/src/test/|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
+        if echo "$CAMBIOS" | grep -qE '(app/src/main/java/|app/src/test/|tools/ec-harness/lattice_hnp\.py|\.github/workflows/build\.yml)'; then
           echo "lattice=1" >> "$GITHUB_OUTPUT"
         else
           echo "lattice=0" >> "$GITHUB_OUTPUT"
@@ -145,11 +145,20 @@ jobs:
         echo "y" | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager \
           "ndk;25.1.8937393" "cmake;3.22.1"
 
+    # Versión FIJA de secp256k1, comprobada por su commit. Antes se clonaba
+    # master tal cual: el APK, que deriva claves y firma, llevaba el código
+    # que hubiera ese día en upstream, y dos compilaciones del mismo commit
+    # podían salir con criptografía distinta. Para subir de versión se cambian
+    # las dos líneas a la vez (etiqueta y su commit).
     - name: Clone and configure secp256k1
+      env:
+        SECP_TAG: v0.8.0
+        SECP_COMMIT: 6e2c8bc4ecdc6e71dbe7a368f360d8d453ce435d
       run: |
         cd app/src/main/cpp
-        git clone --depth=1 https://github.com/bitcoin-core/secp256k1.git
+        git clone --depth=1 --branch "$SECP_TAG" https://github.com/bitcoin-core/secp256k1.git
         cd secp256k1
+        test "$(git rev-parse HEAD)" = "$SECP_COMMIT" || { echo "::error::secp256k1 $SECP_TAG is not commit $SECP_COMMIT"; exit 1; }
         echo "=== Checking precomputed files ==="
         ls src/precomputed_ecmult.c 2>/dev/null && echo "OK precomputed_ecmult.c" || echo "MISSING precomputed_ecmult.c"
         ls src/precomputed_ecmult_gen.c 2>/dev/null && echo "OK precomputed_ecmult_gen.c" || echo "MISSING precomputed_ecmult_gen.c"
@@ -169,8 +178,11 @@ jobs:
       if: steps.motor.outputs.cambia == '1'
       run: tools/ec-harness/con_secp.sh app/src/main/cpp/secp256k1
 
-    - name: Generate Bip39Words.kt
-      run: python3 scripts/gen_bip39.py
+    # Bip39Words.kt ya NO se genera aquí: se descargaba de master de otro
+    # repositorio, sin comprobar nada, y sustituía a la lista revisada. Una
+    # palabra cambiada y la app generaría semillas que ninguna otra cartera
+    # restaura. Va la del repositorio, cuyo SHA-256 es el de english.txt (lo
+    # comprueba Bip39WordsTest).
 
     # Restaura el keystore real si el secret existe; si no, genera el de debug
     # para que la compilación siga funcionando (APK no publicable).

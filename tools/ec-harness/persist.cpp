@@ -278,6 +278,47 @@ int main(){
         kg_negacion=antes;
     }
 
+    /* Un trozo del rango (Split / Auto-advance) del MISMO puzzle no pisa la
+       tabla del rango completo: va a otra ruta, y la del completo sigue
+       cargándose igual. */
+    {
+        const char *base="/tmp/kg_rango.dat";
+        remove(base);
+        KangarooCtx ca; kg_setup(&ca,pub,ini,fin,7,18);
+        ca.parar.store(0);
+        static A ar2; ar2.c=&ca;
+        pthread_t t2; pthread_create(&t2,NULL,[](void*p)->void*{ A*x=(A*)p; kg_run(x->c,32,777); return NULL;},&ar2);
+        struct timespec t5={0,120*1000*1000}; nanosleep(&t5,NULL);
+        ca.parar.store(1); pthread_join(t2,NULL);
+        uint64_t completos=ca.tabla.guardados;
+        char r1[1024]; kg_ruta_rango(base,pub,ini,fin,r1,sizeof r1);
+        dp_save(&ca.tabla,r1,pub,ini,fin,7,0);
+        kg_free(&ca);
+        /* La primera vez, sin nada, la ruta es la base. */
+        int m1=strcmp(r1,base)==0;
+        /* Trozo: mitad baja del rango. */
+        uint8_t fin2[32]; be_u64(fin2,(a+b)/2);
+        char r2[1024]; kg_ruta_rango(base,pub,ini,fin2,r2,sizeof r2);
+        int m2=strcmp(r2,base)!=0;
+        KangarooCtx cb; kg_setup(&cb,pub,ini,fin2,7,18);
+        dp_save(&cb.tabla,r2,pub,ini,fin2,7,0);          /* guardar el trozo */
+        kg_free(&cb);
+        /* Volver al completo: misma ruta base, y la tabla sigue entera. */
+        char r3[1024]; kg_ruta_rango(base,pub,ini,fin,r3,sizeof r3);
+        KangarooCtx cc; kg_setup(&cc,pub,ini,fin,7,18);
+        uint64_t n=dp_load(&cc.tabla,r3,pub,ini,fin,7,NULL);
+        kg_free(&cc);
+        int m3=strcmp(r3,base)==0 && n==completos && completos>0;
+        /* Y el trozo se reencuentra en su ruta propia. */
+        char r4[1024]; kg_ruta_rango(base,pub,ini,fin2,r4,sizeof r4);
+        int m4=strcmp(r4,r2)==0;
+        int m=m1&&m2&&m3&&m4;
+        printf("%s  subrango no pisa la tabla del completo (%llu puntos intactos)\n", m?"OK ":"MAL",
+               (unsigned long long)n);
+        f+=!m;
+        remove(base); remove(r2);
+    }
+
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");
     return f;
 }

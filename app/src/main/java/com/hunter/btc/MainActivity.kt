@@ -1839,14 +1839,28 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
         if (req == 1001 && res == RESULT_OK) {
             val uri = data?.data ?: return
-            // Obtener nombre original para preservar extensión .bin o .csv
-            val cursor = contentResolver.query(uri, null, null, null, null)
-            val origName = cursor?.use {
-                val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                it.moveToFirst(); if (idx >= 0) it.getString(idx) else "dataset.csv"
-            } ?: "dataset.csv"
-            cursor?.close()
-            val dest = File(getExternalFilesDir(null), origName)
+            // El motor lee el dataset desde sus hilos: cambiarlo con el escáner
+            // en marcha (o mientras otro se carga) liberaba memoria en uso.
+            if (HunterEngine.isRunning() || HunterEngine.isLoading()) {
+                Toast.makeText(this, "Stop the scan before loading another dataset", Toast.LENGTH_LONG).show()
+                return
+            }
+            // Nombre original para conservar la extensión (.bin o .csv), pero
+            // saneado: lo pone la app que sirve el fichero, y con "../" escribía
+            // fuera del directorio (ver NombreSeguro).
+            val origName = try {
+                contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                    null, null, null)?.use {
+                    val idx = it.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (idx >= 0 && it.moveToFirst() && !it.isNull(idx)) it.getString(idx) else null
+                }
+            } catch (e: Exception) { null }
+            val dir = getExternalFilesDir(null) ?: filesDir
+            val dest = File(dir, NombreSeguro.limpiar(origName))
+            // Se copia a un temporal y sólo al acabar bien sustituye al bueno: copiar
+            // encima truncaba el fichero que el motor tiene mapeado (SIGBUS), y una
+            // copia a medias dejaba un dataset roto.
+            val parcial = File(dir, dest.name + ".part")
             // Copiar en otro hilo: un índice de 333 MB tarda segundos, y en el
             // hilo de la pantalla Android la daba por colgada.
             tvCsvName?.text = "Copying ${dest.name}…"
@@ -1854,10 +1868,12 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             Toast.makeText(this, "Copying ${dest.name}…", Toast.LENGTH_SHORT).show()
             Thread {
                 val ok = try {
-                    contentResolver.openInputStream(uri)?.use { ent ->
-                        dest.outputStream().use { sal -> ent.copyTo(sal, 1 shl 20) }
+                    val copiado = contentResolver.openInputStream(uri)?.use { ent ->
+                        parcial.outputStream().use { sal -> ent.copyTo(sal, 1 shl 20) }
                     } != null
+                    copiado && parcial.renameTo(dest)
                 } catch (e: Exception) { false }
+                if (!ok) parcial.delete()
                 runOnUiThread {
                     if (!ok) {
                         tvCsvName?.text = "Copy failed"
@@ -2202,6 +2218,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         fun lanzar(pub: String) {
             // La cabecera seguía hablando del último puzzle de la lista.
             tvPuzzleStatus?.text = "Custom Kangaroo — 0x$ini → 0x$fin"
+            if (KangarooDueno.ocupadoPorOtro(KangarooDueno.PUZZLE)) {
+                tvPuzzleAtajo?.text = "The weak-key audit is using the Kangaroo engine. Stop it first (Weak tab)."
+                tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
+                return
+            }
             if (auto != null) { kgAutoIniciar(pub, a, b, auto.first, auto.second); return }
             kgAutoParar(null)                   // una búsqueda normal cancela el auto-avance
             if (HunterEngine.kangarooRunning()) try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
@@ -2247,6 +2268,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     internal fun alternarKangaroo() {
+        if (KangarooDueno.ocupadoPorOtro(KangarooDueno.PUZZLE)) {
+            tvPuzzleAtajo?.text = "The weak-key audit is using the Kangaroo engine. Stop it first (Weak tab)."
+            tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
+            return
+        }
         if (HunterEngine.kangarooRunning()) {
             // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
             HunterEngine.kangarooStop()
@@ -2304,6 +2330,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
+        if (ok) KangarooDueno.actual = KangarooDueno.PUZZLE
         if (!ok) {
             /* kangarooStart exige que el extremo superior del rango tenga al
              * menos 8 bits (`if(bits<8) return JNI_FALSE` en hunter_jni.cpp).
@@ -2464,7 +2491,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     tvPuzzleAtajo?.setTextColor(AppTheme.WARN)
                     return@runOnUiThread
                 }
-                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                if (!KangarooDueno.ocupadoPorOtro(KangarooDueno.PUZZLE))
+                    try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
                 prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
                 btnKangaroo?.text = "Search with Kangaroo"
                 tvPuzzleAtajo?.text = "Search stopped: puzzle #${p.num} no longer " +
@@ -2583,6 +2611,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
     /** Se llama desde updateUI(): progreso y resultado. */
     internal fun refrescarKangaroo() {
+        // El resultado de una auditoría de claves débiles no es de un puzzle.
+        if (KangarooDueno.actual == KangarooDueno.WEAK) return
         val tv = tvPuzzleAtajo ?: return
         val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         if (clave.length == 64) {
