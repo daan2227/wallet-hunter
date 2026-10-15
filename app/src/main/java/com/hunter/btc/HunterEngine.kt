@@ -250,7 +250,6 @@ object HunterEngine {
     // prefijo DESPUÉS del "1" y cuántos hilos; result devuelve "privHex|addr".
     external fun vanityStart(prefix: String, threads: Int, mode: Int)   // 0=P2PKH,1=P2SH,2=bech32
     external fun vanityStop()
-    external fun vanityRunning(): Boolean
     external fun vanityCount(): Long
     external fun vanityResult(): String
 
@@ -259,7 +258,6 @@ object HunterEngine {
     // result: "" corriendo; privHex hallado; "NOT_FOUND"/"RANGE_TOO_BIG"/"ERROR".
     external fun bsgsStart(pub: String, ini: String, fin: String, capBits: Int)
     external fun bsgsStop()
-    external fun bsgsRunning(): Boolean
     external fun bsgsCount(): Long
     external fun bsgsResult(): String
 
@@ -269,7 +267,6 @@ object HunterEngine {
     // líneas "pubhex|privhex" por cada hallazgo. status: running/done/range_too_big/error.
     external fun bsgsMultiStart(pubs: String, ini: String, fin: String, capBits: Int, estados: String)
     external fun bsgsMultiStop()
-    external fun bsgsMultiRunning(): Boolean
     external fun bsgsMultiInfo(): String
     /**
      * ¿Ha aparecido ya el objetivo único?

@@ -54,7 +54,6 @@ object AppTheme {
     // azul secundario para degradados. Es el tema por defecto de la app.
     private const val MENTA = 0xFF2DE3A6.toInt()
     private const val SOBRE_MENTA = 0xFF06231A.toInt()
-    private const val AZUL_B = 0xFF5B8CFF.toInt()
 
     private val OSCURA = Paleta(
         bgDeep = c("#101317"), bgPanel = c("#181C22"), bgCard = c("#181C22"),

@@ -421,52 +421,6 @@ static int taproot_tweak_pubkey(secp256k1_context *ctx,
 }
 
 
-/*
- * Decodifica una dirección bc1p (bech32m, witness v1) a su clave x-only.
- *
- * La versión anterior no comprobaba el checksum: troceaba los caracteres y
- * convertía de 5 a 8 bits sin más. Una dirección con una errata decodificaba
- * igual, a una clave DISTINTA, y mandar ahí es mandar a un sitio del que nadie
- * tiene la clave. El checksum de bech32m existe justo para eso, y además el
- * padding sobrante debe ser cero o la codificación no es canónica.
- */
-static int p2tr_addr_to_xonly(const char *addr, uint8_t *xonly32) {
-    if(!addr) return 0;
-    size_t alen=strlen(addr);
-    if(alen!=62) return 0;                         /* bc1 + 59 datos = 62 */
-    if(tolower(addr[0])!='b'||tolower(addr[1])!='c'||addr[2]!='1') return 0;
-    if(tolower(addr[3])!='p') return 0;            /* witness v1 -> 'p' */
-
-    /* Mayúsculas y minúsculas no se pueden mezclar (BIP173). */
-    int hasU=0,hasL=0;
-    for(size_t i=0;i<alen;i++){ if(isupper((unsigned char)addr[i]))hasU=1; if(islower((unsigned char)addr[i]))hasL=1; }
-    if(hasU&&hasL) return 0;
-
-    const char *CHARSET="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
-    /* hrp "bc" expandido + datos, tal y como manda bech32. */
-    uint8_t v[128]; int n=0;
-    v[n++]='b'>>5; v[n++]='c'>>5; v[n++]=0; v[n++]='b'&31; v[n++]='c'&31;
-    int dstart=n;
-    for(size_t i=3;i<alen;i++){
-        const char *c=strchr(CHARSET,tolower((unsigned char)addr[i]));
-        if(!c) return 0;
-        v[n++]=(uint8_t)(c-CHARSET);
-    }
-    if(bech32_polymod(v,n)!=0x2bc830a3) return 0;  /* constante de bech32m */
-
-    /* Datos sin la versión de testigo ni los 6 del checksum. */
-    const uint8_t *d=v+dstart+1; int nd=n-dstart-1-6;
-    if(nd!=52) return 0;                            /* 32 bytes en grupos de 5 bits */
-    uint32_t acc=0; int bits=0, idx=0;
-    for(int i=0;i<nd;i++){
-        acc=(acc<<5)|d[i]; bits+=5;
-        if(bits>=8){ bits-=8; xonly32[idx++]=(uint8_t)((acc>>bits)&0xff); }
-    }
-    if(idx!=32) return 0;
-    if(bits>=5) return 0;                           /* relleno de más */
-    if(acc&((1u<<bits)-1)) return 0;                /* relleno distinto de cero */
-    return 1;
-}
 
 /* Derive wallet: returns JSON string with 8 addresses */
 static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
@@ -774,7 +728,7 @@ static void *worker_bip39_fn(void *arg){
         g_count.fetch_add(local_done);
         for(int i=0;i<nhits;i++){
             g_found.fetch_add(1);
-            char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0},sats[24]={0},type_[12]={0};
+            char addr[MAX_ADDR]={0},wif[60]={0},pkhex[65]={0};
             {   /* La direccion que de verdad esta en la lista, segun la ruta
                    y el tipo que coincidio (antes siempre la 1..., tambien
                    para m/84', cuya direccion es la bc1q). */
@@ -1180,7 +1134,7 @@ static void *load_fn(void *){
     int ca=0;{char hdr[MAX_LINE];strncpy(hdr,line,MAX_LINE-1);hdr[MAX_LINE-1]='\0';int n=split_line(hdr,fields,8);for(int i=0;i<n;i++){trim_str(fields[i]);if(!strcmp(fields[i],"address"))ca=i;}}
     uint64_t rows=0,ok=0,skip=0;
     while(fgets(line,sizeof(line),f)&&ok<MAX_CSV_ROWS){
-        uint64_t off=(uint64_t)ftello(f)-(uint64_t)strlen(line);rows++;
+        rows++;
         /* strncpy no pone el terminador si la línea (o el campo) llena el búfer:
            split_line y trim_str seguían leyendo más allá de la pila. */
         char tl[MAX_LINE];strncpy(tl,line,MAX_LINE-1);tl[MAX_LINE-1]='\0';int n=split_line(tl,fields,8);if(n<=ca){skip++;continue;}
@@ -3251,10 +3205,6 @@ Java_com_hunter_btc_HunterEngine_vanityStart(JNIEnv *env, jobject, jstring pref,
 extern "C" JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_vanityStop(JNIEnv *, jobject){ vanity_parar(); }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_vanityRunning(JNIEnv *, jobject){
-    return (g_van_run.load() || g_van_vivos.load()>0) ? JNI_TRUE : JNI_FALSE;
-}
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_vanityCount(JNIEnv *, jobject){
     return (jlong)g_van_count.load();
@@ -3335,10 +3285,6 @@ Java_com_hunter_btc_HunterEngine_bsgsStart(JNIEnv *env, jobject, jstring pubS, j
 extern "C" JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_bsgsStop(JNIEnv *, jobject){ bsgs_stop_join(); }
 
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_bsgsRunning(JNIEnv *, jobject){
-    return (g_bsgs_run.load() && !g_bsgs_done.load()) ? JNI_TRUE : JNI_FALSE;
-}
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_bsgsCount(JNIEnv *, jobject){ return (jlong)g_bsgs_count.load(); }
 
@@ -3492,8 +3438,6 @@ Java_com_hunter_btc_HunterEngine_bsgsMultiStart(JNIEnv *env, jobject, jstring pu
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_bsgsMultiStop(JNIEnv *, jobject){ bm_stop_join(); }
-extern "C" JNIEXPORT jboolean JNICALL
-Java_com_hunter_btc_HunterEngine_bsgsMultiRunning(JNIEnv *, jobject){ return (g_bm_run.load() && !g_bm_done.load())?JNI_TRUE:JNI_FALSE; }
 
 /* "<status>\t<hechas>\t<total>\t<giant>\n" + lineas "pubhex|privhex". status:
  * running / done / range_too_big / error. */

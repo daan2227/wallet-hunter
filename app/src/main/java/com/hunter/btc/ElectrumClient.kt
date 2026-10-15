@@ -200,28 +200,6 @@ object ElectrumClient {
         return null
     }
 
-    private fun requestArray(method: String, params: List<Any>, testnet: Boolean): List<JSONObject> {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
-        for ((host, port) in servers) {
-            try {
-                val result = connect(host, port) { reader, writer ->
-                    val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
-                    writer.write(req); writer.flush()
-                    val line = leerLinea(reader) ?: return@connect emptyList<JSONObject>()
-                    val arr = JSONObject(line).optJSONArray("result") ?: return@connect emptyList<JSONObject>()
-                    (0 until arr.length()).map { arr.getJSONObject(it) }
-                }
-                if (!result.isNullOrEmpty()) {
-                    Log.d("Electrum", "OK: $host")
-                    return result
-                }
-            } catch (e: Exception) {
-                Log.w("Electrum", "$host:$port failed: ${e.message}")
-            }
-        }
-        return emptyList()
-    }
-
     /**
      * Como [request], pero devuelve el "result" crudo: estimatefee da un número
      * y broadcast una cadena, ninguno de los dos es un objeto JSON.
@@ -261,7 +239,7 @@ object ElectrumClient {
         return null
     }
 
-    /** Como [requestArray], pero distingue "lista vacía" de "nadie respondió". */
+    /** Lista de resultados; null si nadie respondió (lista vacía SÍ es una respuesta). */
     private fun requestArrayOrNull(method: String, params: List<Any>, testnet: Boolean):
             List<JSONObject>? {
         val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS

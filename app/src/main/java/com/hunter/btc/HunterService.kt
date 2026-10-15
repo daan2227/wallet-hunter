@@ -238,7 +238,6 @@ class HunterService : Service() {
     }
 
     /** Última velocidad calculada, en operaciones por segundo. */
-    private var ultimaVel = 0.0
     // Para sacar los saltos por segundo de Kangaroo, que sólo da el total.
     private var kangUltOps = 0L
     private var kangUltMs  = System.currentTimeMillis()
@@ -306,7 +305,6 @@ class HunterService : Service() {
                 val dt = (System.currentTimeMillis() - kangUltMs).coerceAtLeast(1L)
                 val porSeg = if (kangUltOps > 0) (kangOps - kangUltOps) * 1000.0 / dt else 0.0
                 kangUltOps = kangOps; kangUltMs = System.currentTimeMillis()
-                ultimaVel = porSeg
                 val pts = try { HunterEngine.kangarooPoints() } catch (e: Throwable) { 0L }
                 val vStr = if (porSeg >= 1e6) "${"%.2f".format(porSeg/1e6)}M jumps/s"
                            else "${"%.0f".format(porSeg)} jumps/s"
@@ -315,7 +313,6 @@ class HunterService : Service() {
                         "Kangaroo · $vStr",
                         "$pts points · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
             } else if (running) {
-                ultimaVel = wps
                 val title = "BTC Hunter · $wStr · $found matches"
                 val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
