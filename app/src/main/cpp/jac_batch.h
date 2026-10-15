@@ -25,33 +25,41 @@ static const uint64_t FIELD_GY[4]={
 static int fe_cmp(const fe_t a,const fe_t b){
     for(int i=3;i>=0;i--){if(a[i]>b[i])return 1;if(a[i]<b[i])return -1;}return 0;
 }
-static void fe_sub(fe_t r,const fe_t a,const fe_t b){
-    uint64_t borrow=0;
+/* Resta y suma SIN saltos que dependan del dato.
+ *
+ * Antes era "if(borrow) sumar p": con operandos al azar ese if sale verdadero
+ * la mitad de las veces, así que el procesador lo predecía mal una de cada dos
+ * restas. Kangaroo hace seis por salto, y medido con callgrind la resta se
+ * llevaba el 16 % del tiempo. Ahora se suma p AND una máscara (todo unos si
+ * hubo préstamo, todo ceros si no): el mismo resultado, bit a bit, sin saltos.
+ * fe_add igual, eligiendo entre a+b y a+b-p con la máscara. Lo comprueba el
+ * banco "campo" contra la versión lenta y evidente. */
+static inline void fe_sub(fe_t r,const fe_t a,const fe_t b){
+    uint64_t t[4], borrow=0;
     for(int i=0;i<4;i++){
-        __uint128_t t=(__uint128_t)a[i]-b[i]-borrow;
-        r[i]=(uint64_t)t;borrow=(t>>127)&1;
+        __uint128_t d=(__uint128_t)a[i]-b[i]-borrow;
+        t[i]=(uint64_t)d; borrow=(uint64_t)(d>>127)&1;
     }
-    if(borrow){
-        uint64_t carry=0;
-        for(int i=0;i<4;i++){
-            __uint128_t t=(__uint128_t)r[i]+FP[i]+carry;
-            r[i]=(uint64_t)t;carry=(uint64_t)(t>>64);
-        }
-    }
-}
-static void fe_add(fe_t r,const fe_t a,const fe_t b){
+    const uint64_t m=0-borrow;
     uint64_t carry=0;
     for(int i=0;i<4;i++){
-        __uint128_t t=(__uint128_t)a[i]+b[i]+carry;
-        r[i]=(uint64_t)t;carry=(uint64_t)(t>>64);
+        __uint128_t s=(__uint128_t)t[i]+(FP[i]&m)+carry;
+        r[i]=(uint64_t)s; carry=(uint64_t)(s>>64);
     }
-    if(carry||fe_cmp(r,FP)>=0){
-        uint64_t borrow=0;
-        for(int i=0;i<4;i++){
-            __uint128_t t=(__uint128_t)r[i]-FP[i]-borrow;
-            r[i]=(uint64_t)t;borrow=(t>>127)&1;
-        }
+}
+static inline void fe_add(fe_t r,const fe_t a,const fe_t b){
+    uint64_t t[4], d[4], carry=0, borrow=0;
+    for(int i=0;i<4;i++){
+        __uint128_t s=(__uint128_t)a[i]+b[i]+carry;
+        t[i]=(uint64_t)s; carry=(uint64_t)(s>>64);
     }
+    for(int i=0;i<4;i++){
+        __uint128_t x=(__uint128_t)t[i]-FP[i]-borrow;
+        d[i]=(uint64_t)x; borrow=(uint64_t)(x>>127)&1;
+    }
+    /* Se resta p si hubo acarreo o si a+b >= p (no hubo préstamo). */
+    const uint64_t m=0-(carry|(borrow^1));
+    for(int i=0;i<4;i++) r[i]=(d[i]&m)|(t[i]&~m);
 }
 /* Multiplicacion modular.
  *

@@ -31,10 +31,11 @@ cd "$(dirname "$0")"
 # indice9  - el indice de direcciones de 9 bytes (tipo + 8 bytes de hash)
 # pbkdf2   - SHA-512, HMAC y PBKDF2 propios contra OpenSSL
 # listabip39- la lista BIP39 del motor es la oficial (SHA-256 de english.txt)
+# restasuma- fe_sub y fe_add sin saltos == las de antes (bit a bit)
 # rutas    - rutas BIP32 estrictas: lo que no es una ruta valida se rechaza
 # destinos - direccion de destino -> script: vectores BIP350, checksum base58
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas"
+PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {

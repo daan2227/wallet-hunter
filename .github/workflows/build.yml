@@ -43,7 +43,7 @@ jobs:
         CAMBIOS=$(git diff --name-only "$ANTES" "${{ github.sha }}")
         # El banco ARM64 (qemu) cuesta instalar un compilador cruzado: solo
         # cuando cambia algo que tiene codigo propio de ARM64.
-        if echo "$CAMBIOS" | grep -qE '(sha512|fe_arm64|sha256_ripemd160|sha256_hw|hash160x4|escaner_raw|pbkdf2|arm64\.sh|build\.yml)'; then
+        if echo "$CAMBIOS" | grep -qE '(sha512|fe_arm64|jac_batch|restasuma|sha256_ripemd160|sha256_hw|hash160x4|escaner_raw|pbkdf2|arm64\.sh|build\.yml)'; then
           echo "arm=1" >> "$GITHUB_OUTPUT"
         else
           echo "arm=0" >> "$GITHUB_OUTPUT"
