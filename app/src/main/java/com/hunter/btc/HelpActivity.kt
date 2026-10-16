@@ -147,6 +147,35 @@ class HelpActivity : Activity() {
             "(reused/short nonces, bad RNG, guessable phrases). They cannot break a properly " +
             "generated key. Use them on your own addresses, or a system you audit.")
 
+        seccion(root, "Step by step")
+        parrafo(root, "Examples of the usual flow. Button and field names are the ones on screen.")
+        parrafo(root, "Scanner: 1) Dataset → Load a .bin or CSV of addresses. 2) Choose BIP39 or " +
+            "Direct key. 3) Set Threads, CPU limit and, for BIP39, Derivation paths. 4) Start: " +
+            "keys/s and an ETA appear, and any hit goes to the finds vault. 5) Stop keeps the " +
+            "progress. Example: a 37 M address list, Direct key, 4 threads → about 1.8 M keys/s " +
+            "while hits stays at 0.")
+        parrafo(root, "Puzzle: 1) Pick a puzzle #N; the status shows its range and balance. " +
+            "2) If its public key is published, Search with Kangaroo searches the From–To range; " +
+            "otherwise the scanner walks the range in blocks. 3) Jump to a random point in the " +
+            "range, or Reset progress. 4) A found key goes to the finds vault and is shown. " +
+            "Example: a puzzle with a published key runs Kangaroo; Stop saves the work.")
+        parrafo(root, "Wallet: 1) Create new wallet makes a seed; Import adds one (seed, WIF or " +
+            "watch-only address). 2) Check balances updates them. 3) Receive shows the address to " +
+            "copy or scan. 4) Send: source, destination (paste or scan), amount and fee; the " +
+            "dialog titled Review the send shows the total before anything is signed. Amounts " +
+            "from 0.01 BTC ask for your PIN again. 5) Show seed / WIF and Delete wallet ask for " +
+            "the PIN first. Example: sending 0.005 BTC shows the total with the fee, then " +
+            "\"Sent · txid …\" after you confirm.")
+        parrafo(root, "Recovery: 1) Type the words you remember; mark each unknown with ?. " +
+            "2) The combinations counter shows how many there are. 3) Start recovery tries the " +
+            "blanks until a valid seed appears. 4) Save wallet adds it to your wallets. Example: " +
+            "11 known words + 1 ? is 2048 combinations, checked in seconds; each extra ? multiplies " +
+            "that by 2048 (3 ? is about 8.6 billion: too many to try on a phone).")
+        parrafo(root, "Tools: open the group you need, paste the input and press the button of " +
+            "the same name. Each result stays on screen, and nothing leaves the phone unless you " +
+            "press a send or broadcast button. Example: Hex ↔ WIF with a 64-hex key shows the WIF " +
+            "and both addresses.")
+
         seccion(root, "Finds vault")
         parrafo(root, "Every hit — from the scanner, a puzzle or the weak-key audit — lands " +
             "here with its WIF and address. From a find you can check its balance, move it to " +

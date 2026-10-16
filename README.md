@@ -177,6 +177,61 @@ and sends finds to the vault. For bigger ranges use **Start audit** (Kangaroo).
 Paste or load keys → set range, budget and cap → Kangaroo runs key by key over a
 small range → whatever it finds (badly generated keys) goes to the vault.
 
+## How each screen works — step by step
+
+Examples of the usual flow. Button and field names are the ones on screen.
+
+**Scanner (check many keys against a list)**
+1. *Dataset → Load*: pick a `.bin` or CSV of addresses. Without one the engine has nothing to compare against.
+2. Choose the mode: **BIP39** (seed phrases) or **Direct key** (random raw keys).
+3. Set **Threads** and **CPU limit**; for BIP39 pick the **Derivation paths**.
+4. Press **Start**. Keys/s and an ETA appear. Any hit goes to the finds vault and notifies you.
+5. **Stop** keeps the progress; starting again continues.
+
+*Example:* load a 37 M address list, pick Direct key, 4 threads, 60 % CPU → you
+see ~1.8 M keys/s and "hits" stays at 0 until one matches.
+
+**Puzzle (solve a known-range puzzle)**
+1. Pick a puzzle `#N` from the list. The status shows its range and balance.
+2. If its public key is published, **Search with Kangaroo** searches the From–To range.
+   Otherwise the scanner walks the range in blocks.
+3. The bar shows progress. **Jump to a random point in the range** moves the walk; **Reset progress** starts it over.
+4. A found key is saved to the finds vault and shown on screen.
+
+*Example:* a puzzle whose public key is published runs Kangaroo; it stops itself when
+the key is found, or when you press **Stop** (the work is saved for later).
+
+**Wallet (send and receive)**
+1. **Create new wallet** makes a seed; **Import** adds an existing one (seed, WIF or
+   watch-only address).
+2. **Check balances** (or opening the screen) updates the balances per address.
+3. **Receive**: copy or scan the address shown.
+4. **Send**: choose the source address, the destination (paste or scan a QR), the
+   amount and the fee. A dialog titled **Review the send** shows the total before
+   anything is signed.
+   Amounts from 0.01 BTC ask for your PIN again just before signing.
+5. **Show seed / WIF** and **Delete wallet** ask for the PIN first.
+
+*Example:* send 0.005 BTC from `bc1q…`: the review dialog shows the total with the fee;
+confirm → "Sent · txid …".
+
+**Recovery (a seed with missing words)**
+1. Type the words you remember; mark each unknown with `?`.
+2. The screen shows how many combinations there are ("combinations" counter).
+3. **Start recovery**: it tries the blanks until a derived address matches the
+   target (optional) or the first valid seed appears.
+4. **Save wallet** adds the found seed to your wallets.
+
+*Example:* 11 known words + 1 `?` → 2048 combinations, checked in seconds. Each extra
+`?` multiplies that by 2048: 3 `?` → about 8.6 × 10⁹, which is too many to try on a phone.
+
+**Tools (single-purpose utilities)**
+Open the group you need (addresses, signing, BIP38, PSBT, Shamir, vanity, BSGS…),
+paste the input and press the button of the same name. Each shows its result on
+screen and nothing leaves the phone unless you press a send/broadcast button.
+
+*Example:* **Hex ↔ WIF**: paste a 64-hex key → the WIF and both addresses appear.
+
 ## Tools
 
 A grouped screen of standalone utilities (More → Tools). It opens as a tidy
