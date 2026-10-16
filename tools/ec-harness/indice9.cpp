@@ -29,6 +29,16 @@ int main(){
     }
     printf("%s  todos los que estan se encuentran (%ld fallan)\n",no?"MAL":"OK ",no); fallos+=no!=0;
     printf("%s  el tipo cuenta: mismo hash con otro tipo no se encuentra (%ld)\n",tipo_mal?"MAL":"OK ",tipo_mal); fallos+=tipo_mal!=0;
+    /* i9_buscar_h160: un solo vistazo al bloom para P2PKH y P2WPKH, y dice cuál. */
+    long h_no=0, h_tipo=0, h_otros=0;
+    for(int i=0;i<N;i+=5){
+        int tipo=-1; int64_t r=i9_buscar_h160(&x,&v[i][1],&tipo);
+        if(v[i][0]<=1){ if(r<0) h_no++; else if(tipo!=v[i][0]) h_tipo++; }
+        else if(r>=0) h_otros++;                         /* un P2SH/P2TR no es un hash160 de clave */
+    }
+    printf("%s  i9_buscar_h160: encuentra P2PKH/P2WPKH con su tipo (%ld no, %ld tipo mal, %ld de otros tipos)\n",
+           (h_no||h_tipo||h_otros)?"MAL":"OK ",h_no,h_tipo,h_otros);
+    fallos+=(h_no||h_tipo||h_otros)!=0;
     long fp=0, pasa=0; const long M=2000000;
     for(long i=0;i<M;i++){
         uint8_t h[8]; uint64_t r=rnd(); memcpy(h,&r,8);

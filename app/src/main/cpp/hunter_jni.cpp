@@ -234,10 +234,11 @@ static int64_t bsearch_xonly(const uint8_t *t){
 }
 static int64_t bsearch_h160(const uint8_t *t){
     if(g_i9.d){
-        /* El mismo hash160 es a la vez la direccion 1... y la bc1q... */
-        int64_t r=i9_buscar(&g_i9,0,t); if(r>=0){ g_tipo_hallado=0; return r; }
-        r=i9_buscar(&g_i9,1,t);         if(r>=0){ g_tipo_hallado=1; return r; }
-        return -1;
+        /* El mismo hash160 es a la vez la direccion 1... y la bc1q...: una
+           sola consulta al bloom para las dos (ver i9_buscar_h160). */
+        int tipo=-1; int64_t r=i9_buscar_h160(&g_i9,t,&tipo);
+        if(r>=0) g_tipo_hallado=tipo;
+        return r;
     }
     g_tipo_hallado=-1;
     if(!bloom_check(&g_bloom,t)) return -1; /* bloom filter: skip bsearch */

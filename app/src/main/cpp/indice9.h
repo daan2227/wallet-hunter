@@ -58,10 +58,40 @@ static inline int i9_bloom_ver(const Indice9 *x, uint64_t h){
     return 1;
 }
 
+/* Tipo con el que se indexa el BLOOM (no el fichero). P2PKH (0) y P2WPKH (1)
+ * comparten el hash160 de la clave pública: el escáner preguntaba por los dos,
+ * y eran dos bloques del bloom en dos sitios al azar de memoria, o sea dos
+ * fallos de caché por clave con un dataset grande. Ahora los dos van al mismo
+ * bloque: una sola lectura de memoria cubre las dos direcciones. El bloom se
+ * construye al cargar, así que el formato del índice en disco no cambia. */
+static inline uint8_t i9_grupo_bloom(uint8_t tipo){ return tipo<=1 ? 0 : tipo; }
+
+static inline int64_t i9_bsearch(const Indice9 *x, uint8_t tipo, const uint8_t *hash){
+    uint8_t k[I9_REG]; k[0]=tipo; memcpy(k+1,hash,8);
+    int64_t lo=0, hi=(int64_t)x->n-1;
+    while(lo<=hi){
+        int64_t m=(lo+hi)>>1;
+        int c=memcmp(x->d+(uint64_t)m*I9_REG,k,I9_REG);
+        if(!c) return m;
+        if(c<0) lo=m+1; else hi=m-1;
+    }
+    return -1;
+}
+
+/* Un hash160 de clave pública: está como P2PKH o como P2WPKH. Una sola
+ * consulta al bloom para los dos. @return índice o -1; en *tipo, cuál fue. */
+static inline int64_t i9_buscar_h160(const Indice9 *x, const uint8_t *hash, int *tipo){
+    if(!x->d) return -1;
+    if(!i9_bloom_ver(x,i9_hash(0,hash))) return -1;
+    int64_t r=i9_bsearch(x,0,hash); if(r>=0){ if(tipo) *tipo=0; return r; }
+    r=i9_bsearch(x,1,hash);         if(r>=0){ if(tipo) *tipo=1; return r; }
+    return -1;
+}
+
 /* Indice del registro (tipo, primeros 8 bytes de hash) o -1. */
 static inline int64_t i9_buscar(const Indice9 *x, uint8_t tipo, const uint8_t *hash){
     if(!x->d) return -1;
-    if(!i9_bloom_ver(x,i9_hash(tipo,hash))) return -1;
+    if(!i9_bloom_ver(x,i9_hash(i9_grupo_bloom(tipo),hash))) return -1;
     uint8_t k[I9_REG]; k[0]=tipo; memcpy(k+1,hash,8);
     int64_t lo=0, hi=(int64_t)x->n-1;
     while(lo<=hi){
@@ -114,7 +144,7 @@ static int i9_abrir(Indice9 *x, const char *ruta, void (*progreso)(uint64_t,uint
     for(uint64_t i=0;i<y.n;i++){
         const uint8_t *r=y.d+i*I9_REG;
         y.por_tipo[r[0]<10?r[0]:9]++;
-        i9_bloom_poner(&y,i9_hash(r[0],r+1));
+        i9_bloom_poner(&y,i9_hash(i9_grupo_bloom(r[0]),r+1));
         if(progreso && (i&0xFFFFF)==0) progreso(i,y.n);
     }
     madvise(m,len,MADV_RANDOM);
