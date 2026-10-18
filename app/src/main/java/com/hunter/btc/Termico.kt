@@ -17,9 +17,9 @@ package com.hunter.btc
  *
  * DÓNDE VIVE. En el servicio, no en la pantalla. Un gobernador que sólo
  * funcione con MainActivity delante deja de funcionar justo cuando hace falta:
- * pantalla apagada, móvil en el bolsillo o trabajando para un cluster sin que
- * nadie mire. El servicio ya recibe ACTION_BATTERY_CHANGED y ya tiene un tick
- * cada dos segundos, así que el gobernador va donde ya está el dato.
+ * pantalla apagada, móvil en el bolsillo o trabajando sin que nadie mire.
+ * El servicio ya recibe ACTION_BATTERY_CHANGED y ya tiene un tick cada dos
+ * segundos, así que el gobernador va donde ya está el dato.
  *
  * QUÉ TEMPERATURA. La de la BATERÍA, que es la que llega en el broadcast y la
  * única que da todo aparato sin permisos ni rutas de /sys que cambian con cada

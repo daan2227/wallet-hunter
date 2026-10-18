@@ -17,7 +17,6 @@ cd "$(dirname "$0")"
 # kang     - logaritmos discretos de los que YA sabemos la respuesta
 # coste    - reparto del tiempo por operacion
 # reparto  - PBKDF2 frente a hash160
-# reparte  - Kangaroo repartido: exportar e importar distinguidos entre aparatos
 # direcciones - el codificador de direcciones, mainnet y testnet
 # lote     - tamano de lote optimo del bucle de fuerza bruta
 # semilla  - dos aparatos no pueden salir por el mismo sitio
@@ -35,7 +34,7 @@ cd "$(dirname "$0")"
 # rutas    - rutas BIP32 estrictas: lo que no es una ruta valida se rechaza
 # destinos - direccion de destino -> script: vectores BIP350, checksum base58
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla reparte direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
+PRUEBAS="campo vectores prim hex persist kang semilla direcciones coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {

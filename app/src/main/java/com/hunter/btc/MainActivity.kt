@@ -2043,12 +2043,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 puzzleIniHex = p.start; puzzleFinHex = p.end
                 puzzlePubHex = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex ?: ""
                 // A preferencias EN CUANTO se sabe, no sólo al arrancar
-                // Kangaroo. Hay dos sitios desde donde se puede ser maestro:
-                // "Be master" en esta pantalla, que usa el campo de memoria,
-                // y el de la pantalla Cluster, que lee de aquí. Si sólo se
-                // escribía al arrancar Kangaroo, entrar por Cluster sin haber
-                // pasado por aquí repartía bloques de fuerza bruta en vez de
-                // Kangaroo, sin decir nada.
+                // Kangaroo: si sólo se escribía al arrancar, otra pantalla que
+                // leyera de aquí se quedaba con el puzzle anterior sin decir
+                // nada.
                 prefs.edit()
                     .putString("kangaroo_pub", puzzlePubHex)
                     .putString("kangaroo_ini", puzzleIniHex)
@@ -2354,9 +2351,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /**
      * Pone en hora todo lo que la pantalla necesita para seguir una búsqueda de
      * Kangaroo. Está aparte de arrancarKangaroo() porque el motor NO se arranca
-     * sólo desde aquí: la pantalla de red lo arranca por su cuenta, tanto en el
-     * maestro como en el trabajador. Cuando eso pasa, esta pantalla se encuentra
-     * un Kangaroo corriendo que ella no puso en marcha, y sin esto se quedaba
+     * sólo desde aquí: el servicio también puede relanzarlo (watchdog). Cuando
+     * eso pasa, esta pantalla se encuentra un Kangaroo corriendo que ella no
+     * puso en marcha, y sin esto se quedaba
      * con los contadores a cero. Se veía así, y en los dos móviles a la vez:
      *
      *   Tiempo   20713d 12:17:15      <- kgInicio valía 0, así que el "tiempo
@@ -2430,9 +2427,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * app. Nunca mientras la búsqueda corría.
      *
      * Con fuerza bruta daba igual, porque no ibas a terminar nunca de todas
-     * formas. Con Kangaroo no: una búsqueda dura semanas o meses, y desde que
-     * se reparte entre varios móviles hay aparatos enteros dedicados a esto sin
-     * que nadie mire la pantalla. Si alguien resuelve el puzzle entre medias,
+     * formas. Con Kangaroo no: una búsqueda dura semanas o meses, y el móvil
+     * sigue buscando sin que nadie mire la pantalla. Si alguien resuelve el puzzle entre medias,
      * la app seguiría quemando batería contra una dirección vacía, y sin nada
      * que lo indicara.
      *
@@ -2533,8 +2529,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val mismo = prefs.getString("kangaroo_pub", "") == pub &&
                     ini.isNotEmpty() && fin.isNotEmpty()
         // La pantalla tiene que hablar del puzzle que se está buscando, no del
-        // que hubiera elegido antes: el trabajador recibe el encargo del
-        // maestro y puede no ser el mismo. Y si el rango guardado NO es el de
+        // que hubiera elegido antes. Y si el rango guardado NO es el de
         // esta clave, se tira: quedarse con el que hubiera antes daría un
         // "Estimated" calculado sobre un rango que no es, y dejaría escrito un
         // par clave/rango incoherente que el watchdog relanzaría tal cual. Vale
@@ -2910,18 +2905,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         kgMuestraMs = 0L; kgMuestraOps = 0L
         tvCurrentBlock?.text = "Current block: —"
         tvRandomJump?.text = "Jump to a random point in the range"
-        // Guardar rango para modo distribuido.
-        //
-        // Y la DIRECCION, que faltaba. El maestro reparte bloques con el rango
-        // dentro, pero sin decir contra que hay que comparar; el trabajador
-        // arrancaba en modo puzzle sin objetivo, y el motor con
-        // g_has_target=0 y sin lista cargada NO PUEDE encontrar nada:
-        //
-        //     if(g_has_target){ ...compara... }
-        //     else if(g_csv_loaded){ ...busca... }
-        //
-        // O sea que el trabajador calculaba hashes y los comparaba contra nada.
-        // A toda velocidad, con su grafica y sus millones de claves revisadas.
+        // Rango y puzzle de esta búsqueda, para reanudarla y para la pantalla.
         prefs.edit()
             .putString("current_range_start", p.start)
             .putString("current_range_end", p.end)
@@ -3000,7 +2984,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (prefs.getBoolean(KgAuto.ON, false)) kgAutoVigilar()
         // Antes esto miraba cuanto habia pasado desde su propio onPause, con
         // un limite de 15 s. Pero onPause salta al abrir la cartera, el
-        // cluster, las estadisticas o el selector de ficheros, asi que volver
+        // las estadisticas o el selector de ficheros, asi que volver
         // de cualquiera de ellas pasados quince segundos pedia el PIN sin que
         // nadie hubiera salido de la app. Ahora lo decide AppLock, que sabe la
         // diferencia entre cambiar de pantalla y dejar la app.

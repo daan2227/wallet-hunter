@@ -39,8 +39,8 @@ class HunterService : Service() {
                 // Cubría sólo la fuerza bruta. Kangaroo corre en sus propios
                 // hilos y no pasa por isRunning(), así que seguía quemando la
                 // batería hasta apagar el móvil — y es justo el motor que se
-                // deja días encendido, sobre todo en un móvil que trabaja para
-                // un cluster y que nadie está mirando.
+                // deja días encendido, sobre todo en un móvil que nadie está
+                // mirando.
                 //
                 // Pararlo no pierde nada: kangarooStop() guarda la tabla de
                 // puntos distinguidos, que es donde está todo el trabajo.
@@ -55,8 +55,7 @@ class HunterService : Service() {
                         // principal ve el motor caído, lee estas dos banderas,
                         // y lo relanza a los dos segundos. Con la pantalla
                         // abierta el móvil seguía buscando hasta apagarse, que
-                        // es justo lo que la pausa tenía que evitar — y en un
-                        // móvil del cluster, que nadie está mirando, aún peor.
+                        // es justo lo que la pausa tenía que evitar.
                         //
                         // Se apagan las dos aunque sólo uno estuviera en
                         // marcha: son baratas de escribir y dejar la otra a

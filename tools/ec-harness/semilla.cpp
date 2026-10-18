@@ -111,7 +111,7 @@ static void prueba_hilos_separados(){
  * producen NO son los mismos. Si lo fueran, el segundo aparato no aportaria
  * nada por muchos saltos que diera.
  */
-/* Los mismos que usa reparte.cpp, para no inventar nombres. */
+/* Escribe un entero de 64 bits como big-endian en 32 bytes, igual que el motor. */
 static void be_u64(uint8_t *be,unsigned long long v){
     memset(be,0,32); for(int i=0;i<8;i++) be[31-i]=(uint8_t)(v>>(8*i));
 }

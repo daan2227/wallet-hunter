@@ -7,7 +7,7 @@ package com.hunter.btc
  * que dejó de existir: `s` se fija a EN y fromSystem() no lo llamaba nadie,
  * así que siete tablas eran inalcanzables. Y ni siquiera traducían la app:
  * cubren unos cincuenta textos de la pantalla principal, y el resto de la
- * interfaz —cartera, baúl, cluster, diálogos— está escrito en inglés en su
+ * interfaz —cartera, baúl, diálogos— está escrito en inglés en su
  * sitio. Se queda la inglesa, que es la única que se usa.
  */
 object Strings {

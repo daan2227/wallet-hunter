@@ -7,7 +7,7 @@ import android.graphics.Color
  * Sistema visual "Bóveda".
  *
  * La app mezclaba TRES paletas: la gris de las pantallas principales, una
- * azulada en cluster y recovery (#171C2C, #1E2540, #0B0E14…) y una verdosa en
+ * azulada en recovery (#171C2C, #1E2540, #0B0E14…) y una verdosa en
  * la wallet y el teclado de PIN (#E6EAD8, #556050, #2A3028…). Cada pantalla
  * parecía de una aplicación distinta, y los colores estaban escritos a mano en
  * 247 sitios, así que cambiar cualquier cosa obligaba a repasarlos todos.

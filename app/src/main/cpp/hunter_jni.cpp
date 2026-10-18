@@ -2961,9 +2961,8 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
      * sin encontrarla. El banco de pruebas medía 1,4 porque usa pocos canguros.
      *
      * Se limita para que N*2^dbits no pase de raiz(W)/16 con N = 2^14. N es
-     * fijo y no el de este aparato a proposito: en un cluster el maestro y
-     * los trabajadores tienen que usar el mismo dbits (la cabecera de cada
-     * bloque lo comprueba) aunque cada uno lance distintos canguros. Solo
+     * fijo y no el de cuantos hilos se lancen, para que una tabla guardada
+     * siga siendo la misma aunque cambie el numero de hilos. Solo
      * cambia algo por debajo de ~88 bits; los puzzles grandes (#135...) siguen
      * con el tope de 28. */
     { int lim=bits/2-4-14; if(dbits>lim) dbits=lim; }
@@ -2980,9 +2979,7 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
      * corriendo, gastando bateria y ensenando sus megasaltos por segundo, pero
      * ya no acumula nada nuevo. O sea que deja de avanzar sin avisar.
      *
-     * Y es peor cuantos mas aparatos haya, que es lo contrario de lo que uno
-     * espera: en el puzzle #140 se llena en 229 dias con un movil, 93 con dos y
-     * 20 con diez, porque todos meten en la misma tabla.
+     * En el puzzle #140 se llena en 229 dias con un movil.
      *
      * Ahora el techo lo pone quien llama, sacado de la RAM del aparato (ver
      * HunterEngine.topeTablaBits). En un movil de 8 GB son 2^22, que cuadruplica
@@ -3026,23 +3023,7 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     /* La potencia y el tamano de lote los elige el usuario y hasta ahora
        Kangaroo los ignoraba: los hilos iban fijos y el lote a 512. */
     g_kg.cpu_limite.store(g_cpu_limit.load());
-    /* CERO hilos es valido y significa "recolector": la tabla queda viva y
-     * kangarooImport() mete en ella los puntos que lleguen de otros aparatos,
-     * pero aqui no camina ningun canguro y no se gasta CPU ni bateria.
-     *
-     * Hace falta para que el maestro de un cluster pueda coordinar sin buscar.
-     * La alternativa —que el maestro no tenga tabla— parece lo mismo y no lo
-     * es: sin tabla donde juntarlos, kangarooImport() rechaza los puntos, cada
-     * movil se queda buscando por su cuenta y el cluster pierde justo lo que lo
-     * hacia valer. N aparatos con la tabla compartida van N veces mas rapido;
-     * sin compartirla, raiz(N). Con dos moviles eso es 2x contra 1,41x.
-     *
-     * La colision se detecta igual, porque kg_import() llama a kg_resolver()
-     * con cada punto que entra: el maestro puede encontrar la clave sin haber
-     * dado un solo salto, juntando las dos mitades de dos moviles distintos.
-     * Eso no es teoria: es lo que comprueban las pruebas 5 y 6 de
-     * tools/ec-harness/reparte.cpp, "un master que solo escucha". */
-    if(hilos<0) hilos=0; if(hilos>16) hilos=16;
+    if(hilos<1) hilos=1; if(hilos>16) hilos=16;
     if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
     g_kg_args.assign(hilos,KgArg{});
     g_kg_hilos.assign(hilos,pthread_t{});
@@ -3056,9 +3037,8 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         g_kg_args[i].semilla=kg_semilla((uint64_t)(i+1));
         pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]);
     }
-    /* La GPU, si esta activada y el telefono busca (con 0 hilos es solo
-       recolector de un cluster y no busca). Solo con el motor de negacion,
-       que es el que hay en la GPU. */
+    /* La GPU, si esta activada. Solo con el motor de negacion, que es el que
+       hay en la GPU. */
     g_gpu_hilo_vivo=false;
     /* ¿Le da tiempo a la GPU a aportar algo? Sus 65.536 canguros tienen que
      * andar unos 2^dbits saltos cada uno antes de dar su primer distinguido.
@@ -3639,23 +3619,8 @@ Java_com_hunter_btc_HunterEngine_kangarooTope(JNIEnv *, jobject){
     return (jlong)(((g_kg.tabla.mask+1)*9)/10);
 }
 
-/* ---------- Reparto por red ----------
- *
- * Repartir Kangaroo NO es partir el rango: partirlo lo empeora, porque el coste
- * es raiz(W) y hay que recorrer varios trozos sin saber en cual esta la clave.
- * Lo que se reparte es la TABLA de puntos distinguidos. Todos los aparatos
- * caminan el intervalo entero y mandan sus puntos al master, que los junta en
- * una sola tabla: ahi aparece la colision aunque las dos mitades vengan de
- * moviles distintos. El razonamiento largo esta en kangaroo.h.
- *
- * Lo que viaja son pares (punto, distancia). Dos de rebanos distintos que
- * coincidan dan la clave: es material de clave y no hay forma de evitarlo.
- */
-
-
-
-/* La clave publica con la que se arranco, para que el master pueda decirle a
- * cada trabajador en que puzzle tiene que ponerse. */
+/* La clave publica con la que se arranco. MainActivity la compara con el
+ * puzzle elegido para no reanudar otro. */
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooPub(JNIEnv *env, jobject){
     if(!g_kg_vivo) return env->NewStringUTF("");

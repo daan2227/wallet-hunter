@@ -127,7 +127,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
      * Un puzzle resuelto no da dinero, pero da algo que ninguna prueba del
      * banco puede dar: un objetivo REAL, con clave conocida y rango pequeño,
      * que este movil puede llegar a encontrar de verdad. Es la unica forma
-     * de comprobar de punta a punta —motor, tabla, cluster y aviso— en el
+     * de comprobar de punta a punta —motor, tabla y aviso— en el
      * aparato de uno y no en un ordenador de escritorio.
      *
      * Viene apagado: lo normal es querer los que pagan. */

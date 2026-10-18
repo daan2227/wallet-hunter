@@ -225,8 +225,6 @@ object HunterEngine {
      * de 3 GB baja solo a 2^21. El 4 % es un juicio, no una medida: por encima
      * empieza a ser probable que Android mate la app por memoria, y una app
      * muerta pierde mucho más que una tabla pequeña.
-     *
-     * Sólo pesa en el MAESTRO, que es donde se juntan los puntos de todos.
      */
     fun topeTablaBits(ctx: android.content.Context): Int {
         val ram = try {
@@ -285,24 +283,6 @@ object HunterEngine {
     external fun kangarooPoints(): Long
     /** Cambia el límite de CPU con la búsqueda en marcha, sin reiniciarla. */
     external fun kangarooSetCpu(pct: Int)
-
-    /* ── Reparto por red ──────────────────────────────────────────────────────
-     *
-     * Repartir Kangaroo NO es partir el rango entre los móviles. Partirlo lo
-     * empeora: el coste es raíz(W), así que cada trozo cuesta raíz(W/N) pero
-     * hay que recorrer varios porque no se sabe en cuál está la clave. Con dos
-     * aparatos sale 1,06·raíz(W) frente a 1,00 de uno solo.
-     *
-     * Lo que sí funciona es que todos caminen el MISMO intervalo y compartan la
-     * tabla de puntos distinguidos, igual que hacen los hilos dentro de un
-     * móvil. Así el reparto es casi lineal.
-     *
-     * CUIDADO: lo que viaja son pares (punto, distancia). Dos de rebaños
-     * distintos que coincidan dan la clave privada directamente. Es material de
-     * clave, y no hay manera de evitarlo sin perder todo el beneficio.
-     */
-
-
 
     /** La clave pública con la que se arrancó, en hex. "" si no hay búsqueda. */
     external fun kangarooPub(): String

@@ -133,13 +133,13 @@ static void prueba(int bits,const char *et){
 /* Una distancia grande tiene que sobrevivir al disco y al cable.
  *
  * Es el mismo tipo de fallo que el de jlen, por el otro lado: si el formato de
- * guardado o el de red se quedara corto, la distancia llegaria truncada y el
+ * guardado se quedara corto, la distancia llegaria truncada y el
  * punto no. Otra vez una tabla llena de entradas que no pueden resolver nada,
  * y otra vez sin sintoma. En el #140 las distancias pasan de 64 bits enseguida,
  * asi que hay que probarlo con esas y no con las de un rango de juguete.
  */
 static void prueba_ida_y_vuelta(void){
-    printf("\n7. Una distancia de mas de 64 bits, por disco y por red:\n");
+    printf("\n7. Una distancia de mas de 64 bits, por disco:\n");
     const int BITS=139, DB=6;
     uint8_t ini[32],fin[32],pub[33];
     pot2_be(ini,BITS); todo_unos_be(fin,BITS);
@@ -198,30 +198,15 @@ static void prueba_ida_y_vuelta(void){
            (unsigned long long)bien_disco,antes.size());
     OK(bien_disco==antes.size(), "la distancia sobrevive a guardar y recuperar");
 
-    /* Red. El master no anda: lo unico que puede tener es lo que reciba. */
-    KangarooCtx m; kg_setup(&m,pub,ini,fin,DB,14);
-    std::vector<uint8_t> buf(kg_export_bytes(4096));
-    for(;;){
-        size_t n=kg_export(&c.tabla,pub,ini,fin,DB,buf.data(),buf.size(),512);
-        if(!n) break;
-        uint32_t met=0;
-        if(!kg_import(&m,pub,ini,fin,DB,buf.data(),n,&met)) break;
-    }
-    uint64_t bien_red=0;
-    for(size_t i=0;i<antes.size();i++) bien_red+=igual_en(&m.tabla,antes[i]);
-    printf("       red:   %llu de %zu con la distancia intacta\n",
-           (unsigned long long)bien_red,antes.size());
-    OK(bien_red==antes.size(), "la distancia sobrevive al ida y vuelta por red");
-
     remove("/tmp/kg_saltos.dat");
-    kg_free(&c); kg_free(&d); kg_free(&m);
+    kg_free(&c); kg_free(&d);
 }
 
 /* La resta que da la clave, con distancias de verdad.
  *
  * kg_resolver es el ultimo paso de toda la busqueda: dos canguros de rebanos
  * distintos en el mismo punto, y la clave es la resta de sus distancias. Las
- * pruebas que lo tocan (reparte, kang) van a 24 y 36 bits, donde las distancias
+ * pruebas que lo tocan (kang) van a 24 y 36 bits, donde las distancias
  * caben en una palabra de 64. En el #140 no caben — y este fichero existe
  * precisamente porque ahi es donde estaba el fallo.
  *

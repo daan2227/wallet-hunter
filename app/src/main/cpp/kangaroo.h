@@ -60,9 +60,8 @@
  *
  * y time(NULL) va en SEGUNDOS. O sea que dos moviles que arrancaran Kangaroo en
  * el mismo segundo, con el mismo numero de hilos, salian con semillas iguales
- * byte a byte. No es rebuscado: en un cluster los arranques se agolpan —cuando
- * el maestro manda "reanudar todos", cuando vuelve la corriente, cuando se
- * reconecta la WiFi— y basta con caer en el mismo segundo.
+ * byte a byte. No es rebuscado: los arranques se agolpan —cuando vuelve la
+ * corriente, cuando se reconecta la WiFi— y basta con caer en el mismo segundo.
  *
  * Ahora se coge entropia de verdad de /dev/urandom, y si no se puede, algo que
  * al menos no comparten dos aparatos: el reloj monotono en nanosegundos, el pid
@@ -244,13 +243,6 @@ typedef struct {
     sc_t     dist;
     uint8_t  manso;   /* 1 manso, 0 salvaje */
     uint8_t  usado;
-    /* Ya se ha mandado por la red. Sirve para que cada envio lleve solo lo
-       nuevo en vez de la tabla entera. Un punto ya mandado no se vuelve a
-       mandar aunque se reciba de otro sitio: da igual quien lo tenga, lo que
-       importa es que el master lo tenga una vez.
-       El struct ya ocupaba 56 bytes por alineacion, asi que este byte es
-       gratis. */
-    uint8_t  enviado;
 } DP;
 
 /* El tamano de este struct decide cuanta RAM reserva la tabla, y quien hace esa
@@ -394,21 +386,14 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
  *    llegar al primer distinguido; en los rangos donde se usa de verdad
  *    (#135 en adelante) esa parte es despreciable.
  *
- * Las tablas guardadas y los mensajes del cluster de un motor no le sirven al
- * otro: ver KG_VER_GS y KG_NET_VER. */
+ * Las tablas guardadas de un motor no le sirven al otro: ver KG_VER_GS. */
 static int kg_negacion = 1;
 
 #define KG_MAGIC 0x474E414BU   /* "KANG" */
-/* Version 2: cada entrada lleva ademas la marca de "ya enviado".
- *
- * La 1 no la guardaba, asi que al recuperar la tabla todas las entradas
- * volvian a contar como sin mandar y el trabajador REENVIABA LA TABLA ENTERA.
- * Con la pausa a distancia eso pasa en cada pausa, no solo al reiniciar la app.
- *
- * dp_load sigue leyendo ficheros de la 1 —seria una faena tirar la tabla de
- * alguien por cambiar el formato—: se leen sus entradas de 49 bytes y se dan
- * por no enviadas, que provoca un ultimo reenvio y a partir de ahi ya se
- * guarda. */
+/* Version 2: cada entrada lleva un byte mas al final. Era la marca de "ya
+ * enviado" del modo cluster, que ya no existe: ahora se escribe a 0 y se lee
+ * y se ignora. Se mantiene el byte para que las tablas guardadas sigan
+ * leyendose; dp_load acepta tambien la 1, que no lo tiene. */
 /* Version 3: la tabla se escribio con una tabla de saltos que SI cuadra.
  *
  * Hasta la 2, el salto i valia 2^i guardado en un uint64_t y a partir de i=63
@@ -502,13 +487,14 @@ static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
     c.n=t->guardados;
     int ok=(fwrite(&c,sizeof(c),1,f)==1);
     uint64_t escritas=0;
+    const uint8_t columna_vieja=0;   /* Ver KG_VER_CON_ENVIADO. */
     if(ok) for(uint64_t i=0;i<=t->mask;i++){
         DP *sl=&t->slots[i];
         if(!sl->usado) continue;
         if(fwrite(sl->kx,8,2,f)!=2){ ok=0; break; }
         if(fwrite(sl->dist,8,4,f)!=4){ ok=0; break; }
         if(fwrite(&sl->manso,1,1,f)!=1){ ok=0; break; }
-        if(fwrite(&sl->enviado,1,1,f)!=1){ ok=0; break; }
+        if(fwrite(&columna_vieja,1,1,f)!=1){ ok=0; break; }
         escritas++;
     }
     pthread_mutex_unlock(&t->mtx);
@@ -528,9 +514,8 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     if(fread(&c,sizeof(c),1,f)!=1){ fclose(f); return 0; }
     /* Todo tiene que cuadrar: otro puzzle, otro rango u otro criterio de
        distinguido hacen que las entradas no signifiquen lo mismo. */
-    /* Se aceptan las tres versiones. La 1 no guardaba la marca de "ya enviado";
-       tirar la tabla de alguien por eso seria una faena mucho mayor que el
-       ultimo reenvio que provoca. */
+    /* Se aceptan las tres versiones: tirar la tabla de alguien por un byte
+       que ya no se usa seria una faena. */
     /* Cada motor lee solo lo suyo: Gaudry-Schost la 5, Kangaroo de la 1 a la
        3. Ver KG_VER_GS. */
     int es_gs = (c.ver==KG_VER_GS);
@@ -544,8 +529,7 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     /* Pero una tabla anterior a la 3 en un rango grande esta envenenada entera:
        ver el comentario de KG_VER. Se tira. Es trabajo perdido de verdad —dias
        de movil— y aun asi es lo correcto: lo que hay ahi dentro no puede
-       resolver nada, y guardarlo solo sirve para reenviarlo al master para
-       siempre. */
+       resolver nada, y guardarlo solo ocupa sitio para siempre. */
     sc_t rango_a,rango_b,ancho,medio;
     sc_from_be32(rango_a,ini); sc_from_be32(rango_b,fin);
     if(!sc_sub(ancho,rango_b,rango_a)){ fclose(f); return 0; }
@@ -576,11 +560,11 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     int con_enviado = (c.ver!=KG_VER_SIN_ENVIADO);
     uint64_t leidas=0;
     for(uint64_t i=0;i<c.n;i++){
-        uint64_t kx[2]; sc_t d; uint8_t manso, env=0;
+        uint64_t kx[2]; sc_t d; uint8_t manso, columna_vieja;
         if(fread(kx,8,2,f)!=2) break;
         if(fread(d,8,4,f)!=4) break;
         if(fread(&manso,1,1,f)!=1) break;
-        if(con_enviado && fread(&env,1,1,f)!=1) break;
+        if(con_enviado && fread(&columna_vieja,1,1,f)!=1) break;
         if(!manso && fichero_centrado!=motor_centrado){
             if(motor_centrado) sc_add_n(d,d,medio);   /* de P' a P'' */
             else               sc_sub_n(d,d,medio);   /* de P'' a P' */
@@ -589,16 +573,6 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
         /* NULL: aqui no hay canguro al que volver a soltar, se esta leyendo un
            fichero. Repetido solo significa que ya estaba. */
         dp_insert(t,kx,d,manso,basura,&bm,NULL);
-        /* dp_insert no sabe de esto, asi que se busca el hueco donde ha
-           quedado. Igual que hace kg_import con los que llegan por red. */
-        if(env){
-            uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&t->mask;
-            for(uint64_t j=0;j<=t->mask;j++){
-                DP *sl=&t->slots[(h+j)&t->mask];
-                if(!sl->usado) break;
-                if(sl->kx[0]==kx[0] && sl->kx[1]==kx[1]){ sl->enviado=1; break; }
-            }
-        }
         leidas++;
     }
     fclose(f);
@@ -953,17 +927,16 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
 
     /* ---- Tabla de saltos ----
      *
-     * TIENE QUE SALIR IGUAL EN TODOS LOS APARATOS DEL CLUSTER.
+     * TIENE QUE SALIR SIEMPRE IGUAL PARA EL MISMO PUZZLE.
      *
-     * El salto depende solo de donde esta el canguro. Si dos aparatos usaran
-     * tablas distintas, un manso de uno y un salvaje de otro podrian cruzarse
-     * en un punto y separarse en el salto siguiente sin que ninguno lo apunte:
-     * la colision solo se veria si cayera JUSTO en un punto distinguido, o sea
-     * una vez de cada 2^dbits. Con dbits 28 eso es tirar el reparto entero.
+     * El salto depende solo de donde esta el canguro. Si la tabla cambiara
+     * entre dos arranques, un canguro reanudado desde una tabla guardada
+     * caminaria por otro sitio que los que quedan, y el encuentro solo se veria
+     * si cayera JUSTO en un punto distinguido, o sea una vez de cada 2^dbits.
+     * Con dbits 28 eso es tirar el reparto entero.
      *
-     * Por eso la tabla se saca de cosas que los dos lados ya comparten —el
-     * ancho del rango, y en la politica 1 la clave publica— y nunca de un
-     * generador del aparato.
+     * Por eso la tabla se saca de cosas que son fijas —el ancho del rango, y en
+     * la politica 1 la clave publica— y nunca de un generador del aparato.
      *
      * El salto medio conviene que ronde raiz(W)/2: mas corto y los canguros
      * tardan en separarse, mas largo y se pasan de largo de la zona util. */
@@ -972,8 +945,8 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         /* ---- Gaudry-Schost con negacion: la tabla ----
          *
          * 64 saltos normales y 64 de escape, al azar, sacados de la clave
-         * publica como en la politica 1 (todos los aparatos del cluster
-         * construyen la MISMA). Todos del mismo tamano, de media 2^(lb-1) con
+         * publica como en la politica 1 (siempre sale la MISMA). Todos del
+         * mismo tamano, de media 2^(lb-1) con
          *
          *     lb = 1,5 * dbits + 11
          *
@@ -1018,9 +991,8 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     if(kg_politica_saltos==1){
         /* Longitudes al azar entre 1 y 2^(bits/2), o sea de media raiz(W)/2,
            que es lo que se quiere. El azar sale de la clave publica con
-           splitmix64: es determinista y los dos lados del cluster tienen la
-           misma clave publica, asi que construyen la MISMA tabla. Con 32 saltos
-           basta para que el camino sea impredecible. */
+           splitmix64: es determinista, asi que el mismo puzzle da siempre la
+           MISMA tabla. Con 32 saltos basta para que el camino sea impredecible. */
         int n=32; if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
         c->njumps=n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
@@ -1189,183 +1161,6 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
     return 0;
 }
 
-/* ---------- Reparto por red ----------
- *
- * POR QUE SE COMPARTE LA TABLA Y NO EL RANGO.
- *
- * Con fuerza bruta, partir el rango en N trozos y dar uno a cada movil divide
- * el tiempo entre N: el coste es O(W) y cada uno hace W/N.
- *
- * Con Kangaroo no, porque el coste es O(raiz(W)). Partir el intervalo en N deja
- * cada trozo en raiz(W/N), pero hay que recorrer varios trozos porque no se
- * sabe en cual esta la clave: de media sale peor que no partir nada. Con N=2 el
- * coste esperado es 1,06*raiz(W) frente a 1,00 de un solo aparato; con N=8, 1,59.
- * O sea: repartir el rango EMPEORA la busqueda.
- *
- * Lo que si funciona es lo que ya hacen los hilos dentro de un movil: TODOS en
- * el MISMO intervalo, compartiendo una tabla de distinguidos. Asi el reparto es
- * casi lineal, porque la colision se encuentra N veces antes.
- *
- * Entre aparatos es lo mismo: cada uno camina el intervalo entero con sus
- * propios canguros y manda al master los distinguidos que va encontrando. El
- * master los mete todos en una sola tabla, y ahi aparece la colision aunque las
- * dos mitades vengan de moviles distintos.
- *
- * AVISO: lo que viaja son pares (punto, distancia). Dos de rebanos distintos que
- * coincidan DAN LA CLAVE. Es material de clave, y no hay forma de evitarlo sin
- * perder el beneficio entero. Va con codigo de acceso y pensado para una red
- * propia; no lo uses en una red que no controles.
- */
-
-#define KG_NET_MAGIC 0x5044474BU   /* "KGDP" */
-/* Version 2: los puntos vienen de una tabla de saltos que cuadra.
- *
- * Se sube por lo mismo que KG_VER pasa a 3 (ver alli). Un aparato sin
- * actualizar manda puntos cuya distancia no corresponde con el punto, y el
- * master no tiene forma de distinguirlos de los buenos: entrarian en la tabla y
- * se quedarian ahi ocupando sitio sin poder resolver nada.
- *
- * El precio es que un movil sin actualizar deja de contribuir y se le nota
- * —"Puntos recibidos" se queda quieto—, que es justo lo que hay que ver. La
- * alternativa era un cluster con buena pinta que no puede encontrar nada, que
- * es de donde venimos. */
-/* Version 3: las distancias de los salvajes van medidas desde el centro, por el
- * mapa de negacion (ver KG_VER). Aqui no se convierte al vuelo como en el
- * fichero: dos aparatos que no coincidan tienen caminos distintos y ademas no se
- * cruzarian bien, asi que es mejor que se rechacen y se vea. */
-/* Version 4: Gaudry-Schost con negacion. Sus puntos no le sirven a un aparato
- * con Kangaroo ni al reves (ver KG_VER_GS), asi que un aparato sin actualizar
- * se rechaza, igual que en la 2. */
-#define KG_NET_VER   5u   /* 5: la tabla de saltos de KG_VER_GS 6 */
-/* Cabecera: magic, ver, pub, ini, fin, dbits, n. Campo a campo, sin volcar el
-   struct, para que el relleno del compilador no forme parte del formato. */
-#define KG_NET_CAB   (4+4+33+32+32+4+4)
-#define KG_NET_ENT   (16+32+1)     /* kx[2], dist[4], manso */
-
-static void kg_put32(uint8_t *p,uint32_t v){
-    p[0]=(uint8_t)v; p[1]=(uint8_t)(v>>8); p[2]=(uint8_t)(v>>16); p[3]=(uint8_t)(v>>24);
-}
-static uint32_t kg_get32(const uint8_t *p){
-    return (uint32_t)p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);
-}
-static void kg_put64(uint8_t *p,uint64_t v){
-    for(int i=0;i<8;i++) p[i]=(uint8_t)(v>>(8*i));
-}
-static uint64_t kg_get64(const uint8_t *p){
-    uint64_t v=0; for(int i=0;i<8;i++) v|=((uint64_t)p[i])<<(8*i); return v;
-}
-
-/* Cuantos bytes ocupa un envio de n entradas. Lo usa quien reserva el buffer. */
-static size_t kg_export_bytes(uint32_t n){ return KG_NET_CAB+(size_t)n*KG_NET_ENT; }
-
-/* Vuelca a `buf` los distinguidos que aun no se han mandado y los marca.
- *
- * @param max_ent tope de entradas por envio, para que un mensaje no se haga
- *                enorme. Lo que no quepa sale en el siguiente.
- * @return bytes escritos, o 0 si no habia nada nuevo o no cabia la cabecera.
- */
-static size_t kg_export(DPTable *t,const uint8_t *pub,const uint8_t *ini,
-                        const uint8_t *fin,int dbits,
-                        uint8_t *buf,size_t cap,uint32_t max_ent){
-    if(!buf || cap<KG_NET_CAB) return 0;
-    uint32_t caben=(uint32_t)((cap-KG_NET_CAB)/KG_NET_ENT);
-    if(max_ent && caben>max_ent) caben=max_ent;
-    if(caben==0) return 0;
-
-    uint8_t *p=buf+KG_NET_CAB;
-    uint32_t n=0;
-    pthread_mutex_lock(&t->mtx);
-    for(uint64_t i=0;i<=t->mask && n<caben;i++){
-        DP *s=&t->slots[i];
-        if(!s->usado || s->enviado) continue;
-        kg_put64(p,s->kx[0]); kg_put64(p+8,s->kx[1]);
-        for(int w=0;w<4;w++) kg_put64(p+16+8*w,s->dist[w]);
-        p[48]=s->manso;
-        p+=KG_NET_ENT;
-        s->enviado=1;
-        n++;
-    }
-    pthread_mutex_unlock(&t->mtx);
-    if(n==0) return 0;
-
-    kg_put32(buf,KG_NET_MAGIC);
-    kg_put32(buf+4,KG_NET_VER);
-    memcpy(buf+8,pub,33);
-    memcpy(buf+41,ini,32);
-    memcpy(buf+73,fin,32);
-    kg_put32(buf+105,(uint32_t)dbits);
-    kg_put32(buf+109,n);
-    return KG_NET_CAB+(size_t)n*KG_NET_ENT;
-}
-
-/* Mete en la tabla los distinguidos que vienen de otro aparato.
- *
- * La cabecera tiene que cuadrar del todo —mismo puzzle, mismo rango, mismo
- * criterio de distinguido—: si no, las entradas no significan lo mismo y
- * mezclarlas daria colisiones que no dicen nada. Es la misma comprobacion que
- * hace dp_load con el fichero de guardado, y por el mismo motivo.
- *
- * Los que entran se marcan como YA ENVIADOS: vienen de fuera, asi que
- * reenviarlos solo seria devolverle al master lo que ya tiene.
- *
- * @param n_ok si no es NULL, cuantas entradas se han metido.
- * @return 1 si el bloque era valido, 0 si se rechaza entero.
- */
-static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
-                     const uint8_t *fin,int dbits,
-                     const uint8_t *buf,size_t len,uint32_t *n_ok){
-    if(n_ok) *n_ok=0;
-    if(!buf || len<KG_NET_CAB) return 0;
-    if(kg_get32(buf)!=KG_NET_MAGIC || kg_get32(buf+4)!=KG_NET_VER) return 0;
-    if(memcmp(buf+8,pub,33)!=0)  return 0;
-    if(memcmp(buf+41,ini,32)!=0) return 0;
-    if(memcmp(buf+73,fin,32)!=0) return 0;
-    if(kg_get32(buf+105)!=(uint32_t)dbits) return 0;
-
-    uint32_t n=kg_get32(buf+109);
-    /* El mensaje viene de fuera: no fiarse de `n`. Tiene que cuadrar con el
-       tamano real, o el bucle leeria fuera del buffer. */
-    if((size_t)n>(len-KG_NET_CAB)/KG_NET_ENT) return 0;
-
-    const uint8_t *p=buf+KG_NET_CAB;
-    /* Cuantas entran DE VERDAD, no cuantas llegan.
-     *
-     * Antes se contaba una por entrada del mensaje, entrara o no. Con la tabla
-     * reenviada por completo tras cada pausa, el maestro decia "Puntos
-     * recibidos: 12" con 4 en la tabla — y el que mira no tiene forma de saber
-     * cual de los dos numeros es el bueno. */
-    uint64_t antes_guardados=c->tabla.guardados;
-    for(uint32_t i=0;i<n;i++,p+=KG_NET_ENT){
-        uint64_t kx[2]; sc_t d;
-        kx[0]=kg_get64(p); kx[1]=kg_get64(p+8);
-        for(int w=0;w<4;w++) d[w]=kg_get64(p+16+8*w);
-        int manso=p[48]?1:0;
-
-        sc_t otro; int otro_manso;
-        /* NULL: el canguro pegado es de OTRO aparato. Aqui no se le puede
-           soltar; ya lo hara el suyo cuando le toque. */
-        if(dp_insert(&c->tabla,kx,d,manso,otro,&otro_manso,NULL)){
-            /* Colision. Puede ser contra un punto de este movil o contra otro
-               que llego antes por la red: da igual, la cuenta es la misma. */
-            kg_resolver(c,d,manso,otro);
-        }
-        /* Marcarlo como ya enviado para no devolverlo. dp_insert no lo sabe,
-           asi que se busca el hueco donde ha quedado. */
-        pthread_mutex_lock(&c->tabla.mtx);
-        {
-            uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&c->tabla.mask;
-            for(uint64_t j=0;j<=c->tabla.mask;j++){
-                DP *s=&c->tabla.slots[(h+j)&c->tabla.mask];
-                if(!s->usado) break;
-                if(s->kx[0]==kx[0] && s->kx[1]==kx[1]){ s->enviado=1; break; }
-            }
-        }
-        pthread_mutex_unlock(&c->tabla.mtx);
-    }
-    if(n_ok) *n_ok=(uint32_t)(c->tabla.guardados-antes_guardados);
-    return 1;
-}
-
 /* Un canguro: donde esta y cuanto lleva recorrido.
  *
  * EN AFIN, no en Jacobiano. El bucle anterior sumaba en Jacobiano y despues
@@ -1415,8 +1210,7 @@ static int kg_import(KangarooCtx *c,const uint8_t *pub,const uint8_t *ini,
  *     canguro entra en un ciclo de dos y se queda ahi para siempre. Sin
  *     tratarlo, el motor no anda: hay que detectarlo y escapar con otro salto.
  *
- *  4. Y el escape tiene que ser el MISMO en todos los aparatos y depender solo
- *     del punto. Si depende de por donde venia el canguro, dos que se hayan
+ *  4. Y el escape tiene que ser SIEMPRE EL MISMO y depender solo del punto. Si depende de por donde venia el canguro, dos que se hayan
  *     juntado pueden separarse en el escape y no llegar nunca al mismo
  *     distinguido — que es justo el fallo que no deja rastro y que costo esta
  *     semana encontrar en la tabla de saltos.

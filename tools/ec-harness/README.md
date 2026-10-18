@@ -237,7 +237,7 @@ además que en la tabla hay distancias de más de 64 bits: si no las hubiera, no
 estaría mirando el caso que falla y diría que todo bien igualmente.
 
 Y cubre el mismo tipo de fallo por los otros dos caminos: que una distancia
-grande sobreviva a guardar/recuperar y al ida y vuelta por red, y que la resta
+grande sobreviva a guardar/recuperar, y que la resta
 que da la clave (`kg_resolver`) funcione con distancias de verdad y no sólo con
 las de un rango de juguete.
 
