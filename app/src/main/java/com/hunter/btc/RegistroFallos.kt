@@ -14,13 +14,25 @@ object RegistroFallos {
     private const val TOPE = 256 * 1024
     @Volatile private var instalado = false
 
-    fun anotar(ctx: Context, texto: String) {
+    /**
+     * Añade [texto] a [f], con las claves tachadas. Si el fichero pasa del tope
+     * se rota: el actual pasa a `<nombre>.1.txt` (sustituyendo al anterior) y
+     * se empieza uno nuevo. Antes se vaciaba, y se perdía todo el historial.
+     */
+    @Synchronized
+    fun añadir(f: java.io.File, texto: String) {
         try {
-            val f = java.io.File(ctx.applicationContext.filesDir, "crash_log.txt")
-            if (f.length() > TOPE) f.writeText("")
+            if (f.length() > TOPE) {
+                val rotado = java.io.File(f.parentFile, f.name.removeSuffix(".txt") + ".1.txt")
+                rotado.delete()
+                f.renameTo(rotado)
+            }
             f.appendText(Secretos.tachar(texto))
         } catch (e: Throwable) { }
     }
+
+    fun anotar(ctx: Context, texto: String) =
+        añadir(java.io.File(ctx.applicationContext.filesDir, "crash_log.txt"), texto)
 
     fun anotar(ctx: Context, donde: String, e: Throwable) =
         anotar(ctx, "\n$donde: ${e.message}\n${e.stackTraceToString()}\n")
@@ -36,7 +48,6 @@ object RegistroFallos {
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
             anotar(app, "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
-            try { app.getExternalFilesDir(null)?.let { java.io.File(it, "crash_log.txt").delete() } } catch (x: Throwable) {}
             android.os.Process.killProcess(android.os.Process.myPid())
         }
     }

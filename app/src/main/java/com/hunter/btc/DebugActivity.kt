@@ -161,10 +161,24 @@ class DebugActivity : AppCompatActivity() {
             android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show()
         })
         logBtnRow.addView(actionBtn("Clear", RED) {
-            clearLogs()
-            tvLive.text = "Logs cleared."
+            val n = Diagnostico.archivar(this)
+            tvLive.text = if (n == 0) "Nothing to archive." else "Archived $n file(s). Nothing was deleted."
         })
         liveCard.addView(logBtnRow)
+        liveCard.addView(TextView(this).apply {
+            text = "Check app: runs the health checks and saves the result to app_log.txt."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context); setPadding(0, dp(10), 0, 0)
+        })
+        liveCard.addView(TextView(this).apply {
+            text = "Check app"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+            typeface = AppTheme.title(context); setTextColor(AppTheme.ON_ACCENT)
+            background = GradientDrawable().apply { setColor(ACCENT2); cornerRadius = dp(8).toFloat() }
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(6) }
+            isClickable = true; isFocusable = true
+            setOnClickListener { ejecutarComprobacion() }
+        })
         root.addView(liveCard)
 
         // ── ENGINE STATS ──────────────────────────────────────────────────
@@ -271,8 +285,10 @@ class DebugActivity : AppCompatActivity() {
         // borran al abrir la app (MatchVault.recoger).
         val logFiles = listOf(
             File(filesDir, "crash_log.txt"),
-            File(filesDir, "puz_debug.txt"),
-            File(getExternalFilesDir(null), "crash_log.txt")
+            File(filesDir, "crash_log.1.txt"),
+            File(filesDir, Diagnostico.MOTOR),
+            File(filesDir, Diagnostico.APP),
+            File(getExternalFilesDir(null), "crash_log.txt")   // antiguo: no se borra
         )
 
         logFiles.forEach { f ->
@@ -385,33 +401,40 @@ class DebugActivity : AppCompatActivity() {
         } catch (e: Exception) {}
         sb.appendLine()
 
-        // Engine log
-        val engineLogs = buildString {
-            repeat(50) {
-                val l = HunterEngine.popLog()
-                if (l.isNotEmpty()) appendLine(l)
-            }
+        // Motor: lo que saca ahora se guarda en engine_log.txt y se muestra aquí.
+        val motor = Diagnostico.drenarMotor(applicationContext)
+        if (motor.isNotEmpty()) { sb.appendLine("=== ENGINE ==="); sb.appendLine(motor) }
+
+        // Avisos y errores de este proceso, guardados en app_log.txt.
+        Diagnostico.volcarLogcat(applicationContext)
+        val app = File(filesDir, Diagnostico.APP)
+        if (app.exists() && app.length() > 0) {
+            sb.appendLine("=== ${Diagnostico.APP} ===")
+            sb.appendLine(colaDe(app, 3000))
         }
-        if (engineLogs.isNotEmpty()) { sb.appendLine("=== ENGINE ==="); sb.appendLine(engineLogs) }
 
-        // Logcat errores
-        try {
-            val proc = Runtime.getRuntime().exec(arrayOf("logcat", "-d", "-t", "30", "AndroidRuntime:E", "*:S"))
-            val lines = java.io.BufferedReader(java.io.InputStreamReader(proc.inputStream)).readLines()
-            if (lines.isNotEmpty()) { sb.appendLine("=== ERRORS ==="); sb.appendLine(lines.joinToString("\n")) }
-        } catch (e: Exception) {}
-
-        // Archivos de log
-        listOf(filesDir to "puz_debug.txt", filesDir to "crash_log.txt").forEach { (dir, name) ->
-            val f = java.io.File(dir, name)
-            if (f.exists() && f.length() > 0) {
-                sb.appendLine("=== $name ===")
-                sb.appendLine(colaDe(f, 800))
-            }
+        // Cierres.
+        val crash = File(filesDir, "crash_log.txt")
+        if (crash.exists() && crash.length() > 0) {
+            sb.appendLine("=== crash_log.txt ===")
+            sb.appendLine(colaDe(crash, 800))
         }
 
         return sb.toString()
     }
+
+    private fun ejecutarComprobacion() {
+        tvLiveLog?.text = "Checking…"
+        Thread {
+            val lineas = try { Diagnostico.comprobar(applicationContext) }
+                         catch (e: Throwable) { listOf("MAL  comprobacion: ${e.message}") }
+            runOnUiThread {
+                if (!isFinishing) tvLiveLog?.text = lineas.joinToString("\n") +
+                    "\n\n(also saved to ${Diagnostico.APP})"
+            }
+        }.start()
+    }
+
     /**
      * Los últimos [n] caracteres de un fichero, sin leerlo entero.
      *
@@ -430,12 +453,6 @@ class DebugActivity : AppCompatActivity() {
             String(buf, Charsets.UTF_8)
         }
     } catch (e: Exception) { "" }
-
-    private fun clearLogs() {
-        File(filesDir, "puz_debug.txt").delete()
-        File(filesDir, "crash_log.txt").delete()
-        File(getExternalFilesDir(null), "crash_log.txt").delete()
-    }
 
     override fun onDestroy() {
         super.onDestroy()

@@ -347,6 +347,16 @@ class HunterService : Service() {
             // corra el servicio.
             if (Termico.evaluar(currentTemp)) avisarDeCalor()
 
+            // ── DIAGNOSTICO ──────────────────────────────────────────
+            // Lo que escribe el motor y los errores de la app se guardan aunque
+            // nadie tenga abierto el modo debug. Va en segundo plano: escribe
+            // en disco y volcarLogcat lanza un proceso cada diez segundos.
+            val app = applicationContext
+            Diagnostico.enSegundoPlano {
+                Diagnostico.drenarMotor(app)
+                Diagnostico.volcarLogcat(app)
+            }
+
             handler.postDelayed(this, 2000L)
         }
     }
