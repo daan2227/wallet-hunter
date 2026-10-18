@@ -196,7 +196,6 @@ object HunterEngine {
      * en C frente a ensamblador ARM64, y saltos por segundo de Kangaroo en un
      * hilo. Tarda unos cuatro segundos; llamar fuera del hilo principal.
      */
-    external fun benchCampo(): String
     /**
      * Prueba de la GPU con Vulkan: multiplicaciones de cuerpo por segundo,
      * comprobadas antes contra la CPU. Fuera del hilo principal.
@@ -213,7 +212,6 @@ object HunterEngine {
     /** Saltos hechos por la GPU en esta búsqueda (ya van en el total). */
     external fun gpuSaltos(): Long
     /** Kangaroo en la GPU, medido con varios repartos. Unos 15 s; motor parado. */
-    external fun benchGpuKangaroo(): String
 
     /**
      * El techo de tabla que aguanta este aparato, en potencias de dos.

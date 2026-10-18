@@ -214,67 +214,49 @@ class DebugActivity : AppCompatActivity() {
         statsCard.addView(statRow("Matches", HunterEngine.getFound().toString(), ACCENT))
         root.addView(statsCard)
 
-        // ── PRUEBA DE RENDIMIENTO ─────────────────────────────────────────
-        // Mide en este móvil lo que el banco de escritorio no puede: si la
-        // multiplicación en ensamblador ARM64 gana a la de C, y cuántos saltos
-        // por segundo da Kangaroo en un hilo. Con el motor parado, para que
-        // no compitan por la CPU.
-        val benchCard = card()
-        benchCard.addView(label("ENGINE BENCHMARK"))
-        val tvBench = TextView(this).apply {
-            text = "Measures field multiplication (C vs ARM64 assembly) and Kangaroo " +
-                   "jumps per second on this phone. Takes about 5 seconds; stop any " +
-                   "search first."
+        // ── AVISOS ────────────────────────────────────────────────────────
+        // Manda un aviso de prueba, o si están bloqueados lo dice y lleva a
+        // donde se activan.
+        val avisosCard = card()
+        avisosCard.addView(label("NOTIFICATIONS"))
+        val tvAvisos = TextView(this).apply {
+            text = "Sends a test notification the same way a find does."
             textSize = AppTheme.SP_CAPTION; setTextColor(MUTED)
             typeface = AppTheme.mono(context)
             setTextIsSelectable(true)
             setPadding(0, 0, 0, dp(8))
         }
-        benchCard.addView(tvBench)
-        // actionBtn está pensado para una fila (ancho 0 y peso): aquí va solo,
-        // así que a lo ancho, o saldría con ancho cero.
-        fun aLoAncho(v: android.view.View, arriba: Int = 0) = v.apply {
+        avisosCard.addView(tvAvisos)
+        avisosCard.addView(TextView(this).apply {
+            text = "Test notification"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+            typeface = AppTheme.title(context); setTextColor(AppTheme.ON_ACCENT)
+            background = GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)).apply { topMargin = dp(arriba) }
-        }
-        benchCard.addView(aLoAncho(actionBtn("Run benchmark", ACCENT) {
-            tvBench.text = "Running…"
-            Thread {
-                val r = try { HunterEngine.benchCampo() } catch (e: Throwable) { "Error: ${e.message}" }
-                runOnUiThread { tvBench.text = r + "\n" + android.os.Build.MODEL + " · " +
-                                (if (android.os.Build.VERSION.SDK_INT >= 31) android.os.Build.SOC_MODEL else "") }
-            }.start()
-        }))
-        benchCard.addView(aLoAncho(actionBtn("GPU Kangaroo benchmark", ACCENT2) {
-            tvBench.text = "Running Kangaroo on the GPU (about 15 s)…"
-            Thread {
-                val r = try { HunterEngine.benchGpuKangaroo() } catch (e: Throwable) { "Error: ${e.message}" }
-                runOnUiThread { tvBench.text = r }
-            }.start()
-        }, arriba = 8))
-        // Los avisos de hallazgo: manda uno de prueba, o si están bloqueados
-        // lo dice y lleva a donde se activan.
-        benchCard.addView(aLoAncho(actionBtn("Test notification", ACCENT) {
-            when {
-                Avisos.faltaPermiso(this) && android.os.Build.VERSION.SDK_INT >= 33 -> {
-                    tvBench.text = "Notifications need permission: asking…\n" +
-                        "If nothing appears, Android has stopped asking: tap again to open the settings."
-                    if (!pidioAvisos) {
-                        pidioAvisos = true
-                        requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1004)
-                    } else Avisos.abrirAjustes(this)
-                }
-                !Avisos.permitidos(this) -> {
-                    tvBench.text = "Notifications are turned off for Wallet Hunter: opening the settings."
-                    Avisos.abrirAjustes(this)
-                }
-                else -> {
-                    val ok = Avisos.hallazgo(this, "Test — Wallet Hunter", "Notifications work. A real find says the same and the key goes to the vault.")
-                    tvBench.text = if (ok) "Test notification sent." else "Could not send it."
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(40))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                when {
+                    Avisos.faltaPermiso(this@DebugActivity) && android.os.Build.VERSION.SDK_INT >= 33 -> {
+                        tvAvisos.text = "Notifications need permission: asking…\n" +
+                            "If nothing appears, Android has stopped asking: tap again to open the settings."
+                        if (!pidioAvisos) {
+                            pidioAvisos = true
+                            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 1004)
+                        } else Avisos.abrirAjustes(this@DebugActivity)
+                    }
+                    !Avisos.permitidos(this@DebugActivity) -> {
+                        tvAvisos.text = "Notifications are turned off for Wallet Hunter: opening the settings."
+                        Avisos.abrirAjustes(this@DebugActivity)
+                    }
+                    else -> {
+                        val ok = Avisos.hallazgo(this@DebugActivity, "Test — Wallet Hunter",
+                            "Notifications work. A real find says the same and the key goes to the vault.")
+                        tvAvisos.text = if (ok) "Test notification sent." else "Could not send it."
+                    }
                 }
             }
-        }, arriba = 8))
-        root.addView(benchCard)
+        })
+        root.addView(avisosCard)
 
         // ── ARCHIVOS DE LOG ───────────────────────────────────────────────
         val filesCard = card()
