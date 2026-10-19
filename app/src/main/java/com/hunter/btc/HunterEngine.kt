@@ -61,6 +61,8 @@ object HunterEngine {
      * indicada. Devuelve "WIF|direccion|1" (1 si la clave es comprimida) o "".
      */
     external fun importarClave(entrada: String, testnet: Boolean, hexComprimida: Boolean): String
+    /** xpub/ypub/zpub (o tpub/upub/vpub) de la cuenta 0 de la frase, para [purpose] 44, 49, 84 o 86. */
+    external fun exportarXpub(mnemonic: String, purpose: Int, testnet: Boolean): String
     /** Todas las direcciones de un WIF, una por línea: "TIPO direccion". */
     external fun wifDirecciones(wif: String, testnet: Boolean): String
     /**

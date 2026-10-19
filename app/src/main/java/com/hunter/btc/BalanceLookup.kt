@@ -20,13 +20,20 @@ import org.json.JSONObject
 object BalanceLookup {
 
     /** @param source "" = una API web, "electrum" = se usó el respaldo. */
-    data class Result(val sat: Long, val source: String)
+    /** [pendiente]: lo que aún no está confirmado (sólo lo sabe la API web). */
+    data class Result(val sat: Long, val source: String, val pendiente: Long = 0L)
 
     /**
      * Saldo por la API web (mempool.space o blockstream.info, lo que responda).
      * Lanza si no responde ninguna o si el JSON no se entiende.
      */
     fun fromMempool(addr: String, testnet: Boolean = false): Long {
+        val (confirmado, pendiente) = fromMempoolDetalle(addr, testnet)
+        return confirmado + pendiente
+    }
+
+    /** Saldo confirmado y el de la mempool (pendiente), por separado. */
+    fun fromMempoolDetalle(addr: String, testnet: Boolean = false): Pair<Long, Long> {
         val js = ChainApi.get("/address/$addr", testnet)
             ?: throw java.io.IOException("no web API answered")
         // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia. La
@@ -37,7 +44,7 @@ object BalanceLookup {
             val b = o.optJSONObject(block) ?: return 0L
             return b.optLong("funded_txo_sum", 0L) - b.optLong("spent_txo_sum", 0L)
         }
-        return sumOf("chain_stats") + sumOf("mempool_stats")
+        return sumOf("chain_stats") to sumOf("mempool_stats")
     }
 
     /**
@@ -80,7 +87,8 @@ object BalanceLookup {
     fun query(addr: String, testnet: Boolean = false): Result? {
         if (addr.isEmpty()) return null
         try {
-            return Result(fromMempool(addr, testnet), "")
+            val (confirmado, pendiente) = fromMempoolDetalle(addr, testnet)
+            return Result(confirmado + pendiente, "", pendiente)
         } catch (e: Exception) {
             android.util.Log.w("BalanceLookup", "web APIs failed on $addr: ${e.message}")
         }

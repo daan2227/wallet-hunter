@@ -80,7 +80,8 @@ static void install_crash_handlers() {
 #define MAX_LINE      256
 #define MAX_ADDR      64
 #include "addr_encode.h"
-#include "wif_direcciones.h"   /* wif_decode y todas las direcciones de un WIF */   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "wif_direcciones.h"
+#include "xpub_export.h"   /* xpub/ypub/zpub de la cuenta de una semilla */   /* wif_decode y todas las direcciones de un WIF */   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "ruta_bip32.h"    /* ruta BIP32 estricta */
 #include <openssl/crypto.h> /* OPENSSL_cleanse */
@@ -1476,6 +1477,22 @@ Java_com_hunter_btc_HunterEngine_importarClave(JNIEnv *env, jobject, jstring jen
     const char *in = env->GetStringUTFChars(jentrada, nullptr);
     std::string out = in ? wif_importar(in, jtestnet != JNI_FALSE, jhexComprimida != JNI_FALSE) : std::string();
     if (in) env->ReleaseStringUTFChars(jentrada, in);
+    return env->NewStringUTF(out.c_str());
+}
+
+/* xpub/ypub/zpub de la cuenta 0 de la frase (propósito 44, 49, 84 o 86). Sólo
+ * la pública: la semilla no sale. Cadena vacía si algo no vale. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_exportarXpub(JNIEnv *env, jobject, jstring jmn, jint jpurpose, jboolean jtestnet) {
+    const char *m = env->GetStringUTFChars(jmn, nullptr);
+    std::string out;
+    if (m && (jpurpose == 44 || jpurpose == 49 || jpurpose == 84 || jpurpose == 86)) {
+        uint8_t seed[64] = {0};
+        bip39_semilla(m, strlen(m), "", 0, seed);
+        out = xpub_de_cuenta(seed, jpurpose, jtestnet != JNI_FALSE);
+        OPENSSL_cleanse(seed, sizeof seed);
+    }
+    if (m) env->ReleaseStringUTFChars(jmn, m);
     return env->NewStringUTF(out.c_str());
 }
 

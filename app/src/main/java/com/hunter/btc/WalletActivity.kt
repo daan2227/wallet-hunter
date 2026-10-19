@@ -357,7 +357,7 @@ class WalletActivity : FragmentActivity() {
         CoinSelector.inputVBytes(k, isWifMode && wifKey.isNotEmpty() && (wifKey[0] == '5' || wifKey[0] == '9'))
 
     /** Cómo se llama una clave de la lista en pantalla (saldo, origen de Enviar). */
-    private fun etiquetaClave(k: String): String = when {
+    private fun etiquetaClave(k: String): String = etiquetaDeDireccion(addresses[k] ?: "") ?: when {
         k == "wif_0" -> currentWalletName
         k.startsWith("wif_p") -> "WIF " + k.removePrefix("wif_").uppercase()
         else -> labelMap[k] ?: k
@@ -365,6 +365,21 @@ class WalletActivity : FragmentActivity() {
 
     /** El tipo que la petición de firma necesita para una clave WIF. */
     private fun tipoWif(k: String): String = tipoDeClave(k)
+
+    /** Nombre que el usuario le ha puesto a una dirección, o null. Por dirección, no por clave. */
+    private fun etiquetaDeDireccion(addr: String): String? =
+        if (addr.isEmpty()) null
+        else getSharedPreferences("address_labels", MODE_PRIVATE).getString(addr, null)?.takeIf { it.isNotBlank() }
+
+    private fun guardarEtiquetaDireccion(addr: String, texto: String) {
+        val e = getSharedPreferences("address_labels", MODE_PRIVATE).edit()
+        if (texto.isBlank()) e.remove(addr) else e.putString(addr, texto.take(32))
+        e.apply()
+    }
+
+    /** Moneda para el equivalente en pantalla: la que haya elegido el usuario (USD por defecto). */
+    private fun fiatCode(): String =
+        getSharedPreferences("hunter", MODE_PRIVATE).getString("fiat_code", "USD") ?: "USD"
 
     /** La P2PKH de una WIF, en la red de la cartera. Vacío si no vale. */
     private fun direccionDeWif(w: String): String =
@@ -680,6 +695,8 @@ class WalletActivity : FragmentActivity() {
         descubriendo = !wifSnap && mnemonicSnap.isNotEmpty()
         Thread {
             var totalSat = 0L
+            // Lo que aún no está confirmado (mempool), dentro del total.
+            var pendienteTotal = 0L
             // label, dirección, saldo, fuente ("" = mempool.space, "electrum" = respaldo)
             val rows = mutableListOf<BalanceRow>()
             var usedFallback = false
@@ -712,7 +729,8 @@ class WalletActivity : FragmentActivity() {
                 val src = res.source
                 if (src == "electrum") usedFallback = true
                 totalSat += bal
-                rows.add(BalanceRow(label, addr, bal, src))
+                pendienteTotal += res.pendiente
+                rows.add(BalanceRow(etiquetaDeDireccion(addr) ?: label, addr, bal, src))
             }
 
             /* Descubrimiento HD.
@@ -749,6 +767,7 @@ class WalletActivity : FragmentActivity() {
                         if (r == null) { fallosHD++; continue }
                         if (r.source == "electrum") usedFallback = true
                         totalSat += r.sat
+                        pendienteTotal += r.pendiente
                         rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} [${f.index}]",
                                             f.addr, r.sat, r.source))
                         clavePorProposito[purpose]?.let { nuevasGastables["${it}_${f.index}"] = f.addr }
@@ -766,6 +785,7 @@ class WalletActivity : FragmentActivity() {
                         if (r.sat <= 0L) continue   // cambio ya gastado: no ensuciar la lista
                         if (r.source == "electrum") usedFallback = true
                         totalSat += r.sat
+                        pendienteTotal += r.pendiente
                         rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} change [${f.index}]",
                                             f.addr, r.sat, r.source))
                         // Gastable también: antes el cambio se veía en el saldo pero
@@ -796,17 +816,23 @@ class WalletActivity : FragmentActivity() {
             if (!isTestnet) try {
                 // "USD":(\d+) no captura decimales: con 67432.5 leía 67432.
                 val js = ChainApi.get("/v1/prices", false)
-                if (js != null) price = JSONObject(js).optDouble("USD", 0.0)
+                if (js != null) price = JSONObject(js).optDouble(fiatCode(), 0.0)
             } catch(e: Exception) {}
-            val tot = totalSat; val pr = price
+            val tot = totalSat; val pr = price; val pend = pendienteTotal
             if (gen == generacion) ultimoSaldoSat = if (huboFallo) -1L else tot
             runOnUiThread {
                 if (gen != generacion) return@runOnUiThread
                 val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
-                val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} USD" else "BTC"
+                val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} ${fiatCode()}" else "BTC"
                 monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
+                if (pend != 0L) ll.addView(TextView(this).apply {
+                    text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8)
+                    textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                    typeface = AppTheme.body(context)
+                    setPadding(0, 0, 0, dp(12))
+                })
                 // Un fallo de red se decía antes fila a fila ("no answer"
                 // doce veces) sin explicar nunca que el problema era el mismo.
                 if (huboFallo) {
@@ -2653,6 +2679,24 @@ class WalletActivity : FragmentActivity() {
 
         // Nueva dirección: la primera sin usar de este tipo, a partir de la siguiente
         // a la que se ve. Sólo en cartera de semilla: una WIF tiene una sola.
+        tvAddr.setOnLongClickListener {
+            val a = addrActual
+            if (a.isNotEmpty()) {
+                val et = EditText(this).apply {
+                    setText(etiquetaDeDireccion(a) ?: "")
+                    hint = "Name for this address"
+                    setPadding(dp(16), dp(12), dp(16), dp(12))
+                }
+                AlertDialog.Builder(this).setTitle("Name this address").setView(et)
+                    .setPositiveButton("Save") { _, _ ->
+                        guardarEtiquetaDireccion(a, et.text.toString().trim())
+                        Toast.makeText(this, "Saved", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Cancel", null)
+                    .show()
+            }
+            true
+        }
         btnNueva.setOnClickListener {
             if (isWifMode || mnemonic.isEmpty()) {
                 Toast.makeText(this, "Only seed wallets have more addresses", Toast.LENGTH_SHORT).show()
@@ -3090,6 +3134,35 @@ class WalletActivity : FragmentActivity() {
         }
     }
 
+    /**
+     * Las claves públicas extendidas de la cuenta 0, para vigilar esta cartera
+     * en otro sitio sin la semilla. No revelan claves privadas, pero sí todas
+     * las direcciones de la cartera: por eso van detrás de la autenticación.
+     */
+    private fun mostrarXpubs() {
+        val frase = mnemonic
+        val red = isTestnet
+        Thread {
+            val partes = listOf(84 to "SegWit (84')", 49 to "SegWit in P2SH (49')", 44 to "legacy (44')")
+                .mapNotNull { (p, etiqueta) ->
+                    HunterEngine.exportarXpub(frase, p, red).takeIf { it.isNotEmpty() }
+                        ?.let { "$etiqueta\n$it" }
+                }
+            val texto = if (partes.isEmpty()) "Could not derive the account keys." else partes.joinToString("\n\n")
+            runOnUiThread {
+                AlertDialog.Builder(this).setTitle("Account public keys")
+                    .setMessage(texto)
+                    .setPositiveButton("Copy") { _, _ ->
+                        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                            .setPrimaryClip(android.content.ClipData.newPlainText("xpub", texto))
+                        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+                    }
+                    .setNegativeButton("Close", null)
+                    .show()
+            }
+        }.start()
+    }
+
     private fun showMenu() {
         // "Save to finds vault" sólo en las carteras que puso el usuario y que
         // tienen clave: las que vienen de un hallazgo ya están en el baúl, y
@@ -3099,8 +3172,9 @@ class WalletActivity : FragmentActivity() {
         val alBaul = tieneClave && claveActual != null &&
                      WalletManager.esDelUsuario(WalletManager.origen(this, claveActual))
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
+            if (!isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
             if (alBaul) "Save to finds vault" else null,
-            "Change PIN", "Toggle Testnet", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
+            "Change PIN", "Toggle Testnet", "Fiat currency", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
         AlertDialog.Builder(this).setTitle("Options")
             .setItems(opciones.toTypedArray()) { _, pos ->
                 when (opciones[pos]) {
@@ -3119,6 +3193,15 @@ class WalletActivity : FragmentActivity() {
                             .setMessage(msg).setPositiveButton("Got it", null).create()
                         d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
                         d.show()
+                    }
+                    "Export xpub" -> authenticate { mostrarXpubs() }
+                    "Fiat currency" -> {
+                        val monedas = arrayOf("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD")
+                        AlertDialog.Builder(this).setTitle("Show the value in")
+                            .setItems(monedas) { _, i ->
+                                getSharedPreferences("hunter", MODE_PRIVATE).edit().putString("fiat_code", monedas[i]).apply()
+                                Toast.makeText(this, "Value shown in ${monedas[i]} from the next refresh", Toast.LENGTH_SHORT).show()
+                            }.show()
                     }
                     "Change PIN" -> authenticate { showPinDialog(isSetup = true) {} }
                     "Toggle Testnet" -> {
