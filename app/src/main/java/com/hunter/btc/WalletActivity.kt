@@ -625,6 +625,16 @@ class WalletActivity : FragmentActivity() {
         filaTotal.addView(tvTotal)
         filaTotal.addView(Privacidad.ojo(this) { repintarMontos() })
         ll.addView(filaTotal); ll.addView(tvFiat)
+        // Volver a buscar direcciones: si la primera búsqueda se hizo sin red o no
+        // llegó a una dirección usada, aquí se repite sin cerrar la pantalla.
+        ll.addView(TextView(this).apply {
+            text = "Search for addresses again"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+            setPadding(0, dp(6), 0, dp(10))
+            isClickable = true; isFocusable = true
+            setOnClickListener { tabContent.removeAllViews(); loadBalanceTab() }
+        })
         scroll.addView(ll); tabContent.addView(scroll)
 
         // Foto de la cartera tomada aquí, en el hilo de la pantalla: el hilo de
@@ -956,6 +966,13 @@ class WalletActivity : FragmentActivity() {
                         })
                         return@runOnUiThread
                     }
+                    ll.addView(TextView(this).apply {
+                        text = "Export as CSV"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+                        typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+                        setPadding(0, dp(6), 0, dp(10))
+                        isClickable = true; isFocusable = true
+                        setOnClickListener { exportarCsv(movs) }
+                    })
                     val fmt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
                     fun tanda(desde: Int) {
                     val hasta = minOf(desde + 50, movs.size)
@@ -1010,6 +1027,40 @@ class WalletActivity : FragmentActivity() {
                     tanda(0)
                 }
             } catch(e: Exception) { runOnUiThread { tvHead.text = motivo(e); tvHead.setTextColor(RED) } }
+        }.start()
+    }
+
+    /**
+     * El historial a un CSV en la carpeta compartida de la app, y a la hoja de
+     * compartir. Sólo fechas, estado, txid e importes: sin claves ni direcciones.
+     */
+    private fun exportarCsv(movs: List<MovTx>) {
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
+        val sb = StringBuilder("date,status,txid,net_sat,fee_sat\n")
+        for (m in movs) {
+            val fecha = if (m.tiempo > 0) fmt.format(java.util.Date(m.tiempo * 1000)) else ""
+            sb.append(fecha).append(',')
+              .append(if (m.confirmado) "confirmed" else "pending").append(',')
+              .append(m.txid).append(',')
+              .append(m.neto).append(',')
+              .append(m.fee).append('\n')
+        }
+        Thread {
+            try {
+                val f = java.io.File(BackupStore.compartidos(this), "historial_${System.currentTimeMillis()}.csv")
+                f.writeText(sb.toString())
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", f)
+                runOnUiThread {
+                    startActivity(android.content.Intent.createChooser(
+                        android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, "Share history"))
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Could not export: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
         }.start()
     }
 
@@ -2388,6 +2439,25 @@ class WalletActivity : FragmentActivity() {
             setPadding(0, dp(10), 0, 0)
         }
         addrCard.addView(tvAddr)
+        // Importe opcional: va en el QR como bitcoin:dirección?amount=… (BIP21).
+        val etMonto = EditText(this).apply {
+            hint = "Amount in BTC (optional)"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or
+                        android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+            isSingleLine = true; textSize = AppTheme.SP_BODY
+            setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+        }
+        addrCard.addView(etMonto)
+        // Otra dirección nueva de este mismo tipo, sin usar.
+        val btnNueva = TextView(this).apply {
+            text = "New address"
+            textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+            typeface = AppTheme.medium(context); setTextColor(AppTheme.ACCENT)
+            setPadding(0, dp(12), 0, dp(4))
+            isClickable = true; isFocusable = true
+        }
+        addrCard.addView(btnNueva)
 
         /* ── COPIAR Y COMPARTIR ────────────────────────────────────────── */
         fun accion(label: String, iconRes: Int, primary: Boolean, last: Boolean) =
@@ -2497,14 +2567,29 @@ class WalletActivity : FragmentActivity() {
 
         var addrActual = ""
 
-        fun mostrar(addr: String) {
-            addrActual = addr
-            tvAddr.text = troceada(addr)
+        fun uriPedido(addr: String): String {
+            val btc = etMonto.text.toString().trim().replace(',', '.').toDoubleOrNull()
+            return if (btc != null && btc > 0)
+                "bitcoin:$addr?amount=" + String.format(java.util.Locale.US, "%.8f", btc)
+            else "bitcoin:$addr"
+        }
+        fun pintarQr(addr: String) {
             Thread {
-                try { val bm = qrBitmap("bitcoin:$addr", 512)
+                try { val bm = qrBitmap(uriPedido(addr), 512)
                       runOnUiThread { if (addrActual == addr) ivQr.setImageBitmap(bm) } }
                 catch (e: Exception) { android.util.Log.w("WalletActivity", "QR: ${e.message}") }
             }.start()
+        }
+        etMonto.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(s: android.text.Editable?) { if (addrActual.isNotEmpty()) pintarQr(addrActual) }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+
+        fun mostrar(addr: String) {
+            addrActual = addr
+            tvAddr.text = troceada(addr)
+            pintarQr(addr)
             // "Sin estrenar" no es decorativo: si ya ha recibido algo, decirlo
             // aquí es lo único que evita reutilizarla sin querer.
             tvEstreno.text = "checking…"
@@ -2521,6 +2606,43 @@ class WalletActivity : FragmentActivity() {
                         usada == true           -> { tvEstreno.text = "already used: don't reuse it"; tvEstreno.setTextColor(AppTheme.WARN) }
                         usada == false          -> { tvEstreno.text = "unused";    tvEstreno.setTextColor(AppTheme.ACCENT) }
                         else                    -> { tvEstreno.text = "" }
+                    }
+                }
+            }.start()
+        }
+
+        // Nueva dirección: la primera sin usar de este tipo, a partir de la siguiente
+        // a la que se ve. Sólo en cartera de semilla: una WIF tiene una sola.
+        btnNueva.setOnClickListener {
+            if (isWifMode || mnemonic.isEmpty()) {
+                Toast.makeText(this, "Only seed wallets have more addresses", Toast.LENGTH_SHORT).show()
+                return@setOnClickListener
+            }
+            val k = efectivos[tipoSel].second
+            val tipo = k.substringBefore('_')
+            val purpose = when (tipo) { "p2pkh" -> 44; "p2sh" -> 49; "p2tr" -> 86; else -> 84 }
+            val desde = (k.substringAfter('_', "0").toIntOrNull() ?: 0) + 1
+            btnNueva.text = "Searching…"
+            Thread {
+                var encontrada: Pair<Int, String>? = null
+                try {
+                    val arr = JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, 0, desde, 20, isTestnet))
+                    for (n in 0 until arr.length()) {
+                        val o = arr.optJSONObject(n) ?: continue
+                        val a = o.optString("addr")
+                        if (a.isEmpty()) continue
+                        if (BalanceLookup.isUsed(a, isTestnet) == false) { encontrada = o.optInt("i") to a; break }
+                    }
+                } catch (e: Exception) { }
+                runOnUiThread {
+                    btnNueva.text = "New address"
+                    val hallada = encontrada
+                    if (hallada == null) {
+                        Toast.makeText(this, "No unused address in the next 20: try again later", Toast.LENGTH_LONG).show()
+                    } else {
+                        tvEstreno.text = "index ${hallada.first}"
+                        addresses[tipo + "_" + hallada.first] = hallada.second
+                        mostrar(hallada.second)
                     }
                 }
             }.start()
