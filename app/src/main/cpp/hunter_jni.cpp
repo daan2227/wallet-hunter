@@ -432,14 +432,15 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     const uint32_t COIN = 0x80000000u + (testnet?1u:0u);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     uint8_t seed[64];
-    semilla_de_frase(mnemonic,strlen(mnemonic),seed);
+    uint32_t cta=0;   /* cuenta de la frase: 0' si no tiene */
+    semilla_de_frase(mnemonic,strlen(mnemonic),seed,&cta);
     HDKey master; derive_master(seed,&master);
     std::string json="{";
     /* BIP44: m/44'/0'/0'/0/0-2 */
     HDKey h44,h44_0,h44_00,h44_ext;
     derive_child(ctx,&master,0x80000000u+44,&h44);
     derive_child(ctx,&h44,COIN,&h44_0);
-    derive_child(ctx,&h44_0,0x80000000u+0,&h44_00);
+    derive_child(ctx,&h44_0,0x80000000u+cta,&h44_00);
     derive_child(ctx,&h44_00,0,&h44_ext);
     for(int i=0;i<3;i++){
         HDKey leaf; derive_child(ctx,&h44_ext,i,&leaf);
@@ -452,7 +453,7 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     HDKey h49,h49_0,h49_00,h49_ext,h49_leaf;
     derive_child(ctx,&master,0x80000000u+49,&h49);
     derive_child(ctx,&h49,COIN,&h49_0);
-    derive_child(ctx,&h49_0,0x80000000u+0,&h49_00);
+    derive_child(ctx,&h49_0,0x80000000u+cta,&h49_00);
     derive_child(ctx,&h49_00,0,&h49_ext);
     derive_child(ctx,&h49_ext,0,&h49_leaf);
     {uint8_t h160[20]; pk_to_h160(ctx,h49_leaf.key,h160);
@@ -462,7 +463,7 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     HDKey h84,h84_0,h84_00,h84_ext;
     derive_child(ctx,&master,0x80000000u+84,&h84);
     derive_child(ctx,&h84,COIN,&h84_0);
-    derive_child(ctx,&h84_0,0x80000000u+0,&h84_00);
+    derive_child(ctx,&h84_0,0x80000000u+cta,&h84_00);
     derive_child(ctx,&h84_00,0,&h84_ext);
     for(int i=0;i<2;i++){
         HDKey leaf; derive_child(ctx,&h84_ext,i,&leaf);
@@ -475,7 +476,7 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     HDKey h86,h86_0,h86_00,h86_ext;
     derive_child(ctx,&master,0x80000000u+86,&h86);
     derive_child(ctx,&h86,COIN,&h86_0);
-    derive_child(ctx,&h86_0,0x80000000u+0,&h86_00);
+    derive_child(ctx,&h86_0,0x80000000u+cta,&h86_00);
     derive_child(ctx,&h86_00,0,&h86_ext);
     for(int i=0;i<2;i++){
         HDKey leaf; derive_child(ctx,&h86_ext,i,&leaf);
@@ -1489,8 +1490,9 @@ Java_com_hunter_btc_HunterEngine_exportarXpub(JNIEnv *env, jobject, jstring jmn,
     std::string out;
     if (m && (jpurpose == 44 || jpurpose == 49 || jpurpose == 84 || jpurpose == 86)) {
         uint8_t seed[64] = {0};
-        semilla_de_frase(m, strlen(m), seed);
-        out = xpub_de_cuenta(seed, jpurpose, jtestnet != JNI_FALSE);
+        uint32_t cta=0;
+        semilla_de_frase(m, strlen(m), seed, &cta);
+        out = xpub_de_cuenta(seed, jpurpose, jtestnet != JNI_FALSE, cta);
         OPENSSL_cleanse(seed, sizeof seed);
     }
     if (m) env->ReleaseStringUTFChars(jmn, m);
@@ -2164,7 +2166,8 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
     if(!mn||!mn[0]){ if(mn)env->ReleaseStringUTFChars(jmn,mn); return env->NewStringUTF("[]"); }
 
     uint8_t seed[64];
-    semilla_de_frase(mn,strlen(mn),seed);
+    uint32_t cta=0;
+    semilla_de_frase(mn,strlen(mn),seed,&cta);
     env->ReleaseStringUTFChars(jmn,mn);
 
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -2176,7 +2179,7 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
        pintar la direccion con el prefijo de testnet daria una direccion que no
        corresponde a ninguna cartera de pruebas de ningun otro programa. */
     derive_child(ctx,&a,0x80000000u+(testnet?1u:0u),&b);
-    derive_child(ctx,&b,0x80000000u+0,&c);
+    derive_child(ctx,&b,0x80000000u+cta,&c);
     derive_child(ctx,&c,(uint32_t)change,&branch);
 
     std::string json="[";

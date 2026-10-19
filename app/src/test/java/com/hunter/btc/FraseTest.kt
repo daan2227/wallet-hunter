@@ -35,4 +35,25 @@ class FraseTest {
         assertNotNull(Frase.errorPassphrase("x".repeat(101)))
         assertNull(Frase.errorPassphrase("x".repeat(100)))
     }
+
+    @Test fun cuentaSeLeeYSeQuitaSiEsLaCero() {
+        assertEquals(0, Frase.cuenta(palabras))
+        assertEquals(3, Frase.cuenta("$palabras#3"))
+        assertEquals(palabras, Frase.base("$palabras#3"))
+        assertEquals("$palabras#7", Frase.conCuenta(palabras, 7))
+        assertEquals(palabras, Frase.conCuenta("$palabras#7", 0))
+        assertEquals("$palabras|TREZOR#2", Frase.conCuenta("$palabras|TREZOR", 2))
+        assertEquals("TREZOR", Frase.passphrase("$palabras|TREZOR#2"))
+        assertEquals("abandon", Frase.palabras("$palabras#2").substringBefore(' '))
+    }
+
+    @Test fun sufijoQueNoEsCuentaSeQuedaComoEsta() {
+        assertEquals(0, Frase.cuenta("$palabras#100"))
+        assertEquals("$palabras#100", Frase.base("$palabras#100"))
+        assertEquals(0, Frase.cuenta("$palabras#"))
+    }
+
+    @Test fun passphraseSinAlmohadilla() {
+        assertNotNull(Frase.errorPassphrase("con#almohadilla"))
+    }
 }

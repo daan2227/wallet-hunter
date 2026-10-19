@@ -904,7 +904,7 @@ class WalletActivity : FragmentActivity() {
                 for (k in 0 until arr.length()) {
                     val o = arr.optJSONObject(k) ?: continue
                     val a = o.optString("addr"); if (a.isNotEmpty())
-                        r[a] = "m/$purpose'/$coin'/0'/1/${o.optInt("i")}"
+                        r[a] = "m/$purpose'/$coin'/${Frase.cuenta(mn)}'/1/${o.optInt("i")}"
                 }
             } catch (e: Exception) {}
         }
@@ -1251,7 +1251,7 @@ class WalletActivity : FragmentActivity() {
     }
 
     /** La ruta BIP32 de una dirección de la lista, por su clave (p2wpkh_3…). */
-    private fun rutaDeClave(k: String): String? = RutaClave.ruta(k, isTestnet)
+    private fun rutaDeClave(k: String): String? = RutaClave.ruta(k, isTestnet, Frase.cuenta(mnemonic))
 
     /**
      * Sube la comisión de un envío atascado (RBF, BIP125).
@@ -3345,6 +3345,26 @@ class WalletActivity : FragmentActivity() {
     }
 
     /**
+     * Cambiar de cuenta (m/…/N'/…). Una cuenta es otra cartera con las mismas
+     * palabras: se guarda como una cartera nueva, y la original no se toca.
+     */
+    private fun elegirCuenta() {
+        val actual = Frase.cuenta(mnemonic)
+        val etiquetas = (0..19).map { "Account $it" + if (it == actual) "  (this one)" else "" }.toTypedArray()
+        AlertDialog.Builder(this).setTitle("Account")
+            .setMessage("Same words, another account: a different set of addresses. " +
+                        "It is saved as a new wallet; the current one stays.")
+            .setItems(etiquetas) { _, i ->
+                if (i != actual) {
+                    guardarSeedNueva(Frase.conCuenta(mnemonic, i), "$currentWalletName · account $i",
+                                     WalletManager.O_IMPORTADA)
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /**
      * Las claves públicas extendidas de la cuenta 0, para vigilar esta cartera
      * en otro sitio sin la semilla. No revelan claves privadas, pero sí todas
      * las direcciones de la cartera: por eso van detrás de la autenticación.
@@ -3383,6 +3403,7 @@ class WalletActivity : FragmentActivity() {
                      WalletManager.esDelUsuario(WalletManager.origen(this, claveActual))
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
             if (!isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
+            if (!isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (alBaul) "Save to finds vault" else null,
             "Change PIN", "Toggle Testnet", "Fiat currency", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
         AlertDialog.Builder(this).setTitle("Options")
@@ -3408,6 +3429,7 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
+                    "Account" -> authenticate { elegirCuenta() }
                     "Fiat currency" -> {
                         val monedas = arrayOf("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD")
                         AlertDialog.Builder(this).setTitle("Show the value in")
@@ -3894,6 +3916,13 @@ class WalletActivity : FragmentActivity() {
                 .apply { topMargin = dp(12) }
         }
         layout.addView(etPassphrase)
+        layout.addView(TextView(this).apply {
+            text = "Keep the passphrase written down, apart from the words. Without it this wallet " +
+                   "cannot be recovered, and it cannot be recovered from the words alone."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
+            setPadding(0, dp(8), 0, 0)
+        })
         layout.addView(btnRow)
         val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
         dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }

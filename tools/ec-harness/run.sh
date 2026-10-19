@@ -32,10 +32,11 @@ cd "$(dirname "$0")"
 # listabip39- la lista BIP39 del motor es la oficial (SHA-256 de english.txt)
 # restasuma- fe_sub y fe_add sin saltos == las de antes (bit a bit)
 # opreturn - scriptPubKey de OP_RETURN: pushes de 75/76 bytes, tope de 80
+# frase    - semilla de palabras, passphrase (BIP39) y cuenta (#n), contra vectores
 # rutas    - rutas BIP32 estrictas: lo que no es una ruta valida se rechaza
 # destinos - direccion de destino -> script: vectores BIP350, checksum base58
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla direcciones opreturn coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
+PRUEBAS="campo vectores prim hex persist kang semilla direcciones opreturn frase coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
@@ -43,6 +44,7 @@ flags_de() {
         reparto)     echo "-lpthread -lcrypto" ;;
         direcciones) echo "-lcrypto -Wno-deprecated-declarations" ;;
         opreturn)    echo "-I../../app/src/main/cpp -lcrypto -Wno-deprecated-declarations" ;;
+        frase)       echo "-DSHA512_CON_OPENSSL -I../../app/src/main/cpp ../../app/src/main/cpp/sha512.cpp -lcrypto -Wno-deprecated-declarations" ;;
         resueltos)   echo "-lpthread -lcrypto -Wno-deprecated-declarations" ;;
         listabip39)  echo "-lcrypto -Wno-deprecated-declarations" ;;
         destinos)    echo "-lcrypto -Wno-deprecated-declarations" ;;

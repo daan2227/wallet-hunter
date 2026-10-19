@@ -34,6 +34,20 @@ int main() {
     debe("con passphrase TREZOR = vector de BIP39", hex(seed, 64),
          "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04");
 
+    /* La cuenta va en la frase tras '#'. Sin ella es la 0; con un sufijo malo, la
+       frase entera queda como está y la cuenta sigue siendo 0. */
+    auto cuenta = [](const std::string &f) { return frase_cuenta(f.c_str(), f.size()); };
+    if (cuenta(frase + "#2") != 2) { printf("MAL  cuenta #2\n"); fallos++; } else printf("OK    cuenta #2\n");
+    if (cuenta(frase + "#99") != 99) { printf("MAL  cuenta #99\n"); fallos++; } else printf("OK    cuenta #99\n");
+    if (cuenta(frase) != 0) { printf("MAL  sin cuenta es 0\n"); fallos++; } else printf("OK    sin cuenta es 0\n");
+    if (cuenta(frase + "#100") != 0) { printf("MAL  #100 no es una cuenta\n"); fallos++; } else printf("OK    #100 no es una cuenta\n");
+    if (cuenta(frase + "|TREZOR#3") != 3) { printf("MAL  cuenta tras passphrase\n"); fallos++; } else printf("OK    cuenta tras passphrase\n");
+    /* La cuenta no cambia la semilla: sólo la derivación posterior. */
+    uint8_t s0[64], s3[64];
+    semilla_de_frase((frase + "|TREZOR").c_str(), (frase + "|TREZOR").size(), s0);
+    semilla_de_frase((frase + "|TREZOR#3").c_str(), (frase + "|TREZOR#3").size(), s3);
+    debe("la cuenta no cambia la semilla", hex(s3, 64), hex(s0, 64).c_str());
+
     printf(fallos ? "\nHAY FALLOS: %d\n" : "\nTodas las pruebas correctas.\n", fallos);
     return fallos ? 1 : 0;
 }

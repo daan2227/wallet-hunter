@@ -20,7 +20,7 @@ object RutaClave {
     fun clave(tipo: String, indice: Int, cambio: Boolean): String =
         if (cambio) "${tipo}_${CAMBIO}_$indice" else "${tipo}_$indice"
 
-    fun ruta(k: String, testnet: Boolean): String? {
+    fun ruta(k: String, testnet: Boolean, cuenta: Int = 0): String? {
         val p = k.split('_')
         val purpose = when (p.firstOrNull()) {
             "p2pkh" -> 44; "p2sh" -> 49; "p2wpkh" -> 84; "p2tr" -> 86
@@ -33,6 +33,6 @@ object RutaClave {
         }
         val i = p.last().toIntOrNull()?.takeIf { it >= 0 } ?: return null
         val coin = if (testnet) 1 else 0
-        return "m/$purpose'/$coin'/0'/${if (cambio) 1 else 0}/$i"
+        return "m/$purpose'/$coin'/$cuenta'/${if (cambio) 1 else 0}/$i"
     }
 }

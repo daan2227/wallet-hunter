@@ -124,6 +124,6 @@ object HdScanner {
         // cambio de la transacción se habría ido a una rama distinta de la que
         // enseña la cartera.
         val coin = if (testnet) 1 else 0
-        return "m/$purpose'/$coin'/0'/1/$libre"
+        return "m/$purpose'/$coin'/${Frase.cuenta(mnemonic)}'/1/$libre"
     }
 }

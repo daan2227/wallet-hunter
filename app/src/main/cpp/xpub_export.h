@@ -78,10 +78,10 @@ static std::string xpub_serializar(const XNodo &nodo, uint8_t depth, const uint8
  * xpub/ypub/zpub de la cuenta m/purpose'/coin'/0' de una semilla BIP39 (64
  * bytes). coin es 0 en mainnet y 1 en testnet. Cadena vacía si algo falla.
  */
-static std::string xpub_de_cuenta(const uint8_t seed[64], int purpose, bool testnet) {
+static std::string xpub_de_cuenta(const uint8_t seed[64], int purpose, bool testnet, uint32_t cuenta = 0) {
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     std::string out;
-    XNodo m, p1, p2, cuenta;
+    XNodo m, p1, p2, cta;
     uint8_t I[64];
     xpub_hmac((const uint8_t *)"Bitcoin seed", 12, seed, 64, I);
     memcpy(m.key, I, 32); memcpy(m.chain, I + 32, 32);
@@ -89,13 +89,13 @@ static std::string xpub_de_cuenta(const uint8_t seed[64], int purpose, bool test
     const uint32_t H = 0x80000000u;
     if (xpub_hijo(ctx, m, H + (uint32_t)purpose, p1) &&
         xpub_hijo(ctx, p1, H + coin, p2) &&
-        xpub_hijo(ctx, p2, H + 0u, cuenta)) {
+        xpub_hijo(ctx, p2, H + cuenta, cta)) {
         /* Huella del padre: primeros 4 bytes de hash160(clave pública del padre). */
         secp256k1_pubkey pk; uint8_t pub33[33]; size_t l = 33;
         secp256k1_ec_pubkey_create(ctx, &pk, p2.key);
         secp256k1_ec_pubkey_serialize(ctx, pub33, &l, &pk, SECP256K1_EC_COMPRESSED);
         uint8_t h160[20]; xpub_hash160_de(pub33, 33, h160);
-        out = xpub_serializar(cuenta, 3, h160, H + 0u, xpub_version(purpose, testnet), ctx);
+        out = xpub_serializar(cta, 3, h160, H + cuenta, xpub_version(purpose, testnet), ctx);
     }
     secp256k1_context_destroy(ctx);
     return out;
