@@ -5,6 +5,7 @@
 #   escaner      - el escaner de claves: cada clave publica es la de su privada
 #   bsgs         - logaritmo discreto en rangos pequenos, con reanudacion
 #   wif          - todas las direcciones de una WIF, contra vectores publicados
+#   xpub         - xpub/zpub de la cuenta, contra el vector publicado de BIP84
 #     tools/ec-harness/con_secp.sh app/src/main/cpp/secp256k1
 # Para medir, a mano despues: ./recuperacion <hilos>, ./escaner <grupos>
 set -e
@@ -21,8 +22,10 @@ g++ -O2 -Wno-deprecated-declarations -Wno-unused-result -DRECOVERY_SIN_JNI -I$C 
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o escaner escaner.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o"
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o bsgs bsgs.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lpthread
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o wif wif.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
+g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o xpub xpub.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
 rm -rf "$T"
 echo "=== recuperacion ==="; ./recuperacion
 echo "=== escaner ===";      ./escaner
 echo "=== bsgs ===";         ./bsgs
 echo "=== wif ===";          ./wif
+echo "=== xpub ===";         ./xpub

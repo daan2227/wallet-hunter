@@ -2338,6 +2338,7 @@ static int64_t json_int(const std::string &j,const char *key){
    decodificaba base58 sin checksum y bech32 sin polymod. */
 static std::string addr_to_spk(const char *addr) { return addr_destino_spk(addr); }
 
+
 /* nSequence de las entradas.
  *
  * Iba a 0xFFFFFFFF, que es el valor "final" y desactiva Replace-By-Fee: si
@@ -2493,11 +2494,35 @@ static std::string build_and_sign_tx(const std::string &req){
             utxos.push_back(ut); ap=cb+1;
         }
     }
-    if(utxos.empty()||to_addr.empty()||send_sat<=0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
-    std::string to_spk=addr_to_spk(to_addr.c_str());
-    if(to_spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
+    /* Salidas. Con "outputs" son varias: cada una con "to" y "amount", o con
+       "data" (hex) para un OP_RETURN de importe 0. Sin "outputs" sigue valiendo
+       el par "to"/"amount" de siempre. */
+    struct Salida { std::string spk; int64_t valor; };
+    std::vector<Salida> salidas;
+    size_t op=json_find_key(req,"outputs");
+    if(op!=std::string::npos && op<req.size() && req[op]=='['){
+        size_t p=op+1;
+        while(p<req.size() && req[p]!=']'){
+            size_t ob=req.find('{',p); if(ob==std::string::npos) break;
+            size_t cb=req.find('}',ob); if(cb==std::string::npos) break;
+            std::string o=req.substr(ob,cb-ob+1);
+            Salida sa;
+            std::string dato=json_str(o,"data");
+            if(!dato.empty()){ sa.spk=op_return_spk(dato); sa.valor=0; }
+            else { sa.spk=addr_to_spk(json_str(o,"to").c_str()); sa.valor=json_int(o,"amount"); }
+            if(sa.spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
+            if(sa.valor<0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+            salidas.push_back(sa); p=cb+1;
+        }
+    } else if(!to_addr.empty()){
+        Salida sa; sa.spk=addr_to_spk(to_addr.c_str()); sa.valor=send_sat;
+        if(sa.spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
+        salidas.push_back(sa);
+    }
+    int64_t send_total=0; for(auto &sa:salidas) send_total+=sa.valor;
+    if(utxos.empty()||salidas.empty()||send_total<=0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
     int64_t total_in=0; for(auto &u:utxos)total_in+=u.amount;
-    int64_t change=total_in-send_sat-fee_sat;
+    int64_t change=total_in-send_total-fee_sat;
     /* Sin esto, si las entradas no cubren importe+comisión, has_change quedaba
        en false y se firmaba una transacción que gasta más de lo que entra: la
        red la rechaza y no hay forma de saber por qué. Kotlin ya lo comprueba,
@@ -2567,8 +2592,10 @@ static std::string build_and_sign_tx(const std::string &req){
 
     // Build outputs bytes (shared for sighash)
     std::string outs_bytes;
-    outs_bytes+=uint64_le(send_sat); outs_bytes+=varint(to_spk.size()); outs_bytes+=to_spk;
-    if(has_change){outs_bytes+=uint64_le(change);outs_bytes+=varint(spk_change.size());outs_bytes+=spk_change;}
+    for(auto &sa:salidas){ outs_bytes+=uint64_le((uint64_t)sa.valor); outs_bytes+=varint(sa.spk.size()); outs_bytes+=sa.spk; }
+    if(has_change){outs_bytes+=uint64_le((uint64_t)change);outs_bytes+=varint(spk_change.size());outs_bytes+=spk_change;}
+    /* Número de salidas: las de la petición más la de cambio, si la hay. */
+    const size_t n_outs = salidas.size() + (has_change ? 1 : 0);
     std::vector<std::string> sigs;
     if(stype==SP_P2TR){
         /* BIP341, gasto por clave con SIGHASH_DEFAULT (0x00) y sin annex.
@@ -2620,7 +2647,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+='\x00';                /* scriptSig vacío */
             tx+=uint32_le(TX_SEQUENCE);
         }
-        tx+=varint(has_change?2:1);
+        tx+=varint(n_outs);
         tx+=outs_bytes;
         for(size_t i=0;i<utxos.size();i++){
             tx+='\x01';                /* un solo elemento de testigo */
@@ -2688,7 +2715,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=varint(ssig.size()); tx+=ssig;
             tx+=uint32_le(TX_SEQUENCE);
         }
-        tx+=varint(has_change?2:1);
+        tx+=varint(n_outs);
         tx+=outs_bytes;
         // witness for each input
         for(size_t i=0;i<utxos.size();i++){
@@ -2714,7 +2741,7 @@ static std::string build_and_sign_tx(const std::string &req){
                 else{pre+='\x00';}
                 pre+=uint32_le(TX_SEQUENCE);
             }
-            pre+=varint(has_change?2:1);
+            pre+=varint(n_outs);
             pre+=outs_bytes;
             pre+=uint32_le(locktime);
             pre+=uint32_le(1);
@@ -2738,7 +2765,7 @@ static std::string build_and_sign_tx(const std::string &req){
             tx+=varint(sigs[i].size()); tx+=sigs[i];
             tx+=uint32_le(TX_SEQUENCE);
         }
-        tx+=varint(has_change?2:1);
+        tx+=varint(n_outs);
         tx+=outs_bytes;
         tx+=uint32_le(locktime);
         secp256k1_context_destroy(ctx);

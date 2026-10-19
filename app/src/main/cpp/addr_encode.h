@@ -18,6 +18,7 @@
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
 #include <openssl/bn.h>
+#include <string>
 
 #ifndef MAX_ADDR
 #define MAX_ADDR 64
@@ -134,4 +135,28 @@ static void h160_to_p2sh(const uint8_t *h160, char *out, bool testnet=false){
     SHA256(redeem,22,sha); RIPEMD160(sha,32,rh);
     uint8_t v[21]; v[0]=testnet?0xc4:0x05; memcpy(v+1,rh,20);
     b58enc(v,21,out,MAX_ADDR);
+}
+
+/* scriptPubKey de un OP_RETURN con los datos [hexdata]: 6a + push. Es la salida
+ * de importe 0 que no se puede gastar. Los nodos sólo aceptan hasta 80 bytes
+ * de datos (estándar), así que más de eso o un hex mal formado da "". */
+static std::string op_return_spk(const std::string &hexdata){
+    size_t n=hexdata.size();
+    if(n==0||n%2!=0||n/2>80) return "";
+    std::string b;
+    for(size_t i=0;i<n;i+=2){
+        int v=0;
+        for(int j=0;j<2;j++){
+            char c=hexdata[i+j]; int d;
+            if(c>='0'&&c<='9') d=c-'0';
+            else if(c>='a'&&c<='f') d=c-'a'+10;
+            else if(c>='A'&&c<='F') d=c-'A'+10;
+            else return "";
+            v=v*16+d;
+        }
+        b+=(char)v;
+    }
+    std::string s; s+='\x6a';
+    if(b.size()<=75) s+=(char)b.size(); else { s+='\x4c'; s+=(char)b.size(); }
+    return s+b;
 }

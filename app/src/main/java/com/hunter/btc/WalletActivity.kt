@@ -1620,22 +1620,36 @@ class WalletActivity : FragmentActivity() {
         }
 
         /** Estimación honesta: una entrada, salida al destino y cambio. */
+        // Monedas de la dirección de origen, cargadas al elegirla. Con ellas la
+        // comisión de la pantalla es la que el envío pagaría de verdad.
+        var monedasOrigen: List<org.json.JSONObject>? = null
         fun estimateFeeSat(): Long {
             val r = if (feeRate > 0) feeRate.toLong() else feeRates[feeSel].toLong()
             if (r <= 0) return -1L
             val fromKey = keys[fromIdx]
-            val vb = inputVBytesDe(fromKey) +
-                     CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) +
-                     CoinSelector.outputVBytes(addresses[fromKey] ?: "1") + 11
-            return r * vb
+            val inVB = inputVBytesDe(fromKey)
+            val outVB = CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) +
+                        salidasExtraEnvio.sumOf { it.vbytes() }
+            val chgVB = CoinSelector.outputVBytes(addresses[fromKey] ?: "1")
+            val monedas = if (selectedUtxos.isNotEmpty()) selectedUtxos.toList()
+                          else monedasOrigen?.filter { it.optBoolean("confirmed", true) }
+            val amtBtc = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
+            val amtSat = Math.round(amtBtc * 1e8) + salidasExtraEnvio.sumOf { it.sat }
+            if (monedas != null && monedas.isNotEmpty() && amtSat > 0) {
+                // El mismo selector que el envío: cuántas entradas hacen falta de verdad.
+                CoinSelector.select(monedas, amtSat, r, inVB, outVB, chgVB)?.let { return it.feeSat }
+            }
+            // Sin monedas todavía (o sin importe): una entrada, como antes.
+            return r * (inVB + outVB + chgVB + 11)
         }
         fun refreshTotals() {
             val fee = estimateFeeSat()
             val amt = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
             tvFeeLine.text = if (fee < 0) "whatever the network suggests"
                              else "≈ %,d sat".format(fee)
+            val extras = salidasExtraEnvio.sumOf { it.sat }
             tvTotal.text = if (amt <= 0) "—"
-                           else "%.8f".format(amt + (if (fee > 0) fee / 1e8 else 0.0))
+                           else "%.8f".format(amt + extras / 1e8 + (if (fee > 0) fee / 1e8 else 0.0))
         }
 
         val tvMedida = TextView(this).apply { text = "Custom"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER }
@@ -1825,6 +1839,30 @@ class WalletActivity : FragmentActivity() {
             textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
         })
+        // Varias salidas: otro destinatario, o un OP_RETURN con datos.
+        val tvExtras = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(0, dp(8), 0, dp(4))
+        }
+        fun pintarExtras() {
+            tvExtras.text = if (salidasExtraEnvio.isEmpty()) "" else salidasExtraEnvio.joinToString("\n") { e ->
+                if (e.datos != null) "OP_RETURN  ${e.datos.length / 2} bytes  (0 BTC)"
+                else "to ${e.addr?.take(14)}…  %.8f BTC".format(e.sat / 1e8)
+            } + "\n(tap here to clear them)"
+            refreshTotals()
+        }
+        tvExtras.setOnClickListener { salidasExtraEnvio.clear(); pintarExtras() }
+        val btnAnadirSalida = TextView(this).apply {
+            text = "+ Add another output"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(6))
+            isClickable = true; isFocusable = true
+            setOnClickListener { dialogoSalidaExtra { pintarExtras() } }
+        }
+        ll.addView(btnAnadirSalida)
+        ll.addView(tvExtras)
+        pintarExtras()
         ll.addView(btnSend)
 
         val tvStatus = TextView(this).apply {
@@ -1841,13 +1879,17 @@ class WalletActivity : FragmentActivity() {
         fun loadFromBalance() {
             val addr = addresses[keys[fromIdx]] ?: return
             fromSat = -1L
+            monedasOrigen = null
             tvFromBal.text = "Checking the balance…"
             Thread {
                 val res = BalanceLookup.query(addr, isTestnet)
+                val monedas = try { ChainInfo.utxos(addr, isTestnet) } catch (e: Exception) { null }
                 runOnUiThread {
                     // Una respuesta que llega tarde, de la dirección que ya no está
                     // elegida, no puede poner su saldo en esta.
                     if (addresses[keys[fromIdx]] != addr) return@runOnUiThread
+                    monedasOrigen = monedas
+                    refreshTotals()
                     fromSat = res?.sat ?: -1L
                     tvFromBal.text = if (fromSat < 0) "Could not check the balance"
                                      else "Available %.8f BTC".format(fromSat / 1e8)
@@ -2077,13 +2119,48 @@ class WalletActivity : FragmentActivity() {
             // recomiende la red". Lo que cambia es que ahora se elige viendo el
             // tiempo estimado en vez de escribiendo un número a ciegas.
             val rate = if (feeRate > 0) feeRate else feeRates[feeSel].takeIf { it > 0 } ?: -1
-            doSend(toAddr, amtBtc, rate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString())
+            // Las salidas extra se revisan igual que la principal: dirección válida,
+            // polvo de su tipo, y OP_RETURN en hex de hasta 80 bytes.
+            for (e in salidasExtraEnvio) {
+                if (e.datos != null) {
+                    if (e.datos.isEmpty() || e.datos.length % 2 != 0 || e.datos.length / 2 > 80 ||
+                        !e.datos.all { it in "0123456789abcdef" }) {
+                        tvStatus.text = "An OP_RETURN must be hex data of up to 80 bytes."
+                        tvStatus.setTextColor(RED); return@setOnClickListener
+                    }
+                } else {
+                    val dir = e.addr ?: ""
+                    val ok = BtcAddress.validate(dir, isTestnet) is BtcAddress.Result.Valid
+                    if (!ok) {
+                        tvStatus.text = "An extra output has an invalid address."
+                        tvStatus.setTextColor(RED); return@setOnClickListener
+                    }
+                    if (e.sat < CoinSelector.polvoDe(dir)) {
+                        tvStatus.text = "An extra output is below the minimum for its address type (${CoinSelector.polvoDe(dir)} sat)."
+                        tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+                    }
+                }
+            }
+            doSend(toAddr, amtBtc, rate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString(), salidasExtraEnvio.toList())
         }
+    }
+
+    /**
+     * Una salida además de la principal: a una dirección con su importe, o un
+     * OP_RETURN con datos (importe 0, no se puede gastar).
+     */
+    class SalidaExtra(val addr: String?, val datos: String?, val sat: Long) {
+        /** Tamaño en vB de esta salida. */
+        fun vbytes(): Int = if (datos != null) {
+            val spkLen = if (datos.length / 2 <= 75) 2 + datos.length / 2 else 3 + datos.length / 2
+            8 + 1 + spkLen
+        } else CoinSelector.outputVBytes(addr ?: "")
     }
 
     private fun doSend(toAddr: String, amtBtc: Double, feeRateManual: Int,
                        fromKey: String, fromAddr: String,
-                       tvStatus: TextView, btnSend: View, addrType: String = "") {
+                       tvStatus: TextView, btnSend: View, addrType: String = "",
+                       extras: List<SalidaExtra> = emptyList()) {
             tvStatus.text = "Preparing the send…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
@@ -2133,7 +2210,9 @@ class WalletActivity : FragmentActivity() {
                         else (0 until fetched.length()).map { fetched.getJSONObject(it) }
                     if (chosen.isEmpty()) { runOnUiThread { tvStatus.text = "None of the selected UTXOs is still available"; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread }
 
-                    val amtSat = Math.round(amtBtc * 1e8)
+                    // Principal más las extra: el total que se firma y se paga.
+                    val amtPrincipal = Math.round(amtBtc * 1e8)
+                    val amtSat = amtPrincipal + extras.sumOf { it.sat }
 
                     // La tarifa era un campo con 5 sat/vB por defecto: un número
                     // fijo que no sabe cómo está la mempool. Se pregunta, y el
@@ -2162,7 +2241,7 @@ class WalletActivity : FragmentActivity() {
                     // El tamaño de un input depende del tipo: ~148 vB en P2PKH,
                     // ~91 en P2SH-P2WPKH, ~68 en P2WPKH y ~58 en Taproot.
                     val inVBytes  = inputVBytesDe(fromKey)
-                    val outVBytes = CoinSelector.outputVBytes(toAddr)
+                    val outVBytes = CoinSelector.outputVBytes(toAddr) + extras.sumOf { it.vbytes() }
                     val chgVBytes = CoinSelector.outputVBytes(fromAddr)
 
                     // Sin Coin Control manual se gastaban TODOS los UTXOs, con lo
@@ -2284,6 +2363,13 @@ class WalletActivity : FragmentActivity() {
                         .put("utxos",    utxoArr)
                         .put("to",       toAddr)
                         .put("amount",   amtSat)
+                        .put("outputs", org.json.JSONArray().apply {
+                            put(JSONObject().put("to", toAddr).put("amount", amtPrincipal))
+                            extras.forEach { e ->
+                                put(if (e.datos != null) JSONObject().put("data", e.datos)
+                                    else JSONObject().put("to", e.addr).put("amount", e.sat))
+                            }
+                        })
                         .put("fee",      feeSat)
                         .apply {
                             if (changePath != null) put("change_path", changePath)
@@ -2299,8 +2385,12 @@ class WalletActivity : FragmentActivity() {
                     // y eso depende de cuántas entradas hagan falta.
                     val totalSat = amtSat + feeSat
                     val resumen = buildString {
-                        appendLine("Send %.8f BTC".format(amtBtc))
+                        appendLine("Send %.8f BTC".format(amtPrincipal / 1e8))
                         appendLine("to $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
+                        extras.forEach { e ->
+                            if (e.datos != null) appendLine("+ OP_RETURN: ${e.datos.length / 2} bytes of data (0 BTC)")
+                            else appendLine("+ %.8f BTC to %s".format(e.sat / 1e8, e.addr))
+                        }
                         appendLine()
                         appendLine("Fee        %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
                         appendLine("Size       ~%d vB with %d input(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
@@ -2385,7 +2475,7 @@ class WalletActivity : FragmentActivity() {
                         // Enviado: el mismo formulario otra vez pagaría dos veces, o
                         // intentaría gastar monedas que ya no existen. Se vuelve a
                         // habilitar al cambiar de pestaña, que rehace el formulario.
-                        if (ok) { selectedUtxos.clear(); btnSend.isEnabled = false }
+                        if (ok) { selectedUtxos.clear(); salidasExtraEnvio.clear(); btnSend.isEnabled = false }
                         else btnSend.isEnabled = true
                     }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
@@ -2779,7 +2869,45 @@ class WalletActivity : FragmentActivity() {
     /* -- MENU -- */
     /* -- WALLET SELECTOR -- */
 
+    /** Pide una salida extra: a una dirección con importe, o un OP_RETURN en hex. */
+    private fun dialogoSalidaExtra(alGuardar: () -> Unit) {
+        val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        val etDir = EditText(this).apply { hint = "Recipient address (or leave empty for OP_RETURN)" }
+        val etMonto = EditText(this).apply {
+            hint = "Amount in BTC"
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val etDatos = EditText(this).apply { hint = "OP_RETURN data in hex (up to 80 bytes)" }
+        caja.addView(etDir); caja.addView(etMonto); caja.addView(etDatos)
+        AlertDialog.Builder(this).setTitle("Add output").setView(caja)
+            .setPositiveButton("Add") { _, _ ->
+                val datos = etDatos.text.toString().trim().lowercase()
+                if (datos.isNotEmpty()) {
+                    if (datos.length % 2 != 0 || datos.length / 2 > 80 || !datos.all { it in "0123456789abcdef" }) {
+                        Toast.makeText(this, "OP_RETURN data must be hex, up to 80 bytes", Toast.LENGTH_LONG).show()
+                        return@setPositiveButton
+                    }
+                    salidasExtraEnvio.add(SalidaExtra(null, datos, 0L))
+                } else {
+                    val dir = etDir.text.toString().trim()
+                    val sat = Math.round((etMonto.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0) * 1e8)
+                    if (dir.isEmpty() || sat <= 0) {
+                        Toast.makeText(this, "Enter an address and an amount, or OP_RETURN data", Toast.LENGTH_LONG).show()
+                        return@setPositiveButton
+                    }
+                    salidasExtraEnvio.add(SalidaExtra(dir, null, sat))
+                }
+                alGuardar()
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    /** Salidas extra del formulario de Enviar. Se vacían al cambiar de cartera y al enviar. */
+    private val salidasExtraEnvio = mutableListOf<SalidaExtra>()
+
     private fun switchToWallet(onReady: () -> Unit) {
+        salidasExtraEnvio.clear()
         // Limpiar estado anterior. Lo que siga corriendo de la cartera anterior
         // se descarta: comprueba la generación antes de tocar nada.
         generacion++
