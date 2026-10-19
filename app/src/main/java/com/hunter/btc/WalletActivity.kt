@@ -1166,6 +1166,88 @@ class WalletActivity : FragmentActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
         }
         btnAcelerar?.setOnClickListener { txDlg.dismiss(); acelerar(m, propias, cambio) }
+
+        // CPFP: un pago recibido sin confirmar se acelera gastándolo desde aquí
+        // con una transacción hija de comisión alta. Las dos juntas pagan la tasa
+        // que se quiera, aunque el padre no se pueda reemplazar.
+        if (!m.confirmado && m.neto > 0) {
+            val child = boton("Speed up with a child (CPFP)", true).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+            }
+            child.setOnClickListener { txDlg.dismiss(); cpfp(m, propias) }
+            sheet.addView(child, sheet.indexOfChild(btnRow))
+        }
+    }
+
+    /**
+     * CPFP sobre un pago recibido sin confirmar. La hija gasta TODAS las monedas
+     * de ese pago que siguen libres en esa dirección y se las manda a la misma
+     * dirección, con una comisión tal que el par (padre + hija) pague la tarifa
+     * rápida. La hija no tiene salida de cambio: la comisión se calcula con ella
+     * igualmente, así que sobra un poco, nunca falta.
+     */
+    private fun cpfp(m: MovTx, propias: Set<String>) {
+        fun aviso(t: String) = runOnUiThread {
+            AlertDialog.Builder(this).setTitle("Cannot speed it up").setMessage(t)
+                .setPositiveButton("Got it", null).show()
+        }
+        // La dirección que recibió el pago (una de las nuestras).
+        val vout = m.tx.optJSONArray("vout") ?: return aviso("The transaction data is incomplete.")
+        var direccion = ""
+        for (k in 0 until vout.length()) {
+            val a = vout.getJSONObject(k).optString("scriptpubkey_address")
+            if (a in propias) { direccion = a; break }
+        }
+        if (direccion.isEmpty()) return aviso("This payment does not pay to this wallet.")
+        val fromKey = addresses.entries.firstOrNull { it.value == direccion }?.key
+            ?: return aviso("That address is not in this wallet's list.")
+        if (isWifMode && wifKey.isEmpty()) return aviso("This is a watch-only wallet: it has no key to sign with.")
+
+        Thread {
+            try {
+                val lista = ChainInfo.utxos(direccion, isTestnet) ?: return@Thread aviso("Could not read the coins of that address.")
+                val mias = lista.filter { it.optString("txid") == m.txid }
+                if (mias.isEmpty()) return@Thread aviso("None of that payment's coins is still unspent here.")
+                val tin = mias.sumOf { it.optLong("value", 0L) }
+
+                val vp = m.tx.optLong("weight", 0L).let { (it + 3) / 4 }
+                val fp = m.fee
+                if (vp <= 0 || fp <= 0) return@Thread aviso("The transaction data is incomplete.")
+                val objetivo = (ChainInfo.fees(isTestnet)?.fastest ?: 0).toLong()
+                if (objetivo <= 0) return@Thread aviso("Could not get the current fee rates. Try again later.")
+
+                // Tamaño de la hija con la misma cuenta que usa el envío: sus entradas, la
+                // salida y la de cambio (aunque el cambio sea 0, doSend cobra con ella).
+                val vc = (CoinSelector.inputVBytes(fromKey, isWifMode && wifKey.startsWith("5")) * mias.size +
+                          CoinSelector.outputVBytes(direccion) + CoinSelector.outputVBytes(direccion) + 11).toLong()
+                // La tasa de la hija que hace que (padre + hija) paguen el objetivo.
+                val tasaHija = Cpfp.tasaHija(vp, fp, objetivo, vc)
+                val feeHija = tasaHija * vc
+                val importe = tin - feeHija
+                if (importe <= CoinSelector.polvoDe(direccion))
+                    return@Thread aviso("The coins are not enough to pay the child's fee.")
+
+                val pares = "%,d sat/vB".format(objetivo)
+                runOnUiThread {
+                    AlertDialog.Builder(this).setTitle("Speed up with a child?")
+                        .setMessage("The child spends the coins of that payment back to this address with " +
+                                    "a fee of %,d sat (%d sat/vB). The parent and the child together will pay " +
+                                    "about $pares, the fastest rate now.".format(feeHija, tasaHija))
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Send") { _, _ ->
+                            selectedUtxos.clear(); selectedUtxos.addAll(mias)
+                            val estado = TextView(this).apply { textSize = AppTheme.SP_BODY; setPadding(dp(20), dp(16), dp(20), dp(16)) }
+                            val dlg = AlertDialog.Builder(this).setTitle("Sending the child").setView(estado)
+                                .setCancelable(false).create()
+                            dlg.show()
+                            val boton = View(this)
+                            doSend(direccion, importe / 1e8, tasaHija.toInt(), fromKey, direccion,
+                                   estado, boton, "", emptyList())
+                        }
+                        .show()
+                }
+            } catch (e: Exception) { aviso(motivo(e)) }
+        }.start()
     }
 
     /** La ruta BIP32 de una dirección de la lista, por su clave (p2wpkh_3…). */
