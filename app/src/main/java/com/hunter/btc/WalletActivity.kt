@@ -339,6 +339,29 @@ class WalletActivity : FragmentActivity() {
         PinAuthHelper.pantalla(this, isSetup, autoBiometric = false, onResult = onResult)
     }
 
+    /**
+     * El tipo de una clave de la lista de direcciones: "p2pkh", "p2sh", "p2wpkh"
+     * o "p2tr". Las de una WIF se llaman wif_0, wif_p2wpkh… y se miran igual que
+     * las de semilla.
+     */
+    private fun tipoDeClave(k: String): String = when {
+        k == "wif_p2wpkh" -> "p2wpkh"
+        k == "wif_p2sh"   -> "p2sh"
+        k == "wif_p2tr"   -> "p2tr"
+        k.startsWith("wif") -> "p2pkh"
+        else -> k
+    }
+
+    /** Cómo se llama una clave de la lista en pantalla (saldo, origen de Enviar). */
+    private fun etiquetaClave(k: String): String = when {
+        k == "wif_0" -> currentWalletName
+        k.startsWith("wif_p") -> "WIF " + k.removePrefix("wif_").uppercase()
+        else -> labelMap[k] ?: k
+    }
+
+    /** El tipo que la petición de firma necesita para una clave WIF. */
+    private fun tipoWif(k: String): String = tipoDeClave(k)
+
     /** La P2PKH de una WIF, en la red de la cartera. Vacío si no vale. */
     private fun direccionDeWif(w: String): String =
         try { HunterEngine.importarClave(w, isTestnet, true).split('|').getOrNull(1) ?: "" }
@@ -358,6 +381,8 @@ class WalletActivity : FragmentActivity() {
                 "P2TR" -> wifExtras["wif_p2tr"] = partes[1]
             }
         }
+        // Enviar elige el origen entre las de la lista: ahí entran también.
+        addresses.putAll(wifExtras)
     }
 
     private fun loadAddresses() {
@@ -1260,6 +1285,8 @@ class WalletActivity : FragmentActivity() {
                 }
                 if (!seguir.take()) return@Thread
 
+                // Tipo de la clave de origen, para firmar con esa dirección si es una WIF.
+                val tipoOrigen = tipoWif(addresses.entries.firstOrNull { it.value == origen }?.key ?: "wif_0")
                 val req = JSONObject()
                     .put("mnemonic", if (isWifMode) "" else mnemonic)
                     .put("testnet", if (isTestnet) 1 else 0)
@@ -1269,7 +1296,7 @@ class WalletActivity : FragmentActivity() {
                     .put("amount", importe)
                     .put("fee", feeNuevo)
                     .apply {
-                        if (isWifMode) put("wif", wifKey)
+                        if (isWifMode) { put("wif", wifKey); put("wif_tipo", tipoOrigen) }
                         if (rutaCambio != null) put("change_path", rutaCambio)
                         ChainInfo.tipHeight(isTestnet)?.let { put("locktime", it) }
                     }.toString()
@@ -1798,12 +1825,12 @@ class WalletActivity : FragmentActivity() {
         }
         fun paintFrom() {
             val k = keys[fromIdx]
-            tvFromType.text = when {
-                k.startsWith("p2pkh")  -> "P2PKH"
-                k.startsWith("p2sh")   -> "P2SH"
-                k.startsWith("p2wpkh") -> "SegWit"
-                k.startsWith("p2tr")   -> "Taproot"
-                else                   -> (labelMap[k] ?: k).take(6)
+            tvFromType.text = when (tipoDeClave(k)) {
+                "p2pkh"  -> "P2PKH"
+                "p2sh"   -> "P2SH"
+                "p2wpkh" -> "SegWit"
+                "p2tr"   -> "Taproot"
+                else     -> (labelMap[k] ?: k).take(6)
             }
             tvFromAddr.text = addresses[k] ?: ""
             selectedUtxos.clear()
@@ -1815,7 +1842,7 @@ class WalletActivity : FragmentActivity() {
 
         fromCard.setOnClickListener {
             val items = keys.map { k ->
-                "${labelMap[k] ?: k}\n${(addresses[k] ?: "").take(22)}…"
+                "${etiquetaClave(k)}\n${(addresses[k] ?: "").take(22)}…"
             }.toTypedArray()
             AlertDialog.Builder(this)
                 .setTitle("Which address does it come from?")
@@ -2221,7 +2248,7 @@ class WalletActivity : FragmentActivity() {
                         .put("mnemonic", if (isWifMode) "" else mnemonic)
                     .put("testnet", if (isTestnet) 1 else 0)
                         .put("path",     pathStr)
-                        .apply { if (isWifMode) put("wif", wifKey) }
+                        .apply { if (isWifMode) { put("wif", wifKey); put("wif_tipo", tipoWif(fromKey)) } }
                         .put("utxos",    utxoArr)
                         .put("to",       toAddr)
                         .put("amount",   amtSat)
@@ -2380,7 +2407,7 @@ class WalletActivity : FragmentActivity() {
         val grupos = listOf(
             Grupo("bc1q", "p2wpkh"), Grupo("bc1p", "p2tr"),
             Grupo("3…",   "p2sh"),   Grupo("1…",   "p2pkh")
-        ).mapNotNull { g -> keys.firstOrNull { it.startsWith(g.clave) }?.let { g to it } }
+        ).mapNotNull { g -> keys.firstOrNull { tipoDeClave(it).startsWith(g.clave) }?.let { g to it } }
         // Una cartera de sólo observación o de WIF puede no encajar en ninguno:
         // en ese caso se enseña lo que haya, sin selector.
         val efectivos = grupos.ifEmpty { listOf(Grupo(labelMap[keys[0]] ?: "Address", keys[0]) to keys[0]) }

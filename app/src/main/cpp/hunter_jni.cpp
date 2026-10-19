@@ -2386,7 +2386,15 @@ static std::string build_and_sign_tx(const std::string &req){
         if(!wif_decode(wif.c_str(),hd.key,&wif_comprimida,red_testnet)||!secp256k1_ec_seckey_verify(ctx,hd.key)){
             secp256k1_context_destroy(ctx);return "ERROR:bad_wif";
         }
-        stype=SP_LEGACY; is_segwit=false;
+        /* El tipo de dirección de la clave: la petición lo dice ("wif_tipo"). Sin
+           él, P2PKH como antes. Las tres de segwit necesitan la clave comprimida. */
+        std::string wif_tipo=json_str(req,"wif_tipo");
+        if(wif_tipo=="p2wpkh")      stype=SP_P2WPKH;
+        else if(wif_tipo=="p2sh")   stype=SP_P2SH_P2WPKH;
+        else if(wif_tipo=="p2tr")   stype=SP_P2TR;
+        else                        stype=SP_LEGACY;
+        if(stype!=SP_LEGACY && !wif_comprimida){secp256k1_context_destroy(ctx);return "ERROR:segwit_needs_compressed_wif";}
+        is_segwit=(stype==SP_P2WPKH||stype==SP_P2SH_P2WPKH);
     }else{
         bip39_semilla(mnemonic.c_str(),mnemonic.size(),"",0,seed);
         if(!derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd)){
