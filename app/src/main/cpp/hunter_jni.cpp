@@ -79,9 +79,10 @@ static void install_crash_handlers() {
 #define PRIVKEY_BYTES 32
 #define MAX_LINE      256
 #define MAX_ADDR      64
-#include "addr_encode.h"
-#include "wif_direcciones.h"
-#include "xpub_export.h"   /* xpub/ypub/zpub de la cuenta de una semilla */   /* wif_decode y todas las direcciones de un WIF */   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "wif_direcciones.h"   /* wif_decode y todas las direcciones de un WIF */
+#include "xpub_export.h"   /* xpub/ypub/zpub de la cuenta de una semilla */
+#include "frase_semilla.h"   /* semilla_de_frase: palabras o palabras|passphrase */
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "ruta_bip32.h"    /* ruta BIP32 estricta */
 #include <openssl/crypto.h> /* OPENSSL_cleanse */
@@ -431,7 +432,7 @@ static std::string derive_wallet_json(const char *mnemonic, bool testnet=false){
     const uint32_t COIN = 0x80000000u + (testnet?1u:0u);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     uint8_t seed[64];
-    bip39_semilla(mnemonic,strlen(mnemonic),"",0,seed);
+    semilla_de_frase(mnemonic,strlen(mnemonic),seed);
     HDKey master; derive_master(seed,&master);
     std::string json="{";
     /* BIP44: m/44'/0'/0'/0/0-2 */
@@ -1488,7 +1489,7 @@ Java_com_hunter_btc_HunterEngine_exportarXpub(JNIEnv *env, jobject, jstring jmn,
     std::string out;
     if (m && (jpurpose == 44 || jpurpose == 49 || jpurpose == 84 || jpurpose == 86)) {
         uint8_t seed[64] = {0};
-        bip39_semilla(m, strlen(m), "", 0, seed);
+        semilla_de_frase(m, strlen(m), seed);
         out = xpub_de_cuenta(seed, jpurpose, jtestnet != JNI_FALSE);
         OPENSSL_cleanse(seed, sizeof seed);
     }
@@ -1637,7 +1638,7 @@ Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstri
     const char *mn=env->GetStringUTFChars(jm,nullptr); std::string m=mn?mn:""; if(mn) env->ReleaseStringUTFChars(jm,mn);
     const char *pp=env->GetStringUTFChars(jp,nullptr); std::string path=pp?pp:""; if(pp) env->ReleaseStringUTFChars(jp,pp);
     if(m.empty()||path.empty()) return env->NewStringUTF("");
-    uint8_t seed[64]; bip39_semilla(m.c_str(),m.size(),"",0,seed);
+    uint8_t seed[64]; semilla_de_frase(m.c_str(),m.size(),seed);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     HDKey hd; memset(&hd,0,sizeof(hd));
     derive_path(ctx,seed,path.c_str(),&hd);   /* ruta inválida: hd a cero y out vacío */
@@ -2163,7 +2164,7 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
     if(!mn||!mn[0]){ if(mn)env->ReleaseStringUTFChars(jmn,mn); return env->NewStringUTF("[]"); }
 
     uint8_t seed[64];
-    bip39_semilla(mn,strlen(mn),"",0,seed);
+    semilla_de_frase(mn,strlen(mn),seed);
     env->ReleaseStringUTFChars(jmn,mn);
 
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -2414,7 +2415,7 @@ static std::string build_and_sign_tx(const std::string &req){
         if(stype!=SP_LEGACY && !wif_comprimida){secp256k1_context_destroy(ctx);return "ERROR:segwit_needs_compressed_wif";}
         is_segwit=(stype==SP_P2WPKH||stype==SP_P2SH_P2WPKH);
     }else{
-        bip39_semilla(mnemonic.c_str(),mnemonic.size(),"",0,seed);
+        semilla_de_frase(mnemonic.c_str(),mnemonic.size(),seed);
         if(!derive_path(ctx,seed,path.empty()?"m/44'/0'/0'/0/0":path.c_str(),&hd)){
             OPENSSL_cleanse(seed,sizeof seed);
             secp256k1_context_destroy(ctx); return "ERROR:bad_path";

@@ -3397,8 +3397,11 @@ class WalletActivity : FragmentActivity() {
                         // que al crearla: una captura de la seed acaba en la
                         // galería y de ahí en la nube.
                         val msg = if (isWifMode) "WIF: $wifKey"
-                                  else mnemonic.split(" ").mapIndexed { i, w -> "${i + 1}. $w" }
-                                           .joinToString("\n")
+                                  else Frase.palabras(mnemonic).split(" ").mapIndexed { i, w -> "${i + 1}. $w" }
+                                           .joinToString("\n") +
+                                       (if (Frase.tienePassphrase(mnemonic))
+                                           "\n\nPassphrase (the 25th word, kept apart from the words):\n${Frase.passphrase(mnemonic)}"
+                                        else "")
                         val d = AlertDialog.Builder(this).setTitle("Do not show it to anyone")
                             .setMessage(msg).setPositiveButton("Got it", null).create()
                         d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
@@ -3879,7 +3882,19 @@ class WalletActivity : FragmentActivity() {
             background = GradientDrawable().apply { setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
         }
-        btnRow.addView(btnNext); btnRow.addView(btnCancel); layout.addView(btnRow)
+        btnRow.addView(btnNext); btnRow.addView(btnCancel)
+        // Passphrase opcional (la palabra 25). Con ella las mismas palabras dan otra
+        // cartera: si la pone, tiene que guardarla aparte, porque sin ella no se recupera.
+        val etPassphrase = EditText(this).apply {
+            hint = "Passphrase (optional, the 25th word)"
+            setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = dp(12) }
+        }
+        layout.addView(etPassphrase)
+        layout.addView(btnRow)
         val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
         dlg.setOnCancelListener { finish(); overridePendingTransition(0, 0) }
         dlg.window?.apply {
@@ -3893,16 +3908,22 @@ class WalletActivity : FragmentActivity() {
         dlg.show()
         btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnNext.setOnClickListener {
-            val mn = Bip39.normalize(etSeed.text.toString()).joinToString(" ")
+            val palabras = Bip39.normalize(etSeed.text.toString()).joinToString(" ")
             // Sólo se contaban palabras: una seed mal tecleada se guardaba igual
             // y la wallet derivaba direcciones ajenas, mostrando saldo cero.
-            when (val v = Bip39.validate(mn)) {
+            when (val v = Bip39.validate(palabras)) {
                 is Bip39.Result.Invalid -> {
                     Toast.makeText(this, v.reason, Toast.LENGTH_LONG).show()
                     return@setOnClickListener
                 }
                 else -> {}
             }
+            val pass = etPassphrase.text.toString()
+            Frase.errorPassphrase(pass)?.let {
+                Toast.makeText(this, it, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val mn = Frase.unir(palabras, pass)
             dlg.dismiss()
             guardarConPin(onOk = { guardarSeedNueva(mn, etNombre.text.toString(), WalletManager.O_IMPORTADA) },
                           onCancel = { finish() })
