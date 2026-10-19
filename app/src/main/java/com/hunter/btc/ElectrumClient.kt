@@ -89,6 +89,17 @@ object ElectrumClient {
     }
 
     /**
+     * Historial, o null si nadie respondió. Una lista vacía SÍ es respuesta
+     * ("esta dirección no se ha usado"); getHistory no las distingue.
+     */
+    fun historialOrNull(addr: String, testnet: Boolean = false): List<TxEntry>? {
+        val sh = addrToScripthash(addr) ?: return null
+        return requestArrayOrNull("blockchain.scripthash.get_history", listOf(sh), testnet)
+            ?.map { TxEntry(it.getString("tx_hash"), it.getInt("height")) }
+            ?.sortedByDescending { it.height }
+    }
+
+    /**
      * Monedas sin gastar de una dirección, en el mismo formato que devuelve
      * mempool.space —{txid, vout, value}— para que quien las consuma no tenga
      * que saber de dónde vinieron.

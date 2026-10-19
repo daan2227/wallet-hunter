@@ -23,7 +23,8 @@ object HdScanner {
     const val GAP_LIMIT = 20
 
     /** Tope duro, por si una respuesta rara mantuviera la búsqueda viva. */
-    private const val MAX_INDEX = 200
+    const val MAX_INDEX = 200
+    private const val MAX_DESCONOCIDAS = 6
 
     private const val BATCH = 20
 
@@ -69,9 +70,11 @@ object HdScanner {
         val usadas = mutableListOf<Found>()
         var primeraLibre = -1
         var seguidasSinUsar = 0
+        var desconocidasSeguidas = 0
         var idx = 0
+        var cortado = false
 
-        while (idx < MAX_INDEX && seguidasSinUsar < GAP_LIMIT) {
+        while (idx < MAX_INDEX && seguidasSinUsar < GAP_LIMIT && !cortado) {
             val lote = derive(mnemonic, purpose, change, idx, BATCH, testnet)
             if (lote.isEmpty()) break
             for ((i, addr) in lote) {
@@ -80,19 +83,28 @@ object HdScanner {
                     true -> {
                         usadas.add(Found(purpose, change, i, addr))
                         seguidasSinUsar = 0
+                        desconocidasSeguidas = 0
                         primeraLibre = -1
                     }
                     false -> {
                         if (primeraLibre < 0) primeraLibre = i
                         seguidasSinUsar++
+                        desconocidasSeguidas = 0
                     }
                     // null: no se sabe. Ni cuenta como libre ni corta el hueco.
-                    null -> seguidasSinUsar = 0
+                    // Con la red caída seguirían saliendo null hasta el índice 200
+                    // en cada rama: tras seis seguidas se para, y el resultado
+                    // queda indeterminado (-1), no libre.
+                    null -> {
+                        seguidasSinUsar = 0
+                        if (++desconocidasSeguidas >= MAX_DESCONOCIDAS) { cortado = true; break }
+                    }
                 }
                 if (seguidasSinUsar >= GAP_LIMIT) break
             }
             idx += lote.size
         }
+        if (cortado) primeraLibre = -1
         return usadas to primeraLibre
     }
 

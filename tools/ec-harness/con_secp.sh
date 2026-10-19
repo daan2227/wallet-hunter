@@ -4,6 +4,7 @@
 #   recuperacion - la recuperacion de frases de verdad, sin JNI
 #   escaner      - el escaner de claves: cada clave publica es la de su privada
 #   bsgs         - logaritmo discreto en rangos pequenos, con reanudacion
+#   wif          - todas las direcciones de una WIF, contra vectores publicados
 #     tools/ec-harness/con_secp.sh app/src/main/cpp/secp256k1
 # Para medir, a mano despues: ./recuperacion <hilos>, ./escaner <grupos>
 set -e
@@ -19,7 +20,9 @@ g++ -O2 -Wno-deprecated-declarations -Wno-unused-result -DRECOVERY_SIN_JNI -I$C 
     $C/bip32.cpp $C/mnemonic.cpp $C/sha512.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto -lpthread
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o escaner escaner.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o"
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o bsgs bsgs.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lpthread
+g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o wif wif.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
 rm -rf "$T"
 echo "=== recuperacion ==="; ./recuperacion
 echo "=== escaner ===";      ./escaner
 echo "=== bsgs ===";         ./bsgs
+echo "=== wif ===";          ./wif

@@ -66,6 +66,20 @@ class WalletActivity : FragmentActivity() {
     /** Último saldo consultado, en sats. -1 = aún no se sabe. Lo usa el aviso
      *  de borrado para no dejar tirar una cartera con dinero dentro. */
     private var ultimoSaldoSat = -1L
+    /** Sube al cambiar de cartera: lo que acaba después ya no es de la pantalla. */
+    private var generacion = 0
+    /** Direcciones que la búsqueda ha visto usadas, también las de cambio ya gastado. */
+    private val historialExtra = linkedMapOf<String, String>()
+    /** Mientras la búsqueda de direcciones corre, el historial puede estar incompleto. */
+    private var descubriendo = false
+    /** Páginas de 25 transacciones que se piden por dirección en el historial. */
+    private val MAX_PAGINAS_HISTORIAL = 40
+    /**
+     * Las otras direcciones de la clave WIF (P2WPKH, P2SH-P2WPKH, P2TR). Entran
+     * en el saldo y en el historial, pero NO en `addresses`: esa lista es la de
+     * Enviar, y firmar desde estos tipos todavía no está soportado.
+     */
+    private val wifExtras = linkedMapOf<String, String>()
     /**
      * Red de pruebas.
      *
@@ -325,6 +339,22 @@ class WalletActivity : FragmentActivity() {
         PinAuthHelper.pantalla(this, isSetup, autoBiometric = false, onResult = onResult)
     }
 
+    /** Rellena [wifExtras] con las direcciones de la clave WIF que no son la P2PKH. */
+    private fun cargarWifExtras() {
+        wifExtras.clear()
+        if (!isWifMode || wifKey.isEmpty()) return
+        val lineas = try { HunterEngine.wifDirecciones(wifKey, isTestnet) } catch (e: Throwable) { "" }
+        for (linea in lineas.lines()) {
+            val partes = linea.trim().split(' ', limit = 2)
+            if (partes.size != 2) continue
+            when (partes[0]) {
+                "P2WPKH" -> wifExtras["wif_p2wpkh"] = partes[1]
+                "P2SH-P2WPKH" -> wifExtras["wif_p2sh"] = partes[1]
+                "P2TR" -> wifExtras["wif_p2tr"] = partes[1]
+            }
+        }
+    }
+
     private fun loadAddresses() {
         if (isWifMode) {
             // Derivar addr sincrono si falta, luego buildUI
@@ -337,6 +367,7 @@ class WalletActivity : FragmentActivity() {
                     runOnUiThread {
                         if (wifAddr.isNotEmpty()) {
                             addresses = mutableMapOf("wif_0" to wifAddr)
+                            cargarWifExtras()
                             buildUI()
                         } else {
                             // WIF decode failed - show error
@@ -347,6 +378,7 @@ class WalletActivity : FragmentActivity() {
                 }.start()
             } else {
                 addresses = mutableMapOf("wif_0" to wifAddr)
+                cargarWifExtras()
                 buildUI()
             }
             return
@@ -595,6 +627,13 @@ class WalletActivity : FragmentActivity() {
         ll.addView(filaTotal); ll.addView(tvFiat)
         scroll.addView(ll); tabContent.addView(scroll)
 
+        // Foto de la cartera tomada aquí, en el hilo de la pantalla: el hilo de
+        // abajo no lee campos que otro hilo pueda estar cambiando.
+        val gen = generacion
+        val snapshot = addresses.toMap() + wifExtras
+        val mnemonicSnap = mnemonic
+        val wifSnap = isWifMode
+        descubriendo = !wifSnap && mnemonicSnap.isNotEmpty()
         Thread {
             var totalSat = 0L
             // label, dirección, saldo, fuente ("" = mempool.space, "electrum" = respaldo)
@@ -609,8 +648,12 @@ class WalletActivity : FragmentActivity() {
             // vez si hay alguna ruta a la cadena.
             var sinRed = !ChainApi.hayRed(isTestnet)
             var fallosSeguidos = 0
-            addresses.forEach { (k, addr) ->
-                val label = if (k == "wif_0") currentWalletName else (labelMap[k] ?: k)
+            snapshot.forEach { (k, addr) ->
+                val label = when {
+                    k == "wif_0" -> currentWalletName
+                    k.startsWith("wif_p") -> "WIF " + k.removePrefix("wif_").uppercase()
+                    else -> labelMap[k] ?: k
+                }
                 if (addr.isEmpty()) { rows.add(BalanceRow("Error", "empty address", -1L, "")); return@forEach }
                 if (sinRed) { rows.add(BalanceRow(label, addr, -1L, "")); return@forEach }
 
@@ -627,7 +670,6 @@ class WalletActivity : FragmentActivity() {
                 totalSat += bal
                 rows.add(BalanceRow(label, addr, bal, src))
             }
-            val huboFallo = sinRed || rows.any { it.sat < 0 }
 
             /* Descubrimiento HD.
              *
@@ -642,8 +684,10 @@ class WalletActivity : FragmentActivity() {
              * listado. Va después del primer repaso para que el total salga
              * rápido y esto lo complete.
              */
-            if (!isWifMode && mnemonic.isNotEmpty() && !sinRed) {
-                val yaListadas = addresses.values.toHashSet()
+            var fallosHD = 0
+            val hdUsadas = linkedMapOf<String, String>()
+            if (!wifSnap && mnemonicSnap.isNotEmpty() && !sinRed) {
+                val yaListadas = snapshot.values.toHashSet()
                 // Las de recepción se suman al mapa con la clave canónica
                 // (p2pkh_3, p2wpkh_5...). Así la pestaña Enviar las ofrece y
                 // pathStr les calcula su ruta sola: encontrarlas y no poder
@@ -652,23 +696,29 @@ class WalletActivity : FragmentActivity() {
                 val clavePorProposito = mapOf(44 to "p2pkh", 49 to "p2sh",
                                               84 to "p2wpkh", 86 to "p2tr")
                 for (purpose in HdScanner.PURPOSES) {
-                    val (usadas, _) = HdScanner.scanBranch(mnemonic, purpose, change = 0, testnet = isTestnet)
+                    val (usadas, _) = HdScanner.scanBranch(mnemonicSnap, purpose, change = 0, testnet = isTestnet)
                     for (f in usadas) {
+                        hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} [${f.index}]"
                         if (f.addr in yaListadas) continue
                         yaListadas.add(f.addr)
-                        val r = BalanceLookup.query(f.addr, isTestnet) ?: continue
+                        val r = BalanceLookup.query(f.addr, isTestnet)
+                        if (r == null) { fallosHD++; continue }
                         if (r.source == "electrum") usedFallback = true
                         totalSat += r.sat
                         rows.add(BalanceRow("${HdScanner.purposeLabel(purpose)} [${f.index}]",
                                             f.addr, r.sat, r.source))
                         clavePorProposito[purpose]?.let { nuevasGastables["${it}_${f.index}"] = f.addr }
                     }
-                    // El cambio también guarda fondos entre envíos.
-                    val (camb, _) = HdScanner.scanBranch(mnemonic, purpose, change = 1, testnet = isTestnet)
+                    // El cambio también guarda fondos entre envíos. Un cambio ya
+                    // gastado no sale en el saldo, pero sí en el historial: sin él
+                    // el envío que lo gastó no aparecía.
+                    val (camb, _) = HdScanner.scanBranch(mnemonicSnap, purpose, change = 1, testnet = isTestnet)
                     for (f in camb) {
+                        hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} change [${f.index}]"
                         if (f.addr in yaListadas) continue
                         yaListadas.add(f.addr)
-                        val r = BalanceLookup.query(f.addr, isTestnet) ?: continue
+                        val r = BalanceLookup.query(f.addr, isTestnet)
+                        if (r == null) { fallosHD++; continue }
                         if (r.sat <= 0L) continue   // cambio ya gastado: no ensuciar la lista
                         if (r.source == "electrum") usedFallback = true
                         totalSat += r.sat
@@ -680,21 +730,34 @@ class WalletActivity : FragmentActivity() {
                     }
                 }
                 if (nuevasGastables.isNotEmpty()) {
-                    // Las pestañas se reconstruyen al cambiar de pestaña, así
-                    // que basta con dejarlas en el mapa: Enviar las verá.
-                    runOnUiThread { addresses.putAll(nuevasGastables) }
+                    // Sólo si la cartera sigue siendo la misma: si no, esto
+                    // metería las direcciones de una seed en otra cartera.
+                    runOnUiThread { if (gen == generacion) addresses.putAll(nuevasGastables) }
+                }
+            }
+            // Un fallo de consulta (en el primer repaso o en la búsqueda) hace
+            // que el total no sea completo: se avisa y el diálogo de borrado no
+            // lo da por cero.
+            val huboFallo = sinRed || rows.any { it.sat < 0 } || fallosHD > 0
+            val hallados = hdUsadas.toMap()
+            runOnUiThread {
+                if (gen == generacion) {
+                    historialExtra.clear(); historialExtra.putAll(hallados)
+                    descubriendo = false
                 }
             }
 
             var price = 0.0
-            try {
+            // El precio es de la red principal: en testnet no tiene sentido.
+            if (!isTestnet) try {
                 // "USD":(\d+) no captura decimales: con 67432.5 leía 67432.
                 val js = ChainApi.get("/v1/prices", false)
                 if (js != null) price = JSONObject(js).optDouble("USD", 0.0)
             } catch(e: Exception) {}
             val tot = totalSat; val pr = price
-            ultimoSaldoSat = if (huboFallo) -1L else tot
+            if (gen == generacion) ultimoSaldoSat = if (huboFallo) -1L else tot
             runOnUiThread {
+                if (gen != generacion) return@runOnUiThread
                 val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
                 val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} USD" else "BTC"
                 monto(tvTotal, btcText)
@@ -760,13 +823,14 @@ class WalletActivity : FragmentActivity() {
      * dinero que vuelve a ellas es de la cartera: sin contarlas, un envío
      * parecía gastar también el cambio.
      */
-    private fun direccionesDeCambio(): Map<String, String> {
-        if (isWifMode || mnemonic.isEmpty()) return emptyMap()
+    private fun direccionesDeCambio(mn: String = mnemonic): Map<String, String> {
+        if (isWifMode || mn.isEmpty()) return emptyMap()
         val coin = if (isTestnet) 1 else 0
         val r = HashMap<String, String>()
         for (purpose in listOf(44, 49, 84, 86)) {
             try {
-                val arr = JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, 1, 0, 30, isTestnet))
+                // Mismo rango que la búsqueda: con 30 se perdía el cambio 30 en adelante.
+                val arr = JSONArray(HunterEngine.deriveAddresses(mn, purpose, 1, 0, HdScanner.MAX_INDEX, isTestnet))
                 for (k in 0 until arr.length()) {
                     val o = arr.optJSONObject(k) ?: continue
                     val a = o.optString("addr"); if (a.isNotEmpty())
@@ -796,29 +860,53 @@ class WalletActivity : FragmentActivity() {
         }
         ll.addView(tvHead); scroll.addView(ll); tabContent.addView(scroll)
 
-        val consultar = addresses.values.filter { it.isNotEmpty() }.distinct()
+        // Las de la lista y las que la búsqueda ha visto usadas (también el cambio
+        // ya gastado). Si la búsqueda sigue, se dice en la cabecera.
+        val consultar = (addresses.values + historialExtra.keys + wifExtras.values)
+            .filter { it.isNotEmpty() }.distinct()
+        val buscando = descubriendo
         if (consultar.isEmpty()) {
-            tvHead.text = "No addresses to check yet"
+            tvHead.text = if (buscando) "Still searching for addresses…" else "No addresses to check yet"
             tvHead.setTextColor(AppTheme.WARN)
             return
         }
+        val mnHist = mnemonic
         Thread {
             try {
                 val porTx = LinkedHashMap<String, JSONObject>()
                 var respondidas = 0; var fallos = 0
-                for (a in consultar) {
+                val sinResponder = mutableListOf<String>()
+                for ((idx, a) in consultar.withIndex()) {
                     val cuerpo = ChainApi.get("/address/$a/txs", isTestnet)
                     if (cuerpo == null) {
+                        sinResponder.add(a)
                         // Sin red no tiene sentido seguir probando una a una.
-                        if (++fallos >= 3 && respondidas == 0) break
+                        if (++fallos >= 3 && respondidas == 0) {
+                            sinResponder.addAll(consultar.drop(idx + 1)); break
+                        }
                         continue
                     }
                     fallos = 0; respondidas++
-                    val arr = JSONArray(cuerpo)
-                    for (k in 0 until arr.length()) {
-                        val tx = arr.getJSONObject(k)
-                        porTx.putIfAbsent(tx.getString("txid"), tx)
+                    // La API devuelve una página (las pendientes y unas 25 confirmadas).
+                    // Lo más antiguo sale con /txs/chain/<último visto>: se sigue hasta
+                    // que no quede nada, con un tope por dirección.
+                    var pagina: String? = cuerpo
+                    var paginas = 0
+                    var incompleta = false
+                    while (pagina != null) {
+                        if (paginas >= MAX_PAGINAS_HISTORIAL) { incompleta = true; break }
+                        val arr = JSONArray(pagina)
+                        if (arr.length() == 0) break
+                        for (k in 0 until arr.length()) {
+                            val tx = arr.getJSONObject(k)
+                            porTx.putIfAbsent(tx.getString("txid"), tx)
+                        }
+                        paginas++
+                        val ultimo = arr.getJSONObject(arr.length() - 1).getString("txid")
+                        pagina = ChainApi.get("/address/$a/txs/chain/$ultimo", isTestnet)
+                        if (pagina == null) incompleta = true
                     }
+                    if (incompleta) sinResponder.add(a)
                     val n = respondidas
                     runOnUiThread { tvHead.text = "Loading… $n of ${consultar.size} addresses" }
                 }
@@ -835,7 +923,7 @@ class WalletActivity : FragmentActivity() {
                     return@Thread
                 }
 
-                val cambio = direccionesDeCambio()
+                val cambio = direccionesDeCambio(mnHist)
                 val propias = consultar.toHashSet().apply { addAll(cambio.keys) }
                 val movs = porTx.values.map { tx ->
                     var entra = 0L; var sale = 0L
@@ -855,7 +943,11 @@ class WalletActivity : FragmentActivity() {
                 }.sortedWith(compareBy<MovTx> { it.confirmado }.thenByDescending { it.tiempo })
 
                 runOnUiThread {
-                    tvHead.text = "${movs.size} transactions · ${consultar.size} addresses"
+                    val faltan = sinResponder.size
+                    tvHead.text = "${movs.size} transactions · ${consultar.size} addresses" +
+                        (if (faltan > 0) " · $faltan not checked: the list may be incomplete" else "") +
+                        (if (buscando || descubriendo) " · still searching addresses" else "")
+                    if (faltan > 0 || buscando || descubriendo) tvHead.setTextColor(AppTheme.WARN)
                     if (movs.isEmpty()) {
                         ll.addView(TextView(this).apply {
                             text = "No transactions yet"
@@ -865,7 +957,9 @@ class WalletActivity : FragmentActivity() {
                         return@runOnUiThread
                     }
                     val fmt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
-                    for (m in movs.take(50)) {
+                    fun tanda(desde: Int) {
+                    val hasta = minOf(desde + 50, movs.size)
+                    for (m in movs.subList(desde, hasta)) {
                         val card = LinearLayout(this).apply {
                             orientation = LinearLayout.VERTICAL; background = cardBg()
                             setPadding(dp(16),dp(14),dp(16),dp(14))
@@ -900,6 +994,20 @@ class WalletActivity : FragmentActivity() {
                         card.setOnClickListener { detalleTx(m, propias, cambio) }
                         ll.addView(card)
                     }
+                    if (hasta < movs.size) {
+                        val resto = movs.size - hasta
+                        val btn = TextView(this).apply {
+                            text = "Show ${minOf(50, resto)} more (${resto} left)"
+                            textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
+                            typeface = AppTheme.medium(context); setTextColor(AppTheme.ACCENT)
+                            setPadding(0, dp(14), 0, dp(14))
+                            isClickable = true; isFocusable = true
+                        }
+                        btn.setOnClickListener { ll.removeView(btn); tanda(hasta) }
+                        ll.addView(btn)
+                    }
+                    }
+                    tanda(0)
                 }
             } catch(e: Exception) { runOnUiThread { tvHead.text = motivo(e); tvHead.setTextColor(RED) } }
         }.start()
@@ -2289,7 +2397,8 @@ class WalletActivity : FragmentActivity() {
             addrActual = addr
             tvAddr.text = troceada(addr)
             Thread {
-                try { val bm = qrBitmap("bitcoin:$addr", 512); runOnUiThread { ivQr.setImageBitmap(bm) } }
+                try { val bm = qrBitmap("bitcoin:$addr", 512)
+                      runOnUiThread { if (addrActual == addr) ivQr.setImageBitmap(bm) } }
                 catch (e: Exception) { android.util.Log.w("WalletActivity", "QR: ${e.message}") }
             }.start()
             // "Sin estrenar" no es decorativo: si ya ha recibido algo, decirlo
@@ -2298,12 +2407,16 @@ class WalletActivity : FragmentActivity() {
             tvEstreno.setTextColor(AppTheme.TXT_MUTED)
             Thread {
                 val r = BalanceLookup.query(addr, isTestnet)
+                // Usada no es lo mismo que tener saldo: una dirección que recibió
+                // y se gastó entera no tiene saldo, pero ya no se debe reutilizar.
+                val usada = BalanceLookup.isUsed(addr, isTestnet)
                 runOnUiThread {
                     if (addrActual != addr) return@runOnUiThread
                     when {
-                        r == null     -> { tvEstreno.text = ""; }
-                        r.sat > 0L    -> { tvEstreno.text = "already has funds"; tvEstreno.setTextColor(AppTheme.WARN) }
-                        else          -> { tvEstreno.text = "unused";    tvEstreno.setTextColor(AppTheme.ACCENT) }
+                        r != null && r.sat > 0L -> { tvEstreno.text = "already has funds"; tvEstreno.setTextColor(AppTheme.WARN) }
+                        usada == true           -> { tvEstreno.text = "already used: don't reuse it"; tvEstreno.setTextColor(AppTheme.WARN) }
+                        usada == false          -> { tvEstreno.text = "unused";    tvEstreno.setTextColor(AppTheme.ACCENT) }
+                        else                    -> { tvEstreno.text = "" }
                     }
                 }
             }.start()
@@ -2357,7 +2470,12 @@ class WalletActivity : FragmentActivity() {
     /* -- WALLET SELECTOR -- */
 
     private fun switchToWallet(onReady: () -> Unit) {
-        // Limpiar estado anterior
+        // Limpiar estado anterior. Lo que siga corriendo de la cartera anterior
+        // se descarta: comprueba la generación antes de tocar nada.
+        generacion++
+        historialExtra.clear()
+        wifExtras.clear()
+        descubriendo = false
         addresses.clear()
         mnemonic = ""
         wifKey = ""
@@ -2677,9 +2795,16 @@ class WalletActivity : FragmentActivity() {
             dlg.dismiss()
             guardarConPin(onOk = {
                 val derivedAddr = try { HunterEngine.wifToAddr(w) } catch(e: Exception) { "" }
+                // Sin dirección no se guarda: una cartera sin dirección no tiene nada que mirar.
+                if (derivedAddr.isEmpty()) {
+                    Toast.makeText(this, "Could not read that WIF key. Nothing was saved.", Toast.LENGTH_LONG).show()
+                    return@guardarConPin
+                }
                 val nombre = WalletManager.limpiarNombre(etNombre.text.toString()).ifEmpty { "WIF Wallet" }
-                if (WalletManager.listWifs(this).any { it.second == w })
+                if (WalletManager.listWifs(this).any { it.second == w }) {
                     Toast.makeText(this, "That key is already saved", Toast.LENGTH_SHORT).show()
+                    return@guardarConPin
+                }
                 wifKey = w; wifAddr = derivedAddr; isWifMode = true
                 currentWalletName = nombre
                 WalletManager.saveWif(this, w, derivedAddr, nombre, WalletManager.O_IMPORTADA)
@@ -3278,7 +3403,15 @@ class WalletActivity : FragmentActivity() {
         btnAdd.setOnClickListener {
             val addr = etAddr.text.toString().trim()
             val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
-            if (addr.length < 26) { Toast.makeText(this, "Invalid address", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            // Una dirección de la otra red, o con una letra mal, se guardaba y luego
+            // sólo decía "no answer". Se valida con la red de esta cartera.
+            when (val v = BtcAddress.validate(addr, isTestnet)) {
+                is BtcAddress.Result.Invalid -> {
+                    Toast.makeText(this, "Not a valid ${if (isTestnet) "testnet" else "mainnet"} address: ${v.reason}", Toast.LENGTH_LONG).show()
+                    return@setOnClickListener
+                }
+                is BtcAddress.Result.Valid -> {}
+            }
             dlg.dismiss()
             WalletManager.saveWatcher(this, addr, label, WalletManager.O_IMPORTADA)
             wifKey = ""; wifAddr = addr; isWifMode = true

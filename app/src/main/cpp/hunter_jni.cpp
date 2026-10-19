@@ -79,7 +79,8 @@ static void install_crash_handlers() {
 #define PRIVKEY_BYTES 32
 #define MAX_LINE      256
 #define MAX_ADDR      64
-#include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
+#include "addr_encode.h"
+#include "wif_direcciones.h"   /* wif_decode y todas las direcciones de un WIF */   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "ruta_bip32.h"    /* ruta BIP32 estricta */
 #include <openssl/crypto.h> /* OPENSSL_cleanse */
@@ -1423,65 +1424,6 @@ Java_com_hunter_btc_HunterEngine_getMatches(JNIEnv *env,jobject){
 }
 
 
-static const char B58_ALPHA[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-/*
- * Decodifica un WIF validándolo entero.
- *
- * La versión anterior no comprobaba el checksum ni la longitud: buscaba el
- * primer byte 0x80 dentro del buffer y copiaba los 32 siguientes. Con eso,
- * cambiar un carácter en medio de la clave devolvía OTRA clave privada
- * distinta, sin decir nada —comprobado: un typo en el carácter 26 de un WIF
- * válido daba ...10311c1df79751f535b39874e818fb en lugar de la original—. Y si
- * no encontraba ningún 0x80 dejaba start=0 y devolvía true igualmente, así que
- * cualquier cadena Base58 "decodificaba" bien: "1"*52 daba una clave de ceros.
- *
- * Formato: 0x80 | privkey(32) | [0x01 si comprimida] | checksum(4)
- * El checksum son los 4 primeros bytes de SHA256(SHA256(resto)).
- */
-/* comprimida (si no es null): true para K/L (con la marca 0x01), false para 5... */
-static bool wif_decode(const char *wif, uint8_t *privkey, bool *comprimida=nullptr) {
-    size_t wlen = strlen(wif);
-    if (wlen < 50 || wlen > 53) return false;
-
-    uint8_t buf[64] = {0};
-    for (size_t i = 0; i < wlen; i++) {
-        const char *p = strchr(B58_ALPHA, wif[i]);
-        if (!p) return false;
-        int carry = (int)(p - B58_ALPHA);
-        for (int j = 63; j >= 0; j--) {
-            carry += 58 * buf[j];
-            buf[j] = (uint8_t)(carry & 0xff);
-            carry >>= 8;
-        }
-        if (carry) return false;          /* no cabe en 64 bytes: no es un WIF */
-    }
-
-    /* En Base58 cada '1' inicial es un byte 0x00 por delante del número. */
-    size_t zeros = 0;
-    while (zeros < wlen && wif[zeros] == '1') zeros++;
-    size_t first = 0;
-    while (first < 64 && buf[first] == 0) first++;
-
-    size_t plen = zeros + (64 - first);
-    if (plen != 37 && plen != 38) return false;
-
-    uint8_t payload[38] = {0};
-    memcpy(payload + zeros, buf + first, 64 - first);
-
-    if (payload[0] != 0x80) return false;                 /* mainnet */
-    if (plen == 38 && payload[33] != 0x01) return false;  /* marca de comprimida */
-
-    uint8_t ck[32];
-    SHA256_CTX sc;
-    SHA256_Init(&sc); SHA256_Update(&sc, payload, plen - 4); SHA256_Final(ck, &sc);
-    SHA256_Init(&sc); SHA256_Update(&sc, ck, 32);           SHA256_Final(ck, &sc);
-    if (memcmp(ck, payload + plen - 4, 4) != 0) return false;
-
-    memcpy(privkey, payload + 1, 32);
-    if (comprimida) *comprimida = (plen == 38);
-    return true;
-}
-
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     const char *wif = env->GetStringUTFChars(jwif, nullptr);
@@ -1513,6 +1455,17 @@ Java_com_hunter_btc_HunterEngine_wifToAddr(JNIEnv *env, jobject, jstring jwif) {
     h160_to_addr(h160, addr);
     secp256k1_context_destroy(ctx);
     return env->NewStringUTF(addr);
+}
+
+/* Todas las direcciones de un WIF (P2PKH y, si es comprimida, P2WPKH, P2SH-P2WPKH
+ * y P2TR), una por línea como "TIPO direccion". Vacío si el WIF no vale. La red
+ * la pone la cartera: en testnet las direcciones son de testnet. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_wifDirecciones(JNIEnv *env, jobject, jstring jwif, jboolean jtestnet) {
+    const char *wif = env->GetStringUTFChars(jwif, nullptr);
+    std::string out = wif ? wif_direcciones(wif, jtestnet != JNI_FALSE) : std::string();
+    if (wif) env->ReleaseStringUTFChars(jwif, wif);
+    return env->NewStringUTF(out.c_str());
 }
 
 /* De una clave privada en hexadecimal, su WIF y su direccion.

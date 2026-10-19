@@ -64,9 +64,9 @@ object BalanceLookup {
         }
         // Electrum no da el número de transacciones directamente, pero su
         // historial sí: si tiene alguna entrada, la dirección se ha usado.
+        // null = nadie respondió: no se sabe, y no se puede decir "sin usar".
         return try {
-            ElectrumClient.getHistory(addr, testnet).takeIf { it.isNotEmpty() }?.let { true }
-                ?: if (ElectrumClient.getBalance(addr, testnet) != null) false else null
+            ElectrumClient.historialOrNull(addr, testnet)?.isNotEmpty()
         } catch (e: Exception) {
             android.util.Log.w("BalanceLookup", "isUsed via Electrum failed on $addr: ${e.message}")
             null

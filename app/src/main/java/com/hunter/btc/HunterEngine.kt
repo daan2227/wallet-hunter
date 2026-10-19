@@ -56,6 +56,8 @@ object HunterEngine {
     external fun popLog(): String
     external fun getMatches(): String
     external fun wifToAddr(wif: String): String
+    /** Todas las direcciones de un WIF, una por línea: "TIPO direccion". */
+    external fun wifDirecciones(wif: String, testnet: Boolean): String
     /**
      * De una clave privada en hexadecimal, su WIF y su dirección: `"WIF|addr"`,
      * o `""` si no vale.
