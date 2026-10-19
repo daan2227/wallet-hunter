@@ -1124,6 +1124,23 @@ class WalletActivity : FragmentActivity() {
         }.start()
     }
 
+    /** Guarda la PSBT en la carpeta compartida y abre la hoja de compartir. */
+    private fun compartirPsbt(bin: ByteArray) {
+        try {
+            val f = java.io.File(BackupStore.compartidos(this), "psbt_${System.currentTimeMillis()}.psbt")
+            f.writeBytes(bin)
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", f)
+            startActivity(android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Share PSBT"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not save the PSBT: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun detalleTx(m: MovTx, propias: Set<String>, cambio: Map<String, String>) {
         val sheet = LinearLayout(this).apply { orientation=LinearLayout.VERTICAL; background=GradientDrawable().apply{setColor(BG_PANEL);cornerRadius=dp(AppTheme.R_CARD).toFloat()}; setPadding(dp(20),dp(20),dp(20),dp(24)) }
         sheet.addView(TextView(this).apply{text="Transaction";textSize=AppTheme.SP_TITLE;setTextColor(TXT_PRI);typeface=AppTheme.title(context);setPadding(0,0,0,dp(18))})
@@ -1945,6 +1962,15 @@ class WalletActivity : FragmentActivity() {
         ll.addView(btnAnadirSalida)
         ll.addView(tvExtras)
         pintarExtras()
+        // Exportar sin firmar: la misma revisión, y una PSBT para firmar en otro aparato.
+        ll.addView(TextView(this).apply {
+            text = "Export as PSBT (sign on another device)"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, dp(6))
+            isClickable = true; isFocusable = true
+            setOnClickListener { exportarSiguiente = true; btnSend.performClick() }
+        })
         ll.addView(btnSend)
 
         val tvStatus = TextView(this).apply {
@@ -2159,6 +2185,8 @@ class WalletActivity : FragmentActivity() {
 
         /* ── ENVIAR ────────────────────────────────────────────────────── */
         btnSend.setOnClickListener {
+            val exportar = exportarSiguiente
+            exportarSiguiente = false
             // bech32 todo en mayúsculas (QR, o pegado a mano) es válido y es la misma
             // dirección: se pasa a minúsculas antes de validarla y firmarla.
             val toAddr = etTo.text.toString().trim().let {
@@ -2223,7 +2251,8 @@ class WalletActivity : FragmentActivity() {
                     }
                 }
             }
-            doSend(toAddr, amtBtc, rate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString(), salidasExtraEnvio.toList())
+            doSend(toAddr, amtBtc, rate, fromKey, fromAddr, tvStatus, btnSend, addrType.toString(),
+                   salidasExtraEnvio.toList(), exportarPsbt = exportar)
         }
     }
 
@@ -2242,7 +2271,7 @@ class WalletActivity : FragmentActivity() {
     private fun doSend(toAddr: String, amtBtc: Double, feeRateManual: Int,
                        fromKey: String, fromAddr: String,
                        tvStatus: TextView, btnSend: View, addrType: String = "",
-                       extras: List<SalidaExtra> = emptyList()) {
+                       extras: List<SalidaExtra> = emptyList(), exportarPsbt: Boolean = false) {
             tvStatus.text = "Preparing the send…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
@@ -2496,11 +2525,12 @@ class WalletActivity : FragmentActivity() {
                     val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                     runOnUiThread {
                         AlertDialog.Builder(this)
-                            .setTitle("Review the send")
-                            .setMessage(resumen)
+                            .setTitle(if (exportarPsbt) "Export as PSBT" else "Review the send")
+                            .setMessage(if (exportarPsbt) resumen + "\n\nThe PSBT is not signed: another device " +
+                                        "(with the key) signs it, then it is broadcast." else resumen)
                             .setCancelable(false)
                             .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
-                            .setPositiveButton("Send")   { _, _ -> seguir.offer(true) }
+                            .setPositiveButton(if (exportarPsbt) "Export" else "Send") { _, _ -> seguir.offer(true) }
                             .show()
                     }
                     if (!seguir.take()) {
@@ -2531,6 +2561,37 @@ class WalletActivity : FragmentActivity() {
                             }
                             return@Thread
                         }
+                    }
+
+                    if (exportarPsbt) {
+                        runOnUiThread { tvStatus.text = "Building the PSBT…"; tvStatus.setTextColor(TXT_SEC) }
+                        val sinFirmar = HunterEngine.buildAndSignTx(JSONObject(req).put("unsigned", 1).toString())
+                        if (sinFirmar.startsWith("ERROR")) {
+                            runOnUiThread { tvStatus.text = sinFirmar; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
+                            return@Thread
+                        }
+                        // Cada entrada lleva su UTXO: el script y el importe, o la transacción
+                        // anterior entera si es legacy (su firmante la necesita para el importe).
+                        val info = (BtcAddress.validate(fromAddr, isTestnet) as? BtcAddress.Result.Valid)?.info
+                            ?: return@Thread runOnUiThread { tvStatus.text = "Could not read the source address."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
+                        val spk = BtcAddress.scriptPubKey(info)
+                        val legacy = fromKey.startsWith("p2pkh") ||
+                            (isWifMode && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
+                        val entradas = plan.chosen.map { u ->
+                            val previa = if (!legacy) null else {
+                                val hex = ChainApi.get("/tx/${u.optString("txid")}/hex", isTestnet)?.trim()
+                                    ?: return@Thread runOnUiThread { tvStatus.text = "Could not fetch a previous transaction for the PSBT."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
+                                ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+                            }
+                            Psbt.EntradaPsbt(u.optLong("value", 0L), spk, previa)
+                        }
+                        val psbt = Psbt.crear(sinFirmar, entradas)
+                        runOnUiThread {
+                            tvStatus.text = "PSBT ready. Share it to sign on the other device."
+                            tvStatus.setTextColor(GREEN); btnSend.isEnabled = true
+                            compartirPsbt(psbt)
+                        }
+                        return@Thread
                     }
 
                     runOnUiThread { tvStatus.text = "Signing…"; tvStatus.setTextColor(TXT_SEC) }
@@ -2984,6 +3045,9 @@ class WalletActivity : FragmentActivity() {
             .setNegativeButton("Cancel", null)
             .show()
     }
+
+    /** Lo pone el botón "Export as PSBT" antes de disparar el envío: mismas comprobaciones. */
+    private var exportarSiguiente = false
 
     /** Salidas extra del formulario de Enviar. Se vacían al cambiar de cartera y al enviar. */
     private val salidasExtraEnvio = mutableListOf<SalidaExtra>()

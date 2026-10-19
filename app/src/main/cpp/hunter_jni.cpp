@@ -2600,6 +2600,19 @@ static std::string build_and_sign_tx(const std::string &req){
     if(has_change){outs_bytes+=uint64_le((uint64_t)change);outs_bytes+=varint(spk_change.size());outs_bytes+=spk_change;}
     /* Número de salidas: las de la petición más la de cambio, si la hay. */
     const size_t n_outs = salidas.size() + (has_change ? 1 : 0);
+    /* Sin firmar ("unsigned": 1): la transacción sin scriptSig ni testigos, con las
+       mismas entradas, salidas y locktime que la firmada. Es la base de una PSBT
+       que firmará otro aparato. No toca la clave. */
+    if(json_int(req,"unsigned")==1){
+        std::string u;
+        u+=uint32_le(1);
+        u+=varint(utxos.size());
+        for(auto &ut:utxos){ u+=reverse_bytes(hex_decode(ut.txid)); u+=uint32_le(ut.vout); u+='\x00'; u+=uint32_le(TX_SEQUENCE); }
+        u+=varint(n_outs); u+=outs_bytes; u+=uint32_le(locktime);
+        secp256k1_context_destroy(ctx);
+        OPENSSL_cleanse(seed,sizeof seed); OPENSSL_cleanse(&hd,sizeof hd);
+        return to_hex((const uint8_t*)u.data(),(int)u.size());
+    }
     std::vector<std::string> sigs;
     if(stype==SP_P2TR){
         /* BIP341, gasto por clave con SIGHASH_DEFAULT (0x00) y sin annex.

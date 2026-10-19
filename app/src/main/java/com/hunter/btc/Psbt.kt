@@ -170,6 +170,33 @@ object Psbt {
         return o.toByteArray()
     }
 
+    /**
+     * Una entrada para crear una PSBT: su importe y su script (witness_utxo), o
+     * la transacción anterior entera si la entrada es legacy.
+     */
+    class EntradaPsbt(val importe: Long, val spk: ByteArray, val txAnterior: ByteArray?)
+
+    /**
+     * PSBT (BIP174) sin firmar de la transacción [txHex] (sin scriptSig ni
+     * testigos). Cada entrada lleva su UTXO: witness_utxo, o la transacción
+     * anterior si es legacy, que es lo que su firmante necesita para comprobar
+     * el importe.
+     */
+    fun crear(txHex: String, entradas: List<EntradaPsbt>): ByteArray {
+        val raw = bytes(txHex)
+        val tx = parseTx(raw)
+        require(tx.ins.size == entradas.size) { "una entrada por cada UTXO" }
+        val globals = mutableListOf(Rec(byteArrayOf(0x00), raw))
+        val inputs = entradas.map { e ->
+            val recs = mutableListOf<Rec>()
+            if (e.txAnterior != null) recs.add(Rec(byteArrayOf(0x00), e.txAnterior))
+            else recs.add(Rec(byteArrayOf(0x01), le(e.importe, 8) + varint(e.spk.size.toLong()) + e.spk))
+            recs
+        }
+        val outputs = tx.outs.map { mutableListOf<Rec>() }
+        return serialize(Doc(globals, inputs, outputs, tx))
+    }
+
     /** Filas (etiqueta, valor) para mostrar el contenido. */
     fun resumen(d: Doc): List<Pair<String, String>> {
         val f = ArrayList<Pair<String, String>>()

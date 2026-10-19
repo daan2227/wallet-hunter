@@ -17,6 +17,18 @@ object BtcAddress {
 
     data class Info(val type: Type, val testnet: Boolean, val program: ByteArray)
 
+    /** El scriptPubKey que paga a esta dirección. */
+    fun scriptPubKey(info: Info): ByteArray {
+        val p = info.program
+        return when (info.type) {
+            Type.P2PKH  -> byteArrayOf(0x76, 0xa9.toByte(), 0x14) + p + byteArrayOf(0x88.toByte(), 0xac.toByte())
+            Type.P2SH   -> byteArrayOf(0xa9.toByte(), 0x14) + p + byteArrayOf(0x87.toByte())
+            Type.P2WPKH -> byteArrayOf(0x00, 0x14) + p
+            Type.P2WSH  -> byteArrayOf(0x00, 0x20) + p
+            Type.P2TR   -> byteArrayOf(0x51, 0x20) + p
+        }
+    }
+
     sealed class Result {
         data class Valid(val info: Info) : Result()
         data class Invalid(val reason: String) : Result()

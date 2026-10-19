@@ -62,4 +62,21 @@ class PsbtTest {
         assertEquals(esperado, Psbt.txidDeRaw(hexTestigos))
         assertEquals(null, Psbt.txidDeRaw("zz"))
     }
+
+    @Test fun crearPsbtYLeerla() {
+        val spkWit = h("0014751e76e8199196d454941c45d1b3a323f1433bd6")   // BIP173: bc1qw508...
+        val spkLeg = h("76a914" + "11".repeat(20) + "88ac")
+        val legHex = legacy.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val bin = Psbt.crear(legHex, listOf(
+            Psbt.EntradaPsbt(100_000L, spkWit, null),
+            Psbt.EntradaPsbt(50_000L, spkLeg, legacy)))
+        val doc = Psbt.parse(bin)!!
+        assertEquals(2, doc.tx.ins.size)
+        assertEquals(Psbt.txidHex(Psbt.parseTx(legacy)), Psbt.txidHex(doc.tx))
+        // La entrada con witness_utxo lleva el importe y el script; la legacy, la transacción anterior.
+        assertEquals(0x01, doc.inputs[0][0].key[0].toInt())
+        assertEquals(0x00, doc.inputs[1][0].key[0].toInt())
+        assertArrayEquals(legacy, doc.inputs[1][0].value)
+        assertArrayEquals(bin, Psbt.serialize(doc))
+    }
 }
