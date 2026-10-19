@@ -2486,7 +2486,11 @@ static std::string build_and_sign_tx(const std::string &req){
        red la rechaza y no hay forma de saber por qué. Kotlin ya lo comprueba,
        pero esto firma dinero y no debe fiarse de quien le llame. */
     if(change<0){secp256k1_context_destroy(ctx);return "ERROR:insufficient_funds";}
-    bool has_change=(change>546);
+    /* Límite de polvo de la salida de cambio: el de su tipo de dirección (294 en
+       bc1q, 330 en bc1p, 546 en P2PKH), el mismo que usa la app al decidir. */
+    int64_t dust_sat=json_int(req,"dust");
+    if(dust_sat<=0) dust_sat=546;
+    bool has_change=(change>dust_sat);
 
     /* Dirección de cambio.
      *

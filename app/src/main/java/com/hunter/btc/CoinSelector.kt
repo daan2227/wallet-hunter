@@ -109,13 +109,14 @@ object CoinSelector {
     }
 
     /** Tamaño en vB de una entrada según el tipo de dirección que la gasta. */
-    fun inputVBytes(fromKey: String) = when {
+    fun inputVBytes(fromKey: String, wifSinComprimir: Boolean = false) = when {
         fromKey.startsWith("p2pkh")  -> 148
         // Las direcciones de una WIF, según su tipo (ver tipoDeClave).
         fromKey.startsWith("wif_p2wpkh") -> 68
         fromKey.startsWith("wif_p2sh")   -> 91
         fromKey.startsWith("wif_p2tr")   -> 58
-        fromKey.startsWith("wif")    -> 148   // la P2PKH de una WIF
+        // La P2PKH de una WIF comprimida, o de una sin comprimir (clave de 65 bytes).
+        fromKey.startsWith("wif")    -> if (wifSinComprimir) 180 else 148
         fromKey.startsWith("p2sh")   -> 91
         fromKey.startsWith("p2wpkh") -> 68
         else                         -> 58   // p2tr

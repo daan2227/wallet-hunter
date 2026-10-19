@@ -352,6 +352,10 @@ class WalletActivity : FragmentActivity() {
         else -> k
     }
 
+    /** Tamaño en vB de una entrada de esta cartera; una WIF sin comprimir es más grande. */
+    private fun inputVBytesDe(k: String): Int =
+        CoinSelector.inputVBytes(k, isWifMode && wifKey.isNotEmpty() && (wifKey[0] == '5' || wifKey[0] == '9'))
+
     /** Cómo se llama una clave de la lista en pantalla (saldo, origen de Enviar). */
     private fun etiquetaClave(k: String): String = when {
         k == "wif_0" -> currentWalletName
@@ -1290,6 +1294,7 @@ class WalletActivity : FragmentActivity() {
                 val req = JSONObject()
                     .put("mnemonic", if (isWifMode) "" else mnemonic)
                     .put("testnet", if (isTestnet) 1 else 0)
+                    .put("dust", CoinSelector.polvoDe(origen))
                     .put("path", ruta)
                     .put("utxos", utxos)
                     .put("to", destino)
@@ -1593,7 +1598,7 @@ class WalletActivity : FragmentActivity() {
             val r = if (feeRate > 0) feeRate.toLong() else feeRates[feeSel].toLong()
             if (r <= 0) return -1L
             val fromKey = keys[fromIdx]
-            val vb = CoinSelector.inputVBytes(fromKey) +
+            val vb = inputVBytesDe(fromKey) +
                      CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) +
                      CoinSelector.outputVBytes(addresses[fromKey] ?: "1") + 11
             return r * vb
@@ -1878,7 +1883,7 @@ class WalletActivity : FragmentActivity() {
                         tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
                     }
                     // Sin salida de cambio: se manda todo. Entradas + destino + 11.
-                    val vs = CoinSelector.inputVBytes(keys[fromIdx]) * usar.size +
+                    val vs = inputVBytesDe(keys[fromIdx]) * usar.size +
                              CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) + 11
                     val max = usar.sumOf { it.optLong("value", 0L) } - rate * vs
                     if (max <= CoinSelector.DUST) {
@@ -2130,7 +2135,7 @@ class WalletActivity : FragmentActivity() {
 
                     // El tamaño de un input depende del tipo: ~148 vB en P2PKH,
                     // ~91 en P2SH-P2WPKH, ~68 en P2WPKH y ~58 en Taproot.
-                    val inVBytes  = CoinSelector.inputVBytes(fromKey)
+                    val inVBytes  = inputVBytesDe(fromKey)
                     val outVBytes = CoinSelector.outputVBytes(toAddr)
                     val chgVBytes = CoinSelector.outputVBytes(fromAddr)
 
@@ -2247,6 +2252,7 @@ class WalletActivity : FragmentActivity() {
                     val req = org.json.JSONObject()
                         .put("mnemonic", if (isWifMode) "" else mnemonic)
                     .put("testnet", if (isTestnet) 1 else 0)
+                    .put("dust", CoinSelector.polvoDe(fromAddr))
                         .put("path",     pathStr)
                         .apply { if (isWifMode) { put("wif", wifKey); put("wif_tipo", tipoWif(fromKey)) } }
                         .put("utxos",    utxoArr)

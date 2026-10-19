@@ -36,7 +36,6 @@ target_compile_definitions(secp256k1 PRIVATE
 target_compile_options(secp256k1 PRIVATE
     -O3
     -march=armv8-a+crypto
-    -ffast-math
     -funroll-loops
     -fomit-frame-pointer
     -flto=thin

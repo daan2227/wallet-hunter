@@ -67,7 +67,9 @@ static void xonly_to_p2tr(const uint8_t *xonly32, char *out, bool testnet=false)
     uint8_t d5[65]; int nd5=0;
     /* witness version 0x01 first */
     d5[nd5++]=1;
-    int acc=0,bits=0;
+    /* Sin signo: el acumulador se desborda por la izquierda, y en int eso es
+       comportamiento indefinido. Sólo se usan los bits bajos. */
+    uint32_t acc=0; int bits=0;
     for(int i=0;i<32;i++){
         acc=(acc<<8)|xonly32[i]; bits+=8;
         while(bits>=5){bits-=5;d5[nd5++]=(acc>>bits)&31;}
@@ -111,7 +113,8 @@ static void h160_to_bech32(const uint8_t *h160, char *out, bool testnet=false){
     /* Checksum. En testnet el prefijo humano es "tb", no "bc"; los dos miden
        dos caracteres, asi que el tamano del buffer no cambia. */
     const char *hrp=testnet?"tb":"bc"; int hrplen=2;
-    uint8_t enc[hrplen+1+idx+6+1];
+    /* Expansion del HRP (2 + 1 + 2 = 5 entradas), datos y 6 del checksum. */
+    uint8_t enc[2*hrplen+1+idx+6];
     int p=0;
     for(int i=0;i<hrplen;i++) enc[p++]=(uint8_t)hrp[i]>>5;
     enc[p++]=0;
