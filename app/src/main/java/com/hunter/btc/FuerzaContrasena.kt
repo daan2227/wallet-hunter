@@ -25,7 +25,7 @@ object FuerzaContrasena {
 
     /** Mínimo de longitud y de bits estimados para aceptar una contraseña de copia. */
     const val MIN_LARGO = 12
-    const val MIN_BITS = 45.0
+    const val MIN_BITS = 60.0
 
     // Palabras y filas de teclado que un atacante prueba primero. Se ordenan de
     // la más larga a la más corta para que "qwertyuiop" no se cuente como "qwerty".

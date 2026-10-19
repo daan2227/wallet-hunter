@@ -113,7 +113,7 @@ object WalletManager {
             .putString(PREF_WIF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
             .putString(PREF_WIF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
             .remove(PREF_WIF_PLAIN)
-            .apply()
+            .commit()
     }
 
     /**
@@ -232,7 +232,7 @@ object WalletManager {
             .putString(PREF_SEED_P, b64e(e2))
             .putString(PREF_SEED_PIV, b64e(i2))
             .remove(PREF_SEED).remove(PREF_IV)
-            .apply()
+            .commit()
     }
 
     fun loadSeed(ctx: Context): String? {
@@ -576,7 +576,7 @@ object WalletManager {
         val list = listWallets(ctx).toMutableList()
         if (list.none { it.first == id }) list.add(Pair(id, name))
         prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
-        prefs.apply()
+        prefs.commit()
     }
 
     fun loadWalletSeed(ctx: Context, id: String): String? {
@@ -602,7 +602,7 @@ object WalletManager {
         prefs.remove("seed_pin_$id"); prefs.remove("seed_pin_iv_$id")
         val list = listWallets(ctx).filter { it.first != id }
         prefs.putString(PREF_WALLET_LIST, list.joinToString("|") { "${it.first}:${it.second}" })
-        prefs.apply()
+        prefs.commit()
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry("hunter_wallet_$id") } catch(e: Exception) {}
     }
 
@@ -719,7 +719,7 @@ object WalletManager {
         // que esta funcion borra mas de lo que borra.
         // Antes se borraba "seed_iv", que no es la clave del IV (PREF_IV): el IV
         // se quedaba huérfano. Ahora se quitan todas las claves de la semilla.
-        prefs.edit().remove(PREF_SEED).remove(PREF_IV).remove(PREF_SEED_P).remove(PREF_SEED_PIV).apply()
+        prefs.edit().remove(PREF_SEED).remove(PREF_IV).remove(PREF_SEED_P).remove(PREF_SEED_PIV).commit()
         borrarOrigen(ctx, CLAVE_PRINCIPAL)
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
@@ -753,6 +753,10 @@ object WalletManager {
 
             val wallets = listWallets(ctx)
             val mainSeed = loadSeed(ctx)
+            // Hay semilla principal guardada pero no se puede leer (pantalla
+            // bloqueada a mitad, clave perdida): una copia sin ella es una copia
+            // que parece buena y no lo es. Se aborta, como con las demás claves.
+            if (mainSeed == null && hasSeed(ctx)) return null
             // Lo que no se pueda leer aborta la copia: una copia a la que le faltan
             // claves sin avisar es peor que ninguna, y además desplaza (prune) a
             // una buena de las que se guardan.
@@ -810,7 +814,15 @@ object WalletManager {
             // Ahora las gestiona BackupStore, que conserva las más recientes.
             val dir = BackupStore.dir(ctx)
             val file = java.io.File(dir, "wh_backup_${System.currentTimeMillis()}${BackupStore.EXT}")
-            file.writeBytes(bytes)
+            // Escritura atómica: primero a un temporal (que BackupStore no lista),
+            // se fuerza a disco, se vuelve a leer y sólo entonces se da el nombre
+            // definitivo. Así un corte a mitad no deja una copia truncada como la
+            // más reciente, y la poda sólo borra copias que ya están bien.
+            val tmp = java.io.File(dir, file.name + ".tmp")
+            java.io.FileOutputStream(tmp).use { it.write(bytes); it.flush(); it.fd.sync() }
+            if (!tmp.readBytes().contentEquals(bytes) || !tmp.renameTo(file)) {
+                tmp.delete(); return null
+            }
             BackupStore.prune(ctx)
             file
         } catch (e: Exception) { null }
@@ -818,6 +830,9 @@ object WalletManager {
 
     /** importBackup: la copia trae semillas y no hay sesión abierta con el PIN. */
     const val RESTAURAR_SIN_SESION = -2
+
+    /** La copia trae WIF y no se pueden leer las que hay: no se escribe nada. */
+    const val RESTAURAR_SIN_LEER_WIFS = -3
 
     fun importBackup(ctx: Context, pin: String, data: ByteArray): Int {
         return try {
@@ -841,6 +856,12 @@ object WalletManager {
             // ANTES de tocar nada, para no dejar una restauración a medias.
             if ((wallets.length() > 0 || root.optString("main_seed", "").isNotEmpty()) &&
                 !claveSemillaLista()) return RESTAURAR_SIN_SESION
+            // Las WIF se escriben reescribiendo la lista entera: si no se pueden
+            // leer las que hay, se para aquí, antes de tocar nada. Antes se
+            // saltaban a mitad de la restauración y se devolvía "restaurado".
+            val wifsCopia = root.optJSONArray("wifs")
+            if (wifsCopia != null && wifsCopia.length() > 0 && leerWifs(ctx) == null)
+                return RESTAURAR_SIN_LEER_WIFS
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
                 val mn = w.optString("seed")
@@ -856,7 +877,9 @@ object WalletManager {
             // principal sustituía la que hubiera en el móvil.
             root.optString("main_seed", "").takeIf { it.isNotEmpty() }?.let {
                 val g = agregarSeed(ctx, it, "", null)
-                if (!g.yaEstaba) origenDe(g.id.ifEmpty { CLAVE_PRINCIPAL })
+                // La copia guarda el origen de la principal con la clave CLAVE_PRINCIPAL;
+                // el id nuevo de esta cartera no existe en ella.
+                if (!g.yaEstaba) origenDe(g.id.ifEmpty { CLAVE_PRINCIPAL }, CLAVE_PRINCIPAL)
                 count++
             }
 

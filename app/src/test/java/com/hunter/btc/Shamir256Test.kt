@@ -28,4 +28,28 @@ class Shamir256Test {
         val r = Shamir256.combinar(listOf(p[0], p[1])) as Shamir256.Resultado.Ok
         assertFalse(r.secreto.contentEquals(sec))
     }
+
+    @Test fun parteNuevaLlevaKYCuentaElUmbral() {
+        val rnd = java.util.Random(7)
+        val sec = ByteArray(32) { (it * 7 + 3).toByte() }
+        val partes = Shamir256.repartir(sec, 3, 5, rnd)
+        val hex = partes.map { (x, y) -> "%02x".format(3) + "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) } }
+        val lectura = Shamir256.leerParte(hex[0])!!
+        assertTrue(lectura.k == 3 && lectura.x == partes[0].first)
+        assertArrayEquals(partes[0].second, lectura.y)
+    }
+
+    @Test fun parteAntiguaSinKSeLeeSinK() {
+        val y = ByteArray(32) { 9 }
+        val hex = "05" + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val lectura = Shamir256.leerParte(hex)!!
+        assertTrue(lectura.k == null && lectura.x == 5)
+    }
+
+    @Test fun basuraNoEsParte() {
+        assertTrue(Shamir256.leerParte("zz") == null)
+        assertTrue(Shamir256.leerParte("00" + "11".repeat(32)) == null)   // x = 0
+        assertTrue(Shamir256.leerParte("01" + "11".repeat(31)) == null)   // largo 64
+        assertTrue(Shamir256.leerParte("01" + "11".repeat(32)) != null)   // antigua válida
+    }
 }

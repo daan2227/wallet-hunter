@@ -20,6 +20,25 @@ object Shamir256 {
     private fun mul(x: Int, y: Int) = if (x == 0 || y == 0) 0 else EXP[LOG[x] + LOG[y]]
     private fun div(x: Int, y: Int) = if (x == 0) 0 else EXP[(LOG[x] + 255 - LOG[y]) % 255]
 
+    /**
+     * Una parte leída de hex. [k] es null en el formato antiguo (66 hex, sin el
+     * umbral); las partes de ahora llevan k delante (68 hex).
+     */
+    class Parte(val k: Int?, val x: Int, val y: ByteArray)
+
+    /** Lee una parte escrita en hex, o null si no lo es. */
+    fun leerParte(hex: String): Parte? {
+        val h = hex.trim().removePrefix("0x")
+        if ((h.length != 66 && h.length != 68) || h.any { Character.digit(it, 16) < 0 }) return null
+        val k = if (h.length == 68) h.substring(0, 2).toInt(16) else null
+        if (k != null && k < 2) return null
+        val cuerpo = if (k != null) h.substring(2) else h
+        val x = cuerpo.substring(0, 2).toInt(16)
+        if (x !in 1..255) return null
+        val y = ByteArray(32) { cuerpo.substring(2 + it * 2, 4 + it * 2).toInt(16).toByte() }
+        return Parte(k, x, y)
+    }
+
     /** Partes 1..n de un secreto, umbral k. */
     fun repartir(secreto: ByteArray, k: Int, n: Int, rnd: java.util.Random): List<Pair<Int, ByteArray>> {
         require(k in 2..n && n <= 255)

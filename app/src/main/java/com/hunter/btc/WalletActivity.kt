@@ -3547,6 +3547,9 @@ class WalletActivity : FragmentActivity() {
                             } else if (count == WalletManager.RESTAURAR_SIN_SESION) {
                                 Toast.makeText(this, "Unlock with your PIN first: the backup has seeds. Nothing was restored.",
                                     Toast.LENGTH_LONG).show()
+                            } else if (count == WalletManager.RESTAURAR_SIN_LEER_WIFS) {
+                                Toast.makeText(this, "Could not read the WIF keys stored here. Nothing was restored.",
+                                    Toast.LENGTH_LONG).show()
                             } else {
                                 Toast.makeText(this, "Restore failed", Toast.LENGTH_SHORT).show()
                             }

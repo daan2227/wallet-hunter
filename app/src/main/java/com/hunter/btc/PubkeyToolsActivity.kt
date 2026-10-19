@@ -1411,7 +1411,9 @@ class PubkeyToolsActivity : Activity() {
             if (sec == null || sec.size != 32) { Toast.makeText(this, "Secret must be 64 hex", Toast.LENGTH_SHORT).show(); return@boton }
             if (k < 2 || n < k || n > 255) { Toast.makeText(this, "Need 2 ≤ k ≤ n ≤ 255", Toast.LENGTH_SHORT).show(); return@boton }
             for ((x, y) in Shamir256.repartir(sec, k, n, java.security.SecureRandom())) {
-                val hex = "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+                // Desde aquí cada parte lleva k delante (68 hex): así, al combinar,
+                // se sabe cuántas hacen falta y se rechaza un juego incompleto.
+                val hex = "%02x".format(k) + "%02x".format(x) + y.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
                 salS.addView(filaResultado("Share $x of $n", hex, true))
             }
         }
@@ -1420,19 +1422,25 @@ class PubkeyToolsActivity : Activity() {
         val salC = salidaBox()
         boton("Combine") {
             salC.removeAllViews()
-            val sh = etC.text.toString().split('\n').map { it.trim().removePrefix("0x") }.filter { it.length == 66 }
-            if (sh.size < 2) { Toast.makeText(this, "Paste at least 2 valid shares", Toast.LENGTH_SHORT).show(); return@boton }
-            val partes = sh.map { h -> hexABytes(h) ?: run {
-                Toast.makeText(this, "A share is not valid hex", Toast.LENGTH_SHORT).show(); return@boton } }
-                .map { bb -> (bb[0].toInt() and 0xFF) to bb.copyOfRange(1, 33) }
+            // 68 hex: partes nuevas, con k delante. 66: partes de antes, sin k.
+            val leidas = etC.text.toString().split('\n').mapNotNull { Shamir256.leerParte(it) }
+            if (leidas.size < 2) { Toast.makeText(this, "Paste at least 2 valid shares", Toast.LENGTH_SHORT).show(); return@boton }
+            val ks = leidas.mapNotNull { it.k }.distinct()
+            if (ks.size > 1) { Toast.makeText(this, "The shares come from different splits (different k)", Toast.LENGTH_LONG).show(); return@boton }
+            val k = ks.firstOrNull()
+            if (k != null && leidas.map { it.x }.toSet().size < k) {
+                Toast.makeText(this, "Need at least $k different shares (k = $k)", Toast.LENGTH_LONG).show(); return@boton
+            }
+            val partes = leidas.map { it.x to it.y }
             when (val r = Shamir256.combinar(partes)) {
                 is Shamir256.Resultado.Error -> salC.addView(filaResultado("Cannot combine", r.motivo))
                 is Shamir256.Resultado.Ok -> {
                     salC.addView(filaResultado("Recombined key",
                         r.secreto.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
-                    salC.addView(filaResultado("Check",
-                        "Only correct with at least k distinct shares: the share format doesn't carry k, " +
-                        "so fewer shares give a wrong key without any warning."))
+                    salC.addView(filaResultado("Check", if (k != null)
+                        "Checked: $k or more distinct shares were given (k = $k)."
+                        else "Old shares (no k in them): only correct with at least k distinct shares, " +
+                        "and fewer give a wrong key without any warning."))
                 }
             }
         }

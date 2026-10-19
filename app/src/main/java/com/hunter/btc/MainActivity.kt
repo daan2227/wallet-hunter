@@ -603,6 +603,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // puede cambiar, y de él salen los colores de todos los diálogos.
         setTheme(AppTheme.estilo(this))
         super.onCreate(savedState)
+        // Las seeds en claro de versiones antiguas no las usa ya nada: se quitan
+        // al arrancar, no sólo al recuperar una seed.
+        purgeLegacyRecoveryFiles()
         PantallaSegura.aplicar(this)
         // Capturar crashes globales.
         //

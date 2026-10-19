@@ -73,6 +73,12 @@ object Psbt {
     class Revision(val salidas: List<Pair<String, Long>>, val totalEntradas: Long?,
                    val comision: Long?, val problemas: List<String>)
 
+    private fun esP2pkh(spk: ByteArray): Boolean {
+        // Los bytes son con signo en Kotlin: 0x88 y 0xac salen negativos.
+        fun b(i: Int) = spk[i].toInt() and 0xFF
+        return spk.size == 25 && b(0) == 0x76 && b(1) == 0xa9 && b(2) == 0x14 && b(23) == 0x88 && b(24) == 0xac
+    }
+
     private fun importe(d: Doc, i: Int): Pair<Long, ByteArray>? {
         val recs = d.inputs[i]
         val wu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x01 }
@@ -108,6 +114,16 @@ object Psbt {
                     if (a != prev.outs[vo].value || !spk.contentEquals(prev.outs[vo].spk))
                         problemas.add("Input #$i: witness_utxo and the previous transaction disagree on the amount.")
                 }
+            }
+            // Una entrada legacy (P2PKH) firmada sólo con witness_utxo: su firma no
+            // cubre el importe, así que el importe que dice el PSBT no se puede
+            // comprobar. Sin la transacción anterior completa no se firma.
+            if (nwu == null && wu != null) {
+                val c = TxDecoder.Cursor(wu.value); c.u64(); val spk = c.bytes(c.varint().toInt())
+                if (esP2pkh(spk))
+                    problemas.add("Input #$i is a legacy coin with no previous transaction attached. " +
+                        "Its signature does not cover the amount, so the amount can't be checked. " +
+                        "Attach the full previous transaction.")
             }
             val imp = try { importe(d, i) } catch (e: Throwable) { null }
             if (imp == null) conocido = false else total += imp.first
