@@ -339,6 +339,11 @@ class WalletActivity : FragmentActivity() {
         PinAuthHelper.pantalla(this, isSetup, autoBiometric = false, onResult = onResult)
     }
 
+    /** La P2PKH de una WIF, en la red de la cartera. Vacío si no vale. */
+    private fun direccionDeWif(w: String): String =
+        try { HunterEngine.importarClave(w, isTestnet, true).split('|').getOrNull(1) ?: "" }
+        catch (e: Throwable) { "" }
+
     /** Rellena [wifExtras] con las direcciones de la clave WIF que no son la P2PKH. */
     private fun cargarWifExtras() {
         wifExtras.clear()
@@ -361,7 +366,7 @@ class WalletActivity : FragmentActivity() {
             if (wifAddr.isEmpty() && wifKey.isNotEmpty()) {
                 Thread {
                     try {
-                        val derived = HunterEngine.wifToAddr(wifKey)
+                        val derived = direccionDeWif(wifKey)
                         if (derived.isNotEmpty()) wifAddr = derived
                     } catch(e: Exception) {}
                     runOnUiThread {
@@ -1257,6 +1262,7 @@ class WalletActivity : FragmentActivity() {
 
                 val req = JSONObject()
                     .put("mnemonic", if (isWifMode) "" else mnemonic)
+                    .put("testnet", if (isTestnet) 1 else 0)
                     .put("path", ruta)
                     .put("utxos", utxos)
                     .put("to", destino)
@@ -2213,6 +2219,7 @@ class WalletActivity : FragmentActivity() {
 
                     val req = org.json.JSONObject()
                         .put("mnemonic", if (isWifMode) "" else mnemonic)
+                    .put("testnet", if (isTestnet) 1 else 0)
                         .put("path",     pathStr)
                         .apply { if (isWifMode) put("wif", wifKey) }
                         .put("utxos",    utxoArr)
@@ -2883,7 +2890,7 @@ class WalletActivity : FragmentActivity() {
                     switchToWallet {
                         wifKey = wkey
                         wifAddr = if (waddr.isNotEmpty()) waddr
-                                  else try { HunterEngine.wifToAddr(wkey) } catch(e: Exception) { "" }
+                                  else direccionDeWif(wkey)
                         currentWalletName = wname; isWifMode = true
                         loadAddresses(); buildUI()
                     }
@@ -2969,13 +2976,14 @@ class WalletActivity : FragmentActivity() {
             setPadding(0,0,0,dp(6))
         })
         sheet.addView(TextView(this).apply {
-            text = "Paste the private key in WIF format. It starts with 5, K or L."
+            text = "Paste a WIF key (compressed K/L, uncompressed 5, or testnet c/9), " +
+                   "or a 64-character hex private key."
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(18)); setLineSpacing(0f, 1.3f)
         })
         val etWif = EditText(this).apply {
-            hint = "5HueCGU8..."; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            hint = "5HueCGU8… or 64 hex"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
             background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             setPadding(dp(14), dp(14), dp(14), dp(14)); textSize = AppTheme.SP_BODY
             minHeight = dp(48)
@@ -2983,6 +2991,13 @@ class WalletActivity : FragmentActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         sheet.addView(etWif)
+        // Sólo para una clave en hex: la WIF ya dice si es comprimida o no.
+        val cbSinComprimir = android.widget.CheckBox(this).apply {
+            text = "Uncompressed (only for a hex key)"
+            setTextColor(TXT_SEC); textSize = AppTheme.SP_CAPTION
+            setPadding(0, dp(8), 0, dp(4))
+        }
+        sheet.addView(cbSinComprimir)
         val etNombre = campoNombre()
         sheet.addView(etNombre)
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0,dp(14),0,0) }
@@ -3016,16 +3031,19 @@ class WalletActivity : FragmentActivity() {
         dlg.show()
         btnCancel.setOnClickListener { dlg.dismiss(); finish(); overridePendingTransition(0, 0) }
         btnImport.setOnClickListener {
-            val w = etWif.text.toString().trim()
-            if (w.length < 50) { Toast.makeText(this, "Invalid WIF key", Toast.LENGTH_SHORT).show(); return@setOnClickListener }
+            val entrada = etWif.text.toString().trim()
+            // Lo que se pega se normaliza y se valida en la red de la cartera. Una
+            // WIF de la otra red, o algo que no es clave, no se guarda.
+            val res = try { HunterEngine.importarClave(entrada, isTestnet, !cbSinComprimir.isChecked) } catch (e: Throwable) { "" }
+            val partes = res.split('|')
+            if (entrada.isEmpty() || partes.size != 3) {
+                Toast.makeText(this, "Not a valid WIF or private key for ${if (isTestnet) "testnet" else "mainnet"}", Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            val w = partes[0]
             dlg.dismiss()
             guardarConPin(onOk = {
-                val derivedAddr = try { HunterEngine.wifToAddr(w) } catch(e: Exception) { "" }
-                // Sin dirección no se guarda: una cartera sin dirección no tiene nada que mirar.
-                if (derivedAddr.isEmpty()) {
-                    Toast.makeText(this, "Could not read that WIF key. Nothing was saved.", Toast.LENGTH_LONG).show()
-                    return@guardarConPin
-                }
+                val derivedAddr = partes[1]
                 val nombre = WalletManager.limpiarNombre(etNombre.text.toString()).ifEmpty { "WIF Wallet" }
                 if (WalletManager.listWifs(this).any { it.second == w }) {
                     Toast.makeText(this, "That key is already saved", Toast.LENGTH_SHORT).show()

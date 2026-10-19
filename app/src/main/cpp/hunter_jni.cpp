@@ -1468,6 +1468,17 @@ Java_com_hunter_btc_HunterEngine_wifDirecciones(JNIEnv *env, jobject, jstring jw
     return env->NewStringUTF(out.c_str());
 }
 
+/* Importa lo que se pega: WIF comprimida o sin comprimir, o 64 hex. Devuelve
+ * "WIF|direccion|1" (1 si la clave es comprimida), o "" si no vale. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_importarClave(JNIEnv *env, jobject, jstring jentrada,
+                                               jboolean jtestnet, jboolean jhexComprimida) {
+    const char *in = env->GetStringUTFChars(jentrada, nullptr);
+    std::string out = in ? wif_importar(in, jtestnet != JNI_FALSE, jhexComprimida != JNI_FALSE) : std::string();
+    if (in) env->ReleaseStringUTFChars(jentrada, in);
+    return env->NewStringUTF(out.c_str());
+}
+
 /* De una clave privada en hexadecimal, su WIF y su direccion.
  *
  * Kangaroo devuelve la clave y nada mas, y asi es como se guardaba en el baul:
@@ -2365,11 +2376,14 @@ static std::string build_and_sign_tx(const std::string &req){
      * es la de la clave pública comprimida, P2PKH, y es la que se gasta aquí.
      * Uno sin comprimir (5...) tendría los fondos en OTRA dirección. */
     std::string wif=json_str(req,"wif");
+    /* Comprimida (K/L, o c en testnet) o sin comprimir (5, o 9 en testnet). La
+       red la dice la petición: una WIF de la otra red no se acepta. */
+    bool wif_comprimida=true;
+    bool red_testnet=(json_int(req,"testnet")==1);
     uint8_t seed[64]={0};
     HDKey hd; memset(&hd,0,sizeof(hd));
     if(!wif.empty()){
-        if(wif[0]!='K'&&wif[0]!='L'){secp256k1_context_destroy(ctx);return "ERROR:uncompressed_wif";}
-        if(!wif_decode(wif.c_str(),hd.key)||!secp256k1_ec_seckey_verify(ctx,hd.key)){
+        if(!wif_decode(wif.c_str(),hd.key,&wif_comprimida,red_testnet)||!secp256k1_ec_seckey_verify(ctx,hd.key)){
             secp256k1_context_destroy(ctx);return "ERROR:bad_wif";
         }
         stype=SP_LEGACY; is_segwit=false;
@@ -2382,6 +2396,17 @@ static std::string build_and_sign_tx(const std::string &req){
     }
     uint8_t pub33[33]; get_pub33(ctx,hd.key,pub33);
     uint8_t h160[20]; pk_to_h160(ctx,hd.key,h160);
+    /* Una WIF sin comprimir controla OTRA dirección: la P2PKH del hash de su clave
+       de 65 bytes. La firma y el scriptSig llevan esa clave, no la comprimida. */
+    uint8_t pubUso[65]; size_t pubUsoLen=33;
+    memcpy(pubUso,pub33,33);
+    if(!wif.empty() && !wif_comprimida){
+        secp256k1_pubkey pk65; size_t l65=65;
+        secp256k1_ec_pubkey_create(ctx,&pk65,hd.key);
+        secp256k1_ec_pubkey_serialize(ctx,pubUso,&l65,&pk65,SECP256K1_EC_UNCOMPRESSED);
+        pubUsoLen=65;
+        wif_hash160(pubUso,65,h160);
+    }
     /* redeemScript de BIP49: OP_0 <h160>, 22 bytes. La dirección 3... es
        base58(0x05 | hash160(redeemScript)). */
     std::string redeem;
@@ -2672,7 +2697,7 @@ static std::string build_and_sign_tx(const std::string &req){
             secp256k1_ecdsa_signature_serialize_der(ctx,der,&dlen,&sig);
             std::string sigscript;
             sigscript+=(char)(dlen+1); sigscript+=std::string((char*)der,dlen); sigscript+='\x01';
-            sigscript+=(char)33; sigscript+=std::string((char*)pub33,33);
+            sigscript+=(char)pubUsoLen; sigscript+=std::string((char*)pubUso,pubUsoLen);
             sigs.push_back(sigscript);
         }
         std::string tx;

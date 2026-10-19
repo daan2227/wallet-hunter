@@ -139,3 +139,67 @@ static std::string wif_direcciones(const char *wif, bool testnet) {
     secp256k1_context_destroy(ctx);
     return out;
 }
+
+/* Hex de 64 caracteres a 32 bytes. false si no lo es. */
+static bool wif_hex32(const std::string &h, uint8_t *out) {
+    if (h.size() != 64) return false;
+    for (int i = 0; i < 32; i++) {
+        int v = 0;
+        for (int j = 0; j < 2; j++) {
+            char c = h[2 * i + j]; int d;
+            if (c >= '0' && c <= '9') d = c - '0';
+            else if (c >= 'a' && c <= 'f') d = c - 'a' + 10;
+            else if (c >= 'A' && c <= 'F') d = c - 'A' + 10;
+            else return false;
+            v = v * 16 + d;
+        }
+        out[i] = (uint8_t)v;
+    }
+    return true;
+}
+
+/*
+ * Importa lo que se pega en la pantalla: una WIF comprimida (K/L, o c en
+ * testnet), una WIF sin comprimir (5, o 9 en testnet), o una clave privada en
+ * 64 hex. Hex no dice si la clave es comprimida, así que se usa
+ * [hexComprimida]. Devuelve "WIF|direccion|1" (el 1 si la clave es comprimida),
+ * con la WIF normalizada, o "" si no vale. La dirección es la P2PKH de esa
+ * clave, que es la que se gasta.
+ */
+static std::string wif_importar(const std::string &entrada, bool testnet, bool hexComprimida) {
+    std::string s;
+    for (char c : entrada) if (c != ' ' && c != '\n' && c != '\t' && c != '\r') s += c;
+    uint8_t priv[32] = {0};
+    bool comp = true;
+    if (s.size() == 64) {
+        if (!wif_hex32(s, priv)) return "";
+        comp = hexComprimida;
+    } else if (!wif_decode(s.c_str(), priv, &comp, testnet)) {
+        return "";
+    }
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    std::string out;
+    if (secp256k1_ec_seckey_verify(ctx, priv)) {
+        /* WIF: versión | privkey | [01 si comprimida], con checksum en b58enc. */
+        uint8_t payload[34]; int n = 0;
+        payload[n++] = testnet ? 0xEF : 0x80;
+        memcpy(payload + n, priv, 32); n += 32;
+        if (comp) payload[n++] = 0x01;
+        char wif[128] = {0};
+        b58enc(payload, n, wif, sizeof wif);
+
+        secp256k1_pubkey pk;
+        if (secp256k1_ec_pubkey_create(ctx, &pk, priv)) {
+            uint8_t pub[65]; size_t l = comp ? 33 : 65;
+            secp256k1_ec_pubkey_serialize(ctx, pub, &l, &pk,
+                comp ? SECP256K1_EC_COMPRESSED : SECP256K1_EC_UNCOMPRESSED);
+            uint8_t h160[20];
+            wif_hash160(pub, l, h160);
+            char a[MAX_ADDR] = {0};
+            h160_to_addr(h160, a, testnet);
+            out = std::string(wif) + "|" + a + "|" + (comp ? "1" : "0");
+        }
+    }
+    secp256k1_context_destroy(ctx);
+    return out;
+}

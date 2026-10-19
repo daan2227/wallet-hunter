@@ -58,6 +58,30 @@ int main() {
     debe_estar_vacio("WIF con un caracter cambiado", wif_direcciones("KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWo", false));
     debe_estar_vacio("cadena que no es WIF", wif_direcciones("1111111111111111111111111111111111111111111111111111", false));
 
+    /* Importar lo que se pega: WIF comprimida, sin comprimir, o hex de 64. */
+    const std::string K1_HEX = "0000000000000000000000000000000000000000000000000000000000000001";
+    debe_contener("importar WIF comprimida: se queda igual, direccion y flag 1",
+        wif_importar("KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn", false, true),
+        "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn|1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH|1");
+    debe_contener("importar WIF sin comprimir: direccion sin comprimir, flag 0",
+        wif_importar("5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf", false, true),
+        "5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf|1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm|0");
+    debe_contener("importar hex, comprimida: WIF K y direccion comprimida",
+        wif_importar(K1_HEX, false, true),
+        "KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn|1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH|1");
+    debe_contener("importar hex, sin comprimir: WIF 5 y direccion sin comprimir",
+        wif_importar(K1_HEX, false, false),
+        "5HpHagT65TZzG1PH3CSu63k8DbpvD8s5ip4nEB3kEsreAnchuDf|1EHNa6Q4Jz2uvNExL497mE43ikXhwF6kZm|0");
+    debe_contener("importar WIF de testnet en modo testnet",
+        wif_importar("cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA", true, true),
+        "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA|mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r|1");
+    debe_contener("importar hex en testnet: WIF c y direccion de testnet",
+        wif_importar(K1_HEX, true, true),
+        "cMahea7zqjxrtgAbB7LSGbcQUr1uX1ojuat9jZodMN87JcbXMTcA|mrCDrCybB6J1vRfbwM5hemdJz73FwDBC8r|1");
+    debe_estar_vacio("importar WIF de mainnet en modo testnet", wif_importar("KwDiBf89QgGbjEhKnhXJuH7LrciVrZi3qYjgd9M7rFU73sVHnoWn", true, true));
+    debe_estar_vacio("importar hex no valido (con letra que no es hex)", wif_importar(std::string(63, '0') + "g", false, true));
+    debe_estar_vacio("importar hex cero (clave no valida)", wif_importar(std::string(64, '0'), false, true));
+
     printf(fallos ? "\nHAY FALLOS: %d\n" : "\nTodas las pruebas correctas.\n", fallos);
     return fallos ? 1 : 0;
 }

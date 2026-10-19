@@ -56,6 +56,11 @@ object HunterEngine {
     external fun popLog(): String
     external fun getMatches(): String
     external fun wifToAddr(wif: String): String
+    /**
+     * Importa lo que se pega (WIF comprimida o sin comprimir, o 64 hex) en la red
+     * indicada. Devuelve "WIF|direccion|1" (1 si la clave es comprimida) o "".
+     */
+    external fun importarClave(entrada: String, testnet: Boolean, hexComprimida: Boolean): String
     /** Todas las direcciones de un WIF, una por línea: "TIPO direccion". */
     external fun wifDirecciones(wif: String, testnet: Boolean): String
     /**
