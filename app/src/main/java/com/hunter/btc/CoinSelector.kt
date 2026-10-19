@@ -28,6 +28,21 @@ object CoinSelector {
     /** Por debajo de esto una salida no se puede gastar sin perder dinero. */
     const val DUST = 546L
 
+    /**
+     * Límite de polvo de Bitcoin Core (relay a 3 sat/vB) según el tipo de dirección.
+     * DUST (546) es el de P2PKH; una salida P2WPKH de 294 sat ya se relaya.
+     */
+    fun polvoDe(addr: String): Long {
+        val a = addr.lowercase()
+        return when {
+            a.startsWith("bc1p") || a.startsWith("tb1p") || a.startsWith("bcrt1p") -> 330L
+            (a.startsWith("bc1q") || a.startsWith("tb1q") || a.startsWith("bcrt1q")) && a.length > 50 -> 330L  // P2WSH
+            a.startsWith("bc1q") || a.startsWith("tb1q") || a.startsWith("bcrt1q") -> 294L                    // P2WPKH
+            a.startsWith("3") || a.startsWith("2") -> 540L                                                      // P2SH
+            else -> DUST
+        }
+    }
+
     data class Plan(
         val chosen: List<JSONObject>,
         val feeSat: Long,

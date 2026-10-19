@@ -53,4 +53,13 @@ class PsbtTest {
         val doc = Psbt.parse(psbtConUtxo(p2wpkh))!!
         assertTrue(Psbt.revisar(doc).problemas.none { it.contains("legacy") })
     }
+
+    @Test fun txidDeRawCoincideConElParseadoConYSinTestigos() {
+        val hexLegacy = legacy.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val hexTestigos = conTestigos(legacy).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val esperado = Psbt.txidHex(Psbt.parseTx(legacy))
+        assertEquals(esperado, Psbt.txidDeRaw(hexLegacy))
+        assertEquals(esperado, Psbt.txidDeRaw(hexTestigos))
+        assertEquals(null, Psbt.txidDeRaw("zz"))
+    }
 }

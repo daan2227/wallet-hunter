@@ -69,6 +69,11 @@ object Psbt {
     /** txid en el orden en que se escribe (big-endian, como en los exploradores). */
     internal fun txidHex(tx: Tx): String = hex(rev(dsha(sinTestigos(tx))))
 
+    /** txid de una transacción firmada en hex (con o sin testigos), o null si no se puede leer. */
+    fun txidDeRaw(rawHex: String): String? = try {
+        txidHex(parseTx(bytes(rawHex.trim().lowercase())))
+    } catch (e: Throwable) { null }
+
     /** Lo que hay que enseñar antes de firmar, y lo que impide firmar. */
     class Revision(val salidas: List<Pair<String, Long>>, val totalEntradas: Long?,
                    val comision: Long?, val problemas: List<String>)

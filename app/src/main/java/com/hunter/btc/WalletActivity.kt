@@ -1095,10 +1095,35 @@ class WalletActivity : FragmentActivity() {
                     totalIn += valor
                     utxos.put(JSONObject().put("txid", v.getString("txid")).put("vout", v.getInt("vout")).put("amount", valor))
                 }
+                // Los importes de las entradas vienen de esta misma respuesta: se
+                // contrastan con la transacción anterior de cada una, en todos los
+                // servidores que respondan. Si ninguno responde, no se firma.
+                for (k in 0 until vin.length()) {
+                    val v = vin.getJSONObject(k)
+                    val pv = v.getJSONObject("prevout")
+                    val padres = ChainApi.getDeTodos("/tx/${v.getString("txid")}", isTestnet).mapNotNull {
+                        try { JSONObject(it) } catch (e: Exception) { null } }
+                    if (padres.isEmpty())
+                        return@Thread aviso("No server answered for the previous transaction of an input. Not rebuilding it.")
+                    val indice = v.getInt("vout")
+                    val valor = pv.optLong("value")
+                    val direccion = pv.optString("scriptpubkey_address")
+                    val todasDicen = padres.all { p ->
+                        val outs = p.optJSONArray("vout")
+                        outs != null && indice < outs.length() && outs.getJSONObject(indice).let {
+                            it.optLong("value") == valor && it.optString("scriptpubkey_address") == direccion
+                        }
+                    }
+                    if (!todasDicen) return@Thread aviso("The servers do not agree on the amount of an input. Not rebuilding it.")
+                }
+                // La dirección de origen es una de la lista o un cambio ya gastado
+                // (que no sale en la lista, pero sí está en el mapa de cambio).
                 val claveOrigen = addresses.entries.firstOrNull { it.value == origen }?.key
-                    ?: return@Thread aviso("It was not sent from this wallet.")
-                val ruta = if (isWifMode) "" else (rutaDeClave(claveOrigen)
-                    ?: return@Thread aviso("Unsupported address type."))
+                val ruta = if (isWifMode) "" else when {
+                    claveOrigen != null -> rutaDeClave(claveOrigen) ?: return@Thread aviso("Unsupported address type.")
+                    cambio[origen] != null -> cambio[origen]!!
+                    else -> return@Thread aviso("It was not sent from this wallet.")
+                }
 
                 // Salidas: un destinatario y, si lo hay, un cambio propio.
                 val vout = tx.getJSONArray("vout")
@@ -1128,7 +1153,9 @@ class WalletActivity : FragmentActivity() {
                         x.optString("scriptpubkey_address") == destino && x.optLong("value") == importe
                     }
                 }
-                if (txid.length != 64 || discrepa)
+                if (txid.length != 64 || versiones.isEmpty())
+                    return@Thread aviso("No server answered for that transaction. Not rebuilding it.")
+                if (discrepa)
                     return@Thread aviso("The servers do not agree on who that transaction pays. Not rebuilding it.")
 
                 val vsize = (tx.optLong("weight", 0) + 3) / 4
@@ -1137,6 +1164,8 @@ class WalletActivity : FragmentActivity() {
                 val tasaVieja = (feeViejo + vsize - 1) / vsize
                 val rapida = (ChainInfo.fees(isTestnet)?.fastest ?: 0).toLong()
                 val tasaNueva = maxOf(rapida, tasaVieja + 2)
+                if (tasaNueva > ChainInfo.TARIFA_MAX)
+                    return@Thread aviso("The fee needed (%d sat/vB) is above the safety limit of %d sat/vB.".format(tasaNueva, ChainInfo.TARIFA_MAX))
                 // BIP125: la nueva tiene que pagar más en total, y al menos
                 // 1 sat/vB más que la vieja por el espacio que ocupa.
                 val feeNuevo = maxOf(tasaNueva * vsize, feeViejo + vsize)
@@ -1160,6 +1189,10 @@ class WalletActivity : FragmentActivity() {
                     else "Change %.8f BTC back to your wallet.".format(cambioNuevo / 1e8))
                     appendLine(); appendLine()
                     append("The old transaction is replaced by this one.")
+                    // Lo que gasta su cambio, si aún no está confirmado, depende de la
+                    // transacción vieja: al sustituirla, la red lo descarta también.
+                    appendLine()
+                    append("Unconfirmed transactions that spend this one's change are dropped with it.")
                 }
                 val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                 runOnUiThread {
@@ -1490,7 +1523,12 @@ class WalletActivity : FragmentActivity() {
                            else "%.8f".format(amt + (if (fee > 0) fee / 1e8 else 0.0))
         }
 
+        val tvMedida = TextView(this).apply { text = "Custom"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER }
         fun paintFees() {
+            val medida = feeRate > 0
+            tvMedida.text = if (medida) "$feeRate sat/vB" else "Custom"
+            tvMedida.setTextColor(if (medida) AppTheme.ACCENT else TXT_SEC)
+            tvMedida.typeface = if (medida) AppTheme.bold(this) else AppTheme.medium(this)
             feePills.forEachIndexed { i, pill ->
                 val on = i == feeSel && feeRate <= 0
                 pill.background = GradientDrawable().apply {
@@ -1512,7 +1550,7 @@ class WalletActivity : FragmentActivity() {
                 setPadding(dp(10), dp(12), dp(10), dp(12))
                 isClickable = true; isFocusable = true
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    .apply { if (i < 2) marginEnd = dp(8) }
+                    .apply { if (i < feeNames.size) marginEnd = dp(8) }
             }
             pill.addView(TextView(this).apply {
                 text = name; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
@@ -1529,6 +1567,38 @@ class WalletActivity : FragmentActivity() {
             pill.setOnClickListener { feeSel = i; feeRate = -1; paintFees() }
             feePills.add(pill); feeEtas.add(eta); feeRow.addView(pill)
         }
+        // Tarifa a medida: pide sat/vB entre 1 y el tope de seguridad.
+        fun pedirTarifa() {
+            val et = EditText(this).apply {
+                hint = "sat/vB, 1 to ${ChainInfo.TARIFA_MAX}"
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                setPadding(dp(16), dp(12), dp(16), dp(12))
+            }
+            AlertDialog.Builder(this)
+                .setTitle("Custom fee rate")
+                .setMessage("Satoshis per virtual byte.")
+                .setView(et)
+                .setPositiveButton("Use") { _, _ ->
+                    val v = et.text.toString().toLongOrNull()
+                    if (v == null || v < 1 || v > ChainInfo.TARIFA_MAX) {
+                        Toast.makeText(this, "Enter a rate from 1 to ${ChainInfo.TARIFA_MAX} sat/vB", Toast.LENGTH_SHORT).show()
+                    } else {
+                        feeRate = v.toInt(); paintFees()
+                    }
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
+        }
+        val pillMedida = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(12), dp(10), dp(12))
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        pillMedida.addView(tvMedida)
+        pillMedida.setOnClickListener { pedirTarifa() }
+        feeRow.addView(pillMedida)
         ll.addView(side(feeRow, bottom = AppTheme.GAP))
 
         /* ── LO QUE VA A PASAR ─────────────────────────────────────────── */
@@ -1660,6 +1730,9 @@ class WalletActivity : FragmentActivity() {
             Thread {
                 val res = BalanceLookup.query(addr, isTestnet)
                 runOnUiThread {
+                    // Una respuesta que llega tarde, de la dirección que ya no está
+                    // elegida, no puede poner su saldo en esta.
+                    if (addresses[keys[fromIdx]] != addr) return@runOnUiThread
                     fromSat = res?.sat ?: -1L
                     tvFromBal.text = if (fromSat < 0) "Could not check the balance"
                                      else "Available %.8f BTC".format(fromSat / 1e8)
@@ -1694,18 +1767,44 @@ class WalletActivity : FragmentActivity() {
         }
 
         chipMax.setOnClickListener {
-            if (fromSat <= 0) {
-                tvStatus.text = "The balance of that address is not known yet."
-                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
-            }
-            val fee = estimateFeeSat().coerceAtLeast(0L)
-            val max = fromSat - fee
-            if (max <= CoinSelector.DUST) {
-                tvStatus.text = "The balance does not even cover the fee."
-                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
-            }
-            etAmt.setText("%.8f".format(max / 1e8))
-            tvStatus.text = ""
+            val addrDe = addresses[keys[fromIdx]] ?: return@setOnClickListener
+            tvStatus.text = "Checking the coins…"; tvStatus.setTextColor(TXT_SEC)
+            Thread {
+                // Lo mismo que gastaría Enviar: las monedas elegidas a mano, o las
+                // confirmadas de la dirección. Con dos o más, la comisión crece con
+                // cada entrada; restar la de una sola dejaba el envío sin fondos.
+                val lista = ChainInfo.utxos(addrDe, isTestnet)
+                val usar: List<org.json.JSONObject>? = when {
+                    selectedUtxos.isNotEmpty() -> selectedUtxos.toList()
+                    lista != null -> lista.filter { it.optBoolean("confirmed", true) }
+                    else -> null
+                }
+                runOnUiThread {
+                    if (usar == null) {
+                        tvStatus.text = "Could not read the coins of that address."
+                        tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
+                    }
+                    if (usar.isEmpty()) {
+                        tvStatus.text = "That address has no confirmed coins to send."
+                        tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
+                    }
+                    val rate = if (feeRate > 0) feeRate.toLong() else feeRates[feeSel].toLong()
+                    if (rate <= 0) {
+                        tvStatus.text = "The fee rate is not known yet."
+                        tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
+                    }
+                    // Sin salida de cambio: se manda todo. Entradas + destino + 11.
+                    val vs = CoinSelector.inputVBytes(keys[fromIdx]) * usar.size +
+                             CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) + 11
+                    val max = usar.sumOf { it.optLong("value", 0L) } - rate * vs
+                    if (max <= CoinSelector.DUST) {
+                        tvStatus.text = "The balance does not even cover the fee."
+                        tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
+                    }
+                    etAmt.setText("%.8f".format(max / 1e8))
+                    tvStatus.text = ""
+                }
+            }.start()
         }
 
         // Veredicto en vivo de la dirección de destino.
@@ -1848,8 +1947,9 @@ class WalletActivity : FragmentActivity() {
             }
             // Por debajo de 546 sat la red rechaza la salida por "polvo": se
             // firmaba y fallaba al emitirla, con un error que no decía por qué.
-            if (Math.round(amtBtc * 1e8) < CoinSelector.DUST) {
-                tvStatus.text = "The minimum is 546 sat (0.00000546 BTC): the network rejects smaller amounts."
+            val polvo = CoinSelector.polvoDe(toAddr)
+            if (Math.round(amtBtc * 1e8) < polvo) {
+                tvStatus.text = "The minimum for this address is $polvo sat: the network rejects smaller amounts."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             val check = BtcAddress.validate(toAddr, isTestnet)
@@ -1970,7 +2070,7 @@ class WalletActivity : FragmentActivity() {
                     // El motor no crea un cambio de 546 sat o menos (polvo): se lo
                     // da a la comisión. El diálogo enseñaba ese cambio y la comisión
                     // menor; ahora cuenta lo mismo que se firma.
-                    val plan = if (plan0.changeSat in 1..CoinSelector.DUST)
+                    val plan = if (plan0.changeSat in 1..CoinSelector.polvoDe(fromAddr))
                         plan0.copy(feeSat = plan0.feeSat + plan0.changeSat, changeSat = 0L) else plan0
                     // Entradas legacy (P2PKH): su firma NO compromete el importe de la
                     // moneda. Si ese importe viene de un servidor Electrum de respaldo,
@@ -2165,7 +2265,11 @@ class WalletActivity : FragmentActivity() {
                         tvStatus.text = if (ok) "Sent.\nTransaction ID: $resp"
                                         else resp.removePrefix("ERROR: ")
                         tvStatus.setTextColor(if (ok) GREEN else RED)
-                        btnSend.isEnabled = true
+                        // Enviado: el mismo formulario otra vez pagaría dos veces, o
+                        // intentaría gastar monedas que ya no existen. Se vuelve a
+                        // habilitar al cambiar de pestaña, que rehace el formulario.
+                        if (ok) { selectedUtxos.clear(); btnSend.isEnabled = false }
+                        else btnSend.isEnabled = true
                     }
                 } catch(e: Exception) { runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED); btnSend.isEnabled = true } }
             }.start()

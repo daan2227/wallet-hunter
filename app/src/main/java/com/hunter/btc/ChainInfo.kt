@@ -125,10 +125,24 @@ object ChainInfo {
      */
     fun broadcast(rawHex: String, testnet: Boolean = false): String {
         when (val r = ChainApi.broadcast(rawHex, testnet)) {
-            is ChainApi.Envio.Ok -> return r.txid
-            // Un rechazo es definitivo: todos los nodos aplican las mismas
-            // reglas, así que reintentarlo por Electrum daría lo mismo.
-            is ChainApi.Envio.Rechazada -> return "ERROR: ${r.motivo}"
+            is ChainApi.Envio.Ok -> {
+                // El txid que se muestra tiene que ser el de los bytes que se
+                // firmaron, no el que devuelva el servidor sin comprobar.
+                val calculado = Psbt.txidDeRaw(rawHex)
+                return if (calculado == null || calculado == r.txid.lowercase()) r.txid
+                       else "ERROR: the server answered with a txid that is not this transaction's."
+            }
+            is ChainApi.Envio.Rechazada -> {
+                // Un servidor que ya la tiene (el envío anterior llegó pero la
+                // respuesta se perdió por tiempo) dice "ya está": eso es un éxito,
+                // y mostrarlo como error hacía reenviar y confundía al usuario.
+                val yaEsta = Regex("already|txn-already|in mempool|in block", RegexOption.IGNORE_CASE)
+                    .containsMatchIn(r.motivo)
+                if (yaEsta) Psbt.txidDeRaw(rawHex)?.let { return it }
+                // Un rechazo es definitivo: todos los nodos aplican las mismas
+                // reglas, así que reintentarlo por Electrum daría lo mismo.
+                return "ERROR: ${r.motivo}"
+            }
             ChainApi.Envio.SinRespuesta -> {}
         }
         val porElectrum = ElectrumClient.broadcast(rawHex, testnet)
