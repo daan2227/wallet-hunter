@@ -1239,7 +1239,7 @@ class WalletActivity : FragmentActivity() {
 
                 // Tamaño de la hija con la misma cuenta que usa el envío: sus entradas, la
                 // salida y la de cambio (aunque el cambio sea 0, doSend cobra con ella).
-                val vc = (CoinSelector.inputVBytes(fromKey, isWifMode && wifKey.startsWith("5")) * mias.size +
+                val vc = (inputVBytesDe(fromKey) * mias.size +
                           CoinSelector.outputVBytes(direccion) + CoinSelector.outputVBytes(direccion) + 11).toLong()
                 // La tasa de la hija que hace que (padre + hija) paguen el objetivo.
                 val tasaHija = Cpfp.tasaHija(vp, fp, objetivo, vc)
@@ -1373,6 +1373,10 @@ class WalletActivity : FragmentActivity() {
                     return@Thread aviso("The servers do not agree on who that transaction pays. Not rebuilding it.")
 
                 val vsize = (tx.optLong("weight", 0) + 3) / 4
+                // Sólo se acelera una transacción que se puede reemplazar (BIP125): alguna
+                // entrada con secuencia menor que 0xfffffffe. Si no, el nodo la rechaza.
+                val replaceable = (0 until vin.length()).any { vin.getJSONObject(it).optLong("sequence", 0xFFFFFFFFL) < 0xFFFFFFFEL }
+                if (!replaceable) return@Thread aviso("This transaction was not sent as replaceable (RBF), so it cannot be sped up. Use a child (CPFP) instead.")
                 val feeViejo = tx.optLong("fee", 0)
                 if (vsize <= 0 || feeViejo <= 0) return@Thread aviso("The transaction data is incomplete.")
                 val tasaVieja = (feeViejo + vsize - 1) / vsize
@@ -1973,7 +1977,10 @@ class WalletActivity : FragmentActivity() {
             typeface = AppTheme.medium(context); gravity = Gravity.CENTER
             setPadding(0, dp(10), 0, dp(6))
             isClickable = true; isFocusable = true
-            setOnClickListener { exportarSiguiente = true; btnSend.performClick() }
+            setOnClickListener {
+                // Un botón deshabilitado (envío en curso o ya enviado) no exporta nada.
+                if (btnSend.isEnabled) { exportarSiguiente = true; btnSend.performClick() }
+            }
         })
         ll.addView(btnSend)
 
@@ -2247,6 +2254,10 @@ class WalletActivity : FragmentActivity() {
                     val ok = BtcAddress.validate(dir, isTestnet) is BtcAddress.Result.Valid
                     if (!ok) {
                         tvStatus.text = "An extra output has an invalid address."
+                        tvStatus.setTextColor(RED); return@setOnClickListener
+                    }
+                    if (e.sat > 2_100_000_000_000_000L) {
+                        tvStatus.text = "An extra output is larger than all the bitcoin."
                         tvStatus.setTextColor(RED); return@setOnClickListener
                     }
                     if (e.sat < CoinSelector.polvoDe(dir)) {
