@@ -36,6 +36,55 @@ static std::array<uint8_t, 32> raiz_merkle(std::vector<std::array<uint8_t, 32>> 
     return nivel[0];
 }
 
+/* Lee una transacción (con o sin testigo) y calcula su txid. */
+static TxBloque leer_una_tx(Lector &r) {
+    TxBloque tx;
+    size_t ini = r.pos;
+    r.u32();
+    if (r.pos + 2 <= r.n && r.p[r.pos] == 0x00 && r.p[r.pos + 1] == 0x01) r.pos += 2;
+    bool segwit = r.pos - ini == 6;
+    size_t ini_vin = r.pos;
+    uint64_t nin = r.varint();
+    if (nin == 0) throw std::runtime_error("transacción sin entradas");
+    if (nin > r.n - r.pos) throw std::runtime_error("demasiadas entradas");
+    for (uint64_t i = 0; i < nin; i++) {
+        EntradaTx e; r.need(36); memcpy(e.txid.data(), r.p + r.pos, 32); r.pos += 32; e.vout = r.u32();
+        r.saltar(r.varint()); r.u32();
+        tx.entradas.push_back(e);
+    }
+    uint64_t nout = r.varint();
+    if (nout > r.n - r.pos) throw std::runtime_error("demasiadas salidas");
+    for (uint64_t i = 0; i < nout; i++) {
+        SalidaTx s; s.valor = r.u64(); s.spk = r.bytes(r.varint());
+        tx.salidas.push_back(s);
+    }
+    size_t fin_vout = r.pos;
+    if (segwit) for (uint64_t i = 0; i < nin; i++) {
+        uint64_t items = r.varint();
+        if (items > r.n - r.pos) throw std::runtime_error("testigo imposible");
+        for (uint64_t k = 0; k < items; k++) r.saltar(r.varint());
+    }
+    r.need(4);
+    size_t lock = r.pos; r.pos += 4;
+    /* txid: versión + entradas/salidas + locktime, sin marcador ni testigo. */
+    std::vector<uint8_t> sin;
+    sin.insert(sin.end(), r.p + ini, r.p + ini + 4);
+    sin.insert(sin.end(), r.p + ini_vin, r.p + fin_vout);
+    sin.insert(sin.end(), r.p + lock, r.p + lock + 4);
+    dsha(sin.data(), sin.size(), tx.txid.data());
+    static const uint8_t nulo[32] = {0};
+    tx.coinbase = tx.entradas.size() == 1 && memcmp(tx.entradas[0].txid.data(), nulo, 32) == 0 && tx.entradas[0].vout == 0xffffffffu;
+    return tx;
+}
+
+/* Una transacción suelta, entera: sin bytes de más. */
+static TxBloque leer_tx(const std::vector<uint8_t> &raw) {
+    Lector r{raw.data(), raw.size()};
+    TxBloque t = leer_una_tx(r);
+    if (r.pos != r.n) throw std::runtime_error("bytes sobrantes tras la transacción");
+    return t;
+}
+
 /* Lee las transacciones de un bloque. Lanza si está mal formado, si no tiene
  * exactamente una coinbase al principio, o si sobran bytes. */
 static std::vector<TxBloque> leer_bloque(const std::vector<uint8_t> &bloque) {
@@ -45,46 +94,7 @@ static std::vector<TxBloque> leer_bloque(const std::vector<uint8_t> &bloque) {
     uint64_t ntx = r.varint();
     if (ntx == 0 || ntx > (bloque.size() - 81) / 10 + 1) throw std::runtime_error("número de transacciones imposible");
     std::vector<TxBloque> txs;
-    for (uint64_t t = 0; t < ntx; t++) {
-        TxBloque tx;
-        size_t ini = r.pos;
-        r.u32();
-        bool segwit = false;
-        if (r.pos + 2 <= r.n && r.p[r.pos] == 0x00 && r.p[r.pos + 1] == 0x01) { segwit = true; r.pos += 2; }
-        size_t ini_vin = r.pos;
-        uint64_t nin = r.varint();
-        if (nin == 0) throw std::runtime_error("transacción sin entradas");
-        if (nin > r.n - r.pos) throw std::runtime_error("demasiadas entradas");
-        for (uint64_t i = 0; i < nin; i++) {
-            EntradaTx e; r.need(36); memcpy(e.txid.data(), r.p + r.pos, 32); r.pos += 32; e.vout = r.u32();
-            r.saltar(r.varint()); r.u32();
-            tx.entradas.push_back(e);
-        }
-        uint64_t nout = r.varint();
-        if (nout > r.n - r.pos) throw std::runtime_error("demasiadas salidas");
-        for (uint64_t i = 0; i < nout; i++) {
-            SalidaTx s; s.valor = r.u64(); s.spk = r.bytes(r.varint());
-            tx.salidas.push_back(s);
-        }
-        size_t fin_vout = r.pos;
-        if (segwit) for (uint64_t i = 0; i < nin; i++) {
-            uint64_t items = r.varint();
-            if (items > r.n - r.pos) throw std::runtime_error("testigo imposible");
-            for (uint64_t k = 0; k < items; k++) r.saltar(r.varint());
-        }
-        r.need(4);
-        size_t lock = r.pos; r.pos += 4;
-        /* txid: versión + entradas/salidas + locktime, sin marcador ni testigo. */
-        std::vector<uint8_t> sin;
-        sin.insert(sin.end(), r.p + ini, r.p + ini + 4);
-        sin.insert(sin.end(), r.p + ini_vin, r.p + fin_vout);
-        sin.insert(sin.end(), r.p + lock, r.p + lock + 4);
-        dsha(sin.data(), sin.size(), tx.txid.data());
-        static const uint8_t nulo[32] = {0};
-        tx.coinbase = tx.entradas.size() == 1 && memcmp(tx.entradas[0].txid.data(), nulo, 32) == 0 && tx.entradas[0].vout == 0xffffffffu;
-        txs.push_back(tx);
-        (void)ini;
-    }
+    for (uint64_t t = 0; t < ntx; t++) txs.push_back(leer_una_tx(r));
     if (r.pos != r.n) throw std::runtime_error("bytes sobrantes tras el bloque");
     if (!txs[0].coinbase) throw std::runtime_error("la primera transacción no es coinbase");
     for (size_t i = 1; i < txs.size(); i++) if (txs[i].coinbase) throw std::runtime_error("coinbase repetida");

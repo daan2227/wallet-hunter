@@ -30,6 +30,14 @@ struct Utxo {
 
 enum class Fase { Conectando, Cabeceras, FiltrosCab, Filtros, Bloques, Listo, Error };
 
+/* Qué se sabe de una transacción propia que se ha difundido:
+ *   Pendiente   - aún no se la ha pedido ningún par;
+ *   Enviada     - al menos un par la pidió y se le dio;
+ *   Propagada   - un par que NO la recibió de nosotros la anunció (señal de que corre por la red);
+ *   Confirmada  - está en un bloque de la cadena principal;
+ *   Reemplazada - un bloque gastó alguna de sus entradas con otra transacción. */
+enum class EstadoDifusion { Desconocida, Pendiente, Enviada, Propagada, Confirmada, Reemplazada };
+
 struct ConfigCliente {
     uint32_t magic = MAGIC_PRINCIPAL;
     uint32_t min_pares = 2;          /* pares que tienen que coincidir en las cabeceras de filtro */
@@ -47,11 +55,14 @@ public:
         : cfg_(cfg), alm_(alm) { fijar_scripts(scripts); reiniciar_escaneo(cfg.desde); }
 
     /* ---- conexiones ---- */
-    void par_nuevo(int id, uint64_t ahora_ms) {
+    /* `relay` = true pide al par que nos anuncie las transacciones que corren por la red
+     * (BIP37): se usa en conexiones aparte, sólo para ver si una transacción nuestra se
+     * propaga. Cuesta ancho de banda, así que las conexiones normales van sin él. */
+    void par_nuevo(int id, uint64_t ahora_ms, bool relay = false) {
         Par &p = pares_.emplace(id, Par(id, cfg_.magic)).first->second;
-        p.t_alta = ahora_ms;
+        p.t_alta = ahora_ms; p.relay = relay;
         Version v; v.servicios = 0; v.tiempo = (int64_t)(ahora_ms / 1000); v.nonce = cfg_.nonce;
-        v.agente = cfg_.agente; v.altura = (int32_t)alm_.altura(); v.relay = false;
+        v.agente = cfg_.agente; v.altura = (int32_t)alm_.altura(); v.relay = relay;
         enviar(p, "version", crear_version(v));
     }
     void par_cerrado(int id, uint64_t ahora_ms) {
@@ -101,6 +112,31 @@ public:
         avanzar(ahora_ms);
     }
 
+    /* ---- difusión de transacciones propias ---- */
+    /* Registra la transacción y se la ofrece (inv) a hasta 8 pares; sólo se entrega a quien
+     * la pide. Lanza si no es una transacción bien formada, si es una coinbase o si pesa más
+     * de 400 kB. Llamarla otra vez con la misma transacción no hace nada. */
+    std::array<uint8_t, 32> difundir(const std::vector<uint8_t> &raw, uint64_t ahora_ms) {
+        if (raw.size() > 400000) throw ErrP2P("transacción demasiado grande");
+        TxBloque t = leer_tx(raw);
+        if (t.coinbase) throw ErrP2P("no se difunde una coinbase");
+        std::string k((const char *)t.txid.data(), 32);
+        if (!difusiones_.count(k)) {
+            Difusion d; d.raw = raw; d.txid = t.txid; d.entradas = t.entradas;
+            difusiones_[k] = d;
+        }
+        ofrecer_difusiones(ahora_ms);
+        return t.txid;
+    }
+    EstadoDifusion estado_difusion(const std::array<uint8_t, 32> &txid) const {
+        auto it = difusiones_.find(std::string((const char *)txid.data(), 32));
+        return it == difusiones_.end() ? EstadoDifusion::Desconocida : it->second.estado;
+    }
+    uint32_t altura_difusion(const std::array<uint8_t, 32> &txid) const {
+        auto it = difusiones_.find(std::string((const char *)txid.data(), 32));
+        return it == difusiones_.end() ? 0 : it->second.altura;
+    }
+
     /* ---- resultado ---- */
     Fase fase() const { return fase_; }
     const std::string &error() const { return error_; }
@@ -120,10 +156,15 @@ private:
         Par(int i, uint32_t magic) : id(i), fl(magic) {}
         int id; Flujo fl; bool v_rx = false, ack_rx = false, listo = false, muerto = false;
         Version v; uint64_t t_alta = 0, t_pend = 0; int esperando = 0;
-        bool hdr_fin = false; uint32_t inesperados = 0;
+        bool hdr_fin = false; uint32_t inesperados = 0; bool relay = false;
         bool cfh_ok = false; CfHeaders cfh;
     };
     struct Efecto { std::vector<Utxo> anadidos, gastados; };
+    struct Difusion {
+        std::vector<uint8_t> raw; H txid{}; std::vector<EntradaTx> entradas;
+        EstadoDifusion estado = EstadoDifusion::Pendiente; uint32_t altura = 0;
+        std::set<int> ofrecida, servida;
+    };
     struct Disputa {
         bool activa = false; uint32_t h = 0; std::vector<int> pares; int proveedor_bloque = -1;
         std::map<int, std::vector<uint8_t>> filtros; std::vector<uint8_t> bloque; bool bloque_ok = false;
@@ -149,6 +190,7 @@ private:
     bool lote_cf_ = false; uint32_t cf_b0_ = 0, cf_b1_ = 0, cf_n_ = 0; int cf_driver_ = -1;
     int blk_driver_ = -1; bool blk_en_vuelo_ = false;
     Disputa disp_;
+    std::map<std::string, Difusion> difusiones_;
 
     static std::string clave_utxo(const H &t, uint32_t v) { return std::string((const char *)t.data(), 32) + std::string((const char *)&v, 4); }
     static void clave_filtro(const H &h, uint64_t &k0, uint64_t &k1) {
@@ -219,10 +261,56 @@ private:
         if (m.cmd == "cfheaders") { en_cfheaders(p, m, ahora_ms); return; }
         if (m.cmd == "cfilter") { en_cfilter(p, m, ahora_ms); return; }
         if (m.cmd == "block") { en_bloque(p, m, ahora_ms); return; }
+        if (m.cmd == "getdata") { en_getdata(p, m); return; }
+        if (m.cmd == "inv") { en_inv(p, m); return; }
         /* addr, inv, sendheaders, feefilter, sendcmpct, getheaders, ...: no nos hacen falta. */
     }
     void inesperado(Par &p, const char *que) {
         if (++p.inesperados > 20) banear(p, std::string("demasiados mensajes no pedidos (") + que + ")");
+    }
+
+    /* ---- difusión ---- */
+    Difusion *buscar_difusion(const std::array<uint8_t, 32> &h) {
+        auto it = difusiones_.find(std::string((const char *)h.data(), 32));
+        return it == difusiones_.end() ? nullptr : &it->second;
+    }
+    void ofrecer_difusiones(uint64_t ahora_ms) {
+        (void)ahora_ms;
+        for (auto &kv : difusiones_) {
+            Difusion &d = kv.second;
+            if (d.estado != EstadoDifusion::Pendiente && d.estado != EstadoDifusion::Enviada) continue;
+            size_t vivas = 0;
+            for (int id : d.ofrecida) { auto it = pares_.find(id); if (it != pares_.end() && !it->second.muerto) vivas++; }
+            for (auto &q : pares_) {
+                if (vivas >= 8) break;
+                Par &p = q.second;
+                if (!p.listo || p.muerto || p.relay || d.ofrecida.count(p.id)) continue;
+                enviar(p, "inv", crear_inv({{INV_TX, d.txid}}));
+                d.ofrecida.insert(p.id); vivas++;
+            }
+        }
+    }
+    /* Sólo se entrega una transacción a quien se la ofrecimos y la pide con la marca de testigo. */
+    void en_getdata(Par &p, const Mensaje &m) {
+        for (auto &iv : leer_inv(m.payload)) {
+            if ((iv.tipo & ~INV_FLAG_TESTIGO) != INV_TX || !(iv.tipo & INV_FLAG_TESTIGO)) continue;
+            Difusion *d = buscar_difusion(iv.hash);
+            if (!d || !d->ofrecida.count(p.id)) continue;
+            enviar(p, "tx", d->raw);
+            d->servida.insert(p.id);
+            if (d->estado == EstadoDifusion::Pendiente) d->estado = EstadoDifusion::Enviada;
+        }
+    }
+    /* Un par con relay que anuncia nuestra transacción sin haberla recibido de nosotros. */
+    void en_inv(Par &p, const Mensaje &m) {
+        auto v = leer_inv(m.payload);
+        if (!p.relay) return;
+        for (auto &iv : v) {
+            if ((iv.tipo & ~INV_FLAG_TESTIGO) != INV_TX) continue;
+            Difusion *d = buscar_difusion(iv.hash);
+            if (!d || d->ofrecida.count(p.id)) continue;
+            if (d->estado == EstadoDifusion::Pendiente || d->estado == EstadoDifusion::Enviada) d->estado = EstadoDifusion::Propagada;
+        }
     }
 
     /* ---- cabeceras ---- */
@@ -264,6 +352,12 @@ private:
             for (auto &u : e.anadidos) utxos_.erase(clave_utxo(u.txid, u.vout));
             for (auto &u : e.gastados) utxos_[clave_utxo(u.txid, u.vout)] = u;
             efectos_.erase(std::prev(efectos_.end()));
+        }
+        for (auto &kv : difusiones_) {
+            Difusion &d = kv.second;
+            if ((d.estado == EstadoDifusion::Confirmada || d.estado == EstadoDifusion::Reemplazada) && d.altura > fork) {
+                d.estado = d.servida.empty() ? EstadoDifusion::Pendiente : EstadoDifusion::Enviada; d.altura = 0;
+            }
         }
         size_t nuevo_fh = fork + 1 >= desde_ ? (size_t)(fork + 1 - desde_) : 0;
         if (fh_.size() > nuevo_fh + 1) fh_.resize(nuevo_fh + 1);
@@ -447,6 +541,13 @@ private:
     void aplicar(uint32_t h, const std::vector<TxBloque> &txs) {
         Efecto e;
         for (auto &tx : txs) {
+            if (Difusion *d = buscar_difusion(tx.txid)) { d->estado = EstadoDifusion::Confirmada; d->altura = h; }
+            for (auto &kv : difusiones_) {
+                Difusion &d = kv.second;
+                if (d.estado == EstadoDifusion::Confirmada || d.estado == EstadoDifusion::Reemplazada || d.txid == tx.txid) continue;
+                for (auto &i1 : d.entradas) for (auto &i2 : tx.entradas)
+                    if (i1.txid == i2.txid && i1.vout == i2.vout) { d.estado = EstadoDifusion::Reemplazada; d.altura = h; }
+            }
             for (auto &in : tx.entradas) {
                 auto it = utxos_.find(clave_utxo(in.txid, in.vout));
                 if (it != utxos_.end()) { e.gastados.push_back(it->second); utxos_.erase(it); }
@@ -493,6 +594,7 @@ private:
             }
             if (fase_ == antes) break;
         }
+        if (fase_ != Fase::Error) ofrecer_difusiones(ahora_ms);
     }
 };
 
