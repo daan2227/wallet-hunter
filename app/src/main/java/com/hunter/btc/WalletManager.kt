@@ -621,7 +621,8 @@ object WalletManager {
      *
      * @param id el que tendrá si se guarda al lado; "" es la principal.
      */
-    fun agregarSeed(ctx: Context, mn: String, nombreEscrito: String, origen: String?): SeedGuardada {
+    fun agregarSeed(ctx: Context, frase: String, nombreEscrito: String, origen: String?): SeedGuardada {
+        val mn = Frase.canonica(frase)
         val nombre = limpiarNombre(nombreEscrito)
         if (!hasSeed(ctx)) {
             saveSeed(ctx, mn)
@@ -865,6 +866,8 @@ object WalletManager {
             for (i in 0 until wallets.length()) {
                 val w = wallets.getJSONObject(i)
                 val mn = w.optString("seed")
+                // Una copia con palabras que no son BIP39 no se restaura: sería otra cartera.
+                if (mn.isNotEmpty() && Bip39.validate(Frase.palabras(mn)) !is Bip39.Result.Valid) continue
                 if (mn.isEmpty()) continue
                 // agregarSeed: no pisa una cartera que ya haya con el mismo id, no
                 // duplica la misma semilla, y limpia el nombre (un ":" o "|" de la
@@ -875,7 +878,7 @@ object WalletManager {
 
             // Con agregarSeed y no saveSeed: restaurar una copia con otra seed
             // principal sustituía la que hubiera en el móvil.
-            root.optString("main_seed", "").takeIf { it.isNotEmpty() }?.let {
+            root.optString("main_seed", "").takeIf { it.isNotEmpty() && Bip39.validate(Frase.palabras(it)) is Bip39.Result.Valid }?.let {
                 val g = agregarSeed(ctx, it, "", null)
                 // La copia guarda el origen de la principal con la clave CLAVE_PRINCIPAL;
                 // el id nuevo de esta cartera no existe en ella.

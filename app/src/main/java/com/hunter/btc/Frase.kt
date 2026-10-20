@@ -14,7 +14,8 @@ object Frase {
         val h = frase.lastIndexOf('#')
         if (h < 0) return frase
         val digitos = frase.substring(h + 1)
-        return if (digitos.length in 1..2 && digitos.all { it.isDigit() } && digitos.toInt() <= 99) frase.substring(0, h)
+        // Sólo dígitos ASCII: el motor sólo acepta ésos, y un dígito Unicode daría otra cartera.
+        return if (digitos.length in 1..2 && digitos.all { it in '0'..'9' } && digitos.toInt() <= 99) frase.substring(0, h)
                else frase
     }
 
@@ -46,10 +47,22 @@ object Frase {
      */
     fun errorPassphrase(p: String): String? = when {
         p.isEmpty() -> null
+        // Un espacio sobrante cambia la cartera sin que se note: se rechaza en vez de recortarlo en silencio.
+        p.isBlank() || p != p.trim() -> "The passphrase cannot start or end with a space."
         p.length > 100 -> "The passphrase is too long: 100 characters at most."
         p.any { it.code !in 0x20..0x7e || it == '|' || it == '"' || it == '\\' || it == '#' } ->
             "Use only plain letters, digits and symbols: no quotes, backslashes, '|' or '#'."
         else -> null
+    }
+
+    /**
+     * La misma frase en su forma única: sin sufijo de cuenta 0, sin '|' vacío y
+     * con la cuenta en dígitos normales. Dos escrituras de la misma cartera dan la
+     * misma cadena, así que la deduplicación no las guarda dos veces.
+     */
+    fun canonica(frase: String): String {
+        val c = cuenta(frase)
+        return conCuenta(unir(palabras(frase), passphrase(frase)), c)
     }
 
     /** Palabras y passphrase juntas, en el formato que guarda la app (sin cuenta). */

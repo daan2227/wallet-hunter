@@ -56,4 +56,22 @@ class FraseTest {
     @Test fun passphraseSinAlmohadilla() {
         assertNotNull(Frase.errorPassphrase("con#almohadilla"))
     }
+
+    @Test fun formaCanonicaUnicaParaLaMismaCartera() {
+        assertEquals(palabras, Frase.canonica("$palabras#0"))
+        assertEquals("$palabras#5", Frase.canonica("$palabras#05"))
+        assertEquals(palabras, Frase.canonica("$palabras|"))
+        assertEquals("$palabras|TREZOR#2", Frase.canonica("$palabras|TREZOR#2"))
+    }
+
+    @Test fun passphraseSinEspaciosSobrantes() {
+        assertNotNull(Frase.errorPassphrase(" TREZOR"))
+        assertNotNull(Frase.errorPassphrase("TREZOR "))
+        assertNotNull(Frase.errorPassphrase(" "))
+    }
+
+    @Test fun cuentaSoloConDigitosAscii() {
+        // Un dígito Unicode daría otra cartera: no es cuenta, la frase queda entera.
+        assertEquals(0, Frase.cuenta("$palabras#\u0663"))
+    }
 }

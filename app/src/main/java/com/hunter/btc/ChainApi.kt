@@ -79,7 +79,7 @@ object ChainApi {
                 preferido = idx
                 return cuerpo
             } catch (e: Exception) {
-                android.util.Log.w("ChainApi", "$host$ruta failed: ${e.message}")
+                android.util.Log.w("ChainApi", "$host failed: ${e.message}")
             }
         }
         return null

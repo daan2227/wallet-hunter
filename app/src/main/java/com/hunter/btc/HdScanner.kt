@@ -67,6 +67,18 @@ object HdScanner {
      */
     fun scanBranch(mnemonic: String, purpose: Int, change: Int,
                    testnet: Boolean = false): Pair<List<Found>, Int> {
+        val (usadas, libre, _) = scanBranchInformado(mnemonic, purpose, change, testnet)
+        return usadas to libre
+    }
+
+    /**
+     * Igual que scanBranch, y además dice si el recorrido se quedó a medias
+     * (red caída, o una derivación que falló): entonces hay direcciones que no se
+     * miraron y el saldo no es completo.
+     */
+    fun scanBranchInformado(mnemonic: String, purpose: Int, change: Int,
+                            testnet: Boolean = false): Triple<List<Found>, Int, Boolean> {
+        var incompleto = false
         val usadas = mutableListOf<Found>()
         var primeraLibre = -1
         var seguidasSinUsar = 0
@@ -76,7 +88,7 @@ object HdScanner {
 
         while (idx < MAX_INDEX && seguidasSinUsar < GAP_LIMIT && !cortado) {
             val lote = derive(mnemonic, purpose, change, idx, BATCH, testnet)
-            if (lote.isEmpty()) break
+            if (lote.isEmpty()) { incompleto = true; break }
             for ((i, addr) in lote) {
                 val usada = BalanceLookup.isUsed(addr, testnet)
                 when (usada) {
@@ -97,7 +109,7 @@ object HdScanner {
                     // queda indeterminado (-1), no libre.
                     null -> {
                         seguidasSinUsar = 0
-                        if (++desconocidasSeguidas >= MAX_DESCONOCIDAS) { cortado = true; break }
+                        if (++desconocidasSeguidas >= MAX_DESCONOCIDAS) { cortado = true; incompleto = true; break }
                     }
                 }
                 if (seguidasSinUsar >= GAP_LIMIT) break
@@ -105,7 +117,7 @@ object HdScanner {
             idx += lote.size
         }
         if (cortado) primeraLibre = -1
-        return usadas to primeraLibre
+        return Triple(usadas, primeraLibre, incompleto)
     }
 
     /**

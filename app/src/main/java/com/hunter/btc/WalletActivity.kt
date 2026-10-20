@@ -758,7 +758,8 @@ class WalletActivity : FragmentActivity() {
                 val clavePorProposito = mapOf(44 to "p2pkh", 49 to "p2sh",
                                               84 to "p2wpkh", 86 to "p2tr")
                 for (purpose in HdScanner.PURPOSES) {
-                    val (usadas, _) = HdScanner.scanBranch(mnemonicSnap, purpose, change = 0, testnet = isTestnet)
+                    val (usadas, _, incompletoRec) = HdScanner.scanBranchInformado(mnemonicSnap, purpose, change = 0, testnet = isTestnet)
+                    if (incompletoRec) fallosHD++
                     for (f in usadas) {
                         hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} [${f.index}]"
                         if (f.addr in yaListadas) continue
@@ -775,7 +776,8 @@ class WalletActivity : FragmentActivity() {
                     // El cambio también guarda fondos entre envíos. Un cambio ya
                     // gastado no sale en el saldo, pero sí en el historial: sin él
                     // el envío que lo gastó no aparecía.
-                    val (camb, _) = HdScanner.scanBranch(mnemonicSnap, purpose, change = 1, testnet = isTestnet)
+                    val (camb, _, incompletoCam) = HdScanner.scanBranchInformado(mnemonicSnap, purpose, change = 1, testnet = isTestnet)
+                    if (incompletoCam) fallosHD++
                     for (f in camb) {
                         hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} change [${f.index}]"
                         if (f.addr in yaListadas) continue
@@ -983,11 +985,13 @@ class WalletActivity : FragmentActivity() {
                 if (respondidas == 0) {
                     // Electrum da la lista de identificadores pero no el detalle
                     // de cada transacción. Al menos se puede decir cuántas hay.
-                    val hist = ElectrumClient.getHistory(consultar[0], isTestnet)
+                    // Electrum sólo sabe la lista de una dirección, no el detalle: se dice.
+                    val hist = ElectrumClient.historialOrNull(consultar[0], isTestnet)
                     runOnUiThread {
-                        tvHead.text = if (hist.isEmpty())
+                        tvHead.text = if (hist == null)
                             "Could not fetch the history. Check your connection."
-                        else "${hist.size} transactions · details need mempool.space"
+                        else "Only one address could be checked over Electrum: ${hist.size} transactions there. " +
+                             "Details need mempool.space"
                         tvHead.setTextColor(AppTheme.WARN)
                     }
                     return@Thread
@@ -2867,16 +2871,19 @@ class WalletActivity : FragmentActivity() {
 
         var addrActual = ""
 
-        fun uriPedido(addr: String): String {
-            val btc = etMonto.text.toString().trim().replace(',', '.').toDoubleOrNull()
+        fun uriPedido(addr: String, monto: String): String {
+            val btc = monto.trim().replace(',', '.').toDoubleOrNull()
             return if (btc != null && btc > 0)
                 "bitcoin:$addr?amount=" + String.format(java.util.Locale.US, "%.8f", btc)
             else "bitcoin:$addr"
         }
         fun pintarQr(addr: String) {
+            // El importe se lee aquí, en el hilo de la pantalla, y sólo se pinta si
+            // sigue siendo el mismo: si no, un QR viejo quedaría con otro importe.
+            val monto = etMonto.text.toString()
             Thread {
-                try { val bm = qrBitmap(uriPedido(addr), 512)
-                      runOnUiThread { if (addrActual == addr) ivQr.setImageBitmap(bm) } }
+                try { val bm = qrBitmap(uriPedido(addr, monto), 512)
+                      runOnUiThread { if (addrActual == addr && etMonto.text.toString() == monto) ivQr.setImageBitmap(bm) } }
                 catch (e: Exception) { android.util.Log.w("WalletActivity", "QR: ${e.message}") }
             }.start()
         }
@@ -2939,7 +2946,11 @@ class WalletActivity : FragmentActivity() {
             val k = efectivos[tipoSel].second
             val tipo = k.substringBefore('_')
             val purpose = when (tipo) { "p2pkh" -> 44; "p2sh" -> 49; "p2tr" -> 86; else -> 84 }
-            val desde = (k.substringAfter('_', "0").toIntOrNull() ?: 0) + 1
+            // Desde el último índice ENTREGADO por esta cartera y tipo (guardado), y no
+            // desde el de la lista: si no, se devolvía siempre la misma sin pagar.
+            val prefsRecv = getSharedPreferences("recv_index", MODE_PRIVATE)
+            val clavePref = (currentWalletId.ifEmpty { "main" }) + "|" + tipo
+            val desde = maxOf(prefsRecv.getInt(clavePref, -1), k.substringAfter('_', "0").toIntOrNull() ?: 0) + 1
             btnNueva.text = "Searching…"
             Thread {
                 var encontrada: Pair<Int, String>? = null
@@ -2959,6 +2970,7 @@ class WalletActivity : FragmentActivity() {
                         Toast.makeText(this, "No unused address in the next 20: try again later", Toast.LENGTH_LONG).show()
                     } else {
                         tvEstreno.text = "index ${hallada.first}"
+                        prefsRecv.edit().putInt(clavePref, hallada.first).apply()
                         addresses[tipo + "_" + hallada.first] = hallada.second
                         mostrar(hallada.second)
                     }
@@ -3972,7 +3984,18 @@ class WalletActivity : FragmentActivity() {
         btnRow.addView(btnNext); btnRow.addView(btnCancel)
         // Passphrase opcional (la palabra 25). Con ella las mismas palabras dan otra
         // cartera: si la pone, tiene que guardarla aparte, porque sin ella no se recupera.
+        // Sin sugerencias del teclado: la passphrase no se guarda en el diccionario del teclado.
+        val etPassphrase2 = EditText(this).apply {
+            hint = "Repeat the passphrase"
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                .apply { topMargin = dp(8) }
+        }
         val etPassphrase = EditText(this).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             hint = "Passphrase (optional, the 25th word)"
             setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
             background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
@@ -3981,6 +4004,7 @@ class WalletActivity : FragmentActivity() {
                 .apply { topMargin = dp(12) }
         }
         layout.addView(etPassphrase)
+        layout.addView(etPassphrase2)
         layout.addView(TextView(this).apply {
             text = "Keep the passphrase written down, apart from the words. Without it this wallet " +
                    "cannot be recovered, and it cannot be recovered from the words alone."
@@ -4015,6 +4039,11 @@ class WalletActivity : FragmentActivity() {
             val pass = etPassphrase.text.toString()
             Frase.errorPassphrase(pass)?.let {
                 Toast.makeText(this, it, Toast.LENGTH_LONG).show()
+                return@setOnClickListener
+            }
+            // Una passphrase mal tecleada da otra cartera sin error: se pide dos veces.
+            if (pass != etPassphrase2.text.toString()) {
+                Toast.makeText(this, "The two passphrases do not match", Toast.LENGTH_LONG).show()
                 return@setOnClickListener
             }
             val mn = Frase.unir(palabras, pass)

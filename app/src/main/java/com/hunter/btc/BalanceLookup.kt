@@ -67,7 +67,7 @@ object BalanceLookup {
                 return txs("chain_stats") + txs("mempool_stats") > 0
             }
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "isUsed via web failed on $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "isUsed via web failed: ${e.message}")
         }
         // Electrum no da el número de transacciones directamente, pero su
         // historial sí: si tiene alguna entrada, la dirección se ha usado.
@@ -75,7 +75,7 @@ object BalanceLookup {
         return try {
             ElectrumClient.historialOrNull(addr, testnet)?.isNotEmpty()
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "isUsed via Electrum failed on $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "isUsed via Electrum failed: ${e.message}")
             null
         }
     }
@@ -90,13 +90,13 @@ object BalanceLookup {
             val (confirmado, pendiente) = fromMempoolDetalle(addr, testnet)
             return Result(confirmado + pendiente, "", pendiente)
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "web APIs failed on $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "web APIs failed: ${e.message}")
         }
         return try {
             val eb = ElectrumClient.getBalance(addr, testnet)
-            if (eb != null) Result(eb.confirmed + eb.unconfirmed, "electrum") else null
+            if (eb != null) Result(eb.confirmed + eb.unconfirmed, "electrum", eb.unconfirmed) else null
         } catch (e: Exception) {
-            android.util.Log.w("BalanceLookup", "electrum failed on $addr: ${e.message}")
+            android.util.Log.w("BalanceLookup", "electrum failed: ${e.message}")
             null
         }
     }
