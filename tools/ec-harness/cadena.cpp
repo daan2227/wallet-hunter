@@ -8,6 +8,7 @@
  *    punto de control que no coincide.
  */
 #include "cadena_btc.h"
+#include "genesis_btc.h"
 #include <stdio.h>
 #include <string>
 
@@ -88,6 +89,11 @@ int main() {
     }
     ok(hashes_ok, "génesis y bloques 1..3: hash conocido");
 
+    {   /* El génesis incorporado a la app es el de la red principal. */
+        uint8_t hh[32]; hash_cabecera(GENESIS_PRINCIPAL, hh);
+        ok(mostrar(hh) == "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f", "génesis incorporado: hash de la red principal");
+        ok(memcmp(GENESIS_PRINCIPAL, rc[0].data(), 80) == 0, "...y es el mismo que armamos a partir de sus campos");
+    }
     ParamsRed pr = red_principal();
     {
         Cadena c = Cadena::desde_genesis(pr, rc[0].data());

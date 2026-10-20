@@ -165,6 +165,17 @@ int main() {
         ok(a->invs_recibidos == 1 && w.c.estado_difusion(id) == EstadoDifusion::Enviada, "cuando llega un par, se le ofrece y la pide");
     }
 
+    /* --- en pausa: se registra pero no se ofrece hasta reanudar --- */
+    {
+        Mundo w(honesta); Nodo *a = w.nodo(1); w.red.bombear();
+        w.c.pausar_difusion(true, AHORA_MS);
+        H id = w.c.difundir(raw, AHORA_MS); w.red.bombear();
+        ok(a->invs_recibidos == 0 && w.c.estado_difusion(id) == EstadoDifusion::Pendiente, "en pausa: no se ofrece a nadie");
+        w.c.pausar_difusion(false, AHORA_MS); w.red.bombear();
+        ok(a->invs_recibidos == 1 && w.c.estado_difusion(id) == EstadoDifusion::Enviada, "al reanudar se ofrece y se entrega");
+        ok(w.c.par_listo(1) && !w.c.par_listo(99), "par_listo distingue pares");
+    }
+
     printf(fallos ? "\n*** difusion FALLA ***\n" : "\nTODO CORRECTO\n");
     return fallos ? 1 : 0;
 }

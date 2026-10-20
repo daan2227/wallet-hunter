@@ -128,6 +128,17 @@ public:
         ofrecer_difusiones(ahora_ms);
         return t.txid;
     }
+    /* Con la difusión en pausa las transacciones se registran pero no se ofrecen. Sirve para
+     * esperar a tener la conexión con relay lista: si la transacción se anuncia antes, esa
+     * conexión no verá nunca el aviso. Al reanudar se ofrecen las pendientes. */
+    void pausar_difusion(bool pausa, uint64_t ahora_ms) {
+        pausa_difusion_ = pausa;
+        if (!pausa) ofrecer_difusiones(ahora_ms);
+    }
+    bool par_listo(int id) const {
+        auto it = pares_.find(id);
+        return it != pares_.end() && it->second.listo && !it->second.muerto;
+    }
     EstadoDifusion estado_difusion(const std::array<uint8_t, 32> &txid) const {
         auto it = difusiones_.find(std::string((const char *)txid.data(), 32));
         return it == difusiones_.end() ? EstadoDifusion::Desconocida : it->second.estado;
@@ -191,6 +202,7 @@ private:
     int blk_driver_ = -1; bool blk_en_vuelo_ = false;
     Disputa disp_;
     std::map<std::string, Difusion> difusiones_;
+    bool pausa_difusion_ = false;
 
     static std::string clave_utxo(const H &t, uint32_t v) { return std::string((const char *)t.data(), 32) + std::string((const char *)&v, 4); }
     static void clave_filtro(const H &h, uint64_t &k0, uint64_t &k1) {
@@ -276,6 +288,7 @@ private:
     }
     void ofrecer_difusiones(uint64_t ahora_ms) {
         (void)ahora_ms;
+        if (pausa_difusion_) return;
         for (auto &kv : difusiones_) {
             Difusion &d = kv.second;
             if (d.estado != EstadoDifusion::Pendiente && d.estado != EstadoDifusion::Enviada) continue;

@@ -155,6 +155,7 @@ public:
         }
         /* Reorganización: lo que sobra de la principal pasa a ramas, la rama entra. */
         r.estado = Estado::Reorg; r.fork = fork;
+        if (reorg_min_ < 0 || (int64_t)fork < reorg_min_) reorg_min_ = fork;
         r.deshechos = altura() - fork; r.nuevos = (uint32_t)camino.size();
         while (altura() > fork) {
             Cab80 viejo = principal_.back();
@@ -193,6 +194,10 @@ public:
 
     size_t ramas() const { return ramas_.size(); }
 
+    /* Altura de la bifurcación más baja desde la última vez que se preguntó, o -1 si no
+     * hubo reorganización. Quien guarda el fichero recorta ahí antes de seguir añadiendo. */
+    int64_t tomar_reorg_min() { int64_t r = reorg_min_; reorg_min_ = -1; return r; }
+
 private:
     struct Rama { Cab80 cab; uint32_t altura; };
     static std::string clave(const Hash32 &h) { return std::string((const char *)h.data(), 32); }
@@ -228,6 +233,7 @@ private:
 
     ParamsRed p_;
     uint32_t max_reorg_, ventana_;
+    int64_t reorg_min_ = -1;
     std::vector<Cab80> principal_;
     std::unordered_map<std::string, uint32_t> indice_;
     std::map<std::string, Rama> ramas_;

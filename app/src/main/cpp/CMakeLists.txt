@@ -42,6 +42,7 @@ target_compile_options(secp256k1 PRIVATE
 )
 
 add_library(hunter_jni SHARED hunter_jni.cpp
+        ligero_jni.cpp
         mnemonic.cpp
         bip32.cpp
         recovery_engine.cpp
