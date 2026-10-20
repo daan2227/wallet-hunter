@@ -27,6 +27,7 @@ class LightClient(
     private val genesisHex: String = "",
     private val minPares: Int = 2,
     private val objetivoPares: Int = 4,
+    private val soloDifusion: Boolean = false,
     private val resolver: () -> List<Direccion> = { Seeds.resolver(dir) },
 ) {
     data class Direccion(val host: String, val port: Int = 8333) {
@@ -61,9 +62,9 @@ class LightClient(
             if (activo) return
             dir.mkdirs()
             h = LightNative.nuevo(red, genesisHex, minPares, desde, SecureRandom().nextLong(),
-                scriptsHex.joinToString(","))
+                scriptsHex.joinToString(","), soloDifusion)
             if (h == 0L) throw IllegalStateException("no se pudo crear el cliente ligero")
-            cargarCabeceras()
+            if (!soloDifusion) cargarCabeceras()
             activo = true
         }
         hilo = Thread({ bucle() }, "ligero").also { it.isDaemon = true; it.start() }

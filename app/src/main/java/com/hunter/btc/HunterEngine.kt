@@ -12,6 +12,9 @@ object HunterEngine {
 
     fun conectarBaul(ctx: android.content.Context) { appCtx = ctx.applicationContext }
 
+    /** El contexto de la app, si ya se fijó; null si aún no. */
+    fun contexto(): android.content.Context? = appCtx
+
     /**
      * La llama el motor, desde su propio hilo, en cuanto encuentra algo: la
      * clave va cifrada al baúl sin pasar por disco en claro. Antes se escribía

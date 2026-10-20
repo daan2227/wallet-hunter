@@ -3525,6 +3525,35 @@ class WalletActivity : FragmentActivity() {
         }.start()
     }
 
+    /**
+     * Los scriptPubKey (en hex) que vigila la verificación con la red: las direcciones que
+     * muestra la cartera y, en una semilla, las primeras 40 de cada tipo y rama.
+     * Hace cálculo nativo: nunca desde el hilo principal.
+     */
+    private fun scriptsDeCartera(): List<String> {
+        val direcciones = LinkedHashSet<String>()
+        direcciones.addAll(addresses.values)
+        if (wifAddr.isNotEmpty()) direcciones.add(wifAddr)
+        if (!isWifMode && mnemonic.isNotEmpty()) {
+            for (purpose in HdScanner.PURPOSES) for (change in 0..1) {
+                try {
+                    val arr = org.json.JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, change, 0, 40, false))
+                    for (i in 0 until arr.length()) {
+                        val a = arr.optJSONObject(i)?.optString("addr", "") ?: ""
+                        if (a.isNotEmpty()) direcciones.add(a)
+                    }
+                } catch (e: Exception) { }
+            }
+        }
+        val out = ArrayList<String>()
+        for (a in direcciones) {
+            val r = BtcAddress.validate(a, false)
+            if (r is BtcAddress.Result.Valid)
+                out.add(BtcAddress.scriptPubKey(r.info).joinToString("") { "%02x".format(it) })
+        }
+        return out
+    }
+
     private fun showMenu() {
         // "Save to finds vault" sólo en las carteras que puso el usuario y que
         // tienen clave: las que vienen de un hallazgo ya están en el baúl, y
@@ -3537,6 +3566,7 @@ class WalletActivity : FragmentActivity() {
             if (!isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
             if (!isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (alBaul) "Save to finds vault" else null,
+            if (!isTestnet) "Verify with the network" else null,
             "Change PIN", "Toggle Testnet", "Fiat currency", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
         AlertDialog.Builder(this).setTitle("Options")
             .setItems(opciones.toTypedArray()) { _, pos ->
@@ -3562,6 +3592,7 @@ class WalletActivity : FragmentActivity() {
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
                     "Account" -> authenticate { elegirCuenta() }
+                    "Verify with the network" -> VerificacionLigera.mostrar(this, ultimoSaldoSat) { scriptsDeCartera() }
                     "Fiat currency" -> {
                         val monedas = arrayOf("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD")
                         AlertDialog.Builder(this).setTitle("Show the value in")

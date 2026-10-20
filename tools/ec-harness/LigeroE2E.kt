@@ -39,7 +39,7 @@ fun main(args: Array<String>) {
     fun tmp(): File = File.createTempFile("ligero", "").also { it.delete(); it.mkdirs(); dirs.add(it) }
     fun direcciones(port: Int, n: Int) = (1..n).map { Direccion("127.0.0.$it", port) }
     fun cliente(s: Servidor, dir: File, minPares: Int, objetivo: Int, n: Int) =
-        LightClient(dir, 1, s.genesis, minPares, objetivo, { direcciones(s.port, n) })
+        LightClient(dir, 1, s.genesis, minPares, objetivo, resolver = { direcciones(s.port, n) })
 
     // ---- 1. nodos honestos: saldo, y las cabeceras quedan guardadas ----
     val dir1 = tmp()
@@ -104,9 +104,19 @@ fun main(args: Array<String>) {
     ok(c.difundir("zz").startsWith("ERR:"), "una transacción inválida da error")
     c.detener(); s.parar()
 
+    // ---- 6b. sólo difusión: vale un nodo que no sirve filtros ----
+    s = Servidor(exe, "--sin-filtros", "--confirma")
+    c = LightClient(tmp(), 1, s.genesis, 1, 3, soloDifusion = true, resolver = { direcciones(s.port, 4) })
+    c.iniciar(emptyList(), 0)
+    val txid2 = c.difundir(s.tx)
+    ok(txid2 == s.txid, "sólo difusión: devuelve el txid")
+    ok(esperar(30_000) { c.estadoDifusion(txid2).startsWith("propagada") }, "sólo difusión: un nodo sin filtros la recibe y se ve propagar")
+    ok(campo(c.estadoJson(), "fase") == "conectando", "sólo difusión: no sincroniza nada")
+    c.detener(); s.parar()
+
     // ---- 7. sin nodos: no inventa ----
     s = Servidor(exe)
-    c = LightClient(tmp(), 1, s.genesis, 2, 2, { emptyList() })
+    c = LightClient(tmp(), 1, s.genesis, 2, 2, resolver = { emptyList() })
     c.iniciar(listOf(S1, S2), 0)
     Thread.sleep(1500)
     ok(campo(c.estadoJson(), "fase") == "conectando" && campo(c.estadoJson(), "saldo") == "0", "sin nodos: espera conectando y no da saldo")

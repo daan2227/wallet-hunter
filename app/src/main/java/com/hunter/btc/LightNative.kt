@@ -12,7 +12,7 @@ object LightNative {
     init { System.loadLibrary(System.getProperty("hunter.ligero.lib") ?: "hunter_jni") }
 
     /** red 0 = principal. red 1 = cadena sintética de pruebas (con el génesis en hex). 0 si falla. */
-    external fun nuevo(red: Int, genesisHex: String, minPares: Int, desde: Int, nonce: Long, scriptsHex: String): Long
+    external fun nuevo(red: Int, genesisHex: String, minPares: Int, desde: Int, nonce: Long, scriptsHex: String, soloDifusion: Boolean): Long
     external fun liberar(h: Long)
     /** Cabeceras 1..n de un fichero guardado; devuelve cuántas seguidas son válidas. */
     external fun cargar(h: Long, datos: ByteArray): Int

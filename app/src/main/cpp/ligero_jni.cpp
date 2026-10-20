@@ -99,12 +99,13 @@ extern "C" {
  * con una cadena sintética de dificultad mínima y el génesis que se pasa en hex. */
 JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_LightNative_nuevo(JNIEnv *env, jobject, jint red, jstring jgenesis, jint minPares,
-                                      jint desde, jlong nonce, jstring jscripts) {
+                                      jint desde, jlong nonce, jstring jscripts, jboolean soloDifusion) {
     try {
         btc::ConfigCliente cfg;
         cfg.min_pares = minPares < 1 ? 1 : (uint32_t)minPares;
         cfg.desde = desde < 0 ? 0 : (uint32_t)desde;
         cfg.nonce = (uint64_t)nonce;
+        cfg.solo_difusion = soloDifusion != JNI_FALSE;
         std::vector<uint8_t> gen;
         btc::ParamsRed p = btc::red_principal();
         if (red == 1) {

@@ -18,6 +18,8 @@ static std::shared_ptr<Cadena_> hacer_honesta() {
     return h;
 }
 
+static ConfigCliente cfg_normal() { ConfigCliente k; k.min_pares = 1; k.nonce = 999; return k; }
+
 struct Mundo {
     std::shared_ptr<Cadena_> ch;
     Almacen alm; Cliente c; std::vector<std::unique_ptr<Nodo>> nodos; Red red;
@@ -174,6 +176,21 @@ int main() {
         w.c.pausar_difusion(false, AHORA_MS); w.red.bombear();
         ok(a->invs_recibidos == 1 && w.c.estado_difusion(id) == EstadoDifusion::Enviada, "al reanudar se ofrece y se entrega");
         ok(w.c.par_listo(1) && !w.c.par_listo(99), "par_listo distingue pares");
+    }
+
+    /* --- sólo difusión: vale un nodo sin filtros y no se sincroniza --- */
+    {
+        ConfigCliente k; k.min_pares = 1; k.nonce = 999; k.solo_difusion = true;
+        Almacen alm(PR, honesta->b[0].cab.data(), 50, 200);
+        Cliente c(k, alm, {S1});
+        Nodo a; a.ch = honesta; a.servicios = NODE_NETWORK;            /* ni filtros ni testigo */
+        Red red(c); red.conectar(1, &a); red.bombear();
+        H id = c.difundir(raw, AHORA_MS); red.bombear();
+        ok(red.cerrados.count(1) == 0 && c.estado_difusion(id) == EstadoDifusion::Enviada, "sólo difusión: un nodo sin filtros ni testigo sirve para difundir");
+        ok(c.fase() == Fase::Conectando && alm.altura() == 0 && a.pedidos == 0, "sólo difusión: no pide cabeceras ni filtros");
+        Cliente c2(cfg_normal(), alm, {S1});
+        Nodo b; b.ch = honesta; b.servicios = NODE_NETWORK; Red red2(c2); red2.conectar(1, &b); red2.bombear();
+        ok(red2.cerrados.count(1) == 1, "contraste: sin ese modo, el mismo nodo se expulsa");
     }
 
     printf(fallos ? "\n*** difusion FALLA ***\n" : "\nTODO CORRECTO\n");

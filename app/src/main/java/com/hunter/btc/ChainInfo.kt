@@ -149,8 +149,14 @@ object ChainInfo {
             ChainApi.Envio.SinRespuesta -> {}
         }
         val porElectrum = ElectrumClient.broadcast(rawHex, testnet)
-        return porElectrum
-            ?: "ERROR: no node could be reached to broadcast it. " +
+        if (porElectrum != null) return porElectrum
+        // Ni la API ni Electrum respondieron: se prueba directamente contra nodos de la
+        // red por P2P (sólo mainnet). No depende de ningún servidor concreto.
+        if (!testnet) {
+            val ctx = HunterEngine.contexto()
+            if (ctx != null) P2pBroadcast.difundir(ctx, rawHex)?.let { return it }
+        }
+        return "ERROR: no node could be reached to broadcast it. " +
                "Check your connection: the transaction is signed and you can try again."
     }
 

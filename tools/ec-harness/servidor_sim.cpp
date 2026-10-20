@@ -2,7 +2,7 @@
  * punta en el escritorio. Sirve la misma cadena sintética que las demás pruebas, con
  * filtros BIP158 reales, y cada conexión puede portarse mal.
  *
- *   servidor_sim [--mal=N:tipo ...] [--confirma]
+ *   servidor_sim [--mal=N:tipo ...] [--confirma] [--sin-filtros]
  *     tipo: merkle | silencio | omitir   (N = número de conexión que llega, desde 1)
  *     --confirma: al recibir la transacción de prueba, mina un bloque que la incluye
  *
@@ -19,7 +19,7 @@
 
 static std::mutex M;
 static std::shared_ptr<Cadena_> actual, mentirosa;
-static TxSim MIA; static H ID_MIA; static bool CONFIRMA = false, confirmada = false;
+static TxSim MIA; static H ID_MIA; static bool SIN_FILTROS = false, CONFIRMA = false, confirmada = false;
 static std::map<int, std::string> MAL;
 static std::atomic<int> contador{0};
 
@@ -35,6 +35,7 @@ static void atender(Con *c, int idx) {
     std::string mal = MAL.count(idx) ? MAL[idx] : "";
     if (mal == "merkle") c->nodo.merkle_roto = true;
     if (mal == "silencio") c->nodo.silencio = true;
+    if (SIN_FILTROS) c->nodo.servicios = NODE_NETWORK | NODE_WITNESS;
     uint8_t buf[65536];
     for (;;) {
         ssize_t n = read(c->fd, buf, sizeof buf);
@@ -67,6 +68,7 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         std::string a = argv[i];
         if (a == "--confirma") CONFIRMA = true;
+        else if (a == "--sin-filtros") SIN_FILTROS = true;
         else if (a.rfind("--mal=", 0) == 0) { auto p = a.find(':'); MAL[std::stoi(a.substr(6, p - 6))] = a.substr(p + 1); }
     }
     const Bytes S1 = script(0x11), S2 = script(0x22), X = script(0x99);

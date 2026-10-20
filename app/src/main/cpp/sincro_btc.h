@@ -47,6 +47,9 @@ struct ConfigCliente {
     uint32_t lote_filtros = 1000;
     uint64_t timeout_ms = 30000;
     uint64_t timeout_saludo_ms = 60000;
+    /* Sólo difundir transacciones: vale cualquier nodo (no hace falta que sirva filtros ni la
+     * cadena entera) y no se sincroniza nada. */
+    bool solo_difusion = false;
 };
 
 class Cliente {
@@ -258,7 +261,9 @@ private:
             if (p.v_rx) { banear(p, "version repetida"); return; }
             p.v = leer_version(m.payload); p.v_rx = true;
             if (p.v.nonce == cfg_.nonce && cfg_.nonce != 0) { banear(p, "conexión con nosotros mismos"); return; }
-            if (const char *motivo = par_inservible(p.v)) { banear(p, motivo); return; }
+            if (cfg_.solo_difusion) {
+                if (p.v.version < 70001) { banear(p, "versión de protocolo antigua"); return; }
+            } else if (const char *motivo = par_inservible(p.v)) { banear(p, motivo); return; }
             enviar(p, "verack", {});
             if (p.ack_rx) p.listo = true;
             return;
@@ -576,6 +581,7 @@ private:
 
     /* ---- bucle principal ---- */
     void avanzar(uint64_t ahora_ms) {
+        if (cfg_.solo_difusion) { ofrecer_difusiones(ahora_ms); return; }
         for (int vueltas = 0; vueltas < 20 && fase_ != Fase::Error; vueltas++) {
             Fase antes = fase_;
             switch (fase_) {
