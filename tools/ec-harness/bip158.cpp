@@ -39,6 +39,10 @@ int main() {
        "SipHash-2-4 con el vector de la especificación");
 
     std::ifstream f("datos/blockfilters.txt");
+    if (!f.is_open()) {
+        std::printf("FALLA: no se encuentra datos/blockfilters.txt (vector de Bitcoin Core)\n");
+        return 1;
+    }
     std::string linea;
     std::vector<std::vector<uint8_t>> prevs_hdr;      /* cabeceras de bloque, para encadenar */
     std::vector<uint8_t> hdr_filtro_anterior(32, 0); /* cabecera de filtro de "antes del génesis" */
@@ -106,7 +110,11 @@ int main() {
     /* Usamos el último bloque de la prueba para los casos de fallo. */
     std::ifstream g("datos/blockfilters.txt");
     std::string ult, l2;
-    while (std::getline(g, l2)) ult = l2;
+    while (std::getline(g, l2)) if (!l2.empty()) ult = l2;
+    if (ult.empty()) {
+        std::printf("FALLA: datos/blockfilters.txt está vacío\n");
+        return 1;
+    }
     {
         std::istringstream s(ult);
         std::string altura, hash_mostrar, blk_hex, n_str;
