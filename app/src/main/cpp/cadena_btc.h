@@ -69,6 +69,36 @@ struct PuntoDeControl {
     uint32_t t_inicio_periodo;       /* tiempo del bloque de altura múltiplo del intervalo */
 };
 
+/* Comprueba una cabecera frente al estado de su padre, sin modificar nada. */
+static ErrCabecera validar_hijo(const ParamsRed &p, const PuntoDeControl &pc, const uint8_t *cab80, uint32_t ahora) {
+    Cabecera c = parsear_cabecera(cab80, 80);
+    if (memcmp(c.prev, pc.hash, 32) != 0) return ErrCabecera::NoEncadena;
+    uint32_t altura = pc.altura + 1;
+    uint32_t esperados = pc.bits;
+    if (p.reajusta && altura % p.intervalo == 0)
+        esperados = siguiente_bits(p, pc.bits, pc.t_inicio_periodo, pc.tiempo);
+    if (c.bits != esperados) return ErrCabecera::BitsMalos;
+    uint8_t t[32], lim[32];
+    if (!bits_a_objetivo(c.bits, t) || !bits_a_objetivo(p.limite_bits, lim)) return ErrCabecera::BitsMalos;
+    if (memcmp(t, lim, 32) > 0) return ErrCabecera::ObjetivoAlto;
+    if (!prueba_de_trabajo(cab80)) return ErrCabecera::SinTrabajo;
+    std::vector<uint32_t> o = pc.ultimos;
+    std::sort(o.begin(), o.end());
+    if (c.tiempo <= o[o.size() / 2]) return ErrCabecera::TiempoBajo;
+    if ((uint64_t)c.tiempo > (uint64_t)ahora + 7200) return ErrCabecera::TiempoAlto;
+    return ErrCabecera::Ok;
+}
+
+/* Estado después de aceptar la cabecera (que ya pasó validar_hijo). */
+static void avanzar(const ParamsRed &p, PuntoDeControl &pc, const uint8_t *cab80) {
+    Cabecera c = parsear_cabecera(cab80, 80);
+    pc.altura++; hash_cabecera(cab80, pc.hash);
+    pc.bits = c.bits; pc.tiempo = c.tiempo;
+    pc.ultimos.push_back(c.tiempo);
+    if (pc.ultimos.size() > 11) pc.ultimos.erase(pc.ultimos.begin());
+    if (p.reajusta && pc.altura % p.intervalo == 0) pc.t_inicio_periodo = c.tiempo;
+}
+
 class Cadena {
 public:
     Cadena(const ParamsRed &p, const PuntoDeControl &pc) : p_(p), pc_(pc) {}
@@ -84,34 +114,16 @@ public:
     /* Hash que tiene que tener la cabecera de esa altura: protege contra una cadena
      * falsa aunque tenga trabajo válido. */
     void exigir_hash(uint32_t altura, const uint8_t hash[32]) {
-        std::vector<uint8_t> h(hash, hash + 32);
-        exigidos_[altura] = h;
+        exigidos_[altura] = std::vector<uint8_t>(hash, hash + 32);
     }
 
     ErrCabecera anadir(const uint8_t *cab80, uint32_t ahora) {
-        Cabecera c = parsear_cabecera(cab80, 80);
-        if (memcmp(c.prev, pc_.hash, 32) != 0) return ErrCabecera::NoEncadena;
-        uint32_t altura = pc_.altura + 1;
-        uint32_t esperados = pc_.bits;
-        if (p_.reajusta && altura % p_.intervalo == 0)
-            esperados = siguiente_bits(p_, pc_.bits, pc_.t_inicio_periodo, pc_.tiempo);
-        if (c.bits != esperados) return ErrCabecera::BitsMalos;
-        uint8_t t[32], lim[32];
-        if (!bits_a_objetivo(c.bits, t) || !bits_a_objetivo(p_.limite_bits, lim)) return ErrCabecera::BitsMalos;
-        if (memcmp(t, lim, 32) > 0) return ErrCabecera::ObjetivoAlto;
-        if (!prueba_de_trabajo(cab80)) return ErrCabecera::SinTrabajo;
-        std::vector<uint32_t> o = pc_.ultimos;
-        std::sort(o.begin(), o.end());
-        if (c.tiempo <= o[o.size() / 2]) return ErrCabecera::TiempoBajo;
-        if ((uint64_t)c.tiempo > (uint64_t)ahora + 7200) return ErrCabecera::TiempoAlto;
+        ErrCabecera e = validar_hijo(p_, pc_, cab80, ahora);
+        if (e != ErrCabecera::Ok) return e;
         uint8_t h[32]; hash_cabecera(cab80, h);
-        auto it = exigidos_.find(altura);
+        auto it = exigidos_.find(pc_.altura + 1);
         if (it != exigidos_.end() && memcmp(it->second.data(), h, 32) != 0) return ErrCabecera::Checkpoint;
-        pc_.altura = altura; memcpy(pc_.hash, h, 32);
-        pc_.bits = c.bits; pc_.tiempo = c.tiempo;
-        pc_.ultimos.push_back(c.tiempo);
-        if (pc_.ultimos.size() > 11) pc_.ultimos.erase(pc_.ultimos.begin());
-        if (p_.reajusta && altura % p_.intervalo == 0) pc_.t_inicio_periodo = c.tiempo;
+        avanzar(p_, pc_, cab80);
         return ErrCabecera::Ok;
     }
 
