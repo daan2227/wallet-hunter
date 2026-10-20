@@ -2423,7 +2423,8 @@ class WalletActivity : FragmentActivity() {
                         isWifMode -> ""
                         // Recepción (…/0/i) o cambio (…/1/i), con el coin type de la red.
                         // Un índice ilegible ya no se convierte en 0: no se firma.
-                        RutaClave.ruta(fromKey, isTestnet) != null -> RutaClave.ruta(fromKey, isTestnet)!!
+                        RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnemonic)) != null ->
+                            RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnemonic))!!
                         else -> {
                             runOnUiThread {
                                 tvStatus.text = "Unsupported address type: $fromKey"

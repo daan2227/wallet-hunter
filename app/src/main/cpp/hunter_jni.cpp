@@ -2382,9 +2382,12 @@ static std::string build_and_sign_tx(const std::string &req){
        scriptPubKey del cambio y que el input lleva el redeemScript en su
        scriptSig. Verificado contra el vector P2SH-P2WPKH de BIP143. */
     enum SpendType { SP_LEGACY, SP_P2SH_P2WPKH, SP_P2WPKH, SP_P2TR };
-    SpendType stype = (path.find("86'")!=std::string::npos) ? SP_P2TR
-                    : (path.find("84'")!=std::string::npos) ? SP_P2WPKH
-                    : (path.find("49'")!=std::string::npos) ? SP_P2SH_P2WPKH
+    /* El tipo sale del PROPÓSITO, que es el primer nivel ("m/86'/…"). Buscar la
+       subcadena "86'" también casaba con una cuenta 86' o un índice; no. */
+    auto propositoEs=[&](const char *p){ return path.rfind(p,0)==0; };
+    SpendType stype = propositoEs("m/86'/") ? SP_P2TR
+                    : propositoEs("m/84'/") ? SP_P2WPKH
+                    : propositoEs("m/49'/") ? SP_P2SH_P2WPKH
                     : SP_LEGACY;
     bool is_segwit = (stype==SP_P2SH_P2WPKH || stype==SP_P2WPKH);
     /* La clave: de la seed y la ruta, o de un WIF.
@@ -2404,6 +2407,12 @@ static std::string build_and_sign_tx(const std::string &req){
     bool red_testnet=(json_int(req,"testnet")==1);
     uint8_t seed[64]={0};
     HDKey hd; memset(&hd,0,sizeof(hd));
+    /* Al salir por cualquier camino (también los ERROR tempranos) se borran la
+       semilla, la clave y la frase/WIF. Antes sólo algunos returns lo hacían. */
+    struct LimpiaBytes { uint8_t *p; size_t n; ~LimpiaBytes(){ OPENSSL_cleanse(p,n); } };
+    struct LimpiaTexto { std::string *t; ~LimpiaTexto(){ if(!t->empty()) OPENSSL_cleanse(&(*t)[0],t->size()); } };
+    LimpiaBytes guarda_seed{seed,sizeof seed}, guarda_hd{(uint8_t*)&hd,sizeof hd};
+    LimpiaTexto guarda_wif{&wif}, guarda_mn{&mnemonic};
     if(!wif.empty()){
         if(!wif_decode(wif.c_str(),hd.key,&wif_comprimida,red_testnet)||!secp256k1_ec_seckey_verify(ctx,hd.key)){
             secp256k1_context_destroy(ctx);return "ERROR:bad_wif";
@@ -2523,9 +2532,22 @@ static std::string build_and_sign_tx(const std::string &req){
         if(sa.spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
         salidas.push_back(sa);
     }
-    int64_t send_total=0; for(auto &sa:salidas) send_total+=sa.valor;
+    /* Ningún importe puede pasar del total de bitcoin; así las sumas no desbordan. */
+    const int64_t MAX_SAT=2100000000000000LL;
+    if(fee_sat<0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+    int64_t send_total=0;
+    for(auto &sa:salidas){
+        if(sa.valor>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+        send_total+=sa.valor;
+        if(send_total>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+    }
     if(utxos.empty()||salidas.empty()||send_total<=0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
-    int64_t total_in=0; for(auto &u:utxos)total_in+=u.amount;
+    int64_t total_in=0;
+    for(auto &u:utxos){
+        if(u.amount<0||u.amount>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+        total_in+=u.amount;
+        if(total_in>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+    }
     int64_t change=total_in-send_total-fee_sat;
     /* Sin esto, si las entradas no cubren importe+comisión, has_change quedaba
        en false y se firmaba una transacción que gasta más de lo que entra: la
