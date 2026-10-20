@@ -34,7 +34,7 @@ object BalanceLookup {
 
     /** Saldo confirmado y el de la mempool (pendiente), por separado. */
     fun fromMempoolDetalle(addr: String, testnet: Boolean = false): Pair<Long, Long> {
-        val js = ChainApi.get("/address/$addr", testnet)
+        val js = jsonDeDireccion(addr, testnet)
             ?: throw java.io.IOException("no web API answered")
         // Se leía con Regex().find(), que devuelve la PRIMERA coincidencia. La
         // respuesta trae esos campos en chain_stats y en mempool_stats, así que
@@ -46,6 +46,34 @@ object BalanceLookup {
         }
         return sumOf("chain_stats") to sumOf("mempool_stats")
     }
+
+    /*
+     * Una dirección se pide UNA vez por búsqueda. Antes el escaneo la consultaba
+     * dos veces (¿usada? y ¿saldo?) al mismo servidor, y cada consulta es un dato
+     * más que ese servidor ve sobre la cartera. La memoria dura hasta olvidar().
+     */
+    private val memoDirecciones = HashMap<String, String?>()
+    private var memoActiva = false
+
+    @Synchronized
+    private fun jsonDeDireccion(addr: String, testnet: Boolean): String? {
+        if (!memoActiva) return ChainApi.get("/address/$addr", testnet)
+        val clave = (if (testnet) "t|" else "m|") + addr
+        if (memoDirecciones.containsKey(clave)) return memoDirecciones[clave]
+        val js = ChainApi.get("/address/$addr", testnet)
+        memoDirecciones[clave] = js
+        return js
+    }
+
+    /**
+     * La memoria vive sólo durante una búsqueda de direcciones. Fuera de ella cada
+     * consulta va al servidor: un saldo viejo en Enviar o en Recibir sería peor.
+     */
+    @Synchronized
+    fun iniciarMemo() { memoDirecciones.clear(); memoActiva = true }
+
+    @Synchronized
+    fun terminarMemo() { memoActiva = false; memoDirecciones.clear() }
 
     /**
      * ¿Se ha usado alguna vez esta dirección?
@@ -60,7 +88,7 @@ object BalanceLookup {
     fun isUsed(addr: String, testnet: Boolean = false): Boolean? {
         if (addr.isEmpty()) return null
         try {
-            val js = ChainApi.get("/address/$addr", testnet)
+            val js = jsonDeDireccion(addr, testnet)
             if (js != null) {
                 val o = JSONObject(js)
                 fun txs(b: String) = o.optJSONObject(b)?.optInt("tx_count", 0) ?: 0

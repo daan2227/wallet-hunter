@@ -14,7 +14,6 @@ int main(){
     struct V{ const char *a, *spk; } validos[]={
         {"BC1QW508D6QEJXTDG4Y5R3ZARVARY0C5XW7KV8F3T4","0014751e76e8199196d454941c45d1b3a323f1433bd6"},
         {"tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7","00201863143c14c5166804bd19203356da136c985678cd4d27a1b8c6329604903262"},
-        {"bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y","5128751e76e8199196d454941c45d1b3a323f1433bd6751e76e8199196d454941c45d1b3a323f1433bd6"},
         {"BC1SW50QGDZ25J","6002751e"},
         {"bc1zw508d6qejxtdg4y5r3zarvaryvaxxpcs","5210751e76e8199196d454941c45d1b3a323"},
         {"tb1qqqqqp399et2xygdj5xreqhjjvcmzhxw4aywxecjdzew6hylgvsesrxh6hy","0020000000c4a5cad46221b2a187905e5266362b99d5e91c6ce24d165dab93e86433"},
@@ -28,7 +27,10 @@ int main(){
         std::string got=hex(addr_destino_spk(v.a));
         if(got==v.spk) printf("  OK   %.24s…\n",v.a); else { printf("  MAL  %s -> %s\n",v.a,got.c_str()); fallos++; }
     }
+    /* Direcciones válidas para BIP350 (versión futura, programa de 40 bytes) pero
+       NO gastables hoy: pagarlas pierde el dinero. Se rechazan para enviar. */
     const char *invalidos[]={
+        "bc1pw508d6qejxtdg4y5r3zarvary0c5xw7kw508d6qejxtdg4y5r3zarvary0c5xw7kt5nd6y",
         "tc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vq5zuyut",
         "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqh2y7hd",
         "tb1z0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqglt7rf",
@@ -65,6 +67,12 @@ int main(){
     /* b58enc con 49 bytes de carga (53 con checksum): el caso que desbordaba. */
     { uint8_t pl[49]; for(int i=0;i<49;i++) pl[i]=(uint8_t)(0xff-i); char out[100]; b58enc(pl,49,out,sizeof out);
       size_t l=strlen(out); if(l>=70&&l<=74) printf("  OK   b58enc de 53 bytes: %zu caracteres\n",l); else { printf("  MAL  b58enc %zu\n",l); fallos++; } }
+    /* Taproot con programa de 20 bytes (bech32m, checksum bueno): no se puede gastar. */
+    if(!addr_destino_spk("bc1pqqqsyqcyq5rqwzqfpg9scrgwpugpzysntwgkaa").empty()){ printf("  MAL  p2tr de 20 bytes aceptado\n"); fallos++; }
+    else printf("  OK   p2tr de 20 bytes rechazado\n");
+    /* La red manda: una dirección de testnet no vale en mainnet y viceversa (para la firma). */
+    if(!addr_destino_spk("tb1qrp33g0q5c5txsp9arysrx4k6zdkfs4nce4xj0gdcccefvpysxf3q0sl5k7",0).empty()){ printf("  MAL  tb1 en mainnet aceptada\n"); fallos++; }
+    else printf("  OK   tb1 rechazada en mainnet\n");
     printf(fallos?"FALLOS %d\n":"TODO CORRECTO\n",fallos);
     return fallos?1:0;
 }

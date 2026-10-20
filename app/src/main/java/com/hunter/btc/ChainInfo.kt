@@ -129,8 +129,11 @@ object ChainInfo {
                 // El txid que se muestra tiene que ser el de los bytes que se
                 // firmaron, no el que devuelva el servidor sin comprobar.
                 val calculado = Psbt.txidDeRaw(rawHex)
+                // Un txid distinto no prueba que no se haya difundido: puede estar en la red y
+                // la respuesta venir mal. Se avisa de que se mire en el explorador antes de reintentar.
                 return if (calculado == null || calculado == r.txid.lowercase()) r.txid
-                       else "ERROR: the server answered with a txid that is not this transaction's."
+                       else "ERROR: the server answered with a different transaction id. Check the explorer " +
+                            "before trying again: the transaction may already have been relayed."
             }
             is ChainApi.Envio.Rechazada -> {
                 // Un servidor que ya la tiene (el envío anterior llegó pero la

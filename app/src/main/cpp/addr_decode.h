@@ -74,6 +74,8 @@ static int ad_segwit(const char *a, int red, uint8_t prog[40], int *plen){
     if(bits>=5 || ((acc<<(8-bits))&0xff)) return -1;
     if(o<2||o>40) return -1;
     if(ver==0 && o!=20 && o!=32) return -1;
+    /* Taproot (v1) es siempre la clave x de 32 bytes: otro largo no se puede gastar. */
+    if(ver==1 && o!=32) return -1;
     *plen=o; return ver;
 }
 

@@ -693,6 +693,7 @@ class WalletActivity : FragmentActivity() {
         val mnemonicSnap = mnemonic
         val wifSnap = isWifMode
         descubriendo = !wifSnap && mnemonicSnap.isNotEmpty()
+        BalanceLookup.iniciarMemo()   // una consulta por dirección durante esta búsqueda
         Thread {
             var totalSat = 0L
             // Lo que aún no está confirmado (mempool), dentro del total.
@@ -813,6 +814,7 @@ class WalletActivity : FragmentActivity() {
                 }
             }
 
+            BalanceLookup.terminarMemo()
             var price = 0.0
             // El precio es de la red principal: en testnet no tiene sentido.
             if (!isTestnet) try {
@@ -1239,8 +1241,8 @@ class WalletActivity : FragmentActivity() {
 
                 // Tamaño de la hija con la misma cuenta que usa el envío: sus entradas, la
                 // salida y la de cambio (aunque el cambio sea 0, doSend cobra con ella).
-                val vc = (inputVBytesDe(fromKey) * mias.size +
-                          CoinSelector.outputVBytes(direccion) + CoinSelector.outputVBytes(direccion) + 11).toLong()
+                // Sin salida de cambio: la hija gasta todo y manda el importe a una sola dirección.
+                val vc = (inputVBytesDe(fromKey) * mias.size + CoinSelector.outputVBytes(direccion) + 11).toLong()
                 // La tasa de la hija que hace que (padre + hija) paguen el objetivo.
                 val tasaHija = Cpfp.tasaHija(vp, fp, objetivo, vc)
                 val feeHija = tasaHija * vc
@@ -1317,6 +1319,10 @@ class WalletActivity : FragmentActivity() {
                     val pv = v.getJSONObject("prevout")
                     val padres = ChainApi.getDeTodos("/tx/${v.getString("txid")}", isTestnet).mapNotNull {
                         try { JSONObject(it) } catch (e: Exception) { null } }
+                    // Con un solo servidor no hay contraste: el importe de la entrada es
+                    // de ese servidor, y una cifra falsa se paga en comisión.
+                    if (padres.size < 2)
+                        return@Thread aviso("Two servers must answer for the previous transaction to check its amounts. Try again later.")
                     if (padres.isEmpty())
                         return@Thread aviso("No server answered for the previous transaction of an input. Not rebuilding it.")
                     val indice = v.getInt("vout")
@@ -2287,6 +2293,13 @@ class WalletActivity : FragmentActivity() {
                        fromKey: String, fromAddr: String,
                        tvStatus: TextView, btnSend: View, addrType: String = "",
                        extras: List<SalidaExtra> = emptyList(), exportarPsbt: Boolean = false) {
+            // Copia de lo que el envío necesita, tomada aquí: el hilo de abajo no lee
+            // campos que cambian al cambiar de cartera o al pulsar otro botón.
+            val utxosSel = selectedUtxos.toList()
+            val mnSnap = mnemonic
+            val wifSnap = isWifMode
+            val wifKeySnap = wifKey
+            val addrSnap = addresses.toMap()
             tvStatus.text = "Preparing the send…"; tvStatus.setTextColor(TXT_SEC); btnSend.isEnabled = false
             Thread {
                 try {
@@ -2311,7 +2324,7 @@ class WalletActivity : FragmentActivity() {
                     // Sin Coin Control sólo se gastan monedas confirmadas: una sin
                     // confirmar de un tercero puede desaparecer (RBF) y llevarse
                     // con ella este envío después de que el destinatario lo viera.
-                    val firmes = if (selectedUtxos.isNotEmpty()) lista
+                    val firmes = if (utxosSel.isNotEmpty()) lista
                                  else lista.filter { it.optBoolean("confirmed", true) }
                     if (firmes.isEmpty()) {
                         runOnUiThread {
@@ -2322,11 +2335,11 @@ class WalletActivity : FragmentActivity() {
                     }
                     val fetched = JSONArray().also { a -> firmes.forEach { a.put(it) } }
 
-                    // Coin Control rellenaba selectedUtxos y el envío lo ignoraba,
+                    // Coin Control rellenaba utxosSel y el envío lo ignoraba,
                     // gastando siempre todos los UTXOs: la función era decorativa.
                     val chosen: List<org.json.JSONObject> =
-                        if (selectedUtxos.isNotEmpty())
-                            selectedUtxos.filter { sel ->
+                        if (utxosSel.isNotEmpty())
+                            utxosSel.filter { sel ->
                                 (0 until fetched.length()).any {
                                     val f = fetched.getJSONObject(it)
                                     f.optString("txid") == sel.optString("txid") &&
@@ -2372,11 +2385,22 @@ class WalletActivity : FragmentActivity() {
 
                     // Sin Coin Control manual se gastaban TODOS los UTXOs, con lo
                     // que la comisión crecía con cada entrada innecesaria.
-                    val plan0 = if (selectedUtxos.isNotEmpty()) {
-                        val vs = inVBytes * chosen.size + outVBytes + chgVBytes + 11
-                        val f  = feeRate * vs
+                    val plan0 = if (utxosSel.isNotEmpty()) {
                         val tin = chosen.sumOf { it.getLong("value") }
-                        CoinSelector.Plan(chosen, f, (tin - amtSat - f).coerceAtLeast(0L), vs, "hand-picked")
+                        val vsCon = inVBytes * chosen.size + outVBytes + chgVBytes + 11
+                        val fCon = feeRate * vsCon
+                        val vsSin = inVBytes * chosen.size + outVBytes + 11
+                        when {
+                            // Con cambio, como antes.
+                            tin - amtSat - fCon >= 0 ->
+                                CoinSelector.Plan(chosen, fCon, tin - amtSat - fCon, vsCon, "hand-picked")
+                            // El cambio no alcanza pero sin salida de cambio sí: lo que sobra va a la
+                            // comisión (sin cambio, la comisión es todo lo que no se envía).
+                            tin - amtSat - feeRate * vsSin >= 0 ->
+                                CoinSelector.Plan(chosen, tin - amtSat, 0L, vsSin, "hand-picked")
+                            // No alcanza: la comprobación de fondos de abajo lo dice.
+                            else -> CoinSelector.Plan(chosen, fCon, 0L, vsCon, "hand-picked")
+                        }
                     } else {
                         CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes)
                     }
@@ -2397,7 +2421,7 @@ class WalletActivity : FragmentActivity() {
                     // uno malicioso podía decir 0,01 BTC por una moneda de 1 BTC y el
                     // resto se iba en comisión con una firma válida. No se firma.
                     val entradaLegacy = fromKey.startsWith("p2pkh") ||
-                        (isWifMode && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
+                        (wifSnap && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
                     if (entradaLegacy && plan.chosen.any { !ChainInfo.fuenteFiable(it) }) {
                         runOnUiThread {
                             tvStatus.text = "The coin amounts came from a fallback server and can't be checked " +
@@ -2435,11 +2459,11 @@ class WalletActivity : FragmentActivity() {
                     val pathStr = when {
                         // Un WIF no tiene ruta: el motor firma con la clave del
                         // WIF (ver "wif" en la petición).
-                        isWifMode -> ""
+                        wifSnap -> ""
                         // Recepción (…/0/i) o cambio (…/1/i), con el coin type de la red.
                         // Un índice ilegible ya no se convierte en 0: no se firma.
-                        RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnemonic)) != null ->
-                            RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnemonic))!!
+                        RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnSnap)) != null ->
+                            RutaClave.ruta(fromKey, isTestnet, Frase.cuenta(mnSnap))!!
                         else -> {
                             runOnUiThread {
                                 tvStatus.text = "Unsupported address type: $fromKey"
@@ -2463,8 +2487,8 @@ class WalletActivity : FragmentActivity() {
                         fromKey.startsWith("p2wpkh") -> 84
                         else                         -> 86
                     }
-                    val changePath = if (isWifMode) null
-                                     else HdScanner.nextChangePath(mnemonic, purpose, isTestnet)
+                    val changePath = if (wifSnap) null
+                                     else HdScanner.nextChangePath(mnSnap, purpose, isTestnet)
                     runOnUiThread {
                         tvStatus.text = if (changePath != null)
                             "Change to a new address (${changePath.substringAfterLast('/')})"
@@ -2482,11 +2506,11 @@ class WalletActivity : FragmentActivity() {
                     val tip = ChainInfo.tipHeight(isTestnet)
 
                     val req = org.json.JSONObject()
-                        .put("mnemonic", if (isWifMode) "" else mnemonic)
+                        .put("mnemonic", if (wifSnap) "" else mnSnap)
                     .put("testnet", if (isTestnet) 1 else 0)
                     .put("dust", CoinSelector.polvoDe(fromAddr))
                         .put("path",     pathStr)
-                        .apply { if (isWifMode) { put("wif", wifKey); put("wif_tipo", tipoWif(fromKey)) } }
+                        .apply { if (wifSnap) { put("wif", wifKeySnap); put("wif_tipo", tipoWif(fromKey)) } }
                         .put("utxos",    utxoArr)
                         .put("to",       toAddr)
                         .put("amount",   amtSat)
@@ -2592,7 +2616,7 @@ class WalletActivity : FragmentActivity() {
                             ?: return@Thread runOnUiThread { tvStatus.text = "Could not read the source address."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
                         val spk = BtcAddress.scriptPubKey(info)
                         val legacy = fromKey.startsWith("p2pkh") ||
-                            (isWifMode && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
+                            (wifSnap && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
                         val entradas = plan.chosen.map { u ->
                             val previa = if (!legacy) null else {
                                 val hex = ChainApi.get("/tx/${u.optString("txid")}/hex", isTestnet)?.trim()

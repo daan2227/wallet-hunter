@@ -2340,7 +2340,8 @@ static int64_t json_int(const std::string &j,const char *key){
 
 /* Destino del envío: ver addr_decode.h (estricto, con checksum). Antes
    decodificaba base58 sin checksum y bech32 sin polymod. */
-static std::string addr_to_spk(const char *addr) { return addr_destino_spk(addr); }
+/* red: 0 mainnet, 1 testnet. El destino tiene que ser de la red de la petición. */
+static std::string addr_to_spk(const char *addr, int red) { return addr_destino_spk(addr, red); }
 
 
 /* nSequence de las entradas.
@@ -2522,13 +2523,13 @@ static std::string build_and_sign_tx(const std::string &req){
             Salida sa;
             std::string dato=json_str(o,"data");
             if(!dato.empty()){ sa.spk=op_return_spk(dato); sa.valor=0; }
-            else { sa.spk=addr_to_spk(json_str(o,"to").c_str()); sa.valor=json_int(o,"amount"); }
+            else { sa.spk=addr_to_spk(json_str(o,"to").c_str(), red_testnet?1:0); sa.valor=json_int(o,"amount"); }
             if(sa.spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
             if(sa.valor<0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
             salidas.push_back(sa); p=cb+1;
         }
     } else if(!to_addr.empty()){
-        Salida sa; sa.spk=addr_to_spk(to_addr.c_str()); sa.valor=send_sat;
+        Salida sa; sa.spk=addr_to_spk(to_addr.c_str(), red_testnet?1:0); sa.valor=send_sat;
         if(sa.spk.empty()){secp256k1_context_destroy(ctx);return "ERROR:bad_to_address";}
         salidas.push_back(sa);
     }
