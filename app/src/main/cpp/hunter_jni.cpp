@@ -1499,6 +1499,39 @@ Java_com_hunter_btc_HunterEngine_exportarXpub(JNIEnv *env, jobject, jstring jmn,
     return env->NewStringUTF(out.c_str());
 }
 
+/* Para una PSBT: la clave pública de una ruta de la frase y la huella del maestro
+ * (los 4 primeros bytes del hash160 de la clave maestra), como "pub33hex|fp8hex".
+ * Así un firmador externo reconoce sus entradas por la derivación BIP32. Vacío si
+ * la ruta no vale. La frase no sale del motor. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_infoDeRuta(JNIEnv *env, jobject, jstring jmn, jstring jpath, jboolean jtestnet) {
+    (void)jtestnet;   /* la red no cambia la clave: sólo la ruta, que ya lleva el coin type */
+    const char *m = env->GetStringUTFChars(jmn, nullptr);
+    const char *p = env->GetStringUTFChars(jpath, nullptr);
+    std::string out;
+    if (m && p) {
+        uint8_t seed[64] = {0};
+        semilla_de_frase(m, strlen(m), seed);
+        secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+        HDKey master; derive_master(seed, &master);
+        uint8_t pubm[33]; get_pub33(ctx, master.key, pubm);
+        uint8_t h160[20]; wif_hash160(pubm, 33, h160);
+        HDKey hd; memset(&hd, 0, sizeof hd);
+        if (derive_path(ctx, seed, p, &hd)) {
+            uint8_t pub[33]; get_pub33(ctx, hd.key, pub);
+            auto hx=[](const uint8_t *b, int n){ std::string r; char t[3]; for(int i=0;i<n;i++){ snprintf(t,3,"%02x",b[i]); r+=t; } return r; };
+            out = hx(pub, 33) + "|" + hx(h160, 4);
+        }
+        OPENSSL_cleanse(seed, sizeof seed);
+        OPENSSL_cleanse(&master, sizeof master);
+        OPENSSL_cleanse(&hd, sizeof hd);
+        secp256k1_context_destroy(ctx);
+    }
+    if (m) env->ReleaseStringUTFChars(jmn, m);
+    if (p) env->ReleaseStringUTFChars(jpath, p);
+    return env->NewStringUTF(out.c_str());
+}
+
 /* De una clave privada en hexadecimal, su WIF y su direccion.
  *
  * Kangaroo devuelve la clave y nada mas, y asi es como se guardaba en el baul:

@@ -27,7 +27,9 @@ object PinAuthHelper {
      * momentos que de verdad lo son —pantalla apagada, app en segundo plano,
      * proceso nuevo—, que es donde el PIN protege algo.
      */
-    fun isSessionValid(): Boolean = lastAuthTime > 0L
+    // Sesión abierta = PIN verificado Y la clave de las semillas en memoria. Con una
+    // sola de las dos, una pantalla creía que estaba desbloqueada y luego fallaba al guardar.
+    fun isSessionValid(): Boolean = lastAuthTime > 0L && WalletManager.claveSemillaLista()
 
     fun markAuthenticated() {
         lastAuthTime = System.currentTimeMillis()

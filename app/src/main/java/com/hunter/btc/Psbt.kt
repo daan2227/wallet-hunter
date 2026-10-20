@@ -174,7 +174,23 @@ object Psbt {
      * Una entrada para crear una PSBT: su importe y su script (witness_utxo), o
      * la transacción anterior entera si la entrada es legacy.
      */
-    class EntradaPsbt(val importe: Long, val spk: ByteArray, val txAnterior: ByteArray?)
+    class EntradaPsbt(val importe: Long, val spk: ByteArray, val txAnterior: ByteArray?,
+                      val derivacion: Derivacion? = null)
+
+    /**
+     * Lo que un firmador externo necesita para reconocer la entrada como suya:
+     * la clave pública y la ruta BIP32 (con la huella del maestro), el script de
+     * rescate si es P2SH-P2WPKH, o la clave interna si es P2TR.
+     */
+    class Derivacion(val pub33: ByteArray, val huella: ByteArray, val ruta: List<Long>,
+                     val rescate: ByteArray? = null, val tapInterna: ByteArray? = null)
+
+    /** "m/86'/0'/0'/0/3" → [0x80000056, 0x80000000, 0x80000000, 0, 3] (endurecidos con el bit alto). */
+    fun rutaAIndices(ruta: String): List<Long> = ruta.removePrefix("m/").split('/').map { c ->
+        val duro = c.endsWith("'") || c.endsWith("h")
+        val n = c.trimEnd('\'', 'h').toLong()
+        if (duro) n + 0x80000000L else n
+    }
 
     /**
      * PSBT (BIP174) sin firmar de la transacción [txHex] (sin scriptSig ni
@@ -191,6 +207,17 @@ object Psbt {
             val recs = mutableListOf<Rec>()
             if (e.txAnterior != null) recs.add(Rec(byteArrayOf(0x00), e.txAnterior))
             else recs.add(Rec(byteArrayOf(0x01), le(e.importe, 8) + varint(e.spk.size.toLong()) + e.spk))
+            e.derivacion?.let { d ->
+                val indices = d.ruta.fold(ByteArray(0)) { acc, i -> acc + le(i, 4) }
+                if (d.rescate != null) recs.add(Rec(byteArrayOf(0x04), d.rescate))           // PSBT_IN_REDEEM_SCRIPT
+                if (d.tapInterna != null) {                                                  // Taproot
+                    recs.add(Rec(byteArrayOf(0x17), d.tapInterna))                           // PSBT_IN_TAP_INTERNAL_KEY
+                    recs.add(Rec(byteArrayOf(0x16) + d.tapInterna,                           // PSBT_IN_TAP_BIP32_DERIVATION
+                        byteArrayOf(0) + d.huella + indices))                                // 0 hojas de tapscript
+                } else {
+                    recs.add(Rec(byteArrayOf(0x06) + d.pub33, d.huella + indices))           // PSBT_IN_BIP32_DERIVATION
+                }
+            }
             recs
         }
         val outputs = tx.outs.map { mutableListOf<Rec>() }

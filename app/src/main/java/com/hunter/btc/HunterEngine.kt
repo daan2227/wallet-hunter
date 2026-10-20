@@ -63,6 +63,8 @@ object HunterEngine {
     external fun importarClave(entrada: String, testnet: Boolean, hexComprimida: Boolean): String
     /** xpub/ypub/zpub (o tpub/upub/vpub) de la cuenta 0 de la frase, para [purpose] 44, 49, 84 o 86. */
     external fun exportarXpub(mnemonic: String, purpose: Int, testnet: Boolean): String
+    /** "pub33hex|huella8hex" de una ruta de la frase, para la derivación BIP32 de una PSBT. */
+    external fun infoDeRuta(mnemonic: String, path: String, testnet: Boolean): String
     /** Todas las direcciones de un WIF, una por línea: "TIPO direccion". */
     external fun wifDirecciones(wif: String, testnet: Boolean): String
     /**

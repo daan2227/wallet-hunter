@@ -1295,6 +1295,11 @@ class WalletActivity : FragmentActivity() {
         }
         if (isWifMode && wifKey.isEmpty()) { aviso("This is a watch-only wallet: it has no key to sign with."); return }
         Toast.makeText(this, "Preparing…", Toast.LENGTH_SHORT).show()
+        // Copia del estado, tomada aquí: el hilo de abajo no lee lo que cambia al cambiar de cartera.
+        val mnSnap = mnemonic
+        val wifSnap = isWifMode
+        val wifKeySnap = wifKey
+        val addrSnap = addresses.toMap()
         Thread {
             try {
                 val tx = m.tx
@@ -1338,8 +1343,8 @@ class WalletActivity : FragmentActivity() {
                 }
                 // La dirección de origen es una de la lista o un cambio ya gastado
                 // (que no sale en la lista, pero sí está en el mapa de cambio).
-                val claveOrigen = addresses.entries.firstOrNull { it.value == origen }?.key
-                val ruta = if (isWifMode) "" else when {
+                val claveOrigen = addrSnap.entries.firstOrNull { it.value == origen }?.key
+                val ruta = if (wifSnap) "" else when {
                     claveOrigen != null -> rutaDeClave(claveOrigen) ?: return@Thread aviso("Unsupported address type.")
                     cambio[origen] != null -> cambio[origen]!!
                     else -> return@Thread aviso("It was not sent from this wallet.")
@@ -1396,7 +1401,7 @@ class WalletActivity : FragmentActivity() {
                 val cambioNuevo = totalIn - importe - feeNuevo
                 if (cambioNuevo < 0) return@Thread aviso("The change is not enough to pay a higher fee.")
                 val rutaCambio = when {
-                    isWifMode || cambioAddr == origen -> null      // vuelve a la de origen
+                    wifSnap || cambioAddr == origen -> null      // vuelve a la de origen
                     else -> cambio[cambioAddr]
                         ?: return@Thread aviso("The change address is not one this wallet can derive.")
                 }
@@ -1429,9 +1434,9 @@ class WalletActivity : FragmentActivity() {
                 if (!seguir.take()) return@Thread
 
                 // Tipo de la clave de origen, para firmar con esa dirección si es una WIF.
-                val tipoOrigen = tipoWif(addresses.entries.firstOrNull { it.value == origen }?.key ?: "wif_0")
+                val tipoOrigen = tipoWif(addrSnap.entries.firstOrNull { it.value == origen }?.key ?: "wif_0")
                 val req = JSONObject()
-                    .put("mnemonic", if (isWifMode) "" else mnemonic)
+                    .put("mnemonic", if (wifSnap) "" else mnSnap)
                     .put("testnet", if (isTestnet) 1 else 0)
                     .put("dust", CoinSelector.polvoDe(origen))
                     .put("path", ruta)
@@ -1440,7 +1445,7 @@ class WalletActivity : FragmentActivity() {
                     .put("amount", importe)
                     .put("fee", feeNuevo)
                     .apply {
-                        if (isWifMode) { put("wif", wifKey); put("wif_tipo", tipoOrigen) }
+                        if (wifSnap) { put("wif", wifKeySnap); put("wif_tipo", tipoOrigen) }
                         if (rutaCambio != null) put("change_path", rutaCambio)
                         ChainInfo.tipHeight(isTestnet)?.let { put("locktime", it) }
                     }.toString()
@@ -2617,13 +2622,28 @@ class WalletActivity : FragmentActivity() {
                         val spk = BtcAddress.scriptPubKey(info)
                         val legacy = fromKey.startsWith("p2pkh") ||
                             (wifSnap && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
+                        // Derivación de la dirección de origen: sólo si hay semilla (una WIF no tiene
+                        // huella del maestro). Sin ella el firmador externo no reconoce la entrada.
+                        val rutaOrigen = if (isWifMode) null else rutaDeClave(fromKey)
+                        val derivacion: Psbt.Derivacion? = rutaOrigen?.let { ruta ->
+                            HunterEngine.infoDeRuta(mnemonic, ruta, isTestnet).split('|').takeIf { it.size == 2 }?.let { p ->
+                                fun hexBytes(h: String) = ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+                                val pub = hexBytes(p[0])
+                                Psbt.Derivacion(
+                                    pub33 = pub,
+                                    huella = hexBytes(p[1]),
+                                    ruta = Psbt.rutaAIndices(ruta),
+                                    rescate = if (fromKey.startsWith("p2sh")) byteArrayOf(0x00, 0x14) + Ripemd160.hash160(pub) else null,
+                                    tapInterna = if (fromKey.startsWith("p2tr")) pub.copyOfRange(1, 33) else null)
+                            }
+                        }
                         val entradas = plan.chosen.map { u ->
                             val previa = if (!legacy) null else {
                                 val hex = ChainApi.get("/tx/${u.optString("txid")}/hex", isTestnet)?.trim()
                                     ?: return@Thread runOnUiThread { tvStatus.text = "Could not fetch a previous transaction for the PSBT."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
                                 ByteArray(hex.length / 2) { hex.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
                             }
-                            Psbt.EntradaPsbt(u.optLong("value", 0L), spk, previa)
+                            Psbt.EntradaPsbt(u.optLong("value", 0L), spk, previa, derivacion)
                         }
                         val psbt = Psbt.crear(sinFirmar, entradas)
                         runOnUiThread {

@@ -79,4 +79,34 @@ class PsbtTest {
         assertArrayEquals(legacy, doc.inputs[1][0].value)
         assertArrayEquals(bin, Psbt.serialize(doc))
     }
+
+    @Test fun derivacionBIP32YRescateEnLasEntradas() {
+        val pub = h("02" + "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798")
+        val huella = h("01020304")
+        val ruta = Psbt.rutaAIndices("m/84'/0'/0'/0/3")
+        assertEquals(listOf(0x80000054L, 0x80000000L, 0x80000000L, 0L, 3L), ruta)
+        val legHex = legacy.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+        val spk = h("0014751e76e8199196d454941c45d1b3a323f1433bd6")
+        val bin = Psbt.crear(legHex, listOf(
+            Psbt.EntradaPsbt(1L, spk, null, Psbt.Derivacion(pub, huella, ruta)),
+            Psbt.EntradaPsbt(2L, spk, null, Psbt.Derivacion(pub, huella, ruta,
+                rescate = h("0014" + "11".repeat(20)))),
+            ))
+        val doc = Psbt.parse(bin)!!
+        // Entrada 0: clave 0x06 + pubkey, valor = huella + 5 índices de 4 bytes.
+        val bip32 = doc.inputs[0].first { it.key[0].toInt() == 0x06 }
+        assertArrayEquals(pub, bip32.key.copyOfRange(1, bip32.key.size))
+        assertEquals(4 + 5 * 4, bip32.value.size)
+        assertArrayEquals(huella, bip32.value.copyOfRange(0, 4))
+        // Entrada 1: script de rescate (0x04).
+        assertTrue(doc.inputs[1].any { it.key[0].toInt() == 0x04 })
+        // Taproot: clave interna (0x17) y derivación taproot (0x16) con 0 hojas.
+        val tapBin = Psbt.crear(legHex, listOf(
+            Psbt.EntradaPsbt(1L, h("5120" + "22".repeat(32)), null, Psbt.Derivacion(pub, huella, ruta, tapInterna = pub.copyOfRange(1, 33))),
+            Psbt.EntradaPsbt(2L, h("5120" + "22".repeat(32)), null, Psbt.Derivacion(pub, huella, ruta, tapInterna = pub.copyOfRange(1, 33)))))
+        val tdoc = Psbt.parse(tapBin)!!
+        assertTrue(tdoc.inputs[0].any { it.key[0].toInt() == 0x17 })
+        val tap = tdoc.inputs[0].first { it.key[0].toInt() == 0x16 }
+        assertEquals(0, tap.value[0].toInt())
+    }
 }
