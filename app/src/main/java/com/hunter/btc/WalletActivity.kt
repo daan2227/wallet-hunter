@@ -836,7 +836,7 @@ class WalletActivity : FragmentActivity() {
             runOnUiThread {
                 if (gen != generacion) return@runOnUiThread
                 val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
-                val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%.2f".format(tot / 1e8 * pr)} ${fiatCode()}" else "BTC"
+                val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%,.2f".format(tot / 1e8 * pr)} ${fiatCode()}" else "BTC"
                 monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
@@ -1750,7 +1750,7 @@ class WalletActivity : FragmentActivity() {
         var precioFiat = 0.0
         fun enFiat(sat: Long): String {
             val v = sat / 1e8 * precioFiat
-            return (if (v > 0 && v < 0.01) "<0.01" else "%.2f".format(v)) + " " + fiatCode()
+            return (if (v > 0 && v < 0.01) "<0.01" else "%,.2f".format(v)) + " " + fiatCode()
         }
         val tvFiatEnvio = TextView(this).apply {
             text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
@@ -1792,7 +1792,7 @@ class WalletActivity : FragmentActivity() {
             val enviarSat = Math.round(amt * 1e8) + extras
             tvFiatEnvio.text = if (precioFiat > 0 && enviarSat > 0)
                 Privacidad.monto(this, "Sending ≈ ${enFiat(enviarSat)}" +
-                    (if (fee > 0) "  ·  fee ≈ ${enFiat(fee)}  ·  total ≈ ${enFiat(enviarSat + fee)}" else ""))
+                    (if (fee > 0) "\nFee ≈ ${enFiat(fee)}\nTotal ≈ ${enFiat(enviarSat + fee)}" else ""))
                 else ""
             tvTotal.text = if (amt <= 0) "—"
                            else "%.8f".format(amt + extras / 1e8 + (if (fee > 0) fee / 1e8 else 0.0))
