@@ -32,6 +32,9 @@ object MatchVault {
     private const val PREFS     = "match_vault"
     private const val PREF_ENC  = "vault_enc"
     private const val PREF_IV   = "vault_iv"
+    /** Copias que no se pudieron descifrar (la clave del Keystore ya no es la misma). Se apartan, no se borran. */
+    private const val PREF_ENC_PERDIDO = "vault_enc_perdido"
+    private const val PREF_IV_PERDIDO  = "vault_iv_perdido"
     private const val MAX_ENTRIES = 2000
 
     private fun tieneClave(e: Entry) = e.privHex.isNotEmpty() || e.wif.isNotEmpty() || e.extra.contains("SEED:")
@@ -95,30 +98,50 @@ object MatchVault {
      * eso encima, así que un fallo pasajero del Keystore al abrir el baúl lo
      * dejaba con una sola entrada y el resto perdido.
      */
-    private fun leer(ctx: Context): List<Entry>? {
+    private fun leer(ctx: Context): List<Entry>? = synchronized(this) {
+        // Bajo el mismo cerrojo que las escrituras: el texto cifrado y su IV se leen siempre del
+        // mismo guardado. Si no, una lectura que cayera entre dos escrituras vería un IV que no es
+        // el suyo y parecería un baúl estropeado.
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val encB64 = prefs.getString(PREF_ENC, null) ?: return emptyList()
         val ivB64  = prefs.getString(PREF_IV, null) ?: return emptyList()
-        return try {
+        try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, key(),
                 GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
             val json = String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8)
             fromJson(JSONArray(json))
+        } catch (e: javax.crypto.AEADBadTagException) {
+            // La etiqueta no cuadra con esta clave: no es un fallo pasajero. O el Keystore ya no
+            // tiene la clave con que se cifró (copia restaurada en otro móvil, Keystore reiniciado)
+            // y key() ha creado otra, o el contenido está dañado. Dejar el baúl así impedía guardar
+            // nada más PARA SIEMPRE: cada hallazgo nuevo se quedaba en memoria. Se aparta la copia
+            // ilegible (sin borrarla) y se sigue con un baúl nuevo.
+            android.util.Log.e("MatchVault", "the vault cannot be decrypted with the current key: set aside")
+            prefs.edit()
+                .putString("${PREF_ENC_PERDIDO}_${System.currentTimeMillis()}", encB64)
+                .putString("${PREF_IV_PERDIDO}_${System.currentTimeMillis()}", ivB64)
+                .remove(PREF_ENC).remove(PREF_IV).commit()
+            emptyList()
         } catch (e: Exception) {
             android.util.Log.e("MatchVault", "could not open the vault: ${e.javaClass.simpleName}")
             null
         }
     }
 
+    /** ¿Hay una copia del baúl que no se pudo descifrar y quedó apartada? */
+    fun hayCopiaIlegible(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).all.keys.any { it.startsWith(PREF_ENC_PERDIDO) }
+
     /**
      * @param seguro escribe a disco antes de volver (commit) en vez de en
      *   segundo plano (apply). Para un hallazgo recién encontrado: si el
      *   proceso muere justo después, con apply() se habría perdido.
      */
-    private fun write(ctx: Context, entries: List<Entry>, seguro: Boolean = false) {
+    private fun write(ctx: Context, entries: List<Entry>, seguro: Boolean = true) {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        if (entries.isEmpty()) { prefs.edit().clear().apply(); return }
+        // Un baúl vacío quita sólo su contenido: borrar todo se llevaría también las copias apartadas.
+        if (entries.isEmpty()) { prefs.edit().remove(PREF_ENC).remove(PREF_IV).commit(); return }
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val enc = cipher.doFinal(toJson(entries).toString().toByteArray(Charsets.UTF_8))
@@ -135,7 +158,7 @@ object MatchVault {
      *   abrir: escribir encima lo borraría.
      */
     @Synchronized
-    fun add(ctx: Context, entries: List<Entry>, seguro: Boolean = false): Int {
+    fun add(ctx: Context, entries: List<Entry>, seguro: Boolean = true): Int {
         if (entries.isEmpty()) return 0
         val current = leer(ctx) ?: throw IllegalStateException("vault locked")
         val known = current.mapTo(HashSet()) { it.addr }
@@ -204,13 +227,6 @@ object MatchVault {
         if (quedan.size == actual.size) return false
         write(ctx, quedan, seguro = true)
         return true
-    }
-
-    fun clear(ctx: Context) {
-        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
-        try {
-            KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }.deleteEntry(KEY_ALIAS)
-        } catch (e: Exception) {}
     }
 
     fun count(ctx: Context): Int = list(ctx).size
@@ -431,7 +447,13 @@ object MatchVault {
      * (los de Kangaroo antiguos sólo guardaban la clave).
      */
     private fun wifDe(e: Entry): Pair<String, String>? {
-        if (e.wif.isNotEmpty()) return e.wif to e.addr
+        if (e.wif.isNotEmpty()) {
+            if (e.addr.isNotEmpty()) return e.wif to e.addr
+            // Una WIF sin dirección (derivación fallida al guardar): se saca de la propia WIF, para no
+            // dejar en la cartera una clave con la dirección en blanco.
+            val a = try { HunterEngine.wifToAddr(e.wif) } catch (t: Throwable) { "" }
+            return e.wif to (if (a.isEmpty() || a.startsWith("ERROR")) "" else a)
+        }
         if (e.privHex.length != 64) return null
         val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) { "" }
         if (!d.contains("|")) return null
@@ -550,8 +572,21 @@ object MatchVault {
     }
 
     /** Añade a la cartera todos los hallazgos que tengan clave. @return cuántos. */
-    fun todosACartera(ctx: Context): Int =
-        list(ctx).count { try { aCartera(ctx, it) } catch (t: Throwable) { false } }
+    fun todosACartera(ctx: Context): Int = todosACarteraResumen(ctx).first
+
+    /** (los que quedan en la cartera, los que no se pudieron añadir). */
+    fun todosACarteraResumen(ctx: Context): Pair<Int, Int> {
+        var ok = 0; var mal = 0
+        for (e in list(ctx)) {
+            if (e.wif.isEmpty() && e.privHex.length != 64 && seedDe(e).isEmpty()) continue   // sin clave: nada que añadir
+            if (try { aCartera(ctx, e) } catch (t: Throwable) { false }) ok++ else mal++
+        }
+        return ok to mal
+    }
+
+    /** ¿Añadir esta entrada exige la sesión del PIN (porque es una seed) y no está abierta? */
+    fun faltaSesion(e: Entry): Boolean =
+        e.wif.isEmpty() && seedDe(e).isNotEmpty() && !WalletManager.claveSemillaLista()
 
     /**
      * Recoge lo que no haya llegado al baúl todavía.

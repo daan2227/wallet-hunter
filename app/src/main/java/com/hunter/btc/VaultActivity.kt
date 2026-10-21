@@ -138,15 +138,23 @@ class VaultActivity : AppCompatActivity() {
     /** Lee el baúl fuera del hilo principal —descifrar es I/O y Keystore— y pinta. */
     private fun mostrar() {
         Thread {
-            val entradas = try {
+            // Se completan antes de listar las claves que sólo traían la hex (Kangaroo antiguo): sin
+            // su WIF no se sabe si ya están en la cartera y salen siempre como "por añadir".
+            val entradas: List<MatchVault.Entry>? = try {
                 MatchVault.recoger(this)
-                MatchVault.list(this)
-            } catch (e: Exception) { emptyList() }
+                MatchVault.completarClaves(this)
+                MatchVault.listaONull(this)
+            } catch (e: Exception) { null }
             val wifs = try {
                 WalletManager.listWifs(this).mapTo(HashSet()) { it.second }
             } catch (e: Exception) { HashSet<String>() }
             val seeds = try { WalletManager.todasLasSeeds(this) } catch (e: Exception) { emptySet<String>() }
-            runOnUiThread { if (!bloqueado && !isFinishing) pintar(entradas, wifs, seeds) }
+            runOnUiThread {
+                if (bloqueado || isFinishing) return@runOnUiThread
+                // null = hay baúl y no se pudo abrir. Antes se enseñaba como "No finds yet": quien lo
+                // veía vacío creía que no había nada, cuando lo que pasa es que no se podía leer.
+                if (entradas == null) pintarError() else pintar(entradas, wifs, seeds)
+            }
         }.start()
     }
 
@@ -163,10 +171,50 @@ class VaultActivity : AppCompatActivity() {
         else       -> s.replaceFirstChar { it.uppercase() }
     }
 
+    /** El baúl existe pero no se ha podido abrir: se dice, y no se toca nada. */
+    private fun pintarError() {
+        contenido.removeAllViews()
+        contenido.addView(cabecera("Encrypted on this phone"))
+        contenido.addView(Ui.card(this, topGap = 18).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            addView(Ui.icon(this@VaultActivity, R.drawable.ic_warning, 32, AppTheme.WARN))
+            addView(texto("The vault could not be opened", AppTheme.SP_TITLE, AppTheme.TXT_PRI,
+                          AppTheme.title(this@VaultActivity)).apply {
+                gravity = Gravity.CENTER; setPadding(0, dp(12), 0, dp(6))
+            })
+            addView(texto("Your finds have NOT been deleted. The phone's key store did not answer; " +
+                          "this is usually temporary. Try again in a moment, or restart the phone.",
+                          AppTheme.SP_BODY, AppTheme.TXT_SEC).apply {
+                gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f)
+            })
+            addView(Ui.ghost(this@VaultActivity, "Try again").apply {
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(16) }
+                setOnClickListener { mostrar() }
+            })
+        })
+    }
+
+    /** Avisos de seguridad que van encima de la lista. */
+    private fun avisos() {
+        if (MatchVault.hayCopiaIlegible(this)) contenido.addView(Ui.card(this, topGap = 12).apply {
+            addView(texto("An older copy could not be decrypted", AppTheme.SP_BODY, AppTheme.WARN, AppTheme.bold(this@VaultActivity)))
+            addView(texto("The phone's key that protected it is no longer the same (for example after a restore). " +
+                          "The old copy is kept aside, not deleted. Restore your finds from a backup file.",
+                          AppTheme.SP_CAPTION, AppTheme.TXT_SEC).apply { setPadding(0, dp(4), 0, 0); setLineSpacing(0f, 1.25f) })
+        })
+        if (!WalletManager.hasPin(this)) contenido.addView(Ui.card(this, topGap = 12).apply {
+            addView(texto("No PIN is set", AppTheme.SP_BODY, AppTheme.WARN, AppTheme.bold(this@VaultActivity)))
+            addView(texto("Anyone who opens the app can read the keys in this vault. Set a PIN from the wallet menu.",
+                          AppTheme.SP_CAPTION, AppTheme.TXT_SEC).apply { setPadding(0, dp(4), 0, 0); setLineSpacing(0f, 1.25f) })
+        })
+    }
+
     private fun pintar(entradas: List<MatchVault.Entry>, wifs: Set<String>, seeds: Set<String>) {
         contenido.removeAllViews()
         contenido.addView(cabecera(
             "Encrypted on this phone · ${entradas.size} find" + if (entradas.size == 1) "" else "s"))
+        avisos()
 
         if (entradas.isEmpty()) {
             contenido.addView(Ui.card(this, topGap = 18).apply {
@@ -222,6 +270,10 @@ class VaultActivity : AppCompatActivity() {
         }
         botones.addView(bSaldo); botones.addView(bCopia)
         resumen.addView(botones)
+        resumen.addView(texto("Checking balances asks public servers about each address, which tells them " +
+                              "this phone holds those keys.", AppTheme.SP_MICRO, AppTheme.TXT_MUTED).apply {
+            setPadding(0, dp(8), 0, 0)
+        })
         resumen.addView(Ui.divider(this, 16))
         resumen.addView(interruptorCartera(entradas, wifs, seeds))
         contenido.addView(resumen)
@@ -292,12 +344,16 @@ class VaultActivity : AppCompatActivity() {
 
     private fun anadirTodos() {
         Thread {
-            val n = try { MatchVault.todosACartera(this) } catch (e: Exception) { 0 }
+            val (ok, mal) = try { MatchVault.todosACarteraResumen(this) } catch (e: Exception) { 0 to 0 }
             runOnUiThread {
                 if (bloqueado || isFinishing) return@runOnUiThread
-                Toast.makeText(this,
-                    if (n > 0) "$n find(s) are now in the wallet" else "Could not add them to the wallet",
-                    Toast.LENGTH_SHORT).show()
+                val mensaje = when {
+                    ok == 0 && mal == 0 -> "Nothing to add: no find has a key"
+                    mal == 0 -> "$ok find(s) are now in the wallet"
+                    ok == 0 -> "Could not add them to the wallet"
+                    else -> "$ok added, $mal could not be added"
+                }
+                Toast.makeText(this, mensaje, Toast.LENGTH_LONG).show()
                 mostrar()
             }
         }.start()
@@ -445,7 +501,10 @@ class VaultActivity : AppCompatActivity() {
                             mostrar()
                         } else {
                             bCartera.isEnabled = true
-                            Toast.makeText(this, "Could not add it to the wallet", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(this,
+                                if (MatchVault.faltaSesion(e)) "A seed can only be added with your PIN session: lock the app, unlock it with the PIN and try again"
+                                else "Could not add it to the wallet",
+                                Toast.LENGTH_LONG).show()
                         }
                     }
                 }.start()
