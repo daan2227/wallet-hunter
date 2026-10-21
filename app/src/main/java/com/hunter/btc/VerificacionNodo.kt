@@ -85,8 +85,13 @@ object VerificacionNodo {
                     else -> "\n\nThe wallet shows %s BTC. The difference can be unconfirmed coins, or coins on addresses the wallet does not list."
                         .format("%.8f".format(saldoApiSat / 1e8))
                 }
+                // Las monedas, de la más reciente a la más antigua: lo más parecido a un historial que da un nodo
+                // podado (sin índice de transacciones). Muestra lo que recibió la cartera y sigue sin gastar.
+                val lista = e.monedas.sortedByDescending { it.altura }.take(12).joinToString("\n") {
+                    "%.8f BTC · block %,d · %s…:%d".format(it.sat / 1e8, it.altura, it.txid.take(10), it.vout)
+                } + (if (e.monedas.size > 12) "\n… and ${e.monedas.size - 12} more" else "")
                 terminar("Your node says", ("%.8f BTC in %d coin(s)\nUTXO set at block %,d%s")
-                    .format(e.sat / 1e8, e.monedas.size, e.altura, cmp))
+                    .format(e.sat / 1e8, e.monedas.size, e.altura, cmp) + (if (e.monedas.isNotEmpty()) "\n\nCoins:\n$lista" else ""))
             } catch (t: Throwable) {
                 terminar("Could not check", t.javaClass.simpleName)
             }
