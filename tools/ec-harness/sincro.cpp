@@ -189,6 +189,59 @@ int main() {
         ok(c.fase() == Fase::Listo && c.saldo() == SALDO, "reescaneo con S2 añadida: saldo completo");
     }
 
+    /* --- como un Bitcoin Core de verdad: mensajes de negociación antes del verack --- */
+    {
+        Almacen alm(PR, honesta->b[0].cab.data(), 50, 200);
+        Cliente c(cfg(1), alm, vigilados);
+        Nodo a; a.ch = honesta; a.saludo_core = true;
+        Red red(c); red.conectar(1, &a); red.bombear();
+        ok(c.fase() == Fase::Listo && c.saldo() == SALDO && red.cerrados.empty(), "saludo de Core (wtxidrelay y sendaddrv2 antes del verack): no se expulsa");
+    }
+
+    /* --- una moneda creada y gastada en el mismo bloque no resucita al reorganizar --- */
+    {
+        auto cad = std::make_shared<Cadena_>();
+        TxSim a; a.ins = {{H{}, 0}}; a.outs = {{50000, S1}};
+        for (int h = 0; h <= 8; h++) {
+            std::vector<TxSim> txs;
+            if (h == 5) {
+                a.ins = {{cad->txid(1, 0), 0}};
+                H ida; ser_tx(a, false, 0, false, &ida);
+                TxSim b; b.ins = {{ida, 0}}; b.outs = {{49000, X}};
+                txs = {a, b};
+            }
+            cad->agregar(txs);
+        }
+        Almacen alm(PR, cad->b[0].cab.data(), 50, 200);
+        Cliente c(cfg(1), alm, {S1});
+        Nodo n; n.ch = cad; Red red(c); red.conectar(1, &n); red.bombear();
+        ok(c.fase() == Fase::Listo && c.saldo() == 0, "creada y gastada en el mismo bloque: saldo 0");
+        auto otra = std::make_shared<Cadena_>(cad->hasta(4)); otra->sal = 31;
+        for (int h = 5; h <= 12; h++) otra->agregar({});
+        n.ch = otra; c.actualizar(AHORA_MS); red.bombear();
+        ok(alm.altura() == 12 && c.fase() == Fase::Listo && c.saldo() == 0, "tras reorganizar sin ese bloque sigue en 0 (antes salían 50000 fantasma)");
+    }
+
+    /* --- el nodo de filtros se cae a mitad de un lote: lo termina otro, sin duplicados ni error --- */
+    {
+        Almacen alm(PR, honesta->b[0].cab.data(), 50, 200);
+        Cliente c(cfg(1), alm, vigilados);
+        Nodo cae, otro; cae.ch = otro.ch = honesta; otro.nonce = 222; cae.max_cfilters = 9;   /* sirve 9 de 30 */
+        Red red(c); red.conectar(1, &cae); red.bombear();
+        red.conectar(2, &otro); red.bombear();
+        ok(c.fase() == Fase::Listo && c.saldo() == SALDO, "el nodo se cae a mitad del lote: otro lo termina con el saldo correcto");
+        ok(c.bloques_descargados() == 4, "...sin bajar ningún bloque dos veces");
+    }
+
+    /* --- verificado solo si TODOS los lotes se cruzaron --- */
+    {
+        Almacen alm(PR, honesta->b[0].cab.data(), 50, 200);
+        Cliente c(cfg(2), alm, vigilados);
+        Nodo a, b; a.ch = b.ch = honesta; b.nonce = 222;
+        Red red(c); red.conectar(1, &a); red.conectar(2, &b); red.bombear();
+        ok(c.fase() == Fase::Listo && c.verificado(), "con dos nodos en todos los lotes: verificado");
+    }
+
     printf(fallos ? "\n*** sincro FALLA ***\n" : "\nTODO CORRECTO\n");
     return fallos ? 1 : 0;
 }

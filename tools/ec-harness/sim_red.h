@@ -125,6 +125,9 @@ struct Nodo {
     bool ignora_inv = false;          /* nunca pide las transacciones que se le anuncian */
     bool rechaza_tx = false;          /* las pide pero no las acepta ni las retransmite */
     bool relay = false;               /* lo pidió en su version */
+    bool saludo_core = false;         /* como Bitcoin Core: wtxidrelay y sendaddrv2 entre version y verack */
+    int max_cfilters = -1;            /* tras servir tantos cfilters, se desconecta */
+    bool desconectar = false; int servidos = 0;
     std::set<H> mempool; std::vector<H> nuevos;
     int invs_recibidos = 0, txs_recibidos = 0, pedidos = 0;
 
@@ -137,7 +140,9 @@ struct Nodo {
             if (m.cmd == "version") {
                 relay = leer_version(m.payload).relay;
                 Version v; v.servicios = servicios; v.nonce = nonce; v.altura = (int32_t)ch->b.size() - 1; v.tiempo = 4000000000LL; v.agente = "/sim/";
-                env("version", crear_version(v)); env("verack", {});
+                env("version", crear_version(v));
+                if (saludo_core) { env("wtxidrelay", {}); env("sendaddrv2", {}); }
+                env("verack", {});
                 if (basura_tras_saludo) for (int i = 0; i < 30; i++) env("cfilter", Bytes(40, 0));
                 continue;
             }
@@ -167,6 +172,7 @@ struct Nodo {
                 PideFiltros q = leer_getcf(m.payload);
                 int64_t stop = alt(q.parar); if (stop < 0 || q.inicio > stop) continue;
                 for (uint32_t k = q.inicio; k <= (uint32_t)stop; k++) {
+                    if (max_cfilters >= 0 && servidos++ >= max_cfilters) { desconectar = true; break; }
                     Cfilter f; f.bloque = Cadena_::hash_(ch->b[k].cab); f.filtro = ch->b[k].filtro;
                     if (filtro_alterado && !f.filtro.empty()) f.filtro.back() ^= 1;
                     env("cfilter", crear_cfilter(f));
@@ -215,6 +221,7 @@ struct Red {
                 Bytes r;
                 try { r = kv.second->recibe(o); } catch (...) {}
                 if (!r.empty()) c.recibido(kv.first, r.data(), r.size(), AHORA_MS);
+                if (kv.second->desconectar && !cerrados.count(kv.first)) { cerrados.insert(kv.first); c.par_cerrado(kv.first, AHORA_MS); }
                 /* Lo que un nodo acepta en su mempool lo anuncia a los pares con relay. */
                 if (!kv.second->nuevos.empty() && !monitores.count(kv.first)) {
                     std::vector<Inv> iv; for (auto &t : kv.second->nuevos) iv.push_back({INV_TX, t});

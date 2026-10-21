@@ -124,4 +124,36 @@ static bool contiene(const std::vector<uint8_t> &filtro, uint64_t k0, uint64_t k
     return false;
 }
 
+/* El filtro decodificado una sola vez, para preguntar por muchos elementos sin volver a recorrerlo.
+ * `contiene` decodifica el filtro entero en cada pregunta: con miles de salidas por bloque y
+ * miles de elementos por filtro eso son del orden de 10^9 pasos bajo el cerrojo del cliente. */
+struct Conjunto {
+    std::vector<uint64_t> v; uint64_t F = 0, k0 = 0, k1 = 0;
+    bool tiene(const std::vector<uint8_t> &e) const {
+        if (v.empty()) return false;
+        return std::binary_search(v.begin(), v.end(), valor(k0, k1, e, F));
+    }
+};
+
+/* Lanza si el filtro está cortado o promete más elementos de los que caben en sus bytes. */
+static Conjunto decodificar(const std::vector<uint8_t> &filtro, uint64_t k0, uint64_t k1) {
+    Conjunto c; c.k0 = k0; c.k1 = k1;
+    size_t pos = 0;
+    uint64_t N = varint_get(filtro.data(), filtro.size(), pos);
+    if (N == 0) return c;
+    /* Cada elemento ocupa al menos P+1 bits: un N mayor miente (y reservaría memoria de más). */
+    if (N > (uint64_t)(filtro.size() - pos) * 8 / (P + 1)) throw std::runtime_error("filtro con N imposible");
+    c.F = N * M;
+    c.v.reserve((size_t)N);
+    Lector r{filtro.data() + pos, filtro.size() - pos};
+    uint64_t x = 0;
+    for (uint64_t i = 0; i < N; i++) {
+        uint64_t q = 0;
+        while (r.bit() == 1) q++;
+        x += (q << P) | r.bits(P);
+        c.v.push_back(x);
+    }
+    return c;
+}
+
 }  // namespace gcs

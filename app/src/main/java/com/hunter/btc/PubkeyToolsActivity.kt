@@ -1783,10 +1783,19 @@ class PubkeyToolsActivity : Activity() {
     private fun recuperar(pub: String, r: String, a: RegFirma, bTx: org.json.JSONObject, bVin: Int, bS: String, bHtype: Int): String? {
         val z1 = FirmaTx.z(a.tx, a.vin, a.htype) ?: return null
         val z2 = FirmaTx.z(bTx, bVin, bHtype) ?: return null
-        val d = try { HunterEngine.recuperarNonce(r, a.s, z1, bS, z2) } catch (e: Throwable) { "" }
-        if (d.isBlank()) return null
-        val dirPub = dirsDe(pub); val dirD = dirsDe(d)
-        return if (dirPub.isNotEmpty() && dirD.any { it in dirPub }) d else null
+        // Las firmas se normalizan a "s baja" (BIP62): en la mitad de los pares una de las dos s está
+        // negada respecto a la otra y la cuenta sale con la clave equivocada. Se prueba tal cual y con
+        // la segunda s cambiada por n - s, y vale la que dé la dirección de la clave pública.
+        val n = java.math.BigInteger("fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141", 16)
+        val bSneg = try { n.subtract(java.math.BigInteger(bS, 16)).toString(16).padStart(64, '0') } catch (e: Exception) { null }
+        val dirPub = dirsDe(pub)
+        for (s2 in listOfNotNull(bS, bSneg)) {
+            val d = try { HunterEngine.recuperarNonce(r, a.s, z1, s2, z2) } catch (e: Throwable) { "" }
+            if (d.isBlank()) continue
+            val dirD = dirsDe(d)
+            if (dirPub.isNotEmpty() && dirD.any { it in dirPub }) return d
+        }
+        return null
     }
     private fun construirNonce() {
         desc("If an address signs with the same random k (nonce) twice, its private key " +

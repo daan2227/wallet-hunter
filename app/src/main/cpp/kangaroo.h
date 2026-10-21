@@ -498,7 +498,10 @@ static int dp_save(DPTable *t,const char *ruta,const uint8_t *pub,
         escritas++;
     }
     pthread_mutex_unlock(&t->mtx);
-    fclose(f);
+    /* fclose puede fallar al vaciar el búfer (disco lleno): sin mirarlo, el rename de abajo sustituía una
+     * buena tabla por una truncada sin avisar. */
+    if(ok && fflush(f)!=0) ok=0;
+    if(fclose(f)!=0) ok=0;
     if(!ok||escritas!=c.n){ remove(tmp); return 0; }
     if(rename(tmp,ruta)!=0){ remove(tmp); return 0; }
     return 1;

@@ -213,9 +213,22 @@ static int base58_to_h160(const char *addr,uint8_t *out){
 }
 static const char BC32[]="qpzry9x8gf2tvdw0s3jn54khce6mua7l";
 static int b32val(char c){if(c>='A'&&c<='Z')c=(char)(c-'A'+'a');for(int i=0;i<32;i++)if(BC32[i]==c)return i;return -1;}
+/* Suma de comprobación de bech32 (BIP173): hrp "bc", versión 0 (la q) y los 38 caracteres. */
+static int bech32_checksum_ok(const uint8_t *d38){
+    static const uint32_t G[5]={0x3b6a57b2,0x26508e6d,0x1ea119fa,0x3d4233dd,0x2a1462b3};
+    uint8_t v[5+1+38]={3,3,0,2,3, 0};   /* expansión de "bc" y la versión 0 */
+    memcpy(v+6,d38,38);
+    uint32_t chk=1;
+    for(size_t i=0;i<sizeof v;i++){
+        uint8_t b=(uint8_t)(chk>>25); chk=((chk&0x1ffffff)<<5)^v[i];
+        for(int j=0;j<5;j++) if((b>>j)&1) chk^=G[j];
+    }
+    return chk==1;
+}
 static int bech32_to_h160(const char *a,uint8_t *out){
     if((int)strlen(a)!=42)return 0;if(a[0]!='b'||a[1]!='c'||a[2]!='1'||a[3]!='q')return 0;
     uint8_t d[38];for(int i=0;i<38;i++){int v=b32val(a[4+i]);if(v<0)return 0;d[i]=(uint8_t)v;}
+    if(!bech32_checksum_ok(d))return 0;   /* un bc1q mal tecleado daba un objetivo falso que no se encuentra nunca */
     uint32_t acc=0;int bits=0,idx=0;
     for(int i=0;i<32&&idx<20;i++){acc=(acc<<5)|d[i];bits+=5;if(bits>=8){bits-=8;out[idx++]=(uint8_t)((acc>>bits)&0xFF);}}
     return(idx==20)?1:0;
@@ -527,7 +540,7 @@ static void precompute_range(){
        en vez de 72. La máscara derivada de ahí limitaba el byte superior a
        unos pocos bits, de modo que el generador sólo cubría una fracción del
        rango (1,6% en varios puzzles). */
-    g_range_bits=0;
+    g_range_bits=0; g_range_mask=0;   /* con inicio == fin no se pone nunca: que no quede el de un rango anterior */
     for(int i=0;i<32;i++){
         if(diff[i]){
             g_range_bits=(31-i)*8;          /* bytes completos por debajo */
@@ -564,6 +577,9 @@ static uint64_t xr_next(XR128 *x){
    fuera del rango, y como el fallback era memcpy(out, g_range_start, 32), el
    worker probaba una y otra vez exactamente la misma clave. */
 static void gen_privkey_fast(uint8_t *out, XR128 *rng){
+    /* Rango de un solo valor (inicio == fin): no hay nada que sortear. Sin esto top_idx valía 32 y
+     * `out[32] &= mask` escribía fuera de la clave. */
+    if(g_range_bits<=0){ memcpy(out, g_range_start, 32); return; }
     int range_bytes = (g_range_bits+7)/8;
     int top_idx     = 32 - range_bytes;
     if(top_idx < 0) top_idx = 0;
@@ -1136,7 +1152,19 @@ static void *load_fn(void *){
     char line[MAX_LINE],*fields[8];
     if(!fgets(line,sizeof(line),f)){fclose(f);free(tmp);g_loading.store(false);return nullptr;}
     if(strchr(line,';'))g_sep=';';else if(strchr(line,'\t'))g_sep='\t';else g_sep=',';
-    int ca=0;{char hdr[MAX_LINE];strncpy(hdr,line,MAX_LINE-1);hdr[MAX_LINE-1]='\0';int n=split_line(hdr,fields,8);for(int i=0;i<n;i++){trim_str(fields[i]);if(!strcmp(fields[i],"address"))ca=i;}}
+    int ca=0;
+    {
+        char hdr[MAX_LINE];strncpy(hdr,line,MAX_LINE-1);hdr[MAX_LINE-1]='\0';int n=split_line(hdr,fields,8);
+        bool hay_direccion=false;
+        for(int i=0;i<n;i++){
+            trim_str(fields[i]);
+            if(!strcmp(fields[i],"address"))ca=i;
+            uint8_t h[20];
+            if(addr_to_h160(fields[i],h)||(fields[i][0]=='b'&&fields[i][1]=='c'&&fields[i][2]=='1'))hay_direccion=true;
+        }
+        /* Un CSV sin cabecera empieza ya por una dirección: se vuelve al principio para no perderla. */
+        if(hay_direccion&&ca==0&&strcmp(fields[0],"address")!=0) rewind(f);
+    }
     uint64_t rows=0,ok=0,skip=0;
     while(fgets(line,sizeof(line),f)&&ok<MAX_CSV_ROWS){
         rows++;
@@ -1339,10 +1367,12 @@ Java_com_hunter_btc_HunterEngine_isStopping(JNIEnv *,jobject){return (jboolean)g
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setCpuLimit(JNIEnv *,jobject,jint v){g_cpu_limit.store(v);}
 
-/* Máscara de rutas BIP39: bit0 = BIP44, bit1 = BIP84. Al menos una. */
+/* Máscara de rutas BIP39: bit0 = BIP44, bit1 = BIP84, bit2 = BIP49, bit3 = BIP86. Al menos una.
+ * Antes se recortaba a (mask&3): marcar sólo BIP86 daba 0 y caía en BIP44+BIP84, y BIP49/BIP86 no se
+ * podían activar nunca (falso negativo sin aviso). */
 JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_setBip39Paths(JNIEnv *,jobject,jint mask){
-    g_bip39_paths.store((mask&3)==0 ? 3 : (mask&3));
+    g_bip39_paths.store((mask&15)==0 ? 3 : (mask&15));
 }
 
 
@@ -2568,10 +2598,14 @@ static std::string build_and_sign_tx(const std::string &req){
     }
     /* Ningún importe puede pasar del total de bitcoin; así las sumas no desbordan. */
     const int64_t MAX_SAT=2100000000000000LL;
-    if(fee_sat<0){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+    /* La comisión también tiene tope: con fee = LLONG_MAX, `total_in-send_total-fee_sat` desbordaba (UB) y
+       salía un "cambio" de ~9e18 sat que pasaba la comprobación de más abajo. */
+    if(fee_sat<0||fee_sat>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
     int64_t send_total=0;
     for(auto &sa:salidas){
-        if(sa.valor>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+        /* Sólo un OP_RETURN puede ir a 0: una salida de pago sin importe se firmaba tal cual. */
+        bool es_datos=!sa.spk.empty()&&(uint8_t)sa.spk[0]==0x6a;
+        if(sa.valor<0||(sa.valor==0&&!es_datos)||sa.valor>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
         send_total+=sa.valor;
         if(send_total>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
     }
@@ -2579,6 +2613,8 @@ static std::string build_and_sign_tx(const std::string &req){
     int64_t total_in=0;
     for(auto &u:utxos){
         if(u.amount<0||u.amount>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
+        /* El txid es de 32 bytes: uno más corto firmaba una transacción con un outpoint de otro tamaño. */
+        if(u.txid.size()!=64){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
         total_in+=u.amount;
         if(total_in>MAX_SAT){secp256k1_context_destroy(ctx);return "ERROR:invalid_params";}
     }

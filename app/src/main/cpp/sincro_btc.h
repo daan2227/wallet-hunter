@@ -92,8 +92,9 @@ public:
         for (auto &kv : pares_) {
             Par &p = kv.second;
             if (p.muerto) continue;
-            if (!p.listo && ahora_ms - p.t_alta > cfg_.timeout_saludo_ms) banear(p, "no completó el saludo");
-            else if (p.esperando && ahora_ms - p.t_pend > cfg_.timeout_ms) banear(p, "sin respuesta");
+            // Resta saturada: si el reloj del teléfono retrocede, no se expulsa a todos de golpe.
+            if (!p.listo && trans(ahora_ms, p.t_alta) > cfg_.timeout_saludo_ms) banear(p, "no completó el saludo");
+            else if (p.esperando && trans(ahora_ms, p.t_pend) > cfg_.timeout_ms) banear(p, "sin respuesta");
         }
         avanzar(ahora_ms);
     }
@@ -109,9 +110,12 @@ public:
         if (fase_ == Fase::Listo || fase_ == Fase::Conectando) { fase_ = Fase::Conectando; avanzar(ahora_ms); }
     }
     void reescanear(std::vector<std::vector<uint8_t>> scripts, uint32_t desde, uint64_t ahora_ms) {
+        abortar_lote_cf();
         fijar_scripts(scripts); reiniciar_escaneo(desde); fase_ = Fase::Conectando; error_.clear();
-        for (auto &kv : pares_) { kv.second.esperando = 0; }
-        lote_cfh_ = false; lote_cf_ = false; disp_.activa = false;
+        // Se sueltan las peticiones de filtros y bloques en curso, pero no la de cabeceras: repetirla
+        // haría que el par contestara dos veces y pareciera que repite cabeceras ya conocidas.
+        for (auto &kv : pares_) kv.second.esperando &= ~(E_CFH | E_CF | E_BLK | E_DCF | E_DBLK);
+        lote_cfh_ = false; blk_en_vuelo_ = false; cf_driver_ = -1; disp_.activa = false;
         avanzar(ahora_ms);
     }
 
@@ -158,7 +162,8 @@ public:
     std::vector<Utxo> utxos() const { std::vector<Utxo> v; for (auto &kv : utxos_) v.push_back(kv.second); return v; }
     uint64_t saldo() const { uint64_t s = 0; for (auto &kv : utxos_) s += kv.second.valor; return s; }
     uint32_t altura_procesada() const { return sig_cf_ == 0 ? 0 : sig_cf_ - 1; }
-    bool verificado() const { return cfg_.min_pares >= 2 && ultimo_lote_con_varios_; }
+    /* true sólo si TODAS las cabeceras de filtro aceptadas se cruzaron entre dos o más nodos. */
+    bool verificado() const { return cfg_.min_pares >= 2 && lotes_cfh_ > 0 && lotes_cfh_varios_ == lotes_cfh_; }
     size_t bloques_descargados() const { return descargados_; }
     size_t pares_vivos() const { size_t n = 0; for (auto &kv : pares_) if (!kv.second.muerto) n++; return n; }
     size_t pares_listos() const { return listos().size(); }
@@ -171,6 +176,7 @@ private:
         int id; Flujo fl; bool v_rx = false, ack_rx = false, listo = false, muerto = false;
         Version v; uint64_t t_alta = 0, t_pend = 0; int esperando = 0;
         bool hdr_fin = false; uint32_t inesperados = 0; bool relay = false;
+        uint32_t cf_descartar = 0;      /* cfilters de un lote abortado que aún pueden llegar: se ignoran */
         bool cfh_ok = false; CfHeaders cfh;
     };
     struct Efecto { std::vector<Utxo> anadidos, gastados; };
@@ -197,7 +203,7 @@ private:
     std::map<uint32_t, Efecto> efectos_;
     std::map<uint32_t, std::vector<uint8_t>> filtros_pend_;
     std::vector<uint32_t> pendientes_;
-    size_t descargados_ = 0; bool ultimo_lote_con_varios_ = false;
+    size_t descargados_ = 0;
     /* lote de cabeceras de filtro */
     bool lote_cfh_ = false; uint32_t cfh_b0_ = 0, cfh_b1_ = 0; std::vector<int> cfh_pares_;
     /* lote de filtros */
@@ -206,7 +212,10 @@ private:
     Disputa disp_;
     std::map<std::string, Difusion> difusiones_;
     bool pausa_difusion_ = false;
+    std::vector<int64_t> desfases_;       /* hora del nodo - hora local, uno por saludo */
+    size_t lotes_cfh_ = 0, lotes_cfh_varios_ = 0;
 
+    static uint64_t trans(uint64_t ahora, uint64_t desde) { return ahora > desde ? ahora - desde : 0; }
     static std::string clave_utxo(const H &t, uint32_t v) { return std::string((const char *)t.data(), 32) + std::string((const char *)&v, 4); }
     static void clave_filtro(const H &h, uint64_t &k0, uint64_t &k1) {
         k0 = k1 = 0;
@@ -239,10 +248,26 @@ private:
         log("par " + std::to_string(p.id) + " expulsado: " + motivo);
         reevaluar(p);
     }
+    /* Deja de esperar el lote de filtros en curso. Lo ya recogido de ese lote se descarta (se volverá a
+     * pedir entero) y lo que el par aún mande se ignora sin contarlo como mensaje no pedido. */
+    void abortar_lote_cf() {
+        if (!lote_cf_) return;
+        lote_cf_ = false;
+        for (auto it = pendientes_.begin(); it != pendientes_.end();)
+            it = (*it >= cf_b0_ && *it <= cf_b1_) ? pendientes_.erase(it) : std::next(it);
+        for (auto it = filtros_pend_.begin(); it != filtros_pend_.end();)
+            it = (it->first >= cf_b0_ && it->first <= cf_b1_) ? filtros_pend_.erase(it) : std::next(it);
+        auto d = pares_.find(cf_driver_);
+        if (d != pares_.end() && !d->second.muerto) {
+            d->second.cf_descartar += cf_b1_ - (cf_b0_ + cf_n_) + 1;
+            d->second.esperando &= ~E_CF;
+        }
+    }
+
     /* Un par que desaparece deja lotes a medias: se descartan para repetirlos con otros. */
     void reevaluar(Par &p) {
         if (lote_cfh_) for (int i : cfh_pares_) if (i == p.id) { lote_cfh_ = false; for (int j : cfh_pares_) { auto it = pares_.find(j); if (it != pares_.end()) it->second.esperando &= ~E_CFH; } }
-        if (lote_cf_ && cf_driver_ == p.id) lote_cf_ = false;
+        if (lote_cf_ && cf_driver_ == p.id) abortar_lote_cf();
         if (blk_en_vuelo_ && blk_driver_ == p.id) blk_en_vuelo_ = false;
         if (disp_.activa) {
             bool es = p.id == disp_.proveedor_bloque;
@@ -260,6 +285,7 @@ private:
         if (m.cmd == "version") {
             if (p.v_rx) { banear(p, "version repetida"); return; }
             p.v = leer_version(m.payload); p.v_rx = true;
+            desfases_.push_back((int64_t)p.v.tiempo - (int64_t)(ahora_ms / 1000));
             if (p.v.nonce == cfg_.nonce && cfg_.nonce != 0) { banear(p, "conexión con nosotros mismos"); return; }
             if (cfg_.solo_difusion) {
                 if (p.v.version < 70001) { banear(p, "versión de protocolo antigua"); return; }
@@ -272,7 +298,17 @@ private:
             if (!p.v_rx || p.ack_rx) { banear(p, "verack fuera de orden"); return; }
             p.ack_rx = true; p.listo = true; return;
         }
-        if (!p.listo) { banear(p, "mensaje antes de terminar el saludo"); return; }
+        if (!p.listo) {
+            // Entre su version y su verack, Bitcoin Core manda mensajes de negociación (wtxidrelay,
+            // sendaddrv2, sendtxrcncl…) además de pings. Expulsarlos dejaba fuera a casi todos los
+            // nodos reales. Se admiten esos; cualquier otra cosa (datos) antes del saludo, no.
+            static const char *negociacion[] = {"wtxidrelay", "sendaddrv2", "sendtxrcncl", "sendheaders",
+                                                "sendcmpct", "feefilter", "addr", "addrv2", "getaddr"};
+            if (!p.v_rx) { banear(p, "mensaje antes de su version"); return; }
+            if (m.cmd == "ping") { enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return; }
+            for (auto *n : negociacion) if (m.cmd == n) return;
+            banear(p, "mensaje antes de terminar el saludo"); return;
+        }
         if (m.cmd == "ping") { enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return; }
         if (m.cmd == "headers") { en_headers(p, m, ahora_ms); return; }
         if (m.cmd == "cfheaders") { en_cfheaders(p, m, ahora_ms); return; }
@@ -332,6 +368,18 @@ private:
     }
 
     /* ---- cabeceras ---- */
+    /* Hora para juzgar si una cabecera está "en el futuro": la del teléfono corregida con la mediana de lo
+     * que dicen los nodos (como Core, con tope de 70 min). Con el reloj atrasado más de 2 h, de otro modo
+     * se rechazaba cada cabecera nueva y se expulsaba a todos los pares. */
+    uint32_t hora_ajustada(uint64_t ahora_ms) const {
+        int64_t desfase = 0;
+        if (!desfases_.empty()) {
+            std::vector<int64_t> d = desfases_; std::sort(d.begin(), d.end());
+            desfase = std::max<int64_t>(-4200, std::min<int64_t>(4200, d[d.size() / 2]));
+        }
+        int64_t t = (int64_t)(ahora_ms / 1000) + desfase;
+        return t < 0 ? 0 : (t > 0xFFFFFFFFLL ? 0xFFFFFFFFu : (uint32_t)t);
+    }
     void pedir_headers(Par &p, uint64_t ahora_ms) {
         uint8_t cero[32] = {0};
         enviar(p, "getheaders", crear_getheaders(alm_.localizador(), cero));
@@ -343,7 +391,7 @@ private:
         auto hs = leer_headers(m.payload);
         bool progreso = false;
         for (auto &h : hs) {
-            Resultado r = alm_.anadir(h.data(), (uint32_t)(ahora_ms / 1000));
+            Resultado r = alm_.anadir(h.data(), hora_ajustada(ahora_ms));
             switch (r.estado) {
                 case Estado::Extiende: case Estado::Rama: progreso = true; break;
                 case Estado::Reorg:
@@ -384,7 +432,8 @@ private:
         pendientes_.erase(std::remove_if(pendientes_.begin(), pendientes_.end(), [&](uint32_t h) { return h > fork; }), pendientes_.end());
         if (sig_cfh_ > fork + 1) sig_cfh_ = std::max(fork + 1, desde_);
         if (sig_cf_ > fork + 1) sig_cf_ = std::max(fork + 1, desde_);
-        lote_cfh_ = false; lote_cf_ = false; blk_en_vuelo_ = false; disp_.activa = false;
+        abortar_lote_cf();
+        lote_cfh_ = false; blk_en_vuelo_ = false; disp_.activa = false;
         for (auto &kv : pares_) kv.second.esperando &= ~(E_CFH | E_CF | E_BLK | E_DCF | E_DBLK);
     }
 
@@ -414,7 +463,13 @@ private:
         for (size_t k = 1; k < ps.size(); k++) if (ps[k]->cfh.previa != ps[0]->cfh.previa) ancla_igual = false;
         for (size_t i = 0; i < n && primera < 0; i++)
             for (size_t k = 1; k < ps.size(); k++) if (ps[k]->cfh.hashes[i] != ps[0]->cfh.hashes[i]) { primera = (int64_t)i; break; }
-        if (!ancla_igual) { fallar("los pares no coinciden en la cabecera de filtro de partida"); return; }
+        if (!ancla_igual) {
+            // Con la ancla distinta no se puede saber quién tiene razón: se sueltan los dos y se sigue con
+            // otros pares, en vez de parar todo con un error que no tiene salida.
+            for (auto *q : ps) banear(*q, "cabecera de filtro de partida distinta");
+            lote_cfh_ = false;
+            return;
+        }
         if (primera >= 0) { abrir_disputa(cfh_b0_ + (uint32_t)primera, ps); return; }
         /* Todos de acuerdo: se fijan. */
         if (cfh_b0_ == desde_) fh_[0] = ps[0]->cfh.previa;
@@ -422,7 +477,7 @@ private:
             fhash_.push_back(ps[0]->cfh.hashes[i]);
             fh_.push_back(siguiente_fh(ps[0]->cfh.hashes[i], fh_.back()));
         }
-        ultimo_lote_con_varios_ = ps.size() >= 2;
+        lotes_cfh_++; if (ps.size() >= 2) lotes_cfh_varios_++;
         sig_cfh_ = cfh_b1_ + 1; lote_cfh_ = false;
         for (auto *p : ps) { p->cfh_ok = false; p->cfh = CfHeaders(); }
     }
@@ -453,13 +508,21 @@ private:
         for (int id : d.pares) {
             auto &f = d.filtros[id];
             bool bien = hash_filtro(f) == d.declarado[id];
-            if (bien) try { for (auto &s : spks) if (!gcs::contiene(f, k0, k1, s)) { bien = false; break; } } catch (const std::exception &) { bien = false; }
+            if (bien) try {
+                auto cj = gcs::decodificar(f, k0, k1);
+                for (auto &s : spks) if (!cj.tiene(s)) { bien = false; break; }
+            } catch (const std::exception &) { bien = false; }
             (bien ? buenos : malos).push_back(id);
         }
         d.activa = false; lote_cfh_ = false;
         for (auto &kv : pares_) { kv.second.esperando &= ~(E_CFH | E_DCF | E_DBLK); kv.second.cfh_ok = false; }
         if (buenos.empty() || malos.empty()) {
-            fallar(buenos.empty() ? "disputa de filtros: ninguno es coherente con el bloque" : "disputa de filtros: no se puede decidir quién miente");
+            // O ninguno es coherente con el bloque, o los dos lo son y no se puede decidir cuál sobra (uno
+            // podría llevar elementos de más). Parar con un error no tenía salida: se sueltan los dos
+            // pares de la disputa y se sigue con otros.
+            log(buenos.empty() ? "disputa de filtros: ninguno es coherente con el bloque"
+                               : "disputa de filtros: los dos son coherentes, no se puede decidir");
+            for (int id : d.pares) banear(pares_.at(id), "filtros en disputa sin resolver");
             return;
         }
         for (int id : malos) banear(pares_.at(id), "filtro que omite salidas del bloque");
@@ -498,6 +561,10 @@ private:
             if (c.tipo != 0 || c.bloque != to_h(alm_.hash_en(disp_.h))) { banear(p, "cfilter que no corresponde a lo pedido"); return; }
             p.esperando &= ~E_DCF; disp_.filtros[p.id] = c.filtro; resolver_disputa(); return;
         }
+        if (p.cf_descartar > 0 && (!(p.esperando & E_CF) || !lote_cf_ || cf_driver_ != p.id ||
+                                    c.bloque != to_h(alm_.hash_en(cf_b0_ + cf_n_)))) {
+            p.cf_descartar--; return;     // resto de un lote que se abortó
+        }
         if (!(p.esperando & E_CF) || !lote_cf_ || cf_driver_ != p.id) { inesperado(p, "cfilter"); return; }
         uint32_t h = cf_b0_ + cf_n_;
         if (c.tipo != 0 || c.bloque != to_h(alm_.hash_en(h))) { banear(p, "cfilter fuera de orden"); return; }
@@ -505,9 +572,14 @@ private:
         p.t_pend = ahora_ms;
         uint64_t k0, k1; clave_filtro(c.bloque, k0, k1);
         bool coincide = false;
-        try { for (auto &s : scripts_) if (gcs::contiene(c.filtro, k0, k1, s)) { coincide = true; break; } }
+        try {
+            auto cj = gcs::decodificar(c.filtro, k0, k1);
+            for (auto &s : scripts_) if (cj.tiene(s)) { coincide = true; break; }
+        }
         catch (const std::exception &) { banear(p, "filtro mal formado"); return; }
-        if (coincide) { pendientes_.push_back(h); filtros_pend_[h] = c.filtro; }
+        if (coincide && std::find(pendientes_.begin(), pendientes_.end(), h) == pendientes_.end()) {
+            pendientes_.push_back(h); filtros_pend_[h] = c.filtro;
+        }
         cf_n_++;
         if (h == cf_b1_) { sig_cf_ = cf_b1_ + 1; lote_cf_ = false; p.esperando &= ~E_CF; }
     }
@@ -546,7 +618,8 @@ private:
             if (f == filtros_pend_.end()) { fallar("falta el filtro del bloque " + std::to_string(h)); return; }
             uint64_t k0, k1; clave_filtro(to_h(alm_.hash_en(h)), k0, k1);
             try {
-                for (auto &s : scripts_de_salida(m.payload)) if (!gcs::contiene(f->second, k0, k1, s)) {
+                auto cj = gcs::decodificar(f->second, k0, k1);
+                for (auto &s : scripts_de_salida(m.payload)) if (!cj.tiene(s)) {
                     fallar("el filtro acordado no contiene todas las salidas del bloque " + std::to_string(h)); return;
                 }
             } catch (const std::exception &) { fallar("filtro acordado ilegible en el bloque " + std::to_string(h)); return; }
@@ -568,7 +641,15 @@ private:
             }
             for (auto &in : tx.entradas) {
                 auto it = utxos_.find(clave_utxo(in.txid, in.vout));
-                if (it != utxos_.end()) { e.gastados.push_back(it->second); utxos_.erase(it); }
+                if (it != utxos_.end()) {
+                    // Si esta moneda se creó en este mismo bloque no existía antes: deshacer el bloque no
+                    // debe devolverla (estaba en `anadidos` y en `gastados`, y se resucitaba).
+                    auto creada = std::find_if(e.anadidos.begin(), e.anadidos.end(), [&](const Utxo &u) {
+                        return u.txid == it->second.txid && u.vout == it->second.vout; });
+                    if (creada != e.anadidos.end()) e.anadidos.erase(creada);
+                    else e.gastados.push_back(it->second);
+                    utxos_.erase(it);
+                }
             }
             for (uint32_t k = 0; k < tx.salidas.size(); k++) {
                 if (!set_scripts_.count(tx.salidas[k].spk)) continue;
@@ -587,7 +668,9 @@ private:
             switch (fase_) {
                 case Fase::Conectando:
                     if (listos().size() >= std::max<uint32_t>(1, cfg_.min_pares)) {
-                        for (auto &kv : pares_) if (kv.second.listo && !kv.second.muerto) pedir_headers(kv.second, ahora_ms);
+                        for (auto &kv : pares_)
+                            if (kv.second.listo && !kv.second.muerto && !(kv.second.esperando & E_HEADERS))
+                                pedir_headers(kv.second, ahora_ms);
                         fase_ = Fase::Cabeceras;
                     }
                     break;
