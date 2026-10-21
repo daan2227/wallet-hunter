@@ -72,8 +72,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         (layoutParams as LinearLayout.LayoutParams).apply { leftMargin = 0; rightMargin = 0 }
     }
     cEstado.addView(btnNodo)
-    texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet in this app still " +
-        "uses its own light client for now. It downloads a lot of data: Wi-Fi and a charger are recommended.",
+    texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet can use it to " +
+        "send, to estimate fees and to check balances (see “Wallet” below); the rest still comes from the usual " +
+        "servers. It downloads a lot of data: Wi-Fi and a charger are recommended.",
         AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
 
     // ── Red ───────────────────────────────────────────────────────────────
