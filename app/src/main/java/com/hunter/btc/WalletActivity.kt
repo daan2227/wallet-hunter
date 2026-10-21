@@ -51,6 +51,20 @@ class WalletActivity : FragmentActivity() {
      */
     private fun avanzado(): Boolean = getSharedPreferences("hunter", MODE_PRIVATE).getBoolean("modo_avanzado", false)
 
+    /** "  (≈ 12.34 USD)" para pegar a una cantidad en BTC o sat; vacío en testnet o sin precio. */
+    private fun fiatEntre(sat: Long): String = if (isTestnet) "" else Fiat.entre(this, sat)
+
+    /**
+     * Pone en [tv] el valor en dinero normal de [sat]. Si aún no se sabe el precio lo pide
+     * (una sola consulta para toda la pantalla) y lo rellena al llegar.
+     */
+    private fun ponerFiat(tv: TextView, sat: Long, prefijo: String = "≈ ") {
+        if (isTestnet) return
+        val pintar = { Fiat.de(this, sat)?.let { tv.text = Privacidad.monto(this, prefijo + it) } }
+        pintar()
+        if (Fiat.vencidoONulo(this)) Fiat.cargar(this) { runOnUiThread { pintar() } }
+    }
+
     /** Traduce una excepción de red al idioma de alguien que no la ha escrito. */
     private fun motivo(e: Exception): String = when {
         e is java.net.UnknownHostException ->
@@ -831,6 +845,7 @@ class WalletActivity : FragmentActivity() {
                 val js = ChainApi.get("/v1/prices", false)
                 if (js != null) price = JSONObject(js).optDouble(fiatCode(), 0.0)
             } catch(e: Exception) {}
+            if (price > 0) Fiat.fijar(this, fiatCode(), price)
             val tot = totalSat; val pr = price; val pend = pendienteTotal
             if (gen == generacion) ultimoSaldoSat = if (huboFallo) -1L else tot
             runOnUiThread {
@@ -841,7 +856,7 @@ class WalletActivity : FragmentActivity() {
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
                 if (pend != 0L) ll.addView(TextView(this).apply {
-                    text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8)
+                    text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8) + fiatEntre(pend)
                     textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                     typeface = AppTheme.body(context)
                     setPadding(0, 0, 0, dp(12))
@@ -887,6 +902,10 @@ class WalletActivity : FragmentActivity() {
                         textSize = AppTheme.SP_BODY
                         setTextColor(when { bal > 0 -> GREEN; bal == 0L -> TXT_SEC; else -> RED })
                         typeface = AppTheme.bold(context)
+                    })
+                    if (bal > 0) card.addView(TextView(this).apply {
+                        textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
+                        ponerFiat(this, bal)
                     })
                     ll.addView(card)
                 }
@@ -1074,6 +1093,11 @@ class WalletActivity : FragmentActivity() {
                             setTextColor(if (m.neto > 0) GREEN else TXT_PRI)
                         })
                         card.addView(arriba)
+                        if (m.neto != 0L) card.addView(TextView(this).apply {
+                            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
+                            gravity = Gravity.END; setPadding(0, dp(2), 0, 0)
+                            ponerFiat(this, m.neto)
+                        })
                         card.addView(TextView(this).apply {
                             val fecha = if (m.tiempo > 0) fmt.format(java.util.Date(m.tiempo * 1000)) else ""
                             text = (if (m.confirmado) "Confirmed" else "Pending") +
@@ -1170,7 +1194,8 @@ class WalletActivity : FragmentActivity() {
         row("Status", if (m.confirmado) "Confirmed" else "Pending", if (m.confirmado) GREEN else AppTheme.WARN)
         if (m.neto != 0L) row(if (m.neto > 0) "Received" else "Sent (fee included)",
             Privacidad.monto(this, "%.8f BTC".format(Math.abs(m.neto) / 1e8)), if (m.neto > 0) GREEN else TXT_PRI)
-        if (m.fee > 0) row("Fee", "%,d sat".format(m.fee))
+        if (m.neto != 0L && !isTestnet) Fiat.de(this, m.neto)?.let { row("Worth today", "≈ $it") }
+        if (m.fee > 0) row("Fee", "%,d sat".format(m.fee) + fiatEntre(m.fee))
         if (m.tiempo > 0) row("Date", java.text.SimpleDateFormat("dd/MM/yyyy HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date(m.tiempo * 1000)))
 
         fun boton(t: String, principal: Boolean) = android.widget.Button(this).apply {
@@ -1416,7 +1441,7 @@ class WalletActivity : FragmentActivity() {
                 }
 
                 val resumen = buildString {
-                    appendLine("Recipient still receives %.8f BTC".format(importe / 1e8))
+                    appendLine("Recipient still receives %.8f BTC".format(importe / 1e8) + fiatEntre(importe))
                     appendLine("to $destino")
                     appendLine()
                     appendLine("Fee  %,d → %,d sat".format(feeViejo, feeNuevo))
@@ -2050,7 +2075,7 @@ class WalletActivity : FragmentActivity() {
                     refreshTotals()
                     fromSat = res?.sat ?: -1L
                     tvFromBal.text = if (fromSat < 0) "Could not check the balance"
-                                     else "Available %.8f BTC".format(fromSat / 1e8)
+                                     else "Available %.8f BTC".format(fromSat / 1e8) + fiatEntre(fromSat)
                 }
             }.start()
         }
@@ -2162,7 +2187,13 @@ class WalletActivity : FragmentActivity() {
             val p = try {
                 ChainApi.get("/v1/prices", false)?.let { JSONObject(it).optDouble(fiatCode(), 0.0) } ?: 0.0
             } catch (e: Exception) { 0.0 }
-            runOnUiThread { if (p > 0) { precioFiat = p; refreshTotals() } }
+            if (p > 0) Fiat.fijar(this, fiatCode(), p)
+            runOnUiThread {
+                if (p > 0) {
+                    precioFiat = p; refreshTotals()
+                    if (fromSat >= 0) tvFromBal.text = "Available %.8f BTC".format(fromSat / 1e8) + fiatEntre(fromSat)
+                }
+            }
         }.start()
         Thread {
             val f = ChainInfo.fees(isTestnet)
@@ -2206,7 +2237,7 @@ class WalletActivity : FragmentActivity() {
                         tvStatus.text = ""
                         val items = Array(utxos.length()) { i ->
                             val u = utxos.getJSONObject(i)
-                            "${Privacidad.monto(this, "%.8f BTC".format(u.getLong("value") / 1e8))} · ${u.getString("txid").take(12)}…"
+                            "${Privacidad.monto(this, "%.8f BTC".format(u.getLong("value") / 1e8) + fiatEntre(u.getLong("value")))} · ${u.getString("txid").take(12)}…"
                         }
                         val checked = BooleanArray(items.size) { true }
                         // La selección se edita en una copia y sólo pasa a
@@ -2576,16 +2607,16 @@ class WalletActivity : FragmentActivity() {
                     // y eso depende de cuántas entradas hagan falta.
                     val totalSat = amtSat + feeSat
                     val resumen = buildString {
-                        appendLine("Send %.8f BTC".format(amtPrincipal / 1e8))
+                        appendLine("Send %.8f BTC".format(amtPrincipal / 1e8) + fiatEntre(amtPrincipal))
                         appendLine("to $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
                         extras.forEach { e ->
                             if (e.datos != null) appendLine("+ OP_RETURN: ${e.datos.length / 2} bytes of data (0 BTC)")
                             else appendLine("+ %.8f BTC to %s".format(e.sat / 1e8, e.addr))
                         }
                         appendLine()
-                        appendLine("Fee        %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa))
+                        appendLine("Fee        %,d sat  ·  %d sat/vB (%s)".format(feeSat, feeRate, fuenteTarifa) + fiatEntre(feeSat))
                         appendLine("Size       ~%d vB with %d input(s) (%s)".format(vsize, plan.chosen.size, plan.reason))
-                        appendLine("TOTAL      %.8f BTC".format(totalSat / 1e8))
+                        appendLine("TOTAL      %.8f BTC".format(totalSat / 1e8) + fiatEntre(totalSat))
                         if (feeSat > amtSat) {
                             appendLine()
                             appendLine("⚠ The fee is LARGER than the amount you send.")
