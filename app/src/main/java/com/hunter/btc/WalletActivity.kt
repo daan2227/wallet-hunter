@@ -3695,6 +3695,7 @@ class WalletActivity : FragmentActivity() {
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
             if (av && !isTestnet) "Verify with the network" else null,
+            if (av && !isTestnet) "Verify with my node" else null,
             // En testnet se ofrece siempre, aunque el modo avanzado esté apagado: si no, quien lo activó y
             // luego lo apagó se quedaba en una red de pruebas sin forma de volver a mainnet.
             "Change PIN", if (av || isTestnet) "Toggle Testnet" else null, "Fiat currency",
@@ -3734,6 +3735,7 @@ class WalletActivity : FragmentActivity() {
                     }
                     "Account" -> authenticate { elegirCuenta() }
                     "Verify with the network" -> VerificacionLigera.mostrar(this, ultimoSaldoSat) { scriptsDeCartera() }
+                    "Verify with my node" -> VerificacionNodo.mostrar(this, ultimoSaldoSat) { scriptsDeCartera() }
                     "Fiat currency" -> {
                         val monedas = arrayOf("USD", "EUR", "GBP", "JPY", "CHF", "CAD", "AUD")
                         AlertDialog.Builder(this).setTitle("Show the value in")

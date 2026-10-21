@@ -79,8 +79,24 @@ class CoreConfigTest {
             "2026-10-21T14:00:00Z [snapshot] loading 100000000 coins from snapshot 0000abc")
         val d = CoreConfig.leerCargaSnapshot(dos, true, ahora)!!
         assertTrue(d.enCurso); assertEquals(0L, d.cargados); assertNull(d.etaS)
+        // El porcentaje que imprime Core manda sobre el calculado.
+        val conPct = listOf("$t [snapshot] loading 200000000 coins from snapshot 0000abc",
+            "2026-10-21T12:10:00Z [snapshot] 114000000 coins loaded (57.00%, 9000.00 MB)")
+        assertEquals(57.0, CoreConfig.leerCargaSnapshot(conPct, true, ahora)!!.porcentaje, 1e-9)
+        assertEquals(114_000_000L, CoreConfig.leerCargaSnapshot(conPct, true, ahora)!!.cargados)
         assertNull(CoreConfig.leerCargaSnapshot(listOf("nada"), true, ahora))
         assertEquals("1 h 12 min", CoreConfig.duracion(4320)); assertEquals("8 min", CoreConfig.duracion(500))
+    }
+    @Test fun leeEscaneoYTarifas() {
+        val o = JSONObject("""{"success":true,"txouts":5,"height":965010,"bestblock":"aa","total_amount":0.0123,
+            "unspents":[{"txid":"11","vout":0,"scriptPubKey":"00","desc":"raw(00)","amount":0.01,"coinbase":false,"height":960000},
+                        {"txid":"22","vout":3,"scriptPubKey":"00","desc":"raw(00)","amount":0.0023,"coinbase":false,"height":961000}]}""")
+        val e = CoreConfig.leerEscaneo(o)!!
+        assertEquals(1_230_000L, e.sat); assertEquals(2, e.monedas.size); assertEquals(965010, e.altura)
+        assertEquals(230_000L, e.monedas[1].sat)
+        assertNull(CoreConfig.leerEscaneo(JSONObject("""{"success":false}""")))
+        assertEquals(12.0, CoreConfig.satPorVb(JSONObject("""{"feerate":0.00012,"blocks":2}"""))!!, 1e-9)
+        assertNull(CoreConfig.satPorVb(JSONObject("""{"errors":["Insufficient data or no feerate found"],"blocks":2}""")))
     }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))

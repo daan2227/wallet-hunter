@@ -102,6 +102,14 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Traffic", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Blocks only" to null, "Blocks + mempool" to null),
         initial = if (aj.soloBloques) 0 else 1) { guardar(aj.copy(soloBloques = it == 0)) })
+    texto(cAj, "Wallet", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
+        initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })
+    texto(cAj, "With “Use my node to send”, the wallet broadcasts transactions and reads the block height from " +
+        "this node when it is running and synced, with the usual servers as a fallback. Fee estimates also come " +
+        "from the node, but only if the traffic setting above is “Blocks + mempool”. The node can scan your " +
+        "balance from the wallet menu (Advanced options → Verify with my node).",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val btnPodar = boton(cAj, "Prune now (keep the latest ${CoreConfig.BLOQUES_QUE_QUEDAN} blocks)")
 
     // ── Snapshot ──────────────────────────────────────────────────────────
@@ -158,6 +166,39 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         }
     }
 
+    /** La carga del snapshot en curso, según el registro: barra, porcentaje, monedas y tiempo. */
+    fun pintarCarga(carga: CoreConfig.CargaSnapshot?) {
+        val cargando = carga != null && carga.enCurso
+        if (cargando) {
+            barraSnap.visibility = View.VISIBLE; barraSnap.isIndeterminate = false
+            barraSnap.progress = (carga!!.porcentaje * 10).toInt().coerceIn(0, 1000)
+            val eta = carga.etaS?.let { " · about ${CoreConfig.duracion(it)} left" } ?: " · estimating…"
+            tvProg.text = "%.1f %% · %,d of %,d coins%s\nRunning for %s".format(carga.porcentaje, carga.cargados, carga.total,
+                eta, if (carga.transcurridoS >= 0) CoreConfig.duracion(carga.transcurridoS) else "?")
+            btnCargar.isEnabled = false; btnCargar.alpha = .4f
+            if (ultimo == null) {
+                tvEstado.setTextColor(AppTheme.TXT_SEC)
+                tvEstado.text = "Loading the snapshot… ${"%.1f".format(carga.porcentaje)} %"
+            }
+        } else if (ocupado) {
+            // La llamada de carga sigue esperando pero el registro ya no se mueve: no dejar la barra congelada
+            // con el último valor como si fuera el actual.
+            barraSnap.visibility = View.VISIBLE; barraSnap.isIndeterminate = true
+            tvProg.text = "Waiting for the node… (the log shows no progress right now)"
+        } else {
+            btnCargar.isEnabled = true; btnCargar.alpha = 1f
+            barraSnap.visibility = View.GONE
+        }
+    }
+
+    /** Sólo lee el registro (no hace RPC, que se queda sin respuesta durante la carga): se puede repetir a menudo. */
+    fun refrescarCarga() {
+        Thread {
+            val c = CoreNodo.cargaSnapshot(act)
+            runOnUiThread { pintarCarga(c) }
+        }.start()
+    }
+
     fun pintar(est: CoreConfig.Estado?, bin: Boolean, arrancando: Boolean, carga: CoreConfig.CargaSnapshot?) {
         val corre = enMarcha()
         val libre = CoreNodo.libre(act)
@@ -207,19 +248,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             }
         }
         val f = CoreNodo.snapshot(act)
-        // La carga en curso (también si se volvió a abrir la pantalla durante ella): barra y tiempo restante.
-        val cargando = carga != null && carga.enCurso
-        if (cargando) {
-            barraSnap.visibility = View.VISIBLE; barraSnap.isIndeterminate = false
-            barraSnap.progress = (carga!!.porcentaje * 10).toInt().coerceIn(0, 1000)
-            val eta = carga.etaS?.let { " · about ${CoreConfig.duracion(it)} left" } ?: " · estimating…"
-            tvProg.text = "%.1f %% · %,d of %,d coins%s\nRunning for %s".format(carga.porcentaje, carga.cargados, carga.total,
-                eta, if (carga.transcurridoS >= 0) CoreConfig.duracion(carga.transcurridoS) else "?")
-            btnCargar.isEnabled = false; btnCargar.alpha = .4f
-        } else if (!ocupado) {
-            btnCargar.isEnabled = true; btnCargar.alpha = 1f
-            barraSnap.visibility = View.GONE
-        }
+        pintarCarga(carga)
         tvSnap.text = if (f.isFile) {
             val c = CoreSnapshot.cabecera(f)
             val h = c?.let { CoreConfig.alturaAceptada(it.base) }
@@ -367,8 +396,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val sondeo = object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.visibility == View.VISIBLE) refrescar()
-            h.postDelayed(this, 5_000)
+            if (scroll.visibility == View.VISIBLE) { refrescar(); refrescarCarga() }
+            h.postDelayed(this, 3_000)
         }
     }
     scroll.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
