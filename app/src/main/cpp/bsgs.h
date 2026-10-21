@@ -89,11 +89,15 @@ static int bsgs_build(secp256k1_context *ctx,
                       const uint8_t a32[32], const uint8_t b32[32], int cap_bits,
                       std::atomic<bool> *run, BsgsCtx *out){
     memset(out,0,sizeof(*out));
-    for(int i=0;i<24;i++) if(a32[i]||b32[i]) return BSGS_RANGO_GRANDE;
-    uint64_t a64=0,b64=0; for(int i=24;i<32;i++){ a64=(a64<<8)|a32[i]; b64=(b64<<8)|b32[i]; }
-    if(b64<a64) return BSGS_ERROR;
-    if(b64-a64 > (1ULL<<62)) return BSGS_RANGO_GRANDE;
-    uint64_t W=b64-a64+1;
+    /* Lo que importa es la ANCHURA b-a, no lo grandes que sean los extremos: una ventana de 2^22 claves
+     * a 2^70 se resuelve igual que a 2^0 (todo lo demás usa a32 entero). Antes cualquier extremo por encima
+     * de 2^64 se rechazaba como «rango demasiado grande» y mandaba a Kangaroo, que tarda horas. */
+    uint8_t d32[32]; { int borrow=0; for(int i=31;i>=0;i--){ int v=(int)b32[i]-(int)a32[i]-borrow; borrow=(v<0); d32[i]=(uint8_t)v; }
+                       if(borrow) return BSGS_ERROR; }          /* b < a */
+    for(int i=0;i<24;i++) if(d32[i]) return BSGS_RANGO_GRANDE;
+    uint64_t dw=0; for(int i=24;i<32;i++) dw=(dw<<8)|d32[i];
+    if(dw > (1ULL<<62)) return BSGS_RANGO_GRANDE;
+    uint64_t W=dw+1;
     uint64_t m=(uint64_t)ceil(sqrt((double)W)); if(m<1) m=1;
     uint64_t cap=(cap_bits>0&&cap_bits<40)?(1ULL<<cap_bits):(1ULL<<22);
     if(m>cap) m=cap;

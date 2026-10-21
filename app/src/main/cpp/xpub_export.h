@@ -9,6 +9,7 @@
  * publicado de BIP84 (tools/ec-harness/xpub.cpp). La derivación es la misma de
  * siempre; hunter_jni.cpp tiene la suya, y las dos tienen que dar lo mismo.
  */
+#include <openssl/crypto.h>   /* OPENSSL_cleanse */
 #include <stdint.h>
 #include <string.h>
 #include <string>
@@ -83,6 +84,12 @@ static std::string xpub_de_cuenta(const uint8_t seed[64], int purpose, bool test
     std::string out;
     XNodo m, p1, p2, cta;
     uint8_t I[64];
+    // Las claves privadas de los nodos de la ruta y el HMAC de la semilla se borran al salir, también si falla.
+    struct Borra {
+        XNodo *a, *b, *c, *d; uint8_t *i;
+        ~Borra() { OPENSSL_cleanse(a, sizeof(XNodo)); OPENSSL_cleanse(b, sizeof(XNodo));
+                   OPENSSL_cleanse(c, sizeof(XNodo)); OPENSSL_cleanse(d, sizeof(XNodo)); OPENSSL_cleanse(i, 64); }
+    } borra{&m, &p1, &p2, &cta, I};
     xpub_hmac((const uint8_t *)"Bitcoin seed", 12, seed, 64, I);
     memcpy(m.key, I, 32); memcpy(m.chain, I + 32, 32);
     uint32_t coin = testnet ? 1u : 0u;

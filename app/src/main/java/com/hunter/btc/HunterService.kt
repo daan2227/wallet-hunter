@@ -124,16 +124,16 @@ class HunterService : Service() {
      * proceso entero no queda nadie que lo llame. Lo que se buscaba queda
      * escrito en preferencias, arranque por donde arranque la búsqueda.
      */
-    private fun recuperarTrasMorir() {
+    private fun recuperarTrasMorir() = Thread {   // kangarooStart carga la tabla del disco: nunca en el hilo principal
         try {
             val p = getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
             val corriendo = p.getBoolean("kangaroo_corriendo", false)
             val viva = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-            if (!corriendo || viva) return
+            if (!corriendo || viva) return@Thread
             val pub = p.getString("kangaroo_pub", "") ?: ""
             val ini = p.getString("kangaroo_ini", "") ?: ""
             val fin = p.getString("kangaroo_fin", "") ?: ""
-            if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return
+            if (pub.length != 66 || ini.isEmpty() || fin.isEmpty()) return@Thread
             // Si hubiera fuerza bruta en marcha, se para: los dos motores
             // compiten por los mismos núcleos.
             try { if (HunterEngine.isRunning()) HunterEngine.stopHunting() } catch (e: Throwable) {}
@@ -151,7 +151,7 @@ class HunterService : Service() {
         } catch (e: Throwable) {
             android.util.Log.e("HunterService", "recover: ${e.message}", e)
         }
-    }
+    }.start()
 
     override fun onDestroy() {
         super.onDestroy()

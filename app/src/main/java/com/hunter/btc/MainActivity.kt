@@ -1054,7 +1054,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal fun totalBlocksOf(rangeStart: String, rangeEnd: String): java.math.BigInteger {
         val start = java.math.BigInteger(rangeStart.trimStart('0').ifEmpty{"0"}, 16)
         val end   = java.math.BigInteger(rangeEnd.trimStart('0').ifEmpty{"0"}, 16)
-        return end.subtract(start).divide(BLOCK_SIZE).max(java.math.BigInteger.ONE)
+        // Redondeado hacia ARRIBA y con el extremo incluido: con la división entera la cola final del rango
+        // (hasta 1e9-1 claves) no tenía bloque y nunca se recorría aunque el progreso llegara al 100 %. Era el
+        // caso del puzzle #31 en modo prueba: su clave conocida caía en esa cola.
+        return end.subtract(start).add(java.math.BigInteger.ONE).add(BLOCK_SIZE).subtract(java.math.BigInteger.ONE)
+            .divide(BLOCK_SIZE).max(java.math.BigInteger.ONE)
     }
 
     /** Traduce un índice de bloque al rango hexadecimal que entiende el motor. */
@@ -2262,6 +2266,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
     }
 
+    /** Un Kangaroo está arrancando en segundo plano (carga de la tabla): no se acepta otro arranque. */
+    @Volatile private var kgArrancando = false
+
     internal fun alternarKangaroo() {
         if (KangarooDueno.ocupadoPorOtro(KangarooDueno.PUZZLE)) {
             tvPuzzleAtajo?.text = "The weak-key audit is using the Kangaroo engine. Stop it first (Weak tab)."
@@ -2328,51 +2335,65 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Un fichero por puzzle: la clave pública lo identifica sin ambigüedad
         // y así cambiar de puzzle y volver no pierde nada.
         val ruta = java.io.File(filesDir, "kangaroo_${puzzlePubHex.take(16)}.dat").absolutePath
-        val ok = try {
-            HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,
-                                       hilos, porHilo, ruta,
-                                       HunterEngine.topeTablaBits(this))
-        } catch (e: Throwable) {
-            android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
-        }
-        if (ok) {
-            KangarooDueno.actual = KangarooDueno.PUZZLE
-            // Kangaroo arrancado desde aquí no lo cuidaba ningún servicio: al salir de la app se congelaba
-            // el proceso sin wake lock ni freno térmico/de batería, y una clave hallada con la app cerrada
-            // sólo existía en la memoria del motor. El servicio es quien lo vigila y guarda el hallazgo.
-            try { startForegroundService(Intent(this, HunterService::class.java)) }
-            catch (ex: Exception) { try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {} }
-        }
-        if (!ok) {
-            /* kangarooStart exige que el extremo superior del rango tenga al
-             * menos 8 bits (`if(bits<8) return JNI_FALSE` en hunter_jni.cpp).
-             * Para el puzzle N ese extremo es 2^N-1, o sea N bits: del #1 al #7
-             * Kangaroo NO puede arrancar nunca. Y son justo los primeros que uno
-             * prueba, así que decir sólo "no se pudo" manda a buscar una avería
-             * que no existe.
-             *
-             * El límite no es capricho: por debajo de ahí el criterio de punto
-             * distinguido (dbits, mínimo 6) sería más grande que el rango entero
-             * y los canguros no llegarían a apuntar nada. */
-            tvPuzzleAtajo?.text = if (puzzleSeleccionado in 1..7)
-                "Kangaroo needs a range of at least 8 bits and " +
-                "#$puzzleSeleccionado has $puzzleSeleccionado. For one this " +
-                "small use \u0027Start puzzle\u0027: it sweeps the whole range instantly."
-            else "Could not start the search."
-            tvPuzzleAtajo?.setTextColor(AppTheme.RED)
-            return
-        }
-        // ESTE `cpu` SOLO SE PINTABA. kangarooStart no lo recibe, y el motor
-        // arranca Kangaroo con lo que hubiera en g_cpu_limit —el limite del
-        // ESCANER, o 100 si nadie lo habia tocado—. O sea que el deslizador de
-        // potencia del puzzle mostraba un numero que no era el que se estaba
-        // usando. Decirselo aqui lo hace verdad y ademas le da al gobernador su
-        // punto de partida.
-        Termico.pedir(cpu)
-        prepararContadoresKangaroo(puzzlePubHex, puzzleIniHex, puzzleFinHex)
-        tvPuzzleAtajo?.text = "Searching with Kangaroo · $hilos threads · $cpu % CPU · " +
-                             "$porHilo kangaroos per thread"
-        tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+        // kangarooStart carga del disco la tabla de puntos guardados (hasta ~235 MB) y arranca los hilos: en el
+        // hilo principal era un riesgo de ANR. Se hace en otro, con el botón desactivado, y la pantalla se
+        // actualiza al volver. `kgArrancando` evita un segundo arranque (watchdog o doble toque) mientras carga.
+        if (kgArrancando) return
+        kgArrancando = true
+        btnKangaroo?.isEnabled = false
+        tvPuzzleAtajo?.text = "Starting Kangaroo… loading the saved work"
+        tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
+        Thread {
+            val ok = try {
+                HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,
+                                           hilos, porHilo, ruta,
+                                           HunterEngine.topeTablaBits(this))
+            } catch (e: Throwable) {
+                android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
+            }
+            runOnUiThread {
+                kgArrancando = false
+                btnKangaroo?.isEnabled = true
+                if (ok) {
+                    KangarooDueno.actual = KangarooDueno.PUZZLE
+                    // Kangaroo arrancado desde aquí no lo cuidaba ningún servicio: al salir de la app se congelaba
+                    // el proceso sin wake lock ni freno térmico/de batería, y una clave hallada con la app cerrada
+                    // sólo existía en la memoria del motor. El servicio es quien lo vigila y guarda el hallazgo.
+                    try { startForegroundService(Intent(this, HunterService::class.java)) }
+                    catch (ex: Exception) { try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {} }
+                }
+                if (!ok) {
+                    /* kangarooStart exige que el extremo superior del rango tenga al
+                     * menos 8 bits (`if(bits<8) return JNI_FALSE` en hunter_jni.cpp).
+                     * Para el puzzle N ese extremo es 2^N-1, o sea N bits: del #1 al #7
+                     * Kangaroo NO puede arrancar nunca. Y son justo los primeros que uno
+                     * prueba, así que decir sólo "no se pudo" manda a buscar una avería
+                     * que no existe.
+                     *
+                     * El límite no es capricho: por debajo de ahí el criterio de punto
+                     * distinguido (dbits, mínimo 6) sería más grande que el rango entero
+                     * y los canguros no llegarían a apuntar nada. */
+                    tvPuzzleAtajo?.text = if (puzzleSeleccionado in 1..7)
+                        "Kangaroo needs a range of at least 8 bits and " +
+                        "#$puzzleSeleccionado has $puzzleSeleccionado. For one this " +
+                        "small use \u0027Start puzzle\u0027: it sweeps the whole range instantly."
+                    else "Could not start the search."
+                    tvPuzzleAtajo?.setTextColor(AppTheme.RED)
+                    return@runOnUiThread
+                }
+                // ESTE `cpu` SOLO SE PINTABA. kangarooStart no lo recibe, y el motor
+                // arranca Kangaroo con lo que hubiera en g_cpu_limit —el limite del
+                // ESCANER, o 100 si nadie lo habia tocado—. O sea que el deslizador de
+                // potencia del puzzle mostraba un numero que no era el que se estaba
+                // usando. Decirselo aqui lo hace verdad y ademas le da al gobernador su
+                // punto de partida.
+                Termico.pedir(cpu)
+                prepararContadoresKangaroo(puzzlePubHex, puzzleIniHex, puzzleFinHex)
+                tvPuzzleAtajo?.text = "Searching with Kangaroo · $hilos threads · $cpu % CPU · " +
+                                     "$porHilo kangaroos per thread"
+                tvPuzzleAtajo?.setTextColor(AppTheme.ACCENT)
+            }
+        }.start()
     }
 
     /**

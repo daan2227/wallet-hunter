@@ -40,6 +40,25 @@ int main(){
                    (unsigned long long)c.k,(unsigned long long)c.a,(unsigned long long)c.b,(unsigned long long)prog.load());
         else { printf("  MAL  k=%llu  r=%d got=%llu\n",(unsigned long long)c.k,r,(unsigned long long)got); fallos++; }
     }
+    /* Ventana estrecha por ENCIMA de 2^64: antes se rechazaba como RANGO_GRANDE. */
+    {
+        uint8_t a32[32]={0},b32[32]={0},k32[32]={0},out[32]={0};
+        a32[23]=0x40;                                   /* a = 2^70 */
+        memcpy(b32,a32,32); { uint64_t w=1ULL<<22; for(int i=0;i<8;i++) b32[31-i]=(uint8_t)(w>>(8*i)); }
+        memcpy(k32,a32,32); { uint64_t w=1234567; for(int i=0;i<8;i++) k32[31-i]=(uint8_t)(w>>(8*i)); }
+        secp256k1_pubkey pk; secp256k1_ec_pubkey_create(ctx,&pk,k32);
+        uint8_t pub[33]; size_t l=33; secp256k1_ec_pubkey_serialize(ctx,pub,&l,&pk,SECP256K1_EC_COMPRESSED);
+        std::atomic<bool> run{true}; std::atomic<uint64_t> prog{0};
+        int r=bsgs_solve(ctx,pub,33,a32,b32,22,&run,&prog,out);
+        if(r==BSGS_HALLADO && memcmp(out,k32,32)==0) printf("  OK   ventana de 2^22 claves en 2^70: encontrada\n");
+        else { printf("  MAL  ventana a 2^70 r=%d\n",r); fallos++; }
+        /* y una ancha de verdad sigue rechazándose */
+        uint8_t c32[32]={0}; c32[20]=1;                 /* b = a + 2^88 */
+        for(int i=0;i<32;i++) c32[i]|=a32[i];
+        r=bsgs_solve(ctx,pub,33,a32,c32,22,&run,&prog,out);
+        if(r==BSGS_RANGO_GRANDE) printf("  OK   ventana de 2^88: sigue siendo demasiado grande\n");
+        else { printf("  MAL  ventana 2^88 r=%d\n",r); fallos++; }
+    }
     /* k FUERA del rango: no debe encontrarlo (ni inventar una clave). */
     {
         uint8_t a32[32],b32[32],pub[33],out[32]={0}; be(1000,a32); be(2000,b32); pub_de_k(ctx,5000,pub);

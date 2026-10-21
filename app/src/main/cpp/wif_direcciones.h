@@ -16,6 +16,7 @@
 #include <string>
 #include <openssl/sha.h>
 #include <openssl/ripemd.h>
+#include <openssl/crypto.h>   /* OPENSSL_cleanse */
 #include <secp256k1.h>
 #include "addr_encode.h"
 
@@ -29,12 +30,17 @@ static const char WIF_B58[] = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopq
  * El checksum son los 4 primeros bytes de SHA256(SHA256(resto)).
  * comprimida: true para K/L (marca 0x01), false para 5... / 9... / c...
  */
+/* Borra al salir del ámbito (también con return) lo que hubiera de clave en la pila. */
+struct WifLimpia { void *p; size_t n; ~WifLimpia(){ OPENSSL_cleanse(p, n); } };
+struct WifLimpiaS { std::string *s; ~WifLimpiaS(){ if(!s->empty()) OPENSSL_cleanse(&(*s)[0], s->size()); } };
+
 static bool wif_decode(const char *wif, uint8_t *privkey, bool *comprimida = nullptr,
                        bool testnet = false) {
     size_t wlen = strlen(wif);
     if (wlen < 50 || wlen > 53) return false;
 
     uint8_t buf[64] = {0};
+    WifLimpia lbuf{buf, sizeof buf};
     for (size_t i = 0; i < wlen; i++) {
         const char *p = strchr(WIF_B58, wif[i]);
         if (!p) return false;
@@ -57,6 +63,7 @@ static bool wif_decode(const char *wif, uint8_t *privkey, bool *comprimida = nul
     if (plen != 37 && plen != 38) return false;
 
     uint8_t payload[38] = {0};
+    WifLimpia lpay{payload, sizeof payload};
     memcpy(payload + zeros, buf + first, 64 - first);
 
     if (payload[0] != (testnet ? 0xEF : 0x80)) return false;
@@ -106,6 +113,7 @@ static bool wif_taproot_xonly(secp256k1_context *ctx, const uint8_t *pub33, uint
  */
 static std::string wif_direcciones(const char *wif, bool testnet) {
     uint8_t priv[32] = {0};
+    WifLimpia lpriv{priv, sizeof priv};
     bool comprimida = true;
     if (!wif_decode(wif, priv, &comprimida, testnet)) return "";
 
@@ -170,6 +178,8 @@ static std::string wif_importar(const std::string &entrada, bool testnet, bool h
     std::string s;
     for (char c : entrada) if (c != ' ' && c != '\n' && c != '\t' && c != '\r') s += c;
     uint8_t priv[32] = {0};
+    WifLimpia lpriv{priv, sizeof priv};
+    WifLimpiaS ls{&s};
     bool comp = true;
     if (s.size() == 64) {
         if (!wif_hex32(s, priv)) return "";
@@ -182,6 +192,7 @@ static std::string wif_importar(const std::string &entrada, bool testnet, bool h
     if (secp256k1_ec_seckey_verify(ctx, priv)) {
         /* WIF: versión | privkey | [01 si comprimida], con checksum en b58enc. */
         uint8_t payload[34]; int n = 0;
+        WifLimpia lpay{payload, sizeof payload};
         payload[n++] = testnet ? 0xEF : 0x80;
         memcpy(payload + n, priv, 32); n += 32;
         if (comp) payload[n++] = 0x01;

@@ -166,6 +166,10 @@ static std::mutex g_seq_mutex;
    se sabia si el bloque estaba hecho. Ahora, cuando no queda nada que repartir
    y el ultimo lote en curso termina, el motor se para solo y avisa. */
 static std::atomic<int> g_seq_en_curso(0);   /* lotes repartidos y aun sin acabar */
+/* Inicio de cada lote repartido y NO terminado (bajo g_seq_mutex). Al parar, un hilo abandona su lote a
+ * medias; reanudar desde el último lote repartido saltaba para siempre la cola de esos. La clave de reanudación
+ * es la más baja de aquí (getLastKey). */
+static std::map<std::string,int> g_en_vuelo;
 static std::atomic<int> g_seq_agotado(0);    /* ya no queda rango que repartir */
 static std::atomic<int> g_rango_completo(0); /* recorrido entero: la UI lo marca */
 static uint8_t g_last_key[32]     = {0};
@@ -961,6 +965,7 @@ static void *worker_puzzle_fn(void *arg){
 
         /* Generar clave base - aleatorio o secuencial */
         uint8_t privkey[32];
+        std::string inicio_lote;
         const bool secuencial = g_sequential.load()!=0;
         if(secuencial) {
             /* Modo secuencial: tomar posición actual y avanzar batch */
@@ -971,10 +976,13 @@ static void *worker_puzzle_fn(void *arg){
                 g_seq_agotado.store(1);
                 bool ultimo=(g_seq_en_curso.load()==0);
                 lk.unlock();
-                if(ultimo){ g_rango_completo.store(1); add_log("Block done: range scanned end to end"); parar_motor(); }
+                // Con una parada en curso otro hilo puede haber dejado su lote a medias: no es «rango completo».
+                if(ultimo && !g_stop.load()){ g_rango_completo.store(1); add_log("Block done: range scanned end to end"); parar_motor(); }
                 break;
             }
             g_seq_en_curso.fetch_add(1);
+            inicio_lote.assign((const char*)privkey, 32);
+            g_en_vuelo[inicio_lote]++;
             /* Avanzar la posición para el siguiente hilo.
                Antes se releía g_batch_size aquí: si el usuario movía el slider
                entre las dos lecturas, el avance no coincidía con lo que este
@@ -1015,7 +1023,8 @@ static void *worker_puzzle_fn(void *arg){
         PuzzleGrupoCtx gc; gc.pb=&pctx; gc.cuenta=cuenta;
         long ngrupos=(cuenta+ESC_GRUPO-1)/ESC_GRUPO;
         fe_t cx,cy; bool hay_centro=false;
-        for(long g=0; g<ngrupos && !g_stop.load(); g++){
+        long g=0;
+        for(; g<ngrupos && !g_stop.load(); g++){
             gc.g=g;
             if(!hay_centro){
                 /* centro = base + g*ESC_GRUPO + ESC_M, con una multiplicacion */
@@ -1044,9 +1053,16 @@ static void *worker_puzzle_fn(void *arg){
             }
             hay_centro=false;
         }
-        long actual=cuenta;
+        // Con una parada a mitad de lote sólo cuentan los grupos hechos (antes se sumaba el lote entero).
+        const bool lote_completo=(g>=ngrupos);
+        long actual=lote_completo ? cuenta : std::min<long>(cuenta, g*(long)ESC_GRUPO);
 
         g_count.fetch_add(actual);
+        if(secuencial && lote_completo){
+            std::lock_guard<std::mutex> lk2(g_seq_mutex);
+            auto it=g_en_vuelo.find(inicio_lote);
+            if(it!=g_en_vuelo.end() && --it->second<=0) g_en_vuelo.erase(it);
+        }
         if(secuencial){
             /* El ultimo lote en terminar, con el rango ya repartido, cierra. */
             int quedan=g_seq_en_curso.fetch_sub(1)-1;
@@ -1076,6 +1092,7 @@ static void *worker_puzzle_fn(void *arg){
 
 static pthread_t g_workers[MAX_THREADS];
 static int g_active=0;
+static std::atomic<bool> g_arrancando(false);   /* startHunting está creando hilos: la parada espera */
 
 /* =========================================================
    CSV loader
@@ -1320,7 +1337,7 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
     g_stop.store(false);g_count.store(0);g_found.store(0);g_wps.store(0);
     g_objetivo_hallado.store(0);
     g_seq_en_curso.store(0); g_seq_agotado.store(0); g_rango_completo.store(0);
-    { std::lock_guard<std::mutex> lk(g_seq_mutex); memcpy(g_seq_pos,g_range_start,32); }
+    { std::lock_guard<std::mutex> lk(g_seq_mutex); memcpy(g_seq_pos,g_range_start,32); g_en_vuelo.clear(); }
     g_last_count=0;g_last_wps_t=time(nullptr);
     g_start_time=time(nullptr);
     int n=threads>MAX_THREADS?MAX_THREADS:threads;
@@ -1328,8 +1345,24 @@ Java_com_hunter_btc_HunterEngine_startHunting(JNIEnv *,jobject,jint threads,jint
                           (g_mode.load()==2) ? worker_rawkey_fn : worker_bip39_fn;
     /* Se pasaba nullptr, así que ningún worker conocía su índice y todos
        acababan compitiendo por un único núcleo. */
-    for(int i=0;i<n;i++) pthread_create(&g_workers[i],nullptr,fn,(void*)(intptr_t)i);
-    g_active=n;
+    // Mientras se crean los hilos, la parada espera: un worker que acierta de inmediato (puzzle #1) llamaba a
+    // parar_motor con g_active aún sin fijar, el joiner no recogía a nadie y se quedaban hilos sueltos. Y si
+    // pthread_create falla, no se une un pthread_t que nunca existió.
+    g_arrancando.store(true);
+    int creados=0;
+    for(int i=0;i<n;i++){
+        if(pthread_create(&g_workers[i],nullptr,fn,(void*)(intptr_t)i)!=0) break;
+        creados++;
+    }
+    g_active=creados;
+    g_arrancando.store(false);
+    if(creados==0){
+        g_running.store(false);
+        add_log("Could not start any worker thread");
+        return;
+    }
+    if(creados<n) add_log("Only "+std::to_string(creados)+" of "+std::to_string(n)+" worker threads could start");
+    n=creados;
     const char *modeStr=(g_mode.load()==1)?"PUZZLE":(g_mode.load()==2)?"RAWKEY":"BIP39";
     add_log(std::string("Started | mode:")+modeStr+" | threads:"+std::to_string(n)+" | CPU:"+std::to_string(cpuLimit)+"%");
 }
@@ -1351,6 +1384,7 @@ static void parar_motor(){
     if(!g_stopping.compare_exchange_strong(expected,true))return;
     g_stop.store(true);
     std::thread([]{
+        while(g_arrancando.load()) std::this_thread::sleep_for(std::chrono::milliseconds(1));
         for(int i=0;i<g_active;i++) pthread_join(g_workers[i],nullptr);
         g_running.store(false);g_active=0;
         g_stopping.store(false);
@@ -1749,8 +1783,9 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_bip38Cifrar(JNIEnv *env,jobject,jstring jhex,jstring jpass,jboolean comp){
     const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
     std::string pass=utf8_de(env,jpass);   /* UTF-8 de verdad: ver utf8_de */
+    LimpiaCadena lh{&h}, lpass{&pass};
     if(h.size()!=64) return env->NewStringUTF("");
-    uint8_t priv[32];
+    uint8_t priv[32]; LimpiaT<uint8_t[32]> lpriv{&priv};
     for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
         if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
         if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
@@ -1758,10 +1793,11 @@ Java_com_hunter_btc_HunterEngine_bip38Cifrar(JNIEnv *env,jobject,jstring jhex,js
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
     if(!secp256k1_ec_seckey_verify(ctx,priv)){ secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
     uint8_t ah[4]; bip38_addrhash(ctx,priv,comp,ah);
-    uint8_t dk[64];
+    uint8_t dk[64]; LimpiaT<uint8_t[64]> ldk{&dk};
     if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ah,4,16384,8,8,0,dk,64)!=1){ secp256k1_context_destroy(ctx); return env->NewStringUTF(""); }
-    uint8_t x1[16],x2[16]; for(int i=0;i<16;i++){ x1[i]=priv[i]^dk[i]; x2[i]=priv[16+i]^dk[16+i]; }
-    AES_KEY ak; AES_set_encrypt_key(dk+32,256,&ak);
+    uint8_t x1[16],x2[16]; LimpiaT<uint8_t[16]> lx1{&x1}, lx2{&x2};
+    for(int i=0;i<16;i++){ x1[i]=priv[i]^dk[i]; x2[i]=priv[16+i]^dk[16+i]; }
+    AES_KEY ak; LimpiaT<AES_KEY> lak{&ak}; AES_set_encrypt_key(dk+32,256,&ak);
     uint8_t e1[16],e2[16]; AES_encrypt(x1,e1,&ak); AES_encrypt(x2,e2,&ak);
     uint8_t rec[39]; rec[0]=0x01; rec[1]=0x42; rec[2]=(uint8_t)(0xC0|(comp?0x20:0));
     memcpy(rec+3,ah,4); memcpy(rec+7,e1,16); memcpy(rec+23,e2,16);
@@ -1781,14 +1817,16 @@ static std::string bip38_descifrar_con(const std::string &k, const std::string &
         bool okck=(memcmp(h2,raw+39,4)==0 && raw[0]==0x01);
         if(okck && raw[1]==0x42){
             bool comp=(raw[2]&0x20)!=0; uint8_t ah[4]; memcpy(ah,raw+3,4);
-            uint8_t dk[64];
+            uint8_t dk[64]; LimpiaT<uint8_t[64]> ldk{&dk};
             if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ah,4,16384,8,8,0,dk,64)==1){
-                AES_KEY ak; AES_set_decrypt_key(dk+32,256,&ak);
-                uint8_t d1[16],d2[16]; AES_decrypt(raw+7,d1,&ak); AES_decrypt(raw+23,d2,&ak);
-                uint8_t priv[32]; for(int i=0;i<16;i++){ priv[i]=d1[i]^dk[i]; priv[16+i]=d2[i]^dk[16+i]; }
+                AES_KEY ak; LimpiaT<AES_KEY> lak{&ak}; AES_set_decrypt_key(dk+32,256,&ak);
+                uint8_t d1[16],d2[16]; LimpiaT<uint8_t[16]> ld1{&d1}, ld2{&d2};
+                AES_decrypt(raw+7,d1,&ak); AES_decrypt(raw+23,d2,&ak);
+                uint8_t priv[32]; LimpiaT<uint8_t[32]> lpriv{&priv};
+                for(int i=0;i<16;i++){ priv[i]=d1[i]^dk[i]; priv[16+i]=d2[i]^dk[16+i]; }
                 secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
                 uint8_t ah2[4]; if(secp256k1_ec_seckey_verify(ctx,priv)){ bip38_addrhash(ctx,priv,comp,ah2);
-                    if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); } }
+                    if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); OPENSSL_cleanse(hx,sizeof hx); } }
                 secp256k1_context_destroy(ctx);
             }
         } else if(okck && raw[1]==0x43){
@@ -1798,11 +1836,11 @@ static std::string bip38_descifrar_con(const std::string &k, const std::string &
             uint8_t ownerentropy[8]; memcpy(ownerentropy,raw+7,8);
             uint8_t enc1a[8]; memcpy(enc1a,raw+15,8);
             uint8_t enc2[16]; memcpy(enc2,raw+23,16);
-            uint8_t passfactor[32]={0};
+            uint8_t passfactor[32]={0}; LimpiaT<uint8_t[32]> lpf{&passfactor};
             if(hasLot){
-                uint8_t prefactor[32];
+                uint8_t prefactor[32]; LimpiaT<uint8_t[32]> lpre{&prefactor};
                 if(EVP_PBE_scrypt(pass.c_str(),pass.size(),ownerentropy,4,16384,8,8,0,prefactor,32)==1){
-                    uint8_t buf[40]; memcpy(buf,prefactor,32); memcpy(buf+32,ownerentropy,8); sha256d(buf,40,passfactor);
+                    uint8_t buf[40]; LimpiaT<uint8_t[40]> lbuf{&buf}; memcpy(buf,prefactor,32); memcpy(buf+32,ownerentropy,8); sha256d(buf,40,passfactor);
                 }
             } else EVP_PBE_scrypt(pass.c_str(),pass.size(),ownerentropy,8,16384,8,8,0,passfactor,32);
             secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
@@ -1810,18 +1848,18 @@ static std::string bip38_descifrar_con(const std::string &k, const std::string &
             if(secp256k1_ec_seckey_verify(ctx,passfactor) && secp256k1_ec_pubkey_create(ctx,&pp,passfactor)){
                 uint8_t passpoint[33]; size_t l=33; secp256k1_ec_pubkey_serialize(ctx,passpoint,&l,&pp,SECP256K1_EC_COMPRESSED);
                 uint8_t salt[12]; memcpy(salt,ah,4); memcpy(salt+4,ownerentropy,8);
-                uint8_t dk[64];
+                uint8_t dk[64]; LimpiaT<uint8_t[64]> ldk{&dk};
                 if(EVP_PBE_scrypt((const char*)passpoint,33,salt,12,1024,1,1,0,dk,64)==1){
-                    AES_KEY ak; AES_set_decrypt_key(dk+32,256,&ak);
-                    uint8_t d2[16]; AES_decrypt(enc2,d2,&ak); for(int i=0;i<16;i++) d2[i]^=dk[16+i];
+                    AES_KEY ak; LimpiaT<AES_KEY> lak{&ak}; AES_set_decrypt_key(dk+32,256,&ak);
+                    uint8_t d2[16]; LimpiaT<uint8_t[16]> ld2{&d2}; AES_decrypt(enc2,d2,&ak); for(int i=0;i<16;i++) d2[i]^=dk[16+i];
                     uint8_t enc1full[16]; memcpy(enc1full,enc1a,8); memcpy(enc1full+8,d2,8);
-                    uint8_t d1[16]; AES_decrypt(enc1full,d1,&ak); for(int i=0;i<16;i++) d1[i]^=dk[i];
-                    uint8_t seedb[24]; memcpy(seedb,d1,16); memcpy(seedb+16,d2+8,8);
-                    uint8_t factorb[32]; sha256d(seedb,24,factorb);
-                    uint8_t priv[32]; memcpy(priv,passfactor,32);
+                    uint8_t d1[16]; LimpiaT<uint8_t[16]> ld1{&d1}; AES_decrypt(enc1full,d1,&ak); for(int i=0;i<16;i++) d1[i]^=dk[i];
+                    uint8_t seedb[24]; LimpiaT<uint8_t[24]> lsb{&seedb}; memcpy(seedb,d1,16); memcpy(seedb+16,d2+8,8);
+                    uint8_t factorb[32]; LimpiaT<uint8_t[32]> lfb{&factorb}; sha256d(seedb,24,factorb);
+                    uint8_t priv[32]; LimpiaT<uint8_t[32]> lpriv{&priv}; memcpy(priv,passfactor,32);
                     if(secp256k1_ec_seckey_tweak_mul(ctx,priv,factorb)){
                         uint8_t ah2[4]; bip38_addrhash(ctx,priv,comp,ah2);
-                        if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); }
+                        if(memcmp(ah,ah2,4)==0){ char hx[65]; for(int i=0;i<32;i++) snprintf(hx+i*2,3,"%02x",priv[i]); res=std::string(hx)+(comp?"|1":"|0"); OPENSSL_cleanse(hx,sizeof hx); }
                     }
                 }
             }
@@ -2004,10 +2042,13 @@ Java_com_hunter_btc_HunterEngine_recuperarNonce(JNIEnv *env,jobject,
             if(!BN_is_zero(d)){
                 uint8_t raw[32]={0}; int nb=BN_num_bytes(d);
                 if(nb<=32){ BN_bn2bin(d,raw+(32-nb));
-                    char out[65]; for(int i=0;i<32;i++) snprintf(out+i*2,3,"%02x",raw[i]); res=out; }
+                    char out[65]; for(int i=0;i<32;i++) snprintf(out+i*2,3,"%02x",raw[i]); res=out;
+                    OPENSSL_cleanse(out,sizeof out); }
+                OPENSSL_cleanse(raw,sizeof raw);
             }
         }
-        BN_free(ds);BN_free(inv);BN_free(dz);BN_free(k);BN_free(sk);BN_free(num);BN_free(rinv);BN_free(d);
+        // BN_clear_free: k y d son el nonce y la clave privada; BN_free no borra su memoria.
+        BN_clear_free(ds);BN_clear_free(inv);BN_clear_free(dz);BN_clear_free(k);BN_clear_free(sk);BN_clear_free(num);BN_clear_free(rinv);BN_clear_free(d);
     }
     if(n)BN_free(n); if(r)BN_free(r); if(s1)BN_free(s1); if(z1)BN_free(z1);
     if(s2)BN_free(s2); if(z2)BN_free(z2); if(c)BN_CTX_free(c);
@@ -2929,9 +2970,16 @@ Java_com_hunter_btc_HunterEngine_buildAndSignTx(JNIEnv *env,jobject,jstring jreq
 
 JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_getLastKey(JNIEnv *env,jobject){
+    // En secuencial, desde donde hay que reanudar: el lote sin terminar más bajo (lo que otros hilos dejaron a
+    // medias al parar), no el último repartido.
+    uint8_t reanuda[32]; bool hay_en_vuelo=false;
+    if(g_sequential.load()!=0){
+        std::lock_guard<std::mutex> ls(g_seq_mutex);
+        if(!g_en_vuelo.empty()){ memcpy(reanuda,g_en_vuelo.begin()->first.data(),32); hay_en_vuelo=true; }
+    }
     std::lock_guard<std::mutex> lk(g_last_key_mutex);
     char hex[65];
-    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",g_last_key[i]);
+    for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",hay_en_vuelo?reanuda[i]:g_last_key[i]);
     hex[64]=0;
     return env->NewStringUTF(hex);
 }
