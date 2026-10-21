@@ -24,10 +24,32 @@ object CoreConfig {
         /** Sin retransmitir transacciones sueltas: baja mucho el tráfico. Cuesta la estimación de comisión. */
         val soloBloques: Boolean = true,
         /** Parar el nodo si la conexión pasa a ser de datos móviles. */
-        val soloWifi: Boolean = true
+        val soloWifi: Boolean = true,
+        /** 0 = conexión directa, 1 = todo por el proxy SOCKS5 (Tor), 2 = sólo pares .onion por el proxy. */
+        val red: Int = 0,
+        /** host:puerto del proxy SOCKS5 de Tor (Orbot: 127.0.0.1:9050). */
+        val proxy: String = PROXY_TOR,
+        /** EXPERIMENTAL en Core: difundir mis transacciones por conexiones cortas de Tor. Sólo con [red] != 0. */
+        val difusionPrivada: Boolean = false,
+        /** Servir filtros de bloque BIP157 sólo en 127.0.0.1, para el cliente ligero de esta app. Ocupa ~10 GB más. */
+        val servirFiltros: Boolean = false
     ) {
         fun normalizado() = copy(pruneMiB = pruneMiB.coerceAtLeast(PRUNE_MIN),
-                                 dbcacheMiB = dbcacheMiB.coerceIn(4, 4096))
+                                 dbcacheMiB = dbcacheMiB.coerceIn(4, 4096),
+                                 red = red.coerceIn(0, 2),
+                                 proxy = if (proxyValido(proxy)) proxy.trim() else PROXY_TOR)
+    }
+
+    const val PROXY_TOR = "127.0.0.1:9050"
+    const val PUERTO_P2P_LOCAL = 8333
+
+    /** host:puerto sin espacios ni saltos de línea (va a una línea de bitcoin.conf). */
+    fun proxyValido(s: String): Boolean {
+        val t = s.trim()
+        val i = t.lastIndexOf(':')
+        if (i <= 0 || t.any { it.isWhitespace() || it == '#' || it == '=' }) return false
+        val p = t.substring(i + 1).toIntOrNull() ?: return false
+        return p in 1..65535 && t.substring(0, i).matches(Regex("[A-Za-z0-9._\\-\\[\\]:]+"))
     }
 
     /** El contenido de bitcoin.conf. [cookie] es la ruta ABSOLUTA de la cookie de RPC (en el almacén privado). */
@@ -45,7 +67,23 @@ object CoreConfig {
             appendLine("rpcport=$RPC_PORT")
             appendLine("rpccookiefile=$cookie")
             // Un teléfono no abre puertos hacia fuera: sin conexiones entrantes ahorra datos y batería.
-            appendLine("listen=0")
+            if (a.servirFiltros) {
+                // Servir filtros BIP157 a esta misma app: sólo en el bucle local, nunca hacia fuera.
+                appendLine("listen=1")
+                appendLine("bind=127.0.0.1:$PUERTO_P2P_LOCAL")
+                appendLine("listenonion=0")
+                appendLine("blockfilterindex=basic")
+                appendLine("peerblockfilters=1")
+            } else appendLine("listen=0")
+            if (a.red != 0) {
+                appendLine("proxy=${a.proxy}")
+                appendLine("proxyrandomize=1")
+                // Sin DNS fuera del proxy: una consulta DNS normal delataría que este teléfono corre un nodo.
+                appendLine("dns=0")
+                appendLine("dnsseed=0")
+                if (a.red == 2) appendLine("onlynet=onion")
+                if (a.difusionPrivada) appendLine("privatebroadcast=1")
+            }
             appendLine("maxconnections=12")
             appendLine("blocksonly=${if (a.soloBloques) 1 else 0}")
             appendLine("txindex=0")
@@ -196,6 +234,72 @@ object CoreConfig {
         val f = estimacion.optDouble("feerate", Double.NaN) * 1e5
         return f.takeIf { it.isFinite() && it > 0 }
     }
+
+    /**
+     * ¿Coincide lo que el nodo dice de una moneda (respuesta de `gettxout`) con lo que dijo el servidor?
+     * null = sí. Si no, el motivo en una línea. [respuesta] es null cuando la moneda está gastada o no existe.
+     */
+    fun comprobarMoneda(respuesta: Any?, valorSat: Long, txid: String, vout: Int): String? {
+        val o = respuesta as? JSONObject
+            ?: return "the coin ${txid.take(12)}…:$vout is already spent or does not exist"
+        val v = satDeBtc(o.optDouble("value", -1.0))
+        return if (v == valorSat) null
+        else "the server says the coin ${txid.take(12)}…:$vout holds $valorSat sat, the node says $v sat"
+    }
+
+    // ── Panel de la red ──────────────────────────────────────────────────────
+
+    data class Halving(val altura: Long, val faltan: Long, val dias: Long)
+
+    /** El siguiente halving (cada 210 000 bloques) y cuánto falta al ritmo de un bloque cada 10 min. */
+    fun proximoHalving(altura: Long): Halving {
+        val sig = (altura / 210_000L + 1) * 210_000L
+        val falta = sig - altura
+        return Halving(sig, falta, falta * 10 / 1440)
+    }
+
+    fun hashrate(h: Double): String = when {
+        !h.isFinite() || h <= 0 -> "–"
+        h >= 1e18 -> "%.1f EH/s".format(h / 1e18)
+        h >= 1e15 -> "%.1f PH/s".format(h / 1e15)
+        else -> "%.1f TH/s".format(h / 1e12)
+    }
+
+    fun dificultad(d: Double): String = if (d >= 1e12) "%.2f T".format(d / 1e12) else "%,.0f".format(d)
+
+    data class Mempool(val tx: Long, val bytes: Long, val minimaSatVb: Double)
+
+    fun leerMempool(o: JSONObject): Mempool =
+        Mempool(o.optLong("size", 0L), o.optLong("bytes", 0L), o.optDouble("mempoolminfee", 0.0) * 1e5)
+
+    data class UtxoStats(val monedas: Long, val btc: Double, val altura: Long)
+
+    /** Respuesta de gettxoutsetinfo. */
+    fun leerUtxoStats(o: JSONObject): UtxoStats? =
+        if (!o.has("txouts")) null else UtxoStats(o.optLong("txouts"), o.optDouble("total_amount", 0.0), o.optLong("height"))
+
+    fun hace(segundos: Long): String = when {
+        segundos < 90 -> "just now"
+        segundos < 3600 -> "${segundos / 60} min ago"
+        segundos < 86_400 -> "${segundos / 3600} h ago"
+        else -> "${segundos / 86_400} days ago"
+    }
+
+    // ── Herramientas del nodo ────────────────────────────────────────────────
+
+    /** "0-4" -> (0, 4); "7" -> (7, 7); vacío -> null. Lanza IllegalArgumentException si no vale (tope 1 000 direcciones). */
+    fun rango(s: String): Pair<Int, Int>? {
+        val t = s.trim()
+        if (t.isEmpty()) return null
+        val p = t.split('-').map { it.trim() }
+        val a = p.getOrNull(0)?.toIntOrNull(); val b = if (p.size == 1) a else p.getOrNull(1)?.toIntOrNull()
+        if (p.size > 2 || a == null || b == null || a < 0 || b < a || b - a >= 1000)
+            throw IllegalArgumentException("Range must look like 0-4 (at most 1,000 addresses)")
+        return a to b
+    }
+
+    /** Varios PSBT en base64, uno por línea o separados por espacios. */
+    fun partirPsbts(s: String): List<String> = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
 
     fun duracion(s: Long): String = when {
         s < 60 -> "< 1 min"

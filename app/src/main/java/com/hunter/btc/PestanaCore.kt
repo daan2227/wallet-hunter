@@ -72,9 +72,46 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         (layoutParams as LinearLayout.LayoutParams).apply { leftMargin = 0; rightMargin = 0 }
     }
     cEstado.addView(btnNodo)
-    texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet in this app still " +
-        "uses its own light client for now. It downloads a lot of data: Wi-Fi and a charger are recommended.",
+    texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet can use it to " +
+        "send, to estimate fees and to check balances (see “Wallet” below); the rest still comes from the usual " +
+        "servers. It downloads a lot of data: Wi-Fi and a charger are recommended.",
         AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+
+    // ── Red ───────────────────────────────────────────────────────────────
+    val cRed = Ui.card(this)
+    page.addView(cRed)
+    etiqueta(cRed, "Bitcoin network")
+    val rBloque = Ui.row(this, cRed, "Latest block", "–")
+    val rUltimo = Ui.row(this, cRed, "Its transactions", "–")
+    val rDif    = Ui.row(this, cRed, "Difficulty", "–")
+    val rHash   = Ui.row(this, cRed, "Hashrate", "–")
+    val rHalv   = Ui.row(this, cRed, "Next halving", "–")
+    val rMem    = Ui.row(this, cRed, "Mempool", "–")
+    val tvUtxo  = texto(cRed, "", AppTheme.TXT_PRI)
+    val btnUtxo = boton(cRed, "Count all the coins (takes a few minutes)")
+    texto(cRed, "Read from your own node. The mempool is empty in “Blocks only” mode.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+
+    // ── Herramientas ──────────────────────────────────────────────────────
+    val cHer = Ui.card(this)
+    page.addView(cHer)
+    etiqueta(cHer, "Node tools")
+    texto(cHer, "Check an address, turn a descriptor into addresses, verify a signed message, and read, " +
+        "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
+
+    // ── Dataset del Scanner desde el nodo ─────────────────────────────────
+    val cDs = Ui.card(this)
+    page.addView(cDs)
+    etiqueta(cDs, "Scanner dataset from your node")
+    texto(cDs, "Turns the set of unspent coins into the address index the Scanner uses (a .bin of about 1.5 GB), " +
+        "always up to date and built on this phone: nothing is downloaded from anyone. It reads the snapshot file " +
+        "you loaded, or asks the node for a fresh copy. It takes a while and needs about 4 GB free for the work " +
+        "(14 GB if the node makes a fresh copy).", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    val barraDs = barra(cDs)
+    val tvDs = texto(cDs, "", AppTheme.TXT_PRI)
+    val btnDsSnap = boton(cDs, "Build it from the snapshot file")
+    val btnDsDump = boton(cDs, "Ask the node for a fresh copy and build it")
+    val btnDsCancel = boton(cDs, "Cancel", 42).apply { visibility = View.GONE }
 
     // ── Ajustes y poda ────────────────────────────────────────────────────
     val cAj = Ui.card(this)
@@ -102,6 +139,39 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Traffic", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Blocks only" to null, "Blocks + mempool" to null),
         initial = if (aj.soloBloques) 0 else 1) { guardar(aj.copy(soloBloques = it == 0)) })
+    texto(cAj, "Connections", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Direct" to null, "Through Tor" to null, "Tor only" to null),
+        initial = aj.red) { guardar(aj.copy(red = it)) })
+    val campoProxy = Ui.input(this, "Tor proxy host:port", mono = true).apply {
+        setText(aj.proxy)
+        (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val t = e?.toString()?.trim() ?: ""
+                if (CoreConfig.proxyValido(t) && t != aj.proxy) guardar(aj.copy(proxy = t))
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+    }
+    cAj.addView(campoProxy)
+    texto(cAj, "“Through Tor” sends every connection of the node through a Tor app on this phone (Orbot: " +
+        "127.0.0.1:9050), which hides your IP from the Bitcoin network. “Tor only” also talks only to .onion " +
+        "nodes: more private, fewer peers, slower. Start the Tor app first, or the node will find no peers.",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    texto(cAj, "Private broadcast (experimental)", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Off" to null, "On" to null),
+        initial = if (aj.difusionPrivada) 1 else 0) { guardar(aj.copy(difusionPrivada = it == 1)) })
+    texto(cAj, "Needs Tor. Your own transactions leave through short-lived Tor connections instead of your node's " +
+        "usual peers. It is marked experimental by Bitcoin Core: if Tor is not running the transaction may never " +
+        "leave the phone, so after sending, check that it shows up in an explorer.",
+        AppTheme.WARN, AppTheme.SP_CAPTION)
+    texto(cAj, "Filters for this app's light client", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Off" to null, "Serve on this phone" to null),
+        initial = if (aj.servirFiltros) 1 else 0) { guardar(aj.copy(servirFiltros = it == 1)) })
+    texto(cAj, "Builds a block-filter index (about 10 GB more) and serves it only to 127.0.0.1, so “Verify with " +
+        "the network” in the wallet can use your own node instead of public ones. The index is built as the node " +
+        "validates, so it can take as long as the history check.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     texto(cAj, "Wallet", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
         initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })
@@ -286,6 +356,48 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         }.start()
     }
 
+    var redMs = 0L
+    /** El panel de la red: unas pocas consultas RPC, como mucho cada 30 s. */
+    fun refrescarRed() {
+        val ahora = System.currentTimeMillis()
+        if (ultimo == null || ahora - redMs < 30_000) return
+        redMs = ahora
+        Thread {
+            try {
+                val r = CoreNodo.rpc(act)
+                val ch = r.objeto("getblockchaininfo", lecturaMs = 8_000)
+                val alt = ch.optLong("blocks", 0L)
+                val hps = (r.llamar("getnetworkhashps", JSONArray(), 8_000) as? Number)?.toDouble() ?: 0.0
+                val mem = try { CoreConfig.leerMempool(r.objeto("getmempoolinfo", lecturaMs = 8_000)) } catch (e: Exception) { null }
+                val bs = try { r.objeto("getblockstats", JSONArray().put(alt).put(JSONArray().put("txs").put("avgfeerate")), 8_000) }
+                         catch (e: Exception) { null }
+                val hv = CoreConfig.proximoHalving(alt)
+                val edad = System.currentTimeMillis() / 1000 - ch.optLong("time", 0L)
+                runOnUiThread {
+                    rBloque.text = "%,d · %s".format(alt, CoreConfig.hace(edad))
+                    rUltimo.text = if (bs != null) "%,d · avg fee %d sat/vB".format(bs.optLong("txs"), bs.optLong("avgfeerate")) else "–"
+                    rDif.text = CoreConfig.dificultad(ch.optDouble("difficulty", 0.0))
+                    rHash.text = CoreConfig.hashrate(hps)
+                    rHalv.text = "block %,d · in %,d blocks (~%,d days)".format(hv.altura, hv.faltan, hv.dias)
+                    rMem.text = if (mem != null) "%,d tx · %s · min %.1f sat/vB".format(mem.tx, CoreConfig.bytes(mem.bytes), mem.minimaSatVb) else "–"
+                }
+            } catch (e: Exception) { redMs = 0L }
+        }.start()
+    }
+
+    btnUtxo.setOnClickListener {
+        if (ultimo == null) { Toast.makeText(act, "Start the node and let it sync first.", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+        btnUtxo.isEnabled = false; btnUtxo.alpha = .4f; tvUtxo.text = "Counting the whole set of coins…"
+        Thread {
+            val txt = try {
+                val o = CoreNodo.rpc(act).llamar("gettxoutsetinfo", JSONArray().put("none"), 30 * 60_000) as? org.json.JSONObject
+                val u = o?.let { CoreConfig.leerUtxoStats(it) }
+                if (u != null) "%,d coins · %,.2f BTC in existence\nAt block %,d".format(u.monedas, u.btc, u.altura) else "No answer."
+            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            runOnUiThread { tvUtxo.text = txt; btnUtxo.isEnabled = true; btnUtxo.alpha = 1f }
+        }.start()
+    }
+
     fun aviso(s: String) = runOnUiThread { Toast.makeText(act, s, Toast.LENGTH_LONG).show() }
     /** Un mensaje largo (el de Core) en un diálogo, completo y seleccionable, no cortado en un aviso. */
     fun detalle(titulo: String, s: String) = runOnUiThread {
@@ -295,6 +407,90 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     }
 
     // ── Acciones ──────────────────────────────────────────────────────────
+    // ── Dataset del Scanner ───────────────────────────────────────────────
+    var cancelDs: ConversorUtxo.Cancelar? = null
+    fun ocupadoDs(si: Boolean, txt: String = "") = runOnUiThread {
+        btnDsSnap.isEnabled = !si; btnDsDump.isEnabled = !si
+        btnDsSnap.alpha = if (si) .4f else 1f; btnDsDump.alpha = btnDsSnap.alpha
+        barraDs.visibility = if (si) View.VISIBLE else View.GONE
+        btnDsCancel.visibility = if (si) View.VISIBLE else View.GONE
+        tvDs.text = txt
+    }
+    fun progresoDs(fase: Int, parte: Long, total: Long) = runOnUiThread {
+        barraDs.isIndeterminate = total <= 0
+        if (total > 0) barraDs.progress = (parte * 1000 / total).toInt().coerceIn(0, 1000)
+        tvDs.text = if (fase == 1) "Reading the coins… %,d of %,d".format(parte, total) else "Sorting… ${parte * 100 / total.coerceAtLeast(1)} %"
+    }
+    fun usarEnScanner(f: java.io.File) = runOnUiThread {
+        android.app.AlertDialog.Builder(act).setTitle("Dataset ready")
+            .setMessage("${f.name} · ${CoreConfig.bytes(f.length())}\nUse it in the Scanner now? It replaces the current dataset.")
+            .setPositiveButton("Use it") { _, _ ->
+                if (HunterEngine.isRunning() || HunterEngine.isLoading()) {
+                    Toast.makeText(act, "Stop the scan before loading another dataset", Toast.LENGTH_LONG).show()
+                } else {
+                    csvPath = f.absolutePath
+                    prefs.edit().putString("csvPath", csvPath).apply()
+                    HunterEngine.loadCsv(csvPath)
+                    Toast.makeText(act, "Loading ${f.name} in the Scanner", Toast.LENGTH_LONG).show()
+                }
+            }.setNegativeButton("Later", null).show()
+    }
+    fun convertirDs(origen: java.io.File, borrar: Boolean) {
+        val cab = CoreSnapshot.cabecera(origen)
+        if (cab == null) { aviso("That is not a UTXO snapshot."); return }
+        val dir = act.getExternalFilesDir(null) ?: act.filesDir
+        if (dir.usableSpace < 4L shl 30) { aviso("Free at least 4 GB first (free: ${CoreConfig.bytes(dir.usableSpace)})."); return }
+        val nombre = "utxo-" + (CoreConfig.alturaAceptada(cab.base)?.toString()
+            ?: java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())) + ".bin"
+        val c = ConversorUtxo.Cancelar(); cancelDs = c
+        ocupadoDs(true, "Starting…")
+        Thread {
+            var fin = ""
+            var listo: java.io.File? = null
+            try {
+                val destino = java.io.File(dir, nombre)
+                val r = ConversorUtxo.convertir(origen, destino, java.io.File(CoreNodo.datadir(act), "utxo_tmp"), c) { f, p, t -> progresoDs(f, p, t) }
+                if (r == null) fin = "Cancelled."
+                else {
+                    listo = destino
+                    fin = "%,d addresses from %,d coins\n1…: %,d · bc1q: %,d · 3…: %,d · bc1p/wsh: %,d".format(r.entradas, r.monedas,
+                        r.porTipo[0], r.porTipo[1], r.porTipo[2], r.porTipo[3])
+                    if (borrar) origen.delete()
+                }
+            } catch (e: ConversorUtxo.FormatoInvalido) { fin = "Could not read the file: ${e.message}" }
+              catch (e: java.io.IOException) { fin = "Disk error: ${e.message}" }
+              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+            cancelDs = null
+            ocupadoDs(false, fin)
+            listo?.let { usarEnScanner(it) }
+            runOnUiThread { refrescar() }
+        }.start()
+    }
+    btnDsCancel.setOnClickListener { cancelDs?.cancelado = true }
+    btnDsSnap.setOnClickListener {
+        val f = CoreNodo.snapshot(act)
+        if (!f.isFile) { aviso("There is no snapshot file. Pick one in the snapshot card, or ask the node for a fresh copy."); return@setOnClickListener }
+        convertirDs(f, false)
+    }
+    btnDsDump.setOnClickListener {
+        if (ultimo == null) { aviso("Start the node and let it answer first."); return@setOnClickListener }
+        val dir = CoreNodo.datadir(act)
+        if (dir.usableSpace < 14L shl 30) { aviso("A fresh copy needs about 14 GB free (free: ${CoreConfig.bytes(dir.usableSpace)})."); return@setOnClickListener }
+        ocupadoDs(true, "The node is writing a copy of its coins… this takes several minutes")
+        barraDs.isIndeterminate = true
+        Thread {
+            val ruta = java.io.File(dir, "utxo_dump.dat")
+            val err = try {
+                ruta.delete()
+                CoreNodo.rpc(act).llamar("dumptxoutset", JSONArray().put("utxo_dump.dat").put("latest"), 120 * 60_000)
+                null
+            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            if (err != null || !ruta.isFile) { ocupadoDs(false, err ?: "The node did not write the file."); return@Thread }
+            ocupadoDs(false)
+            runOnUiThread { convertirDs(ruta, true) }
+        }.start()
+    }
+
     btnNodo.setOnClickListener {
         if (CoreNodo.binario(act) == null) { aviso("This build does not include Bitcoin Core."); return@setOnClickListener }
         if (enMarcha() || ultimo != null) {
@@ -396,7 +592,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val sondeo = object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.visibility == View.VISIBLE) { refrescar(); refrescarCarga() }
+            if (scroll.visibility == View.VISIBLE) { refrescar(); refrescarCarga(); refrescarRed() }
             h.postDelayed(this, 3_000)
         }
     }

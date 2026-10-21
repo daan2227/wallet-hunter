@@ -98,6 +98,48 @@ class CoreConfigTest {
         assertEquals(12.0, CoreConfig.satPorVb(JSONObject("""{"feerate":0.00012,"blocks":2}"""))!!, 1e-9)
         assertNull(CoreConfig.satPorVb(JSONObject("""{"errors":["Insufficient data or no feerate found"],"blocks":2}""")))
     }
+    @Test fun comprobaMonedas() {
+        val ok = JSONObject("""{"bestblock":"aa","confirmations":5,"value":0.0123,"coinbase":false}""")
+        assertNull(CoreConfig.comprobarMoneda(ok, 1_230_000L, "ab".repeat(32), 1))
+        assertTrue(CoreConfig.comprobarMoneda(ok, 1_000_000L, "ab".repeat(32), 1)!!.contains("1230000"))
+        assertTrue(CoreConfig.comprobarMoneda(null, 1L, "ab".repeat(32), 0)!!.contains("spent"))
+    }
+    @Test fun panelDeLaRed() {
+        val h = CoreConfig.proximoHalving(965_000L)
+        assertEquals(1_050_000L, h.altura); assertEquals(85_000L, h.faltan); assertEquals(590L, h.dias)
+        assertEquals("1050000".length, "%d".format(h.altura).length)
+        assertEquals("812.5 EH/s", CoreConfig.hashrate(8.125e20)); assertEquals("–", CoreConfig.hashrate(0.0))
+        assertEquals("111.23 T", CoreConfig.dificultad(1.1123e14))
+        val m = CoreConfig.leerMempool(JSONObject("""{"size":12000,"bytes":4000000,"mempoolminfee":0.00001}"""))
+        assertEquals(12000L, m.tx); assertEquals(1.0, m.minimaSatVb, 1e-9)
+        val u = CoreConfig.leerUtxoStats(JSONObject("""{"height":965360,"txouts":190000000,"total_amount":20000000.5}"""))!!
+        assertEquals(190_000_000L, u.monedas); assertEquals(965_360L, u.altura)
+        assertNull(CoreConfig.leerUtxoStats(JSONObject("""{"height":1}""")))
+        assertEquals("just now", CoreConfig.hace(10)); assertEquals("12 min ago", CoreConfig.hace(720)); assertEquals("3 h ago", CoreConfig.hace(11000))
+    }
+    @Test fun herramientas() {
+        assertEquals(0 to 4, CoreConfig.rango("0-4")); assertEquals(7 to 7, CoreConfig.rango(" 7 ")); assertNull(CoreConfig.rango(""))
+        for (m in listOf("4-0", "a-b", "0-5000", "1-2-3", "-1"))
+            try { CoreConfig.rango(m); fail(m) } catch (e: IllegalArgumentException) {}
+        assertEquals(listOf("AAA", "BBB", "CCC"), CoreConfig.partirPsbts("AAA\nBBB  CCC\n"))
+    }
+    @Test fun redYFiltros() {
+        val base = CoreConfig.conf(CoreConfig.Ajustes(), "/x/.cookie")
+        assertTrue("listen=0" in base); assertFalse("proxy=" in base); assertFalse("blockfilterindex" in base)
+        val tor = CoreConfig.conf(CoreConfig.Ajustes(red = 1, difusionPrivada = true), "/x/.cookie")
+        assertTrue("proxy=127.0.0.1:9050" in tor && "dnsseed=0" in tor && "privatebroadcast=1" in tor)
+        assertFalse("onlynet=onion" in tor)
+        assertTrue("onlynet=onion" in CoreConfig.conf(CoreConfig.Ajustes(red = 2), "/x/.cookie"))
+        // La difusión privada sin Tor se ignora: Core se negaría a arrancar.
+        assertFalse("privatebroadcast" in CoreConfig.conf(CoreConfig.Ajustes(red = 0, difusionPrivada = true), "/x/.cookie"))
+        val f = CoreConfig.conf(CoreConfig.Ajustes(servirFiltros = true), "/x/.cookie")
+        assertTrue("bind=127.0.0.1:8333" in f && "peerblockfilters=1" in f && "blockfilterindex=basic" in f && "listen=1" in f)
+        assertFalse("listen=0" in f)
+        assertTrue(CoreConfig.proxyValido("127.0.0.1:9050")); assertTrue(CoreConfig.proxyValido("localhost:9150"))
+        assertFalse(CoreConfig.proxyValido("127.0.0.1")); assertFalse(CoreConfig.proxyValido("a b:1"))
+        assertFalse(CoreConfig.proxyValido("x:99999")); assertFalse(CoreConfig.proxyValido("x:1\nrpcallowip=0.0.0.0/0"))
+        assertEquals("127.0.0.1:9050", CoreConfig.Ajustes(proxy = "mal").normalizado().proxy)
+    }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))
         assertFalse(CoreConfig.urlValida("http://ejemplo.org/x.dat"))

@@ -64,8 +64,19 @@
   - Core sólo acepta snapshots cuyo hash está fijado en su código (mainnet: bloques 840000, 880000, 910000, 935000 y 965000 en v32.0rc4; v31.1 llega a 935000 y v29.0 a 880000).
   - Exige Android 9+ (API 28) y arm64; ocupa ~10 GB al final y varios días de descarga la primera vez sin snapshot.
   - Android 15 corta los servicios dataSync a las ~6 h: hay que volver a pulsar Start.
-  - La cartera de la app todavía NO usa este nodo (saldo, UTXO, difusión y comisión siguen con el cliente ligero
-    y las API); integrarlo es un trabajo aparte.
+  - La cartera usa el nodo sólo si se activa «Use my node to send»: difusión (testmempoolaccept + sendrawtransaction),
+    comisión (estimatesmartfee, requiere «Blocks + mempool»), altura, y comprobación de cada moneda con gettxout antes
+    de firmar. «Verify with my node» escanea el conjunto de UTXO (scantxoutset) y lista las monedas. Saldos de la
+    pantalla principal, historial y UTXO de Enviar siguen viniendo de los servidores: un escaneo por dirección
+    tardaría horas y un nodo podado no tiene índice de transacciones.
+  - Monedero de solo lectura en el nodo (historial): descartado. Con snapshot y poda no se puede reescanear lo
+    anterior, así que sólo vería lo posterior al alta y daría saldos engañosos.
+  - Tor: «Through Tor» y «Tor only» necesitan una app de Tor en marcha (Orbot, 127.0.0.1:9050); la difusión privada
+    de Core es experimental y, sin Tor, la transacción podría no salir del teléfono.
+  - Filtros BIP157 locales (+~10 GB): se sirven sólo en 127.0.0.1; el índice se construye junto a la comprobación de
+    fondo y no se ha probado que funcione bien con poda y snapshot.
+  - Dataset del Scanner desde el nodo: probado con un snapshot sintético, no con uno real de ~10 GB.
+  - Las pruebas de CoreConfig y del conversor corren en la JVM; nada de esto se ha ejecutado en un teléfono.
 
 ## Conocido tras la revisión total (no corregido)
 

@@ -2535,7 +2535,17 @@ class WalletActivity : FragmentActivity() {
                     // resto se iba en comisión con una firma válida. No se firma.
                     val entradaLegacy = fromKey.startsWith("p2pkh") ||
                         (wifSnap && (fromAddr.startsWith("1") || fromAddr.startsWith("m") || fromAddr.startsWith("n")))
-                    if (entradaLegacy && plan.chosen.any { !ChainInfo.fuenteFiable(it) }) {
+                    // Con el nodo propio al día, cada moneda se comprueba contra su conjunto de UTXO: gastada o con otro
+                    // importe, no se firma; y un importe que el nodo confirma ya no depende del servidor de respaldo.
+                    val porNodo = CoreBackend.verificarMonedas(applicationContext, plan.chosen)
+                    if (porNodo is CoreBackend.Verificacion.Mal) {
+                        runOnUiThread {
+                            tvStatus.text = "Your node disagrees: ${porNodo.motivo}. Nothing was signed."
+                            tvStatus.setTextColor(RED); btnSend.isEnabled = true
+                        }; return@Thread
+                    }
+                    val confirmadoPorNodo = porNodo is CoreBackend.Verificacion.Ok
+                    if (entradaLegacy && !confirmadoPorNodo && plan.chosen.any { !ChainInfo.fuenteFiable(it) }) {
                         runOnUiThread {
                             tvStatus.text = "The coin amounts came from a fallback server and can't be checked " +
                                             "for a legacy (1…) address. Try again when mempool.space or " +

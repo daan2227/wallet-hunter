@@ -49,7 +49,19 @@ object CoreBackend {
     fun difundir(ctx: Context?, rawHex: String): String? {
         if (!disponible(ctx)) return null
         return try {
-            CoreNodo.rpc(ctx!!).llamar("sendrawtransaction", JSONArray().put(rawHex), 20_000) as? String
+            val rpc = CoreNodo.rpc(ctx!!)
+            // Prueba en seco con las reglas reales de la mempool, antes de difundir: da el motivo exacto.
+            val p = (rpc.llamar("testmempoolaccept", JSONArray().put(JSONArray().put(rawHex)), 10_000) as? JSONArray)
+                ?.optJSONObject(0)
+            if (p != null && !p.optBoolean("allowed", false)) {
+                val motivo = p.optString("reject-reason", "")
+                when {
+                    motivo.contains("already", ignoreCase = true) -> return Psbt.txidDeRaw(rawHex)
+                    motivo.isEmpty() || motivo.contains("missing") -> return null
+                    else -> return "ERROR: $motivo"
+                }
+            }
+            rpc.llamar("sendrawtransaction", JSONArray().put(rawHex), 20_000) as? String
         } catch (e: CoreRpcError) {
             when {
                 // -27: ya está en la cadena. -26 con "already": ya está en la mempool. Es un éxito.
@@ -61,6 +73,34 @@ object CoreBackend {
                 else -> "ERROR: ${e.message}"
             }
         } catch (e: Exception) { null }
+    }
+
+    /** Resultado de comprobar las monedas de un envío con el nodo. */
+    sealed class Verificacion {
+        /** Todas existen sin gastar y con el importe que dijo el servidor. */
+        object Ok : Verificacion()
+        /** El nodo no está disponible: no se pudo comprobar (no es un fallo). */
+        object NoDisponible : Verificacion()
+        /** El nodo contradice al servidor: no se debe firmar. */
+        data class Mal(val motivo: String) : Verificacion()
+    }
+
+    /**
+     * Antes de firmar: cada moneda elegida se pregunta al nodo (`gettxout`, mempool incluida). Si ya está
+     * gastada, o su importe no es el que dijo el servidor, no se firma. Además, un importe comprobado por
+     * el nodo ya no depende de la confianza en el servidor de respaldo.
+     */
+    fun verificarMonedas(ctx: Context?, monedas: List<org.json.JSONObject>): Verificacion {
+        if (!disponible(ctx)) return Verificacion.NoDisponible
+        return try {
+            val r = CoreNodo.rpc(ctx!!)
+            for (m in monedas) {
+                val txid = m.getString("txid"); val vout = m.getInt("vout")
+                val res = r.llamar("gettxout", JSONArray().put(txid).put(vout).put(true), 8_000)
+                CoreConfig.comprobarMoneda(res, m.getLong("value"), txid, vout)?.let { return Verificacion.Mal(it) }
+            }
+            Verificacion.Ok
+        } catch (e: Exception) { Verificacion.NoDisponible }
     }
 
     /** Comisiones por estimatesmartfee, o null si el nodo no tiene datos (p. ej. con «blocks only»). */
