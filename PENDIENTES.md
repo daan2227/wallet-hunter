@@ -57,9 +57,9 @@
   proceso hijo (libbitcoind.so, ejecutable desde el directorio de librerías nativas), podado, con RPC solo en
   127.0.0.1 y cookie en el almacén privado. Servicio en primer plano, Wi-Fi solo opcional, snapshot de UTXO
   (assumeutxo) desde fichero o por https, `loadtxoutset` y `pruneblockchain` desde la pantalla. El binario lo
-  compila `core.yml` (depends + NDK, 40–90 min) y lo publica en la release `core-android`; `build.yml` lo
+  compila `core.yml` (NDK + CMake, libevent a mano) y lo publica en la release `core-android`; `build.yml` lo
   incluye si existe. Límites:
-  - La receta de compilación de depends para Android no se ha ejecutado nunca: la primera ejecución puede fallar.
+  - La receta de compilación para Android (Core v29 ya no trae `depends` de Android) no se ha ejecutado nunca: la primera ejecución puede fallar.
   - La fuente se baja por etiqueta de git, sin verificar la firma de los desarrolladores.
   - Core sólo acepta snapshots cuyo hash está fijado en su código (unas pocas alturas de mainnet).
   - Exige Android 9+ (API 28) y arm64; ocupa ~10 GB al final y varios días de descarga la primera vez sin snapshot.
