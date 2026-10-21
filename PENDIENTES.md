@@ -55,9 +55,13 @@
 
 ## Conocido tras la revisión total (no corregido)
 
-- **El baúl y la lista de WIF** van bajo una clave del Keystore sin autenticación de usuario: el código
-  protege la interfaz y las semillas, no estos dos. Quien tenga ejecución en el proceso (root) los lee.
-  Atarlos al código es rediseñar el sobre.
+- **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van
+  en dos capas: la del Keystore y, por fuera, una clave de datos aleatoria (DEK) sellada con la clave del código
+  (PBKDF2). Sin el código no se abren, ni con root. Con la sesión cerrada, los hallazgos nuevos del motor van a
+  un buzón cifrado para una clave pública (ECIES P-256, `BuzonCifrado`) y entran al baúl al desbloquear. Los
+  baúles antiguos se migran al desbloquear, verificando antes de borrar la copia vieja. Límites: root con la app
+  en marcha y la sesión abierta lee la clave de la memoria; un código débil se adivina con la base copiada
+  (de ahí 8–24 caracteres y 600 000 vueltas); sin código puesto, el baúl sigue sólo con el Keystore.
 - **Motor:** carreras muy raras al arrancar/parar los hilos de Kangaroo (los de fuerza bruta ya están
   cubiertas); `kangarooStop` cuando la pantalla halla la clave sigue en el hilo principal.
 - **Secretos en memoria nativa:** las cadenas Java con claves (la copia que hace JNI de la frase/clave

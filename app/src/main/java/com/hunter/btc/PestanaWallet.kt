@@ -137,6 +137,8 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     // que nadie lo hubiera pedido: preguntar por una dirección se la revela
     // a quien responde, y eso delata que este dispositivo tiene la clave.
     fun loadCoincidencias(consultarRed: Boolean): Pair<Double, List<Triple<String,Double,String>>> {
+        // Con código y la sesión cerrada el baúl no se abre: nada que sumar ni consultar.
+        if (MatchVault.bloqueado(this@buildWalletTab)) return Pair(0.0, emptyList())
         MatchVault.recoger(this@buildWalletTab)
         // Los hallazgos de Kangaroo de antes del arreglo se guardaron sólo
         // con la clave, y el baúl lista por dirección: salían en blanco.
@@ -158,6 +160,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             // Si quedan Y se había pedido red, es que no hubo respuesta:
             // decirlo es la diferencia entre "está vacío" y "no lo sé".
             val sinRed = consultarRed && pendientes > 0
+            val cerrado = MatchVault.bloqueado(this@buildWalletTab)
             runOnUiThread {
                 totalReal = "%.8f".format(total).replace('.', ',')
                 tvTotalBtc.text = Privacidad.monto(this@buildWalletTab, totalReal)
@@ -166,6 +169,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
                 tvTotalBtc.setTextColor(
                     if (total > 0.0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 tvTotalUsd.text = when {
+                    cerrado            -> "Finds locked · enter your code to see them"
                     matches.isEmpty()  -> "No key found yet"
                     sinRed             -> "${matches.size} find(s) · offline, " +
                                           "$pendientes not checked"
@@ -256,7 +260,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
         // vigilada recibía "No wallet yet" teniéndolas.
         val hayAlguna = WalletManager.hasSeed(this) ||
                         WalletManager.listWallets(this).isNotEmpty() ||
-                        WalletManager.listWifs(this).isNotEmpty() ||
+                        WalletManager.hayWifs(this) ||
                         WalletManager.listWatchers(this).isNotEmpty()
         if (hayAlguna) {
             // SIN "MODE". Con MODE="seed" se abría siempre la cartera
@@ -383,11 +387,12 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
         // Recoger primero lo que el motor no pudo entregar: sin esto la fila
         // decía "Empty" mientras el total de arriba ya contaba "1 find(s)".
         try { MatchVault.recoger(this@buildWalletTab) } catch (e: Exception) {}
+        val cerrado = MatchVault.bloqueado(this@buildWalletTab)
         val hallazgos = try { MatchVault.list(this@buildWalletTab).size } catch (e: Exception) { 0 }
         val copias = try { BackupStore.list(this@buildWalletTab) } catch (e: Exception) { emptyList() }
         val ultima = copias.firstOrNull()?.createdAt ?: 0L
         runOnUiThread {
-            estVault.text = if (hallazgos == 0) "Empty" else "$hallazgos"
+            estVault.text = if (cerrado) "Locked" else if (hallazgos == 0) "Empty" else "$hallazgos"
             estBackup.text = if (copias.isEmpty()) "None" else "${copias.size}"
             if (ultima > 0) {
                 val dias = ((System.currentTimeMillis() - ultima) / 86_400_000L).toInt()

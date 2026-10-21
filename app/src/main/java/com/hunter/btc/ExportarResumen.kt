@@ -79,6 +79,8 @@ object ExportarResumen {
                 sb.appendLine("[${fmt.format(java.util.Date(e.ts))}] ${e.source}  " +
                               "ADDR:${e.addr}  BTC:${"%.8f".format(e.btc)}")
             }
+        } else if (MatchVault.bloqueado(act)) {
+            sb.appendLine("=== MATCHES LOCKED (enter your code to include them) ===")
         } else {
             sb.appendLine("=== NO MATCHES YET ===")
         }

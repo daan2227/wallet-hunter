@@ -32,6 +32,15 @@ object MatchVault {
     private const val PREFS     = "match_vault"
     private const val PREF_ENC  = "vault_enc"
     private const val PREF_IV   = "vault_iv"
+    /** El baúl dentro del SOBRE del código: Keystore por dentro, clave de datos de WalletManager por fuera. */
+    private const val PREF_ENC_P = "vault_enc_p"
+    private const val PREF_IV_P  = "vault_iv_p"
+    /** El buzón: hallazgos que llegan con el código cerrado (ver BuzonCifrado). La privada va sellada con la clave de datos. */
+    private const val BUZON_PUB     = "buzon_pub"
+    private const val BUZON_PRIV    = "buzon_priv"
+    private const val BUZON_PRIV_IV = "buzon_priv_iv"
+    private const val BUZON_ITEMS   = "buzon_items"
+    private const val BUZON_MAX     = 2000
     /** Copias que no se pudieron descifrar (la clave del Keystore ya no es la misma). Se apartan, no se borran. */
     private const val PREF_ENC_PERDIDO = "vault_enc_perdido"
     private const val PREF_IV_PERDIDO  = "vault_iv_perdido"
@@ -104,13 +113,42 @@ object MatchVault {
      * eso encima, así que un fallo pasajero del Keystore al abrir el baúl lo
      * dejaba con una sola entrada y el resto perdido.
      */
-    private fun leer(ctx: Context): List<Entry>? = synchronized(this) {
+    private class Abierto(val lista: List<Entry>, val enSobre: Boolean)
+
+    private fun b64e(b: ByteArray) = Base64.encodeToString(b, Base64.NO_WRAP)
+    private fun b64d(s: String) = Base64.decode(s, Base64.NO_WRAP)
+
+    /** Con código puesto y la sesión cerrada: el baúl no se abre (ni se enseña la copia antigua). */
+    fun bloqueado(ctx: Context): Boolean = WalletManager.hasPin(ctx) && WalletManager.claveDeBoveda() == null
+
+    /**
+     * Abre el baúl tal como está en disco. null = no se puede ahora: cerrado (falta la sesión) o ilegible.
+     * No migra ni toca el buzón: eso lo hace [integrar] cuando hay sesión.
+     */
+    private fun abrir(ctx: Context): Abierto? {
         // Bajo el mismo cerrojo que las escrituras: el texto cifrado y su IV se leen siempre del
         // mismo guardado. Si no, una lectura que cayera entre dos escrituras vería un IV que no es
         // el suyo y parecería un baúl estropeado.
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val encB64 = prefs.getString(PREF_ENC, null) ?: return emptyList()
-        val ivB64  = prefs.getString(PREF_IV, null) ?: return emptyList()
+        val conPin = WalletManager.hasPin(ctx)
+        val dek = if (conPin) WalletManager.claveDeBoveda() else null
+        val encP = prefs.getString(PREF_ENC_P, null); val ivP = prefs.getString(PREF_IV_P, null)
+        val enSobre = encP != null && ivP != null
+        val enc: ByteArray; val iv: ByteArray
+        if (enSobre) {
+            if (dek == null) return null
+            val par = SeedEnvelope.abrir(dek, b64d(encP!!), b64d(ivP!!))?.let { SeedEnvelope.desempaquetar(it) }
+            if (par == null) {
+                android.util.Log.e("MatchVault", "the sealed vault does not open with the data key")
+                return null
+            }
+            iv = par.first; enc = par.second
+        } else {
+            val e = prefs.getString(PREF_ENC, null); val i = prefs.getString(PREF_IV, null)
+            if (e == null || i == null) return Abierto(emptyList(), false)
+            if (conPin && dek == null) return null
+            enc = b64d(e); iv = b64d(i)
+        }
         // «La clave no existe» puede ser un fallo pasajero del Keystore: se insiste un poco antes de darlo por
         // perdido (y entonces se aparta la copia, igual que si la etiqueta no cuadra).
         var k = try { keyExistente() } catch (e: Exception) { null }
@@ -119,13 +157,12 @@ object MatchVault {
             try { Thread.sleep(150) } catch (e: InterruptedException) { break }
             k = try { keyExistente() } catch (e: Exception) { null }
         }
-        try {
+        return try {
             if (k == null) throw javax.crypto.AEADBadTagException("clave del baúl ausente")
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, k,
-                GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
-            val json = String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8)
-            fromJson(JSONArray(json))
+            cipher.init(Cipher.DECRYPT_MODE, k, GCMParameterSpec(128, iv))
+            val json = String(cipher.doFinal(enc), Charsets.UTF_8)
+            Abierto(fromJson(JSONArray(json)), enSobre)
         } catch (e: javax.crypto.AEADBadTagException) {
             // La etiqueta no cuadra con esta clave: no es un fallo pasajero. O el Keystore ya no
             // tiene la clave con que se cifró (copia restaurada en otro móvil, Keystore reiniciado)
@@ -134,15 +171,151 @@ object MatchVault {
             // ilegible (sin borrarla) y se sigue con un baúl nuevo.
             android.util.Log.e("MatchVault", "the vault cannot be decrypted with the current key: set aside")
             val marca = System.currentTimeMillis()    // la misma para texto cifrado e IV: si no, el par no se reconstruye
-            prefs.edit()
-                .putString("${PREF_ENC_PERDIDO}_$marca", encB64)
-                .putString("${PREF_IV_PERDIDO}_$marca", ivB64)
-                .remove(PREF_ENC).remove(PREF_IV).commit()
-            emptyList()
+            val ed = prefs.edit()
+            if (enSobre) ed.putString("${PREF_ENC_PERDIDO}_$marca", encP).putString("${PREF_IV_PERDIDO}_$marca", ivP)
+            else ed.putString("${PREF_ENC_PERDIDO}_$marca", b64e(enc)).putString("${PREF_IV_PERDIDO}_$marca", b64e(iv))
+            ed.remove(PREF_ENC).remove(PREF_IV).remove(PREF_ENC_P).remove(PREF_IV_P).commit()
+            Abierto(emptyList(), false)
         } catch (e: Exception) {
             android.util.Log.e("MatchVault", "could not open the vault: ${e.javaClass.simpleName}")
             null
         }
+    }
+
+    /**
+     * Lo que hay en el baúl, o null si HAY algo pero no se ha podido abrir (o está cerrado por falta del código).
+     *
+     * list() devuelve vacío en los dos casos, y para enseñar da igual. Para
+     * AÑADIR no: add() leía "vacío", le sumaba el hallazgo nuevo y escribía
+     * eso encima, así que un fallo pasajero del Keystore al abrir el baúl lo
+     * dejaba con una sola entrada y el resto perdido.
+     */
+    private fun leer(ctx: Context): List<Entry>? = synchronized(this) {
+        val a = abrir(ctx) ?: return null
+        if (!WalletManager.hasPin(ctx) || WalletManager.claveDeBoveda() == null) return a.lista
+        integrar(ctx, a).first
+    }
+
+    /**
+     * Con la sesión abierta: pasa el baúl al sobre del código si aún estaba sólo bajo el Keystore, y recoge el
+     * buzón. Devuelve (la lista final, lo que venía del buzón).
+     *
+     * Migración sin riesgo: primero se escribe la forma nueva SIN borrar la vieja, se vuelve a abrir y se
+     * compara; sólo si coincide se borra la vieja. Si no, se deja todo como estaba.
+     * El buzón sólo se vacía DESPUÉS de que el baúl con sus entradas quede escrito.
+     */
+    private fun integrar(ctx: Context, a: Abierto): Pair<List<Entry>, List<Entry>> {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        var lista = a.lista
+        val (delBuzon, fallidos) = leerBuzon(ctx)
+        if (delBuzon.isNotEmpty()) {
+            val conocidas = lista.mapTo(HashSet()) { it.addr }
+            val claves = lista.mapNotNullTo(HashSet()) { it.privHex.ifEmpty { null } }
+            val nuevas = delBuzon.filter { e ->
+                if (e.addr.isNotEmpty()) e.addr !in conocidas else e.privHex.isNotEmpty() && e.privHex !in claves
+            }.distinctBy { it.addr.ifEmpty { it.privHex } }
+            lista = recortar(nuevas + lista)
+        }
+        val hayViejo = prefs.contains(PREF_ENC) || prefs.contains(PREF_IV)
+        if (!a.enSobre && lista.isNotEmpty()) {
+            try {
+                write(ctx, lista, seguro = true, conservarAntigua = true)
+                val vuelta = abrir(ctx)
+                if (vuelta != null && vuelta.enSobre && toJson(vuelta.lista).toString() == toJson(lista).toString()) {
+                    prefs.edit().remove(PREF_ENC).remove(PREF_IV).commit()
+                } else {
+                    android.util.Log.e("MatchVault", "vault migration did not verify: the old copy stays")
+                    prefs.edit().remove(PREF_ENC_P).remove(PREF_IV_P).commit()
+                    return lista to emptyList()      // el buzón se queda como estaba
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MatchVault", "vault migration failed: ${e.javaClass.simpleName}")
+                prefs.edit().remove(PREF_ENC_P).remove(PREF_IV_P).commit()
+                return a.lista to emptyList()
+            }
+        } else if (delBuzon.isNotEmpty()) {
+            try { write(ctx, lista, seguro = true) } catch (e: Exception) {
+                android.util.Log.e("MatchVault", "mailbox merge failed: ${e.javaClass.simpleName}")
+                return a.lista to emptyList()
+            }
+        } else if (hayViejo && a.enSobre) {
+            prefs.edit().remove(PREF_ENC).remove(PREF_IV).commit()   // sobras de una migración a medias
+        }
+        if (delBuzon.isNotEmpty() || fallidos.size != contarBuzon(prefs)) {
+            val ed = prefs.edit()
+            if (fallidos.isEmpty()) ed.remove(BUZON_ITEMS) else ed.putString(BUZON_ITEMS, JSONArray(fallidos).toString())
+            ed.commit()
+        }
+        return lista to delBuzon
+    }
+
+    private fun contarBuzon(prefs: android.content.SharedPreferences): Int =
+        try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")).length() } catch (e: Exception) { 0 }
+
+    // ── Buzón: hallazgos que llegan con el código cerrado ───────────────────────
+
+    /** Crea el par del buzón si falta (primera vez, o instalación anterior). Sólo con sesión. */
+    private fun asegurarBuzon(ctx: Context) {
+        val dek = WalletManager.claveDeBoveda() ?: return
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.contains(BUZON_PUB) && prefs.contains(BUZON_PRIV)) return
+        val (pub, priv) = BuzonCifrado.generarPar()
+        val (sellada, iv) = SeedEnvelope.sellar(dek, priv)
+        prefs.edit().putString(BUZON_PUB, b64e(pub)).putString(BUZON_PRIV, b64e(sellada))
+            .putString(BUZON_PRIV_IV, b64e(iv)).commit()
+    }
+
+    /** (entradas descifradas, paquetes que no se pudieron abrir y se conservan). Sólo con sesión. */
+    private fun leerBuzon(ctx: Context): Pair<List<Entry>, List<String>> {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val crudo = prefs.getString(BUZON_ITEMS, null) ?: return emptyList<Entry>() to emptyList()
+        val items = try { JSONArray(crudo) } catch (e: Exception) { return emptyList<Entry>() to emptyList() }
+        if (items.length() == 0) return emptyList<Entry>() to emptyList()
+        val dek = WalletManager.claveDeBoveda() ?: return emptyList<Entry>() to (0 until items.length()).map { items.getString(it) }
+        val privSell = prefs.getString(BUZON_PRIV, null); val privIv = prefs.getString(BUZON_PRIV_IV, null)
+        val pubB64 = prefs.getString(BUZON_PUB, null)
+        val priv = if (privSell != null && privIv != null) SeedEnvelope.abrir(dek, b64d(privSell), b64d(privIv)) else null
+        if (priv == null || pubB64 == null) return emptyList<Entry>() to (0 until items.length()).map { items.getString(it) }
+        val pub = b64d(pubB64)
+        val ok = ArrayList<Entry>(); val mal = ArrayList<String>()
+        for (i in 0 until items.length()) {
+            val p = items.getString(i)
+            val dec = try { BuzonCifrado.descifrar(priv, b64d(p), pub) } catch (e: Exception) { null }
+            val lote = dec?.let { try { fromJson(JSONArray(String(it, Charsets.UTF_8))) } catch (e: Exception) { null } }
+            if (lote != null) ok.addAll(lote) else mal.add(p)
+        }
+        java.util.Arrays.fill(priv, 0)
+        return ok to mal
+    }
+
+    /** Escribe en el buzón (cifrado para la pública, sin necesitar el código). Lanza si aún no hay buzón. */
+    private fun aBuzon(ctx: Context, entries: List<Entry>): Int {
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        // Sin buzón (instalación anterior a este sobre y sin desbloquear aún) no hay dónde dejarlo con seguridad:
+        // se lanza, y el motor lo conserva en memoria y lo reintenta (ver recoger).
+        val pub = prefs.getString(BUZON_PUB, null) ?: throw IllegalStateException("vault locked")
+        val paquete = BuzonCifrado.cifrar(b64d(pub), toJson(entries).toString().toByteArray(Charsets.UTF_8))
+        val arr = try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")) } catch (e: Exception) { JSONArray() }
+        if (arr.length() >= BUZON_MAX) throw IllegalStateException("vault mailbox full")
+        arr.put(b64e(paquete))
+        if (!prefs.edit().putString(BUZON_ITEMS, arr.toString()).commit()) throw IllegalStateException("vault locked")
+        return entries.size
+    }
+
+    /**
+     * La llama WalletManager al abrirse la sesión (código correcto o código nuevo): crea el buzón si falta, pasa
+     * el baúl al sobre si hacía falta y recoge lo que llegó con el código cerrado.
+     */
+    fun alDesbloquear(ctx: Context) {
+        val recogidas: List<Entry>
+        synchronized(this) {
+            if (!WalletManager.hasPin(ctx) || WalletManager.claveDeBoveda() == null) return
+            asegurarBuzon(ctx)
+            val a = abrir(ctx) ?: return
+            recogidas = integrar(ctx, a).second
+        }
+        // Lo recogido también entra en la cartera si el ajuste lo pide (necesitaba la sesión, que ahora hay).
+        for (e in recogidas) alGuardar(ctx, e)
     }
 
     /** ¿Hay una copia del baúl que no se pudo descifrar y quedó apartada? */
@@ -154,17 +327,24 @@ object MatchVault {
      *   segundo plano (apply). Para un hallazgo recién encontrado: si el
      *   proceso muere justo después, con apply() se habría perdido.
      */
-    private fun write(ctx: Context, entries: List<Entry>, seguro: Boolean = true) {
+    private fun write(ctx: Context, entries: List<Entry>, seguro: Boolean = true, conservarAntigua: Boolean = false) {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        // Un baúl vacío quita sólo su contenido: borrar todo se llevaría también las copias apartadas.
-        if (entries.isEmpty()) { prefs.edit().remove(PREF_ENC).remove(PREF_IV).commit(); return }
+        // Un baúl vacío quita sólo su contenido: borrar todo se llevaría también las copias apartadas y el buzón.
+        if (entries.isEmpty()) { prefs.edit().remove(PREF_ENC).remove(PREF_IV).remove(PREF_ENC_P).remove(PREF_IV_P).commit(); return }
+        val conPin = WalletManager.hasPin(ctx)
+        val dek = if (conPin) (WalletManager.claveDeBoveda() ?: throw IllegalStateException("vault locked")) else null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val enc = cipher.doFinal(toJson(entries).toString().toByteArray(Charsets.UTF_8))
         val ed = prefs.edit()
-            .putString(PREF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
-            .putString(PREF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-        if (seguro) ed.commit() else ed.apply()
+        if (dek != null) {
+            val (sellado, iv) = SeedEnvelope.sellar(dek, SeedEnvelope.empaquetar(cipher.iv, enc))
+            ed.putString(PREF_ENC_P, b64e(sellado)).putString(PREF_IV_P, b64e(iv))
+            if (!conservarAntigua) ed.remove(PREF_ENC).remove(PREF_IV)
+        } else {
+            ed.putString(PREF_ENC, b64e(enc)).putString(PREF_IV, b64e(cipher.iv))
+        }
+        if (seguro || dek != null) ed.commit() else ed.apply()
     }
 
     /**
@@ -176,6 +356,9 @@ object MatchVault {
     @Synchronized
     fun add(ctx: Context, entries: List<Entry>, seguro: Boolean = true): Int {
         if (entries.isEmpty()) return 0
+        // Con código y la sesión cerrada (pantalla apagada, app en segundo plano) el baúl no se puede abrir: el
+        // hallazgo va al buzón, cifrado para una clave pública, y entra en el baúl al desbloquear.
+        if (bloqueado(ctx)) return aBuzon(ctx, entries)
         val current = leer(ctx) ?: throw IllegalStateException("vault locked")
         val known = current.mapTo(HashSet()) { it.addr }
         val clavesConocidas = current.mapNotNullTo(HashSet()) { it.privHex.ifEmpty { null } }
@@ -396,7 +579,9 @@ object MatchVault {
     fun guardarHallazgo(ctx: Context, linea: String): Boolean {
         val e = deLinea(linea) ?: return false
         return try {
+            val cerrado = bloqueado(ctx)
             add(ctx, listOf(e), seguro = true)
+            if (cerrado) return true   // quedó en el buzón cifrado; entra al baúl al desbloquear
             val ok = leer(ctx)?.any { it.addr == e.addr } == true
             if (ok) alGuardar(ctx, e)
             ok
@@ -424,8 +609,10 @@ object MatchVault {
             android.util.Log.w("MatchVault", "datosDeClave: ${t.message}")
         }
         return try {
+            val cerrado = bloqueado(ctx)
             add(ctx, listOf(Entry(ts = System.currentTimeMillis(), source = source, addr = addr, wif = wif,
                 privHex = claveHex, btc = 0.0, extra = extra, checkedTs = 0L)), seguro = true)
+            if (cerrado) return true
             val dentro = leer(ctx)?.any {
                 it.privHex.equals(claveHex, ignoreCase = true) || (addr.isNotEmpty() && it.addr == addr)
             } == true
@@ -560,7 +747,9 @@ object MatchVault {
         val e = Entry(ts = System.currentTimeMillis(), source = "recovery", addr = addr,
                       wif = "", privHex = "", btc = 0.0, extra = "SEED:$mn PATH:$ruta")
         return try {
+            val cerrado = bloqueado(ctx)
             add(ctx, listOf(e), seguro = true)
+            if (cerrado) return true
             val ok = leer(ctx)?.any { it.addr == addr } == true
             if (ok) alGuardar(ctx, e)
             ok
@@ -638,7 +827,7 @@ object MatchVault {
             ctx.getExternalFilesDir(null)?.let { java.io.File(it, "coincidencias.txt") }
         )
         for (f in viejos) {
-            if (!f.exists()) continue
+            if (!f.exists() || bloqueado(ctx)) continue
             try {
                 val now = System.currentTimeMillis()
                 val entradas = f.useLines { ls -> ls.mapNotNull { deLinea(it, now) }.toList() }

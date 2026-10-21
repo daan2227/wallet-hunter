@@ -22,6 +22,9 @@ object WalletManager {
     private const val PREF_WIF_PLAIN = "wif_list"      // legacy, en claro
     private const val PREF_WIF_ENC   = "wif_list_enc"
     private const val PREF_WIF_IV    = "wif_list_iv"
+    /** La lista de WIF dentro del sobre del código: Keystore por dentro, clave de datos (DEK) por fuera. */
+    private const val PREF_WIF_ENC_P = "wif_list_enc_p"
+    private const val PREF_WIF_IV_P  = "wif_list_iv_p"
     private const val PREFS_NAME = "wallet_prefs"
     private const val PREF_SEED  = "enc_seed"
     private const val PREF_IV    = "enc_iv"
@@ -73,7 +76,32 @@ object WalletManager {
 
     fun claveSemillaLista(): Boolean = claveSemilla != null
 
-    fun olvidarClaveSemilla() { claveSemilla = null }
+    /**
+     * Clave de DATOS: 32 bytes al azar con los que se cierra el baúl de hallazgos y la lista de WIF, sin
+     * que dependan del código directamente. Va guardada sellada con la clave del código (PREF_DEK), así
+     * que cambiar el código sólo la vuelve a sellar —en el mismo guardado atómico— y el baúl no se toca.
+     * Sólo está en memoria con la sesión abierta; sin ella ni root puede abrir esos dos almacenes.
+     */
+    @Volatile private var claveBoveda: SecretKey? = null
+    internal fun claveDeBoveda(): SecretKey? = claveBoveda
+    private const val PREF_DEK = "dek_enc"
+    private const val PREF_DEK_IV = "dek_iv"
+
+    fun olvidarClaveSemilla() { claveSemilla = null; claveBoveda = null }
+
+    /** Abre la clave de datos con la clave del código y la deja en memoria; luego pasa lo pendiente a los almacenes. */
+    private fun abrirBoveda(ctx: Context, clave: SecretKey) {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val de = p.getString(PREF_DEK, null); val di = p.getString(PREF_DEK_IV, null)
+        val dek = if (de != null && di != null) SeedEnvelope.abrir(clave, b64d(de), b64d(di)) else null
+        claveBoveda = dek?.let { SecretKeySpec(it, "AES") }
+        if (claveBoveda == null) return
+        // Migra lo que aún estuviera sólo bajo el Keystore y recoge el buzón. Un fallo aquí no impide entrar.
+        try { MatchVault.alDesbloquear(ctx) } catch (e: Throwable) {
+            android.util.Log.e("WalletManager", "vault unlock hook: ${e.javaClass.simpleName}") }
+        try { alDesbloquearWifs(ctx) } catch (e: Throwable) {
+            android.util.Log.e("WalletManager", "WIF unlock hook: ${e.javaClass.simpleName}") }
+    }
 
     private fun b64e(b: ByteArray): String = Base64.encodeToString(b, Base64.NO_WRAP)
     private fun b64d(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
@@ -118,17 +146,73 @@ object WalletManager {
         }.distinctBy { it.second }
     }
 
-    private fun writeWifs(ctx: Context, list: List<Triple<String,String,String>>) {
+    /**
+     * Con código puesto, la lista va en el SOBRE del código (Keystore por dentro, clave de datos por fuera) y
+     * escribirla exige la sesión abierta: lanza IllegalStateException si está cerrada. Sin código, sólo Keystore.
+     * `conservarAntigua`: durante la migración no se borra la copia vieja hasta comprobar la nueva.
+     */
+    private fun writeWifs(ctx: Context, list: List<Triple<String,String,String>>, conservarAntigua: Boolean = false) {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
         if (list.isEmpty()) { prefs.edit().clear().apply(); return }
+        val conPin = hasPin(ctx)
+        val dek = if (conPin) (claveBoveda ?: throw IllegalStateException("WIF list locked")) else null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS))
         val enc = cipher.doFinal(serializeWifs(list).toByteArray(Charsets.UTF_8))
-        prefs.edit()
-            .putString(PREF_WIF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
-            .putString(PREF_WIF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
-            .remove(PREF_WIF_PLAIN)
-            .commit()
+        val ed = prefs.edit()
+        if (dek != null) {
+            val (sellado, iv) = SeedEnvelope.sellar(dek, SeedEnvelope.empaquetar(cipher.iv, enc))
+            ed.putString(PREF_WIF_ENC_P, Base64.encodeToString(sellado, Base64.NO_WRAP))
+              .putString(PREF_WIF_IV_P,  Base64.encodeToString(iv, Base64.NO_WRAP))
+            if (!conservarAntigua) ed.remove(PREF_WIF_ENC).remove(PREF_WIF_IV)
+        } else {
+            ed.putString(PREF_WIF_ENC, Base64.encodeToString(enc, Base64.NO_WRAP))
+              .putString(PREF_WIF_IV,  Base64.encodeToString(cipher.iv, Base64.NO_WRAP))
+        }
+        ed.remove(PREF_WIF_PLAIN).commit()
+    }
+
+    /** ¿Hay alguna WIF guardada? Sin descifrar nada: vale con la sesión cerrada. */
+    fun hayWifs(ctx: Context): Boolean {
+        val p = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        return p.contains(PREF_WIF_ENC_P) || p.contains(PREF_WIF_ENC) || (p.getString(PREF_WIF_PLAIN, "") ?: "").isNotEmpty()
+    }
+
+    /** La lista de WIF está cerrada: hay WIF y falta la sesión del código para abrirla. */
+    fun wifsBloqueadas(ctx: Context): Boolean = hasPin(ctx) && claveBoveda == null && hayWifs(ctx)
+
+    /**
+     * Al abrir la sesión: si la lista de WIF aún estaba sólo bajo el Keystore (instalación anterior a este sobre), se
+     * pasa al sobre. Primero se escribe la nueva SIN borrar la vieja, se vuelve a leer y se compara; sólo si coincide se
+     * borra la vieja. Un fallo deja la lista como estaba.
+     */
+    private fun alDesbloquearWifs(ctx: Context) {
+        if (!hasPin(ctx) || claveBoveda == null) return
+        val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        if (prefs.contains(PREF_WIF_ENC_P) || !prefs.contains(PREF_WIF_ENC)) return
+        val lista = synchronized(this) { leerWifsAntiguaConSesion(ctx) } ?: return
+        synchronized(this) {
+            writeWifs(ctx, lista, conservarAntigua = true)
+            val vuelta = leerWifs(ctx)
+            if (vuelta != null && serializeWifs(vuelta) == serializeWifs(lista)) {
+                prefs.edit().remove(PREF_WIF_ENC).remove(PREF_WIF_IV).commit()
+            } else {
+                android.util.Log.e("WalletManager", "WIF migration did not verify: the old list stays")
+                prefs.edit().remove(PREF_WIF_ENC_P).remove(PREF_WIF_IV_P).commit()
+            }
+        }
+    }
+
+    /** Descifra la copia antigua (sólo Keystore) de la lista de WIF. null si no se puede. */
+    private fun leerWifsAntiguaConSesion(ctx: Context): List<Triple<String,String,String>>? {
+        val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        val e = prefs.getString(PREF_WIF_ENC, null) ?: return null
+        val i = prefs.getString(PREF_WIF_IV, null) ?: return null
+        return try {
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, claveExistente(WIF_KEY_ALIAS), GCMParameterSpec(128, Base64.decode(i, Base64.NO_WRAP)))
+            parseWifs(String(cipher.doFinal(Base64.decode(e, Base64.NO_WRAP)), Charsets.UTF_8))
+        } catch (x: Exception) { null }
     }
 
     /**
@@ -142,15 +226,16 @@ object WalletManager {
         // vacía de verdad no deja nada guardado (writeWifs limpia), así que si
         // hay algo cifrado y sale vacía es un fallo del Keystore: escribir
         // encima borraría todas las claves que hay.
-        if (lista.isEmpty() && ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
-                .contains(PREF_WIF_ENC)) return false
+        if (lista.isEmpty() && hayWifs(ctx)) return false
         // La misma clave dos veces es la misma cartera dos veces. Pasaba: abrir
         // un hallazgo del puzzle la guardaba cada vez, y la lista acababa con
         // entradas idénticas sin forma de saber que eran la misma.
         if (lista.any { it.second == wif }) return true
         val id = "wif_${System.currentTimeMillis()}"
         val n = limpiarNombre(name).ifEmpty { "WIF Wallet" }
-        writeWifs(ctx, lista + Triple(id, wif, "$addr|$n"))
+        // Con la sesión cerrada no se puede escribir la lista: el que llama (p. ej. «añadir hallazgos a la cartera»)
+        // lo trata como un fallo y lo reintenta al desbloquear.
+        try { writeWifs(ctx, lista + Triple(id, wif, "$addr|$n")) } catch (e: IllegalStateException) { return false }
         if (origen != null) setOrigen(ctx, id, origen)
         return true
     }
@@ -167,7 +252,27 @@ object WalletManager {
      */
     private fun leerWifs(ctx: Context): List<Triple<String,String,String>>? {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
+        val conPin = hasPin(ctx)
+        val dek = if (conPin) claveBoveda else null
+        // Dentro del sobre del código: sin sesión no se abre (null = «cerrada», que quien lee ya trata como
+        // «no se pudo abrir» y no reescribe nada).
+        val encP = prefs.getString(PREF_WIF_ENC_P, null); val ivP = prefs.getString(PREF_WIF_IV_P, null)
+        if (encP != null && ivP != null) {
+            if (dek == null) return null
+            return try {
+                val par = SeedEnvelope.abrir(dek, Base64.decode(encP, Base64.NO_WRAP), Base64.decode(ivP, Base64.NO_WRAP))
+                    ?.let { SeedEnvelope.desempaquetar(it) } ?: return null
+                val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+                cipher.init(Cipher.DECRYPT_MODE, claveExistente(WIF_KEY_ALIAS), GCMParameterSpec(128, par.first))
+                parseWifs(String(cipher.doFinal(par.second), Charsets.UTF_8))
+            } catch (e: Exception) {
+                android.util.Log.e("WalletManager", "could not open the sealed WIF list: ${e.javaClass.simpleName}")
+                null
+            }
+        }
         val encB64 = prefs.getString(PREF_WIF_ENC, null)
+        // Con código puesto y la sesión cerrada, la copia antigua (sólo Keystore) tampoco se enseña.
+        if (encB64 != null && conPin && dek == null) return null
         if (encB64 != null) {
             val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return null
             return try {
@@ -309,6 +414,7 @@ object WalletManager {
           .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
         if (!ed.commit()) return false
         claveSemilla = nueva
+        abrirBoveda(ctx, nueva)
         return true
     }
 
@@ -341,6 +447,20 @@ object WalletManager {
                 ed.putString(r.encK, b64e(e2)).putString(r.ivK, b64e(i2))
                 ed.remove(r.legE).remove(r.legI)
             }
+        }
+        // La clave de datos: se vuelve a sellar con la clave nueva EN ESTE MISMO guardado (el del cambio de código),
+        // o se crea si aún no existía (primer código, o instalación anterior a este sobre).
+        val de = p.getString(PREF_DEK, null); val di = p.getString(PREF_DEK_IV, null)
+        if (de != null && di != null) {
+            if (antigua != null) {
+                val dek = SeedEnvelope.abrir(antigua, b64d(de), b64d(di)) ?: return false
+                val (e2, i2) = SeedEnvelope.sellar(nueva, dek)
+                ed.putString(PREF_DEK, b64e(e2)).putString(PREF_DEK_IV, b64e(i2))
+            }
+        } else {
+            val dek = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+            val (e2, i2) = SeedEnvelope.sellar(nueva, dek)
+            ed.putString(PREF_DEK, b64e(e2)).putString(PREF_DEK_IV, b64e(i2))
         }
         return true
     }
@@ -465,6 +585,7 @@ object WalletManager {
             val ed = prefs.edit().remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
             reenvolver(ctx, null, clave, ed)
             ed.commit()
+            abrirBoveda(ctx, clave)
         } else {
             val fallos = prefs.getInt(PREF_FALLOS, 0) + 1
             val ed = prefs.edit().putInt(PREF_FALLOS, fallos)
