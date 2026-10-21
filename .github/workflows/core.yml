@@ -22,7 +22,7 @@ on:
         description: 'Etiqueta de Bitcoin Core'
         default: 'v29.0'
   push:
-    branches: [ main ]
+    branches: [ 'claude/**' ]
     paths: [ '.github/workflows/core.yml' ]
 
 permissions:
@@ -69,9 +69,13 @@ jobs:
           -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DEVENT__LIBRARY_TYPE=STATIC -DEVENT__DISABLE_OPENSSL=ON -DEVENT__DISABLE_MBEDTLS=ON \
           -DEVENT__DISABLE_TESTS=ON -DEVENT__DISABLE_SAMPLES=ON -DEVENT__DISABLE_BENCHMARK=ON \
-          -DEVENT__DISABLE_REGRESS=ON
+          -DEVENT__DISABLE_REGRESS=ON \
+          -DCMAKE_HAVE_LIBC_PTHREAD=1
         cmake --build libevent/build -j"$(nproc)"
         cmake --install libevent/build
+        # Boost son sólo cabeceras: se copian al prefijo para que el compilador cruzado las vea
+        # (/usr/include no está en su ruta de búsqueda).
+        mkdir -p prefijo/include && cp -r /usr/include/boost prefijo/include/
         find prefijo -name 'LibeventConfig.cmake' -o -name 'libevent*.a' | sort
 
     - name: Configurar
@@ -82,9 +86,9 @@ jobs:
           -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API -DANDROID_STL=c++_static \
           -DCMAKE_FIND_ROOT_PATH="$GITHUB_WORKSPACE/prefijo" \
           -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/prefijo" \
-          -DBoost_INCLUDE_DIR=/usr/include \
+          -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/prefijo/include \
           -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
-          -DCMAKE_EXE_LINKER_FLAGS=-pie \
+          -DCMAKE_EXE_LINKER_FLAGS=-pie -DCMAKE_HAVE_LIBC_PTHREAD=1 \
           -DBUILD_DAEMON=ON -DBUILD_CLI=OFF -DBUILD_TX=OFF -DBUILD_UTIL=OFF \
           -DBUILD_GUI=OFF -DENABLE_WALLET=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF \
           -DBUILD_FUZZ_BINARY=OFF -DWITH_ZMQ=OFF -DENABLE_EXTERNAL_SIGNER=OFF \
@@ -100,6 +104,11 @@ jobs:
         cp core/build/bin/bitcoind salida/libbitcoind.so
         "$TOOLCHAIN/llvm-strip" salida/libbitcoind.so
         file salida/libbitcoind.so || true
+        # Debe ser un ejecutable PIE de aarch64 que sólo dependa de la libc de Android.
+        "$TOOLCHAIN/llvm-readelf" -h -d salida/libbitcoind.so | grep -E "Type|Machine|NEEDED|Class"
+        if "$TOOLCHAIN/llvm-readelf" -d salida/libbitcoind.so | grep NEEDED | grep -vE "libc\.so|libm\.so|libdl\.so|liblog\.so"; then
+          echo "::error::bitcoind depende de una librería que Android no trae"; exit 1
+        fi
         ls -l salida/libbitcoind.so
         (cd salida && sha256sum libbitcoind.so | tee libbitcoind.so.sha256)
         echo "$ETIQUETA $(git -C core rev-parse HEAD)" > salida/version.txt
@@ -113,7 +122,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        gh release view core-android >/dev/null 2>&1 || \
-          gh release create core-android --title "Bitcoin Core para Android" \
+        gh release view core-android -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+          gh release create core-android -R "$GITHUB_REPOSITORY" --title "Bitcoin Core para Android" \
             --notes "Binario de bitcoind (arm64) para la pestaña Core. Lo usa build.yml." --prerelease
-        gh release upload core-android salida/libbitcoind.so salida/libbitcoind.so.sha256 salida/version.txt --clobber
+        gh release upload core-android -R "$GITHUB_REPOSITORY" salida/libbitcoind.so salida/libbitcoind.so.sha256 salida/version.txt --clobber
