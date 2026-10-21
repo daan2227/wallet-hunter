@@ -156,6 +156,9 @@ object PinAuthHelper {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(26) }
         }
+        // isSingleLine sustituye el método de transformación de la contraseña por el de una línea,
+        // y el código se veía siempre: se fija aquí, después, de forma explícita.
+        campo.transformationMethod = android.text.method.PasswordTransformationMethod.getInstance()
         root.addView(campo)
 
         val fila = LinearLayout(activity).apply {
@@ -183,6 +186,8 @@ object PinAuthHelper {
                 android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
                 (if (visible) android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
                  else android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            campo.transformationMethod = if (visible) null
+                else android.text.method.PasswordTransformationMethod.getInstance()
             campo.setSelection(fin)
             tvVer.text = if (visible) "Hide" else "Show"
         }
