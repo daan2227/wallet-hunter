@@ -60,7 +60,10 @@ class WalletActivity : FragmentActivity() {
      */
     private fun ponerFiat(tv: TextView, sat: Long, prefijo: String = "≈ ") {
         if (isTestnet) return
-        val pintar = { Fiat.de(this, sat)?.let { tv.text = Privacidad.monto(this, prefijo + it) } }
+        fiatViews.add(Triple(tv, sat, prefijo))
+        if (fiatViews.size > 500) fiatViews.removeAt(0)
+        // Con los saldos ocultos se tapa igual que la cifra en BTC (Privacidad.monto).
+        val pintar = { Fiat.valor(this, sat)?.let { tv.text = Privacidad.monto(this, prefijo + it) } }
         pintar()
         if (Fiat.vencidoONulo(this)) Fiat.cargar(this) { runOnUiThread { pintar() } }
     }
@@ -131,7 +134,11 @@ class WalletActivity : FragmentActivity() {
 
     private fun repintarMontos() {
         montos.forEach { (tv, real) -> tv.text = Privacidad.monto(this, real) }
+        fiatViews.forEach { (tv, sat, pre) -> Fiat.valor(this, sat)?.let { tv.text = Privacidad.monto(this, pre + it) } }
     }
+
+    /** Valores en dinero normal ya pintados, para taparlos y destaparlos con el ojo. */
+    private val fiatViews = ArrayList<Triple<TextView, Long, String>>()
     // Aqui vivian isLocked, lastInteraction y AUTO_LOCK_MS. Los tres estan
     // fuera: el bloqueo lo decide AppLock para toda la app. AUTO_LOCK_MS
     // ademas no se leia en ningun sitio —el cierre por inactividad a los dos
@@ -1811,7 +1818,7 @@ class WalletActivity : FragmentActivity() {
             val amt = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
             tvFeeLine.text = if (fee < 0) "whatever the network suggests"
                              else "≈ %,d sat".format(fee) +
-                                  (if (precioFiat > 0) "  (≈ ${enFiat(fee)})" else "")
+                                  (if (precioFiat > 0 && !Privacidad.ocultos(this)) "  (≈ ${enFiat(fee)})" else "")
             val extras = salidasExtraEnvio.sumOf { it.sat }
             // Lo que se envía, la comisión y el total, también en dinero normal.
             val enviarSat = Math.round(amt * 1e8) + extras

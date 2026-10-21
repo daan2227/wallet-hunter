@@ -71,13 +71,19 @@ object Fiat {
 
     fun vencidoONulo(ctx: Context) = precio(ctx) <= 0.0 || vencido()
 
-    /** "1,234.56 USD", o null si no se sabe el precio. */
-    fun de(ctx: Context, sat: Long): String? {
+    /** "1,234.56 USD" sin mirar si los saldos están ocultos, o null si no se sabe el precio. */
+    fun valor(ctx: Context, sat: Long): String? {
         val p = precio(ctx)
         if (p <= 0) return null
         val v = Math.abs(sat) / 1e8 * p
         return (if (v > 0 && v < 0.01) "<0.01" else "%,.2f".format(v)) + " " + codigo(ctx)
     }
+
+    /**
+     * "1,234.56 USD", o null si no se sabe el precio o si los saldos están ocultos: el valor
+     * en dinero normal revela el saldo igual que la cifra en BTC, así que se tapa con ella.
+     */
+    fun de(ctx: Context, sat: Long): String? = if (Privacidad.ocultos(ctx)) null else valor(ctx, sat)
 
     /**
      * Pone en [tv] `base` + el valor en dinero normal de [sat]. Si aún no se sabe el precio
@@ -94,8 +100,11 @@ object Fiat {
     /** Pone en [tv] `prefijo` + el valor en dinero normal (también cero); "…" mientras no se sabe el precio. */
     fun ponerSolo(tv: android.widget.TextView, sat: Long, prefijo: String = "≈ ") {
         val ctx = tv.context
+        if (Privacidad.ocultos(ctx)) { tv.text = Privacidad.TAPADO; return }
         tv.text = prefijo + (de(ctx, sat) ?: "…")
-        if (vencidoONulo(ctx)) cargar(ctx) { tv.post { tv.text = prefijo + (de(ctx, sat) ?: "—") } }
+        if (vencidoONulo(ctx)) cargar(ctx) {
+            tv.post { tv.text = if (Privacidad.ocultos(ctx)) Privacidad.TAPADO else prefijo + (de(ctx, sat) ?: "—") }
+        }
     }
 
     /** "  (≈ 1,234.56 USD)" para pegar a un texto; vacío si no se sabe. */

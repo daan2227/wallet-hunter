@@ -66,6 +66,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
 
     // El total real, para destaparlo con el ojo sin volver a leer el baúl.
     var totalReal = "0,00000000"
+    var totalSat = 0L
     val filaRotulo = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
@@ -117,6 +118,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     // no se aplica —ver Privacidad—.
     filaRotulo.addView(Privacidad.ojo(this) {
         tvTotalBtc.text = Privacidad.monto(this, totalReal)
+        Fiat.ponerSolo(tvTotalFiat, totalSat)
     })
     tvTotalBtc.text = Privacidad.monto(this, totalReal)
 
@@ -172,7 +174,8 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
                     pendientes > 0     -> "${matches.size} find(s) · $pendientes not checked"
                     else               -> "${matches.size} find(s)"
                 }
-                Fiat.ponerSolo(tvTotalFiat, Math.round(total * 1e8))
+                totalSat = Math.round(total * 1e8)
+                Fiat.ponerSolo(tvTotalFiat, totalSat)
             }
         }.start()
     }
@@ -401,6 +404,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
         refreshWallet(consultarRed = false)
         refrescarFilas()
         tvTotalBtc.text = Privacidad.monto(this, totalReal)
+        Fiat.ponerSolo(tvTotalFiat, totalSat)
     }
 
     // ── POR QUÉ NO SE CONSULTAN SOLOS ─────────────────────────────────
