@@ -1745,6 +1745,18 @@ class WalletActivity : FragmentActivity() {
             textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.bold(context)
         }
+        // Precio de 1 BTC en la moneda elegida (0 = aún sin saber, o testnet): con él, la
+        // comisión y lo que se envía se ven también en dinero normal.
+        var precioFiat = 0.0
+        fun enFiat(sat: Long): String {
+            val v = sat / 1e8 * precioFiat
+            return (if (v > 0 && v < 0.01) "<0.01" else "%.2f".format(v)) + " " + fiatCode()
+        }
+        val tvFiatEnvio = TextView(this).apply {
+            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.body(context); gravity = Gravity.END
+            setPadding(0, 0, dp(2), dp(14))
+        }
 
         /** Estimación honesta: una entrada, salida al destino y cambio. */
         // Monedas de la dirección de origen, cargadas al elegirla. Con ellas la
@@ -1773,8 +1785,15 @@ class WalletActivity : FragmentActivity() {
             val fee = estimateFeeSat()
             val amt = etAmt.text.toString().replace(',', '.').toDoubleOrNull() ?: 0.0
             tvFeeLine.text = if (fee < 0) "whatever the network suggests"
-                             else "≈ %,d sat".format(fee)
+                             else "≈ %,d sat".format(fee) +
+                                  (if (precioFiat > 0) "  (≈ ${enFiat(fee)})" else "")
             val extras = salidasExtraEnvio.sumOf { it.sat }
+            // Lo que se envía, la comisión y el total, también en dinero normal.
+            val enviarSat = Math.round(amt * 1e8) + extras
+            tvFiatEnvio.text = if (precioFiat > 0 && enviarSat > 0)
+                Privacidad.monto(this, "Sending ≈ ${enFiat(enviarSat)}" +
+                    (if (fee > 0) "  ·  fee ≈ ${enFiat(fee)}  ·  total ≈ ${enFiat(enviarSat + fee)}" else ""))
+                else ""
             tvTotal.text = if (amt <= 0) "—"
                            else "%.8f".format(amt + extras / 1e8 + (if (fee > 0) fee / 1e8 else 0.0))
         }
@@ -1944,6 +1963,7 @@ class WalletActivity : FragmentActivity() {
             ).apply { marginStart = dp(5) }
         })
         ll.addView(side(totalRow))
+        ll.addView(side(tvFiatEnvio))
 
         val btnSend = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2137,6 +2157,13 @@ class WalletActivity : FragmentActivity() {
         // Las comisiones reales, de la mempool. Hasta que respondan, las tres
         // opciones enseñan "—" y el envío va con la que recomiende la red, que
         // es lo que hacía antes el campo vacío.
+        // El precio, para enseñar también en dinero normal lo que se envía y la comisión.
+        if (!isTestnet) Thread {
+            val p = try {
+                ChainApi.get("/v1/prices", false)?.let { JSONObject(it).optDouble(fiatCode(), 0.0) } ?: 0.0
+            } catch (e: Exception) { 0.0 }
+            runOnUiThread { if (p > 0) { precioFiat = p; refreshTotals() } }
+        }.start()
         Thread {
             val f = ChainInfo.fees(isTestnet)
             runOnUiThread {
