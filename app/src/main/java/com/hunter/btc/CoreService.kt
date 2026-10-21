@@ -84,7 +84,18 @@ class CoreService : Service() {
                     (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
                         .notify(NOTIF, notif("Bitcoin Core", txt))
                 } catch (e: CoreRpcError) { /* aún arrancando */ }
-                  catch (e: java.io.IOException) { /* aún sin puerto */ }
+                  catch (e: java.io.IOException) {
+                    // Sin respuesta: aún sin puerto, o cargando un snapshot (loadtxoutset tiene tomado cs_main
+                    // y ningún otro RPC contesta). En ese caso se sigue el progreso por el registro y se
+                    // mantiene despierto el procesador, que si no se soltaba a los 10 minutos.
+                    val c = CoreNodo.cargaSnapshot(this)
+                    if (c != null && c.enCurso) {
+                        wake?.acquire(10 * 60 * 1000L)
+                        val eta = c.etaS?.let { " · ~${CoreConfig.duracion(it)} left" } ?: ""
+                        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager)
+                            .notify(NOTIF, notif("Bitcoin Core", "Loading snapshot ${"%.1f".format(c.porcentaje)} %$eta"))
+                    }
+                  }
             }
         } finally {
             soltar(); activo = false

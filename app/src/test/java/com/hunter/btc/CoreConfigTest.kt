@@ -60,6 +60,28 @@ class CoreConfigTest {
         assertEquals(965_000, CoreConfig.alturaAceptada("00000000000000000001595977e6000ce56129f5c9b4073e31ccc30b90b97da9"))
         assertNull(CoreConfig.alturaAceptada("00".repeat(32)))
     }
+    @Test fun progresoDeLaCarga() {
+        val t = "2026-10-21T12:00:00Z"
+        val l = listOf(
+            "2026-10-21T11:59:00Z Synchronizing blockheaders, height: 965000",
+            "$t [snapshot] loading 100000000 coins from snapshot 0000abc",
+            "2026-10-21T12:10:00Z [snapshot] 1000000 coins loaded (1.00%, 200.00 MB)",
+            "2026-10-21T12:20:00Z [snapshot] 2000000 coins loaded (2.00%, 400.00 MB)")
+        val ahora = java.time.Instant.parse("2026-10-21T12:21:00Z").epochSecond
+        val c = CoreConfig.leerCargaSnapshot(l, true, ahora)!!
+        assertTrue(c.enCurso); assertEquals(2.0, c.porcentaje, 1e-9); assertEquals(1260L, c.transcurridoS)
+        assertEquals(98L * 600, c.etaS)            // 2 M en 20 min -> 98 M restantes a 600 s por millón
+        assertFalse(CoreConfig.leerCargaSnapshot(l, false, ahora)!!.enCurso)      // el nodo ya no corre
+        val fin = l + "2026-10-21T13:00:00Z [snapshot] loaded 100000000 (7000.00 MB) coins from snapshot 0000abc"
+        assertFalse(CoreConfig.leerCargaSnapshot(fin, true, ahora)!!.enCurso)
+        // Una carga nueva después de una abortada: manda la última.
+        val dos = l + listOf("2026-10-21T12:30:00Z Aborting after an interrupt was requested",
+            "2026-10-21T14:00:00Z [snapshot] loading 100000000 coins from snapshot 0000abc")
+        val d = CoreConfig.leerCargaSnapshot(dos, true, ahora)!!
+        assertTrue(d.enCurso); assertEquals(0L, d.cargados); assertNull(d.etaS)
+        assertNull(CoreConfig.leerCargaSnapshot(listOf("nada"), true, ahora))
+        assertEquals("1 h 12 min", CoreConfig.duracion(4320)); assertEquals("8 min", CoreConfig.duracion(500))
+    }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))
         assertFalse(CoreConfig.urlValida("http://ejemplo.org/x.dat"))
