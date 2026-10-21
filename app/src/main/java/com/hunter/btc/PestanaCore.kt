@@ -76,6 +76,28 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "uses its own light client for now. It downloads a lot of data: Wi-Fi and a charger are recommended.",
         AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
 
+    // ── Red ───────────────────────────────────────────────────────────────
+    val cRed = Ui.card(this)
+    page.addView(cRed)
+    etiqueta(cRed, "Bitcoin network")
+    val rBloque = Ui.row(this, cRed, "Latest block", "–")
+    val rUltimo = Ui.row(this, cRed, "Its transactions", "–")
+    val rDif    = Ui.row(this, cRed, "Difficulty", "–")
+    val rHash   = Ui.row(this, cRed, "Hashrate", "–")
+    val rHalv   = Ui.row(this, cRed, "Next halving", "–")
+    val rMem    = Ui.row(this, cRed, "Mempool", "–")
+    val tvUtxo  = texto(cRed, "", AppTheme.TXT_PRI)
+    val btnUtxo = boton(cRed, "Count all the coins (takes a few minutes)")
+    texto(cRed, "Read from your own node. The mempool is empty in “Blocks only” mode.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+
+    // ── Herramientas ──────────────────────────────────────────────────────
+    val cHer = Ui.card(this)
+    page.addView(cHer)
+    etiqueta(cHer, "Node tools")
+    texto(cHer, "Check an address, turn a descriptor into addresses, verify a signed message, and read, " +
+        "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
+
     // ── Ajustes y poda ────────────────────────────────────────────────────
     val cAj = Ui.card(this)
     page.addView(cAj)
@@ -286,6 +308,48 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         }.start()
     }
 
+    var redMs = 0L
+    /** El panel de la red: unas pocas consultas RPC, como mucho cada 30 s. */
+    fun refrescarRed() {
+        val ahora = System.currentTimeMillis()
+        if (ultimo == null || ahora - redMs < 30_000) return
+        redMs = ahora
+        Thread {
+            try {
+                val r = CoreNodo.rpc(act)
+                val ch = r.objeto("getblockchaininfo", lecturaMs = 8_000)
+                val alt = ch.optLong("blocks", 0L)
+                val hps = (r.llamar("getnetworkhashps", JSONArray(), 8_000) as? Number)?.toDouble() ?: 0.0
+                val mem = try { CoreConfig.leerMempool(r.objeto("getmempoolinfo", lecturaMs = 8_000)) } catch (e: Exception) { null }
+                val bs = try { r.objeto("getblockstats", JSONArray().put(alt).put(JSONArray().put("txs").put("avgfeerate")), 8_000) }
+                         catch (e: Exception) { null }
+                val hv = CoreConfig.proximoHalving(alt)
+                val edad = System.currentTimeMillis() / 1000 - ch.optLong("time", 0L)
+                runOnUiThread {
+                    rBloque.text = "%,d · %s".format(alt, CoreConfig.hace(edad))
+                    rUltimo.text = if (bs != null) "%,d · avg fee %d sat/vB".format(bs.optLong("txs"), bs.optLong("avgfeerate")) else "–"
+                    rDif.text = CoreConfig.dificultad(ch.optDouble("difficulty", 0.0))
+                    rHash.text = CoreConfig.hashrate(hps)
+                    rHalv.text = "block %,d · in %,d blocks (~%,d days)".format(hv.altura, hv.faltan, hv.dias)
+                    rMem.text = if (mem != null) "%,d tx · %s · min %.1f sat/vB".format(mem.tx, CoreConfig.bytes(mem.bytes), mem.minimaSatVb) else "–"
+                }
+            } catch (e: Exception) { redMs = 0L }
+        }.start()
+    }
+
+    btnUtxo.setOnClickListener {
+        if (ultimo == null) { Toast.makeText(act, "Start the node and let it sync first.", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+        btnUtxo.isEnabled = false; btnUtxo.alpha = .4f; tvUtxo.text = "Counting the whole set of coins…"
+        Thread {
+            val txt = try {
+                val o = CoreNodo.rpc(act).llamar("gettxoutsetinfo", JSONArray().put("none"), 30 * 60_000) as? org.json.JSONObject
+                val u = o?.let { CoreConfig.leerUtxoStats(it) }
+                if (u != null) "%,d coins · %,.2f BTC in existence\nAt block %,d".format(u.monedas, u.btc, u.altura) else "No answer."
+            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            runOnUiThread { tvUtxo.text = txt; btnUtxo.isEnabled = true; btnUtxo.alpha = 1f }
+        }.start()
+    }
+
     fun aviso(s: String) = runOnUiThread { Toast.makeText(act, s, Toast.LENGTH_LONG).show() }
     /** Un mensaje largo (el de Core) en un diálogo, completo y seleccionable, no cortado en un aviso. */
     fun detalle(titulo: String, s: String) = runOnUiThread {
@@ -396,7 +460,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val sondeo = object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.visibility == View.VISIBLE) { refrescar(); refrescarCarga() }
+            if (scroll.visibility == View.VISIBLE) { refrescar(); refrescarCarga(); refrescarRed() }
             h.postDelayed(this, 3_000)
         }
     }
