@@ -2874,6 +2874,12 @@ class WalletActivity : FragmentActivity() {
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
         addrCard.addView(etMonto)
+        // Lo que vale ese importe en dinero normal, para saber cuánto se está pidiendo.
+        val tvFiatMonto = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
+            setPadding(dp(14), 0, dp(14), dp(4))
+        }
+        addrCard.addView(tvFiatMonto)
         // Otra dirección nueva de este mismo tipo, sin usar.
         val btnNueva = TextView(this).apply {
             text = "New address"
@@ -3009,7 +3015,12 @@ class WalletActivity : FragmentActivity() {
             }.start()
         }
         etMonto.addTextChangedListener(object : android.text.TextWatcher {
-            override fun afterTextChanged(s: android.text.Editable?) { if (addrActual.isNotEmpty()) pintarQr(addrActual) }
+            override fun afterTextChanged(s: android.text.Editable?) {
+                if (addrActual.isNotEmpty()) pintarQr(addrActual)
+                val btc = s?.toString()?.replace(',', '.')?.toDoubleOrNull() ?: 0.0
+                if (btc > 0 && btc <= 21_000_000.0) ponerFiat(tvFiatMonto, Math.round(btc * 1e8))
+                else tvFiatMonto.text = ""
+            }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         })
@@ -3708,8 +3719,8 @@ class WalletActivity : FragmentActivity() {
                             append("Delete \u201c$nombre\u201d?\n\n")
                             when {
                                 ultimoSaldoSat > 0 -> append("It still holds " +
-                                    "%.8f BTC. Move the funds out first — after deleting there is no way to spend them.\n\n"
-                                        .format(ultimoSaldoSat / 1e8))
+                                    "%.8f BTC%s. Move the funds out first — after deleting there is no way to spend them.\n\n"
+                                        .format(ultimoSaldoSat / 1e8, fiatEntre(ultimoSaldoSat)))
                                 ultimoSaldoSat == 0L -> append("Its balance is 0. ")
                                 else -> append("Its balance has not been checked. If it might hold funds, move them out first. ")
                             }

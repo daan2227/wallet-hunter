@@ -79,6 +79,18 @@ object Fiat {
         return (if (v > 0 && v < 0.01) "<0.01" else "%,.2f".format(v)) + " " + codigo(ctx)
     }
 
+    /**
+     * Pone en [tv] `base` + el valor en dinero normal de [sat]. Si aún no se sabe el precio
+     * lo pide y lo completa al llegar (siempre que el texto siga siendo `base...`).
+     */
+    fun poner(tv: android.widget.TextView, base: String, sat: Long) {
+        val ctx = tv.context
+        tv.text = base + entre(ctx, sat)
+        if (vencidoONulo(ctx)) cargar(ctx) {
+            tv.post { if (tv.text.toString().startsWith(base)) tv.text = base + entre(ctx, sat) }
+        }
+    }
+
     /** "  (≈ 1,234.56 USD)" para pegar a un texto; vacío si no se sabe. */
     fun entre(ctx: Context, sat: Long): String = de(ctx, sat)?.let { "  (≈ $it)" } ?: ""
 }

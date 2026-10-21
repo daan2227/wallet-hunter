@@ -1217,7 +1217,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 when {
                     bal > 0L -> {
                         if (puzzleSeleccionado != p.num) return@runOnUiThread
-                        tvBalResult.text = "${bal / 100_000_000.0} BTC available"
+                        Fiat.poner(tvBalResult, "${bal / 100_000_000.0} BTC available", bal)
                         tvBalResult.setTextColor(AppTheme.ACCENT)
                     }
                     bal == 0L -> {
@@ -1387,7 +1387,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 if (puzzleSeleccionado != defaultPuzzle.num) return@runOnUiThread
                 if (puzzleFullStart != defaultPuzzle.start) return@runOnUiThread
                 if (bal > 0) {
-                    tvBalResult.text = "${bal / 100_000_000.0} BTC available"
+                    Fiat.poner(tvBalResult, "${bal / 100_000_000.0} BTC available", bal)
                     tvBalResult.setTextColor(ACCENT)
                 } else {
                     // Antes ponía "Buscando puzzle con fondos..." y llamaba a

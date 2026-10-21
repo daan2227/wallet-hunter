@@ -161,6 +161,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
                     pendientes > 0     -> "${matches.size} find(s) · $pendientes not checked"
                     else               -> "${matches.size} find(s)"
                 }
+                if (total > 0.0) Fiat.poner(tvTotalUsd, tvTotalUsd.text.toString(), Math.round(total * 1e8))
             }
         }.start()
     }

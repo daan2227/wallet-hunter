@@ -2898,6 +2898,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         tvPuzzleStatus?.text = if (p.clave.isNotEmpty())
             "Puzzle #${p.num} — already solved, good as a test"
         else "Puzzle #${p.num} — ${p.btc}"
+        // El premio, también en dinero normal ("7.9 BTC" -> número).
+        p.btc.removeSuffix(" BTC").toDoubleOrNull()?.takeIf { it > 0 && p.clave.isEmpty() }?.let { premio ->
+            tvPuzzleStatus?.let { Fiat.poner(it, "Puzzle #${p.num} — ${p.btc}", Math.round(premio * 1e8)) }
+        }
         // El bloque que hubiera era de otro rango: su porcentaje aquí no vale.
         pendingBlockIdx = null
         currentBlockId = ""

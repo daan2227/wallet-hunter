@@ -63,6 +63,7 @@ class PubkeyToolsActivity : Activity() {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
         PantallaSegura.aplicar(this)
+        Fiat.cargar(this) { }   // el precio, para enseñar el valor junto a los importes
         AppTheme.init(this)
         AppLock.init(this)
 
@@ -483,7 +484,7 @@ class PubkeyToolsActivity : Activity() {
 
     // ── Balance & UTXOs (watch-only) ───────────────────────────────────────
     @Volatile private var balCorriendo = false
-    private fun satsABtc(s: Long) = "%.8f".format(s / 1e8).trimEnd('0').trimEnd('.') + " BTC"
+    private fun satsABtc(s: Long) = "%.8f".format(s / 1e8).trimEnd('0').trimEnd('.') + " BTC" + Fiat.entre(this, s)
     private fun construirBalance() {
         desc("Balance, transaction count and unspent outputs of any address — read-only, " +
              "from a public explorer. No key needed.")
@@ -1253,7 +1254,7 @@ class PubkeyToolsActivity : Activity() {
             val vsize = (10.5 + nin * vin + nout * vout)
             val fee = Math.ceil(vsize * rate).toLong()
             salida.addView(filaResultado("Estimated vsize", "${Math.ceil(vsize).toInt()} vB", true))
-            salida.addView(filaResultado("Fee", "$fee sats (${"%.8f".format(fee / 1e8).trimEnd('0').trimEnd('.')} BTC)"))
+            salida.addView(filaResultado("Fee", "$fee sats (${"%.8f".format(fee / 1e8).trimEnd('0').trimEnd('.')} BTC)" + Fiat.entre(this@PubkeyToolsActivity, fee)))
         }
         nota(AppTheme.BLUE, "Rough estimate: ~148 vB per P2PKH input, ~68 P2WPKH, ~91 P2SH-P2WPKH, " +
              "~58 P2TR, ~31 per output, +10.5 overhead.")
@@ -1295,7 +1296,7 @@ class PubkeyToolsActivity : Activity() {
                 salida.addView(filaResultado("Not signed — check this PSBT", rev.problemas.joinToString("\n")))
                 return@boton
             }
-            fun btcTxt(sat: Long) = "%.8f BTC".format(sat / 1e8)
+            fun btcTxt(sat: Long) = "%.8f BTC".format(sat / 1e8) + Fiat.entre(this@PubkeyToolsActivity, sat)
             val texto = buildString {
                 appendLine("It pays:")
                 for ((dir, v) in rev.salidas) appendLine("• ${btcTxt(v)} → $dir")
