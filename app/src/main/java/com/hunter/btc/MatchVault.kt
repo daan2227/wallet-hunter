@@ -468,6 +468,7 @@ object MatchVault {
             "scanner"  -> "Scanner"
             "kangaroo" -> "Kangaroo"
             "weak-key" -> "Weak-key audit"
+            "tool"     -> "Key tools"
             "recovery" -> "Recovered"
             else       -> "Find"
         }

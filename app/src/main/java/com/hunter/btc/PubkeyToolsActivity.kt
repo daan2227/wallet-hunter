@@ -482,6 +482,14 @@ class PubkeyToolsActivity : Activity() {
              "Handy to audit or monitor a hardware/watch-only wallet.")
     }
 
+    /**
+     * Una clave que estas herramientas han encontrado o generado se guarda en el baúl cifrado
+     * en el momento: salir de la pantalla la perdía. Devuelve el texto para la fila de resultado.
+     */
+    private fun guardarEnBaul(priv: String, extra: String): String =
+        if (priv.length == 64 && MatchVault.guardarClave(this, priv, "tool", extra)) "Saved in the finds vault (encrypted)."
+        else "NOT saved to the vault. Copy the key now."
+
     // ── Balance & UTXOs (watch-only) ───────────────────────────────────────
     @Volatile private var balCorriendo = false
     private fun satsABtc(s: Long) = "%.8f".format(s / 1e8).trimEnd('0').trimEnd('.') + " BTC" + Fiat.entre(this, s)
@@ -712,6 +720,7 @@ class PubkeyToolsActivity : Activity() {
                     val wif = try { HunterEngine.wifDeHex(res).substringBefore("|") } catch (e: Throwable) { "" }
                     salida.addView(filaResultado("Private key", res, true))
                     if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                    salida.addView(filaResultado("Finds vault", guardarEnBaul(res, "BSGS solver")))
                     val n = try { HunterEngine.bsgsCount() } catch (e: Throwable) { 0L }
                     tv.text = "Solved after ${"%,d".format(n)} giant steps."
                 }
@@ -802,6 +811,7 @@ class PubkeyToolsActivity : Activity() {
                         val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
                         salida.addView(filaResultado("Private key", priv, true))
                         if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                        salida.addView(filaResultado("Finds vault", guardarEnBaul(priv, "Lattice nonce recovery")))
                         tv.text = "Recovered — the nonces were weak" + (if (fixed == null) " (auto-detected)." else ".")
                     } else {
                         tv.text = "Not recovered. The nonces may not be short/biased, or you need more signatures."
@@ -996,6 +1006,7 @@ class PubkeyToolsActivity : Activity() {
                 salida.addView(filaResultado("Address", addr, true))
                 salida.addView(filaResultado("Private key", priv))
                 if (wif.isNotEmpty()) salida.addView(filaResultado("WIF", wif))
+                salida.addView(filaResultado("Finds vault", guardarEnBaul(priv, "Vanity address")))
                 val n = try { HunterEngine.vanityCount() } catch (e: Throwable) { 0L }
                 tv.text = "Found after ${"%,d".format(n)} tries."
                 return@Runnable
@@ -1864,6 +1875,7 @@ class PubkeyToolsActivity : Activity() {
                         tvEstado.text = "⚠ Weak nonces (lattice) · $fin tx · $sigs sig · key recovered"
                         salida.addView(filaResultado("RECOVERED PRIVATE KEY (lattice)",
                             "priv $latPriv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + "\npubkey ${latPub?.take(16)}…", true))
+                        salida.addView(filaResultado("Finds vault", guardarEnBaul(latPriv!!, "Lattice nonce recovery")))
                         salida.addView(TextView(this).apply {
                             text = "The signatures used short/biased nonces (HNP + LLL). This address is compromised — move any funds."
                             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
@@ -1881,6 +1893,7 @@ class PubkeyToolsActivity : Activity() {
                                     val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
                                     salida.addView(filaResultado("RECOVERED PRIVATE KEY",
                                         "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + "\npubkey ${pub.take(16)}…", true))
+                                    salida.addView(filaResultado("Finds vault", guardarEnBaul(priv, "Reused nonce recovery")))
                                 } else salida.addView(filaResultado("VULNERABLE · reused r (recovery n/a)",
                                         "pubkey ${pub.take(16)}…\nr ${r.take(20)}…\ntx1 ${t1.take(16)}…\ntx2 ${t2.take(16)}…", true))
                             }

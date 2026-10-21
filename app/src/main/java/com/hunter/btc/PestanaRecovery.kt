@@ -497,9 +497,11 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                         tvRecoveryStatus.text = if (ok) "Kept in the finds vault, encrypted."
                             else "Could not keep it in the vault: save it to your wallets now."
                         tvRecoveryStatus.visibility = android.view.View.VISIBLE
+                        // El aviso sólo dice "en el baúl" si de verdad lo está.
+                        if (ok) sendMatchNotification("Seed recovered", "It is kept in the finds vault.")
+                        else sendMatchNotification("Seed recovered", "It could NOT be saved to the vault: open the app and save it now.")
                     }
                 }.start()
-                sendMatchNotification("Seed recovered", "It is kept in the finds vault.")
             }
         }
         override fun onNotFound() {

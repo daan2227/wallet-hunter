@@ -156,6 +156,7 @@ class VaultActivity : AppCompatActivity() {
         "recovery" -> "Recovery"
         "kangaroo" -> "Kangaroo"
         "weak-key" -> "Weak-key audit"
+        "tool"     -> "Key tools"
         WalletManager.O_CREADA    -> "Your wallet · created"
         WalletManager.O_IMPORTADA -> "Your wallet · added"
         WalletManager.O_BACKUP    -> "Your wallet · backup"
