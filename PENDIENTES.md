@@ -53,15 +53,12 @@
   de la app (`pin_verify` + `pin_salt` permiten probar los 10^6 PIN sin pasar por el contador de
   intentos). El baúl y la lista de WIF van bajo una clave del Keystore sin autenticación de usuario.
   Protege contra quien coja el móvil sin más; no contra root. Arreglarlo es rediseñar el sobre.
-- **xpub de testnet** (`vpub`/`upub`/`tpub`) se reimportan como mainnet; la ruta con `h`/`H` en vez
-  de `'` se firmaría como P2PKH (hoy Kotlin siempre manda `'`).
 - **Motor:** parar a mitad de lote cuenta el lote entero (al reanudar por `savedKey` se salta la cola);
-  carreras raras al arrancar/parar hilos; `kangarooStart/Stop` en el hilo principal (riesgo de ANR con
-  tablas grandes); BSGS rechaza ventanas estrechas por encima de 2^64; en el modo de prueba de fuerza
+  carreras raras al arrancar/parar hilos; `kangarooStart` y los `kangarooStop` de la pantalla cuando
+  se halla la clave siguen en el hilo principal (los de usuario y servicio ya van aparte); BSGS rechaza ventanas estrechas por encima de 2^64; en el modo de prueba de fuerza
   bruta la cola final del rango no se recorre.
-- **Secretos en memoria nativa:** varias rutas (`deriveAddresses`, `bip38*`, `firmarMensaje`…) no llaman
-  a `OPENSSL_cleanse` sobre la semilla/claves intermedias.
-- **Un nodo malicioso** que mande `ping` sin leer hace crecer la cola de escritura de `LightClient`.
+- **Secretos en memoria nativa:** `bip38*`, `recuperarNonce`, `wif_*` y `xpub_de_cuenta` siguen sin
+  limpiar sus intermedios (`deriveAddresses`, `deriveRuta`, `firmarHash`, `firmarMensaje` y `pubDeHex` ya sí).
 
 ## Sin implementar
 

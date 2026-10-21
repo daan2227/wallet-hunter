@@ -125,6 +125,7 @@ struct Nodo {
     bool ignora_inv = false;          /* nunca pide las transacciones que se le anuncian */
     bool rechaza_tx = false;          /* las pide pero no las acepta ni las retransmite */
     bool relay = false;               /* lo pidió en su version */
+    bool ping_flood = false;           /* 150 pings seguidos tras el saludo */
     bool saludo_core = false;         /* como Bitcoin Core: wtxidrelay y sendaddrv2 entre version y verack */
     int max_cfilters = -1;            /* tras servir tantos cfilters, se desconecta */
     bool desconectar = false; int servidos = 0;
@@ -144,6 +145,7 @@ struct Nodo {
                 if (saludo_core) { env("wtxidrelay", {}); env("sendaddrv2", {}); }
                 env("verack", {});
                 if (basura_tras_saludo) for (int i = 0; i < 30; i++) env("cfilter", Bytes(40, 0));
+                if (ping_flood) for (int i = 0; i < 150; i++) env("ping", crear_nonce(i));
                 continue;
             }
             if (silencio || m.cmd == "verack") continue;

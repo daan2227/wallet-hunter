@@ -52,7 +52,9 @@ class HunterService : Service() {
                     val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
                     if (bruta || kang) {
                         if (bruta) HunterEngine.stopHunting()
-                        if (kang)  try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        // En otro hilo: kangarooStop espera a los hilos y guarda la tabla (hasta ~235 MB), y este
+                        // receptor corre en el hilo principal.
+                        if (kang)  Thread { try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }.start()
                         // Y decir que la parada es a propósito. Sin esto la
                         // pausa no servía de nada: el watchdog de la pantalla
                         // principal ve el motor caído, lee estas dos banderas,
@@ -298,7 +300,7 @@ class HunterService : Service() {
                         // Ya está a salvo: se para el motor y se apaga la bandera de «estaba corriendo»; si no,
                         // BootReceiver o el reinicio por muerte del proceso volvían a lanzar una búsqueda ya
                         // resuelta. Y se avisa, porque con la app cerrada no lo vería nadie.
-                        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        Thread { try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }.start()
                         try {
                             getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE).edit()
                                 .putBoolean("kangaroo_corriendo", false).apply()
@@ -400,7 +402,7 @@ class HunterService : Service() {
         if (!bruta && !kang) return
         if (Termico.parado) {
             if (bruta) HunterEngine.stopHunting()
-            if (kang)  try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+            if (kang)  Thread { try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }.start()
             try {
                 getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE).edit()
                     .putBoolean("kangaroo_corriendo", false)

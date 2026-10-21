@@ -35,7 +35,9 @@ class LightClient(
     }
 
     private class Conexion(val id: Int, val dir: Direccion, val socket: Socket, val relay: Boolean) {
-        val cola = LinkedBlockingQueue<ByteArray>()
+        // Con tope: un par que no lee lo que le mandamos (o que provoca respuestas sin parar) no puede hacer
+        // crecer la memoria sin límite; si se llena, se corta esa conexión.
+        val cola = LinkedBlockingQueue<ByteArray>(4096)
         @Volatile var cerrada = false
     }
 
@@ -148,7 +150,7 @@ class LightClient(
         if (h == 0L) return
         for (c in conexiones.values.toList()) {
             val o = LightNative.salida(h, c.id)
-            if (o.isNotEmpty() && !c.cerrada) c.cola.put(o)
+            if (o.isNotEmpty() && !c.cerrada && !c.cola.offer(o)) cerrar(c)
         }
         for (id in LightNative.cierres(h)) {
             val c = conexiones[id] ?: continue
@@ -197,19 +199,22 @@ class LightClient(
     private fun conectar(d: Direccion, relay: Boolean) {
         val k = d.toString()
         var c: Conexion? = null
+        var s: Socket? = null
         try {
-            val s = Socket()
+            s = Socket()
             s.tcpNoDelay = true
             s.connect(InetSocketAddress(d.host, d.port), 5000)
             s.soTimeout = 0
             synchronized(lock) {
                 if (!activo || h == 0L) { s.close(); return }
-                c = Conexion(siguienteId++, d, s, relay)
+                c = Conexion(siguienteId++, d, s!!, relay)
                 conexiones[c!!.id] = c!!
                 LightNative.parNuevo(h, c!!.id, ahora(), relay)
                 volcar()
             }
         } catch (e: Exception) {
+            // Si la conexión no llegó a registrarse, su socket se cierra aquí: se filtraba un descriptor por intento.
+            if (c == null) try { s?.close() } catch (x: Exception) { }
             synchronized(lock) { falladas[k] = ahora() }
         } finally {
             synchronized(lock) { intentando.remove(k) }

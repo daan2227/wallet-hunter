@@ -2269,17 +2269,27 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             return
         }
         if (HunterEngine.kangarooRunning()) {
-            // kangarooStop() guarda antes de liberar: parar no tira el trabajo.
-            HunterEngine.kangarooStop()
-            prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
-            lblEscaneadas?.text = "Scanned"
-            lblRestantes?.text = "Whole puzzle"
-            btnKangaroo?.text = "Search with Kangaroo"
-            tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
-                                  "pressing again continues from there."
+            // kangarooStop() guarda antes de liberar: parar no tira el trabajo. Pero espera a los hilos y
+            // escribe la tabla (hasta ~235 MB): en el hilo principal era un riesgo de ANR. Se hace en otro,
+            // con el botón desactivado hasta que acabe (así no se puede relanzar a mitad de guardado).
+            btnKangaroo?.isEnabled = false
+            tvPuzzleAtajo?.text = "Saving the work…"
             tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
-            kgInicio = 0L
-            refrescarBloqueos()
+            Thread {
+                try { HunterEngine.kangarooStop() } catch (t: Throwable) {}
+                runOnUiThread {
+                    btnKangaroo?.isEnabled = true
+                    prefs.edit().putBoolean("kangaroo_corriendo", false).apply()
+                    lblEscaneadas?.text = "Scanned"
+                    lblRestantes?.text = "Whole puzzle"
+                    btnKangaroo?.text = "Search with Kangaroo"
+                    tvPuzzleAtajo?.text = "Stopped. The work is saved; " +
+                                          "pressing again continues from there."
+                    tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
+                    kgInicio = 0L
+                    refrescarBloqueos()
+                }
+            }.start()
             return
         }
         if (puzzlePubHex.length != 66) {

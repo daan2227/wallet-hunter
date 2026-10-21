@@ -116,6 +116,7 @@ int main() {
         {"sin servicio de filtros", [](Nodo &n) { n.servicios = NODE_NETWORK | NODE_WITNESS; }},
         {"sin testigo", [](Nodo &n) { n.servicios = NODE_NETWORK | NODE_COMPACT_FILTERS; }},
         {"se conecta con nosotros mismos", [](Nodo &n) { n.nonce = 999; }},
+        {"inunda con pings", [](Nodo &n) { n.ping_flood = true; }},
     };
     for (auto &cs : casos) {
         Almacen alm(PR, honesta->b[0].cab.data(), 50, 200);

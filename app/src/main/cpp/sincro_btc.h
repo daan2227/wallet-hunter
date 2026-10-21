@@ -92,6 +92,7 @@ public:
         for (auto &kv : pares_) {
             Par &p = kv.second;
             if (p.muerto) continue;
+            p.pings = 0;
             // Resta saturada: si el reloj del teléfono retrocede, no se expulsa a todos de golpe.
             if (!p.listo && trans(ahora_ms, p.t_alta) > cfg_.timeout_saludo_ms) banear(p, "no completó el saludo");
             else if (p.esperando && trans(ahora_ms, p.t_pend) > cfg_.timeout_ms) banear(p, "sin respuesta");
@@ -176,6 +177,7 @@ private:
         int id; Flujo fl; bool v_rx = false, ack_rx = false, listo = false, muerto = false;
         Version v; uint64_t t_alta = 0, t_pend = 0; int esperando = 0;
         bool hdr_fin = false; uint32_t inesperados = 0; bool relay = false;
+        uint32_t pings = 0;             /* desde el último tick */
         uint32_t cf_descartar = 0;      /* cfilters de un lote abortado que aún pueden llegar: se ignoran */
         bool cfh_ok = false; CfHeaders cfh;
     };
@@ -305,11 +307,19 @@ private:
             static const char *negociacion[] = {"wtxidrelay", "sendaddrv2", "sendtxrcncl", "sendheaders",
                                                 "sendcmpct", "feefilter", "addr", "addrv2", "getaddr"};
             if (!p.v_rx) { banear(p, "mensaje antes de su version"); return; }
-            if (m.cmd == "ping") { enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return; }
+            if (m.cmd == "ping") {
+            // Un par que manda pings sin parar hacía crecer sin límite la cola de salida (un pong cada uno).
+            if (++p.pings > 100) { banear(p, "demasiados ping"); return; }
+            enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return;
+        }
             for (auto *n : negociacion) if (m.cmd == n) return;
             banear(p, "mensaje antes de terminar el saludo"); return;
         }
-        if (m.cmd == "ping") { enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return; }
+        if (m.cmd == "ping") {
+            // Un par que manda pings sin parar hacía crecer sin límite la cola de salida (un pong cada uno).
+            if (++p.pings > 100) { banear(p, "demasiados ping"); return; }
+            enviar(p, "pong", crear_nonce(leer_nonce(m.payload))); return;
+        }
         if (m.cmd == "headers") { en_headers(p, m, ahora_ms); return; }
         if (m.cmd == "cfheaders") { en_cfheaders(p, m, ahora_ms); return; }
         if (m.cmd == "cfilter") { en_cfilter(p, m, ahora_ms); return; }

@@ -86,6 +86,10 @@ static void install_crash_handlers() {
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "ruta_bip32.h"    /* ruta BIP32 estricta */
 #include <openssl/crypto.h> /* OPENSSL_cleanse */
+
+/* Limpian al salir del ámbito —también con return o continue— un secreto que vive en la pila o en un std::string. */
+template<class T> struct LimpiaT { T *p; ~LimpiaT(){ OPENSSL_cleanse((void*)p, sizeof(T)); } };
+struct LimpiaCadena { std::string *s; ~LimpiaCadena(){ if(!s->empty()) OPENSSL_cleanse(&(*s)[0], s->size()); } };
 #include "vanity.h"        /* generador de direcciones vanity (motor del escaner) */
 #include "bsgs.h"          /* baby-step/giant-step para rangos pequenos */
 #define N_PATHS       9
@@ -1660,7 +1664,9 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_pubDeHex(JNIEnv *env,jobject,jstring jhex){
     const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
     if(h.size()!=64) return env->NewStringUTF("");
-    uint8_t k[32]; for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
+    LimpiaCadena lh{&h};
+    uint8_t k[32]; LimpiaT<uint8_t[32]> lk{&k};
+    for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
         if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
         if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
         if(a<0||b<0) return env->NewStringUTF(""); k[i]=(uint8_t)((a<<4)|b); }
@@ -1678,8 +1684,10 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_firmarHash(JNIEnv *env,jobject,jstring jpriv,jstring jhash){
     const char *pv=env->GetStringUTFChars(jpriv,nullptr); std::string ps=pv?pv:""; if(pv) env->ReleaseStringUTFChars(jpriv,pv);
     const char *hs=env->GetStringUTFChars(jhash,nullptr); std::string hh=hs?hs:""; if(hs) env->ReleaseStringUTFChars(jhash,hs);
+    LimpiaCadena lps{&ps};
     if(ps.size()!=64||hh.size()!=64) return env->NewStringUTF("");
     uint8_t k[32],z[32];
+    LimpiaT<uint8_t[32]> lk{&k};
     auto hx=[&](const std::string&s,uint8_t*o)->bool{ for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(s[i*2]),c2=tolower(s[i*2+1]);
         if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10; if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
         if(a<0||b<0) return false; o[i]=(uint8_t)((a<<4)|b);} return true; };
@@ -1702,6 +1710,7 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_deriveRuta(JNIEnv *env,jobject,jstring jm,jstring jp){
     const char *mn=env->GetStringUTFChars(jm,nullptr); std::string m=mn?mn:""; if(mn) env->ReleaseStringUTFChars(jm,mn);
     const char *pp=env->GetStringUTFChars(jp,nullptr); std::string path=pp?pp:""; if(pp) env->ReleaseStringUTFChars(jp,pp);
+    LimpiaCadena lm{&m};
     if(m.empty()||path.empty()) return env->NewStringUTF("");
     uint8_t seed[64]; semilla_de_frase(m.c_str(),m.size(),seed);
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
@@ -2023,8 +2032,9 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_firmarMensaje(JNIEnv *env,jobject,jstring jhex,jstring jmsg){
     const char *hx=env->GetStringUTFChars(jhex,nullptr); std::string h=hx?hx:""; if(hx) env->ReleaseStringUTFChars(jhex,hx);
     std::string m=utf8_de(env,jmsg);   /* UTF-8 de verdad: ver utf8_de */
+    LimpiaCadena lh{&h};
     if(h.size()!=64) return env->NewStringUTF("");
-    uint8_t k[32];
+    uint8_t k[32]; LimpiaT<uint8_t[32]> lk{&k};
     for(int i=0;i<32;i++){ int a=-1,b=-1; char c1=tolower(h[i*2]),c2=tolower(h[i*2+1]);
         if(c1>='0'&&c1<='9')a=c1-'0'; else if(c1>='a'&&c1<='f')a=c1-'a'+10;
         if(c2>='0'&&c2<='9')b=c2-'0'; else if(c2>='a'&&c2<='f')b=c2-'a'+10;
@@ -2119,7 +2129,17 @@ Java_com_hunter_btc_HunterEngine_xpubDirecciones(JNIEnv *env,jobject,jstring jx,
         uint8_t h1[32],h2[32]; SHA256(raw,78,h1); SHA256(h1,32,h2);
         if(memcmp(h2,raw+78,4)==0){
             uint32_t ver=((uint32_t)raw[0]<<24)|((uint32_t)raw[1]<<16)|((uint32_t)raw[2]<<8)|raw[3];
-            int tipo = (ver==0x049d7cb2u)?1 : (ver==0x04b24746u)?2 : 0;  // ypub / zpub / xpub
+            // xpub/ypub/zpub (mainnet) y tpub/upub/vpub (testnet): antes todo lo que no era y/zpub salía como una
+            // xpub de mainnet, y un vpub daba direcciones 1... en vez de tb1q...
+            bool tn=false; int tipo=0;
+            switch(ver){
+                case 0x049d7cb2u: tipo=1; break;                  // ypub
+                case 0x04b24746u: tipo=2; break;                  // zpub
+                case 0x043587cfu: tn=true; break;                 // tpub
+                case 0x044a5262u: tn=true; tipo=1; break;         // upub
+                case 0x045f1cf6u: tn=true; tipo=2; break;         // vpub
+                default: break;
+            }
             const uint8_t *chain=raw+13; const uint8_t *key=raw+45;
             secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_VERIFY);
             secp256k1_pubkey acct;
@@ -2132,7 +2152,7 @@ Java_com_hunter_btc_HunterEngine_xpubDirecciones(JNIEnv *env,jobject,jstring jx,
                         uint8_t c33[33]; size_t cl=33; secp256k1_ec_pubkey_serialize(ctx,c33,&cl,&child,SECP256K1_EC_COMPRESSED);
                         uint8_t sha[32],h160[20]; SHA256(c33,33,sha); RIPEMD160(sha,32,h160);
                         char a[MAX_ADDR]={0};
-                        if(tipo==2) h160_to_bech32(h160,a); else if(tipo==1) h160_to_p2sh(h160,a); else h160_to_addr(h160,a);
+                        if(tipo==2) h160_to_bech32(h160,a,tn); else if(tipo==1) h160_to_p2sh(h160,a,tn); else h160_to_addr(h160,a,tn);
                         char pre[8]; snprintf(pre,8,"%d=",i); res+=pre; res+=a; res+="\n";
                     }
                 }
@@ -2239,8 +2259,10 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
     env->ReleaseStringUTFChars(jmn,mn);
 
     secp256k1_context *ctx=secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
-    HDKey master; { uint8_t s2[64]; memcpy(s2,seed,64); derive_master(s2,&master); }
+    HDKey master; { uint8_t s2[64]; memcpy(s2,seed,64); derive_master(s2,&master); OPENSSL_cleanse(s2,sizeof s2); }
     HDKey a,b,c,branch;
+    LimpiaT<uint8_t[64]> lseed{&seed};
+    LimpiaT<HDKey> lm{&master}, la{&a}, lb{&b}, lc{&c}, lbr{&branch};
     derive_child(ctx,&master,0x80000000u+(uint32_t)purpose,&a);
     /* Coin type: 0' en mainnet, 1' en testnet (SLIP-44). No es cosmetico: son
        ramas distintas del arbol, con claves distintas. Derivar en 0' y luego
@@ -2253,6 +2275,7 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
     std::string json="[";
     for(int i=0;i<count;i++){
         HDKey leaf; derive_child(ctx,&branch,(uint32_t)(from+i),&leaf);
+        LimpiaT<HDKey> lleaf{&leaf};
         char addr[MAX_ADDR]={0};
         if(purpose==86){
             secp256k1_keypair kp; secp256k1_xonly_pubkey xo; int par=0;
@@ -2453,7 +2476,10 @@ static std::string build_and_sign_tx(const std::string &req){
     enum SpendType { SP_LEGACY, SP_P2SH_P2WPKH, SP_P2WPKH, SP_P2TR };
     /* El tipo sale del PROPÓSITO, que es el primer nivel ("m/86'/…"). Buscar la
        subcadena "86'" también casaba con una cuenta 86' o un índice; no. */
-    auto propositoEs=[&](const char *p){ return path.rfind(p,0)==0; };
+    // «84h» / «84H» son «84'» (ruta_bip32_parse los acepta): mirar el texto tal cual daba la clave BIP84 pero
+    // firmaba como P2PKH, y la red rechazaba la transacción sin explicación.
+    std::string ruta_tipo=path; for(char &ch: ruta_tipo) if(ch=='h'||ch=='H') ch='\'';
+    auto propositoEs=[&](const char *p){ return ruta_tipo.rfind(p,0)==0; };
     SpendType stype = propositoEs("m/86'/") ? SP_P2TR
                     : propositoEs("m/84'/") ? SP_P2WPKH
                     : propositoEs("m/49'/") ? SP_P2SH_P2WPKH
