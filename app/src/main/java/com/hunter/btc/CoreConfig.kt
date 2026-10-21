@@ -124,11 +124,15 @@ object CoreConfig {
         /** Segundos desde que empezó (hasta [ahora]); -1 si no se sabe. */
         val transcurridoS: Long,
         /** Segundos que faltan al ritmo medio hasta ahora; null si aún no hay datos para estimarlo. */
-        val etaS: Long?
-    ) { val porcentaje: Double get() = if (total > 0) cargados * 100.0 / total else 0.0 }
+        val etaS: Long?,
+        /** El porcentaje que imprime el propio Core en su última línea, si lo hay (es el que manda). */
+        val pctLog: Double? = null
+    ) {
+        val porcentaje: Double get() = pctLog ?: if (total > 0) cargados * 100.0 / total else 0.0
+    }
 
     private val RE_INICIO = Regex("""^(\S+)\s+\[snapshot] loading (\d+) coins from snapshot""")
-    private val RE_PASO = Regex("""^(\S+)\s+\[snapshot] (\d+) coins loaded""")
+    private val RE_PASO = Regex("""^(\S+)\s+\[snapshot] (\d+) coins loaded(?: \((\d+(?:\.\d+)?)%)?""")
     private val FIN_CARGA = listOf("[snapshot] loaded ", "successfully activated", "Aborting after an interrupt",
         "Bad snapshot data", "Mismatch in coins count", "[snapshot] !!!", "Work does not exceed")
 
@@ -147,13 +151,14 @@ object CoreConfig {
         val m0 = RE_INICIO.find(lineas[ini]) ?: return null
         val total = m0.groupValues[2].toLongOrNull() ?: return null
         val t0 = instante(m0.groupValues[1])
-        var cargados = 0L; var t1 = t0; var fin = false
+        var cargados = 0L; var t1 = t0; var fin = false; var pct: Double? = null
         for (i in ini + 1 until lineas.size) {
             val l = lineas[i]
             val paso = RE_PASO.find(l)
             if (paso != null) {
                 cargados = paso.groupValues[2].toLongOrNull() ?: cargados
                 t1 = instante(paso.groupValues[1]) ?: t1
+                pct = paso.groupValues[3].toDoubleOrNull() ?: pct
             }
             if (FIN_CARGA.any { f -> f in l }) fin = true
         }
@@ -161,7 +166,7 @@ object CoreConfig {
         val fin0 = t0; val fin1 = t1
         val eta = if (enCurso && cargados > 0 && fin0 != null && fin1 != null && fin1 > fin0)
             ((total - cargados).toDouble() * (fin1 - fin0) / cargados).toLong().coerceAtLeast(0) else null
-        return CargaSnapshot(total, cargados, enCurso, if (fin0 != null) (ahora - fin0).coerceAtLeast(0) else -1, eta)
+        return CargaSnapshot(total, cargados, enCurso, if (fin0 != null) (ahora - fin0).coerceAtLeast(0) else -1, eta, pct)
     }
 
     // ── Lo que dice el nodo de scantxoutset y estimatesmartfee ───────────────

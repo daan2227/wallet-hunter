@@ -126,7 +126,12 @@ object CoreNodo {
     }
 
     /** Cómo va la carga del snapshot según el registro (null si no hay ninguna que mirar). */
-    fun cargaSnapshot(ctx: Context): CoreConfig.CargaSnapshot? =
-        CoreConfig.leerCargaSnapshot(cola(ctx, 512 * 1024), procesoVivo() || CoreService.activo,
-                                     System.currentTimeMillis() / 1000)
+    fun cargaSnapshot(ctx: Context): CoreConfig.CargaSnapshot? {
+        // «El nodo corre» no se deduce sólo de las banderas de este proceso (que se pierden si la app se
+        // recrea): también vale un registro que ha escrito hace poco.
+        val f = File(datadir(ctx), "debug.log")
+        val reciente = f.isFile && System.currentTimeMillis() - f.lastModified() < 20 * 60_000L
+        return CoreConfig.leerCargaSnapshot(cola(ctx, 512 * 1024), procesoVivo() || CoreService.activo || reciente,
+                                            System.currentTimeMillis() / 1000)
+    }
 }

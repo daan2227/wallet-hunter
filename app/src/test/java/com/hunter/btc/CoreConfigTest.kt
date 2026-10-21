@@ -79,6 +79,11 @@ class CoreConfigTest {
             "2026-10-21T14:00:00Z [snapshot] loading 100000000 coins from snapshot 0000abc")
         val d = CoreConfig.leerCargaSnapshot(dos, true, ahora)!!
         assertTrue(d.enCurso); assertEquals(0L, d.cargados); assertNull(d.etaS)
+        // El porcentaje que imprime Core manda sobre el calculado.
+        val conPct = listOf("$t [snapshot] loading 200000000 coins from snapshot 0000abc",
+            "2026-10-21T12:10:00Z [snapshot] 114000000 coins loaded (57.00%, 9000.00 MB)")
+        assertEquals(57.0, CoreConfig.leerCargaSnapshot(conPct, true, ahora)!!.porcentaje, 1e-9)
+        assertEquals(114_000_000L, CoreConfig.leerCargaSnapshot(conPct, true, ahora)!!.cargados)
         assertNull(CoreConfig.leerCargaSnapshot(listOf("nada"), true, ahora))
         assertEquals("1 h 12 min", CoreConfig.duracion(4320)); assertEquals("8 min", CoreConfig.duracion(500))
     }
