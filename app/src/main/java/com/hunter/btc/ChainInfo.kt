@@ -46,6 +46,7 @@ object ChainInfo {
      * salía a ciegas.
      */
     fun fees(testnet: Boolean = false): Fees? =
+        (if (!testnet) CoreBackend.tarifas(HunterEngine.contexto()) else null) ?:
         feesFromMempool(testnet) ?: feesFromEsplora(testnet) ?: feesFromElectrum(testnet)
 
     private fun feesFromMempool(testnet: Boolean): Fees? = try {
@@ -139,6 +140,9 @@ object ChainInfo {
      *   enviar" no dice nada.
      */
     fun broadcast(rawHex: String, testnet: Boolean = false): String {
+        // El nodo propio primero, si el usuario lo activó y está al día: no revela la transacción a un servidor.
+        // null = no pudo decidir (parado, atrasado, sin entradas): se sigue por los caminos de siempre.
+        if (!testnet) CoreBackend.difundir(HunterEngine.contexto(), rawHex)?.let { return it }
         when (val r = ChainApi.broadcast(rawHex, testnet)) {
             is ChainApi.Envio.Ok -> {
                 // El txid que se muestra tiene que ser el de los bytes que se
@@ -183,6 +187,7 @@ object ChainInfo {
      *   validez hasta que la cadena la alcanzara.
      */
     fun tipHeight(testnet: Boolean = false): Int? {
+        if (!testnet) CoreBackend.altura(HunterEngine.contexto())?.takeIf { it in 1..499_999_999 && creible(it, false) }?.let { return it }
         // Por encima de 500.000.000 el campo se interpreta como marca de tiempo.
         ChainApi.get("/blocks/tip/height", testnet)?.trim()?.toIntOrNull()
             ?.takeIf { it in 1..499_999_999 && creible(it, testnet) }?.let { return it }

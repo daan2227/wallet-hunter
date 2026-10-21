@@ -102,6 +102,14 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Traffic", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Blocks only" to null, "Blocks + mempool" to null),
         initial = if (aj.soloBloques) 0 else 1) { guardar(aj.copy(soloBloques = it == 0)) })
+    texto(cAj, "Wallet", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
+        initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })
+    texto(cAj, "With “Use my node to send”, the wallet broadcasts transactions and reads the block height from " +
+        "this node when it is running and synced, with the usual servers as a fallback. Fee estimates also come " +
+        "from the node, but only if the traffic setting above is “Blocks + mempool”. The node can scan your " +
+        "balance from the wallet menu (Advanced options → Verify with my node).",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val btnPodar = boton(cAj, "Prune now (keep the latest ${CoreConfig.BLOQUES_QUE_QUEDAN} blocks)")
 
     // ── Snapshot ──────────────────────────────────────────────────────────

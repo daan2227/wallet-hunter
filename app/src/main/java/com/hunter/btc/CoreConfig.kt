@@ -164,6 +164,34 @@ object CoreConfig {
         return CargaSnapshot(total, cargados, enCurso, if (fin0 != null) (ahora - fin0).coerceAtLeast(0) else -1, eta)
     }
 
+    // ── Lo que dice el nodo de scantxoutset y estimatesmartfee ───────────────
+
+    data class Moneda(val txid: String, val vout: Int, val sat: Long, val altura: Int)
+    data class Escaneo(val sat: Long, val monedas: List<Moneda>, val altura: Int)
+
+    fun satDeBtc(btc: Double): Long = Math.round(btc * 1e8)
+
+    /** La respuesta de `scantxoutset start`: suma y monedas sin gastar (sólo lo confirmado: es el conjunto de UTXO). */
+    fun leerEscaneo(o: JSONObject): Escaneo? {
+        if (!o.optBoolean("success", false)) return null
+        val arr = o.optJSONArray("unspents") ?: JSONArray()
+        val l = ArrayList<Moneda>(arr.length())
+        for (i in 0 until arr.length()) {
+            val u = arr.getJSONObject(i)
+            val v = satDeBtc(u.getDouble("amount"))
+            if (v <= 0) continue
+            l.add(Moneda(u.getString("txid"), u.getInt("vout"), v, u.optInt("height", 0)))
+        }
+        return Escaneo(l.sumOf { it.sat }, l, o.optInt("height", 0))
+    }
+
+    /** sat/vB de una respuesta de estimatesmartfee (BTC/kvB), o null si el nodo no tiene datos. */
+    fun satPorVb(estimacion: JSONObject): Double? {
+        if (!estimacion.has("feerate")) return null
+        val f = estimacion.optDouble("feerate", Double.NaN) * 1e5
+        return f.takeIf { it.isFinite() && it > 0 }
+    }
+
     fun duracion(s: Long): String = when {
         s < 60 -> "< 1 min"
         s < 3600 -> "${s / 60} min"
