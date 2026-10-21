@@ -182,7 +182,8 @@ class HelpActivity : Activity() {
             "your wallets, or delete it. It's encrypted on the device.")
 
         seccion(root, "Security and the PIN")
-        parrafo(root, "You choose a 6-digit PIN. The app locks when the screen turns off or " +
+        parrafo(root, "You choose a code of 8 to 24 characters with letters, numbers and symbols (an older " +
+            "6-digit PIN still opens the app, and the app asks you to change it). The app locks when the screen turns off or " +
             "when you leave it for more than 30 seconds, and asks for the PIN again.")
         parrafo(root, "Seeds are sealed twice: by the phone's secure hardware and by a key " +
             "derived from your PIN. That key lives only in memory while you are in the app and " +

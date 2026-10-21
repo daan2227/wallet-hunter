@@ -34,6 +34,10 @@ object WalletManager {
     private const val PREF_SEED_PIV = "seed_pin_iv"
     private const val PREF_ADDRS = "wallet_addrs"
     private const val PBKDF2_ITER = 100000
+    /** Vueltas de PBKDF2 para un código NUEVO (alfanumérico de 8-24). Los antiguos (seis dígitos) siguen con
+     *  PBKDF2_ITER: cada código guarda las suyas en PREF_ITER, y sin esa marca es uno antiguo. */
+    private const val PBKDF2_ITER_NUEVO = 600000
+    private const val PREF_ITER = "pin_iter"
 
     /**
      * La clave que YA existe, o excepción. Para LEER: crear una nueva en una ruta de lectura sobrescribe
@@ -75,8 +79,8 @@ object WalletManager {
     private fun b64d(s: String): ByteArray = Base64.decode(s, Base64.NO_WRAP)
 
     /* Deriva clave AES-256 del PIN usando PBKDF2 */
-    private fun pinToKey(pin: String, salt: ByteArray): SecretKey {
-        val spec = PBEKeySpec(pin.toCharArray(), salt, PBKDF2_ITER, 256)
+    private fun pinToKey(pin: String, salt: ByteArray, iter: Int = PBKDF2_ITER): SecretKey {
+        val spec = PBEKeySpec(pin.toCharArray(), salt, iter, 256)
         val raw  = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         return SecretKeySpec(raw, "AES")
     }
@@ -286,16 +290,19 @@ object WalletManager {
      * no se pudo (con un PIN previo, hace falta la clave vigente para reabrirlas).
      */
     fun savePin(ctx: Context, pin: String): Boolean {
+        // La política también aquí, no sólo en la pantalla: nada de fijar un código de seis dígitos por otra vía.
+        if (!PoliticaPin.vale(pin)) return false
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val hayPin = hasPin(ctx)
         val antigua = claveSemilla
         if (hayPin && antigua == null) return false
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-        val nueva = pinToKey(pin, salt)
+        val nueva = pinToKey(pin, salt, PBKDF2_ITER_NUEVO)
         val (enc, iv) = aesEncrypt(nueva, "wallet_ok".toByteArray())
         val ed = prefs.edit()
         if (!reenvolver(ctx, if (hayPin) antigua else null, nueva, ed)) return false
         ed.putString(PREF_SALT, b64e(salt))
+          .putInt(PREF_ITER, PBKDF2_ITER_NUEVO)
           .putString(PREF_VER,  b64e(enc))
           .putString(PREF_VIV,  b64e(iv))
           // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
@@ -482,7 +489,7 @@ object WalletManager {
         val salt = b64d(prefs.getString(PREF_SALT, null) ?: return null)
         val enc  = b64d(prefs.getString(PREF_VER,  null) ?: return null)
         val iv   = b64d(prefs.getString(PREF_VIV,  null) ?: return null)
-        val key  = pinToKey(pin, salt)
+        val key  = pinToKey(pin, salt, prefs.getInt(PREF_ITER, PBKDF2_ITER))
         val dec  = aesDecrypt(key, enc, iv) ?: return null
         return if (String(dec) == "wallet_ok") key else null
     }
@@ -492,6 +499,12 @@ object WalletManager {
        hubo importador —decryptData() no lo llamaba nadie— así que el formato
        era de ida: se podía guardar y no recuperar. Los hallazgos viajan ahora
        en la copia normal, que sí se restaura, y ese exportador ya no existe. */
+
+    /** ¿El código guardado es del formato antiguo (seis dígitos, 100 000 vueltas)? Tiene que cambiarse. */
+    fun pinAntiguo(ctx: Context): Boolean {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return p.contains(PREF_SALT) && !p.contains(PREF_ITER)
+    }
 
     fun hasPin(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)

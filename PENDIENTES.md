@@ -2,6 +2,12 @@
 
 ## Implementado (sin probar en un teléfono)
 
+- **Código alfanumérico.** El código de seis dígitos pasa a ser un texto de 8 a 24 caracteres con letras,
+  números y al menos un símbolo (`PoliticaPin`, probada en la JVM); se rechazan «Password1!», «Abcd1234!»,
+  años, secuencias y palabras corrientes. Los códigos nuevos derivan la clave con 600 000 vueltas de PBKDF2
+  (los antiguos, 100 000); comprobar o fijar el código va en otro hilo. Quien tiene aún el de seis dígitos
+  entra con él y se le ofrece cambiarlo (como mucho una vez al día).
+
 - **Vista simple por defecto.** La cartera enseña lo corriente: crear o importar una
   seed, enviar (con las tres tarifas), recibir, historial, saldo, PIN, moneda, ver la
   seed y borrar. Lo demás está detrás de "Advanced options" (menú): varias salidas,
@@ -49,10 +55,9 @@
 
 ## Conocido tras la revisión total (no corregido)
 
-- **El PIN y el baúl.** La capa del PIN equivale a unos 20 bits si alguien tiene acceso a los ficheros
-  de la app (`pin_verify` + `pin_salt` permiten probar los 10^6 PIN sin pasar por el contador de
-  intentos). El baúl y la lista de WIF van bajo una clave del Keystore sin autenticación de usuario.
-  Protege contra quien coja el móvil sin más; no contra root. Arreglarlo es rediseñar el sobre.
+- **El baúl y la lista de WIF** van bajo una clave del Keystore sin autenticación de usuario: el código
+  protege la interfaz y las semillas, no estos dos. Quien tenga ejecución en el proceso (root) los lee.
+  Atarlos al código es rediseñar el sobre.
 - **Motor:** carreras muy raras al arrancar/parar los hilos de Kangaroo (los de fuerza bruta ya están
   cubiertas); `kangarooStop` cuando la pantalla halla la clave sigue en el hilo principal.
 - **Secretos en memoria nativa:** las cadenas Java con claves (la copia que hace JNI de la frase/clave

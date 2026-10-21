@@ -53,26 +53,17 @@ object PinAuthHelper {
     /**
      * La pantalla del código, para pedirlo o para elegirlo (isSetup).
      *
-     * Había TRES copias de esta pantalla —esta, la del arranque en
-     * WelcomeActivity y la de la cartera en WalletActivity—, cada una con su
-     * aspecto: casillas grandes en una, puntos en otra, una hoja flotante en
-     * la tercera. Ahora es una sola.
+     * El código es ahora un TEXTO de 8 a 24 caracteres con letras, números y símbolos (ver [PoliticaPin]),
+     * no seis dígitos en un teclado numérico. Al elegirlo se comprueba la política y se pide dos veces; al
+     * desbloquear se acepta cualquier longitud, para que quien tenía uno de seis dígitos pueda entrar, y se le
+     * ofrece cambiarlo.
      *
-     * Lo que cambia respecto a las de antes:
+     * Sigue siendo UNA sola pantalla para toda la app (cartera, arranque, perfil, confirmaciones).
+     * Comprobar o fijar el código hace PBKDF2 (600 000 vueltas en los nuevos): va en otro hilo, no en el de
+     * la interfaz.
      *
-     *   - Los iconos de la huella y de borrar iban pegados a la izquierda de
-     *     su tecla: Ui.icon pone gravedad sólo vertical, y la tecla no
-     *     centraba en horizontal.
-     *   - Las seis casillas de 52 dp parecían campos de texto a rellenar. Son
-     *     puntos, que es lo que son: un contador.
-     *   - La tecla de la huella sólo sale si el móvil tiene huella; si no,
-     *     era una tecla que no hacía nada.
-     *   - Tras 5 fallos seguidos hay que esperar (WalletManager.checkPin). La
-     *     pantalla lo dice con la cuenta atrás y apaga el teclado mientras
-     *     tanto, en vez de dejar teclear códigos que se rechazan sin mirar.
-     *   - En el tema claro la barra de estado salía en negro: el diálogo era
-     *     de pantalla completa con fondo negro de serie.
-     *   - Vibración corta en cada tecla y sacudida al fallar.
+     * Tras 5 fallos seguidos hay que esperar (WalletManager.checkPin): la pantalla lo dice con la cuenta atrás
+     * y apaga el campo mientras tanto.
      */
     fun pantalla(
         activity: android.app.Activity,
@@ -91,12 +82,9 @@ object PinAuthHelper {
         val handler = android.os.Handler(android.os.Looper.getMainLooper())
 
         val bm = androidx.biometric.BiometricManager.from(activity)
-        // La huella no se ofrece mientras esté vetada por demasiados intentos:
-        // ni tecla, ni lanzamiento automático. Sólo un PIN correcto la reactiva.
-        // La huella no se ofrece salvo que quien llama lo pida (permitirHuella),
-        // y hoy nadie lo pide: la huella no puede dar el PIN, el PIN es lo que
-        // abre las semillas, y una confirmación (envío grande, mostrar semilla)
-        // que aceptara la huella no exigiría saber el PIN.
+        // La huella no se ofrece mientras esté vetada por demasiados intentos, ni salvo que quien llama la
+        // pida (permitirHuella): la huella no puede dar el código, el código es lo que abre las semillas, y una
+        // confirmación que aceptara la huella no exigiría saberlo.
         val hayHuella = permitirHuella && !isSetup && activity is androidx.fragment.app.FragmentActivity &&
             !WalletManager.bioBloqueada(activity) &&
             WalletManager.claveSemillaLista() &&
@@ -105,15 +93,10 @@ object PinAuthHelper {
 
         val root = LinearLayout(activity).apply {
             orientation = LinearLayout.VERTICAL
-            background = AppTheme.fondoApp()   // backdrop con degradado sutil (propuesta B)
+            background = AppTheme.fondoApp()
             gravity = Gravity.CENTER_HORIZONTAL
+            setPadding(dp(28), dp(48), dp(28), dp(28))
         }
-        fun hueco(peso: Float) = View(activity).apply {
-            layoutParams = LinearLayout.LayoutParams(1, 0, peso)
-        }
-
-        // ── Cabecera ──────────────────────────────────────────────────────
-        root.addView(hueco(1f))
         root.addView(ImageView(activity).apply {
             setImageResource(R.drawable.ic_lock)
             setColorFilter(ACCENT)
@@ -133,10 +116,12 @@ object PinAuthHelper {
             ).apply { topMargin = dp(22) }
         }
         root.addView(tvTitulo)
+        val pistaElegir = "${PoliticaPin.MIN} to ${PoliticaPin.MAX} characters with letters, numbers and symbols.\n" +
+            "Write it down somewhere safe: without it the wallet cannot be opened."
         val pistaNormal = when {
-            isSetup   -> "Six digits. Write it down somewhere safe:\nwithout it the wallet cannot be opened."
-            hayHuella -> "Six digits, or use your fingerprint"
-            else      -> "Six digits"
+            isSetup   -> pistaElegir
+            hayHuella -> "Type your code, or use your fingerprint"
+            else      -> "Type your code"
         }
         val tvPista = TextView(activity).apply {
             text = pistaNormal
@@ -144,59 +129,129 @@ object PinAuthHelper {
             typeface = AppTheme.body(context)
             setLineSpacing(0f, 1.3f)
             gravity = Gravity.CENTER
-            setPadding(dp(32), dp(8), dp(32), 0)
+            setPadding(dp(8), dp(8), dp(8), 0)
             minLines = 2
         }
         root.addView(tvPista)
 
-        // ── Puntos ────────────────────────────────────────────────────────
-        val filaPuntos = LinearLayout(activity).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
+        // ── Campo ─────────────────────────────────────────────────────────
+        val campo = android.widget.EditText(activity).apply {
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                        android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD or
+                        android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            filters = arrayOf(android.text.InputFilter.LengthFilter(if (isSetup) PoliticaPin.MAX else 64))
+            hint = if (isSetup) "${PoliticaPin.MIN}-${PoliticaPin.MAX} characters" else "Code"
+            setHintTextColor(AppTheme.TXT_MUTED)
+            setTextColor(TXT); textSize = 18f
+            typeface = AppTheme.body(context)
+            isSingleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE or
+                         android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+            background = GradientDrawable().apply {
+                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+            }
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(26) }
         }
-        fun fondoPunto(lleno: Boolean, error: Boolean) = GradientDrawable().apply {
-            shape = GradientDrawable.OVAL
-            when {
-                error -> setColor(RED)
-                lleno -> setColor(TXT)
-                else  -> { setColor(android.graphics.Color.TRANSPARENT); setStroke(dp(2), AppTheme.TXT_MUTED) }
-            }
+        root.addView(campo)
+
+        val fila = LinearLayout(activity).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(8) }
         }
-        val puntos = Array(6) { i ->
-            View(activity).apply {
-                background = fondoPunto(false, false)
-                layoutParams = LinearLayout.LayoutParams(dp(14), dp(14)).apply {
-                    if (i < 5) marginEnd = dp(18)
-                }
-            }
+        val tvFuerza = TextView(activity).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(MUTED); typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        puntos.forEach { filaPuntos.addView(it) }
-        root.addView(filaPuntos)
-        root.addView(hueco(1.2f))
+        var visible = false
+        val tvVer = TextView(activity).apply {
+            text = "Show"
+            textSize = AppTheme.SP_CAPTION; setTextColor(ACCENT); typeface = AppTheme.medium(context)
+            setPadding(dp(12), dp(8), dp(4), dp(8)); isClickable = true; isFocusable = true
+        }
+        fila.addView(tvFuerza); fila.addView(tvVer)
+        root.addView(fila)
+        tvVer.setOnClickListener {
+            visible = !visible
+            val fin = campo.text.length
+            campo.inputType = android.text.InputType.TYPE_CLASS_TEXT or
+                android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or
+                (if (visible) android.text.InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+                 else android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD)
+            campo.setSelection(fin)
+            tvVer.text = if (visible) "Hide" else "Show"
+        }
+        if (isSetup) campo.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val t = e?.toString() ?: ""
+                if (t.isEmpty()) { tvFuerza.text = ""; return }
+                val n = FuerzaContrasena.evaluar(t).nivel
+                tvFuerza.text = "Strength: ${n.texto}"
+                tvFuerza.setTextColor(when (n) {
+                    FuerzaContrasena.Nivel.DEBIL -> RED
+                    FuerzaContrasena.Nivel.JUSTA -> AppTheme.WARN
+                    else -> ACCENT })
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+
+        val boton = TextView(activity).apply {
+            text = if (isSetup) "Continue" else "Unlock"
+            textSize = AppTheme.SP_BODY + 1f; setTextColor(AppTheme.ON_ACCENT)
+            typeface = AppTheme.bold(context); gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(ACCENT); cornerRadius = dp(AppTheme.R_INNER).toFloat()
+            }
+            isClickable = true; isFocusable = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(52)).apply { topMargin = dp(18) }
+        }
+        root.addView(boton)
+        val botonHuella = TextView(activity).apply {
+            text = "Use fingerprint"
+            textSize = AppTheme.SP_BODY; setTextColor(ACCENT); typeface = AppTheme.medium(context)
+            gravity = Gravity.CENTER; isClickable = true; isFocusable = true
+            visibility = if (hayHuella) View.VISIBLE else View.GONE
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(6) }
+        }
+        root.addView(botonHuella)
+        root.addView(TextView(activity).apply {
+            text = "The code never leaves this phone"
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context)
+            gravity = Gravity.CENTER
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(18) }
+        })
 
         // ── Estado ────────────────────────────────────────────────────────
-        val pin = StringBuilder()
         var primero = ""
         var dlg: android.app.Dialog? = null
         var ocupado = false
-        val teclas = mutableListOf<View>()
 
-        fun pintarPuntos(error: Boolean = false) {
-            puntos.forEachIndexed { i, d -> d.background = fondoPunto(i < pin.length, error) }
-        }
         fun sacudir() {
-            filaPuntos.animate().cancel()
-            filaPuntos.translationX = 0f
-            val a = android.animation.ObjectAnimator.ofFloat(filaPuntos, "translationX",
+            campo.animate().cancel()
+            campo.translationX = 0f
+            val a = android.animation.ObjectAnimator.ofFloat(campo, "translationX",
                 0f, dp(14).toFloat(), -dp(12).toFloat(), dp(9).toFloat(), -dp(6).toFloat(), dp(3).toFloat(), 0f)
             a.duration = 380; a.start()
-            filaPuntos.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+            campo.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
         }
-        fun teclado(activo: Boolean) {
-            teclas.forEach { it.isEnabled = activo; it.alpha = if (activo) 1f else 0.35f }
+        fun entrada(activa: Boolean) {
+            campo.isEnabled = activa; boton.isEnabled = activa
+            boton.alpha = if (activa) 1f else 0.35f
+            campo.alpha = if (activa) 1f else 0.5f
+        }
+        fun error(msg: String) {
+            tvPista.setTextColor(RED); tvPista.text = msg; sacudir()
         }
 
         // Cuenta atrás mientras dura la espera por fallos.
@@ -204,79 +259,100 @@ object PinAuthHelper {
             override fun run() {
                 val s = WalletManager.esperaPin(activity)
                 if (s > 0) {
-                    teclado(false)
+                    entrada(false)
                     tvPista.setTextColor(RED)
                     tvPista.text = "Too many attempts.\nTry again in " +
                         (if (s >= 60) "${(s + 59) / 60} min" else "$s s") + "."
                     handler.postDelayed(this, 1000)
-                } else {
-                    teclado(true)
+                } else if (!ocupado) {
+                    entrada(true)
                     tvPista.setTextColor(MUTED)
-                    tvPista.text = pistaNormal
+                    tvPista.text = if (isSetup && primero.isNotEmpty()) "To make sure it is the one you want" else pistaNormal
                 }
             }
         }
 
         fun cerrar(ok: Boolean) {
             handler.removeCallbacks(cuenta)
+            try {
+                (activity.getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(campo.windowToken, 0)
+            } catch (e: Exception) {}
+            campo.setText("")
             dlg?.dismiss(); onResult(ok)
+            // Quien aún tiene el código de seis dígitos entra, pero se le avisa (como mucho una vez al día).
+            if (ok && !isSetup && WalletManager.pinAntiguo(activity)) avisarCodigoAntiguo(activity)
         }
 
-        fun digito(k: String) {
-            if (ocupado || pin.length >= 6) return
-            pin.append(k); pintarPuntos()
-            if (pin.length < 6) return
-            ocupado = true
-            handler.postDelayed({
-                ocupado = false
-                if (isSetup) {
-                    when {
-                        primero.isEmpty() -> {
-                            primero = pin.toString(); pin.clear(); pintarPuntos()
-                            tvTitulo.text = "Type it again"
-                            tvPista.setTextColor(MUTED); tvPista.text = "To make sure it is the one you want"
-                        }
-                        primero == pin.toString() -> {
-                            if (WalletManager.savePin(activity, pin.toString())) cerrar(true)
-                            else if (WalletManager.hasPin(activity) && !WalletManager.claveSemillaLista()) {
-                                // La app se bloqueó (pantalla apagada) entre el PIN viejo y el
-                                // nuevo: sin la clave de la sesión no se puede volver a cerrar
-                                // las semillas. Reintentar fallaría siempre: se sale, sin cambios.
+        fun intentar() {
+            if (ocupado) return
+            val v = campo.text.toString()
+            if (isSetup) {
+                if (primero.isEmpty()) {
+                    val e = PoliticaPin.error(v)
+                    if (e != null) { error(e); return }
+                    primero = v; campo.setText("")
+                    tvTitulo.text = "Type it again"
+                    tvFuerza.text = ""
+                    tvPista.setTextColor(MUTED); tvPista.text = "To make sure it is the one you want"
+                    boton.text = "Save"
+                    return
+                }
+                if (primero != v) {
+                    primero = ""; campo.setText("")
+                    tvTitulo.text = "Pick a code"; boton.text = "Continue"
+                    error("They did not match. Start again.\n$pistaElegir")
+                    return
+                }
+                ocupado = true; entrada(false)
+                val elegido = v
+                Thread {
+                    val guardado = WalletManager.savePin(activity, elegido)
+                    val sinClave = !guardado && WalletManager.hasPin(activity) && !WalletManager.claveSemillaLista()
+                    handler.post {
+                        ocupado = false; entrada(true)
+                        when {
+                            guardado -> cerrar(true)
+                            sinClave -> {
+                                // La app se bloqueó (pantalla apagada) entre el código viejo y el nuevo: sin la clave
+                                // de la sesión no se pueden volver a cerrar las semillas. Se sale, sin cambios.
                                 android.widget.Toast.makeText(activity,
-                                    "The app locked while changing the PIN. Nothing changed: start again.",
+                                    "The app locked while changing the code. Nothing changed: start again.",
                                     android.widget.Toast.LENGTH_LONG).show()
                                 cerrar(false)
-                            } else {
-                                // No se pudo fijar el PIN (no hay clave para reabrir las
-                                // semillas). Nada cambió: se vuelve a empezar.
-                                primero = ""; pin.clear(); pintarPuntos(error = true); sacudir()
-                                tvTitulo.text = "Pick a code"
-                                tvPista.setTextColor(RED)
-                                tvPista.text = "The code could not be saved. Try again."
+                            }
+                            else -> {
+                                primero = ""; campo.setText("")
+                                tvTitulo.text = "Pick a code"; boton.text = "Continue"
+                                error("The code could not be saved. Try again.")
                             }
                         }
-                        else -> {
-                            primero = ""; pintarPuntos(error = true); sacudir()
-                            handler.postDelayed({ pin.clear(); pintarPuntos() }, 450)
-                            tvTitulo.text = "Pick a code"
-                            tvPista.setTextColor(RED); tvPista.text = "They did not match. Start again."
-                        }
                     }
-                } else if (WalletManager.checkPin(activity, pin.toString())) {
-                    cerrar(true)
-                } else {
-                    pintarPuntos(error = true); sacudir()
-                    handler.postDelayed({ pin.clear(); pintarPuntos() }, 450)
-                    tvPista.setTextColor(RED)
-                    tvPista.text = WalletManager.avisoPinFallido(activity)
+                }.start()
+                return
+            }
+            if (v.isEmpty()) return
+            ocupado = true; entrada(false)
+            Thread {
+                val ok = WalletManager.checkPin(activity, v)
+                handler.post {
+                    ocupado = false
+                    if (ok) { cerrar(true); return@post }
+                    campo.setText("")
+                    entrada(WalletManager.esperaPin(activity) <= 0)
+                    error(WalletManager.avisoPinFallido(activity))
                     if (WalletManager.esperaPin(activity) > 0) handler.postDelayed(cuenta, 450)
                 }
-            }, 120)
+            }.start()
+        }
+        boton.setOnClickListener { intentar() }
+        campo.setOnEditorActionListener { _, accion, _ ->
+            if (accion == android.view.inputmethod.EditorInfo.IME_ACTION_DONE) { intentar(); true } else false
         }
 
         fun huella() {
-            // Defensa en vivo: aunque la tecla no debería existir, no se lanza
-            // la huella si hay espera en curso o sigue vetada.
+            // Defensa en vivo: aunque el botón no debería existir, no se lanza la huella si hay espera en curso
+            // o sigue vetada.
             if (!hayHuella || WalletManager.esperaPin(activity) > 0 ||
                 WalletManager.bioBloqueada(activity)) return
             androidx.biometric.BiometricPrompt(
@@ -297,92 +373,22 @@ object PinAuthHelper {
                     .build()
             )
         }
-
-        // ── Teclado ───────────────────────────────────────────────────────
-        // Ancho de tecla según la pantalla: 78 dp como mucho, y menos si no
-        // caben tres con sus huecos.
-        val sep = dp(14)
-        val lado = minOf(dp(78), (dm.widthPixels - dp(48) - 2 * sep) / 3)
-        val grid = android.widget.GridLayout(activity).apply {
-            columnCount = 3
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        }
-        val orden = listOf("1","2","3","4","5","6","7","8","9", if (hayHuella) "bio" else "", "0", "del")
-        orden.forEachIndexed { idx, k ->
-            val celda = android.widget.FrameLayout(activity).apply {
-                layoutParams = android.widget.GridLayout.LayoutParams().apply {
-                    width = lado; height = lado
-                    val col = idx % 3
-                    setMargins(if (col == 0) 0 else sep / 2, sep / 2,
-                               if (col == 2) 0 else sep / 2, sep / 2)
-                }
-            }
-            if (k.isNotEmpty()) {
-                if (k != "del" && k != "bio") celda.background = GradientDrawable().apply {
-                    setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_KEY).toFloat()
-                }
-                celda.foreground = Ui.toque()
-                celda.isClickable = true; celda.isFocusable = true
-                val centro = android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-                when (k) {
-                    "bio" -> {
-                        celda.addView(ImageView(activity).apply {
-                            setImageResource(R.drawable.ic_finger); setColorFilter(ACCENT)
-                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(28), dp(28), Gravity.CENTER)
-                        })
-                        celda.contentDescription = "Use fingerprint"
-                        celda.setOnClickListener { huella() }
-                    }
-                    "del" -> {
-                        celda.addView(ImageView(activity).apply {
-                            setImageResource(R.drawable.ic_backspace); setColorFilter(MUTED)
-                            layoutParams = android.widget.FrameLayout.LayoutParams(dp(26), dp(26), Gravity.CENTER)
-                        })
-                        celda.contentDescription = "Delete"
-                        celda.setOnClickListener {
-                            it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            if (pin.isNotEmpty() && !ocupado) { pin.deleteCharAt(pin.length - 1); pintarPuntos() }
-                        }
-                        celda.setOnLongClickListener { if (!ocupado) { pin.clear(); pintarPuntos() }; true }
-                    }
-                    else -> {
-                        celda.addView(TextView(activity).apply {
-                            text = k; textSize = 26f; setTextColor(TXT)
-                            typeface = AppTheme.body(context)
-                            layoutParams = centro
-                        })
-                        celda.setOnClickListener {
-                            it.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
-                            digito(k)
-                        }
-                    }
-                }
-                teclas.add(celda)
-            }
-            grid.addView(celda)
-        }
-        root.addView(grid)
-        root.addView(TextView(activity).apply {
-            text = "The code never leaves this phone"
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
-            typeface = AppTheme.body(context)
-            gravity = Gravity.CENTER
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(18); bottomMargin = dp(28) }
-        })
+        botonHuella.setOnClickListener { huella() }
 
         // ── Ventana ───────────────────────────────────────────────────────
-        // Sin pantalla completa: la barra de estado se queda y se pinta del
-        // fondo, con los iconos oscuros en el tema claro.
+        // Con el teclado del sistema delante: el contenido va en un ScrollView que se redimensiona.
         val tema = if (AppTheme.isDark) android.R.style.Theme_Material_NoActionBar
                    else android.R.style.Theme_Material_Light_NoActionBar
+        val scroll = android.widget.ScrollView(activity).apply {
+            isFillViewport = true
+            setBackgroundColor(BG)
+            addView(root, android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
         dlg = android.app.Dialog(activity, tema).apply {
-            setContentView(root)
-            // Fijar el PRIMER PIN no se puede saltar; cambiarlo sí (atrás = sin cambios).
+            setContentView(scroll)
+            // Fijar el PRIMER código no se puede saltar; cambiarlo sí (atrás = sin cambios).
             val cancelable = !isSetup || WalletManager.hasPin(activity)
             setCancelable(cancelable)
             if (cancelable) setOnCancelListener { handler.removeCallbacks(cuenta); onResult(false) }
@@ -390,6 +396,8 @@ object PinAuthHelper {
                 setBackgroundDrawable(android.graphics.drawable.ColorDrawable(BG))
                 setLayout(android.view.ViewGroup.LayoutParams.MATCH_PARENT,
                           android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or
+                                 android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
                 statusBarColor = BG
                 navigationBarColor = BG
                 if (!AppTheme.isDark) {
@@ -399,10 +407,35 @@ object PinAuthHelper {
                 }
             }
         }
-        PantallaSegura.aplicarDialogo(dlg, activity)   // la entrada del PIN no sale en capturas
+        PantallaSegura.aplicarDialogo(dlg, activity)   // la entrada del código no sale en capturas
         dlg!!.show()
+        campo.requestFocus()
 
         if (WalletManager.esperaPin(activity) > 0) cuenta.run()
         else if (hayHuella && autoBiometric) handler.postDelayed({ huella() }, 300)
+    }
+
+    /**
+     * El código es del formato antiguo (seis dígitos): se entra, pero se ofrece cambiarlo. Como mucho una vez
+     * al día, para que no sea una molestia en cada desbloqueo.
+     */
+    private fun avisarCodigoAntiguo(activity: android.app.Activity) {
+        val p = activity.getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE)
+        val ahora = System.currentTimeMillis()
+        if (ahora - p.getLong("aviso_codigo_antiguo", 0L) < 24L * 3600 * 1000) return
+        p.edit().putLong("aviso_codigo_antiguo", ahora).apply()
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            if (activity.isFinishing || activity.isDestroyed) return@postDelayed
+            android.app.AlertDialog.Builder(activity)
+                .setTitle("Make your code stronger")
+                .setMessage("Your code is the old six-digit kind, which can be guessed quickly by anyone who gets at " +
+                    "the files on this phone. Pick one of ${PoliticaPin.MIN} to ${PoliticaPin.MAX} characters with " +
+                    "letters, numbers and symbols.")
+                .setPositiveButton("Change it now") { _, _ ->
+                    pantalla(activity, isSetup = true, autoBiometric = false) { }
+                }
+                .setNegativeButton("Later", null)
+                .show()
+        }, 400)
     }
 }
