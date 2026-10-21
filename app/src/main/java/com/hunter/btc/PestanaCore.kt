@@ -113,7 +113,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "into its code (blocks 840,000, 880,000, 910,000, 935,000 and 965,000 of mainnet), so it does not matter where the " +
         "file comes from. A snapshot taken at any other block is rejected. " +
         "Create one with `dumptxoutset` on a node you trust, or download one. The node must be running and " +
-        "must already have the headers up to the snapshot's block.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+        "must already have the headers up to the snapshot's block. Loading cannot be resumed: if the node " +
+        "stops halfway it starts again from zero.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
     val tvSnap = texto(cSn, "", AppTheme.TXT_PRI)
     val barraSnap = barra(cSn)
     val tvProg = texto(cSn, "", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
@@ -157,7 +158,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         }
     }
 
-    fun pintar(est: CoreConfig.Estado?, bin: Boolean, arrancando: Boolean) {
+    fun pintar(est: CoreConfig.Estado?, bin: Boolean, arrancando: Boolean, carga: CoreConfig.CargaSnapshot?) {
         val corre = enMarcha()
         val libre = CoreNodo.libre(act)
         vLibre.text = CoreConfig.bytes(libre)
@@ -195,6 +196,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             vAltura.text = "–"; vPares.text = "–"
             tvEstado.setTextColor(AppTheme.TXT_SEC)
             tvEstado.text = when {
+                carga != null && carga.enCurso -> "Loading the snapshot… ${"%.1f".format(carga.porcentaje)} %"
                 arrancando -> "Starting… (loading the block index)"
                 corre -> "Starting…"
                 else -> {
@@ -205,6 +207,19 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             }
         }
         val f = CoreNodo.snapshot(act)
+        // La carga en curso (también si se volvió a abrir la pantalla durante ella): barra y tiempo restante.
+        val cargando = carga != null && carga.enCurso
+        if (cargando) {
+            barraSnap.visibility = View.VISIBLE; barraSnap.isIndeterminate = false
+            barraSnap.progress = (carga!!.porcentaje * 10).toInt().coerceIn(0, 1000)
+            val eta = carga.etaS?.let { " · about ${CoreConfig.duracion(it)} left" } ?: " · estimating…"
+            tvProg.text = "%.1f %% · %,d of %,d coins%s\nRunning for %s".format(carga.porcentaje, carga.cargados, carga.total,
+                eta, if (carga.transcurridoS >= 0) CoreConfig.duracion(carga.transcurridoS) else "?")
+            btnCargar.isEnabled = false; btnCargar.alpha = .4f
+        } else if (!ocupado) {
+            btnCargar.isEnabled = true; btnCargar.alpha = 1f
+            barraSnap.visibility = View.GONE
+        }
         tvSnap.text = if (f.isFile) {
             val c = CoreSnapshot.cabecera(f)
             val h = c?.let { CoreConfig.alturaAceptada(it.base) }
@@ -228,6 +243,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             try {
                 val bin = CoreNodo.binario(act) != null
                 var est: CoreConfig.Estado? = null; var arrancando = false
+                val carga = if (bin) CoreNodo.cargaSnapshot(act) else null
                 if (bin) try {
                     val r = CoreNodo.rpc(act)
                     val ch = r.objeto("getblockchaininfo")
@@ -236,7 +252,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                     est = CoreConfig.leerEstado(ch, red, cs)
                 } catch (e: CoreRpcError) { arrancando = e.arrancando }
                   catch (e: java.io.IOException) { /* parado */ }
-                runOnUiThread { pintar(est, bin, arrancando) }
+                runOnUiThread { pintar(est, bin, arrancando, carga) }
             } finally { refrescando.set(false) }
         }.start()
     }

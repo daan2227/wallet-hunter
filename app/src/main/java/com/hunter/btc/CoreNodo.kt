@@ -109,16 +109,24 @@ object CoreNodo {
     }
 
     /** Las últimas [n] líneas de debug.log (lee sólo el final del fichero). */
-    fun ultimasLineas(ctx: Context, n: Int = 12): String {
+    fun ultimasLineas(ctx: Context, n: Int = 12): String = cola(ctx, 16_384).takeLast(n).joinToString("\n")
+
+    /** Las líneas del último [bytes] de debug.log, en orden. */
+    fun cola(ctx: Context, bytes: Int): List<String> {
         val f = File(datadir(ctx), "debug.log")
-        if (!f.isFile) return ""
+        if (!f.isFile) return emptyList()
         return try {
             RandomAccessFile(f, "r").use { r ->
-                val len = r.length(); val ini = (len - 16_384).coerceAtLeast(0)
+                val len = r.length(); val ini = (len - bytes).coerceAtLeast(0)
                 r.seek(ini)
                 val b = ByteArray((len - ini).toInt()); r.readFully(b)
-                String(b, Charsets.UTF_8).lines().filter { it.isNotBlank() }.takeLast(n).joinToString("\n")
+                String(b, Charsets.UTF_8).lines().filter { it.isNotBlank() }
             }
-        } catch (e: Exception) { "" }
+        } catch (e: Exception) { emptyList() }
     }
+
+    /** Cómo va la carga del snapshot según el registro (null si no hay ninguna que mirar). */
+    fun cargaSnapshot(ctx: Context): CoreConfig.CargaSnapshot? =
+        CoreConfig.leerCargaSnapshot(cola(ctx, 512 * 1024), procesoVivo() || CoreService.activo,
+                                     System.currentTimeMillis() / 1000)
 }

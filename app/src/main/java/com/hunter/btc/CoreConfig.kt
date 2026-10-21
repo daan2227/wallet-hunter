@@ -111,6 +111,65 @@ object CoreConfig {
         )
     }
 
+    // ── Progreso de loadtxoutset, leído del debug.log ────────────────────────
+    //
+    // loadtxoutset es una sola llamada RPC que no devuelve nada hasta el final y, mientras corre, tiene
+    // cs_main tomado: los demás RPC no contestan. Lo único que dice cómo va son las líneas del registro:
+    //   2026-10-21T12:55:01Z [snapshot] loading 185000000 coins from snapshot 0000…
+    //   2026-10-21T12:59:40Z [snapshot] 3000000 coins loaded (1.62%, 612.40 MB)      (cada millón)
+    //   … [snapshot] loaded 185000000 (…) coins from snapshot   /   Aborting after an interrupt  / etc.
+
+    data class CargaSnapshot(
+        val total: Long, val cargados: Long, val enCurso: Boolean,
+        /** Segundos desde que empezó (hasta [ahora]); -1 si no se sabe. */
+        val transcurridoS: Long,
+        /** Segundos que faltan al ritmo medio hasta ahora; null si aún no hay datos para estimarlo. */
+        val etaS: Long?
+    ) { val porcentaje: Double get() = if (total > 0) cargados * 100.0 / total else 0.0 }
+
+    private val RE_INICIO = Regex("""^(\S+)\s+\[snapshot] loading (\d+) coins from snapshot""")
+    private val RE_PASO = Regex("""^(\S+)\s+\[snapshot] (\d+) coins loaded""")
+    private val FIN_CARGA = listOf("[snapshot] loaded ", "successfully activated", "Aborting after an interrupt",
+        "Bad snapshot data", "Mismatch in coins count", "[snapshot] !!!", "Work does not exceed")
+
+    private fun instante(s: String): Long? =
+        try { java.time.Instant.parse(s).epochSecond } catch (e: Exception) { null }
+
+    /**
+     * La última carga que consta en [lineas] (en orden, las últimas del registro), o null si no hay ninguna.
+     * [nodoVivo]: si el nodo ya no corre, una carga a medias no está "en curso" (se cortó).
+     * [ahora]: segundos desde la época, para calcular el tiempo transcurrido.
+     */
+    fun leerCargaSnapshot(lineas: List<String>, nodoVivo: Boolean, ahora: Long): CargaSnapshot? {
+        var ini = -1
+        for (i in lineas.indices.reversed()) if (RE_INICIO.containsMatchIn(lineas[i])) { ini = i; break }
+        if (ini < 0) return null
+        val m0 = RE_INICIO.find(lineas[ini]) ?: return null
+        val total = m0.groupValues[2].toLongOrNull() ?: return null
+        val t0 = instante(m0.groupValues[1])
+        var cargados = 0L; var t1 = t0; var fin = false
+        for (i in ini + 1 until lineas.size) {
+            val l = lineas[i]
+            val paso = RE_PASO.find(l)
+            if (paso != null) {
+                cargados = paso.groupValues[2].toLongOrNull() ?: cargados
+                t1 = instante(paso.groupValues[1]) ?: t1
+            }
+            if (FIN_CARGA.any { f -> f in l }) fin = true
+        }
+        val enCurso = !fin && nodoVivo
+        val fin0 = t0; val fin1 = t1
+        val eta = if (enCurso && cargados > 0 && fin0 != null && fin1 != null && fin1 > fin0)
+            ((total - cargados).toDouble() * (fin1 - fin0) / cargados).toLong().coerceAtLeast(0) else null
+        return CargaSnapshot(total, cargados, enCurso, if (fin0 != null) (ahora - fin0).coerceAtLeast(0) else -1, eta)
+    }
+
+    fun duracion(s: Long): String = when {
+        s < 60 -> "< 1 min"
+        s < 3600 -> "${s / 60} min"
+        else -> "${s / 3600} h ${(s % 3600) / 60} min"
+    }
+
     fun bytes(n: Long): String = when {
         n < 1024L -> "$n B"
         n < 1024L * 1024 -> "%.1f KB".format(n / 1024.0)
