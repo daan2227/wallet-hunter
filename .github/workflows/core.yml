@@ -104,6 +104,11 @@ jobs:
         cp core/build/bin/bitcoind salida/libbitcoind.so
         "$TOOLCHAIN/llvm-strip" salida/libbitcoind.so
         file salida/libbitcoind.so || true
+        # Debe ser un ejecutable PIE de aarch64 que sólo dependa de la libc de Android.
+        "$TOOLCHAIN/llvm-readelf" -h -d salida/libbitcoind.so | grep -E "Type|Machine|NEEDED|Class"
+        if "$TOOLCHAIN/llvm-readelf" -d salida/libbitcoind.so | grep NEEDED | grep -vE "libc\.so|libm\.so|libdl\.so|liblog\.so"; then
+          echo "::error::bitcoind depende de una librería que Android no trae"; exit 1
+        fi
         ls -l salida/libbitcoind.so
         (cd salida && sha256sum libbitcoind.so | tee libbitcoind.so.sha256)
         echo "$ETIQUETA $(git -C core rev-parse HEAD)" > salida/version.txt
@@ -117,7 +122,7 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
-        gh release view core-android >/dev/null 2>&1 || \
-          gh release create core-android --title "Bitcoin Core para Android" \
+        gh release view core-android -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+          gh release create core-android -R "$GITHUB_REPOSITORY" --title "Bitcoin Core para Android" \
             --notes "Binario de bitcoind (arm64) para la pestaña Core. Lo usa build.yml." --prerelease
-        gh release upload core-android salida/libbitcoind.so salida/libbitcoind.so.sha256 salida/version.txt --clobber
+        gh release upload core-android -R "$GITHUB_REPOSITORY" salida/libbitcoind.so salida/libbitcoind.so.sha256 salida/version.txt --clobber
