@@ -91,6 +91,13 @@ object Fiat {
         }
     }
 
+    /** Pone en [tv] `prefijo` + el valor en dinero normal (también cero); "…" mientras no se sabe el precio. */
+    fun ponerSolo(tv: android.widget.TextView, sat: Long, prefijo: String = "≈ ") {
+        val ctx = tv.context
+        tv.text = prefijo + (de(ctx, sat) ?: "…")
+        if (vencidoONulo(ctx)) cargar(ctx) { tv.post { tv.text = prefijo + (de(ctx, sat) ?: "—") } }
+    }
+
     /** "  (≈ 1,234.56 USD)" para pegar a un texto; vacío si no se sabe. */
     fun entre(ctx: Context, sat: Long): String = de(ctx, sat)?.let { "  (≈ $it)" } ?: ""
 }

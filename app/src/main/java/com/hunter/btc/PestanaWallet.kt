@@ -99,7 +99,18 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(8) }
     }
+    // El saldo del baúl en dinero normal, siempre a la vista (también cuando es cero).
+    val tvTotalFiat = TextView(this).apply {
+        text = "≈ …"
+        textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.medium(context)
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = dp(2) }
+    }
     heroCard.addView(tvTotalBtc)
+    heroCard.addView(tvTotalFiat)
     heroCard.addView(tvTotalUsd)
     page.addView(heroCard)
     // Ocultar saldos: el mismo ajuste que en la cartera. Dentro del baúl
@@ -161,7 +172,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
                     pendientes > 0     -> "${matches.size} find(s) · $pendientes not checked"
                     else               -> "${matches.size} find(s)"
                 }
-                if (total > 0.0) Fiat.poner(tvTotalUsd, tvTotalUsd.text.toString(), Math.round(total * 1e8))
+                Fiat.ponerSolo(tvTotalFiat, Math.round(total * 1e8))
             }
         }.start()
     }
