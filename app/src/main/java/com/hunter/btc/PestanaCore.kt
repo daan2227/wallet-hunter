@@ -110,7 +110,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     etiqueta(cSn, "UTXO snapshot")
     texto(cSn, "With a snapshot the node starts from a recent set of coins and checks the old history in the " +
         "background, so it is usable in hours instead of days. Core only accepts snapshots whose hash is built " +
-        "into its code (a few recent heights of mainnet), so it does not matter where the file comes from. " +
+        "into its code (blocks 840,000, 880,000, 910,000 and 935,000 of mainnet), so it does not matter where the " +
+        "file comes from. A snapshot taken at any other block is rejected. " +
         "Create one with `dumptxoutset` on a node you trust, or download one. The node must be running and " +
         "must already have the headers up to the snapshot's block.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
     val tvSnap = texto(cSn, "", AppTheme.TXT_PRI)
@@ -206,11 +207,17 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         val f = CoreNodo.snapshot(act)
         tvSnap.text = if (f.isFile) {
             val c = CoreSnapshot.cabecera(f)
+            val h = c?.let { CoreConfig.alturaAceptada(it.base) }
             "File ready: ${CoreConfig.bytes(f.length())}" +
-                (if (c != null) "\nBase block ${c.base.take(16)}…\n${"%,d".format(c.monedas)} coins" else "")
+                (if (c != null) "\nBase block ${c.base.take(16)}…\n${"%,d".format(c.monedas)} coins" else "") +
+                (if (c == null) ""
+                 else if (h != null) "\nAccepted by this Core (block %,d).".format(h)
+                 else "\nNOT accepted by this Core: it only loads snapshots at blocks " +
+                      CoreConfig.SNAPSHOTS_ACEPTADOS.values.joinToString(", ") { "%,d".format(it) } + ".")
         } else if (snapshotParcial(act)) "A partial download is waiting: press “Download from a link” to continue."
         else "No snapshot file yet."
-        btnCargar.visibility = if (f.isFile) View.VISIBLE else View.GONE
+        val aceptado = f.isFile && CoreSnapshot.cabecera(f)?.let { CoreConfig.alturaAceptada(it.base) } != null
+        btnCargar.visibility = if (aceptado) View.VISIBLE else View.GONE
         btnBorrar.visibility = if (f.isFile || snapshotParcial(act)) View.VISIBLE else View.GONE
         tvLog.text = CoreNodo.ultimasLineas(act, 10).ifEmpty { "(empty)" }
     }
@@ -235,6 +242,12 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     }
 
     fun aviso(s: String) = runOnUiThread { Toast.makeText(act, s, Toast.LENGTH_LONG).show() }
+    /** Un mensaje largo (el de Core) en un diálogo, completo y seleccionable, no cortado en un aviso. */
+    fun detalle(titulo: String, s: String) = runOnUiThread {
+        android.app.AlertDialog.Builder(act).setTitle(titulo).setMessage(s)
+            .setPositiveButton("OK", null).show()
+            .findViewById<TextView>(android.R.id.message)?.setTextIsSelectable(true)
+    }
 
     // ── Acciones ──────────────────────────────────────────────────────────
     btnNodo.setOnClickListener {
@@ -327,7 +340,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                         "Loaded ${o?.optLong("coins_loaded", 0L) ?: 0} coins at block ${o?.optLong("base_height", 0L) ?: 0}"
                     } catch (e: CoreRpcError) { "Core refused: ${e.message}" }
                       catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
-                    fijarOcupado(false); aviso(msg); runOnUiThread { refrescar() }
+                    fijarOcupado(false)
+                    if (msg.startsWith("Loaded")) aviso(msg) else detalle("Snapshot not loaded", msg)
+                    runOnUiThread { refrescar() }
                 }.start()
             }.setNegativeButton("Cancel", null).show()
     }

@@ -54,6 +54,11 @@ class CoreConfigTest {
         b[0] = 'x'.code.toByte(); assertNull(CoreConfig.leerCabeceraSnapshot(b))
         assertNull(CoreConfig.leerCabeceraSnapshot(ByteArray(10)))
     }
+    @Test fun snapshotsAceptados() {
+        assertEquals(910_000, CoreConfig.alturaAceptada("0000000000000000000108970ACB9522ffd516eae17acddcb1bd16469194a821"))
+        assertEquals(4, CoreConfig.SNAPSHOTS_ACEPTADOS.size)
+        assertNull(CoreConfig.alturaAceptada("00".repeat(32)))
+    }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))
         assertFalse(CoreConfig.urlValida("http://ejemplo.org/x.dat"))

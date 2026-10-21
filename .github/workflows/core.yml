@@ -20,7 +20,7 @@ on:
     inputs:
       etiqueta:
         description: 'Etiqueta de Bitcoin Core'
-        default: 'v29.0'
+        default: 'v31.1'
   push:
     branches: [ 'claude/**' ]
     paths: [ '.github/workflows/core.yml' ]
@@ -29,7 +29,7 @@ permissions:
   contents: write
 
 env:
-  ETIQUETA: ${{ github.event.inputs.etiqueta || 'v29.0' }}
+  ETIQUETA: ${{ github.event.inputs.etiqueta || 'v31.1' }}
   API: 28
 
 jobs:
