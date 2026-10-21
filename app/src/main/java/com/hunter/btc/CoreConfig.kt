@@ -150,16 +150,18 @@ object CoreConfig {
         var cargados = 0L; var t1 = t0; var fin = false
         for (i in ini + 1 until lineas.size) {
             val l = lineas[i]
-            RE_PASO.find(l)?.let {
-                cargados = it.groupValues[2].toLongOrNull() ?: cargados
-                t1 = instante(it.groupValues[1]) ?: t1
+            val paso = RE_PASO.find(l)
+            if (paso != null) {
+                cargados = paso.groupValues[2].toLongOrNull() ?: cargados
+                t1 = instante(paso.groupValues[1]) ?: t1
             }
             if (FIN_CARGA.any { f -> f in l }) fin = true
         }
         val enCurso = !fin && nodoVivo
-        val eta = if (enCurso && cargados > 0 && t0 != null && t1 != null && t1 > t0)
-            ((total - cargados).toDouble() * (t1 - t0) / cargados).toLong().coerceAtLeast(0) else null
-        return CargaSnapshot(total, cargados, enCurso, if (t0 != null) (ahora - t0).coerceAtLeast(0) else -1, eta)
+        val fin0 = t0; val fin1 = t1
+        val eta = if (enCurso && cargados > 0 && fin0 != null && fin1 != null && fin1 > fin0)
+            ((total - cargados).toDouble() * (fin1 - fin0) / cargados).toLong().coerceAtLeast(0) else null
+        return CargaSnapshot(total, cargados, enCurso, if (fin0 != null) (ahora - fin0).coerceAtLeast(0) else -1, eta)
     }
 
     fun duracion(s: Long): String = when {
