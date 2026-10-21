@@ -49,12 +49,16 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal val PAG_WALLET   = 2
     internal val PAG_RECOVERY = 3
     internal val PAG_WEAK     = 4
-    internal val PAG_MORE     = 5
+    internal val PAG_CORE     = 5
+    internal val PAG_MORE     = 6
     internal var tabPages: List<android.view.View?> = emptyList()
     internal var barra: BottomBar? = null
     // El estado del Weak-key vive en el singleton WeakController (sobrevive a
     // recrear la Activity); esta pantalla solo enlaza sus vistas.
     internal val REQ_WEAK_CSV = 1004
+    internal val REQ_CORE_SNAPSHOT = 1005
+    /** Qué hacer con el fichero de snapshot que elija el usuario (lo pone la pestaña Core). */
+    internal var alElegirSnapshot: ((android.net.Uri) -> Unit)? = null
     internal var paginaActual = PAG_SCANNER
     /** Vuelve a leer el baúl y los totales de la pestaña Cartera. */
     internal var refrescoCartera: (() -> Unit)? = null
@@ -84,6 +88,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             PAG_WALLET   -> BottomBar.WALLET
             PAG_RECOVERY -> BottomBar.RECOVERY
             PAG_WEAK     -> BottomBar.WEAK
+            PAG_CORE     -> BottomBar.CORE
             PAG_MORE     -> BottomBar.MORE
             else         -> BottomBar.SCANNER
         })
@@ -106,6 +111,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             BottomBar.RECOVERY -> goTab(PAG_RECOVERY)
             BottomBar.WEAK -> goTab(PAG_WEAK)
+            BottomBar.CORE -> goTab(PAG_CORE)
             BottomBar.MORE -> goTab(PAG_MORE)
         }
     }
@@ -650,6 +656,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         var walletScroll: ScrollView? = null
         var recoveryScroll: ScrollView? = null
         var weakScroll: ScrollView? = null
+        var coreScroll: ScrollView? = null
         var moreScroll: ScrollView? = null
         // Qué pestaña se está montando. Antes esto se decía con un Toast por
         // pestaña —cuatro avisos encadenados en cada arranque, que el usuario
@@ -679,6 +686,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             recoveryScroll = buildRecoveryTab()
             fase = "weak"
             weakScroll = buildWeakTab()
+            fase = "core"
+            // Si esta pestaña falla no se lleva por delante las demás.
+            try { coreScroll = buildCoreTab() } catch (e: Throwable) {
+                RegistroFallos.anotar(applicationContext, "\nCORE_BUILD: ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString()}\n")
+            }
             fase = "more"
             moreScroll = buildMoreTab()
 
@@ -706,6 +718,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         walletScroll?.let { cf.addView(it) }
         recoveryScroll?.let { cf.addView(it) }
         weakScroll?.let { cf.addView(it) }
+        coreScroll?.let { cf.addView(it) }
         moreScroll?.let { cf.addView(it) }
 
         // ── Contenido y barra de pestañas ─────────────────────────────────────
@@ -726,7 +739,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         setContentView(root)
 
-        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll, weakScroll, moreScroll)
+        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll, weakScroll, coreScroll, moreScroll)
         goTab(savedState?.getInt("pagina", PAG_SCANNER) ?: PAG_SCANNER)
         abrirPestanaPedida(intent)
 
@@ -1831,6 +1844,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         super.onActivityResult(req, res, data)
         if (req == REQ_IMPORT_PROGRESS && res == RESULT_OK) {
             data?.data?.let { processImportedProgress(it) }
+            return
+        }
+        if (req == REQ_CORE_SNAPSHOT && res == RESULT_OK) {
+            data?.data?.let { alElegirSnapshot?.invoke(it) }
             return
         }
         if (req == REQ_WEAK_CSV && res == RESULT_OK) {

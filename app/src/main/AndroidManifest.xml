@@ -51,6 +51,11 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- Bitcoin Core (bitcoind) en el teléfono: ver CoreService. -->
+        <service android:name=".CoreService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <service android:name=".WeakService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />

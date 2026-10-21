@@ -1,0 +1,109 @@
+name: Compilar Bitcoin Core (Android arm64)
+
+# Compila `bitcoind` de Bitcoin Core para Android con el sistema `depends` del propio
+# proyecto y lo publica como asset de la release «core-android». El APK (build.yml) lo
+# descarga si existe y lo mete como libbitcoind.so: Android sólo deja ejecutar ficheros
+# que vienen en el directorio de librerías nativas de la app.
+#
+# Es aparte de build.yml a propósito: tarda 40–90 minutos la primera vez y no hace falta
+# repetirlo en cada commit. Se lanza a mano, o al cambiar este fichero.
+#
+# Sin monedero, sin interfaz, sin ZMQ, sin tests: sólo el nodo. La cartera de la app
+# sigue siendo la de la app; el nodo valida la cadena.
+#
+# AVISO: el código fuente se obtiene por etiqueta de git y no se verifica aquí la firma
+# de los desarrolladores. El hash del commit queda en el registro de la ejecución; quien
+# quiera comprobarlo debe cotejarlo con el de la etiqueta firmada en bitcoin/bitcoin.
+
+on:
+  workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: 'Etiqueta de Bitcoin Core'
+        default: 'v29.0'
+  push:
+    branches: [ main ]
+    paths: [ '.github/workflows/core.yml' ]
+
+permissions:
+  contents: write
+
+env:
+  ETIQUETA: ${{ github.event.inputs.etiqueta || 'v29.0' }}
+  API: 28
+
+jobs:
+  core:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+    - name: Dependencias del sistema
+      run: |
+        sudo apt-get update -qq
+        sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build pkgconf \
+          python3 curl bison patch xz-utils ca-certificates git
+
+    - name: Código fuente de Bitcoin Core
+      run: |
+        git clone --depth 1 --branch "$ETIQUETA" https://github.com/bitcoin/bitcoin.git core
+        echo "Commit de $ETIQUETA: $(git -C core rev-parse HEAD)"
+
+    - name: NDK
+      run: |
+        NDK="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_HOME:-$ANDROID_NDK_ROOT}}"
+        echo "NDK=$NDK" >> "$GITHUB_ENV"
+        echo "NDK: $NDK"; cat "$NDK/source.properties" | head -3
+        echo "TOOLCHAIN=$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin" >> "$GITHUB_ENV"
+
+    - name: Cómo define depends el destino Android
+      run: |
+        cat core/depends/hosts/android.mk
+        grep -n -i "android" core/depends/README.md | head -20 || true
+
+    - name: Dependencias de Core (depends)
+      working-directory: core
+      run: |
+        make -C depends -j"$(nproc)" HOST=aarch64-linux-android \
+          ANDROID_API_LEVEL=$API ANDROID_NDK="$NDK" ANDROID_NDK_HOME="$NDK" \
+          ANDROID_TOOLCHAIN_BIN="$TOOLCHAIN" \
+          NO_QT=1 NO_WALLET=1 NO_ZMQ=1 NO_USDT=1 NO_IPC=1 NO_UPNP=1 NO_NATPMP=1 NO_SQLITE=1 \
+          2>&1 | tail -n 60
+        test -f depends/aarch64-linux-android/toolchain.cmake
+
+    - name: Configurar
+      working-directory: core
+      run: |
+        cmake -B build -G Ninja \
+          --toolchain depends/aarch64-linux-android/toolchain.cmake \
+          -DCMAKE_BUILD_TYPE=Release \
+          -DBUILD_DAEMON=ON -DBUILD_CLI=OFF -DBUILD_TX=OFF -DBUILD_UTIL=OFF \
+          -DBUILD_GUI=OFF -DENABLE_WALLET=OFF -DBUILD_TESTS=OFF -DBUILD_BENCH=OFF \
+          -DBUILD_FUZZ_BINARY=OFF -DENABLE_IPC=OFF -DWITH_ZMQ=OFF
+
+    - name: Compilar
+      working-directory: core
+      run: cmake --build build -j"$(nproc)" --target bitcoind
+
+    - name: Dejar el binario listo
+      run: |
+        mkdir -p salida
+        cp core/build/bin/bitcoind salida/libbitcoind.so
+        "$TOOLCHAIN/llvm-strip" salida/libbitcoind.so
+        file salida/libbitcoind.so || true
+        ls -l salida/libbitcoind.so
+        (cd salida && sha256sum libbitcoind.so | tee libbitcoind.so.sha256)
+        echo "$ETIQUETA $(git -C core rev-parse HEAD)" > salida/version.txt
+
+    - uses: actions/upload-artifact@v4
+      with:
+        name: libbitcoind
+        path: salida/
+
+    - name: Publicar en la release core-android
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        gh release view core-android >/dev/null 2>&1 || \
+          gh release create core-android --title "Bitcoin Core para Android" \
+            --notes "Binario de bitcoind (arm64) para la pestaña Core. Lo usa build.yml." --prerelease
+        gh release upload core-android salida/libbitcoind.so salida/libbitcoind.so.sha256 salida/version.txt --clobber

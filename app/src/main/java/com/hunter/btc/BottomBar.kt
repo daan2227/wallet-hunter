@@ -28,7 +28,8 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         const val WALLET   = 2
         const val RECOVERY = 3
         const val WEAK     = 4
-        const val MORE     = 5
+        const val CORE     = 5
+        const val MORE     = 6
 
         /** Qué pestaña pedir al volver a MainActivity desde otra pantalla. */
         const val EXTRA_TAB = "com.hunter.btc.TAB"
@@ -42,6 +43,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         Item(R.drawable.ic_wallet,   "Wallet"),
         Item(R.drawable.ic_recovery, "Recovery"),
         Item(R.drawable.ic_target,   "Weak"),
+        Item(R.drawable.ic_core,     "Core"),
         Item(R.drawable.ic_more,     "More")
     )
 
@@ -88,7 +90,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
 
     private fun celda(i: Int, item: Item): LinearLayout {
         val pildora = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(52), dp(30))
+            layoutParams = LinearLayout.LayoutParams(dp(if (items.size > 6) 40 else 52), dp(30))
         }
         val icono = ImageView(ctx).apply {
             setImageResource(item.icono)

@@ -216,6 +216,22 @@ jobs:
         chmod +x gradlew
         ./gradlew :app:testDebugUnitTest
 
+    # Bitcoin Core para la pestaña «Core». Lo compila core.yml aparte (tarda más de una hora) y lo
+    # deja en la release «core-android». Si todavía no existe, el APK sale igual y la pestaña dice
+    # que esta versión no lo incluye.
+    - name: Bitcoin Core (binario de core.yml)
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        mkdir -p app/src/main/jniLibs/arm64-v8a core-dl
+        if gh release download core-android -p 'libbitcoind.so*' -D core-dl 2>/dev/null; then
+          (cd core-dl && sha256sum -c libbitcoind.so.sha256)
+          cp core-dl/libbitcoind.so app/src/main/jniLibs/arm64-v8a/libbitcoind.so
+          ls -l app/src/main/jniLibs/arm64-v8a/libbitcoind.so
+        else
+          echo "No hay binario de Core todavía: el APK sale sin él."
+        fi
+
     - name: Build Release APK
       env:
         RELEASE_STORE_PASSWORD: ${{ secrets.RELEASE_STORE_PASSWORD }}

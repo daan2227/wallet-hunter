@@ -1,0 +1,151 @@
+package com.hunter.btc
+
+import org.json.JSONArray
+import org.json.JSONObject
+
+/**
+ * Lo que no toca Android de la pestaña Core: el bitcoin.conf, la línea de órdenes, la lectura de lo que
+ * contesta `bitcoind` y la cabecera de un snapshot de UTXO. Sin contexto ni red, para probarlo en la JVM.
+ */
+object CoreConfig {
+
+    /** Mínimo que acepta Core para podar (MiB). */
+    const val PRUNE_MIN = 550
+    const val RPC_PORT = 8332
+    /** Bloques que Core se niega a podar por debajo de la punta (MIN_BLOCKS_TO_KEEP). */
+    const val BLOQUES_QUE_QUEDAN = 288
+
+    val PRUNE_OPCIONES = listOf(550, 2000, 5000, 10000)
+    val DBCACHE_OPCIONES = listOf(100, 450, 1000)
+
+    data class Ajustes(
+        val pruneMiB: Int = PRUNE_MIN,
+        val dbcacheMiB: Int = 450,
+        /** Sin retransmitir transacciones sueltas: baja mucho el tráfico. Cuesta la estimación de comisión. */
+        val soloBloques: Boolean = true,
+        /** Parar el nodo si la conexión pasa a ser de datos móviles. */
+        val soloWifi: Boolean = true
+    ) {
+        fun normalizado() = copy(pruneMiB = pruneMiB.coerceAtLeast(PRUNE_MIN),
+                                 dbcacheMiB = dbcacheMiB.coerceIn(4, 4096))
+    }
+
+    /** El contenido de bitcoin.conf. [cookie] es la ruta ABSOLUTA de la cookie de RPC (en el almacén privado). */
+    fun conf(a0: Ajustes, cookie: String): String {
+        val a = a0.normalizado()
+        require('\n' !in cookie && '\r' !in cookie) { "ruta con saltos de línea" }
+        return buildString {
+            appendLine("# Generado por Wallet Hunter. Se reescribe en cada arranque.")
+            appendLine("server=1")
+            appendLine("prune=${a.pruneMiB}")
+            appendLine("dbcache=${a.dbcacheMiB}")
+            // Sólo se escucha en el propio teléfono, y con cookie (no hay contraseña fija).
+            appendLine("rpcbind=127.0.0.1")
+            appendLine("rpcallowip=127.0.0.1")
+            appendLine("rpcport=$RPC_PORT")
+            appendLine("rpccookiefile=$cookie")
+            // Un teléfono no abre puertos hacia fuera: sin conexiones entrantes ahorra datos y batería.
+            appendLine("listen=0")
+            appendLine("maxconnections=12")
+            appendLine("blocksonly=${if (a.soloBloques) 1 else 0}")
+            appendLine("txindex=0")
+            appendLine("shrinkdebugfile=1")
+        }
+    }
+
+    /** Argumentos de `bitcoind`. -conf lleva todo lo demás. */
+    fun argumentos(datadir: String, conf: String): List<String> =
+        listOf("-datadir=$datadir", "-conf=$conf", "-printtoconsole=0")
+
+    /** Altura hasta la que se puede podar con [tip] bloques: nunca por encima de tip-288. -1 si todavía no se puede. */
+    fun alturaPoda(tip: Int): Int = if (tip <= BLOQUES_QUE_QUEDAN) -1 else tip - BLOQUES_QUE_QUEDAN
+
+    // ── Lo que dice el nodo ──────────────────────────────────────────────────
+
+    data class Estado(
+        val cadena: String,
+        val bloques: Long,
+        val cabeceras: Long,
+        val progreso: Double,
+        val descargaInicial: Boolean,
+        val podado: Boolean,
+        val alturaPoda: Long,
+        val bytesEnDisco: Long,
+        val pares: Int,
+        val version: String,
+        /** Hay una cadena de snapshot y el nodo aún comprueba la historia por detrás. */
+        val validandoAtras: Boolean,
+        val progresoAtras: Double
+    )
+
+    /**
+     * Junta las respuestas de getblockchaininfo, getnetworkinfo y getchainstates (las dos últimas pueden faltar).
+     * [estados] es el objeto `{"headers":…, "chainstates":[…]}` de getchainstates.
+     */
+    fun leerEstado(cadena: JSONObject, red: JSONObject?, estados: JSONObject?): Estado {
+        var atras = false; var progAtras = 0.0
+        val cs: JSONArray? = estados?.optJSONArray("chainstates")
+        if (estados != null && cs != null && cs.length() > 1) {
+            // Con snapshot hay dos: la del snapshot (validada = false mientras se comprueba) y la de atrás.
+            for (i in 0 until cs.length()) {
+                val c = cs.getJSONObject(i)
+                if (c.has("snapshot_blockhash").not()) {   // la de atrás, que viene de génesis
+                    atras = true
+                    val tope = estados.optLong("headers", 0L).coerceAtLeast(1L)
+                    progAtras = (c.optLong("blocks", 0L).toDouble() / tope).coerceIn(0.0, 1.0)
+                }
+            }
+        }
+        return Estado(
+            cadena = cadena.optString("chain", "?"),
+            bloques = cadena.optLong("blocks", 0L),
+            cabeceras = cadena.optLong("headers", 0L),
+            progreso = cadena.optDouble("verificationprogress", 0.0).coerceIn(0.0, 1.0),
+            descargaInicial = cadena.optBoolean("initialblockdownload", true),
+            podado = cadena.optBoolean("pruned", false),
+            alturaPoda = cadena.optLong("pruneheight", 0L),
+            bytesEnDisco = cadena.optLong("size_on_disk", 0L),
+            pares = red?.optInt("connections", 0) ?: 0,
+            version = red?.optString("subversion", "") ?: "",
+            validandoAtras = atras, progresoAtras = progAtras
+        )
+    }
+
+    fun bytes(n: Long): String = when {
+        n < 1024L -> "$n B"
+        n < 1024L * 1024 -> "%.1f KB".format(n / 1024.0)
+        n < 1024L * 1024 * 1024 -> "%.1f MB".format(n / 1048576.0)
+        else -> "%.2f GB".format(n / 1073741824.0)
+    }
+
+    // ── Cabecera de un snapshot (dumptxoutset) ───────────────────────────────
+
+    /** Lo que se lee de los primeros 51 bytes. [base] está en el orden en que se enseñan los hashes de bloque. */
+    data class CabeceraSnapshot(val version: Int, val red: String, val base: String, val monedas: Long)
+
+    private val MAGIC = byteArrayOf('u'.code.toByte(), 't'.code.toByte(), 'x'.code.toByte(),
+                                    'o'.code.toByte(), 0xff.toByte())
+
+    /** null si no parece un snapshot de Core. Sólo lee la cabecera: Core comprueba el hash entero al cargarlo. */
+    fun leerCabeceraSnapshot(b: ByteArray): CabeceraSnapshot? {
+        if (b.size < 51) return null
+        for (i in MAGIC.indices) if (b[i] != MAGIC[i]) return null
+        val ver = (b[5].toInt() and 0xff) or ((b[6].toInt() and 0xff) shl 8)
+        val magicRed = b.copyOfRange(7, 11).joinToString("") { "%02x".format(it) }
+        val red = when (magicRed) {
+            "f9beb4d9" -> "main"; "0b110907" -> "testnet"; "1c163f28" -> "testnet4"
+            "0a03cf40" -> "signet"; "fabfb5da" -> "regtest"; else -> "?"
+        }
+        val hash = b.copyOfRange(11, 43).reversedArray().joinToString("") { "%02x".format(it) }
+        var n = 0L
+        for (i in 7 downTo 0) n = (n shl 8) or (b[43 + i].toLong() and 0xff)
+        return CabeceraSnapshot(ver, red, hash, n)
+    }
+
+    /** ¿Una URL de descarga aceptable? Sólo https, para que nadie en la ruta cambie el fichero a mitad. */
+    fun urlValida(u: String): Boolean {
+        val t = u.trim()
+        if (!t.startsWith("https://", ignoreCase = true) || t.length < 12 || t.any { it.isWhitespace() }) return false
+        return try { java.net.URI(t).host?.isNotEmpty() == true } catch (e: Exception) { false }
+    }
+}
