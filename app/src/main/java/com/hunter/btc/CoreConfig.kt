@@ -24,10 +24,32 @@ object CoreConfig {
         /** Sin retransmitir transacciones sueltas: baja mucho el tráfico. Cuesta la estimación de comisión. */
         val soloBloques: Boolean = true,
         /** Parar el nodo si la conexión pasa a ser de datos móviles. */
-        val soloWifi: Boolean = true
+        val soloWifi: Boolean = true,
+        /** 0 = conexión directa, 1 = todo por el proxy SOCKS5 (Tor), 2 = sólo pares .onion por el proxy. */
+        val red: Int = 0,
+        /** host:puerto del proxy SOCKS5 de Tor (Orbot: 127.0.0.1:9050). */
+        val proxy: String = PROXY_TOR,
+        /** EXPERIMENTAL en Core: difundir mis transacciones por conexiones cortas de Tor. Sólo con [red] != 0. */
+        val difusionPrivada: Boolean = false,
+        /** Servir filtros de bloque BIP157 sólo en 127.0.0.1, para el cliente ligero de esta app. Ocupa ~10 GB más. */
+        val servirFiltros: Boolean = false
     ) {
         fun normalizado() = copy(pruneMiB = pruneMiB.coerceAtLeast(PRUNE_MIN),
-                                 dbcacheMiB = dbcacheMiB.coerceIn(4, 4096))
+                                 dbcacheMiB = dbcacheMiB.coerceIn(4, 4096),
+                                 red = red.coerceIn(0, 2),
+                                 proxy = if (proxyValido(proxy)) proxy.trim() else PROXY_TOR)
+    }
+
+    const val PROXY_TOR = "127.0.0.1:9050"
+    const val PUERTO_P2P_LOCAL = 8333
+
+    /** host:puerto sin espacios ni saltos de línea (va a una línea de bitcoin.conf). */
+    fun proxyValido(s: String): Boolean {
+        val t = s.trim()
+        val i = t.lastIndexOf(':')
+        if (i <= 0 || t.any { it.isWhitespace() || it == '#' || it == '=' }) return false
+        val p = t.substring(i + 1).toIntOrNull() ?: return false
+        return p in 1..65535 && t.substring(0, i).matches(Regex("[A-Za-z0-9._\\-\\[\\]:]+"))
     }
 
     /** El contenido de bitcoin.conf. [cookie] es la ruta ABSOLUTA de la cookie de RPC (en el almacén privado). */
@@ -45,7 +67,23 @@ object CoreConfig {
             appendLine("rpcport=$RPC_PORT")
             appendLine("rpccookiefile=$cookie")
             // Un teléfono no abre puertos hacia fuera: sin conexiones entrantes ahorra datos y batería.
-            appendLine("listen=0")
+            if (a.servirFiltros) {
+                // Servir filtros BIP157 a esta misma app: sólo en el bucle local, nunca hacia fuera.
+                appendLine("listen=1")
+                appendLine("bind=127.0.0.1:$PUERTO_P2P_LOCAL")
+                appendLine("listenonion=0")
+                appendLine("blockfilterindex=basic")
+                appendLine("peerblockfilters=1")
+            } else appendLine("listen=0")
+            if (a.red != 0) {
+                appendLine("proxy=${a.proxy}")
+                appendLine("proxyrandomize=1")
+                // Sin DNS fuera del proxy: una consulta DNS normal delataría que este teléfono corre un nodo.
+                appendLine("dns=0")
+                appendLine("dnsseed=0")
+                if (a.red == 2) appendLine("onlynet=onion")
+                if (a.difusionPrivada) appendLine("privatebroadcast=1")
+            }
             appendLine("maxconnections=12")
             appendLine("blocksonly=${if (a.soloBloques) 1 else 0}")
             appendLine("txindex=0")

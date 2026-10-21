@@ -38,14 +38,19 @@ object CoreNodo {
             pruneMiB = p.getInt("prune_mib", d.pruneMiB),
             dbcacheMiB = p.getInt("dbcache_mib", d.dbcacheMiB),
             soloBloques = p.getBoolean("solo_bloques", d.soloBloques),
-            soloWifi = p.getBoolean("solo_wifi", d.soloWifi)).normalizado()
+            soloWifi = p.getBoolean("solo_wifi", d.soloWifi),
+            red = p.getInt("red", d.red), proxy = p.getString("proxy", d.proxy) ?: d.proxy,
+            difusionPrivada = p.getBoolean("difusion_privada", d.difusionPrivada),
+            servirFiltros = p.getBoolean("servir_filtros", d.servirFiltros)).normalizado()
     }
 
     fun guardarAjustes(ctx: Context, a: CoreConfig.Ajustes) {
         val n = a.normalizado()
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putInt("prune_mib", n.pruneMiB).putInt("dbcache_mib", n.dbcacheMiB)
-            .putBoolean("solo_bloques", n.soloBloques).putBoolean("solo_wifi", n.soloWifi).apply()
+            .putBoolean("solo_bloques", n.soloBloques).putBoolean("solo_wifi", n.soloWifi)
+            .putInt("red", n.red).putString("proxy", n.proxy)
+            .putBoolean("difusion_privada", n.difusionPrivada).putBoolean("servir_filtros", n.servirFiltros).apply()
     }
 
     fun procesoVivo(): Boolean = proceso?.isAlive == true

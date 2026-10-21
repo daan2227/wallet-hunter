@@ -124,6 +124,39 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Traffic", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Blocks only" to null, "Blocks + mempool" to null),
         initial = if (aj.soloBloques) 0 else 1) { guardar(aj.copy(soloBloques = it == 0)) })
+    texto(cAj, "Connections", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Direct" to null, "Through Tor" to null, "Tor only" to null),
+        initial = aj.red) { guardar(aj.copy(red = it)) })
+    val campoProxy = Ui.input(this, "Tor proxy host:port", mono = true).apply {
+        setText(aj.proxy)
+        (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val t = e?.toString()?.trim() ?: ""
+                if (CoreConfig.proxyValido(t) && t != aj.proxy) guardar(aj.copy(proxy = t))
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+    }
+    cAj.addView(campoProxy)
+    texto(cAj, "“Through Tor” sends every connection of the node through a Tor app on this phone (Orbot: " +
+        "127.0.0.1:9050), which hides your IP from the Bitcoin network. “Tor only” also talks only to .onion " +
+        "nodes: more private, fewer peers, slower. Start the Tor app first, or the node will find no peers.",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    texto(cAj, "Private broadcast (experimental)", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Off" to null, "On" to null),
+        initial = if (aj.difusionPrivada) 1 else 0) { guardar(aj.copy(difusionPrivada = it == 1)) })
+    texto(cAj, "Needs Tor. Your own transactions leave through short-lived Tor connections instead of your node's " +
+        "usual peers. It is marked experimental by Bitcoin Core: if Tor is not running the transaction may never " +
+        "leave the phone, so after sending, check that it shows up in an explorer.",
+        AppTheme.WARN, AppTheme.SP_CAPTION)
+    texto(cAj, "Filters for this app's light client", AppTheme.TXT_PRI)
+    cAj.addView(Ui.segmented(this, listOf("Off" to null, "Serve on this phone" to null),
+        initial = if (aj.servirFiltros) 1 else 0) { guardar(aj.copy(servirFiltros = it == 1)) })
+    texto(cAj, "Builds a block-filter index (about 10 GB more) and serves it only to 127.0.0.1, so “Verify with " +
+        "the network” in the wallet can use your own node instead of public ones. The index is built as the node " +
+        "validates, so it can take as long as the history check.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     texto(cAj, "Wallet", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
         initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })

@@ -123,6 +123,23 @@ class CoreConfigTest {
             try { CoreConfig.rango(m); fail(m) } catch (e: IllegalArgumentException) {}
         assertEquals(listOf("AAA", "BBB", "CCC"), CoreConfig.partirPsbts("AAA\nBBB  CCC\n"))
     }
+    @Test fun redYFiltros() {
+        val base = CoreConfig.conf(CoreConfig.Ajustes(), "/x/.cookie")
+        assertTrue("listen=0" in base); assertFalse("proxy=" in base); assertFalse("blockfilterindex" in base)
+        val tor = CoreConfig.conf(CoreConfig.Ajustes(red = 1, difusionPrivada = true), "/x/.cookie")
+        assertTrue("proxy=127.0.0.1:9050" in tor && "dnsseed=0" in tor && "privatebroadcast=1" in tor)
+        assertFalse("onlynet=onion" in tor)
+        assertTrue("onlynet=onion" in CoreConfig.conf(CoreConfig.Ajustes(red = 2), "/x/.cookie"))
+        // La difusión privada sin Tor se ignora: Core se negaría a arrancar.
+        assertFalse("privatebroadcast" in CoreConfig.conf(CoreConfig.Ajustes(red = 0, difusionPrivada = true), "/x/.cookie"))
+        val f = CoreConfig.conf(CoreConfig.Ajustes(servirFiltros = true), "/x/.cookie")
+        assertTrue("bind=127.0.0.1:8333" in f && "peerblockfilters=1" in f && "blockfilterindex=basic" in f && "listen=1" in f)
+        assertFalse("listen=0" in f)
+        assertTrue(CoreConfig.proxyValido("127.0.0.1:9050")); assertTrue(CoreConfig.proxyValido("localhost:9150"))
+        assertFalse(CoreConfig.proxyValido("127.0.0.1")); assertFalse(CoreConfig.proxyValido("a b:1"))
+        assertFalse(CoreConfig.proxyValido("x:99999")); assertFalse(CoreConfig.proxyValido("x:1\nrpcallowip=0.0.0.0/0"))
+        assertEquals("127.0.0.1:9050", CoreConfig.Ajustes(proxy = "mal").normalizado().proxy)
+    }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))
         assertFalse(CoreConfig.urlValida("http://ejemplo.org/x.dat"))

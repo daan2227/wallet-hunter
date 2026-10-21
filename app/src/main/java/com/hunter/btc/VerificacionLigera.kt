@@ -66,7 +66,11 @@ object VerificacionLigera {
     }
 
     private fun elegirRango(act: Activity, nodoTxt: String, saldoApiSat: Long, scripts: () -> List<String>) {
-        val nodo: LightClient.Direccion? = if (nodoTxt.isEmpty()) null else {
+        // Sin nodo escrito, y con el nodo propio sirviendo filtros, se usa el del teléfono.
+        val propio = nodoTxt.isEmpty() && CoreNodo.binario(act) != null && CoreNodo.ajustes(act).servirFiltros &&
+                     (CoreNodo.procesoVivo() || CoreService.activo)
+        val nodo: LightClient.Direccion? = if (propio) LightClient.Direccion("127.0.0.1", CoreConfig.PUERTO_P2P_LOCAL)
+        else if (nodoTxt.isEmpty()) null else {
             val i = nodoTxt.lastIndexOf(':')
             val host = if (i > 0) nodoTxt.substring(0, i) else nodoTxt
             val port = if (i > 0) nodoTxt.substring(i + 1).toIntOrNull() else 8333
