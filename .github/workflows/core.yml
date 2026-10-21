@@ -73,6 +73,9 @@ jobs:
           -DCMAKE_HAVE_LIBC_PTHREAD=1
         cmake --build libevent/build -j"$(nproc)"
         cmake --install libevent/build
+        # Boost son sólo cabeceras: se copian al prefijo para que el compilador cruzado las vea
+        # (/usr/include no está en su ruta de búsqueda).
+        mkdir -p prefijo/include && cp -r /usr/include/boost prefijo/include/
         find prefijo -name 'LibeventConfig.cmake' -o -name 'libevent*.a' | sort
 
     - name: Configurar
@@ -83,7 +86,7 @@ jobs:
           -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-$API -DANDROID_STL=c++_static \
           -DCMAKE_FIND_ROOT_PATH="$GITHUB_WORKSPACE/prefijo" \
           -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/prefijo" \
-          -DBoost_INCLUDE_DIR=/usr/include \
+          -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/prefijo/include \
           -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
           -DCMAKE_EXE_LINKER_FLAGS=-pie -DCMAKE_HAVE_LIBC_PTHREAD=1 \
           -DBUILD_DAEMON=ON -DBUILD_CLI=OFF -DBUILD_TX=OFF -DBUILD_UTIL=OFF \
