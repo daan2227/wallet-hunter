@@ -1844,6 +1844,9 @@ JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_bip38Intermediate(JNIEnv *env,jobject,jstring jpass,jint jlot,jint jseq){
     std::string pass=utf8_de(env,jpass);   /* UTF-8 de verdad: ver utf8_de */
     bool useLot=(jlot>=0);
+    /* BIP38: el lote va en 20 bits (0..1048575) y la secuencia en 12 (0..4095). Fuera de eso el código
+     * resultante codificaba otro lote y otra secuencia que los pedidos. */
+    if(useLot && (jlot>1048575 || jseq<0 || jseq>4095)) return env->NewStringUTF("");
     uint8_t ownerentropy[8]={0}; uint8_t passfactor[32]={0};
     if(!useLot){
         /* Si el generador falla, nada de usar memoria sin inicializar como sal. */
@@ -2223,7 +2226,9 @@ Java_com_hunter_btc_HunterEngine_deriveAddresses(JNIEnv *env, jobject, jstring j
                                                  jint from, jint count,
                                                  jboolean jtestnet){
     const bool testnet = (jtestnet==JNI_TRUE);
-    if(count<=0||count>200||from<0||change<0||change>1) return env->NewStringUTF("[]");
+    /* from+count no puede pasar de 2^31-1: más allá, el índice se vuelve hardened al pasar a uint32 (y from+i
+     * desbordaba un int con signo). */
+    if(count<=0||count>200||from<0||from>2147483647-count||change<0||change>1) return env->NewStringUTF("[]");
     if(purpose!=44&&purpose!=49&&purpose!=84&&purpose!=86) return env->NewStringUTF("[]");
     const char *mn=env->GetStringUTFChars(jmn,nullptr);
     if(!mn||!mn[0]){ if(mn)env->ReleaseStringUTFChars(jmn,mn); return env->NewStringUTF("[]"); }
