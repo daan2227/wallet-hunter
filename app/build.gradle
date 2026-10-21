@@ -105,6 +105,8 @@ dependencies {
     implementation 'com.android.ndk.thirdparty:openssl:1.1.1l-beta-1'
     // Pruebas en la JVM (sin emulador): app/src/test. Sólo para testDebugUnitTest.
     testImplementation 'junit:junit:4.13.2'
+    // org.json de verdad en las pruebas JVM (el de android.jar son huecos que lanzan «not mocked»).
+    testImplementation 'org.json:json:20231013'
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
     // Sólo se genera el QR (QRCodeWriter); la matriz se pinta a mano en

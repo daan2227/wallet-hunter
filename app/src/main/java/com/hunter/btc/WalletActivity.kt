@@ -434,7 +434,26 @@ class WalletActivity : FragmentActivity() {
         addresses.putAll(wifExtras)
     }
 
+    /**
+     * Lo que pertenece a la cartera que se abre y no puede pasar a la siguiente. Sólo switchToWallet lo
+     * hacía: crear o importar una seed, cambiar de cuenta, importar una WIF o una vigilada y cambiar
+     * de red dejaban vivo el escaneo de la cartera anterior (que al terminar escribía sus direcciones y
+     * su saldo en la nueva), sus direcciones extra de WIF, las monedas elegidas a mano y el saldo con
+     * que "Delete wallet" avisa («Its balance is 0» siendo de otra cartera).
+     */
+    private fun reiniciarEstadoDeCartera() {
+        generacion++
+        descubriendo = false
+        historialExtra.clear()
+        wifExtras.clear()
+        selectedUtxos.clear()
+        salidasExtraEnvio.clear()
+        ultimoSaldoSat = -1L
+        montos.clear(); fiatViews.clear()
+    }
+
     private fun loadAddresses() {
+        reiniciarEstadoDeCartera()
         if (isWifMode) {
             // Derivar addr sincrono si falta, luego buildUI
             if (wifAddr.isEmpty() && wifKey.isNotEmpty()) {
@@ -1252,6 +1271,7 @@ class WalletActivity : FragmentActivity() {
      */
     private fun cpfp(m: MovTx, propias: Set<String>) {
         fun aviso(t: String) = runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread   // salió de la pantalla: un diálogo aquí lanzaría BadTokenException
             AlertDialog.Builder(this).setTitle("Cannot speed it up").setMessage(t)
                 .setPositiveButton("Got it", null).show()
         }
@@ -1294,15 +1314,16 @@ class WalletActivity : FragmentActivity() {
                 val pares = "%,d sat/vB".format(objetivo)
                 runOnUiThread {
                     AlertDialog.Builder(this).setTitle("Speed up with a child?")
-                        .setMessage("The child spends the coins of that payment back to this address with " +
+                        .setMessage(("The child spends the coins of that payment back to this address with " +
                                     "a fee of %,d sat (%d sat/vB). The parent and the child together will pay " +
-                                    "about $pares, the fastest rate now.".format(feeHija, tasaHija))
+                                    "about $pares, the fastest rate now.").format(feeHija, tasaHija))
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Send") { _, _ ->
                             selectedUtxos.clear(); selectedUtxos.addAll(mias)
                             val estado = TextView(this).apply { textSize = AppTheme.SP_BODY; setPadding(dp(20), dp(16), dp(20), dp(16)) }
+                            // Con "Close": antes no tenía ninguna salida y tapaba la pantalla para siempre.
                             val dlg = AlertDialog.Builder(this).setTitle("Sending the child").setView(estado)
-                                .setCancelable(false).create()
+                                .setPositiveButton("Close", null).create()
                             dlg.show()
                             val boton = View(this)
                             doSend(direccion, importe / 1e8, tasaHija.toInt(), fromKey, direccion,
@@ -1331,6 +1352,7 @@ class WalletActivity : FragmentActivity() {
      */
     private fun acelerar(m: MovTx, propias: Set<String>, cambio: Map<String, String>) {
         fun aviso(t: String) = runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread   // salió de la pantalla: un diálogo aquí lanzaría BadTokenException
             AlertDialog.Builder(this).setTitle("Cannot speed it up").setMessage(t)
                 .setPositiveButton("Got it", null).show()
         }
@@ -1466,13 +1488,18 @@ class WalletActivity : FragmentActivity() {
                 }
                 val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                 runOnUiThread {
+                    // Si la pantalla ya no existe (se salió o se recreó), no se muestra: el diálogo lanzaría
+                    // BadTokenException y nadie contestaría nunca.
+                    if (isFinishing || isDestroyed) { seguir.offer(false); return@runOnUiThread }
                     AlertDialog.Builder(this).setTitle("Speed up the send?").setMessage(resumen)
                         .setCancelable(false)
                         .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
                         .setPositiveButton("Speed up") { _, _ -> seguir.offer(true) }
                         .show()
                 }
-                if (!seguir.take()) return@Thread
+                // Con tope: sin él, un diálogo que se pierde (rotación, tema) dejaba este hilo esperando
+                // para siempre, reteniendo la Activity y la frase semilla.
+                if (seguir.poll(5, java.util.concurrent.TimeUnit.MINUTES) != true) return@Thread
 
                 // Tipo de la clave de origen, para firmar con esa dirección si es una WIF.
                 val tipoOrigen = tipoWif(addrSnap.entries.firstOrNull { it.value == origen }?.key ?: "wif_0")
@@ -2115,18 +2142,25 @@ class WalletActivity : FragmentActivity() {
 
         chipMax.setOnClickListener {
             val addrDe = addresses[keys[fromIdx]] ?: return@setOnClickListener
+            // Lo que había elegido el usuario al pulsar: la respuesta puede llegar con otro origen elegido,
+            // y se leen aquí (en el hilo de la interfaz) las monedas a mano y las salidas extra.
+            val claveOrigen = keys[fromIdx]
+            val manual = selectedUtxos.toList()
+            val extrasSat = salidasExtraEnvio.sumOf { it.sat }
+            val extrasVb = salidasExtraEnvio.sumOf { it.vbytes() }
             tvStatus.text = "Checking the coins…"; tvStatus.setTextColor(TXT_SEC)
             Thread {
                 // Lo mismo que gastaría Enviar: las monedas elegidas a mano, o las
                 // confirmadas de la dirección. Con dos o más, la comisión crece con
                 // cada entrada; restar la de una sola dejaba el envío sin fondos.
-                val lista = ChainInfo.utxos(addrDe, isTestnet)
+                val lista = try { ChainInfo.utxos(addrDe, isTestnet) } catch (e: Exception) { null }
                 val usar: List<org.json.JSONObject>? = when {
-                    selectedUtxos.isNotEmpty() -> selectedUtxos.toList()
+                    manual.isNotEmpty() -> manual
                     lista != null -> lista.filter { it.optBoolean("confirmed", true) }
                     else -> null
                 }
                 runOnUiThread {
+                    if (keys[fromIdx] != claveOrigen) return@runOnUiThread   // eligió otro origen mientras tanto
                     if (usar == null) {
                         tvStatus.text = "Could not read the coins of that address."
                         tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
@@ -2141,9 +2175,10 @@ class WalletActivity : FragmentActivity() {
                         tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
                     }
                     // Sin salida de cambio: se manda todo. Entradas + destino + 11.
-                    val vs = inputVBytesDe(keys[fromIdx]) * usar.size +
-                             CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) + 11
-                    val max = usar.sumOf { it.optLong("value", 0L) } - rate * vs
+                    val vs = inputVBytesDe(claveOrigen) * usar.size +
+                             CoinSelector.outputVBytes(etTo.text.toString().trim().ifEmpty { "1" }) + extrasVb + 11
+                    // Las salidas extra también salen de aquí: «All» es lo que queda para el destino principal.
+                    val max = usar.sumOf { it.optLong("value", 0L) } - extrasSat - rate * vs
                     if (max <= CoinSelector.DUST) {
                         tvStatus.text = "The balance does not even cover the fee."
                         tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread
@@ -2642,6 +2677,7 @@ class WalletActivity : FragmentActivity() {
                     }
                     val seguir = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                     runOnUiThread {
+                        if (isFinishing || isDestroyed) { seguir.offer(false); return@runOnUiThread }
                         AlertDialog.Builder(this)
                             .setTitle(if (exportarPsbt) "Export as PSBT" else "Review the send")
                             .setMessage(if (exportarPsbt) resumen + "\n\nThe PSBT is not signed: another device " +
@@ -2651,7 +2687,7 @@ class WalletActivity : FragmentActivity() {
                             .setPositiveButton(if (exportarPsbt) "Export" else "Send") { _, _ -> seguir.offer(true) }
                             .show()
                     }
-                    if (!seguir.take()) {
+                    if (seguir.poll(5, java.util.concurrent.TimeUnit.MINUTES) != true) {
                         runOnUiThread {
                             tvStatus.text = "Send cancelled"; tvStatus.setTextColor(TXT_SEC)
                             btnSend.isEnabled = true
@@ -3206,6 +3242,7 @@ class WalletActivity : FragmentActivity() {
 
     private fun switchToWallet(onReady: () -> Unit) {
         salidasExtraEnvio.clear()
+        ultimoSaldoSat = -1L
         // Limpiar estado anterior. Lo que siga corriendo de la cartera anterior
         // se descarta: comprueba la generación antes de tocar nada.
         generacion++
@@ -3658,7 +3695,9 @@ class WalletActivity : FragmentActivity() {
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
             if (av && !isTestnet) "Verify with the network" else null,
-            "Change PIN", if (av) "Toggle Testnet" else null, "Fiat currency",
+            // En testnet se ofrece siempre, aunque el modo avanzado esté apagado: si no, quien lo activó y
+            // luego lo apagó se quedaba en una red de pruebas sin forma de volver a mainnet.
+            "Change PIN", if (av || isTestnet) "Toggle Testnet" else null, "Fiat currency",
             if (av) "Backup vault" else null, if (av) "Restore from file" else null,
             "Delete wallet",
             if (av) "Advanced options: on (turn off)" else "Advanced options: off (turn on)",
@@ -3688,6 +3727,8 @@ class WalletActivity : FragmentActivity() {
                     "Export xpub" -> authenticate { mostrarXpubs() }
                     "Advanced options: on (turn off)", "Advanced options: off (turn on)" -> {
                         getSharedPreferences("hunter", MODE_PRIVATE).edit().putBoolean("modo_avanzado", !av).apply()
+                        // Al volver a la vista simple no pueden quedar cosas avanzadas que se enviarían sin verse.
+                        if (av) { salidasExtraEnvio.clear(); selectedUtxos.clear() }
                         Toast.makeText(this, if (av) "Simple view" else "Advanced options shown", Toast.LENGTH_SHORT).show()
                         buildUI()
                     }
@@ -3704,6 +3745,9 @@ class WalletActivity : FragmentActivity() {
                     "Change PIN" -> authenticate { showPinDialog(isSetup = true) {} }
                     "Toggle Testnet" -> {
                         isTestnet = !isTestnet
+                        // La dirección de una WIF se escribe distinta en cada red: se vuelve a derivar (una
+                        // vigilada pegada a mano tiene una red fija y no cambia).
+                        if (isWifMode && wifKey.isNotEmpty()) wifAddr = ""
                         // Hay que volver a derivar: en testnet la rama del árbol
                         // es otra (coin type 1'), así que las direcciones que se
                         // están enseñando no son las de esta red. Sin esto el

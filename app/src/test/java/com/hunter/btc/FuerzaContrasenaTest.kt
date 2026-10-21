@@ -34,4 +34,20 @@ class FuerzaContrasenaTest {
         val b = FuerzaContrasena.evaluar("kXm9qZ#tbWn!").bits
         assertTrue(b > a)
     }
+
+    /** Las contraseñas que el medidor anterior daba por buenas (82-91 bits) y que se rompen con un diccionario. */
+    @Test fun palabraMasAnioMasSimboloNoVale() {
+        assertFalse(FuerzaContrasena.aceptable("Barcelona2024!!"))
+        assertFalse(FuerzaContrasena.aceptable("MyDogName2020!"))
+        assertFalse(FuerzaContrasena.aceptable("purple monkey dishwasher"))
+        assertTrue(FuerzaContrasena.evaluar("Barcelona2024!!").bits < 45)
+    }
+
+    @Test fun unaFraseDeCincoPalabrasSiVale() {
+        assertTrue(FuerzaContrasena.aceptable("tiger window orange river candle"))
+    }
+
+    @Test fun aleatoriaLargaVale() {
+        assertTrue(FuerzaContrasena.aceptable("vQ7#nT2!xLp9@wRz"))
+    }
 }

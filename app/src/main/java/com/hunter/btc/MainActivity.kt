@@ -659,6 +659,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // queda igual de completo y el arranque queda limpio.
         var fase = "scan"
         try {
+            // Los dos ajustes guardados se leen ANTES de construir las pestañas: se leían después, y con «Direct
+            // key» guardado la pantalla mostraba BIP39 mientras el motor arrancaba en el otro modo, y con el
+            // watchdog activado la etiqueta decía OFF y un toque lo apagaba.
+            selectedScanMode = prefs.getInt("scan_mode", 0)
+            watchdogEnabled = prefs.getBoolean("watchdog", false)
             scanScroll = buildScanTab()
             fase = "puzzle"
             try {
@@ -2049,7 +2054,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 // Kangaroo: si sólo se escribía al arrancar, otra pantalla que
                 // leyera de aquí se quedaba con el puzzle anterior sin decir
                 // nada.
-                prefs.edit()
+                // Con un Kangaroo en marcha NO: esas preferencias son las de SU búsqueda (el servicio las
+                // lee para reanudarla tras un reinicio) y al abrir la app esta comprobación va sobre otro puzzle.
+                if (!(try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false })) prefs.edit()
                     .putString("kangaroo_pub", puzzlePubHex)
                     .putString("kangaroo_ini", puzzleIniHex)
                     .putString("kangaroo_fin", puzzleFinHex).apply()
@@ -2318,7 +2325,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         } catch (e: Throwable) {
             android.util.Log.e("MainActivity", "kangarooStart: ${e.message}", e); false
         }
-        if (ok) KangarooDueno.actual = KangarooDueno.PUZZLE
+        if (ok) {
+            KangarooDueno.actual = KangarooDueno.PUZZLE
+            // Kangaroo arrancado desde aquí no lo cuidaba ningún servicio: al salir de la app se congelaba
+            // el proceso sin wake lock ni freno térmico/de batería, y una clave hallada con la app cerrada
+            // sólo existía en la memoria del motor. El servicio es quien lo vigila y guarda el hallazgo.
+            try { startForegroundService(Intent(this, HunterService::class.java)) }
+            catch (ex: Exception) { try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {} }
+        }
         if (!ok) {
             /* kangarooStart exige que el extremo superior del rango tenga al
              * menos 8 bits (`if(bits<8) return JNI_FALSE` en hunter_jni.cpp).
@@ -2624,7 +2638,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             // es un hallazgo: no se guarda en el baúl ni se notifica —solo el
             // aviso rojo en pantalla—. Pasaba con rangos degenerados como el #1,
             // que llenaban el baúl de basura y spameaban notificaciones.
-            val esErronea = !esperada.isNullOrEmpty() && esperada != clave.lowercase()
+            // «Errónea» se juzgaba por el chip seleccionado en pantalla, que no es lo que el motor está
+            // atacando: una clave REAL de otra búsqueda se daba por falsa, no se guardaba y kangarooStop la
+            // borraba. Si la pública de esta clave es la pública objetivo del motor, es un hallazgo.
+            val pubObjetivo = prefs.getString("kangaroo_pub", "") ?: ""
+            val coincidePub = pubObjetivo.length == 66 &&
+                (try { HunterEngine.pubDeHex(clave) } catch (e: Throwable) { "" }).equals(pubObjetivo, ignoreCase = true)
+            val esErronea = !esperada.isNullOrEmpty() && esperada != clave.lowercase() && !coincidePub
             val primera = kgClavePintada != clave
             val opsFin = if (primera) (try { HunterEngine.kangarooOps() } catch (e: Throwable) { 0L }) else 0L
             val segFin = if (primera && kgInicio > 0)
@@ -3038,6 +3058,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         savePuzzleCheckpoint()
+        // La vigilancia del auto-avance de Kangaroo se reprograma sola: sin quitarla, cada vez que se salía
+        // quedaba un bucle vivo reteniendo esta Activity y llamando a sus campos ya destruidos.
+        try { handler.removeCallbacksAndMessages(KgAuto) } catch (e: Throwable) {}
         // Soltar las vistas del Weak-key para no filtrar esta Activity; la
         // auditoría NO se para (sigue viva en WeakController + WeakService).
         WeakController.desmontar(this)

@@ -63,6 +63,9 @@ class PubkeyToolsActivity : Activity() {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
         PantallaSegura.aplicar(this)
+        // Esta pantalla enseña claves privadas, WIF y partes de Shamir: sin capturas ni vista previa en
+        // recientes, tenga o no activado el ajuste general.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         Fiat.cargar(this) { }   // el precio, para enseñar el valor junto a los importes
         AppTheme.init(this)
         AppLock.init(this)

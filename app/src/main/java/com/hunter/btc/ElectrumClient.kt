@@ -114,16 +114,21 @@ object ElectrumClient {
         val sh = addrToScripthash(addr) ?: return null
         val arr = requestArrayOrNull("blockchain.scripthash.listunspent", listOf(sh), testnet)
             ?: return null
-        return arr.map {
-            JSONObject().apply {
-                put("txid",  it.getString("tx_hash"))
-                put("vout",  it.getInt("tx_pos"))
-                put("value", it.getLong("value"))
-                // Fuente ajena: el importe no se puede comprobar (ver ChainInfo.utxos).
-                put("src", "electrum")
-                put("confirmed", it.optInt("height", 0) > 0)
+        // Un servidor ajeno puede devolver cualquier cosa: una entrada sin tx_hash o con un valor que no es
+        // número lanzaba JSONException y tumbaba la app (el hilo de «All» no lo recogía). Se trata como si
+        // el servidor no hubiera respondido.
+        return try {
+            arr.map {
+                JSONObject().apply {
+                    put("txid",  it.getString("tx_hash"))
+                    put("vout",  it.getInt("tx_pos"))
+                    put("value", it.getLong("value"))
+                    // Fuente ajena: el importe no se puede comprobar (ver ChainInfo.utxos).
+                    put("src", "electrum")
+                    put("confirmed", it.optInt("height", 0) > 0)
+                }
             }
-        }
+        } catch (e: Exception) { null }
     }
 
     /**

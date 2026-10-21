@@ -96,10 +96,13 @@ object CoinSelector {
             acc.add(u); total += value(u)
             val vs = vsize(acc.size, true)
             val fee = feeRate * vs
-            if (total < amountSat + fee) continue
-            val change = total - amountSat - fee
-            if (change > DUST) return Plan(acc.toList(), fee, change, vs, "several inputs")
-            // El cambio sería polvo: probar a soltarlo como comisión.
+            if (total >= amountSat + fee) {
+                val change = total - amountSat - fee
+                if (change > DUST) return Plan(acc.toList(), fee, change, vs, "several inputs")
+            }
+            // Sin cambio: o el cambio sería polvo, o ni siquiera alcanza para pagar la salida de cambio.
+            // Antes este caso sólo se probaba si ya llegaba CON cambio, que es más caro: "All" (el máximo
+            // sin cambio) con 2 o más monedas daba "Not enough balance" teniendo fondos.
             val vs2 = vsize(acc.size, false)
             if (total >= amountSat + feeRate * vs2)
                 return Plan(acc.toList(), total - amountSat, 0L, vs2, "no change")

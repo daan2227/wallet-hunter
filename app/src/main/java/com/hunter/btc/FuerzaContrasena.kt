@@ -38,6 +38,40 @@ object FuerzaContrasena {
     /** Lo que cuesta, a un atacante, saber que usaste una de esas palabras. */
     private const val BITS_POR_PALABRA_COMUN = 12.0
 
+    /** Lo que cuesta, a un atacante, adivinar una palabra corriente: ~2,6 bits por letra (un diccionario de
+     *  decenas de miles de palabras da 15-17 bits para una de 6-8 letras), no los 4,7 de una letra al azar. */
+    private const val BITS_POR_LETRA_DE_PALABRA = 2.6
+    /** Un año (19xx / 20xx) son ~7 bits, no los 13 de cuatro dígitos al azar. */
+    private const val BITS_ANIO = 7.0
+    private const val BITS_SEPARADOR = 3.0
+
+    private fun esVocal(c: Char) = c.lowercaseChar() in "aeiouáéíóú"
+
+    /** ¿Parece una palabra? Minúsculas, MAYÚSCULAS o Capitalizada, con una proporción normal de vocales. */
+    private fun parecePalabra(w: String): Boolean {
+        if (w.length < 3) return false
+        val forma = w.all { it.isLowerCase() } || w.all { it.isUpperCase() } ||
+                    (w[0].isUpperCase() && w.drop(1).all { it.isLowerCase() })
+        if (!forma) return false
+        val v = w.count { esVocal(it) }.toDouble() / w.length
+        return v in 0.2..0.6
+    }
+
+    /** Parte «MiPerroLoro» en «Mi», «Perro», «Loro»: cada trozo se juzga por separado. */
+    private fun palabras(run: String): List<String> {
+        val out = ArrayList<String>(); var ini = 0
+        for (i in 1 until run.length)
+            if (run[i - 1].isLowerCase() && run[i].isUpperCase()) { out.add(run.substring(ini, i)); ini = i }
+        out.add(run.substring(ini))
+        return out
+    }
+
+    /**
+     * Antes: caracteres distintos × log2(alfabeto). Eso daba 84 bits a «Barcelona2024!!» y 91 a «purple monkey
+     * dishwasher» (reales: ~30 y ~40), y las dos pasaban el mínimo: el fichero de copia sale del móvil y lo
+     * protege sólo esta contraseña. Ahora se trocea en palabras, años y símbolos, y lo que parece palabra o
+     * año cuesta lo que le cuesta a un atacante con diccionario; lo que no, cuenta por carácter al azar.
+     */
     fun evaluar(pw: String): Resultado {
         if (pw.isEmpty()) return Resultado(0.0, Nivel.DEBIL)
         // Las palabras sabidas no aportan el largo que parecen: se quitan del
@@ -57,10 +91,29 @@ object FuerzaContrasena {
             if (resto.any { !it.isLetterOrDigit() && it.code < 128 }) pool += 33
             if (resto.any { it.code > 127 }) pool += 30
             if (pool == 0) pool = 10
-            // Los caracteres repetidos aportan poco: cuentan un cuarto.
-            val distintos = resto.toSet().size
-            val repetidos = resto.length - distintos
-            bits += (distintos + repetidos * 0.25) * (ln(pool.toDouble()) / ln(2.0))
+            val porCaracter = ln(pool.toDouble()) / ln(2.0)
+            // Al azar: los repetidos aportan poco, cuentan un cuarto.
+            fun alAzar(t: String) = (t.toSet().size + (t.length - t.toSet().size) * 0.25) * porCaracter
+
+            var i = 0
+            while (i < resto.length) {
+                val c = resto[i]
+                var j = i + 1
+                val tipo = when { c.isLetter() -> 0; c.isDigit() -> 1; else -> 2 }
+                while (j < resto.length) {
+                    val d = resto[j]
+                    val t2 = when { d.isLetter() -> 0; d.isDigit() -> 1; else -> 2 }
+                    if (t2 != tipo) break
+                    j++
+                }
+                val run = resto.substring(i, j)
+                bits += when (tipo) {
+                    0 -> palabras(run).sumOf { w -> if (parecePalabra(w)) w.length * BITS_POR_LETRA_DE_PALABRA else alAzar(w) }
+                    1 -> if (run.length == 4 && (run.startsWith("19") || run.startsWith("20"))) BITS_ANIO else alAzar(run)
+                    else -> if (run.all { it == ' ' }) run.length * BITS_SEPARADOR else alAzar(run)
+                }
+                i = j
+            }
             if (tieneSecuencia(resto)) bits -= 10
         }
         bits = bits.coerceAtLeast(0.0)

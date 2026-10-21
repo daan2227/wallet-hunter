@@ -35,6 +35,17 @@ object WalletManager {
     private const val PREF_ADDRS = "wallet_addrs"
     private const val PBKDF2_ITER = 100000
 
+    /**
+     * La clave que YA existe, o excepción. Para LEER: crear una nueva en una ruta de lectura sobrescribe
+     * el alias si el Keystore devolvió «no existe» por un fallo pasajero, y lo que se cifró con la clave
+     * vieja queda irrecuperable. Crear sólo se hace al escribir (getOrCreateKey).
+     */
+    private fun claveExistente(alias: String): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        return (ks.getEntry(alias, null) as? KeyStore.SecretKeyEntry)?.secretKey
+            ?: throw java.security.KeyStoreException("la clave $alias no está en el Keystore")
+    }
+
     /* Keystore key hardware-backed */
     private fun getOrCreateKey(alias: String = KEY_ALIAS): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
@@ -119,6 +130,7 @@ object WalletManager {
     /**
      * @return true si la clave queda en la lista (también si ya estaba).
      */
+    @Synchronized
     fun saveWif(ctx: Context, wif: String, addr: String, name: String = "WIF Wallet",
                 origen: String? = null): Boolean {
         val lista = listWifs(ctx)
@@ -156,7 +168,7 @@ object WalletManager {
             val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return null
             return try {
                 val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-                cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS),
+                cipher.init(Cipher.DECRYPT_MODE, claveExistente(WIF_KEY_ALIAS),
                     GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
                 parseWifs(String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8))
             } catch (e: Exception) {
@@ -177,6 +189,7 @@ object WalletManager {
         }
         return legacy
     }
+    @Synchronized
     fun removeWif(ctx: Context, id: String) {
         val lista = leerWifs(ctx) ?: return   // sin poder leer, no se reescribe nada
         writeWifs(ctx, lista.filter { it.first != id })
@@ -192,6 +205,7 @@ object WalletManager {
     }
 
     // Watcher wallets: watch-only by address
+    @Synchronized
     fun saveWatcher(ctx: Context, addr: String, label: String, origen: String? = null) {
         if (listWatchers(ctx).any { it.second == addr }) return
         val id = "watch_${System.currentTimeMillis()}"
@@ -210,6 +224,7 @@ object WalletManager {
             if (p.size == 3) Triple(p[0], p[1], p[2]) else null
         }.distinctBy { it.second }
     }
+    @Synchronized
     fun removeWatcher(ctx: Context, id: String) {
         borrarOrigen(ctx, id)
         val list = listWatchers(ctx).filter { it.first != id }
@@ -242,7 +257,7 @@ object WalletManager {
         val (iv, enc) = SeedEnvelope.desempaquetar(inner) ?: return null
         return try {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, getOrCreateKey(), GCMParameterSpec(128, iv))
+            cipher.init(Cipher.DECRYPT_MODE, claveExistente(KEY_ALIAS), GCMParameterSpec(128, iv))
             String(cipher.doFinal(enc), Charsets.UTF_8)
         } catch(e: Exception) { null }
     }
@@ -338,7 +353,7 @@ object WalletManager {
         val c  = p.getString(PREF_USER_C,  null) ?: return ""
         val iv = p.getString(PREF_USER_IV, null) ?: return ""
         return try {
-            val dec = aesDecrypt(getOrCreateKey(PROFILE_ALIAS),
+            val dec = aesDecrypt(claveExistente(PROFILE_ALIAS),
                 Base64.decode(c, Base64.NO_WRAP), Base64.decode(iv, Base64.NO_WRAP)) ?: return ""
             String(dec, Charsets.UTF_8)
         } catch (e: Throwable) { "" }
@@ -515,6 +530,7 @@ object WalletManager {
             .putString(PREF_MAIN_NAME, n).apply()
     }
 
+    @Synchronized
     fun renameWallet(ctx: Context, id: String, name: String) {
         val n = limpiarNombre(name); if (n.isEmpty()) return
         val list = listWallets(ctx).map { if (it.first == id) Pair(it.first, n) else it }
@@ -523,6 +539,7 @@ object WalletManager {
             .apply()
     }
 
+    @Synchronized
     fun renameWif(ctx: Context, id: String, name: String) {
         val n = limpiarNombre(name); if (n.isEmpty()) return
         val lista = leerWifs(ctx) ?: return
@@ -532,6 +549,7 @@ object WalletManager {
         })
     }
 
+    @Synchronized
     fun renameWatcher(ctx: Context, id: String, label: String) {
         val n = limpiarNombre(label); if (n.isEmpty()) return
         val list = listWatchers(ctx).map { if (it.first == id) Triple(it.first, it.second, n) else it }
@@ -550,6 +568,7 @@ object WalletManager {
         }
     }
 
+    @Synchronized
     fun saveWallet(ctx: Context, id: String, name: String, mnemonic: String) {
         val k = claveSemilla ?: throw IllegalStateException("Unlock with the PIN before saving a seed")
         // Keystore propio de la cartera (como antes), y encima el sobre del PIN.
@@ -595,6 +614,7 @@ object WalletManager {
 
 
 
+    @Synchronized
     fun deleteWallet(ctx: Context, id: String) {
         borrarOrigen(ctx, id)
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
@@ -621,6 +641,7 @@ object WalletManager {
      *
      * @param id el que tendrá si se guarda al lado; "" es la principal.
      */
+    @Synchronized
     fun agregarSeed(ctx: Context, frase: String, nombreEscrito: String, origen: String?): SeedGuardada {
         val mn = Frase.canonica(frase)
         val nombre = limpiarNombre(nombreEscrito)
@@ -824,7 +845,9 @@ object WalletManager {
             if (!tmp.readBytes().contentEquals(bytes) || !tmp.renameTo(file)) {
                 tmp.delete(); return null
             }
-            BackupStore.prune(ctx)
+            // Si el baúl tenía una copia que no se pudo descifrar, las copias viejas pueden ser lo único que
+            // conserva esos hallazgos: no se poda ninguna.
+            if (!MatchVault.hayCopiaIlegible(ctx)) BackupStore.prune(ctx)
             file
         } catch (e: Exception) { null }
     }
@@ -893,11 +916,13 @@ object WalletManager {
                 }.filter { it.second.isNotEmpty() }
                 // Sin poder leer las que hay, escribir taparía todas: se omiten las
                 // de la copia (no cuentan como restauradas) y sigue con lo demás.
-                val actuales = if (restored.isNotEmpty()) leerWifs(ctx) else null
-                if (actuales != null) {
-                    writeWifs(ctx, (actuales + restored).distinctBy { it.second })
-                    restored.forEach { origenDe(it.first) }
-                    count += restored.size
+                synchronized(WalletManager) {
+                    val actuales = if (restored.isNotEmpty()) leerWifs(ctx) else null
+                    if (actuales != null) {
+                        writeWifs(ctx, (actuales + restored).distinctBy { it.second })
+                        restored.forEach { origenDe(it.first) }
+                        count += restored.size
+                    }
                 }
             }
 
@@ -906,16 +931,18 @@ object WalletManager {
                     val o = arr.getJSONObject(it)
                     Triple(o.optString("id"), o.optString("addr"), o.optString("label"))
                 }.filter { it.second.isNotEmpty() }
-                if (restored.isNotEmpty()) {
+                if (restored.isNotEmpty()) synchronized(WalletManager) {
                     // Esta rama guarda los watchers con el formato posicional
                     // ";;" / "~~~"; no existe aquí el escritor en JSON.
-                    val all = listWatchers(ctx) + restored
+                    val actuales = listWatchers(ctx)
+                    val nuevos = restored.filter { r -> actuales.none { it.second == r.second } }   // sin duplicar
+                    val all = actuales + nuevos
                     ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit()
                         .putString("watch_list",
                             all.joinToString(";;") { "${it.first}~~~${it.second}~~~${it.third}" })
-                        .apply()
-                    restored.forEach { origenDe(it.first) }
-                    count += restored.size
+                        .commit()
+                    nuevos.forEach { origenDe(it.first) }
+                    count += nuevos.size
                 }
             }
 
@@ -1012,8 +1039,12 @@ object WalletManager {
         val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
         val vueltas = if (nueva) { dis.skipBytes(4); dis.readInt() } else VUELTAS_COPIA_V1
         require(vueltas in 1..10_000_000)
-        val salt = ByteArray(dis.readInt()).also { dis.readFully(it) }
-        val iv   = ByteArray(dis.readInt()).also { dis.readFully(it) }
+        // Tamaños acotados: un fichero manipulado con un entero enorme pedía gigas y tumbaba la app con un
+        // OutOfMemoryError (que no es una Exception y no lo recogía nadie).
+        val nSalt = dis.readInt(); require(nSalt in 8..64)
+        val salt = ByteArray(nSalt).also { dis.readFully(it) }
+        val nIv = dis.readInt(); require(nIv in 12..16)
+        val iv   = ByteArray(nIv).also { dis.readFully(it) }
         val enc  = dis.readBytes()
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(javax.crypto.Cipher.DECRYPT_MODE, claveCopia(secreto, salt, vueltas),

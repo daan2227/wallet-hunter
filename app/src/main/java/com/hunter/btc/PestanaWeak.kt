@@ -1491,7 +1491,7 @@ object WeakController {
         val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
         if (clave.length == 64) {
             // Si no cabe en el baúl, el motor sigue con la clave y se reintenta: parar la perdería.
-            if (!guardar(clave)) return
+            if (!guardar(clave)) { programarTick(); return }   // reintento: el motor sigue con la clave
             hallados++
             opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
@@ -1506,7 +1506,7 @@ object WeakController {
             // justo entre las dos lecturas, se daba por "no encontrada". Se mira otra vez.
             clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
             if (clave.length == 64) {
-                if (!guardar(clave)) return
+                if (!guardar(clave)) { programarTick(); return }
                 hallados++
                 opsPrevias += ops
                 try { HunterEngine.kangarooStop() } catch (e: Throwable) {}

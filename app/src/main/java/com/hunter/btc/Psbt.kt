@@ -232,7 +232,7 @@ object Psbt {
         d.tx.ins.forEachIndexed { i, inp ->
             val recs = d.inputs[i]
             val wu = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x01 }
-            val amt = if (wu != null) { var v = 0L; for (k in 0 until 8) v = v or ((wu.value[k].toLong() and 0xFF) shl (8*k)); v } else -1L
+            val amt = if (wu != null && wu.value.size >= 8) { var v = 0L; for (k in 0 until 8) v = v or ((wu.value[k].toLong() and 0xFF) shl (8*k)); v } else -1L
             val sigs = recs.count { it.key.isNotEmpty() && it.key[0].toInt() == 0x02 }
             val det = (if (amt >= 0) "${btc(amt)} · " else "") + "$sigs sig"
             f.add("in #$i" to "${hex(rev(inp.txid))}:${inp.vout} · $det")
@@ -242,7 +242,7 @@ object Psbt {
         f.add("Locktime" to "${d.tx.locktime}")
         return f
     }
-    private fun btc(s: Long) = "%.8f".format(s / 1e8).trimEnd('0').trimEnd('.') + " BTC"
+    private fun btc(s: Long) = "%.8f".format(java.util.Locale.US, s / 1e8).trimEnd('0').trimEnd('.') + " BTC"
 
     private fun sighashLegacy(tx: Tx, idx: Int, scriptCodeHex: String): ByteArray {
         val b = ByteArrayOutputStream()

@@ -70,6 +70,12 @@ object MatchVault {
         val checkedTs: Long = 0L
     )
 
+    /** La clave si existe; null si no. Leer nunca la crea (ver WalletManager.claveExistente). */
+    private fun keyExistente(): SecretKey? {
+        val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        return (ks.getEntry(KEY_ALIAS, null) as? KeyStore.SecretKeyEntry)?.secretKey
+    }
+
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
         if (ks.containsAlias(KEY_ALIAS))
@@ -105,9 +111,18 @@ object MatchVault {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val encB64 = prefs.getString(PREF_ENC, null) ?: return emptyList()
         val ivB64  = prefs.getString(PREF_IV, null) ?: return emptyList()
+        // «La clave no existe» puede ser un fallo pasajero del Keystore: se insiste un poco antes de darlo por
+        // perdido (y entonces se aparta la copia, igual que si la etiqueta no cuadra).
+        var k = try { keyExistente() } catch (e: Exception) { null }
+        var intentos = 0
+        while (k == null && intentos++ < 3) {
+            try { Thread.sleep(150) } catch (e: InterruptedException) { break }
+            k = try { keyExistente() } catch (e: Exception) { null }
+        }
         try {
+            if (k == null) throw javax.crypto.AEADBadTagException("clave del baúl ausente")
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.DECRYPT_MODE, key(),
+            cipher.init(Cipher.DECRYPT_MODE, k,
                 GCMParameterSpec(128, Base64.decode(ivB64, Base64.NO_WRAP)))
             val json = String(cipher.doFinal(Base64.decode(encB64, Base64.NO_WRAP)), Charsets.UTF_8)
             fromJson(JSONArray(json))
@@ -118,9 +133,10 @@ object MatchVault {
             // nada más PARA SIEMPRE: cada hallazgo nuevo se quedaba en memoria. Se aparta la copia
             // ilegible (sin borrarla) y se sigue con un baúl nuevo.
             android.util.Log.e("MatchVault", "the vault cannot be decrypted with the current key: set aside")
+            val marca = System.currentTimeMillis()    // la misma para texto cifrado e IV: si no, el par no se reconstruye
             prefs.edit()
-                .putString("${PREF_ENC_PERDIDO}_${System.currentTimeMillis()}", encB64)
-                .putString("${PREF_IV_PERDIDO}_${System.currentTimeMillis()}", ivB64)
+                .putString("${PREF_ENC_PERDIDO}_$marca", encB64)
+                .putString("${PREF_IV_PERDIDO}_$marca", ivB64)
                 .remove(PREF_ENC).remove(PREF_IV).commit()
             emptyList()
         } catch (e: Exception) {
@@ -352,7 +368,10 @@ object MatchVault {
         fun field(name: String): String =
             Regex("""\b$name:(\S+)""").find(line)?.groupValues?.get(1) ?: ""
         val addr = field("ADDR")
-        if (addr.isEmpty()) return null
+        val priv = field("PRIV").ifEmpty { field("RAW") }.ifEmpty { field("HEX") }
+        // Sin dirección pero CON clave se conserva (add() ya admite entradas así): descartarla perdía una
+        // clave privada hallada, y recoger() ya la había sacado de la cola del motor.
+        if (addr.isEmpty() && priv.length != 64) return null
         return Entry(
             ts      = ts,
             source  = when {

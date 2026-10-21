@@ -44,7 +44,10 @@ class HunterService : Service() {
                 //
                 // Pararlo no pierde nada: kangarooStop() guarda la tabla de
                 // puntos distinguidos, que es donde está todo el trabajo.
-                if (batteryLevel < 15) {
+                // Enchufado no se pausa: con el móvil cargando al 12 % la pausa saltaba igual y avisaba de que
+                // había que cargarlo (Termico.bateriaBaja ya lo tenía en cuenta).
+                val enchufado = (intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+                if (batteryLevel < 15 && !enchufado) {
                     val bruta = HunterEngine.isRunning()
                     val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
                     if (bruta || kang) {
@@ -290,9 +293,18 @@ class HunterService : Service() {
                 if (clave.length == 64 && clave != ultimaClaveGuardada) {
                     // Sólo se da por guardada si de verdad quedó en el baúl: si no, se reintenta
                     // en la próxima vuelta (el motor sigue teniendo la clave).
-                    if (MatchVault.guardarClave(this@HunterService, clave, "kangaroo", "PUZZLE kangaroo"))
+                    if (MatchVault.guardarClave(this@HunterService, clave, "kangaroo", "PUZZLE kangaroo")) {
                         ultimaClaveGuardada = clave
-                    else android.util.Log.e("HunterService", "could not save the Kangaroo find; will retry")
+                        // Ya está a salvo: se para el motor y se apaga la bandera de «estaba corriendo»; si no,
+                        // BootReceiver o el reinicio por muerte del proceso volvían a lanzar una búsqueda ya
+                        // resuelta. Y se avisa, porque con la app cerrada no lo vería nadie.
+                        try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
+                        try {
+                            getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE).edit()
+                                .putBoolean("kangaroo_corriendo", false).apply()
+                        } catch (e: Throwable) {}
+                        try { sendMatchNotif(1, "") } catch (e: Throwable) {}
+                    } else android.util.Log.e("HunterService", "could not save the Kangaroo find; will retry")
                 }
             }
             if (kangOps >= 0) {
@@ -352,9 +364,21 @@ class HunterService : Service() {
                 Diagnostico.volcarLogcat(app)
             }
 
+            // Sin nada trabajando durante tres minutos y con la app cerrada el servicio se va: seguía en
+            // primer plano para siempre, con su bucle de 2 s y un proceso logcat cada 10 s.
+            if (!running && kangOps < 0) {
+                if (idleDesde == 0L) idleDesde = System.currentTimeMillis()
+                else if (System.currentTimeMillis() - idleDesde > 180_000L && !AppLock.appVisible()) {
+                    try { stopForeground(true) } catch (e: Throwable) {}
+                    stopSelf()
+                    return
+                }
+            } else idleDesde = 0L
+
             handler.postDelayed(this, 2000L)
         }
     }
+    private var idleDesde = 0L
 
     /**
      * El escalon termico ha cambiado: decirlo y, si toca, parar.

@@ -29,7 +29,7 @@ object TxDecoder {
         return o
     }
     private fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-    private fun satsABtc(s: Long) = "%.8f".format(s / 1e8).trimEnd('0').trimEnd('.')
+    private fun satsABtc(s: Long) = "%.8f".format(java.util.Locale.US, s / 1e8).trimEnd('0').trimEnd('.')
 
     private fun tipoSpk(spk: String): String = when {
         spk.startsWith("76a914") && spk.endsWith("88ac") && spk.length == 50 -> "P2PKH"

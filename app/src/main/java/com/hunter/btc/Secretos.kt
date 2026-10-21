@@ -25,8 +25,10 @@ object Secretos {
      * y puede llevar una clave sin querer: un log, un informe.
      */
     fun tachar(text: String): String =
-        text.replace(Regex("""\b[0-9a-fA-F]{64}\b"""), "[hex-hidden]")
-            .replace(Regex("""\b[5KL][1-9A-HJ-NP-Za-km-z]{50,51}\b"""), "[wif-hidden]")
+        // Hex de 64 o más (las partes de Shamir llevan prefijo y miden 68; «0x…» no tiene frontera \b antes
+        // del primer dígito, por eso se miran los vecinos en vez de \b) y WIF de mainnet y de testnet.
+        text.replace(Regex("""(?<![0-9a-fA-F])[0-9a-fA-F]{64,}(?![0-9a-fA-F])"""), "[hex-hidden]")
+            .replace(Regex("""\b[5KLc9][1-9A-HJ-NP-Za-km-z]{50,51}\b"""), "[wif-hidden]")
             .replace(Regex("""\b(xprv|yprv|zprv|tprv)[1-9A-HJ-NP-Za-km-z]{50,}"""), "[xprv-hidden]")
 
     /** Lo que tarda en borrarse del portapapeles una clave copiada. */

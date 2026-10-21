@@ -120,7 +120,12 @@ object BtcAddress {
             if (lower.length < 14 || lower.length > 90)
                 return Result.Invalid("Invalid length for a Bech32 address")
             val sep = lower.lastIndexOf('1')
+            // El separador es el ÚLTIMO '1'. Con él al final (una dirección a la que se le teclea un 1 de más)
+            // no queda parte de datos y leer su primer valor lanzaba una excepción que tumbaba la app al
+            // escribir en el campo de destino; y un prefijo que no sea "bc" ni "tb" no es una dirección.
+            if (sep < 1) return Result.Invalid("Invalid Bech32 address")
             val hrp = lower.substring(0, sep)
+            if (hrp != "bc" && hrp != "tb") return Result.Invalid("Invalid Bech32 address")
             val isTestAddr = hrp == "tb"
             if (isTestAddr != testnet)
                 return Result.Invalid(
@@ -129,6 +134,7 @@ object BtcAddress {
 
             val dataPart = lower.substring(sep + 1).map { BECH32_CHARSET.indexOf(it) }
             if (dataPart.any { it < 0 }) return Result.Invalid("Invalid character in the address")
+            if (dataPart.size < 7) return Result.Invalid("Invalid length for a Bech32 address")   // versión + 6 de suma
 
             val chk = polymod(hrpExpand(hrp) + dataPart)
             val witVer = dataPart[0]
