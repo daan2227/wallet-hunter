@@ -98,6 +98,20 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
     boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
 
+    // ── Dataset del Scanner desde el nodo ─────────────────────────────────
+    val cDs = Ui.card(this)
+    page.addView(cDs)
+    etiqueta(cDs, "Scanner dataset from your node")
+    texto(cDs, "Turns the set of unspent coins into the address index the Scanner uses (a .bin of about 1.5 GB), " +
+        "always up to date and built on this phone: nothing is downloaded from anyone. It reads the snapshot file " +
+        "you loaded, or asks the node for a fresh copy. It takes a while and needs about 4 GB free for the work " +
+        "(14 GB if the node makes a fresh copy).", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    val barraDs = barra(cDs)
+    val tvDs = texto(cDs, "", AppTheme.TXT_PRI)
+    val btnDsSnap = boton(cDs, "Build it from the snapshot file")
+    val btnDsDump = boton(cDs, "Ask the node for a fresh copy and build it")
+    val btnDsCancel = boton(cDs, "Cancel", 42).apply { visibility = View.GONE }
+
     // ── Ajustes y poda ────────────────────────────────────────────────────
     val cAj = Ui.card(this)
     page.addView(cAj)
@@ -392,6 +406,90 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     }
 
     // ── Acciones ──────────────────────────────────────────────────────────
+    // ── Dataset del Scanner ───────────────────────────────────────────────
+    var cancelDs: ConversorUtxo.Cancelar? = null
+    fun ocupadoDs(si: Boolean, txt: String = "") = runOnUiThread {
+        btnDsSnap.isEnabled = !si; btnDsDump.isEnabled = !si
+        btnDsSnap.alpha = if (si) .4f else 1f; btnDsDump.alpha = btnDsSnap.alpha
+        barraDs.visibility = if (si) View.VISIBLE else View.GONE
+        btnDsCancel.visibility = if (si) View.VISIBLE else View.GONE
+        tvDs.text = txt
+    }
+    fun progresoDs(fase: Int, parte: Long, total: Long) = runOnUiThread {
+        barraDs.isIndeterminate = total <= 0
+        if (total > 0) barraDs.progress = (parte * 1000 / total).toInt().coerceIn(0, 1000)
+        tvDs.text = if (fase == 1) "Reading the coins… %,d of %,d".format(parte, total) else "Sorting… ${parte * 100 / total.coerceAtLeast(1)} %"
+    }
+    fun usarEnScanner(f: java.io.File) = runOnUiThread {
+        android.app.AlertDialog.Builder(act).setTitle("Dataset ready")
+            .setMessage("${f.name} · ${CoreConfig.bytes(f.length())}\nUse it in the Scanner now? It replaces the current dataset.")
+            .setPositiveButton("Use it") { _, _ ->
+                if (HunterEngine.isRunning() || HunterEngine.isLoading()) {
+                    Toast.makeText(act, "Stop the scan before loading another dataset", Toast.LENGTH_LONG).show()
+                } else {
+                    csvPath = f.absolutePath
+                    prefs.edit().putString("csvPath", csvPath).apply()
+                    HunterEngine.loadCsv(csvPath)
+                    Toast.makeText(act, "Loading ${f.name} in the Scanner", Toast.LENGTH_LONG).show()
+                }
+            }.setNegativeButton("Later", null).show()
+    }
+    fun convertirDs(origen: java.io.File, borrar: Boolean) {
+        val cab = CoreSnapshot.cabecera(origen)
+        if (cab == null) { aviso("That is not a UTXO snapshot."); return }
+        val dir = act.getExternalFilesDir(null) ?: act.filesDir
+        if (dir.usableSpace < 4L shl 30) { aviso("Free at least 4 GB first (free: ${CoreConfig.bytes(dir.usableSpace)})."); return }
+        val nombre = "utxo-" + (CoreConfig.alturaAceptada(cab.base)?.toString()
+            ?: java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date())) + ".bin"
+        val c = ConversorUtxo.Cancelar(); cancelDs = c
+        ocupadoDs(true, "Starting…")
+        Thread {
+            var fin = ""
+            var listo: java.io.File? = null
+            try {
+                val destino = java.io.File(dir, nombre)
+                val r = ConversorUtxo.convertir(origen, destino, java.io.File(CoreNodo.datadir(act), "utxo_tmp"), c) { f, p, t -> progresoDs(f, p, t) }
+                if (r == null) fin = "Cancelled."
+                else {
+                    listo = destino
+                    fin = "%,d addresses from %,d coins\n1…: %,d · bc1q: %,d · 3…: %,d · bc1p/wsh: %,d".format(r.entradas, r.monedas,
+                        r.porTipo[0], r.porTipo[1], r.porTipo[2], r.porTipo[3])
+                    if (borrar) origen.delete()
+                }
+            } catch (e: ConversorUtxo.FormatoInvalido) { fin = "Could not read the file: ${e.message}" }
+              catch (e: java.io.IOException) { fin = "Disk error: ${e.message}" }
+              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+            cancelDs = null
+            ocupadoDs(false, fin)
+            listo?.let { usarEnScanner(it) }
+            runOnUiThread { refrescar() }
+        }.start()
+    }
+    btnDsCancel.setOnClickListener { cancelDs?.cancelado = true }
+    btnDsSnap.setOnClickListener {
+        val f = CoreNodo.snapshot(act)
+        if (!f.isFile) { aviso("There is no snapshot file. Pick one in the snapshot card, or ask the node for a fresh copy."); return@setOnClickListener }
+        convertirDs(f, false)
+    }
+    btnDsDump.setOnClickListener {
+        if (ultimo == null) { aviso("Start the node and let it answer first."); return@setOnClickListener }
+        val dir = CoreNodo.datadir(act)
+        if (dir.usableSpace < 14L shl 30) { aviso("A fresh copy needs about 14 GB free (free: ${CoreConfig.bytes(dir.usableSpace)})."); return@setOnClickListener }
+        ocupadoDs(true, "The node is writing a copy of its coins… this takes several minutes")
+        barraDs.isIndeterminate = true
+        Thread {
+            val ruta = java.io.File(dir, "utxo_dump.dat")
+            val err = try {
+                ruta.delete()
+                CoreNodo.rpc(act).llamar("dumptxoutset", JSONArray().put("utxo_dump.dat").put("latest"), 120 * 60_000)
+                null
+            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            if (err != null || !ruta.isFile) { ocupadoDs(false, err ?: "The node did not write the file."); return@Thread }
+            ocupadoDs(false)
+            runOnUiThread { convertirDs(ruta, true) }
+        }.start()
+    }
+
     btnNodo.setOnClickListener {
         if (CoreNodo.binario(act) == null) { aviso("This build does not include Bitcoin Core."); return@setOnClickListener }
         if (enMarcha() || ultimo != null) {
