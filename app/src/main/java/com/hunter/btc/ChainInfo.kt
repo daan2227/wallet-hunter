@@ -46,7 +46,7 @@ object ChainInfo {
      * salía a ciegas.
      */
     fun fees(testnet: Boolean = false): Fees? =
-        feesFromMempool(testnet) ?: feesFromElectrum(testnet)
+        feesFromMempool(testnet) ?: feesFromEsplora(testnet) ?: feesFromElectrum(testnet)
 
     private fun feesFromMempool(testnet: Boolean): Fees? = try {
         // Sólo mempool.space tiene /v1/fees/recommended; Esplora a secas no.
@@ -62,6 +62,21 @@ object ChainInfo {
         ).takeIf { it.fastest > 0 && it.hour > 0 && it.fastest <= TARIFA_MAX && it.halfHour <= TARIFA_MAX }
     } catch (e: Exception) {
         android.util.Log.w("ChainInfo", "fees via mempool.space failed: ${e.message}"); null
+    }
+
+    /**
+     * Esplora a secas (blockstream.info): `/fee-estimates`, un objeto "bloques" -> sat/vB.
+     * Es el respaldo cuando mempool.space no responde, antes de pasar a Electrum.
+     */
+    private fun feesFromEsplora(testnet: Boolean): Fees? = try {
+        val o = JSONObject(ChainApi.get("/fee-estimates", testnet) ?: throw java.io.IOException("no answer"))
+        val est = HashMap<Int, Double>()
+        for (k in o.keys()) k.toIntOrNull()?.let { est[it] = o.optDouble(k, Double.NaN) }
+        Tarifas.desdeEsplora(est, TARIFA_MAX)?.let {
+            Fees(fastest = it.fastest, halfHour = it.halfHour, hour = it.hour, economy = it.economy, minimum = 1)
+        }
+    } catch (e: Exception) {
+        android.util.Log.w("ChainInfo", "fees via Esplora failed: ${e.message}"); null
     }
 
     /**
