@@ -1164,7 +1164,7 @@ object WeakController {
             }
             for (i in 1 until lines.size) {
                 val ln = lines[i]; if (ln.contains("|")) { val priv = ln.substringAfter("|").trim()
-                    if (priv.length == 64 && vistos.add(priv)) guardar(priv) }
+                    if (priv.length == 64 && vistos.add(priv) && !guardar(priv)) vistos.remove(priv) }
             }
             val ahora = System.currentTimeMillis()
             val dt = (ahora - ultMs) / 1000.0
@@ -1490,8 +1490,9 @@ object WeakController {
         var clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
         if (clave.length == 64) {
+            // Si no cabe en el baúl, el motor sigue con la clave y se reintenta: parar la perdería.
+            if (!guardar(clave)) return
             hallados++
-            guardar(clave)
             opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
             refresco(0.0, 100)
@@ -1505,8 +1506,8 @@ object WeakController {
             // justo entre las dos lecturas, se daba por "no encontrada". Se mira otra vez.
             clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
             if (clave.length == 64) {
+                if (!guardar(clave)) return
                 hallados++
-                guardar(clave)
                 opsPrevias += ops
                 try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
                 refresco(0.0, 100)
@@ -1571,22 +1572,15 @@ object WeakController {
         barraProg?.set(f); anilloCard?.set(f)
     }
 
-    private fun guardar(claveHex: String) {
-        val ctx = appCtx ?: return
-        var addr = ""; var wif = ""
-        try {
-            val d = HunterEngine.datosDeClave(claveHex)
-            if (d.contains("|")) { wif = d.substringBefore("|"); addr = d.substringAfter("|") }
-        } catch (e: Throwable) {}
-        try {
-            MatchVault.add(ctx, MatchVault.Entry(
-                ts = System.currentTimeMillis(), source = "weak-key",
-                addr = addr, wif = wif, privHex = claveHex, btc = 0.0,
-                extra = "WEAKKEY audit ($bits-bit range)", checkedTs = 0L))
-        } catch (e: Exception) {}
-        try {
+    /** true sólo si la clave quedó dentro del baúl; si no, no se avisa de que está guardada. */
+    private fun guardar(claveHex: String): Boolean {
+        val ctx = appCtx ?: return false
+        val ok = MatchVault.guardarClave(ctx, claveHex, "weak-key", "WEAKKEY audit ($bits-bit range)")
+        if (ok) try {
             Avisos.hallazgo(ctx, "Weak key found!", "A key was in the audited range. In the finds vault.")
         } catch (e: Throwable) {}
+        else aviso("Weak key found, but it could not be saved to the vault yet. Retrying — do not close the app.")
+        return ok
     }
 
     private fun aviso(t: String) { tvEstado?.text = t }

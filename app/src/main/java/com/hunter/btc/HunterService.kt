@@ -288,16 +288,11 @@ class HunterService : Service() {
             if (!AppLock.appVisible() && KangarooDueno.actual != KangarooDueno.WEAK) {
                 val clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
                 if (clave.length == 64 && clave != ultimaClaveGuardada) {
-                    ultimaClaveGuardada = clave
-                    try {
-                        val d = HunterEngine.datosDeClave(clave)
-                        MatchVault.add(this@HunterService, MatchVault.Entry(
-                            ts = System.currentTimeMillis(), source = "kangaroo",
-                            addr = d.substringAfter("|", ""), wif = d.substringBefore("|", ""),
-                            privHex = clave, btc = 0.0, extra = "PUZZLE kangaroo", checkedTs = 0L))
-                    } catch (e: Throwable) {
-                        android.util.Log.e("HunterService", "could not save the Kangaroo find: ${e.message}")
-                    }
+                    // Sólo se da por guardada si de verdad quedó en el baúl: si no, se reintenta
+                    // en la próxima vuelta (el motor sigue teniendo la clave).
+                    if (MatchVault.guardarClave(this@HunterService, clave, "kangaroo", "PUZZLE kangaroo"))
+                        ultimaClaveGuardada = clave
+                    else android.util.Log.e("HunterService", "could not save the Kangaroo find; will retry")
                 }
             }
             if (kangOps >= 0) {

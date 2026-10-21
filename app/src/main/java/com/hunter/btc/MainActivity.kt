@@ -2631,8 +2631,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 kgSegPrevios + (System.currentTimeMillis() - kgInicio) / 1000 else 0L
             // Guardar ANTES de tocar la interfaz: si la app muere aquí, la clave
             // no puede perderse. Una clave errónea no se guarda.
-            if (!esErronea)
-                guardarHallazgoKangaroo(clave, if (puzzleSeleccionado <= 0) "CUSTOM kangaroo" else "PUZZLE kangaroo")
+            if (!esErronea && !guardarHallazgoKangaroo(clave, if (puzzleSeleccionado <= 0) "CUSTOM kangaroo" else "PUZZLE kangaroo")) {
+                // No cabe en el baúl (¿bloqueado?): el motor SIGUE con la clave y se reintenta en el
+                // próximo refresco. Parar aquí la perdería, porque después de parar ya no la devuelve.
+                tv.text = "Key found, but it could not be saved to the vault yet. Retrying — do not close the app."
+                tv.setTextColor(AppTheme.WARN)
+                return
+            }
             HunterEngine.kangarooStop()
             if (!primera) return
             kgClavePintada = clave
@@ -2865,23 +2870,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * Si la derivación fallara se guarda igual con lo que haya: perder la clave
      * por no poder adornarla sería mucho peor que una entrada incompleta.
      */
-    internal fun guardarHallazgoKangaroo(claveHex: String, deDonde: String) {
-        var addr = ""; var wif = ""
-        try {
-            val d = HunterEngine.datosDeClave(claveHex)
-            if (d.contains("|")) { wif = d.substringBefore("|"); addr = d.substringAfter("|") }
-        } catch (e: Throwable) {
-            android.util.Log.w("MainActivity", "datosDeClave: ${e.message}")
-        }
-        try {
-            MatchVault.add(this, MatchVault.Entry(
-                ts = System.currentTimeMillis(), source = "kangaroo",
-                addr = addr, wif = wif, privHex = claveHex, btc = 0.0,
-                extra = deDonde, checkedTs = 0L))
-        } catch (e: Exception) {
-            android.util.Log.e("MainActivity", "could not save: ${e.message}", e)
-        }
-    }
+    internal fun guardarHallazgoKangaroo(claveHex: String, deDonde: String): Boolean =
+        MatchVault.guardarClave(this, claveHex, "kangaroo", deDonde)
 
     internal fun applyPuzzle(p: PuzzleInfo) {
         etRangeStart?.setText(p.start)

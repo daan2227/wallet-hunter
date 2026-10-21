@@ -371,6 +371,37 @@ object MatchVault {
         }
     }
 
+    /**
+     * Guarda una clave encontrada por Kangaroo o por la auditoría de claves débiles: deriva su
+     * dirección y su WIF y la escribe en el baúl a disco antes de volver.
+     *
+     * @return true SÓLO si la clave queda realmente dentro del baúl (también si ya estaba).
+     *   Quien llama no debe parar el motor ni dar el hallazgo por guardado si devuelve false:
+     *   la clave sigue en el motor y se reintenta.
+     */
+    fun guardarClave(ctx: Context, claveHex: String, source: String, extra: String): Boolean {
+        var addr = ""; var wif = ""
+        try {
+            val d = HunterEngine.datosDeClave(claveHex)
+            if (d.contains("|")) { wif = d.substringBefore("|"); addr = d.substringAfter("|") }
+        } catch (t: Throwable) {
+            // Si la derivación falla se guarda igual con la clave: perderla sería peor.
+            android.util.Log.w("MatchVault", "datosDeClave: ${t.message}")
+        }
+        return try {
+            add(ctx, listOf(Entry(ts = System.currentTimeMillis(), source = source, addr = addr, wif = wif,
+                privHex = claveHex, btc = 0.0, extra = extra, checkedTs = 0L)), seguro = true)
+            val dentro = leer(ctx)?.any {
+                it.privHex.equals(claveHex, ignoreCase = true) || (addr.isNotEmpty() && it.addr == addr)
+            } == true
+            if (dentro) alGuardar(ctx, Entry(System.currentTimeMillis(), source, addr, wif, claveHex, 0.0, extra, 0L))
+            dentro
+        } catch (t: Throwable) {
+            android.util.Log.e("MatchVault", "could not store a key: ${t.javaClass.simpleName}")
+            false
+        }
+    }
+
     // ── Pasar hallazgos a la cartera ─────────────────────────────────────────
 
     private const val PREFS_CFG = "match_vault_cfg"
