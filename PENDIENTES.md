@@ -2,6 +2,13 @@
 
 ## Implementado (sin probar en un teléfono)
 
+- **Vista simple por defecto.** La cartera enseña lo corriente: crear o importar una
+  seed, enviar (con las tres tarifas), recibir, historial, saldo, PIN, moneda, ver la
+  seed y borrar. Lo demás está detrás de "Advanced options" (menú): varias salidas,
+  OP_RETURN, PSBT, control de monedas, tarifa a mano, acelerar con hija (CPFP), CSV,
+  xpub, cuentas, testnet, WIF y cartera vigilada, copia en baúl y restaurar de fichero,
+  y la verificación con la red. No se ha borrado nada: sólo se esconde.
+
 - **Varios destinatarios y OP_RETURN.** "Add another output" en Enviar. El
   firmador recibe "outputs"; el OP_RETURN se prueba en el escritorio
   (`tools/ec-harness/opreturn.cpp`). La transacción de varias salidas no se ha

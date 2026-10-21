@@ -42,6 +42,15 @@ class WalletActivity : FragmentActivity() {
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    /**
+     * La cartera enseña por defecto lo que usa casi todo el mundo: crear o importar una
+     * seed, enviar, recibir, ver el historial y el saldo, el PIN y la copia de seguridad.
+     * Lo demás (varias salidas, OP_RETURN, PSBT, control de monedas, tarifa a mano, CPFP,
+     * CSV, xpub, cuentas, testnet, WIF, cartera vigilada, verificación con la red…) está
+     * detrás de "Advanced options" en el menú. Nada de eso se ha quitado: sólo se esconde.
+     */
+    private fun avanzado(): Boolean = getSharedPreferences("hunter", MODE_PRIVATE).getBoolean("modo_avanzado", false)
+
     /** Traduce una excepción de red al idioma de alguien que no la ha escrito. */
     private fun motivo(e: Exception): String = when {
         e is java.net.UnknownHostException ->
@@ -1032,7 +1041,7 @@ class WalletActivity : FragmentActivity() {
                         })
                         return@runOnUiThread
                     }
-                    ll.addView(TextView(this).apply {
+                    if (avanzado()) ll.addView(TextView(this).apply {
                         text = "Export as CSV"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
                         typeface = AppTheme.medium(context); gravity = Gravity.CENTER
                         setPadding(0, dp(6), 0, dp(10))
@@ -1193,7 +1202,7 @@ class WalletActivity : FragmentActivity() {
         // CPFP: un pago recibido sin confirmar se acelera gastándolo desde aquí
         // con una transacción hija de comisión alta. Las dos juntas pagan la tasa
         // que se quiera, aunque el padre no se pueda reemplazar.
-        if (!m.confirmado && m.neto > 0) {
+        if (avanzado() && !m.confirmado && m.neto > 0) {
             val child = boton("Speed up with a child (CPFP)", true).apply {
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
             }
@@ -1845,7 +1854,7 @@ class WalletActivity : FragmentActivity() {
         }
         pillMedida.addView(tvMedida)
         pillMedida.setOnClickListener { pedirTarifa() }
-        feeRow.addView(pillMedida)
+        if (avanzado()) feeRow.addView(pillMedida)
         ll.addView(side(feeRow, bottom = AppTheme.GAP))
 
         /* ── LO QUE VA A PASAR ─────────────────────────────────────────── */
@@ -1894,7 +1903,7 @@ class WalletActivity : FragmentActivity() {
         infoCard.addView(sep())
         infoCard.addView(infoRow(R.drawable.ic_clock, TXT_SEC,
             "You can raise the fee later", "Sent as replaceable (RBF)", null))
-        infoCard.addView(sep())
+        if (avanzado()) infoCard.addView(sep())
 
         // Coin Control estaba suelto como un botón más; es un detalle de esta
         // misma lista: de qué monedas sale.
@@ -1910,7 +1919,7 @@ class WalletActivity : FragmentActivity() {
             layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginStart = dp(8) }
         })
         rowCoinCtl.isClickable = true; rowCoinCtl.isFocusable = true
-        infoCard.addView(rowCoinCtl)
+        if (avanzado()) infoCard.addView(rowCoinCtl)
         ll.addView(side(infoCard, bottom = 20))
 
         /* ── TOTAL Y ACCIÓN ────────────────────────────────────────────── */
@@ -1978,11 +1987,10 @@ class WalletActivity : FragmentActivity() {
             isClickable = true; isFocusable = true
             setOnClickListener { dialogoSalidaExtra { pintarExtras() } }
         }
-        ll.addView(btnAnadirSalida)
-        ll.addView(tvExtras)
+        if (avanzado()) { ll.addView(btnAnadirSalida); ll.addView(tvExtras) }
         pintarExtras()
         // Exportar sin firmar: la misma revisión, y una PSBT para firmar en otro aparato.
-        ll.addView(TextView(this).apply {
+        if (avanzado()) ll.addView(TextView(this).apply {
             text = "Export as PSBT (sign on another device)"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
             typeface = AppTheme.medium(context); gravity = Gravity.CENTER
@@ -3359,7 +3367,13 @@ class WalletActivity : FragmentActivity() {
         val btnNew   = addBtn("Seed")
         val btnWif   = addBtn("WIF key")
         val btnWatch = addBtn("Watch", last = true)
-        btnRow.addView(btnNew); btnRow.addView(btnWif); btnRow.addView(btnWatch)
+        // Importar una seed es lo corriente; WIF y cartera vigilada, en las opciones avanzadas.
+        if (avanzado()) { btnRow.addView(btnNew); btnRow.addView(btnWif); btnRow.addView(btnWatch) }
+        else {
+            btnNew.layoutParams = LinearLayout.LayoutParams(0, dp(46), 1f)
+            btnNew.text = "Import a seed phrase"
+            btnRow.addView(btnNew)
+        }
         sheet.addView(btnRow)
 
         val dlg = AlertDialog.Builder(this).setView(scroll).setCancelable(true).create()
@@ -3562,12 +3576,17 @@ class WalletActivity : FragmentActivity() {
         val tieneClave = if (isWifMode) wifKey.isNotEmpty() else mnemonic.isNotEmpty()
         val alBaul = tieneClave && claveActual != null &&
                      WalletManager.esDelUsuario(WalletManager.origen(this, claveActual))
+        val av = avanzado()
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
-            if (!isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
-            if (!isWifMode && mnemonic.isNotEmpty()) "Account" else null,
-            if (alBaul) "Save to finds vault" else null,
-            if (!isTestnet) "Verify with the network" else null,
-            "Change PIN", "Toggle Testnet", "Fiat currency", "Backup vault", "Restore from file", "Delete wallet", "Cancel")
+            if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
+            if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
+            if (av && alBaul) "Save to finds vault" else null,
+            if (av && !isTestnet) "Verify with the network" else null,
+            "Change PIN", if (av) "Toggle Testnet" else null, "Fiat currency",
+            if (av) "Backup vault" else null, if (av) "Restore from file" else null,
+            "Delete wallet",
+            if (av) "Advanced options: on (turn off)" else "Advanced options: off (turn on)",
+            "Cancel")
         AlertDialog.Builder(this).setTitle("Options")
             .setItems(opciones.toTypedArray()) { _, pos ->
                 when (opciones[pos]) {
@@ -3591,6 +3610,11 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
+                    "Advanced options: on (turn off)", "Advanced options: off (turn on)" -> {
+                        getSharedPreferences("hunter", MODE_PRIVATE).edit().putBoolean("modo_avanzado", !av).apply()
+                        Toast.makeText(this, if (av) "Simple view" else "Advanced options shown", Toast.LENGTH_SHORT).show()
+                        buildUI()
+                    }
                     "Account" -> authenticate { elegirCuenta() }
                     "Verify with the network" -> VerificacionLigera.mostrar(this, ultimoSaldoSat) { scriptsDeCartera() }
                     "Fiat currency" -> {
