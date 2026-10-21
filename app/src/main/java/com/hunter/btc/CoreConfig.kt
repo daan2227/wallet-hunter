@@ -143,15 +143,16 @@ object CoreConfig {
     }
 
     /**
-     * Bloques en los que Core (v31.1) acepta un snapshot de la red principal: su hash va fijado en
+     * Bloques en los que Core (v32.0rc4) acepta un snapshot de la red principal: su hash va fijado en
      * chainparams.cpp. Hash del bloque base -> altura. Con otra versión de Core la lista cambia (v29.0 sólo
-     * trae 840000 y 880000), así que hay que revisarla al cambiar la etiqueta de core.yml.
+     * trae 840000 y 880000; v31.1, hasta 935000), así que hay que revisarla al cambiar la etiqueta de core.yml.
      */
     val SNAPSHOTS_ACEPTADOS: Map<String, Int> = linkedMapOf(
         "0000000000000000000320283a032748cef8227873ff4872689bf23f1cda83a5" to 840_000,
         "000000000000000000010b17283c3c400507969a9c2afd1dcf2082ec5cca2880" to 880_000,
         "0000000000000000000108970acb9522ffd516eae17acddcb1bd16469194a821" to 910_000,
-        "0000000000000000000147034958af1652b2b91bba607beacc5e72a56f0fb5ee" to 935_000)
+        "0000000000000000000147034958af1652b2b91bba607beacc5e72a56f0fb5ee" to 935_000,
+        "00000000000000000001595977e6000ce56129f5c9b4073e31ccc30b90b97da9" to 965_000)
 
     /** Altura si [base] es un bloque que este Core acepta; null si no. */
     fun alturaAceptada(base: String): Int? = SNAPSHOTS_ACEPTADOS[base.lowercase()]

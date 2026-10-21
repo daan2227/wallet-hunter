@@ -56,7 +56,8 @@ class CoreConfigTest {
     }
     @Test fun snapshotsAceptados() {
         assertEquals(910_000, CoreConfig.alturaAceptada("0000000000000000000108970ACB9522ffd516eae17acddcb1bd16469194a821"))
-        assertEquals(4, CoreConfig.SNAPSHOTS_ACEPTADOS.size)
+        assertEquals(5, CoreConfig.SNAPSHOTS_ACEPTADOS.size)
+        assertEquals(965_000, CoreConfig.alturaAceptada("00000000000000000001595977e6000ce56129f5c9b4073e31ccc30b90b97da9"))
         assertNull(CoreConfig.alturaAceptada("00".repeat(32)))
     }
     @Test fun urls() {

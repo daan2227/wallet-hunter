@@ -110,7 +110,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     etiqueta(cSn, "UTXO snapshot")
     texto(cSn, "With a snapshot the node starts from a recent set of coins and checks the old history in the " +
         "background, so it is usable in hours instead of days. Core only accepts snapshots whose hash is built " +
-        "into its code (blocks 840,000, 880,000, 910,000 and 935,000 of mainnet), so it does not matter where the " +
+        "into its code (blocks 840,000, 880,000, 910,000, 935,000 and 965,000 of mainnet), so it does not matter where the " +
         "file comes from. A snapshot taken at any other block is rejected. " +
         "Create one with `dumptxoutset` on a node you trust, or download one. The node must be running and " +
         "must already have the headers up to the snapshot's block.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)

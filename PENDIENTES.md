@@ -53,7 +53,7 @@
   ofrece directamente a nodos de la red (`P2pBroadcast`), sólo mainnet. Se da por buena
   cuando un nodo la pide y se ve propagar, o a los 15 s de haberla entregado.
 
-- **Pestaña Core (sin probar en un teléfono, binario aún sin compilar).** `bitcoind` de Bitcoin Core v31.1 como
+- **Pestaña Core (sin probar en un teléfono, binario aún sin compilar).** `bitcoind` de Bitcoin Core v32.0rc4 (candidata a versión, no la final: v32.0 aún no estaba etiquetada) como
   proceso hijo (libbitcoind.so, ejecutable desde el directorio de librerías nativas), podado, con RPC solo en
   127.0.0.1 y cookie en el almacén privado. Servicio en primer plano, Wi-Fi solo opcional, snapshot de UTXO
   (assumeutxo) desde fichero o por https, `loadtxoutset` y `pruneblockchain` desde la pantalla. El binario lo
@@ -61,7 +61,7 @@
   incluye si existe. Límites:
   - La receta de compilación para Android (Core v29 ya no trae `depends` de Android) no se ha ejecutado nunca: la primera ejecución puede fallar.
   - La fuente se baja por etiqueta de git, sin verificar la firma de los desarrolladores.
-  - Core sólo acepta snapshots cuyo hash está fijado en su código (mainnet: bloques 840000, 880000, 910000 y 935000 en v31.1; v29.0 sólo traía los dos primeros).
+  - Core sólo acepta snapshots cuyo hash está fijado en su código (mainnet: bloques 840000, 880000, 910000, 935000 y 965000 en v32.0rc4; v31.1 llega a 935000 y v29.0 a 880000).
   - Exige Android 9+ (API 28) y arm64; ocupa ~10 GB al final y varios días de descarga la primera vez sin snapshot.
   - Android 15 corta los servicios dataSync a las ~6 h: hay que volver a pulsar Start.
   - La cartera de la app todavía NO usa este nodo (saldo, UTXO, difusión y comisión siguen con el cliente ligero
