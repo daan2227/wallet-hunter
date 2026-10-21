@@ -76,6 +76,25 @@ jobs:
         # Boost son sólo cabeceras: se copian al prefijo para que el compilador cruzado las vea
         # (/usr/include no está en su ruta de búsqueda).
         mkdir -p prefijo/include && cp -r /usr/include/boost prefijo/include/
+        # Core v31 busca Boost en modo CONFIG (BoostConfig.cmake). El paquete del sistema lo trae en una
+        # ruta de x86_64 que el compilador cruzado no ve, así que se escribe uno mínimo con el objetivo
+        # Boost::headers, que es lo único que Core usa.
+        BV=$(sed -n 's/#define BOOST_LIB_VERSION "\(.*\)"/\1/p' prefijo/include/boost/version.hpp | tr _ .)
+        echo "Boost $BV"
+        mkdir -p prefijo/lib/cmake/Boost-$BV.0
+        cat > prefijo/lib/cmake/Boost-$BV.0/BoostConfigVersion.cmake <<EOF
+        set(PACKAGE_VERSION "$BV.0")
+        if(PACKAGE_FIND_VERSION VERSION_GREATER PACKAGE_VERSION)
+          set(PACKAGE_VERSION_COMPATIBLE FALSE)
+        else()
+          set(PACKAGE_VERSION_COMPATIBLE TRUE)
+        endif()
+        EOF
+        cat > prefijo/lib/cmake/Boost-$BV.0/BoostConfig.cmake <<EOF
+        add_library(Boost::headers INTERFACE IMPORTED)
+        set_target_properties(Boost::headers PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "\${CMAKE_CURRENT_LIST_DIR}/../../../include")
+        set(Boost_FOUND TRUE)
+        EOF
         find prefijo -name 'LibeventConfig.cmake' -o -name 'libevent*.a' | sort
 
     - name: Configurar
