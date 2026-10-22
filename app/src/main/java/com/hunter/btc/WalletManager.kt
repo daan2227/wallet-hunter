@@ -89,6 +89,59 @@ object WalletManager {
 
     fun olvidarClaveSemilla() { claveSemilla = null; claveBoveda = null }
 
+    // ── Desbloqueo con huella (opcional, a elección del usuario) ─────────────
+    //
+    // La clave del código se guarda cifrada con una clave del Keystore que sólo se puede usar tras una
+    // huella válida (HuellaDesbloqueo). Con ella activada, la huella abre la sesión igual que el código;
+    // sin ella, no hay nada guardado. Cambiar el código la desactiva: lo guardado era la clave anterior.
+
+    internal const val ALIAS_HUELLA = "wh_bio_v1"
+    private const val PREF_HUELLA_ENC = "bio_key_enc"
+    private const val PREF_HUELLA_IV = "bio_key_iv"
+
+    fun huellaActivada(ctx: Context): Boolean {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return p.contains(PREF_HUELLA_ENC) && p.contains(PREF_HUELLA_IV)
+    }
+
+    /** Los bytes de la clave del código de esta sesión (para sellarlos con la huella); null si no hay sesión. */
+    internal fun claveSemillaBytes(): ByteArray? = claveSemilla?.encoded
+
+    internal fun huellaGuardar(ctx: Context, enc: ByteArray, iv: ByteArray): Boolean =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_HUELLA_ENC, b64e(enc)).putString(PREF_HUELLA_IV, b64e(iv)).commit()
+
+    internal fun huellaClave(ctx: Context): Pair<ByteArray, ByteArray>? {
+        val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val e = p.getString(PREF_HUELLA_ENC, null) ?: return null
+        val i = p.getString(PREF_HUELLA_IV, null) ?: return null
+        return try { b64d(e) to b64d(i) } catch (x: IllegalArgumentException) { null }
+    }
+
+    fun huellaDesactivar(ctx: Context) {
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(PREF_HUELLA_ENC).remove(PREF_HUELLA_IV).commit()
+        try { KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }.deleteEntry(ALIAS_HUELLA) }
+        catch (e: Exception) { android.util.Log.w("WalletManager", "bio key delete: ${e.javaClass.simpleName}") }
+    }
+
+    /**
+     * Abre la sesión con la clave del código que devolvió la huella. Se comprueba contra el verificador
+     * guardado (igual que el código): una clave que no es la vigente no entra. Respeta la espera por intentos.
+     */
+    fun entrarConClave(ctx: Context, raw: ByteArray): Boolean {
+        if (esperaPin(ctx) > 0 || bioBloqueada(ctx)) return false
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val enc = b64d(prefs.getString(PREF_VER, null) ?: return false)
+        val iv = b64d(prefs.getString(PREF_VIV, null) ?: return false)
+        val clave = SecretKeySpec(raw, "AES")
+        val dec = aesDecrypt(clave, enc, iv) ?: return false
+        if (String(dec) != "wallet_ok") return false
+        claveSemilla = clave
+        abrirBoveda(ctx, clave)
+        return true
+    }
+
     /** Abre la clave de datos con la clave del código y la deja en memoria; luego pasa lo pendiente a los almacenes. */
     private fun abrirBoveda(ctx: Context, clave: SecretKey) {
         val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -413,6 +466,8 @@ object WalletManager {
           // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
           .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
         if (!ed.commit()) return false
+        // Lo que la huella guardaba era la clave del código anterior: ya no sirve.
+        if (huellaActivada(ctx)) huellaDesactivar(ctx)
         claveSemilla = nueva
         abrirBoveda(ctx, nueva)
         return true

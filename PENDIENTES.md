@@ -78,6 +78,15 @@
   - Dataset del Scanner desde el nodo: probado con un snapshot sintético, no con uno real de ~10 GB.
   - Las pruebas de CoreConfig y del conversor corren en la JVM; nada de esto se ha ejecutado en un teléfono.
 
+- **Desbloqueo con huella (opcional, sin probar en un teléfono).** Ajuste en Perfil → Fingerprint, apagado por
+  defecto; encenderlo pide el código y una huella. La clave que sale del código se sella con una clave del Keystore
+  que exige una huella válida por uso (biometría fuerte; en Android 11+ `setUserAuthenticationParameters(0, …)`).
+  La ofrecen las pantallas de entrada (cartera, baúl, volver a la app, mostrar saldos, exportar resumen) y NO las
+  acciones sensibles (ver la seed, cambiar el código, copias, restaurar, envíos grandes), que piden siempre el código.
+  Costes: con ella activa, quien pueda usar tu huella abre cartera y baúl sin el código; el «ni con root» del baúl
+  se mantiene (la clave sólo sale con una huella real) pero deja de depender sólo de lo que sabes. Cambiar el código
+  o las huellas registradas en el móvil la apaga. Tras 5 fallos de código, la huella queda vetada hasta un código bueno.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van

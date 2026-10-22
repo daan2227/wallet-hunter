@@ -106,7 +106,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             BottomBar.PUZZLE  -> goTab(PAG_PUZZLE)
             BottomBar.WALLET  -> {
                 if (WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid())
-                    PinAuthHelper.show(this) { ok -> if (ok) goTab(PAG_WALLET) }
+                    PinAuthHelper.show(this, permitirHuella = true) { ok -> if (ok) goTab(PAG_WALLET) }
                 else goTab(PAG_WALLET)
             }
             BottomBar.RECOVERY -> goTab(PAG_RECOVERY)
@@ -3054,7 +3054,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // nadie hubiera salido de la app. Ahora lo decide AppLock, que sabe la
         // diferencia entre cambiar de pantalla y dejar la app.
         if (WalletManager.hasPin(this) && !PinAuthHelper.isSessionValid()) {
-            PinAuthHelper.show(this) { ok -> if (!ok) finish() }
+            PinAuthHelper.show(this, permitirHuella = true) { ok -> if (!ok) finish() }
         }
         // Auto-reinicio: si el engine estaba corriendo pero el servicio fue matado
         checkAndRestartScan()

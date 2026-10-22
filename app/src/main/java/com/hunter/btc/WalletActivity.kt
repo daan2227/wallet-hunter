@@ -255,7 +255,7 @@ class WalletActivity : FragmentActivity() {
             }
             overlay.addView(lockIcon)
             (window.decorView as? android.view.ViewGroup)?.addView(overlay)
-            authenticate {
+            authenticate(huella = true) {
                 (window.decorView as? android.view.ViewGroup)?.removeView(overlay)
             }
         }
@@ -285,7 +285,7 @@ class WalletActivity : FragmentActivity() {
      */
     private fun conSesion(onSuccess: () -> Unit) {
         if (WalletManager.hasPin(this) && PinAuthHelper.isSessionValid()) onSuccess()
-        else authenticate(onSuccess)
+        else authenticate(huella = true, onSuccess = onSuccess)
     }
 
     /**
@@ -351,11 +351,11 @@ class WalletActivity : FragmentActivity() {
      * cada onResume de esta misma pantalla veria la sesion cerrada y pediria
      * la huella otra vez — un bucle, y justo el fallo que se viene a quitar.
      */
-    private fun authenticate(onSuccess: () -> Unit) {
+    private fun authenticate(huella: Boolean = false, onSuccess: () -> Unit) {
         // Mismo camino que el resto de la app: PIN, con la huella como tecla y
         // lanzamiento automático. Antes había una biometría propia aquí, y dos
         // sitios que decidían cuándo ofrecer la huella se desincronizaban.
-        PinAuthHelper.show(this, autoBiometric = true) { ok -> if (ok) onSuccess() else finish() }
+        PinAuthHelper.show(this, autoBiometric = true, permitirHuella = huella) { ok -> if (ok) onSuccess() else finish() }
     }
 
     /* -- PIN DIALOG -- */
