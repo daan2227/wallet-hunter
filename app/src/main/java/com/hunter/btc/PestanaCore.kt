@@ -109,6 +109,17 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "coinbase flag and confirmations. The public key is only known where the chain shows it before the coin is " +
         "spent (P2PK and Taproot). The date is worked out from the block height, so it can be off by a few hours. " +
         "It reads the snapshot file you loaded, or asks the node for a fresh copy.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
+    var pintarFiltro: () -> Unit = {}     // se asigna más abajo, cuando existe el filtro
+    val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
+    var minimoCsv = prefsMinimoCsv()
+    cCsv.addView(Ui.segmented(this, listOf("All" to null, "0.0001" to null, "0.001" to null, "0.01" to null, "0.1" to null, "1" to null),
+        initial = minimoCsv) { minimoCsv = it
+            getSharedPreferences("core", android.content.Context.MODE_PRIVATE).edit().putInt("csv_minimo", it).apply()
+            pintarFiltro() })
+    texto(cCsv, "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
+        "a higher minimum, fewer columns or a filter make it far smaller. It is written as " +
+        "it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     texto(cCsv, "What goes in the file", AppTheme.TXT_PRI)
     val prefsCore = act.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
     var columnasCsv: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.columnasDeTexto(prefsCore.getString("csv_cols", null))
@@ -151,17 +162,6 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 }
             }.setNegativeButton("Cancel", null).show()
     }
-    texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
-    var pintarFiltro: () -> Unit = {}     // se asigna más abajo, cuando existe el filtro
-    val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
-    var minimoCsv = prefsMinimoCsv()
-    cCsv.addView(Ui.segmented(this, listOf("All" to null, "0.0001" to null, "0.001" to null, "0.01" to null, "0.1" to null, "1" to null),
-        initial = minimoCsv) { minimoCsv = it
-            getSharedPreferences("core", android.content.Context.MODE_PRIVATE).edit().putInt("csv_minimo", it).apply()
-            pintarFiltro() })
-    texto(cCsv, "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
-        "a higher minimum, fewer columns or a filter make it far smaller. It is written as " +
-        "it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val barraCsv = barra(cCsv)
     val tvCsv = texto(cCsv, "", AppTheme.TXT_PRI)
     val btnCsvSnap = boton(cCsv, "Build it from the snapshot file")
