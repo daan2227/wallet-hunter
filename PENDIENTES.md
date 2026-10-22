@@ -76,8 +76,9 @@
   - Filtros BIP157 locales (+~10 GB): se sirven sólo en 127.0.0.1; el índice se construye junto a la comprobación de
     fondo y no se ha probado que funcione bien con poda y snapshot.
   - Dataset del Scanner desde el nodo: probado con un snapshot sintético, no con uno real de ~10 GB.
-  - Instantánea de UTXO en CSV (pestaña Core): todo el conjunto de la cadena con seis columnas (wallet = dirección, utxo,
-    funds_btc, wallet_type, public_key, tx_date), con importe mínimo, progreso y tiempo estimado. La clave pública sólo
+  - Instantánea de UTXO en CSV (pestaña Core): todo el conjunto de la cadena con las columnas que se elijan (dirección, utxo,
+    txid, vout, fondo en BTC o sat, tipo, clave pública, hash, script, altura, fecha, coinbase, confirmaciones; por
+    defecto las seis de siempre), filtro «sólo monedas con clave pública», importe mínimo, progreso y tiempo estimado. La clave pública sólo
     sale donde la cadena la muestra sin gastar (P2PK y Taproot). La fecha se calcula por altura con la hora de un
     bloque de cada 100 (error de horas). Con «All» son unos 190 M de filas (~25 GB), cálculo mío sin medir. Probado
     con un snapshot sintético, no con uno real.

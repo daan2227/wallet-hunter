@@ -103,18 +103,57 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val cCsv = Ui.card(this)
     page.addView(cCsv)
     etiqueta(cCsv, "UTXO snapshot (CSV)")
-    texto(cCsv, "Writes the unspent coins of the whole chain to a CSV file with six columns: wallet (the address), " +
-        "utxo (txid:vout), funds in BTC, wallet type, public key and the date of its transaction. The public key is " +
-        "only filled where the chain shows it before the coin is spent (P2PK and Taproot). The date is worked out " +
-        "from the block height, so it can be off by a few hours. It reads the snapshot file you loaded, or asks the " +
-        "node for a fresh copy.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    texto(cCsv, "Writes the unspent coins of the whole chain to a CSV file, with the columns you choose: the address, " +
+        "txid and output number, funds, wallet type, public key, key hash, locking script, block height, date, " +
+        "coinbase flag and confirmations. The public key is only known where the chain shows it before the coin is " +
+        "spent (P2PK and Taproot). The date is worked out from the block height, so it can be off by a few hours. " +
+        "It reads the snapshot file you loaded, or asks the node for a fresh copy.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    texto(cCsv, "What goes in the file", AppTheme.TXT_PRI)
+    val prefsCore = act.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
+    var columnasCsv: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.columnasDeTexto(prefsCore.getString("csv_cols", null))
+    var soloClaveCsv = prefsCore.getBoolean("csv_solo_clave", false)
+    val tvCols = texto(cCsv, "", AppTheme.TXT_SEC, AppTheme.SP_CAPTION, mono = true)
+    val btnCols = boton(cCsv, "Choose the columns…")
+    val btnFiltroClave = boton(cCsv, "")
+    fun pintarCols() {
+        tvCols.text = InstantaneaUtxo.cabecera(columnasCsv)
+        btnFiltroClave.text = if (soloClaveCsv) "Rows: only coins with a public key" else "Rows: all coins"
+        prefsCore.edit().putString("csv_cols", InstantaneaUtxo.columnasATexto(columnasCsv))
+            .putBoolean("csv_solo_clave", soloClaveCsv).apply()
+    }
+    pintarCols()
+    btnFiltroClave.setOnClickListener { soloClaveCsv = !soloClaveCsv; pintarCols() }
+    btnCols.setOnClickListener {
+        val Col = InstantaneaUtxo.Col
+        android.app.AlertDialog.Builder(act).setTitle("What goes in the CSV")
+            .setItems(arrayOf("The six usual columns", "Wallet and UTXO only",
+                              "Public keys only (skips coins without one)", "Choose the columns one by one…")) { _, i ->
+                when (i) {
+                    0 -> { columnasCsv = InstantaneaUtxo.PREDETERMINADAS; soloClaveCsv = false; pintarCols() }
+                    1 -> { columnasCsv = linkedSetOf(Col.WALLET, Col.UTXO); soloClaveCsv = false; pintarCols() }
+                    2 -> { columnasCsv = linkedSetOf(Col.CLAVE); soloClaveCsv = true; pintarCols() }
+                    else -> {
+                        val todas = Col.values()
+                        val marcadas = BooleanArray(todas.size) { todas[it] in columnasCsv }
+                        android.app.AlertDialog.Builder(act).setTitle("Columns")
+                            .setMultiChoiceItems(todas.map { it.texto }.toTypedArray(), marcadas) { _, k, on -> marcadas[k] = on }
+                            .setPositiveButton("OK") { _, _ ->
+                                val elegidas = todas.filterIndexed { k, _ -> marcadas[k] }
+                                if (elegidas.isEmpty()) Toast.makeText(act, "Choose at least one column", Toast.LENGTH_SHORT).show()
+                                else { columnasCsv = elegidas.toCollection(LinkedHashSet()); pintarCols() }
+                            }.setNegativeButton("Cancel", null).show()
+                    }
+                }
+            }.setNegativeButton("Cancel", null).show()
+    }
     texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
     val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
     var minimoCsv = 2
     cCsv.addView(Ui.segmented(this, listOf("All" to null, "0.0001" to null, "0.001" to null, "0.01" to null, "0.1" to null, "1" to null),
         initial = minimoCsv) { minimoCsv = it })
-    texto(cCsv, "There are about 190 million coins. With “All” the file is around 25 GB and takes hours; each step up " +
-        "makes it far smaller. It is written as it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    texto(cCsv, "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
+        "a higher minimum, fewer columns or “only coins with a public key” make it far smaller. It is written as " +
+        "it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val barraCsv = barra(cCsv)
     val tvCsv = texto(cCsv, "", AppTheme.TXT_PRI)
     val btnCsvSnap = boton(cCsv, "Build it from the snapshot file")
@@ -576,7 +615,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                     dir.listFiles()?.filter { it.name.startsWith("utxo_chain_") }?.forEach { it.delete() }
                     val destino = java.io.File(dir, "utxo_chain_${altura}_min${minimo}sat.csv")
                     val t0 = System.currentTimeMillis()
-                    val res = ExportadorUtxo.exportar(origen, destino, minimo, t, c) { a, b, f -> progresoCsv(2, a, b, f, t0) }
+                    val res = ExportadorUtxo.exportar(origen, destino, minimo, t, c, columnasCsv, soloClaveCsv) { a, b, f -> progresoCsv(2, a, b, f, t0) }
                     if (res == null) fin = "Cancelled."
                     else {
                         listo = destino

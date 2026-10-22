@@ -24,7 +24,7 @@ object ExportadorUtxo {
     const val PASO = 100L
 
     /** Altura -> hora, a partir de la hora de un bloque de cada [PASO] y de la punta. */
-    class TiempoDeBloques(private val horas: LongArray, private val tope: Long, private val horaTope: Long) {
+    class TiempoDeBloques(private val horas: LongArray, val tope: Long, private val horaTope: Long) {
         private val dias = arrayOfNulls<String>(30_000)
 
         fun segundos(h: Long): Long {
@@ -96,11 +96,18 @@ object ExportadorUtxo {
 
     /**
      * @param minimoSat sólo se escriben las monedas de al menos este importe (0 = todas)
+     * @param columnas lo que lleva cada fila (en el orden de [InstantaneaUtxo.Col])
+     * @param soloConClave sólo las monedas cuya clave pública se ve en la cadena (P2PK y Taproot)
      * @param progreso (monedas leídas, monedas en total, filas escritas)
      * @return null si se canceló
      */
     fun exportar(entrada: File, salida: File, minimoSat: Long, tiempo: TiempoDeBloques, c: ConversorUtxo.Cancelar,
+                 columnas: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.PREDETERMINADAS, soloConClave: Boolean = false,
                  progreso: (Long, Long, Long) -> Unit): Resultado? {
+        if (columnas.isEmpty()) throw ConversorUtxo.FormatoInvalido("no columns selected")
+        val cols = InstantaneaUtxo.Col.values().filter { it in columnas }
+        val quiereHash = InstantaneaUtxo.Col.HASH in columnas
+        val quiereScript = InstantaneaUtxo.Col.SCRIPT in columnas
         val parcial = File(salida.path + ".part")
         var monedas = 0L; var filas = 0L
         try {
@@ -110,7 +117,7 @@ object ExportadorUtxo {
                     val cab = ByteArray(51); l.leer(cab, 51)
                     val h = CoreConfig.leerCabeceraSnapshot(cab) ?: throw ConversorUtxo.FormatoInvalido("that is not a UTXO snapshot")
                     val total = h.monedas
-                    out.write((InstantaneaUtxo.CABECERA.joinToString(",") + "\n").toByteArray())
+                    out.write((InstantaneaUtxo.cabecera(columnas) + "\n").toByteArray())
                     val txid = ByteArray(32); val h20 = ByteArray(20); val h32 = ByteArray(32); val datos = ByteArray(1 shl 14)
                     val sb = StringBuilder(256)
                     var siguienteAviso = 0L
@@ -121,18 +128,24 @@ object ExportadorUtxo {
                         var txidHex: String? = null
                         for (i in 0 until n) {
                             val vout = l.compactSize()
-                            val altura = l.varint() shr 1
+                            val codigo = l.varint()
+                            val altura = codigo shr 1
+                            val coinbase = (codigo and 1L) == 1L
                             val sat = importe(l.varint())
                             val ns = l.varint()
                             if (ns < 0 || ns > 10_000_000L) throw ConversorUtxo.FormatoInvalido("bad script size")
                             val nSize = ns.toInt()
                             val pasa = sat >= minimoSat
-                            var tipo = ""; var addr = ""; var pub = ""
+                            var tipo = ""; var addr = ""; var pub = ""; var hash = ""; var script = ""
                             when {
                                 nSize < 2 -> {
                                     l.leer(h20, 20)
-                                    if (pasa) if (nSize == 0) { tipo = "P2PKH"; addr = SpkDireccion.p2pkh(h20) }
-                                              else { tipo = "P2SH"; addr = SpkDireccion.p2sh(h20) }
+                                    if (pasa) {
+                                        if (nSize == 0) { tipo = "P2PKH"; addr = SpkDireccion.p2pkh(h20) }
+                                        else { tipo = "P2SH"; addr = SpkDireccion.p2sh(h20) }
+                                        if (quiereHash) hash = hex(h20)
+                                        if (quiereScript) script = if (nSize == 0) "76a914" + hex(h20) + "88ac" else "a914" + hex(h20) + "87"
+                                    }
                                 }
                                 nSize < 6 -> {
                                     l.leer(h32, 32)
@@ -140,7 +153,13 @@ object ExportadorUtxo {
                                         tipo = "P2PK"
                                         val k: ByteArray? = if (nSize < 4) ByteArray(33).also { it[0] = nSize.toByte(); System.arraycopy(h32, 0, it, 1, 32) }
                                                             else ConversorUtxo.descomprimir(nSize - 2, h32)
-                                        if (k != null) { pub = hex(k); addr = SpkDireccion.p2pkh(ConversorUtxo.hash160(k)) }
+                                        if (k != null) {
+                                            pub = hex(k)
+                                            val h = ConversorUtxo.hash160(k)
+                                            addr = SpkDireccion.p2pkh(h)
+                                            if (quiereHash) hash = hex(h)
+                                            if (quiereScript) script = (if (k.size == 33) "21" else "41") + pub + "ac"
+                                        }
                                     }
                                 }
                                 else -> {
@@ -150,10 +169,11 @@ object ExportadorUtxo {
                                         if (pasa) {
                                             val s = datos.copyOf(len)
                                             addr = SpkDireccion.de(s) ?: ""
+                                            if (quiereScript) script = hex(s)
                                             when {
-                                                len == 22 && s[0].toInt() == 0 && s[1].toInt() == 0x14 -> tipo = "P2WPKH"
-                                                len == 34 && s[0].toInt() == 0 && s[1].toInt() == 0x20 -> tipo = "P2WSH"
-                                                len == 34 && s[0].toInt() == 0x51 && s[1].toInt() == 0x20 -> { tipo = "P2TR"; pub = hex(s, 2, 34) }
+                                                len == 22 && s[0].toInt() == 0 && s[1].toInt() == 0x14 -> { tipo = "P2WPKH"; hash = hex(s, 2, 22) }
+                                                len == 34 && s[0].toInt() == 0 && s[1].toInt() == 0x20 -> { tipo = "P2WSH"; hash = hex(s, 2, 34) }
+                                                len == 34 && s[0].toInt() == 0x51 && s[1].toInt() == 0x20 -> { tipo = "P2TR"; pub = hex(s, 2, 34); hash = pub }
                                                 else -> tipo = if (addr.isEmpty()) "Non-standard" else "Other"
                                             }
                                         }
@@ -161,12 +181,29 @@ object ExportadorUtxo {
                                 }
                             }
                             monedas++
-                            if (pasa) {
+                            if (pasa && !(soloConClave && pub.isEmpty())) {
                                 if (txidHex == null) txidHex = hex(txid.reversedArray())    // el txid se muestra al revés
                                 sb.setLength(0)
-                                sb.append(addr).append(',').append(txidHex).append(':').append(vout).append(',')
-                                  .append(InstantaneaUtxo.btc(sat)).append(',').append(tipo).append(',').append(pub).append(',')
-                                  .append(tiempo.dia(altura)).append('\n')
+                                for ((k, col) in cols.withIndex()) {
+                                    if (k > 0) sb.append(',')
+                                    when (col) {
+                                        InstantaneaUtxo.Col.WALLET -> sb.append(addr)
+                                        InstantaneaUtxo.Col.UTXO -> sb.append(txidHex).append(':').append(vout)
+                                        InstantaneaUtxo.Col.TXID -> sb.append(txidHex)
+                                        InstantaneaUtxo.Col.VOUT -> sb.append(vout)
+                                        InstantaneaUtxo.Col.FONDO_BTC -> sb.append(InstantaneaUtxo.btc(sat))
+                                        InstantaneaUtxo.Col.FONDO_SAT -> sb.append(sat)
+                                        InstantaneaUtxo.Col.TIPO -> sb.append(tipo)
+                                        InstantaneaUtxo.Col.CLAVE -> sb.append(pub)
+                                        InstantaneaUtxo.Col.HASH -> sb.append(hash)
+                                        InstantaneaUtxo.Col.SCRIPT -> sb.append(script)
+                                        InstantaneaUtxo.Col.ALTURA -> sb.append(altura)
+                                        InstantaneaUtxo.Col.FECHA -> sb.append(tiempo.dia(altura))
+                                        InstantaneaUtxo.Col.COINBASE -> sb.append(if (coinbase) "yes" else "no")
+                                        InstantaneaUtxo.Col.CONFIRMACIONES -> sb.append((tiempo.tope - altura + 1).coerceAtLeast(1))
+                                    }
+                                }
+                                sb.append('\n')
                                 out.write(sb.toString().toByteArray(Charsets.US_ASCII)); filas++
                             }
                         }

@@ -6,6 +6,7 @@ import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
+import com.hunter.btc.InstantaneaUtxo.Col
 
 class ExportadorUtxoTest {
 
@@ -97,6 +98,38 @@ class ExportadorUtxoTest {
             assertEquals(7L, todas.filas)
             assertTrue(File(dir, "t.csv").readLines().any { it.startsWith("1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH,") && it.contains(",0.00000005,P2PK,02") })
             assertFalse(File(dir, "o.csv.part").exists())
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun columnasAMedida() {
+        val cuerpo = ByteArrayOutputStream()
+        val txid = ByteArray(32) { (it + 1).toByte() }
+        cuerpo.write(txid); cuerpo.write(3)
+        moneda(cuerpo, 0, 0, 5_000_000_000L, 0, ByteArray(20) { (0xA0 + it).toByte() })     // P2PKH
+        moneda(cuerpo, 1, 200, 150_000L, 4, GX)                                              // P2PK sin comprimir
+        moneda(cuerpo, 2, 200, 1_000_000L, 6 + 34, "5120".h() + GX)                           // P2TR
+        val dir = java.nio.file.Files.createTempDirectory("utxocsv").toFile()
+        try {
+            val e = File(dir, "s.dat"); e.writeBytes(snapshot(3, cuerpo.toByteArray()))
+            val t0 = 1231006505L
+            val t = ExportadorUtxo.TiempoDeBloques(longArrayOf(t0, t0 + 60_000, t0 + 120_000), 250, t0 + 150_000)
+            // Sólo wallet y utxo.
+            val a = File(dir, "a.csv")
+            ExportadorUtxo.exportar(e, a, 0, t, ConversorUtxo.Cancelar(), setOf(Col.WALLET, Col.UTXO)) { _, _, _ -> }!!
+            val la = a.readLines(); assertEquals("wallet,utxo", la[0]); assertEquals(4, la.size)
+            assertTrue(la[1].startsWith("1") && la[1].contains(":0") && la[1].count { it == ',' } == 1)
+            // Sólo claves públicas, y sólo monedas que la tengan.
+            val b = File(dir, "b.csv")
+            val rb = ExportadorUtxo.exportar(e, b, 0, t, ConversorUtxo.Cancelar(), setOf(Col.CLAVE), true) { _, _, _ -> }!!
+            val lb = b.readLines(); assertEquals(2L, rb.filas); assertEquals(3, lb.size); assertEquals("public_key", lb[0])
+            assertTrue(lb[1].startsWith("04") && lb[1].length == 130); assertEquals("79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", lb[2])
+            // Datos que no estaban entre las seis: altura, coinbase, confirmaciones, hash, script, importe en sat.
+            val d = File(dir, "d.csv")
+            ExportadorUtxo.exportar(e, d, 0, t, ConversorUtxo.Cancelar(), setOf(Col.FONDO_SAT, Col.ALTURA, Col.COINBASE, Col.CONFIRMACIONES, Col.HASH, Col.SCRIPT, Col.VOUT)) { _, _, _ -> }!!
+            val ld = d.readLines()
+            assertEquals("vout,funds_sat,key_hash,script_hex,height,coinbase,confirmations", ld[0])
+            val hA = ByteArray(20) { (0xA0 + it).toByte() }.joinToString("") { "%02x".format(it) }
+            assertEquals("0,5000000000,$hA,76a914${hA}88ac,0,no,251", ld[1])
         } finally { dir.deleteRecursively() }
     }
 
