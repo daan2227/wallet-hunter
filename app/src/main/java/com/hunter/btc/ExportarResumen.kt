@@ -24,7 +24,7 @@ object ExportarResumen {
     fun exportar(act: android.app.Activity) {
         // Siempre, con la huella: el resumen no lleva claves, pero sí las
         // direcciones halladas y sus saldos, y sale del móvil.
-        PinAuthHelper.show(act, autoBiometric = true, permitirHuella = true) { ok -> if (ok) askExportLogOptions(act) }
+        PinAuthHelper.show(act, autoBiometric = true) { ok -> if (ok) askExportLogOptions(act) }
     }
 
     private fun askExportLogOptions(act: android.app.Activity) {

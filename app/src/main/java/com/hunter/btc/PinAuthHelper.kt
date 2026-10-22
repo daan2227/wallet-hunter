@@ -51,6 +51,21 @@ object PinAuthHelper {
     }
 
     /**
+     * Antes de FIRMAR un envío: con el desbloqueo por huella activado hay que teclear el código siempre, sin
+     * huella, aunque la sesión esté abierta (y aunque el importe no llegue al umbral de Perfil). Sin huella
+     * activada no cambia nada. Bloquea hasta la respuesta: llamar desde un hilo, nunca desde el de la interfaz.
+     */
+    fun codigoParaFirmar(activity: android.app.Activity): Boolean {
+        if (!WalletManager.hasPin(activity) || !WalletManager.huellaActivada(activity)) return true
+        val q = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
+        activity.runOnUiThread {
+            pantalla(activity, isSetup = false, autoBiometric = false, permitirHuella = false) { ok -> q.offer(ok) }
+        }
+        // Con tope: si la pantalla se cierra sin responder, el hilo no se queda colgado.
+        return q.poll(5, java.util.concurrent.TimeUnit.MINUTES) == true
+    }
+
+    /**
      * La pantalla del código, para pedirlo o para elegirlo (isSetup).
      *
      * El código es ahora un TEXTO de 8 a 24 caracteres con letras, números y símbolos (ver [PoliticaPin]),

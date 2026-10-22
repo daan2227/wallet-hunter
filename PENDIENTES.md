@@ -81,10 +81,12 @@
 - **Desbloqueo con huella (opcional, sin probar en un teléfono).** Ajuste en Perfil → Fingerprint, apagado por
   defecto; encenderlo pide el código y una huella. La clave que sale del código se sella con una clave del Keystore
   que exige una huella válida por uso (biometría fuerte; en Android 11+ `setUserAuthenticationParameters(0, …)`).
-  La ofrecen las pantallas de entrada (cartera, baúl, volver a la app, mostrar saldos, exportar resumen) y NO las
-  acciones sensibles (ver la seed, cambiar el código, copias, restaurar, envíos grandes), que piden siempre el código.
-  Costes: con ella activa, quien pueda usar tu huella abre cartera y baúl sin el código; el «ni con root» del baúl
-  se mantiene (la clave sólo sale con una huella real) pero deja de depender sólo de lo que sabes. Cambiar el código
+  Sólo se ofrece al abrir la app y al abrir las carteras. El baúl, enviar (también acelerar con RBF y el barrido de
+  Tools), ver la seed, cambiar el código, copias, restaurar, mostrar saldos, el resumen y Perfil/Tools/Debug piden
+  siempre el código. Con la huella activada, enviar exige teclear el código en cada envío, sea cual sea el importe.
+  Costes: con ella activa, quien pueda usar tu huella abre la app y ve las carteras sin el código, pero no abre el
+  baúl ni mueve fondos sin teclearlo. La sesión abierta con huella tiene en memoria la clave de datos del baúl
+  (como con el código): la pantalla del baúl pide el código, pero no es una barrera criptográfica nueva. Cambiar el código
   o las huellas registradas en el móvil la apaga. Tras 5 fallos de código, la huella queda vetada hasta un código bueno.
 
 ## Conocido tras la revisión total (no corregido)

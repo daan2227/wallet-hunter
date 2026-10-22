@@ -59,7 +59,7 @@ object Privacidad {
                 fun aplicar() { poner(ctx, nuevo); pintar(nuevo); onCambio(nuevo) }
                 val act = ctx as? android.app.Activity
                 // Destapar pide huella/PIN; tapar no.
-                if (!nuevo && act != null) PinAuthHelper.show(act, autoBiometric = true, permitirHuella = true) { ok -> if (ok) aplicar() }
+                if (!nuevo && act != null) PinAuthHelper.show(act, autoBiometric = true) { ok -> if (ok) aplicar() }
                 else aplicar()
             }
         }

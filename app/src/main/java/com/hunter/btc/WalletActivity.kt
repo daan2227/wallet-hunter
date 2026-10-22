@@ -1500,6 +1500,7 @@ class WalletActivity : FragmentActivity() {
                 // Con tope: sin él, un diálogo que se pierde (rotación, tema) dejaba este hilo esperando
                 // para siempre, reteniendo la Activity y la frase semilla.
                 if (seguir.poll(5, java.util.concurrent.TimeUnit.MINUTES) != true) return@Thread
+                if (!PinAuthHelper.codigoParaFirmar(this)) return@Thread aviso("Cancelled: the code is needed to send.")
 
                 // Tipo de la clave de origen, para firmar con esa dirección si es una WIF.
                 val tipoOrigen = tipoWif(addrSnap.entries.firstOrNull { it.value == origen }?.key ?: "wif_0")
@@ -2710,7 +2711,9 @@ class WalletActivity : FragmentActivity() {
                     // Lo que sale de verdad de la cartera: importe + comisión, y si no hay
                     // cambio, el sobrante (que se va a la comisión).
                     val debitoSat = totalIn - plan.changeSat
-                    if (WalletManager.hasPin(this) && UmbralEnvio.exige(UmbralEnvio.leer(this), debitoSat)) {
+                    // Con la huella activada, enviar pide SIEMPRE el código (sin huella), tenga el importe que tenga.
+                    if (WalletManager.hasPin(this) &&
+                        (WalletManager.huellaActivada(this) || UmbralEnvio.exige(UmbralEnvio.leer(this), debitoSat))) {
                         val pinOk = java.util.concurrent.ArrayBlockingQueue<Boolean>(1)
                         runOnUiThread {
                             tvStatus.text = "Enter your PIN to confirm this send"; tvStatus.setTextColor(TXT_SEC)

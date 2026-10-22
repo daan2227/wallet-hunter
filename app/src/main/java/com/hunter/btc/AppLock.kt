@@ -119,7 +119,7 @@ object AppLock {
                     // bloqueo: Tools (donde se teclean claves y se barren fondos),
                     // Debug y Perfil quedaban abiertas para quien cogiera el móvil.
                     pidiendo = true
-                    PinAuthHelper.show(a, autoBiometric = false, permitirHuella = true) { ok ->
+                    PinAuthHelper.show(a, autoBiometric = false) { ok ->
                         pidiendo = false
                         if (!ok) a.finish()
                     }

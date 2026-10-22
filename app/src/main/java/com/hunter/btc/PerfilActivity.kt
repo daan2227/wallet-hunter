@@ -115,10 +115,10 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
             val cHuella = card()
             cHuella.addView(rotulo("Fingerprint"))
             cHuella.addView(TextView(this).apply {
-                text = "Unlock the app with your fingerprint instead of typing the code. It is your choice: " +
-                       "with it on, anyone who can use your fingerprint on this phone can open your wallet and " +
-                       "vault without knowing the code. Changing the code, or the fingerprints saved on the " +
-                       "phone, turns it off."
+                text = "Open the app and your wallets with your fingerprint instead of typing the code. The vault, " +
+                       "sending money, seeds, backups and settings always ask for the code. It is your choice: with " +
+                       "it on, anyone who can use your fingerprint on this phone can open the app and see your " +
+                       "wallets. Changing the code, or the fingerprints saved on the phone, turns it off."
                 textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
                 typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f); setPadding(0, 0, 0, dp(12))
             })

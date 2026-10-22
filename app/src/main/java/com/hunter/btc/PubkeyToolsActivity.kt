@@ -576,6 +576,10 @@ class PubkeyToolsActivity : Activity() {
             if (BtcAddress.validate(to, false) !is BtcAddress.Result.Valid) { Toast.makeText(this, "Invalid destination", Toast.LENGTH_SHORT).show(); return@boton }
             sweepCorriendo = true; btn.text = "…"; tvEstado.text = "Reading UTXOs…"
             Thread {
+                if (!PinAuthHelper.codigoParaFirmar(this@PubkeyToolsActivity)) {
+                    runOnUiThread { sweepCorriendo = false; btn.text = "Prepare sweep"; tvEstado.text = "Cancelled: the code is needed to send." }
+                    return@Thread
+                }
                 val wif = try { HunterEngine.wifDeHex(hx).substringBefore("|") } catch (e: Throwable) { "" }
                 val dirTxt = try { HunterEngine.direccionesDe(hx) } catch (e: Throwable) { "" }
                 val addr = dirTxt.split('\n').firstOrNull { it.startsWith("P2PKH (compressed)=") }?.substringAfter('=') ?: ""
