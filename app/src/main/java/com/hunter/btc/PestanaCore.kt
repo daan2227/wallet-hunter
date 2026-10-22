@@ -11,6 +11,7 @@ import android.widget.ProgressBar
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import com.hunter.btc.InstantaneaUtxo.Col
 import org.json.JSONArray
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -129,7 +130,6 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     pintarFiltro = { tvFiltro.text = "Filters: " + filtroCsv.copy(minSat = minimosCsv[minimoCsv]).resumen() }
     pintarCols()
     btnCols.setOnClickListener {
-        val Col = InstantaneaUtxo.Col
         android.app.AlertDialog.Builder(act).setTitle("What goes in the CSV")
             .setItems(arrayOf("The six usual columns", "Wallet and UTXO only",
                               "Public keys only (skips coins without one)", "Choose the columns one by one…")) { _, i ->
