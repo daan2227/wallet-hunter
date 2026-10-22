@@ -1,12 +1,16 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp"
     android:viewportWidth="108" android:viewportHeight="108">
-    <!-- El simbolo de bitcoin, inclinado 14 grados como el logotipo, dentro
-         de la zona segura de 66 dp que Android nunca recorta. -->
-    <group android:rotation="14" android:pivotX="54" android:pivotY="54" android:translateX="2">
-        <path android:fillColor="#FFFFFFFF" android:fillType="evenOdd"
-            android:pathData="M38,34 H57 A9.5,9.5 0 0 1 57,53 H59 A10.5,10.5 0 0 1 59,74 H38 Z M46,40 H56 A3.5,3.5 0 0 1 56,47 H46 Z M46,59 H58 A4.5,4.5 0 0 1 58,68 H46 Z"/>
-        <path android:fillColor="#FFFFFFFF"
-            android:pathData="M42,27 H47 V35 H42 Z M51,27 H56 V35 H51 Z M42,73 H47 V81 H42 Z M51,73 H56 V81 H51 Z"/>
-    </group>
+    <!-- Hexágono (el nodo) con una mira dentro (el cazador): lo que es la app, un conjunto de
+         escáner, cartera y nodo. Dentro de la zona segura de 66 dp que Android nunca recorta. -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="5" android:strokeLineJoin="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,24 L80,39 L80,69 L54,84 L28,69 L28,39 Z"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4" android:fillColor="#00000000"
+        android:pathData="M40,54 A14,14 0 1 0 68,54 A14,14 0 1 0 40,54 Z"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="4" android:strokeLineCap="round"
+        android:fillColor="#00000000"
+        android:pathData="M54,33 V41 M54,67 V75 M33,54 H41 M67,54 H75"/>
+    <path android:fillColor="#FFFFFFFF"
+        android:pathData="M54,49 A5,5 0 1 0 54,59 A5,5 0 1 0 54,49 Z"/>
 </vector>
