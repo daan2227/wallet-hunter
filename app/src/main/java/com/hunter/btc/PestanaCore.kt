@@ -43,10 +43,62 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
         padre.addView(this)
     }
-    fun etiqueta(padre: LinearLayout, s: String) = TextView(act).apply {
-        text = s; textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(act)
-        padre.addView(this)
+    /**
+     * Una fila con un título y, si hay [ayuda], un icono «i» (en cursiva, dentro de un círculo) que despliega o
+     * recoge el texto largo debajo. Así las explicaciones no llenan la pantalla: se leen cuando se piden.
+     */
+    fun filaConInfo(padre: LinearLayout, titulo: String, ayuda: String?, grande: Boolean,
+                    colorAyuda: Int = AppTheme.TXT_SEC): TextView {
+        val fila = LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { if (!grande) topMargin = dp(6) }
+        }
+        val tv = TextView(act).apply {
+            text = titulo
+            if (grande) { textSize = AppTheme.SP_TITLE; typeface = AppTheme.bold(act) }
+            else { textSize = AppTheme.SP_BODY; typeface = AppTheme.body(act) }
+            setTextColor(AppTheme.TXT_PRI)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        fila.addView(tv)
+        padre.addView(fila)
+        if (ayuda != null) {
+            val cuerpo = TextView(act).apply {
+                text = ayuda; textSize = AppTheme.SP_CAPTION; setTextColor(colorAyuda)
+                typeface = AppTheme.body(act); setLineSpacing(0f, 1.25f); visibility = View.GONE
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+            }
+            fun circulo(relleno: Int, borde: Int) = android.graphics.drawable.InsetDrawable(
+                android.graphics.drawable.GradientDrawable().apply {
+                    shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(relleno); setStroke(dp(2), borde)
+                }, dp(5))
+            val icono = TextView(act).apply {
+                text = "i"; gravity = android.view.Gravity.CENTER; textSize = 14f
+                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD_ITALIC)
+                setTextColor(AppTheme.TXT_SEC); background = circulo(android.graphics.Color.TRANSPARENT, AppTheme.TXT_SEC)
+                contentDescription = "More information"
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
+                layoutParams = LinearLayout.LayoutParams(dp(34), dp(34))
+            }
+            icono.setOnClickListener {
+                val ver = cuerpo.visibility != View.VISIBLE
+                cuerpo.visibility = if (ver) View.VISIBLE else View.GONE
+                if (ver) { cuerpo.alpha = 0f; cuerpo.animate().alpha(1f).setDuration(160).start() }
+                icono.setTextColor(if (ver) AppTheme.ACCENT else AppTheme.TXT_SEC)
+                icono.background = circulo(if (ver) (AppTheme.ACCENT and 0x00FFFFFF) or (0x33 shl 24) else android.graphics.Color.TRANSPARENT,
+                    if (ver) AppTheme.ACCENT else AppTheme.TXT_SEC)
+            }
+            fila.addView(icono)
+            padre.addView(cuerpo)
+        }
+        return tv
     }
+    fun etiqueta(padre: LinearLayout, s: String, ayuda: String? = null) = filaConInfo(padre, s, ayuda, true)
+    /** Un rótulo de ajuste con su explicación plegada detrás del icono «i». */
+    fun rotulo(padre: LinearLayout, s: String, ayuda: String?, colorAyuda: Int = AppTheme.TXT_SEC) =
+        filaConInfo(padre, s, ayuda, false, colorAyuda)
     fun barra(padre: LinearLayout) = ProgressBar(act, null, android.R.attr.progressBarStyleHorizontal).apply {
         max = 1000; progress = 0; visibility = View.GONE
         progressTintList = ColorStateList.valueOf(AppTheme.ACCENT)
@@ -60,7 +112,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Estado ────────────────────────────────────────────────────────────
     val cEstado = Ui.card(this)
     page.addView(cEstado)
-    etiqueta(cEstado, "Bitcoin Core on this phone")
+    etiqueta(cEstado, "Bitcoin Core on this phone", "The node checks the Bitcoin chain itself, without asking anyone. The wallet can use it to " +
+        "send, to estimate fees and to check balances (see “Wallet” below); the rest still comes from the usual " +
+        "servers. It downloads a lot of data: Wi-Fi and a charger are recommended.")
     // La luz de estado (parpadea según lo que hace el nodo) y el texto del estado, en una fila.
     val filaEstado = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
@@ -129,10 +183,6 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         override fun onViewDetachedFromWindow(v: View) { animLuz?.cancel(); animBoton?.cancel() }
     })
     aplicarModo(0)
-    texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet can use it to " +
-        "send, to estimate fees and to check balances (see “Wallet” below); the rest still comes from the usual " +
-        "servers. It downloads a lot of data: Wi-Fi and a charger are recommended.",
-        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
 
     // ── Red ───────────────────────────────────────────────────────────────
     val cRed = Ui.card(this)
@@ -151,20 +201,20 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Herramientas ──────────────────────────────────────────────────────
     val cHer = Ui.card(this)
     page.addView(cHer)
-    etiqueta(cHer, "Node tools")
-    texto(cHer, "Check an address, turn a descriptor into addresses, verify a signed message, and read, " +
-        "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    etiqueta(cHer, "Node tools", "Check an address, turn a descriptor into addresses, verify a signed message, and read, " +
+        "combine or finalize PSBTs. Nothing here needs a server or a private key.")
     boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
 
     // ── Crear un snapshot (.dat) ──────────────────────────────────────────
     val cDat = Ui.card(this)
     page.addView(cDat)
-    etiqueta(cDat, "Create a snapshot file (.dat)")
-    texto(cDat, "Makes the same kind of file that is shared on the internet (for example mainnet-965000-utxos.dat): " +
+    etiqueta(cDat, "Create a snapshot file (.dat)", "Makes the same kind of file that is shared on the internet (for example mainnet-965000-utxos.dat): " +
         "the whole set of unspent coins of your node, with the block it is based on, the number of coins and the " +
         "hash of the set. You can keep it, share it, or load it in another Bitcoin Core with loadtxoutset (Core only " +
-        "accepts it if its block is in Core's built-in list).", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
-    texto(cDat, "Which state", AppTheme.TXT_PRI)
+        "accepts it if its block is in Core's built-in list).")
+    rotulo(cDat, "Which state", "“Roll back” rebuilds the set at an older block, which needs the blocks since then. A pruned node " +
+        "keeps only the latest ones, so it will usually refuse: Core says why. The file is about 10 GB and takes " +
+        "several minutes; it cannot be cancelled once started (stopping the node aborts it).")
     var modoDat = 0
     cDat.addView(Ui.segmented(this, listOf("Now (latest)" to null, "Roll back to a height" to null), initial = 0) { modoDat = it })
     val campoAlturaDat = Ui.input(this, "Height, only for “Roll back” (e.g. 965000)", mono = true).apply {
@@ -172,10 +222,6 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
     }
     cDat.addView(campoAlturaDat)
-    texto(cDat, "“Roll back” rebuilds the set at an older block, which needs the blocks since then. A pruned node " +
-        "keeps only the latest ones, so it will usually refuse: Core says why. The file is about 10 GB and takes " +
-        "several minutes; it cannot be cancelled once started (stopping the node aborts it).",
-        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val barraDat = barra(cDat)
     val tvDat = texto(cDat, "", AppTheme.TXT_PRI)
     val btnDat = boton(cDat, "Create the snapshot file")
@@ -183,13 +229,14 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Instantánea de UTXO en CSV ────────────────────────────────────────
     val cCsv = Ui.card(this)
     page.addView(cCsv)
-    etiqueta(cCsv, "UTXO snapshot (CSV)")
-    texto(cCsv, "Writes the unspent coins of the whole chain to a CSV file, with the columns you choose: the address, " +
+    etiqueta(cCsv, "UTXO snapshot (CSV)", "Writes the unspent coins of the whole chain to a CSV file, with the columns you choose: the address, " +
         "txid and output number, funds, wallet type, public key, key hash, locking script, block height, date, " +
         "coinbase flag and confirmations. The public key is only known where the chain shows it before the coin is " +
         "spent (P2PK and Taproot). The date is worked out from the block height, so it can be off by a few hours. " +
-        "It reads the snapshot file you loaded, or asks the node for a fresh copy.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
-    texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
+        "It reads the snapshot file you loaded, or asks the node for a fresh copy.")
+    rotulo(cCsv, "Minimum amount per coin (BTC)", "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
+        "a higher minimum, fewer columns or a filter make it far smaller. It is written as " +
+        "it goes and needs the free space.")
     var pintarFiltro: () -> Unit = {}     // se asigna más abajo, cuando existe el filtro
     val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
     var minimoCsv = prefsMinimoCsv()
@@ -197,9 +244,6 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         initial = minimoCsv) { minimoCsv = it
             getSharedPreferences("core", android.content.Context.MODE_PRIVATE).edit().putInt("csv_minimo", it).apply()
             pintarFiltro() })
-    texto(cCsv, "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
-        "a higher minimum, fewer columns or a filter make it far smaller. It is written as " +
-        "it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     texto(cCsv, "What goes in the file", AppTheme.TXT_PRI)
     val prefsCore = act.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
     var columnasCsv: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.columnasDeTexto(prefsCore.getString("csv_cols", null))
@@ -251,11 +295,10 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Dataset del Scanner desde el nodo ─────────────────────────────────
     val cDs = Ui.card(this)
     page.addView(cDs)
-    etiqueta(cDs, "Scanner dataset from your node")
-    texto(cDs, "Turns the set of unspent coins into the address index the Scanner uses (a .bin of about 1.5 GB), " +
+    etiqueta(cDs, "Scanner dataset from your node", "Turns the set of unspent coins into the address index the Scanner uses (a .bin of about 1.5 GB), " +
         "always up to date and built on this phone: nothing is downloaded from anyone. It reads the snapshot file " +
         "you loaded, or asks the node for a fresh copy. It takes a while and needs about 4 GB free for the work " +
-        "(14 GB if the node makes a fresh copy).", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+        "(14 GB if the node makes a fresh copy).")
     val barraDs = barra(cDs)
     val tvDs = texto(cDs, "", AppTheme.TXT_PRI)
     val btnDsSnap = boton(cDs, "Build it from the snapshot file")
@@ -265,11 +308,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Ajustes y poda ────────────────────────────────────────────────────
     val cAj = Ui.card(this)
     page.addView(cAj)
-    etiqueta(cAj, "Pruning")
-    texto(cAj, "A pruned node keeps only the latest blocks (the chain state is always complete). " +
+    etiqueta(cAj, "Pruning", "A pruned node keeps only the latest blocks (the chain state is always complete). " +
         "Smaller means less storage and less history to serve; it cannot be turned back into a full node " +
-        "without downloading everything again. Changes apply the next time the node starts.",
-        AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+        "without downloading everything again. Changes apply the next time the node starts.")
     var aj = CoreNodo.ajustes(this)
     val nota = texto(cAj, "", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     fun guardar(n: CoreConfig.Ajustes) {
@@ -288,7 +329,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Traffic", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Blocks only" to null, "Blocks + mempool" to null),
         initial = if (aj.soloBloques) 0 else 1) { guardar(aj.copy(soloBloques = it == 0)) })
-    texto(cAj, "Connections", AppTheme.TXT_PRI)
+    rotulo(cAj, "Connections", "“Through Tor” sends every connection of the node through a Tor app on this phone (Orbot: " +
+        "127.0.0.1:9050), which hides your IP from the Bitcoin network. “Tor only” also talks only to .onion " +
+        "nodes: more private, fewer peers, slower. Start the Tor app first, or the node will find no peers.")
     cAj.addView(Ui.segmented(this, listOf("Direct" to null, "Through Tor" to null, "Tor only" to null),
         initial = aj.red) { guardar(aj.copy(red = it)) })
     val campoProxy = Ui.input(this, "Tor proxy host:port", mono = true).apply {
@@ -304,44 +347,34 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         })
     }
     cAj.addView(campoProxy)
-    texto(cAj, "“Through Tor” sends every connection of the node through a Tor app on this phone (Orbot: " +
-        "127.0.0.1:9050), which hides your IP from the Bitcoin network. “Tor only” also talks only to .onion " +
-        "nodes: more private, fewer peers, slower. Start the Tor app first, or the node will find no peers.",
-        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
-    texto(cAj, "Private broadcast (experimental)", AppTheme.TXT_PRI)
+    rotulo(cAj, "Private broadcast (experimental)", "Needs Tor. Your own transactions leave through short-lived Tor connections instead of your node's " +
+        "usual peers. It is marked experimental by Bitcoin Core: if Tor is not running the transaction may never " +
+        "leave the phone, so after sending, check that it shows up in an explorer.", AppTheme.WARN)
     cAj.addView(Ui.segmented(this, listOf("Off" to null, "On" to null),
         initial = if (aj.difusionPrivada) 1 else 0) { guardar(aj.copy(difusionPrivada = it == 1)) })
-    texto(cAj, "Needs Tor. Your own transactions leave through short-lived Tor connections instead of your node's " +
-        "usual peers. It is marked experimental by Bitcoin Core: if Tor is not running the transaction may never " +
-        "leave the phone, so after sending, check that it shows up in an explorer.",
-        AppTheme.WARN, AppTheme.SP_CAPTION)
-    texto(cAj, "Filters for this app's light client", AppTheme.TXT_PRI)
+    rotulo(cAj, "Filters for this app's light client", "Builds a block-filter index (about 10 GB more) and serves it only to 127.0.0.1, so “Verify with " +
+        "the network” in the wallet can use your own node instead of public ones. The index is built as the node " +
+        "validates, so it can take as long as the history check.")
     cAj.addView(Ui.segmented(this, listOf("Off" to null, "Serve on this phone" to null),
         initial = if (aj.servirFiltros) 1 else 0) { guardar(aj.copy(servirFiltros = it == 1)) })
-    texto(cAj, "Builds a block-filter index (about 10 GB more) and serves it only to 127.0.0.1, so “Verify with " +
-        "the network” in the wallet can use your own node instead of public ones. The index is built as the node " +
-        "validates, so it can take as long as the history check.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
-    texto(cAj, "Wallet", AppTheme.TXT_PRI)
-    cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
-        initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })
-    texto(cAj, "With “Use my node to send”, the wallet broadcasts transactions and reads the block height from " +
+    rotulo(cAj, "Wallet", "With “Use my node to send”, the wallet broadcasts transactions and reads the block height from " +
         "this node when it is running and synced, with the usual servers as a fallback. Fee estimates also come " +
         "from the node, but only if the traffic setting above is “Blocks + mempool”. The node can scan your " +
-        "balance from the wallet menu (Advanced options → Verify with my node).",
-        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+        "balance from the wallet menu (Advanced options → Verify with my node).")
+    cAj.addView(Ui.segmented(this, listOf("Servers only" to null, "Use my node to send" to null),
+        initial = if (CoreBackend.activado(this)) 1 else 0) { CoreBackend.activar(act, it == 1) })
     val btnPodar = boton(cAj, "Prune now (keep the latest ${CoreConfig.BLOQUES_QUE_QUEDAN} blocks)")
 
     // ── Snapshot ──────────────────────────────────────────────────────────
     val cSn = Ui.card(this)
     page.addView(cSn)
-    etiqueta(cSn, "UTXO snapshot")
-    texto(cSn, "With a snapshot the node starts from a recent set of coins and checks the old history in the " +
+    etiqueta(cSn, "UTXO snapshot", "With a snapshot the node starts from a recent set of coins and checks the old history in the " +
         "background, so it is usable in hours instead of days. Core only accepts snapshots whose hash is built " +
         "into its code (blocks 840,000, 880,000, 910,000, 935,000 and 965,000 of mainnet), so it does not matter where the " +
         "file comes from. A snapshot taken at any other block is rejected. " +
         "Create one with `dumptxoutset` on a node you trust, or download one. The node must be running and " +
         "must already have the headers up to the snapshot's block. Loading cannot be resumed: if the node " +
-        "stops halfway it starts again from zero.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+        "stops halfway it starts again from zero.")
     val tvSnap = texto(cSn, "", AppTheme.TXT_PRI)
     val barraSnap = barra(cSn)
     val tvProg = texto(cSn, "", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
