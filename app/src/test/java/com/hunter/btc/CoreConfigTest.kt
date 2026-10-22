@@ -140,6 +140,17 @@ class CoreConfigTest {
         assertFalse(CoreConfig.proxyValido("x:99999")); assertFalse(CoreConfig.proxyValido("x:1\nrpcallowip=0.0.0.0/0"))
         assertEquals("127.0.0.1:9050", CoreConfig.Ajustes(proxy = "mal").normalizado().proxy)
     }
+    @Test fun volcadoYFicha() {
+        val o = JSONObject("""{"coins_written":190000000,"base_hash":"00000000000000000001595977e6000ce56129f5c9b4073e31ccc30b90b97da9",
+            "base_height":965000,"path":"/x/utxo.dat","txoutset_hash":"4a8d794337118c0c615b574f817c7306c687584a537184b8d233df42bf477ec2","nchaintx":1429611231}""")
+        val v = CoreConfig.leerVolcado(o)!!
+        assertEquals(965_000L, v.baseAltura); assertEquals(190_000_000L, v.monedas); assertEquals("mainnet-965000-utxos.dat", CoreConfig.nombreSnapshot(v.baseAltura))
+        val f = CoreConfig.fichaSnapshot(v, "/Satoshi:32.0.0/", "2026-10-22")
+        assertTrue(f.contains("base block height: 965000") && f.contains("yes, the block is in its list") && f.contains("hash_serialized"))
+        val otro = CoreConfig.fichaSnapshot(v.copy(baseHash = "00".repeat(32)), "", "x")
+        assertTrue(otro.contains("no, Core only loads snapshots at 840000"))
+        assertNull(CoreConfig.leerVolcado(JSONObject("""{"x":1}""")))
+    }
     @Test fun urls() {
         assertTrue(CoreConfig.urlValida("https://ejemplo.org/utxo-880000.dat"))
         assertFalse(CoreConfig.urlValida("http://ejemplo.org/x.dat"))

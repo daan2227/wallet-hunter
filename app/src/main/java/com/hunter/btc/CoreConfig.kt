@@ -285,6 +285,35 @@ object CoreConfig {
         else -> "${segundos / 86_400} days ago"
     }
 
+    // ── Crear un snapshot (.dat) con dumptxoutset ────────────────────────────
+
+    /** La respuesta de `dumptxoutset`: lo mismo que acompaña a los snapshots que circulan por internet. */
+    data class Volcado(val monedas: Long, val baseHash: String, val baseAltura: Long, val hashConjunto: String,
+                       val transaccionesCadena: Long, val ruta: String)
+
+    fun leerVolcado(o: JSONObject): Volcado? =
+        if (!o.has("base_hash") || !o.has("coins_written")) null
+        else Volcado(o.optLong("coins_written"), o.optString("base_hash"), o.optLong("base_height"),
+            o.optString("txoutset_hash"), o.optLong("nchaintx"), o.optString("path"))
+
+    /** Nombre como los de los snapshots públicos: «mainnet-965000-utxos.dat». */
+    fun nombreSnapshot(altura: Long) = "mainnet-$altura-utxos.dat"
+
+    /** Texto que se guarda junto al .dat y se enseña al acabar: los datos con los que se publican los snapshots. */
+    fun fichaSnapshot(v: Volcado, version: String, fecha: String): String = buildString {
+        appendLine("UTXO snapshot (dumptxoutset)")
+        appendLine("file: ${nombreSnapshot(v.baseAltura)}")
+        appendLine("base block height: ${v.baseAltura}")
+        appendLine("base block hash: ${v.baseHash}")
+        appendLine("coins: ${v.monedas}")
+        appendLine("txoutset hash (hash_serialized): ${v.hashConjunto}")
+        appendLine("transactions in the chain up to the base block: ${v.transaccionesCadena}")
+        appendLine("loadable by Bitcoin Core: " + (if (alturaAceptada(v.baseHash) != null)
+            "yes, the block is in its list (loadtxoutset)" else "no, Core only loads snapshots at ${SNAPSHOTS_ACEPTADOS.values.joinToString(", ")}"))
+        if (version.isNotEmpty()) appendLine("created with: $version")
+        appendLine("created: $fecha")
+    }
+
     // ── Herramientas del nodo ────────────────────────────────────────────────
 
     /** "0-4" -> (0, 4); "7" -> (7, 7); vacío -> null. Lanza IllegalArgumentException si no vale (tope 1 000 direcciones). */

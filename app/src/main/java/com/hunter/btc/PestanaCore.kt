@@ -156,6 +156,30 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
     boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
 
+    // ── Crear un snapshot (.dat) ──────────────────────────────────────────
+    val cDat = Ui.card(this)
+    page.addView(cDat)
+    etiqueta(cDat, "Create a snapshot file (.dat)")
+    texto(cDat, "Makes the same kind of file that is shared on the internet (for example mainnet-965000-utxos.dat): " +
+        "the whole set of unspent coins of your node, with the block it is based on, the number of coins and the " +
+        "hash of the set. You can keep it, share it, or load it in another Bitcoin Core with loadtxoutset (Core only " +
+        "accepts it if its block is in Core's built-in list).", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    texto(cDat, "Which state", AppTheme.TXT_PRI)
+    var modoDat = 0
+    cDat.addView(Ui.segmented(this, listOf("Now (latest)" to null, "Roll back to a height" to null), initial = 0) { modoDat = it })
+    val campoAlturaDat = Ui.input(this, "Height, only for “Roll back” (e.g. 965000)", mono = true).apply {
+        inputType = android.text.InputType.TYPE_CLASS_NUMBER
+        (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+    }
+    cDat.addView(campoAlturaDat)
+    texto(cDat, "“Roll back” rebuilds the set at an older block, which needs the blocks since then. A pruned node " +
+        "keeps only the latest ones, so it will usually refuse: Core says why. The file is about 10 GB and takes " +
+        "several minutes; it cannot be cancelled once started (stopping the node aborts it).",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    val barraDat = barra(cDat)
+    val tvDat = texto(cDat, "", AppTheme.TXT_PRI)
+    val btnDat = boton(cDat, "Create the snapshot file")
+
     // ── Instantánea de UTXO en CSV ────────────────────────────────────────
     val cCsv = Ui.card(this)
     page.addView(cCsv)
@@ -624,6 +648,96 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             if (err != null || !ruta.isFile) { ocupadoDs(false, err ?: "The node did not write the file."); return@Thread }
             ocupadoDs(false)
             runOnUiThread { convertirDs(ruta, true) }
+        }.start()
+    }
+
+    // ── Crear un snapshot (.dat) ──────────────────────────────────────────
+    fun ocupadoDat(si: Boolean, txt: String = "") = runOnUiThread {
+        utxoOcupado = si
+        btnDat.isEnabled = !si; btnDat.alpha = if (si) .4f else 1f
+        barraDat.visibility = if (si) View.VISIBLE else View.GONE
+        tvDat.text = txt
+    }
+    fun terminadoDat(f: java.io.File, ficha: String) = runOnUiThread {
+        if (act.isFinishing) return@runOnUiThread
+        android.app.AlertDialog.Builder(act).setTitle("Snapshot ready")
+            .setMessage("${f.name} · ${CoreConfig.bytes(f.length())}\n\n$ficha\nIt is in the app's private storage.")
+            .setPositiveButton("Share") { _, _ ->
+                val uri = androidx.core.content.FileProvider.getUriForFile(act, "${act.packageName}.provider", f)
+                val envio = Intent(Intent.ACTION_SEND).apply {
+                    type = "application/octet-stream"; putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, f.name); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                act.startActivity(Intent.createChooser(envio, "Share the snapshot"))
+            }
+            .setNeutralButton("Delete it") { _, _ ->
+                f.delete(); java.io.File(f.path + ".txt").delete(); Toast.makeText(act, "Deleted", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Close", null).show()
+    }
+    btnDat.setOnClickListener {
+        if (utxoOcupado) { aviso("Another UTXO job is running."); return@setOnClickListener }
+        if (ultimo == null) { aviso("Start the node and let it answer first."); return@setOnClickListener }
+        val altura = campoAlturaDat.text.toString().trim().toLongOrNull()
+        if (modoDat == 1 && altura == null) { aviso("Type the height to roll back to."); return@setOnClickListener }
+        val dir = BackupStore.compartidos(act)
+        val previsto = CoreNodo.snapshot(act).takeIf { it.isFile }?.length() ?: (11L shl 30)
+        if (dir.usableSpace < previsto + (1L shl 30)) {
+            aviso("The file needs about ${CoreConfig.bytes(previsto + (1L shl 30))} free (free: ${CoreConfig.bytes(dir.usableSpace)}).")
+            return@setOnClickListener
+        }
+        val temporal = java.io.File(dir, "utxo_nuevo.dat")
+        val enCurso = java.io.File(temporal.path + ".incomplete")
+        ocupadoDat(true, "The node is writing the file…")
+        barraDat.isIndeterminate = true
+        val t0 = System.currentTimeMillis()
+        val vivo = java.util.concurrent.atomic.AtomicBoolean(true)
+        // Core no da avance: se sigue el tamaño del fichero temporal que va escribiendo.
+        Thread {
+            while (vivo.get()) {
+                try { Thread.sleep(2_000) } catch (e: InterruptedException) { break }
+                val escrito = if (enCurso.isFile) enCurso.length() else 0L
+                val corrido = (System.currentTimeMillis() - t0) / 1000
+                runOnUiThread {
+                    if (!vivo.get()) return@runOnUiThread
+                    if (escrito > 0) {
+                        barraDat.isIndeterminate = false
+                        barraDat.progress = (escrito * 1000 / previsto.coerceAtLeast(1)).toInt().coerceIn(0, 995)
+                        val eta = if (escrito < previsto && corrido > 5) " · about ${CoreConfig.duracion(corrido * (previsto - escrito) / escrito)} left" else ""
+                        tvDat.text = "Writing… ${CoreConfig.bytes(escrito)} of about ${CoreConfig.bytes(previsto)}$eta\nRunning for ${CoreConfig.duracion(corrido)}"
+                    } else tvDat.text = "The node is preparing the set… ${CoreConfig.duracion(corrido)}"
+                }
+            }
+        }.also { it.isDaemon = true }.start()
+        Thread {
+            var fin = ""; var listo: java.io.File? = null; var ficha = ""
+            try {
+                temporal.delete(); enCurso.delete()
+                val params = JSONArray().put(temporal.absolutePath)
+                if (modoDat == 1) params.put("rollback").put(org.json.JSONObject().put("rollback", altura)) else params.put("latest")
+                val r = CoreNodo.rpc(act).llamar("dumptxoutset", params, 4 * 3600_000) as? org.json.JSONObject
+                val v = r?.let { CoreConfig.leerVolcado(it) }
+                if (v == null) fin = "The node did not describe the file."
+                else {
+                    val destino = java.io.File(dir, CoreConfig.nombreSnapshot(v.baseAltura))
+                    destino.delete()
+                    if (!temporal.renameTo(destino)) fin = "Could not rename the file."
+                    else {
+                        val version = try { CoreNodo.rpc(act).objeto("getnetworkinfo").optString("subversion", "") } catch (e: Exception) { "" }
+                        ficha = CoreConfig.fichaSnapshot(v, version, java.text.SimpleDateFormat("yyyy-MM-dd HH:mm 'UTC'", java.util.Locale.US)
+                            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date()))
+                        java.io.File(destino.path + ".txt").writeText(ficha)
+                        listo = destino
+                        fin = "%s · %,d coins at block %,d".format(destino.name, v.monedas, v.baseAltura)
+                    }
+                }
+            } catch (e: CoreRpcError) { fin = "Core: ${e.message}" }
+              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+            vivo.set(false)
+            if (listo == null) { temporal.delete(); enCurso.delete() }
+            ocupadoDat(false, fin)
+            listo?.let { terminadoDat(it, ficha) }
+            if (listo == null) runOnUiThread { android.app.AlertDialog.Builder(act).setTitle("Snapshot not created").setMessage(fin).setPositiveButton("OK", null).show() }
         }.start()
     }
 

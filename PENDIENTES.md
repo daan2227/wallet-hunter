@@ -76,6 +76,10 @@
   - Filtros BIP157 locales (+~10 GB): se sirven sólo en 127.0.0.1; el índice se construye junto a la comprobación de
     fondo y no se ha probado que funcione bien con poda y snapshot.
   - Dataset del Scanner desde el nodo: probado con un snapshot sintético, no con uno real de ~10 GB.
+  - Crear un snapshot .dat (pestaña Core): `dumptxoutset` (ahora o con rollback a una altura) y deja el fichero como
+    mainnet-<altura>-utxos.dat con una ficha .txt (bloque base, monedas, hash del conjunto, si Core lo acepta). El avance
+    se sigue por el tamaño del fichero temporal y el tiempo restante es aproximado (usa el tamaño del snapshot cargado).
+    No se puede cancelar. Un nodo podado suele rechazar el rollback. Sin probar en un teléfono.
   - Instantánea de UTXO en CSV (pestaña Core): todo el conjunto de la cadena con las columnas que se elijan (dirección, utxo,
     txid, vout, fondo en BTC o sat, tipo, clave pública, hash, script, altura, fecha, coinbase, confirmaciones; por
     defecto las seis de siempre), filtros por cada uno de esos campos (importe mínimo y máximo, tipos, clave pública con/sin y prefijo, texto de la
