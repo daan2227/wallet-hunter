@@ -92,6 +92,8 @@ class WalletActivity : FragmentActivity() {
     /** Último saldo consultado, en sats. -1 = aún no se sabe. Lo usa el aviso
      *  de borrado para no dejar tirar una cartera con dinero dentro. */
     private var ultimoSaldoSat = -1L
+    /** Las direcciones con fondos de la última carga de saldos (etiqueta, dirección): la base de la instantánea de UTXO. */
+    private var filasConSaldo: List<Pair<String, String>> = emptyList()
     /** Sube al cambiar de cartera: lo que acaba después ya no es de la pantalla. */
     private var generacion = 0
     /** Direcciones que la búsqueda ha visto usadas, también las de cambio ya gastado. */
@@ -449,6 +451,7 @@ class WalletActivity : FragmentActivity() {
         selectedUtxos.clear()
         salidasExtraEnvio.clear()
         ultimoSaldoSat = -1L
+        filasConSaldo = emptyList()
         montos.clear(); fiatViews.clear()
     }
 
@@ -856,8 +859,10 @@ class WalletActivity : FragmentActivity() {
             // lo da por cero.
             val huboFallo = sinRed || rows.any { it.sat < 0 } || fallosHD > 0
             val hallados = hdUsadas.toMap()
+            val conSaldo = rows.filter { it.sat > 0 }.map { it.label to it.addr }
             runOnUiThread {
                 if (gen == generacion) {
+                    filasConSaldo = conSaldo
                     historialExtra.clear(); historialExtra.putAll(hallados)
                     descubriendo = false
                 }
@@ -3256,6 +3261,7 @@ class WalletActivity : FragmentActivity() {
     private fun switchToWallet(onReady: () -> Unit) {
         salidasExtraEnvio.clear()
         ultimoSaldoSat = -1L
+        filasConSaldo = emptyList()
         // Limpiar estado anterior. Lo que siga corriendo de la cartera anterior
         // se descarta: comprueba la generación antes de tocar nada.
         generacion++
@@ -3666,6 +3672,120 @@ class WalletActivity : FragmentActivity() {
     }
 
     /**
+     * Las claves públicas de las direcciones dadas: de una semilla, la hija de cada xpub (legacy, SegWit en P2SH y
+     * nativo); de una WIF, la de su clave; y de una Taproot, la clave de salida que ya lleva la propia dirección.
+     * Nada de esto saca claves privadas de la cartera. Hace cálculo nativo: nunca desde el hilo principal.
+     */
+    private fun clavesPublicasDe(direcciones: Collection<String>): Map<String, String> {
+        val salida = HashMap<String, String>()
+        val querida = direcciones.toHashSet()
+        // Taproot: la clave pública está en la dirección.
+        for (a in querida) {
+            val r = BtcAddress.validate(a, isTestnet) as? BtcAddress.Result.Valid ?: continue
+            InstantaneaUtxo.claveTaproot(BtcAddress.scriptPubKey(r.info))?.let { salida[a] = it }
+        }
+        if (isWifMode) {
+            if (wifKey.isNotEmpty()) {
+                val pub = try { HunterEngine.pubDeHex(HunterEngine.hexDeWif(wifKey)) } catch (e: Throwable) { "" }
+                if (pub.isNotEmpty()) for (a in querida) if (a !in salida) salida[a] = pub
+            }
+            return salida
+        }
+        if (mnemonic.isEmpty()) return salida
+        for (purpose in listOf(44, 49, 84)) {
+            val xpub = try { HunterEngine.exportarXpub(mnemonic, purpose, isTestnet) } catch (e: Throwable) { "" }
+            if (xpub.isEmpty()) continue
+            val pubs = HashMap<String, String>()       // "c/i" -> clave
+            for (l in try { HunterEngine.xpubPubkeys(xpub, 100).split('\n') } catch (e: Throwable) { emptyList() }) {
+                val i = l.indexOf('='); if (i > 0) pubs[l.substring(0, i).trim()] = l.substring(i + 1).trim()
+            }
+            for (change in 0..1) {
+                val arr = try { org.json.JSONArray(HunterEngine.deriveAddresses(mnemonic, purpose, change, 0, 100, isTestnet)) }
+                          catch (e: Exception) { continue }
+                for (k in 0 until arr.length()) {
+                    val o = arr.optJSONObject(k) ?: continue
+                    val a = o.optString("addr", "")
+                    if (a in querida && a !in salida) pubs["$change/${o.optInt("i", k)}"]?.let { salida[a] = it }
+                }
+            }
+        }
+        return salida
+    }
+
+    /**
+     * «Export UTXO snapshot»: un CSV con una fila por moneda sin gastar y sólo seis columnas (cartera, utxo, fondo,
+     * tipo de cartera, clave pública y fecha de la transacción). Parte de las direcciones con fondos de la última
+     * carga de saldos y pregunta por sus monedas a la red (o a tu nodo). Sin claves privadas.
+     */
+    private fun exportarInstantanea() {
+        val base = filasConSaldo
+        if (base.isEmpty()) {
+            Toast.makeText(this, "No address with funds is loaded yet. Let the balance finish loading first.",
+                Toast.LENGTH_LONG).show()
+            return
+        }
+        val nombre = currentWalletName; val red = isTestnet
+        Toast.makeText(this, "Preparing the UTXO snapshot…", Toast.LENGTH_SHORT).show()
+        Thread {
+            try {
+                val direcciones = base.map { it.second }.distinct()
+                val pubs = clavesPublicasDe(direcciones)
+                val filas = ArrayList<InstantaneaUtxo.Fila>()
+                var sinRespuesta = 0
+                for (a in direcciones) {
+                    val lista = ChainInfo.utxos(a, red)
+                    if (lista == null) { sinRespuesta++; continue }
+                    for (u in lista) {
+                        val st = u.optJSONObject("status")
+                        val confirmada = u.optBoolean("confirmed", false)
+                        val altura = st?.optLong("block_height", 0L) ?: u.optLong("height", 0L)
+                        filas.add(InstantaneaUtxo.Fila(nombre, "${u.getString("txid")}:${u.getInt("vout")}", u.getLong("value"),
+                            InstantaneaUtxo.tipoDeDireccion(a), pubs[a] ?: "",
+                            InstantaneaUtxo.fecha(confirmada, st?.optLong("block_time", 0L) ?: 0L, altura)))
+                    }
+                }
+                if (filas.isEmpty()) {
+                    runOnUiThread {
+                        AlertDialog.Builder(this).setTitle("Nothing to export")
+                            .setMessage(if (sinRespuesta > 0) "The network did not answer for ${sinRespuesta} address(es). Try again with a connection."
+                                        else "No unspent coins were found.")
+                            .setPositiveButton("OK", null).show()
+                    }
+                    return@Thread
+                }
+                filas.sortByDescending { it.fecha }
+                val dir = BackupStore.compartidos(this)
+                dir.listFiles()?.filter { it.name.startsWith("wallet_hunter_utxos_") }?.forEach { it.delete() }
+                val ts = java.text.SimpleDateFormat("yyyyMMdd_HHmmss", java.util.Locale.US).format(java.util.Date())
+                val f = java.io.File(dir, "wallet_hunter_utxos_$ts.csv")
+                f.writeText(InstantaneaUtxo.csv(filas))
+                val total = filas.sumOf { it.sat }
+                runOnUiThread {
+                    if (isFinishing || isDestroyed) return@runOnUiThread
+                    AlertDialog.Builder(this).setTitle("UTXO snapshot ready")
+                        .setMessage(("%d coin(s) · %.8f BTC\n\nColumns: wallet, utxo, funds, wallet type, public key, transaction date. " +
+                                    "No private keys. It still shows your balance and public keys: share it only with people you trust.%s")
+                                        .format(filas.size, total / 1e8,
+                                                if (sinRespuesta > 0) "\n\n$sinRespuesta address(es) did not answer and are missing." else ""))
+                        .setPositiveButton("Share") { _, _ ->
+                            val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.provider", f)
+                            val envio = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                putExtra(android.content.Intent.EXTRA_SUBJECT, "UTXO snapshot")
+                                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            startActivity(android.content.Intent.createChooser(envio, "Share the UTXO snapshot"))
+                        }
+                        .setNegativeButton("Close", null).show()
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Could not build the snapshot: ${e.javaClass.simpleName}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
+    /**
      * Los scriptPubKey (en hex) que vigila la verificación con la red: las direcciones que
      * muestra la cartera y, en una semilla, las primeras 40 de cada tipo y rama.
      * Hace cálculo nativo: nunca desde el hilo principal.
@@ -3709,6 +3829,7 @@ class WalletActivity : FragmentActivity() {
             if (av && alBaul) "Save to finds vault" else null,
             if (av && !isTestnet) "Verify with the network" else null,
             if (av && !isTestnet) "Verify with my node" else null,
+            "Export UTXO snapshot",
             // En testnet se ofrece siempre, aunque el modo avanzado esté apagado: si no, quien lo activó y
             // luego lo apagó se quedaba en una red de pruebas sin forma de volver a mainnet.
             "Change PIN", if (av || isTestnet) "Toggle Testnet" else null, "Fiat currency",
@@ -3739,6 +3860,7 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
+                    "Export UTXO snapshot" -> authenticate { exportarInstantanea() }
                     "Advanced options: on (turn off)", "Advanced options: off (turn on)" -> {
                         getSharedPreferences("hunter", MODE_PRIVATE).edit().putBoolean("modo_avanzado", !av).apply()
                         // Al volver a la vista simple no pueden quedar cosas avanzadas que se enviarían sin verse.
