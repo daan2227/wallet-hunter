@@ -41,10 +41,10 @@ object PinAuthHelper {
      *   claves— es desproporcionado, así que el teclado sale directo y la huella
      *   queda disponible en su tecla para quien la prefiera.
      */
-    fun show(activity: android.app.Activity, autoBiometric: Boolean = true,
+    fun show(activity: android.app.Activity, autoBiometric: Boolean = true, permitirHuella: Boolean = false,
              onResult: (Boolean) -> Unit) {
         if (!WalletManager.hasPin(activity)) { onResult(true); return }
-        pantalla(activity, isSetup = false, autoBiometric = autoBiometric) { ok ->
+        pantalla(activity, isSetup = false, autoBiometric = autoBiometric, permitirHuella = permitirHuella) { ok ->
             if (ok) markAuthenticated()
             onResult(ok)
         }
@@ -87,7 +87,7 @@ object PinAuthHelper {
         // confirmación que aceptara la huella no exigiría saberlo.
         val hayHuella = permitirHuella && !isSetup && activity is androidx.fragment.app.FragmentActivity &&
             !WalletManager.bioBloqueada(activity) &&
-            WalletManager.claveSemillaLista() &&
+            WalletManager.huellaActivada(activity) &&
             bm.canAuthenticate(androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG) ==
                 androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
 
@@ -360,23 +360,8 @@ object PinAuthHelper {
             // o sigue vetada.
             if (!hayHuella || WalletManager.esperaPin(activity) > 0 ||
                 WalletManager.bioBloqueada(activity)) return
-            androidx.biometric.BiometricPrompt(
-                activity as androidx.fragment.app.FragmentActivity,
-                androidx.core.content.ContextCompat.getMainExecutor(activity),
-                object : androidx.biometric.BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(r: androidx.biometric.BiometricPrompt.AuthenticationResult) {
-                        cerrar(true)
-                    }
-                    override fun onAuthenticationError(code: Int, msg: CharSequence) {}
-                    override fun onAuthenticationFailed() {}
-                }
-            ).authenticate(
-                androidx.biometric.BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Wallet Hunter")
-                    .setSubtitle("Unlock with your fingerprint")
-                    .setNegativeButtonText("Use the code")
-                    .build()
-            )
+            // La huella abre la sesión con la clave del código sellada en el Keystore (HuellaDesbloqueo).
+            HuellaDesbloqueo.desbloquear(activity as androidx.fragment.app.FragmentActivity) { ok -> if (ok) cerrar(true) }
         }
         botonHuella.setOnClickListener { huella() }
 

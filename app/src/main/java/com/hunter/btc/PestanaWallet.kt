@@ -271,7 +271,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
                 startActivity(Intent(this, WalletActivity::class.java))
             }
             if (!PinAuthHelper.isSessionValid())
-                PinAuthHelper.show(this) { ok -> if (ok) ir() }
+                PinAuthHelper.show(this, permitirHuella = true) { ok -> if (ok) ir() }
             else ir()
         } else {
             androidx.appcompat.app.AlertDialog.Builder(this)

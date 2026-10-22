@@ -110,6 +110,43 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
         cPin.addView(boton(if (WalletManager.hasPin(this)) "Change PIN" else "Set PIN") { cambiarPin() })
         root.addView(cPin)
 
+        // Huella: opcional, a elección de quien usa la app (apagada por defecto).
+        if (WalletManager.hasPin(this)) {
+            val cHuella = card()
+            cHuella.addView(rotulo("Fingerprint"))
+            cHuella.addView(TextView(this).apply {
+                text = "Unlock the app with your fingerprint instead of typing the code. It is your choice: " +
+                       "with it on, anyone who can use your fingerprint on this phone can open your wallet and " +
+                       "vault without knowing the code. Changing the code, or the fingerprints saved on the " +
+                       "phone, turns it off."
+                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f); setPadding(0, 0, 0, dp(12))
+            })
+            val libre = HuellaDesbloqueo.disponible(this)
+            cHuella.addView(Ui.segmented(this, listOf("Off" to null, "On" to null),
+                initial = if (WalletManager.huellaActivada(this)) 1 else 0) { i ->
+                if (i == 0) {
+                    HuellaDesbloqueo.desactivar(this)
+                    Toast.makeText(this, "Fingerprint unlock is off", Toast.LENGTH_SHORT).show()
+                } else if (!libre) {
+                    Toast.makeText(this, "No fingerprint is enrolled on this phone. Add one in the system settings first.",
+                        Toast.LENGTH_LONG).show()
+                    recreate()
+                } else {
+                    // Con el código: encenderla da paso a abrir la cartera sin él.
+                    PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                        if (!ok) { recreate(); return@show }
+                        HuellaDesbloqueo.activar(this) { exito, motivo ->
+                            Toast.makeText(this, if (exito) "Fingerprint unlock is on" else (motivo ?: "Not turned on"),
+                                Toast.LENGTH_LONG).show()
+                            recreate()
+                        }
+                    }
+                }
+            })
+            root.addView(cHuella)
+        }
+
         // Envíos grandes: el PIN otra vez antes de firmar.
         val cEnvio = card()
         cEnvio.addView(rotulo("Large sends"))

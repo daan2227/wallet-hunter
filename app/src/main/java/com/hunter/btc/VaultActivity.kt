@@ -84,7 +84,7 @@ class VaultActivity : AppCompatActivity() {
     private fun pedirPin() {
         if (!WalletManager.hasPin(this)) { bloqueado = false; mostrar(); return }
         pidiendo = true
-        PinAuthHelper.show(this) { ok ->
+        PinAuthHelper.show(this, permitirHuella = true) { ok ->
             pidiendo = false
             if (ok) { bloqueado = false; mostrar() } else finish()
         }
