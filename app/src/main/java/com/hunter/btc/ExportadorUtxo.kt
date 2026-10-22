@@ -95,19 +95,21 @@ object ExportadorUtxo {
     }
 
     /**
-     * @param minimoSat sólo se escriben las monedas de al menos este importe (0 = todas)
+     * @param filtro qué monedas entran (ver [FiltroUtxo]); el neutro las deja pasar todas
      * @param columnas lo que lleva cada fila (en el orden de [InstantaneaUtxo.Col])
-     * @param soloConClave sólo las monedas cuya clave pública se ve en la cadena (P2PK y Taproot)
      * @param progreso (monedas leídas, monedas en total, filas escritas)
      * @return null si se canceló
      */
-    fun exportar(entrada: File, salida: File, minimoSat: Long, tiempo: TiempoDeBloques, c: ConversorUtxo.Cancelar,
-                 columnas: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.PREDETERMINADAS, soloConClave: Boolean = false,
+    fun exportar(entrada: File, salida: File, filtro: FiltroUtxo, tiempo: TiempoDeBloques, c: ConversorUtxo.Cancelar,
+                 columnas: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.PREDETERMINADAS,
                  progreso: (Long, Long, Long) -> Unit): Resultado? {
         if (columnas.isEmpty()) throw ConversorUtxo.FormatoInvalido("no columns selected")
+        val f = filtro.normalizado()
         val cols = InstantaneaUtxo.Col.values().filter { it in columnas }
-        val quiereHash = InstantaneaUtxo.Col.HASH in columnas
-        val quiereScript = InstantaneaUtxo.Col.SCRIPT in columnas
+        // Lo que el filtro necesita se calcula aunque no vaya en el CSV.
+        val quiereHash = InstantaneaUtxo.Col.HASH in columnas || f.hashEmpieza.isNotEmpty()
+        val quiereScript = InstantaneaUtxo.Col.SCRIPT in columnas || f.scriptContiene.isNotEmpty()
+        val quiereFecha = InstantaneaUtxo.Col.FECHA in columnas || f.pideFecha
         val parcial = File(salida.path + ".part")
         var monedas = 0L; var filas = 0L
         try {
@@ -135,7 +137,8 @@ object ExportadorUtxo {
                             val ns = l.varint()
                             if (ns < 0 || ns > 10_000_000L) throw ConversorUtxo.FormatoInvalido("bad script size")
                             val nSize = ns.toInt()
-                            val pasa = sat >= minimoSat
+                            // Primero lo barato: importe, altura, minada, vout y confirmaciones.
+                            val pasa = f.numerico(sat, altura, coinbase, vout, (tiempo.tope - altura + 1).coerceAtLeast(1))
                             var tipo = ""; var addr = ""; var pub = ""; var hash = ""; var script = ""
                             when {
                                 nSize < 2 -> {
@@ -181,8 +184,10 @@ object ExportadorUtxo {
                                 }
                             }
                             monedas++
-                            if (pasa && !(soloConClave && pub.isEmpty())) {
-                                if (txidHex == null) txidHex = hex(txid.reversedArray())    // el txid se muestra al revés
+                            if (!pasa) continue
+                            if (txidHex == null) txidHex = hex(txid.reversedArray())        // el txid se muestra al revés
+                            val fecha = if (quiereFecha) tiempo.dia(altura) else ""
+                            if (f.textual(tipo, addr, pub, hash, script, txidHex, fecha)) {
                                 sb.setLength(0)
                                 for ((k, col) in cols.withIndex()) {
                                     if (k > 0) sb.append(',')
@@ -198,7 +203,7 @@ object ExportadorUtxo {
                                         InstantaneaUtxo.Col.HASH -> sb.append(hash)
                                         InstantaneaUtxo.Col.SCRIPT -> sb.append(script)
                                         InstantaneaUtxo.Col.ALTURA -> sb.append(altura)
-                                        InstantaneaUtxo.Col.FECHA -> sb.append(tiempo.dia(altura))
+                                        InstantaneaUtxo.Col.FECHA -> sb.append(fecha)
                                         InstantaneaUtxo.Col.COINBASE -> sb.append(if (coinbase) "yes" else "no")
                                         InstantaneaUtxo.Col.CONFIRMACIONES -> sb.append((tiempo.tope - altura + 1).coerceAtLeast(1))
                                     }

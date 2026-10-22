@@ -111,27 +111,32 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cCsv, "What goes in the file", AppTheme.TXT_PRI)
     val prefsCore = act.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
     var columnasCsv: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.columnasDeTexto(prefsCore.getString("csv_cols", null))
-    var soloClaveCsv = prefsCore.getBoolean("csv_solo_clave", false)
+    var filtroCsv = FiltroUtxo.deJson(prefsCore.getString("csv_filtro", null))
     val tvCols = texto(cCsv, "", AppTheme.TXT_SEC, AppTheme.SP_CAPTION, mono = true)
     val btnCols = boton(cCsv, "Choose the columns…")
-    val btnFiltroClave = boton(cCsv, "")
+    val tvFiltro = texto(cCsv, "", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    val btnFiltro = boton(cCsv, "Filters…")
+    // El importe mínimo del selector de arriba se suma a este filtro.
     fun pintarCols() {
         tvCols.text = InstantaneaUtxo.cabecera(columnasCsv)
-        btnFiltroClave.text = if (soloClaveCsv) "Rows: only coins with a public key" else "Rows: all coins"
         prefsCore.edit().putString("csv_cols", InstantaneaUtxo.columnasATexto(columnasCsv))
-            .putBoolean("csv_solo_clave", soloClaveCsv).apply()
+            .putString("csv_filtro", filtroCsv.aJson()).apply()
+        pintarFiltro()
     }
+    btnFiltro.setOnClickListener {
+        FiltroUtxoDialogo.mostrar(act, filtroCsv) { filtroCsv = it; pintarCols() }
+    }
+    pintarFiltro = { tvFiltro.text = "Filters: " + filtroCsv.copy(minSat = minimosCsv[minimoCsv]).resumen() }
     pintarCols()
-    btnFiltroClave.setOnClickListener { soloClaveCsv = !soloClaveCsv; pintarCols() }
     btnCols.setOnClickListener {
         val Col = InstantaneaUtxo.Col
         android.app.AlertDialog.Builder(act).setTitle("What goes in the CSV")
             .setItems(arrayOf("The six usual columns", "Wallet and UTXO only",
                               "Public keys only (skips coins without one)", "Choose the columns one by one…")) { _, i ->
                 when (i) {
-                    0 -> { columnasCsv = InstantaneaUtxo.PREDETERMINADAS; soloClaveCsv = false; pintarCols() }
-                    1 -> { columnasCsv = linkedSetOf(Col.WALLET, Col.UTXO); soloClaveCsv = false; pintarCols() }
-                    2 -> { columnasCsv = linkedSetOf(Col.CLAVE); soloClaveCsv = true; pintarCols() }
+                    0 -> { columnasCsv = InstantaneaUtxo.PREDETERMINADAS; filtroCsv = filtroCsv.copy(clave = 0); pintarCols() }
+                    1 -> { columnasCsv = linkedSetOf(Col.WALLET, Col.UTXO); filtroCsv = filtroCsv.copy(clave = 0); pintarCols() }
+                    2 -> { columnasCsv = linkedSetOf(Col.CLAVE); filtroCsv = filtroCsv.copy(clave = 1); pintarCols() }
                     else -> {
                         val todas = Col.values()
                         val marcadas = BooleanArray(todas.size) { todas[it] in columnasCsv }
@@ -147,12 +152,15 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             }.setNegativeButton("Cancel", null).show()
     }
     texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
+    var pintarFiltro: () -> Unit = {}     // se asigna más abajo, cuando existe el filtro
     val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
-    var minimoCsv = 2
+    var minimoCsv = prefsMinimoCsv()
     cCsv.addView(Ui.segmented(this, listOf("All" to null, "0.0001" to null, "0.001" to null, "0.01" to null, "0.1" to null, "1" to null),
-        initial = minimoCsv) { minimoCsv = it })
+        initial = minimoCsv) { minimoCsv = it
+            getSharedPreferences("core", android.content.Context.MODE_PRIVATE).edit().putInt("csv_minimo", it).apply()
+            pintarFiltro() })
     texto(cCsv, "There are about 190 million coins. With “All” and all columns the file is around 25 GB and takes hours; " +
-        "a higher minimum, fewer columns or “only coins with a public key” make it far smaller. It is written as " +
+        "a higher minimum, fewer columns or a filter make it far smaller. It is written as " +
         "it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     val barraCsv = barra(cCsv)
     val tvCsv = texto(cCsv, "", AppTheme.TXT_PRI)
@@ -602,6 +610,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         val dir = BackupStore.compartidos(act)
         if (dir.usableSpace < 3L shl 30) { aviso("Free at least 3 GB first (free: ${CoreConfig.bytes(dir.usableSpace)})."); return }
         val minimo = minimosCsv[minimoCsv]
+        val filtro = filtroCsv.copy(minSat = minimo)
         val c = ConversorUtxo.Cancelar(); cancelCsv = c
         ocupadoCsv(true, "Reading the block dates…")
         Thread {
@@ -615,7 +624,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                     dir.listFiles()?.filter { it.name.startsWith("utxo_chain_") }?.forEach { it.delete() }
                     val destino = java.io.File(dir, "utxo_chain_${altura}_min${minimo}sat.csv")
                     val t0 = System.currentTimeMillis()
-                    val res = ExportadorUtxo.exportar(origen, destino, minimo, t, c, columnasCsv, soloClaveCsv) { a, b, f -> progresoCsv(2, a, b, f, t0) }
+                    val res = ExportadorUtxo.exportar(origen, destino, filtro, t, c, columnasCsv) { a, b, f -> progresoCsv(2, a, b, f, t0) }
                     if (res == null) fin = "Cancelled."
                     else {
                         listo = destino
@@ -769,6 +778,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     })
     return scroll
 }
+
+private fun MainActivity.prefsMinimoCsv(): Int =
+    getSharedPreferences("core", android.content.Context.MODE_PRIVATE).getInt("csv_minimo", 2).coerceIn(0, 5)
 
 private fun snapshotParcial(ctx: android.content.Context): Boolean =
     java.io.File(CoreNodo.snapshot(ctx).path + ".part").isFile
