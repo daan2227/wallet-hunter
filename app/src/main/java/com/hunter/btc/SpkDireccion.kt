@@ -39,6 +39,14 @@ object SpkDireccion {
         return hrp + "1" + (datos + cs).joinToString("") { B32[it].toString() }
     }
 
+    /** La dirección P2PKH de un hash de clave de 20 bytes. */
+    fun p2pkh(h20: ByteArray, testnet: Boolean = false): String =
+        base58check(byteArrayOf((if (testnet) 0x6f else 0x00).toByte()) + h20)
+
+    /** La dirección P2SH de un hash de script de 20 bytes. */
+    fun p2sh(h20: ByteArray, testnet: Boolean = false): String =
+        base58check(byteArrayOf((if (testnet) 0xc4 else 0x05).toByte()) + h20)
+
     /** La dirección, o null si el script no es de un tipo estándar con dirección. */
     fun de(spk: ByteArray, testnet: Boolean = false): String? {
         val u = spk.map { it.toInt() and 0xff }

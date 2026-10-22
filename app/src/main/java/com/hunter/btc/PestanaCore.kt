@@ -99,6 +99,28 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         "combine or finalize PSBTs. Nothing here needs a server or a private key.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
     boton(cHer, "Open the tools").setOnClickListener { HerramientasNodo.mostrar(act) }
 
+    // ── Instantánea de UTXO en CSV ────────────────────────────────────────
+    val cCsv = Ui.card(this)
+    page.addView(cCsv)
+    etiqueta(cCsv, "UTXO snapshot (CSV)")
+    texto(cCsv, "Writes the unspent coins of the whole chain to a CSV file with six columns: wallet (the address), " +
+        "utxo (txid:vout), funds in BTC, wallet type, public key and the date of its transaction. The public key is " +
+        "only filled where the chain shows it before the coin is spent (P2PK and Taproot). The date is worked out " +
+        "from the block height, so it can be off by a few hours. It reads the snapshot file you loaded, or asks the " +
+        "node for a fresh copy.", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+    texto(cCsv, "Minimum amount per coin (BTC)", AppTheme.TXT_PRI)
+    val minimosCsv = listOf(0L, 10_000L, 100_000L, 1_000_000L, 10_000_000L, 100_000_000L)
+    var minimoCsv = 2
+    cCsv.addView(Ui.segmented(this, listOf("All" to null, "0.0001" to null, "0.001" to null, "0.01" to null, "0.1" to null, "1" to null),
+        initial = minimoCsv) { minimoCsv = it })
+    texto(cCsv, "There are about 190 million coins. With “All” the file is around 25 GB and takes hours; each step up " +
+        "makes it far smaller. It is written as it goes and needs the free space.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    val barraCsv = barra(cCsv)
+    val tvCsv = texto(cCsv, "", AppTheme.TXT_PRI)
+    val btnCsvSnap = boton(cCsv, "Build it from the snapshot file")
+    val btnCsvDump = boton(cCsv, "Ask the node for a fresh copy and build it")
+    val btnCsvCancel = boton(cCsv, "Cancel", 42).apply { visibility = View.GONE }
+
     // ── Dataset del Scanner desde el nodo ─────────────────────────────────
     val cDs = Ui.card(this)
     page.addView(cDs)
@@ -409,7 +431,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     // ── Acciones ──────────────────────────────────────────────────────────
     // ── Dataset del Scanner ───────────────────────────────────────────────
     var cancelDs: ConversorUtxo.Cancelar? = null
+    var utxoOcupado = false     // una conversión del conjunto de UTXO (dataset o CSV) en marcha: no se lanza otra
     fun ocupadoDs(si: Boolean, txt: String = "") = runOnUiThread {
+        utxoOcupado = si
         btnDsSnap.isEnabled = !si; btnDsDump.isEnabled = !si
         btnDsSnap.alpha = if (si) .4f else 1f; btnDsDump.alpha = btnDsSnap.alpha
         barraDs.visibility = if (si) View.VISIBLE else View.GONE
@@ -436,6 +460,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             }.setNegativeButton("Later", null).show()
     }
     fun convertirDs(origen: java.io.File, borrar: Boolean) {
+        if (utxoOcupado) { aviso("Another UTXO job is running."); return }
         val cab = CoreSnapshot.cabecera(origen)
         if (cab == null) { aviso("That is not a UTXO snapshot."); return }
         val dir = act.getExternalFilesDir(null) ?: act.filesDir
@@ -473,6 +498,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         convertirDs(f, false)
     }
     btnDsDump.setOnClickListener {
+        if (utxoOcupado) { aviso("Another UTXO job is running."); return@setOnClickListener }
         if (ultimo == null) { aviso("Start the node and let it answer first."); return@setOnClickListener }
         val dir = CoreNodo.datadir(act)
         if (dir.usableSpace < 14L shl 30) { aviso("A fresh copy needs about 14 GB free (free: ${CoreConfig.bytes(dir.usableSpace)})."); return@setOnClickListener }
@@ -488,6 +514,108 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             if (err != null || !ruta.isFile) { ocupadoDs(false, err ?: "The node did not write the file."); return@Thread }
             ocupadoDs(false)
             runOnUiThread { convertirDs(ruta, true) }
+        }.start()
+    }
+
+    // ── Instantánea de UTXO en CSV ────────────────────────────────────────
+    var cancelCsv: ConversorUtxo.Cancelar? = null
+    fun ocupadoCsv(si: Boolean, txt: String = "") = runOnUiThread {
+        utxoOcupado = si
+        btnCsvSnap.isEnabled = !si; btnCsvDump.isEnabled = !si
+        btnCsvSnap.alpha = if (si) .4f else 1f; btnCsvDump.alpha = btnCsvSnap.alpha
+        btnDsSnap.isEnabled = !si; btnDsDump.isEnabled = !si
+        barraCsv.visibility = if (si) View.VISIBLE else View.GONE
+        btnCsvCancel.visibility = if (si) View.VISIBLE else View.GONE
+        tvCsv.text = txt
+    }
+    fun progresoCsv(fase: Int, hechas: Long, total: Long, filas: Long, t0: Long) = runOnUiThread {
+        barraCsv.visibility = View.VISIBLE
+        barraCsv.isIndeterminate = total <= 0
+        if (total > 0) barraCsv.progress = (hechas * 1000 / total).toInt().coerceIn(0, 1000)
+        tvCsv.text = if (fase == 1) "Reading the block dates… %,d of %,d".format(hechas, total) else {
+            val corrido = (System.currentTimeMillis() - t0) / 1000
+            val eta = if (hechas > 0) CoreConfig.duracion(corrido * (total - hechas) / hechas) + " left" else "estimating…"
+            "Writing the CSV… %.1f %% · %,d rows · about %s\nRunning for %s".format(
+                hechas * 100.0 / total.coerceAtLeast(1), filas, eta, CoreConfig.duracion(corrido))
+        }
+    }
+    fun terminadoCsv(f: java.io.File, resumen: String) = runOnUiThread {
+        if (act.isFinishing) return@runOnUiThread
+        android.app.AlertDialog.Builder(act).setTitle("CSV ready")
+            .setMessage("$resumen\n\nIt is saved in the app's private storage. Share it to put it where you want, " +
+                "and delete it afterwards: it can be very large.")
+            .setPositiveButton("Share") { _, _ ->
+                val uri = androidx.core.content.FileProvider.getUriForFile(act, "${act.packageName}.provider", f)
+                val envio = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/csv"; putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, "UTXO snapshot"); addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                act.startActivity(Intent.createChooser(envio, "Share the UTXO snapshot"))
+            }
+            .setNeutralButton("Delete it") { _, _ -> f.delete(); Toast.makeText(act, "Deleted", Toast.LENGTH_SHORT).show() }
+            .setNegativeButton("Close", null).show()
+    }
+    fun convertirCsv(origen: java.io.File, borrar: Boolean) {
+        if (utxoOcupado) { aviso("Another UTXO job is running."); return }
+        val cab = CoreSnapshot.cabecera(origen)
+        if (cab == null) { aviso("That is not a UTXO snapshot."); return }
+        if (ultimo == null) { aviso("Start the node first: it provides the dates of the blocks."); return }
+        val dir = BackupStore.compartidos(act)
+        if (dir.usableSpace < 3L shl 30) { aviso("Free at least 3 GB first (free: ${CoreConfig.bytes(dir.usableSpace)})."); return }
+        val minimo = minimosCsv[minimoCsv]
+        val c = ConversorUtxo.Cancelar(); cancelCsv = c
+        ocupadoCsv(true, "Reading the block dates…")
+        Thread {
+            var fin = ""; var listo: java.io.File? = null
+            try {
+                val r = CoreNodo.rpc(act)
+                val altura = (r.llamar("getblockheader", JSONArray().put(cab.base), 20_000) as org.json.JSONObject).getLong("height")
+                val t = ExportadorUtxo.anclas(r, altura, c) { a, b -> progresoCsv(1, a, b, 0, 0) }
+                if (t == null) fin = "Cancelled."
+                else {
+                    dir.listFiles()?.filter { it.name.startsWith("utxo_chain_") }?.forEach { it.delete() }
+                    val destino = java.io.File(dir, "utxo_chain_${altura}_min${minimo}sat.csv")
+                    val t0 = System.currentTimeMillis()
+                    val res = ExportadorUtxo.exportar(origen, destino, minimo, t, c) { a, b, f -> progresoCsv(2, a, b, f, t0) }
+                    if (res == null) fin = "Cancelled."
+                    else {
+                        listo = destino
+                        fin = "%,d rows from %,d coins · %s".format(res.filas, res.monedas, CoreConfig.bytes(res.bytes))
+                        if (borrar) origen.delete()
+                    }
+                }
+            } catch (e: CoreRpcError) { fin = "Core: ${e.message}" }
+              catch (e: ConversorUtxo.FormatoInvalido) { fin = "Could not read the file: ${e.message}" }
+              catch (e: java.io.IOException) { fin = "Disk error: ${e.message}" }
+              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+            cancelCsv = null
+            ocupadoCsv(false, fin)
+            listo?.let { terminadoCsv(it, fin) }
+        }.start()
+    }
+    btnCsvCancel.setOnClickListener { cancelCsv?.cancelado = true }
+    btnCsvSnap.setOnClickListener {
+        val f = CoreNodo.snapshot(act)
+        if (!f.isFile) { aviso("There is no snapshot file. Pick one in the snapshot card, or ask the node for a fresh copy."); return@setOnClickListener }
+        convertirCsv(f, false)
+    }
+    btnCsvDump.setOnClickListener {
+        if (utxoOcupado) { aviso("Another UTXO job is running."); return@setOnClickListener }
+        if (ultimo == null) { aviso("Start the node and let it answer first."); return@setOnClickListener }
+        val dir = CoreNodo.datadir(act)
+        if (dir.usableSpace < 14L shl 30) { aviso("A fresh copy needs about 14 GB free (free: ${CoreConfig.bytes(dir.usableSpace)})."); return@setOnClickListener }
+        ocupadoCsv(true, "The node is writing a copy of its coins… this takes several minutes")
+        barraCsv.isIndeterminate = true
+        Thread {
+            val ruta = java.io.File(dir, "utxo_dump.dat")
+            val err = try {
+                ruta.delete()
+                CoreNodo.rpc(act).llamar("dumptxoutset", JSONArray().put("utxo_dump.dat").put("latest"), 120 * 60_000)
+                null
+            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            if (err != null || !ruta.isFile) { ocupadoCsv(false, err ?: "The node did not write the file."); return@Thread }
+            ocupadoCsv(false)
+            runOnUiThread { convertirCsv(ruta, true) }
         }.start()
     }
 

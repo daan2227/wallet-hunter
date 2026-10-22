@@ -26,11 +26,27 @@ class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC
             return if (o.isNull("result")) null else o.get("result")
         }
 
+        /** Las respuestas de una llamada por lotes, en el orden en que se pidieron. Lanza [CoreRpcError] si alguna falló. */
+        fun interpretarLote(cuerpo: String, n: Int): List<Any?> {
+            val t = cuerpo.trimStart()
+            if (t.startsWith("{")) { interpretar(t); throw CoreRpcError(-32603, "unexpected answer to a batch") }
+            val a = JSONArray(t)
+            val salida = arrayOfNulls<Any>(n)
+            for (i in 0 until a.length()) {
+                val o = a.getJSONObject(i)
+                val err = o.optJSONObject("error")
+                if (err != null) throw CoreRpcError(err.optInt("code", 0), err.optString("message", "error"))
+                val id = o.optInt("id", -1)
+                if (id in 0 until n) salida[id] = if (o.isNull("result")) null else o.get("result")
+            }
+            return salida.toList()
+        }
+
         fun cabeceraBasic(cookie: String): String =
             "Basic " + java.util.Base64.getEncoder().encodeToString(cookie.trim().toByteArray(Charsets.UTF_8))
     }
 
-    fun llamar(metodo: String, params: JSONArray = JSONArray(), lecturaMs: Int = 15_000): Any? {
+    private fun enviar(cuerpo: String, lecturaMs: Int): String {
         val ck = try { cookie.readText() } catch (e: Exception) {
             throw CoreRpcError(-28, "El nodo todavía no ha escrito su cookie")
         }
@@ -41,13 +57,25 @@ class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC
             c.doOutput = true
             c.setRequestProperty("Authorization", cabeceraBasic(ck))
             c.setRequestProperty("Content-Type", "application/json")
-            val cuerpo = JSONObject().put("jsonrpc", "1.0").put("id", "wh")
-                .put("method", metodo).put("params", params).toString()
             c.outputStream.use { it.write(cuerpo.toByteArray(Charsets.UTF_8)) }
             // Core contesta con HTTP 500 y el error en el cuerpo: se lee de donde toque.
             val flujo = if (c.responseCode in 200..299) c.inputStream else (c.errorStream ?: c.inputStream)
-            return interpretar(flujo.bufferedReader().use { it.readText() })
+            return flujo.bufferedReader().use { it.readText() }
         } finally { c.disconnect() }
+    }
+
+    fun llamar(metodo: String, params: JSONArray = JSONArray(), lecturaMs: Int = 15_000): Any? {
+        val cuerpo = JSONObject().put("jsonrpc", "1.0").put("id", "wh")
+            .put("method", metodo).put("params", params).toString()
+        return interpretar(enviar(cuerpo, lecturaMs))
+    }
+
+    /** Varias llamadas en una sola petición (JSON-RPC por lotes): para miles de consultas pequeñas. */
+    fun lote(llamadas: List<Pair<String, JSONArray>>, lecturaMs: Int = 120_000): List<Any?> {
+        val cuerpo = JSONArray()
+        for ((i, p) in llamadas.withIndex())
+            cuerpo.put(JSONObject().put("jsonrpc", "1.0").put("id", i).put("method", p.first).put("params", p.second))
+        return interpretarLote(enviar(cuerpo.toString(), lecturaMs), llamadas.size)
     }
 
     fun objeto(metodo: String, params: JSONArray = JSONArray(), lecturaMs: Int = 15_000): JSONObject =

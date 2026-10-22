@@ -33,7 +33,7 @@ object ConversorUtxo {
     private val SIETE = BigInteger.valueOf(7)
 
     /** Lector con búfer sobre un flujo: lo mínimo que hace falta, sin asignar por moneda. */
-    private class Lector(private val ent: InputStream) {
+    internal class Lector(private val ent: InputStream) {
         private val buf = ByteArray(1 shl 20)
         private var pos = 0
         private var lim = 0
