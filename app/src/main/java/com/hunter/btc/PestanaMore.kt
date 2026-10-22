@@ -378,7 +378,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         // La versión de verdad, la que pone la CI (1.0.<compilación>).
         // Estaba escrito "v2.4" a mano y no cambiaba nunca.
         text = "v" + (try { packageManager.getPackageInfo(packageName, 0).versionName }
-                      catch (e: Exception) { "?" }) + " · Wallet Hunter"
+                      catch (e: Exception) { "?" }) + " · Hunter Suite"
         textSize = AppTheme.SP_CAPTION
         setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)

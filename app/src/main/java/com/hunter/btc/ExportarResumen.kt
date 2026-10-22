@@ -102,7 +102,7 @@ object ExportarResumen {
         val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
             type = "text/plain"
             putExtra(android.content.Intent.EXTRA_STREAM, uri)
-            putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Export")
+            putExtra(android.content.Intent.EXTRA_SUBJECT, "Hunter Suite Export")
             addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
         act.startActivity(android.content.Intent.createChooser(share, "Export log"))

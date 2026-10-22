@@ -33,7 +33,7 @@ object Strings {
     )
 
     val EN = Lang(
-        title="Bitcoin Wallet Hunter", subtitle="libsecp256k1 | arm64",
+        title="Hunter Suite", subtitle="libsecp256k1 | arm64",
         csvSection="DATASET", csvBtn="Load Dataset", noFile="No file loaded",
         configSection="PERFORMANCE", threads="Threads", cpuLimit="CPU Limit",
         silent="silent", balanced="balanced", performance="performance",
@@ -42,7 +42,7 @@ object Strings {
         matchSection="MATCHES", noMatch="None yet...", logSection="SYSTEM",
         loadFirst="Load dataset first", copying="Copying dataset...",
         permTitle="Permission needed", permMsg="You need all files access.",
-        notifMatchTitle="WALLET FOUND", notifStatusTitle="BTC Hunter",
+        notifMatchTitle="WALLET FOUND", notifStatusTitle="Hunter Suite",
         speed="Speed", seeds="Seeds", time="Time", matches="Matches",
         ram="RAM", temp="Temp", language="Language", langBtn="Language",
         modeSection="MODE", modeBip39="Seed Scan", modePuzzle="Puzzle (hex range)",

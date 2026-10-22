@@ -104,7 +104,7 @@ object Avisos {
                 PendingIntent.FLAG_IMMUTABLE)
             val publica = NotificationCompat.Builder(ctx, CANAL)
                 .setSmallIcon(R.drawable.ic_notif)
-                .setContentTitle("Wallet Hunter")
+                .setContentTitle("Hunter Suite")
                 .setContentText("Match found — unlock to see it")
                 .build()
             // Cada hallazgo, su propia notificación (id único) dentro del grupo,
@@ -126,7 +126,7 @@ object Avisos {
             // los individuales bajo "N found" cuando hay varios.
             val resumen = NotificationCompat.Builder(ctx, CANAL)
                 .setSmallIcon(R.drawable.ic_notif)
-                .setContentTitle("Wallet Hunter")
+                .setContentTitle("Hunter Suite")
                 .setContentText("$total key(s) found — in the finds vault")
                 .setStyle(NotificationCompat.BigTextStyle()
                     .setSummaryText("$total found").bigText("$total key(s) found — in the finds vault"))

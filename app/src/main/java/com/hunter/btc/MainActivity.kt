@@ -1938,7 +1938,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             val share = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "application/json"
                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Progress")
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "Hunter Suite Progress")
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
             startActivity(android.content.Intent.createChooser(share, "Export progress"))

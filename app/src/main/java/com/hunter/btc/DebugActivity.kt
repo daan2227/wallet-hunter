@@ -245,11 +245,11 @@ class DebugActivity : AppCompatActivity() {
                         } else Avisos.abrirAjustes(this@DebugActivity)
                     }
                     !Avisos.permitidos(this@DebugActivity) -> {
-                        tvAvisos.text = "Notifications are turned off for Wallet Hunter: opening the settings."
+                        tvAvisos.text = "Notifications are turned off for Hunter Suite: opening the settings."
                         Avisos.abrirAjustes(this@DebugActivity)
                     }
                     else -> {
-                        val ok = Avisos.hallazgo(this@DebugActivity, "Test — Wallet Hunter",
+                        val ok = Avisos.hallazgo(this@DebugActivity, "Test — Hunter Suite",
                             "Notifications work. A real find says the same and the key goes to the vault.")
                         tvAvisos.text = if (ok) "Test notification sent." else "Could not send it."
                     }

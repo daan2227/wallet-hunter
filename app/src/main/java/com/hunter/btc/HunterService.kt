@@ -99,7 +99,7 @@ class HunterService : Service() {
         } catch (e: Throwable) {}
         createChannels()
         registerReceiver(battReceiver, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        startForeground(NOTIF_FG, buildFgNotif("BTC Hunter running", "Starting..."))
+        startForeground(NOTIF_FG, buildFgNotif("Hunter Suite running", "Starting..."))
         // WakeLock para mantener CPU activo con pantalla apagada
         val pm = getSystemService(POWER_SERVICE) as PowerManager
         // Con caducidad y sin contar referencias: se renueva en cada vuelta de
@@ -211,7 +211,7 @@ class HunterService : Service() {
         // En la pantalla de bloqueo, sin dirección: decirle a quien coja el
         // móvil que aquí hay una clave hallada es ya decir demasiado.
         val publica = Notification.Builder(this, CHANNEL_MATCH)
-            .setContentTitle("Wallet Hunter")
+            .setContentTitle("Hunter Suite")
             .setContentText("Match found — unlock to see it")
             .setSmallIcon(R.drawable.ic_notif)
             .build()
@@ -321,13 +321,13 @@ class HunterService : Service() {
                         "Kangaroo · $vStr",
                         "$pts points · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%"))
             } else if (running) {
-                val title = "BTC Hunter · $wStr · $found matches"
+                val title = "Hunter Suite · $wStr · $found matches"
                 val text = "$cStr · %02d:%02d:%02d · ${"%.0f".format(currentTemp)}°C · ${batteryLevel}%%".format(h,m,s)
                 getSystemService(NotificationManager::class.java)
                     .notify(NOTIF_FG, buildFgNotif(title, text))
             } else if (loaded) {
                 getSystemService(NotificationManager::class.java)
-                    .notify(NOTIF_FG, buildFgNotif("BTC Hunter idle", "CSV loaded, ready to start"))
+                    .notify(NOTIF_FG, buildFgNotif("Hunter Suite idle", "CSV loaded, ready to start"))
             }
 
             // Detectar nuevo match.

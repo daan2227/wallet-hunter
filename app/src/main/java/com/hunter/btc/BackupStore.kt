@@ -76,7 +76,7 @@ object BackupStore {
             android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "application/octet-stream"
                 putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                putExtra(android.content.Intent.EXTRA_SUBJECT, "Wallet Hunter Backup")
+                putExtra(android.content.Intent.EXTRA_SUBJECT, "Hunter Suite Backup")
                 addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             },
             "Share backup")

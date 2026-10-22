@@ -57,7 +57,7 @@ object HuellaDesbloqueo {
             BiometricManager.BIOMETRIC_SUCCESS
 
     private fun info(subtitulo: String) = BiometricPrompt.PromptInfo.Builder()
-        .setTitle("Wallet Hunter").setSubtitle(subtitulo)
+        .setTitle("Hunter Suite").setSubtitle(subtitulo)
         .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
         .setNegativeButtonText("Use the code").build()
 

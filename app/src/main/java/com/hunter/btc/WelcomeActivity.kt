@@ -76,8 +76,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
         val logoText = android.widget.TextView(this).apply {
-            text = android.text.SpannableString("WalletHunter").also { sp ->
-                sp.setSpan(android.text.style.ForegroundColorSpan(ACCENT), 6, 12,
+            text = android.text.SpannableString("HunterSuite").also { sp ->
+                sp.setSpan(android.text.style.ForegroundColorSpan(ACCENT), 6, 11,
                     android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
             textSize = 28f; setTextColor(TXT)
@@ -87,7 +87,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(logoRow)
 
         root.addView(android.widget.TextView(this).apply {
-            text = "Bitcoin seed scanner"
+            text = "Scanner · Wallet · Vault · Node"
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = android.view.Gravity.CENTER
@@ -159,10 +159,10 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         }
         val logoText = TextView(this).apply {
-            text = android.text.SpannableString("WalletHunter").also { sp ->
+            text = android.text.SpannableString("HunterSuite").also { sp ->
                 sp.setSpan(
                     android.text.style.ForegroundColorSpan(AppTheme.ACCENT),
-                    6, 12, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
+                    6, 11, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE
                 )
             }
             textSize = 28f; setTextColor(AppTheme.TXT_PRI)
@@ -172,7 +172,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(logoRow)
 
         root.addView(TextView(this).apply {
-            text = "Bitcoin seed scanner"
+            text = "Scanner · Wallet · Vault · Node"
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = Gravity.CENTER

@@ -23,7 +23,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher_round"
-        android:label="Wallet Hunter"
+        android:label="Hunter Suite"
         android:theme="@style/AppThemeDark"
 >
         <activity android:name=".WalletActivity"

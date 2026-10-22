@@ -1,6 +1,6 @@
-# Wallet Hunter
+# Hunter Suite
 
-Android app for Bitcoin key recovery and auditing: a BIP39 seed scanner, a
+Android app (formerly *Wallet Hunter*) for Bitcoin key recovery, auditing and running your own node: a pruned Bitcoin Core with UTXO snapshot,  a BIP39 seed scanner, a
 puzzle-range solver, a wallet manager, a **weak-key audit** built on Pollard's
 Kangaroo over secp256k1, and a grouped **Tools** screen with ~25 utilities
 (addresses, signing, BIP38, PSBT, Shamir, vanity, a deterministic BSGS range

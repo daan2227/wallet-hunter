@@ -57,7 +57,7 @@ object CoreConfig {
         val a = a0.normalizado()
         require('\n' !in cookie && '\r' !in cookie) { "ruta con saltos de línea" }
         return buildString {
-            appendLine("# Generado por Wallet Hunter. Se reescribe en cada arranque.")
+            appendLine("# Generado por Hunter Suite. Se reescribe en cada arranque.")
             appendLine("server=1")
             appendLine("prune=${a.pruneMiB}")
             appendLine("dbcache=${a.dbcacheMiB}")
