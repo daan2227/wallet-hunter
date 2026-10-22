@@ -61,7 +61,22 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val cEstado = Ui.card(this)
     page.addView(cEstado)
     etiqueta(cEstado, "Bitcoin Core on this phone")
-    val tvEstado = texto(cEstado, "…", AppTheme.ACCENT, AppTheme.SP_TITLE)
+    // La luz de estado (parpadea según lo que hace el nodo) y el texto del estado, en una fila.
+    val filaEstado = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+    }
+    cEstado.addView(filaEstado)
+    val luz = View(this).apply {
+        background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.OVAL; setColor(AppTheme.TXT_MUTED) }
+        layoutParams = LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginEnd = dp(10) }
+    }
+    filaEstado.addView(luz)
+    val tvEstado = texto(filaEstado, "…", AppTheme.ACCENT, AppTheme.SP_TITLE).apply {
+        (layoutParams as LinearLayout.LayoutParams).apply { width = 0; weight = 1f; topMargin = 0 }
+    }
     val barraSync = barra(cEstado)
     val vAltura  = Ui.row(this, cEstado, "Blocks / headers", "–")
     val vPares   = Ui.row(this, cEstado, "Peers", "–")
@@ -73,6 +88,47 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         (layoutParams as LinearLayout.LayoutParams).apply { leftMargin = 0; rightMargin = 0 }
     }
     cEstado.addView(btnNodo)
+    btnNodo.foreground = Ui.toque()
+
+    // El aspecto del botón y de la luz según lo que hace el nodo:
+    //   0 parado (verde, «Start node»)        1 arrancando (ámbar, pulsa)       2 trabajando: poniéndose al día o
+    //   cargando (rojo «Stop node», luz ámbar rápida)   3 al día (rojo «Stop node», luz verde lenta)
+    //   4 parando (gris, pulsa)                5 este APK no lleva Core (atenuado)
+    var modoNodo = -1
+    var animLuz: android.animation.ObjectAnimator? = null
+    var animBoton: android.animation.ObjectAnimator? = null
+    fun aplicarModo(m: Int) {
+        if (m == modoNodo) return
+        modoNodo = m
+        animLuz?.cancel(); animBoton?.cancel(); btnNodo.alpha = 1f; luz.alpha = 1f
+        val blanco = android.graphics.Color.WHITE
+        val a = when (m) {
+            1 -> AspectoNodo("Starting…", AppTheme.WARN, AppTheme.ON_ACCENT, AppTheme.WARN, 500L, true)
+            2 -> AspectoNodo("Stop node", AppTheme.RED, blanco, AppTheme.WARN, 700L, false)
+            3 -> AspectoNodo("Stop node", AppTheme.RED, blanco, AppTheme.ACCENT, 1600L, false)
+            4 -> AspectoNodo("Stopping…", AppTheme.BG_KEY, AppTheme.TXT_SEC, AppTheme.TXT_MUTED, 500L, true)
+            else -> AspectoNodo("Start node", AppTheme.ACCENT, AppTheme.ON_ACCENT, AppTheme.TXT_MUTED, 0L, false)
+        }
+        btnNodo.text = a.rotulo; btnNodo.setTextColor(a.tinta)
+        btnNodo.background = Ui.cardBg(AppTheme.R_KEY, a.fondo, act)
+        (luz.background as android.graphics.drawable.GradientDrawable).setColor(a.luz)
+        if (a.periodoLuz > 0) animLuz = android.animation.ObjectAnimator.ofFloat(luz, View.ALPHA, 1f, .2f).apply {
+            duration = a.periodoLuz; repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE; start() }
+        if (a.pulsaBoton) animBoton = android.animation.ObjectAnimator.ofFloat(btnNodo, View.ALPHA, 1f, .55f).apply {
+            duration = 600; repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE; start() }
+        else if (m == 5) btnNodo.alpha = .4f
+        // Un pequeño «pop» al cambiar de estado.
+        btnNodo.scaleX = .96f; btnNodo.scaleY = .96f
+        btnNodo.animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+    }
+    // Las animaciones infinitas no siguen cuando la pantalla se desmonta; al volver se vuelve a pintar el estado.
+    btnNodo.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+        override fun onViewAttachedToWindow(v: View) { modoNodo = -1 }
+        override fun onViewDetachedFromWindow(v: View) { animLuz?.cancel(); animBoton?.cancel() }
+    })
+    aplicarModo(0)
     texto(cEstado, "The node checks the Bitcoin chain itself, without asking anyone. The wallet can use it to " +
         "send, to estimate fees and to check balances (see “Wallet” below); the rest still comes from the usual " +
         "servers. It downloads a lot of data: Wi-Fi and a charger are recommended.",
@@ -281,6 +337,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     var tarea: CoreSnapshot.Cancelar? = null
     var ocupado = false          // copia, descarga o carga en curso
     var ultimo: CoreConfig.Estado? = null
+    var deteniendo = false          // el usuario pidió parar y el nodo aún cierra (puede tardar hasta un minuto)
+    var arranquePedido = 0L         // cuándo se pulsó Start: evita que el botón parpadee a «Start» antes de que el servicio arranque
     val refrescando = AtomicBoolean(false)
 
     fun enMarcha() = CoreService.activo || CoreNodo.procesoVivo()
@@ -345,13 +403,18 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         if (!bin) {
             tvEstado.text = "Not included in this build"
             tvEstado.setTextColor(AppTheme.WARN)
-            btnNodo.text = "Start node"; btnNodo.alpha = .4f
+            aplicarModo(5); btnNodo.alpha = .4f
             tvAtras.text = "This APK was built before the Core binary was published. Build the " +
                 "\"Compilar Bitcoin Core\" workflow once and then build the app again."
             return
         }
-        btnNodo.alpha = 1f
-        btnNodo.text = if (corre || est != null) "Stop node" else "Start node"
+        aplicarModo(when {
+            deteniendo -> 4
+            est != null -> if (est.descargaInicial || est.bloques < est.cabeceras || est.validandoAtras) 2 else 3
+            carga != null && carga.enCurso -> 2
+            arrancando || corre || System.currentTimeMillis() - arranquePedido < 20_000L -> 1
+            else -> 0
+        })
         tvAtras.text = ""
         if (est != null) {
             ultimo = est
@@ -670,9 +733,15 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     btnNodo.setOnClickListener {
         if (CoreNodo.binario(act) == null) { aviso("This build does not include Bitcoin Core."); return@setOnClickListener }
         if (enMarcha() || ultimo != null) {
-            btnNodo.alpha = .4f; tvEstado.text = "Stopping…"
-            Thread { CoreNodo.parar(act); CoreService.parar(act); ultimo = null; runOnUiThread { refrescar() } }.start()
+            deteniendo = true; aplicarModo(4); tvEstado.text = "Stopping…"; tvEstado.setTextColor(AppTheme.TXT_SEC)
+            Thread {
+                CoreNodo.parar(act); CoreService.parar(act)
+                deteniendo = false; ultimo = null
+                runOnUiThread { refrescar() }
+            }.start()
         } else {
+            arranquePedido = System.currentTimeMillis()
+            aplicarModo(1); tvEstado.text = "Starting…"; tvEstado.setTextColor(AppTheme.WARN)
             CoreService.arrancar(act)
             h.postDelayed({ refrescar() }, 1500)
         }
@@ -778,6 +847,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     })
     return scroll
 }
+
+private class AspectoNodo(val rotulo: String, val fondo: Int, val tinta: Int, val luz: Int,
+                          val periodoLuz: Long, val pulsaBoton: Boolean)
 
 private fun MainActivity.prefsMinimoCsv(): Int =
     getSharedPreferences("core", android.content.Context.MODE_PRIVATE).getInt("csv_minimo", 2).coerceIn(0, 5)
