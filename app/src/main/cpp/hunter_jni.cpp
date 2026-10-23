@@ -82,6 +82,7 @@ static void install_crash_handlers() {
 #include "addr_encode.h"   /* b58enc, h160_to_addr, bech32, p2sh, p2tr */
 #include "wif_direcciones.h"   /* wif_decode y todas las direcciones de un WIF */
 #include "xpub_export.h"   /* xpub/ypub/zpub de la cuenta de una semilla */
+#include "taproot_audit.h"  /* auditoría de Taproot propias: fuerza bruta con el tweak de BIP341 */
 #include "frase_semilla.h"   /* semilla_de_frase: palabras o palabras|passphrase */
 #include "addr_decode.h"   /* destino -> scriptPubKey, estricto */
 #include "ruta_bip32.h"    /* ruta BIP32 estricta */
@@ -3648,5 +3649,121 @@ Java_com_hunter_btc_HunterEngine_kangarooResult(JNIEnv *env, jobject){
     hex[64]=0;
     return env->NewStringUTF(hex);
 }
+
+/* =========================================================
+   AUDITORÍA TAPROOT: fuerza bruta con el tweak de BIP341.
+   Aparte del motor del Scanner (g_running/g_mode/g_h160…): no comparte
+   estado con él, así que se puede dejar corriendo a la vez que un escaneo
+   normal sin que se pisen. Ver taproot_audit.h para el porqué (ni Kangaroo
+   ni BSGS sirven con una clave tweakeada) y tools/ec-harness/taproot_audit.cpp
+   para las pruebas del motor en sí, sin Android.
+   ========================================================= */
+static tr_audit::Objetivos g_tr_obj;
+static std::atomic<bool> g_tr_cargando(false);
+static std::atomic<bool> g_tr_corriendo(false);
+static std::atomic<bool> g_tr_parar(false);
+static std::atomic<uint64_t> g_tr_claimed(0);   /* siguiente offset sin repartir */
+static std::atomic<uint64_t> g_tr_done(0);      /* candidatas ya probadas */
+static uint64_t g_tr_width = 0;                 /* ancho del rango (candidatas totales) */
+static uint8_t  g_tr_start[32] = {0};
+static char g_tr_status[256] = "";
+static std::mutex g_tr_status_mtx;
+static std::string g_tr_path;
+
+static void *tr_load_fn(void*){
+    char status[256];
+    bool ok = tr_audit::cargar(g_tr_path.c_str(), &g_tr_obj, 2'000'000, status, sizeof(status));
+    { std::lock_guard<std::mutex> lk(g_tr_status_mtx);
+      snprintf(g_tr_status,sizeof(g_tr_status),"%s",status); }
+    add_log(std::string("Taproot audit: ")+status);
+    (void)ok;
+    g_tr_cargando.store(false);
+    return nullptr;
+}
+
+static const int TR_HILO_LOTE = 4096;   /* candidatas que reclama un hilo de una vez */
+
+static void *tr_worker_fn(void*){
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
+    if(!ctx) return nullptr;
+    while(!g_tr_parar.load()){
+        uint64_t desde = g_tr_claimed.fetch_add(TR_HILO_LOTE);
+        if(desde >= g_tr_width) break;
+        uint64_t cuenta = std::min((uint64_t)TR_HILO_LOTE, g_tr_width - desde);
+        uint64_t hecho = tr_audit::escanear_bloque(ctx,&g_tr_obj,g_tr_start,desde,cuenta,g_tr_parar,
+            [&](const char *privhex, const char *addr){
+                g_found.fetch_add(1);
+                char extra[128]; snprintf(extra,sizeof(extra),"TRAUDIT HEX:%s",privhex);
+                char wif[60]={0}; uint8_t pk[32];
+                for(int b=0;b<32;b++) sscanf(privhex+b*2,"%2hhx",&pk[b]);
+                pk_to_wif(pk,wif);
+                save_match(privhex,addr,0.0,wif,extra);
+                add_log(std::string("*** TAPROOT AUDIT MATCH *** ")+addr);
+            });
+        g_tr_done.fetch_add(hecho);
+        if(hecho < cuenta) break;   /* parar() a mitad de un lote: no pedir más */
+    }
+    secp256k1_context_destroy(ctx);
+    return nullptr;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_taprootCargarObjetivos(JNIEnv *env, jobject, jstring path){
+    if(g_tr_corriendo.load()){ add_log("taprootCargarObjetivos: stop the scan first"); return; }
+    const char *p = path?env->GetStringUTFChars(path,nullptr):nullptr;
+    if(!p) return;
+    g_tr_path.assign(p);
+    env->ReleaseStringUTFChars(path,p);
+    bool libre=false;
+    if(!g_tr_cargando.compare_exchange_strong(libre,true)) return;
+    std::thread(tr_load_fn, nullptr).detach();
+}
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_taprootCargando(JNIEnv*, jobject){ return g_tr_cargando.load(); }
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_taprootEstadoCarga(JNIEnv *env, jobject){
+    std::lock_guard<std::mutex> lk(g_tr_status_mtx);
+    return env->NewStringUTF(g_tr_status);
+}
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_taprootObjetivos(JNIEnv*, jobject){ return (jlong)g_tr_obj.n; }
+
+/* [startHex] 64 hex (32 bytes, big-endian): el principio del rango. [anchoStr] el número de
+   candidatas a probar (decimal, hasta 2^40), como texto porque no cabe en un jint. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_taprootIniciar(JNIEnv *env, jobject, jstring startHex, jstring anchoStr, jint hilos){
+    if(g_tr_corriendo.load()) return env->NewStringUTF("Already running");
+    if(g_tr_cargando.load()) return env->NewStringUTF("Still loading the target list");
+    if(!g_tr_obj.n) return env->NewStringUTF("No target addresses loaded");
+    const char *sh = startHex?env->GetStringUTFChars(startHex,nullptr):nullptr;
+    const char *aw = anchoStr?env->GetStringUTFChars(anchoStr,nullptr):nullptr;
+    if(!sh || !aw || strlen(sh)!=64){
+        if(sh) env->ReleaseStringUTFChars(startHex,sh); if(aw) env->ReleaseStringUTFChars(anchoStr,aw);
+        return env->NewStringUTF("Bad start/width");
+    }
+    hex_to_bytes32(sh,g_tr_start);
+    uint64_t ancho = strtoull(aw,nullptr,10);
+    env->ReleaseStringUTFChars(startHex,sh); env->ReleaseStringUTFChars(anchoStr,aw);
+    if(ancho==0 || ancho>(1ULL<<40)) return env->NewStringUTF("Width must be between 1 and 2^40");
+    g_tr_width = ancho; g_tr_claimed.store(0); g_tr_done.store(0);
+    g_tr_parar.store(false); g_tr_corriendo.store(true);
+    int n = hilos>0 ? hilos : 1;
+    std::thread([n]{
+        std::vector<std::thread> ts;
+        for(int i=0;i<n;i++) ts.emplace_back(tr_worker_fn, nullptr);
+        for(auto &t: ts) t.join();
+        g_tr_corriendo.store(false);
+        add_log("Taproot audit: finished (range scanned or stopped)");
+    }).detach();
+    return env->NewStringUTF("");
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_taprootDetener(JNIEnv*, jobject){ g_tr_parar.store(true); }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_taprootCorriendo(JNIEnv*, jobject){ return g_tr_corriendo.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_taprootHechas(JNIEnv*, jobject){ return (jlong)g_tr_done.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_taprootAncho(JNIEnv*, jobject){ return (jlong)g_tr_width; }
 
 }

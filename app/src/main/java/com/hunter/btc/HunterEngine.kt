@@ -299,4 +299,32 @@ object HunterEngine {
     /** La clave pública con la que se arrancó, en hex. "" si no hay búsqueda. */
     external fun kangarooPub(): String
 
+    // ── Auditoría Taproot (fuerza bruta con el tweak de BIP341; ver taproot_audit.h) ────────────
+    //
+    // Aparte del resto del motor a propósito: no comparte estado con el Scanner ni con Kangaroo,
+    // así que las dos cosas pueden correr a la vez sin pisarse.
+
+    /** Carga la lista de direcciones/claves propias desde un fichero: una por línea (bc1p… o
+     *  64 caracteres hex). Asíncrono: mirar [taprootCargando] y [taprootEstadoCarga]. */
+    external fun taprootCargarObjetivos(path: String)
+    external fun taprootCargando(): Boolean
+    /** El resultado de la última carga, en inglés para enseñarlo tal cual. */
+    external fun taprootEstadoCarga(): String
+    /** Cuántas direcciones distintas quedaron cargadas. */
+    external fun taprootObjetivos(): Long
+
+    /**
+     * Arranca el barrido de [startHex] (64 hex, 32 bytes) a [startHex] + [anchoDecimal] - 1.
+     * @param anchoDecimal el ancho del rango en decimal (hasta 2^40 = 1099511627776), como texto
+     *   porque no cabe en un Int.
+     * @return "" si arrancó, o el motivo por el que no.
+     */
+    external fun taprootIniciar(startHex: String, anchoDecimal: String, hilos: Int): String
+    external fun taprootDetener()
+    external fun taprootCorriendo(): Boolean
+    /** Candidatas ya probadas en este barrido. */
+    external fun taprootHechas(): Long
+    /** El ancho del rango en curso (0 si no hay ninguno). */
+    external fun taprootAncho(): Long
+
 }

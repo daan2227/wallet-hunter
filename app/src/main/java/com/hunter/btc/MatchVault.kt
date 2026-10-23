@@ -558,9 +558,10 @@ object MatchVault {
         return Entry(
             ts      = ts,
             source  = when {
-                line.contains("SEED:") -> "scanner"   // BIP39
-                line.contains("RAW:")  -> "scanner"   // raw keys
-                else                   -> "puzzle"
+                line.contains("SEED:")    -> "scanner"       // BIP39
+                line.contains("RAW:")     -> "scanner"       // raw keys
+                line.contains("TRAUDIT")  -> "taproot-audit"
+                else                      -> "puzzle"
             },
             addr    = addr,
             wif     = field("WIF"),

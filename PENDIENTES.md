@@ -103,6 +103,16 @@
   (como con el código): la pantalla del baúl pide el código, pero no es una barrera criptográfica nueva. Cambiar el código
   o las huellas registradas en el móvil la apaga. Tras 5 fallos de código, la huella queda vetada hasta un código bueno.
 
+- **Taproot audit (sin probar en un teléfono).** Pantalla aparte desde Weak: fuerza bruta con el tweak de
+  BIP341 contra direcciones Taproot PROPIAS que se cargan desde un fichero (una por línea: bc1p… o una clave
+  x-only de 64 hex, sin tope de tamaño). Ni Kangaroo ni BSGS sirven con una clave tweakeada: el exponente
+  queda disperso por todo el cuerpo aunque la clave interna esté en un rango pequeño (ver el comentario de
+  `taproot_audit.h`), así que no hay atajo. Selector de rango (inicio y ancho hasta 2^40) y progreso con
+  ritmo y ETA medidos en vivo. Los hallazgos van al baúl como los demás (source `taproot-audit`). Probado el
+  motor en el banco de pruebas (`tools/ec-harness/taproot_audit.cpp`), no en un teléfono. Un rango de 2^40
+  son días de cómputo incluso con varios núcleos: el selector lo permite, no lo recomienda. La carga no se
+  puede reanudar: si se para, la siguiente vez vuelve a empezar desde el principio del rango elegido.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van

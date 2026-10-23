@@ -1,6 +1,7 @@
 package com.hunter.btc
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -393,6 +394,20 @@ object WeakController {
         }
         btnBsgs = vBsgs
         root.addView(vBsgs)
+
+        // Aparte, no un tercer motor aquí: ni Kangaroo ni BSGS sirven contra una clave Taproot
+        // tweakeada (ver TaprootAuditActivity), así que es una pantalla propia, no un botón más
+        // en una pestaña que ya tiene bastante.
+        val vTrAudit = Button(a).apply {
+            text = "Taproot audit (your own addresses)…"; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context)
+            isAllCaps = false; stateListAnimator = null
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_KEY, context)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48))
+                .apply { topMargin = dp(10) }
+            setOnClickListener { Ui.pulso(this); a.startActivity(Intent(a, TaprootAuditActivity::class.java)) }
+        }
+        root.addView(vTrAudit)
 
         val vStats = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL

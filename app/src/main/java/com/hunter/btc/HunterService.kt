@@ -50,11 +50,13 @@ class HunterService : Service() {
                 if (batteryLevel < 15 && !enchufado) {
                     val bruta = HunterEngine.isRunning()
                     val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-                    if (bruta || kang) {
+                    val trAud = try { HunterEngine.taprootCorriendo() } catch (e: Throwable) { false }
+                    if (bruta || kang || trAud) {
                         if (bruta) HunterEngine.stopHunting()
                         // En otro hilo: kangarooStop espera a los hilos y guarda la tabla (hasta ~235 MB), y este
                         // receptor corre en el hilo principal.
                         if (kang)  Thread { try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }.start()
+                        if (trAud) try { HunterEngine.taprootDetener() } catch (e: Throwable) {}   // para en el sitio, nada que guardar
                         // Y decir que la parada es a propósito. Sin esto la
                         // pausa no servía de nada: el watchdog de la pantalla
                         // principal ve el motor caído, lee estas dos banderas,
@@ -76,6 +78,7 @@ class HunterService : Service() {
                                 "Paused: battery low",
                                 "Battery at ${batteryLevel}%. " +
                                 if (kang) "The Kangaroo work is saved."
+                                else if (trAud) "The Taproot audit was paused (it does not resume: starting it again scans the range from the start)."
                                 else "Charge it and start again."
                             ))
                     }
