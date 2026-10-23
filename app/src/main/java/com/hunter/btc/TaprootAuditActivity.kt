@@ -210,20 +210,30 @@ class TaprootAuditActivity : AppCompatActivity() {
     private val reBc1p = Regex("bc1p[a-zA-HJ-NP-Z0-9]{20,90}", RegexOption.IGNORE_CASE)
     private val reHex64 = Regex("\\b[0-9a-fA-F]{64}\\b")
 
-    /** Lo pegado a mano: una o varias direcciones/claves, separadas por lo que sea. Mismo camino que un
-     *  fichero, con una lista corta no hace falta otro hilo. */
+    /** Lo pegado a mano: una o varias direcciones/claves, separadas por lo que sea. Busca en CADA LÍNEA
+     *  los dos tipos a la vez (antes sólo miraba uno u otro por línea, así que una lista con las dos
+     *  formas mezcladas se quedaba corta). */
     private fun cargarDePegadas(pegado: String) {
         val vistas = LinkedHashSet<String>()
-        for (l in pegado.lines()) { reBc1p.find(l)?.let { vistas.add(it.value) }; reHex64.find(l)?.let { vistas.add(it.value) } }
+        for (l in pegado.lines()) {
+            reBc1p.findAll(l).forEach { vistas.add(it.value) }
+            reHex64.findAll(l).forEach { vistas.add(it.value) }
+        }
         if (vistas.isEmpty()) {
             Toast.makeText(this, "No bc1p… address or x-only key found in that text.", Toast.LENGTH_LONG).show()
             return
         }
-        val destino = java.io.File(filesDir, "taproot_audit_targets.txt")
-        destino.writeText(vistas.joinToString("\n"))
+        Toast.makeText(this, "Loading ${vistas.size} address(es)…", Toast.LENGTH_SHORT).show()
         tvEstadoCarga.text = "Loading…"
-        HunterEngine.taprootCargarObjetivos(destino.absolutePath)
-        sondearCarga()
+        try {
+            val destino = java.io.File(filesDir, "taproot_audit_targets.txt")
+            destino.writeText(vistas.joinToString("\n"))
+            HunterEngine.taprootCargarObjetivos(destino.absolutePath)
+            sondearCarga()
+        } catch (t: Throwable) {
+            tvEstadoCarga.text = "Failed: ${t.javaClass.simpleName}"
+            Toast.makeText(this, "Could not load: ${t.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     /** Lee el fichero línea a línea (cualquier tamaño) y se queda con las direcciones bc1p… o claves
@@ -239,8 +249,8 @@ class TaprootAuditActivity : AppCompatActivity() {
                     destino.bufferedWriter().use { sal ->
                         ent.bufferedReader().forEachLine { linea ->
                             lineas++
-                            reBc1p.find(linea)?.let { sal.write(it.value); sal.write("\n"); encontradas++ }
-                                ?: reHex64.find(linea)?.let { sal.write(it.value); sal.write("\n"); encontradas++ }
+                            reBc1p.findAll(linea).forEach { sal.write(it.value); sal.write("\n"); encontradas++ }
+                            reHex64.findAll(linea).forEach { sal.write(it.value); sal.write("\n"); encontradas++ }
                         }
                     }
                 } ?: "Could not open that file."
