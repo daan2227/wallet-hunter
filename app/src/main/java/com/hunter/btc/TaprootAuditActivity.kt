@@ -47,6 +47,7 @@ class TaprootAuditActivity : AppCompatActivity() {
 
     private lateinit var tvEstadoCarga: TextView
     private lateinit var btnCargar: TextView
+    private lateinit var etPegadas: EditText
     private lateinit var etInicio: EditText
     private lateinit var sbBits: SeekBar
     private lateinit var tvBits: TextView
@@ -88,8 +89,23 @@ class TaprootAuditActivity : AppCompatActivity() {
             "There is no size limit worth mentioning: it is read a line at a time.",
             AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
         tvEstadoCarga = texto(cDs, "No file loaded yet.", AppTheme.TXT_PRI)
-        btnCargar = Ui.ghost(this, "Load addresses from a file…").apply {
+
+        etPegadas = Ui.input(this, "one or more, separated by spaces or newlines", mono = true).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or
+                        InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            minLines = 2; maxLines = 6
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(10)
+        }
+        cDs.addView(etPegadas)
+        val btnPegadas = Ui.ghost(this, "Use these addresses").apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+        }
+        cDs.addView(btnPegadas)
+        btnPegadas.setOnClickListener { cargarDePegadas(etPegadas.text.toString()) }
+
+        texto(cDs, "Or load them from a file:", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+        btnCargar = Ui.ghost(this, "Load addresses from a file…").apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
         }
         cDs.addView(btnCargar)
         btnCargar.setOnClickListener {
@@ -191,13 +207,30 @@ class TaprootAuditActivity : AppCompatActivity() {
         }
     }
 
+    private val reBc1p = Regex("bc1p[a-zA-HJ-NP-Z0-9]{20,90}", RegexOption.IGNORE_CASE)
+    private val reHex64 = Regex("\\b[0-9a-fA-F]{64}\\b")
+
+    /** Lo pegado a mano: una o varias direcciones/claves, separadas por lo que sea. Mismo camino que un
+     *  fichero, con una lista corta no hace falta otro hilo. */
+    private fun cargarDePegadas(pegado: String) {
+        val vistas = LinkedHashSet<String>()
+        for (l in pegado.lines()) { reBc1p.find(l)?.let { vistas.add(it.value) }; reHex64.find(l)?.let { vistas.add(it.value) } }
+        if (vistas.isEmpty()) {
+            Toast.makeText(this, "No bc1p… address or x-only key found in that text.", Toast.LENGTH_LONG).show()
+            return
+        }
+        val destino = java.io.File(filesDir, "taproot_audit_targets.txt")
+        destino.writeText(vistas.joinToString("\n"))
+        tvEstadoCarga.text = "Loading…"
+        HunterEngine.taprootCargarObjetivos(destino.absolutePath)
+        sondearCarga()
+    }
+
     /** Lee el fichero línea a línea (cualquier tamaño) y se queda con las direcciones bc1p… o claves
      *  x-only de 64 hex, una por línea, en un fichero propio que el motor nativo vuelve a leer. */
     private fun cargarDesde(uri: Uri) {
         tvEstadoCarga.text = "Reading the file…"
         btnCargar.isEnabled = false
-        val reBc1p = Regex("bc1p[a-zA-HJ-NP-Z0-9]{20,90}", RegexOption.IGNORE_CASE)
-        val reHex64 = Regex("\\b[0-9a-fA-F]{64}\\b")
         Thread {
             val destino = java.io.File(filesDir, "taproot_audit_targets.txt")
             var lineas = 0L; var encontradas = 0L
