@@ -262,6 +262,16 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     btnFiltro.setOnClickListener {
         FiltroUtxoDialogo.mostrar(act, filtroCsv) { filtroCsv = it; pintarCols() }
     }
+    val formatosClave = ExportadorUtxo.FormatoClave.values()
+    var formatoClaveCsv = formatosClave.getOrElse(prefsCore.getInt("csv_formato_clave", 0)) { formatosClave[0] }
+    rotulo(cCsv, "Public key format", "Taproot keys are stored as 32 bytes (x-only, 64 hex characters, no prefix). " +
+        "By BIP340 their Y is even, so they equal 02 + x. “Compressed” gives 02/03 + x (66 characters), “Uncompressed” " +
+        "gives 04 + x + y (130 characters) and “x-only” keeps just x. Converting also checks that the key is a point of " +
+        "the curve: an invalid one comes out empty, so with the filter “with a public key” only valid keys remain. " +
+        "It adds some calculation time.")
+    cCsv.addView(Ui.segmented(this, listOf("As stored" to null, "Compressed" to null, "Uncompressed" to null, "x-only" to null),
+        initial = formatoClaveCsv.ordinal) {
+        formatoClaveCsv = formatosClave[it]; prefsCore.edit().putInt("csv_formato_clave", it).apply() })
     pintarFiltro = { tvFiltro.text = "Filters: " + filtroCsv.copy(minSat = minimosCsv[minimoCsv]).resumen() }
     pintarCols()
     btnCols.setOnClickListener {
@@ -834,7 +844,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                     dir.listFiles()?.filter { it.name.startsWith("utxo_chain_") }?.forEach { it.delete() }
                     val destino = java.io.File(dir, "utxo_chain_${altura}_min${minimo}sat.csv")
                     val t0 = System.currentTimeMillis()
-                    val res = ExportadorUtxo.exportar(origen, destino, filtro, t, c, columnasCsv) { a, b, f -> progresoCsv(2, a, b, f, t0) }
+                    val res = ExportadorUtxo.exportar(origen, destino, filtro, t, c, columnasCsv, formatoClaveCsv) { a, b, f -> progresoCsv(2, a, b, f, t0) }
                     if (res == null) fin = "Cancelled."
                     else {
                         listo = destino

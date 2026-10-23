@@ -7,6 +7,7 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
 import com.hunter.btc.InstantaneaUtxo.Col
+import com.hunter.btc.ExportadorUtxo.FormatoClave as F
 
 class ExportadorUtxoTest {
 
@@ -171,6 +172,52 @@ class ExportadorUtxoTest {
             assertEquals(0, filas(FiltroUtxo(txidEmpieza = "01")))
             // Combinados
             assertEquals(1, filas(FiltroUtxo(minSat = 150_000L, tipos = setOf("P2TR"), alturaMin = 200)))
+        } finally { dir.deleteRecursively() }
+    }
+
+    @Test fun conviertePublicas() {
+        val x = "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
+        val y = "483ada7726a3c4655da4fbfc0e1108a8fd17b448a68554199c47d08ffb10d4b8"
+        // x-only -> comprimida (Y par por BIP340) y sin comprimir
+        assertEquals("02$x", ExportadorUtxo.convertirClave(x, F.COMPRIMIDA))
+        assertEquals("04$x$y", ExportadorUtxo.convertirClave(x, F.SIN_COMPRIMIR))
+        assertEquals(x, ExportadorUtxo.convertirClave(x, F.X_ONLY)); assertEquals(x, ExportadorUtxo.convertirClave(x, F.TAL_CUAL))
+        // comprimida <-> sin comprimir <-> x-only
+        assertEquals("04$x$y", ExportadorUtxo.convertirClave("02$x", F.SIN_COMPRIMIR))
+        assertEquals("02$x", ExportadorUtxo.convertirClave("04$x$y", F.COMPRIMIDA))
+        assertEquals(x, ExportadorUtxo.convertirClave("04$x$y", F.X_ONLY)); assertEquals(x, ExportadorUtxo.convertirClave("02$x", F.X_ONLY))
+        // La 03 es la clave negada: misma x, Y impar (p - y)
+        val yNeg = java.math.BigInteger("fffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f", 16)
+            .subtract(java.math.BigInteger(y, 16)).toString(16).padStart(64, '0')
+        assertEquals("04$x$yNeg", ExportadorUtxo.convertirClave("03$x", F.SIN_COMPRIMIR))
+        assertEquals("03$x", ExportadorUtxo.convertirClave("04$x$yNeg", F.COMPRIMIDA))
+        // Una x que no está en la curva no se puede pasar a comprimida ni a sin comprimir.
+        var malo: String? = null
+        for (k in 1..50) { val h = k.toString(16).padStart(64, '0'); if (ConversorUtxo.descomprimir(2, h.chunked(2).map { it.toInt(16).toByte() }.toByteArray()) == null) { malo = h; break } }
+        assertNotNull(malo)
+        assertEquals("", ExportadorUtxo.convertirClave(malo!!, F.COMPRIMIDA)); assertEquals("", ExportadorUtxo.convertirClave(malo, F.SIN_COMPRIMIR))
+        assertEquals(malo, ExportadorUtxo.convertirClave(malo, F.X_ONLY))
+        assertEquals("", ExportadorUtxo.convertirClave("zz", F.COMPRIMIDA)); assertEquals("", ExportadorUtxo.convertirClave("0102", F.COMPRIMIDA))
+        assertEquals("", ExportadorUtxo.convertirClave("", F.COMPRIMIDA))
+    }
+
+    @Test fun exportaConFormatoDeClave() {
+        val cuerpo = ByteArrayOutputStream(); cuerpo.write(ByteArray(32) { 3 }); cuerpo.write(2)
+        moneda(cuerpo, 0, 10, 1000, 6 + 34, "5120".h() + GX)        // Taproot con la x de G
+        moneda(cuerpo, 1, 10, 1000, 4, GX)                          // P2PK sin comprimir
+        val dir = java.nio.file.Files.createTempDirectory("utxocsv").toFile()
+        try {
+            val e = File(dir, "s.dat"); e.writeBytes(snapshot(2, cuerpo.toByteArray()))
+            val t = ExportadorUtxo.TiempoDeBloques(longArrayOf(0L, 100L), 100, 100)
+            val o = File(dir, "o.csv")
+            ExportadorUtxo.exportar(e, o, FiltroUtxo(clave = 1), t, ConversorUtxo.Cancelar(), setOf(Col.CLAVE), ExportadorUtxo.FormatoClave.COMPRIMIDA) { _, _, _ -> }!!
+            val l = o.readLines()
+            assertEquals(listOf("public_key", "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798",
+                                              "0279be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"), l)
+            // Con el filtro por prefijo, se aplica sobre la clave ya convertida.
+            val o2 = File(dir, "o2.csv")
+            val r = ExportadorUtxo.exportar(e, o2, FiltroUtxo(prefijoClave = "04"), t, ConversorUtxo.Cancelar(), setOf(Col.CLAVE), ExportadorUtxo.FormatoClave.SIN_COMPRIMIR) { _, _, _ -> }!!
+            assertEquals(2L, r.filas)
         } finally { dir.deleteRecursively() }
     }
 

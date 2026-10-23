@@ -80,6 +80,9 @@
     mainnet-<altura>-utxos.dat con una ficha .txt (bloque base, monedas, hash del conjunto, si Core lo acepta). El avance
     se sigue por el tamaño del fichero temporal y el tiempo restante es aproximado (usa el tamaño del snapshot cargado).
     No se puede cancelar. Un nodo podado suele rechazar el rollback. Sin probar en un teléfono.
+  - Formato de la clave pública en el CSV: tal cual, comprimida (02/03), sin comprimir (04) o x-only. Las Taproot vienen
+    como x-only (32 bytes, sin prefijo; por BIP340 su Y es par, así que valen 02+x). Al convertir se comprueba que la
+    clave sea un punto de la curva; una inválida sale vacía.
   - Instantánea de UTXO en CSV (pestaña Core): todo el conjunto de la cadena con las columnas que se elijan (dirección, utxo,
     txid, vout, fondo en BTC o sat, tipo, clave pública, hash, script, altura, fecha, coinbase, confirmaciones; por
     defecto las seis de siempre), filtros por cada uno de esos campos (importe mínimo y máximo, tipos, clave pública con/sin y prefijo, texto de la

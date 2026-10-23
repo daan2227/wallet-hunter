@@ -88,6 +88,41 @@ object ExportadorUtxo {
 
     class Resultado(val monedas: Long, val filas: Long, val bytes: Long)
 
+    /** Cómo se escribe la clave pública en el CSV. */
+    enum class FormatoClave { TAL_CUAL, COMPRIMIDA, SIN_COMPRIMIR, X_ONLY }
+
+    private fun deHex(h: String): ByteArray = ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+    /**
+     * Pasa una clave pública (hex) de un formato a otro. Las x-only de Taproot (32 bytes) no llevan prefijo: por la
+     * convención de BIP340 su Y es la PAR, así que equivalen a 02+x (la 03+x sería la clave negada, con la misma x).
+     *
+     * Devuelve "" si la clave no es un punto de la curva y la conversión necesita la Y (x-only o comprimida a sin
+     * comprimir); pasar a comprimida desde una sin comprimir, o a x-only, no necesita comprobarlo.
+     */
+    fun convertirClave(pub: String, formato: FormatoClave): String {
+        if (pub.isEmpty() || formato == FormatoClave.TAL_CUAL) return pub
+        val b = try { deHex(pub) } catch (e: Exception) { return "" }
+        val x: ByteArray; val paridad: Int
+        when (b.size) {
+            32 -> { x = b; paridad = 2 }
+            33 -> { x = b.copyOfRange(1, 33); paridad = b[0].toInt() and 0xff }
+            65 -> { x = b.copyOfRange(1, 33); paridad = 2 + (b[64].toInt() and 1) }
+            else -> return ""
+        }
+        if (paridad != 2 && paridad != 3) return ""
+        return when (formato) {
+            FormatoClave.X_ONLY -> hex(x)
+            FormatoClave.COMPRIMIDA -> when (b.size) {
+                33 -> pub
+                65 -> hex(byteArrayOf(paridad.toByte()) + x)
+                else -> if (ConversorUtxo.descomprimir(paridad, x) != null) hex(byteArrayOf(paridad.toByte()) + x) else ""
+            }
+            FormatoClave.SIN_COMPRIMIR -> if (b.size == 65) pub else ConversorUtxo.descomprimir(paridad, x)?.let { hex(it) } ?: ""
+            FormatoClave.TAL_CUAL -> pub
+        }
+    }
+
     private fun hex(b: ByteArray, desde: Int = 0, hasta: Int = b.size): String {
         val sb = StringBuilder((hasta - desde) * 2)
         for (i in desde until hasta) { val v = b[i].toInt() and 0xff; sb.append("0123456789abcdef"[v shr 4]).append("0123456789abcdef"[v and 15]) }
@@ -102,6 +137,7 @@ object ExportadorUtxo {
      */
     fun exportar(entrada: File, salida: File, filtro: FiltroUtxo, tiempo: TiempoDeBloques, c: ConversorUtxo.Cancelar,
                  columnas: Set<InstantaneaUtxo.Col> = InstantaneaUtxo.PREDETERMINADAS,
+                 formatoClave: FormatoClave = FormatoClave.TAL_CUAL,
                  progreso: (Long, Long, Long) -> Unit): Resultado? {
         if (columnas.isEmpty()) throw ConversorUtxo.FormatoInvalido("no columns selected")
         val f = filtro.normalizado()
@@ -185,6 +221,8 @@ object ExportadorUtxo {
                             }
                             monedas++
                             if (!pasa) continue
+                            // La clave se pasa al formato pedido ANTES de los filtros: lo que ve el filtro es lo que sale.
+                            if (pub.isNotEmpty() && formatoClave != FormatoClave.TAL_CUAL) pub = convertirClave(pub, formatoClave)
                             if (txidHex == null) txidHex = hex(txid.reversedArray())        // el txid se muestra al revés
                             val fecha = if (quiereFecha) tiempo.dia(altura) else ""
                             if (f.textual(tipo, addr, pub, hash, script, txidHex, fecha)) {
