@@ -47,8 +47,10 @@ class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC
     }
 
     private fun enviar(cuerpo: String, lecturaMs: Int): String {
+        // Sin cookie no hay nodo en marcha (Core la borra al parar y la escribe al arrancar). Antes esto se
+        // lanzaba como «-28, cargando el índice», y la pantalla enseñaba «Starting…» con el nodo parado.
         val ck = try { cookie.readText() } catch (e: Exception) {
-            throw CoreRpcError(-28, "El nodo todavía no ha escrito su cookie")
+            throw java.io.FileNotFoundException("no cookie: the node is not running")
         }
         val c = URL("http://127.0.0.1:$puerto/").openConnection() as HttpURLConnection
         try {
