@@ -3708,7 +3708,7 @@ static void *tr_worker_fn(void*){
         uint64_t desde = g_tr_claimed.fetch_add(TR_HILO_LOTE);
         if(desde >= g_tr_width) break;
         uint64_t cuenta = std::min((uint64_t)TR_HILO_LOTE, g_tr_width - desde);
-        uint64_t hecho = tr_audit::escanear_bloque(ctx,&g_tr_obj,g_tr_start,desde,cuenta,g_tr_parar,
+        uint64_t hecho = tr_audit::escanear_bloque_rapido(ctx,&g_tr_obj,g_tr_start,desde,cuenta,g_tr_parar,
             [&](const char *privhex, const char *addr){
                 g_found.fetch_add(1);
                 char extra[128]; snprintf(extra,sizeof(extra),"TRAUDIT HEX:%s",privhex);

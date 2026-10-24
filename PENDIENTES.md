@@ -123,6 +123,24 @@
   reconstruir la clave interna (lift_x), así que la salida tweakeada depende sólo de la x de la clave interna,
   no de qué raíz cuadrada diera la privada candidata: ya está bien como está.
 
+  Añadido después: **motor más rápido** (`escanear_bloque_rapido()` en `taproot_audit.h`, usado ya por el
+  motor nativo). Antes se calculaba P = d·G con una multiplicación de curva completa por cada d candidata
+  (`secp256k1_ec_pubkey_create`); ahora se calcula una sola vez por bloque de 256 candidatas y de ahí en
+  adelante sólo se SUMA +G (reutilizando `jac_batch.h`, lo mismo que ya usa el escáner de claves al azar),
+  normalizando por lotes con una sola inversión en vez de una por candidata. Medido en el escritorio contra
+  secp256k1 (400 000 candidatas, sin ningún hallazgo: el peor caso, el que más cuenta): **1,57× más rápido**
+  (21 200/s → 33 400/s) — menos de lo que parecía al principio porque el propio tweak de BIP341
+  (`secp256k1_ec_pubkey_tweak_add`) hace su PROPIA multiplicación de curva completa por cada candidata, para
+  sumar t·G, donde t es un hash distinto cada vez y no se puede precalcular ni encadenar: sólo se pudo quitar
+  una de las dos multiplicaciones por candidata, no las dos. Si el centímetro que falta importa, la otra
+  mitad exigiría reimplementar el tweak a mano con `jac_batch.h` en vez de la función genérica de secp256k1 —
+  más trabajo y más riesgo de un error sutil, no hecho todavía. Caso raro (si el rango cae justo en d=1 o
+  d=orden−1, donde sumar +G no vale: hay que doblar) cubierto cayendo a la vía de siempre para ese bloque;
+  probado en `tools/ec-harness/taproot_audit.cpp` contra la vía lenta, candidata por candidata, y con ese
+  caso raro forzado a propósito. En el teléfono real, el multiplicador medido ahí puede salir distinto (el
+  banco corre con qemu/x86, el móvil es ARM64 con su propio camino en `fe_mul`/`fe_sqr`) — no probado en un
+  teléfono.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van
