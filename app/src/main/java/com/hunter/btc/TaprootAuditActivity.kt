@@ -79,16 +79,20 @@ class TaprootAuditActivity : AppCompatActivity() {
         val scroll = ScrollView(this).apply { background = AppTheme.fondoApp() }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(24), dp(20), dp(32))
+            // Sin relleno lateral propio: igual que en el resto de pantallas (PestanaCore, Weak),
+            // cada tarjeta (Ui.card) y botón ancho (Ui.primary) ya trae su propio margen de
+            // pantalla. Tenerlo aquí TAMBIÉN los apretaba el doble (20dp del root más los 22dp de
+            // la propia tarjeta), y por eso se veía todo mucho más estrecho que en Weak.
+            setPadding(0, dp(24), 0, dp(32))
         }
         scroll.addView(root); setContentView(scroll)
 
-        root.addView(Ui.pageTitle(this, "Taproot audit", lados = false))
+        root.addView(Ui.pageTitle(this, "Taproot audit", lados = true))
         texto(root, "Brute force with the BIP341 tweak, against your OWN Taproot addresses. Kangaroo " +
             "and BSGS cannot be used here: the tweak scatters the exponent across the whole field, so there is no " +
             "bounded-range shortcut. Each candidate key costs about two point multiplications, so this is slow — a " +
             "range of 2⁴⁰ keys can take days even with several cores. Pick a width you can actually let run.",
-            AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+            AppTheme.TXT_SEC, AppTheme.SP_CAPTION, margenLados = true)
 
         // ── Dataset ──────────────────────────────────────────────────────────
         val cDs = Ui.card(this)
@@ -220,10 +224,12 @@ class TaprootAuditActivity : AppCompatActivity() {
         // ── Marcha ───────────────────────────────────────────────────────────
         barra = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(18) }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply {
+                topMargin = dp(18); leftMargin = dp(AppTheme.PAD_SIDE); rightMargin = dp(AppTheme.PAD_SIDE)
+            }
         }
         root.addView(barra)
-        tvProg = texto(root, "", AppTheme.TXT_PRI)
+        tvProg = texto(root, "", AppTheme.TXT_PRI, margenLados = true)
         btnEmpezar = Ui.primary(this, "Scan range", height = 52)
         root.addView(btnEmpezar)
         btnEmpezar.setOnClickListener { alPulsarEmpezar(reanudar = false) }
@@ -324,11 +330,17 @@ class TaprootAuditActivity : AppCompatActivity() {
         text = s; textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
         padre.addView(this)
     }
-    private fun texto(padre: LinearLayout, s: String, color: Int, size: Float = AppTheme.SP_CAPTION) = TextView(this).apply {
+    // margenLados: sólo hace falta para lo que se cuelga directo del root (que ya no tiene
+    // relleno lateral propio); dentro de una tarjeta (Ui.card, que trae el suyo) se deja en false.
+    private fun texto(padre: LinearLayout, s: String, color: Int, size: Float = AppTheme.SP_CAPTION,
+                       margenLados: Boolean = false) = TextView(this).apply {
         text = s; textSize = size; setTextColor(color); typeface = AppTheme.body(context)
         setLineSpacing(0f, 1.25f)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) }
+            ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(6)
+            if (margenLados) { leftMargin = dp(AppTheme.PAD_SIDE); rightMargin = dp(AppTheme.PAD_SIDE) }
+        }
         padre.addView(this)
     }
 
