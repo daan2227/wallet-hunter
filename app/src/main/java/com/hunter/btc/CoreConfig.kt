@@ -15,7 +15,7 @@ object CoreConfig {
     /** Bloques que Core se niega a podar por debajo de la punta (MIN_BLOCKS_TO_KEEP). */
     const val BLOQUES_QUE_QUEDAN = 288
 
-    val PRUNE_OPCIONES = listOf(550, 2000, 5000, 10000)
+    val PRUNE_OPCIONES = listOf(550, 2000, 5000, 10000, 20000, 50000)
     val DBCACHE_OPCIONES = listOf(100, 450, 1000)
 
     data class Ajustes(

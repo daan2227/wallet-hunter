@@ -18,6 +18,8 @@ import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * Auditoría de Taproot PROPIAS: fuerza bruta con el tweak de BIP341, la única vía posible.
@@ -55,9 +57,18 @@ class TaprootAuditActivity : AppCompatActivity() {
     private lateinit var barra: ProgressBar
     private lateinit var tvProg: TextView
     private lateinit var btnEmpezar: TextView
+    private lateinit var btnReanudar: TextView
+    private lateinit var tvReanudar: TextView
+    private lateinit var filaHilos: LinearLayout
+    private lateinit var sbHilos: SeekBar
+    private lateinit var tvHilos: TextView
+    private lateinit var cHist: LinearLayout
+    private lateinit var listaHist: LinearLayout
 
     private var inicioCorridaMs = 0L
     private var ultDone = 0L; private var ultMs = 0L
+    private val NUCLEOS = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+    private fun prefs() = getSharedPreferences("taproot_audit", MODE_PRIVATE)
 
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
@@ -126,6 +137,11 @@ class TaprootAuditActivity : AppCompatActivity() {
             (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
         }
         cRango.addView(etInicio)
+        etInicio.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) { guardarAjustes(); pintarReanudar() }
+            override fun beforeTextChanged(s2: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s2: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
 
         val filaBits = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
@@ -165,6 +181,42 @@ class TaprootAuditActivity : AppCompatActivity() {
         cRango.addView(ejes)
         tvAncho = texto(cRango, "", AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
 
+        filaHilos = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+        }
+        filaHilos.addView(TextView(this).apply {
+            text = "Cores to use"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        tvHilos = TextView(this).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+        }
+        filaHilos.addView(tvHilos)
+        cRango.addView(filaHilos)
+        sbHilos = SeekBar(this).apply {
+            max = (NUCLEOS - 1).coerceAtLeast(0); progress = NUCLEOS - 1
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { pintarHilos(); guardarAjustes() }
+                override fun onStartTrackingTouch(sb: SeekBar?) {}
+                override fun onStopTrackingTouch(sb: SeekBar?) {}
+            })
+        }
+        cRango.addView(sbHilos)
+        texto(cRango, "Fewer cores run cooler and leave the phone usable, at the cost of speed. This phone has " +
+            "$NUCLEOS.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+
+        tvReanudar = texto(cRango, "", AppTheme.WARN, AppTheme.SP_CAPTION)
+        btnReanudar = Ui.ghost(this, "Resume from there instead").apply {
+            visibility = View.GONE
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(8)
+        }
+        cRango.addView(btnReanudar)
+        btnReanudar.setOnClickListener { alPulsarEmpezar(reanudar = true) }
+
         // ── Marcha ───────────────────────────────────────────────────────────
         barra = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 1000; visibility = View.GONE
@@ -174,10 +226,98 @@ class TaprootAuditActivity : AppCompatActivity() {
         tvProg = texto(root, "", AppTheme.TXT_PRI)
         btnEmpezar = Ui.primary(this, "Scan range", height = 52)
         root.addView(btnEmpezar)
-        btnEmpezar.setOnClickListener { alPulsarEmpezar() }
+        btnEmpezar.setOnClickListener { alPulsarEmpezar(reanudar = false) }
 
+        // ── Historial ────────────────────────────────────────────────────────
+        cHist = Ui.card(this)
+        root.addView(cHist)
+        titulo(cHist, "Ranges already scanned")
+        texto(cHist, "So you do not scan the same range twice by mistake. Kept on this phone only; the last 20.",
+            AppTheme.TXT_SEC, AppTheme.SP_CAPTION)
+        listaHist = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        cHist.addView(listaHist)
+
+        restaurarAjustes()
         pintarBits()
+        pintarHilos()
         actualizarBoton()
+        pintarHistorial()
+    }
+
+    // ── Guardar/restaurar ajustes y reanudar ────────────────────────────────
+
+    private fun guardarAjustes() {
+        if (!this::etInicio.isInitialized) return   // llamado desde pintarBits() antes de que exista aún
+        prefs().edit()
+            .putString("start", etInicio.text.toString())
+            .putInt("bits", sbBits.progress)
+            .putInt("hilos", sbHilos.progress)
+            .apply()
+    }
+
+    private fun restaurarAjustes() {
+        val p = prefs()
+        p.getString("start", null)?.takeIf { it.length == 64 }?.let { etInicio.setText(it) }
+        p.getInt("bits", -1).takeIf { it in 0..(BITS_MAX - BITS_MIN) }?.let { sbBits.progress = it }
+        p.getInt("hilos", -1).takeIf { it in 0..sbHilos.max }?.let { sbHilos.progress = it }
+        p.getString("pegado", null)?.let { etPegadas.setText(it) }
+    }
+
+    /** ¿Hay un punto donde se quedó una vez anterior CON ESTE MISMO inicio y ancho? Si lo hay y no
+     *  llegó al final, enseña el botón de reanudar; si no, lo esconde. */
+    private fun pintarReanudar() {
+        if (!this::tvReanudar.isInitialized) return
+        val (desde, completo) = puntoGuardado()
+        val ancho = anchoActual()
+        if (desde <= 0L || completo || desde >= ancho) {
+            tvReanudar.text = ""; btnReanudar.visibility = View.GONE
+            return
+        }
+        tvReanudar.text = ("A previous run of this exact start and width reached %.2f %% (%,d of %,d). It can only " +
+            "resume approximately: a small number of keys right around that point (at most a couple of batches) " +
+            "might be skipped or checked twice — negligible next to the whole range.").format(
+                desde * 100.0 / ancho, desde, ancho)
+        btnReanudar.visibility = View.VISIBLE
+    }
+
+    /** Lo último que se guardó para el inicio y ancho ACTUALES de la pantalla: (candidatas ya hechas, si
+     *  terminó entero). (0, false) si no hay nada guardado para esta combinación exacta. */
+    private fun puntoGuardado(): Pair<Long, Boolean> {
+        val p = prefs()
+        val inicio = etInicio.text?.toString()?.trim()?.lowercase() ?: return 0L to false
+        if (inicio != p.getString("ultimo_start", null) || anchoActual() != p.getLong("ultimo_ancho", -1L))
+            return 0L to false
+        return p.getLong("ultimo_done", 0L) to p.getBoolean("ultimo_completo", false)
+    }
+
+    private fun guardarPuntoFinal(inicio: String, ancho: Long, hechas: Long, completo: Boolean) {
+        prefs().edit().putString("ultimo_start", inicio).putLong("ultimo_ancho", ancho)
+            .putLong("ultimo_done", hechas).putBoolean("ultimo_completo", completo).apply()
+        // Al principio: JSONArray.put(0, x) NO inserta, SUSTITUYE lo que hubiera ahí — hay que
+        // reconstruir el array entero con la entrada nueva delante.
+        val vieja = try { JSONArray(prefs().getString("historial", null) ?: "[]") } catch (e: Exception) { JSONArray() }
+        val nueva = JSONArray()
+        nueva.put(JSONObject().put("start", inicio).put("ancho", ancho).put("hechas", hechas)
+            .put("completo", completo).put("ts", System.currentTimeMillis()))
+        for (i in 0 until minOf(vieja.length(), 19)) nueva.put(vieja.get(i))
+        prefs().edit().putString("historial", nueva.toString()).apply()
+        pintarHistorial()
+    }
+
+    private fun pintarHistorial() {
+        if (!this::listaHist.isInitialized) return
+        listaHist.removeAllViews()
+        val hist = try { JSONArray(prefs().getString("historial", null) ?: "[]") } catch (e: Exception) { JSONArray() }
+        if (hist.length() == 0) { texto(listaHist, "Nothing scanned yet.", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION); return }
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
+        for (i in 0 until hist.length()) {
+            val o = hist.getJSONObject(i)
+            val bits = Math.round(Math.log(o.optLong("ancho", 1L).toDouble()) / Math.log(2.0))
+            val estado = if (o.optBoolean("completo", false)) "finished" else "stopped at %.1f %%"
+                .format(o.optLong("hechas", 0L) * 100.0 / o.optLong("ancho", 1L).coerceAtLeast(1))
+            texto(listaHist, "${o.optString("start", "").take(12)}… · 2^$bits · $estado · ${fmt.format(java.util.Date(o.optLong("ts", 0L)))}",
+                AppTheme.TXT_SEC, AppTheme.SP_MICRO)
+        }
     }
 
     private fun titulo(padre: LinearLayout, s: String) = TextView(this).apply {
@@ -193,11 +333,15 @@ class TaprootAuditActivity : AppCompatActivity() {
     }
 
     private fun anchoActual(): Long = 1L shl (BITS_MIN + sbBits.progress)
+    private fun hilosActual(): Int = sbHilos.progress + 1
     private fun pintarBits() {
         val bits = BITS_MIN + sbBits.progress
         tvBits.text = "2^$bits"
         tvAncho.text = "%,d candidate keys.".format(anchoActual())
+        guardarAjustes()
+        pintarReanudar()
     }
+    private fun pintarHilos() { tvHilos.text = "${hilosActual()} / $NUCLEOS" }
 
     override fun onActivityResult(req: Int, res: Int, data: Intent?) {
         super.onActivityResult(req, res, data)
@@ -225,6 +369,7 @@ class TaprootAuditActivity : AppCompatActivity() {
         }
         Toast.makeText(this, "Loading ${vistas.size} address(es)…", Toast.LENGTH_SHORT).show()
         tvEstadoCarga.text = "Loading…"
+        prefs().edit().putString("pegado", pegado).apply()
         try {
             val destino = java.io.File(filesDir, "taproot_audit_targets.txt")
             destino.writeText(vistas.joinToString("\n"))
@@ -285,7 +430,7 @@ class TaprootAuditActivity : AppCompatActivity() {
         btnEmpezar.alpha = if (btnEmpezar.isEnabled) 1f else .4f
     }
 
-    private fun alPulsarEmpezar() {
+    private fun alPulsarEmpezar(reanudar: Boolean) {
         if (HunterEngine.taprootCorriendo()) {
             HunterEngine.taprootDetener()
             btnEmpezar.isEnabled = false; btnEmpezar.text = "Stopping…"
@@ -296,12 +441,14 @@ class TaprootAuditActivity : AppCompatActivity() {
             Toast.makeText(this, "The start must be exactly 64 hex characters.", Toast.LENGTH_LONG).show(); return
         }
         val ancho = anchoActual()
-        val hilos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        val err = HunterEngine.taprootIniciar(inicio, ancho.toString(), hilos)
+        val desde = if (reanudar) puntoGuardado().first else 0L
+        HunterEngine.taprootFijarReanudo(desde)
+        val err = HunterEngine.taprootIniciar(inicio, ancho.toString(), hilosActual())
         if (err.isNotEmpty()) { Toast.makeText(this, err, Toast.LENGTH_LONG).show(); return }
-        inicioCorridaMs = System.currentTimeMillis(); ultDone = 0L; ultMs = inicioCorridaMs
-        barra.visibility = View.VISIBLE; barra.progress = 0
-        etInicio.isEnabled = false; sbBits.isEnabled = false; btnCargar.isEnabled = false
+        inicioCorridaMs = System.currentTimeMillis(); ultDone = desde; ultMs = inicioCorridaMs
+        barra.visibility = View.VISIBLE; barra.progress = (desde * 1000 / ancho.coerceAtLeast(1)).toInt().coerceIn(0, 1000)
+        etInicio.isEnabled = false; sbBits.isEnabled = false; sbHilos.isEnabled = false; btnCargar.isEnabled = false
+        tvReanudar.text = ""; btnReanudar.visibility = View.GONE
         sondearMarcha()
     }
 
@@ -323,8 +470,12 @@ class TaprootAuditActivity : AppCompatActivity() {
             keysPorSeg, eta, CoreConfig.duracion(corrido))
         if (!corre) {
             btnEmpezar.isEnabled = true; btnEmpezar.text = "Scan range"
-            etInicio.isEnabled = true; sbBits.isEnabled = true; btnCargar.isEnabled = true
-            tvProg.text = tvProg.text.toString() + "\nStopped. Matches, if any, are already in the vault."
+            etInicio.isEnabled = true; sbBits.isEnabled = true; sbHilos.isEnabled = true; btnCargar.isEnabled = true
+            val completo = hechas >= ancho
+            tvProg.text = tvProg.text.toString() + (if (completo) "\nFinished: the whole range was scanned."
+                else "\nStopped. Matches, if any, are already in the vault.")
+            guardarPuntoFinal(etInicio.text.toString().trim().lowercase(), ancho, hechas, completo)
+            pintarReanudar()
             return
         }
         btnEmpezar.isEnabled = true; btnEmpezar.text = "Stop"

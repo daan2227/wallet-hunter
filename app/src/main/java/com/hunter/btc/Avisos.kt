@@ -143,4 +143,40 @@ object Avisos {
             true
         } catch (e: Exception) { false }
     }
+
+    // ── Fin de la auditoría Taproot ───────────────────────────────────────────
+    //
+    // Canal aparte, de prioridad normal: terminar un barrido no es un hallazgo, y no debería sonar ni
+    // vibrar como uno. Sirve para enterarse aunque la pantalla llevara rato cerrada: el motor avisa él
+    // solo en cuanto el hilo que reparte el trabajo entre los núcleos se une al final.
+    private const val CANAL_TR = "taproot_audit"
+    private const val ID_TR = 4300
+
+    private fun crearCanalTr(ctx: Context) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        if (nm.getNotificationChannel(CANAL_TR) != null) return
+        nm.createNotificationChannel(NotificationChannel(CANAL_TR, "Taproot audit",
+            NotificationManager.IMPORTANCE_DEFAULT).apply { enableVibration(false); setSound(null, null) })
+    }
+
+    fun taprootTerminado(ctx: Context, completo: Boolean): Boolean {
+        crearCanalTr(ctx)
+        if (!notifOn(ctx) || !permitidos(ctx)) return false
+        return try {
+            val pi = PendingIntent.getActivity(ctx, 0, Intent(ctx, TaprootAuditActivity::class.java),
+                PendingIntent.FLAG_IMMUTABLE)
+            val n = NotificationCompat.Builder(ctx, CANAL_TR)
+                .setSmallIcon(R.drawable.ic_notif)
+                .setContentTitle(if (completo) "Taproot audit finished" else "Taproot audit stopped")
+                .setContentText(if (completo) "The whole range was scanned. Matches, if any, are in the vault."
+                                else "Open it to resume from where it left off.")
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setAutoCancel(true)
+                .setContentIntent(pi)
+                .build()
+            ctx.getSystemService(NotificationManager::class.java).notify(ID_TR, n)
+            true
+        } catch (e: Exception) { false }
+    }
 }

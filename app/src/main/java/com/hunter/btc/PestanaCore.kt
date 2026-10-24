@@ -328,7 +328,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         nota.text = if (CoreNodo.procesoVivo() || CoreService.activo) "Saved. Restart the node to apply." else "Saved."
     }
     texto(cAj, "Space for recent blocks", AppTheme.TXT_PRI)
-    cAj.addView(Ui.segmented(this, listOf("0.5 GB" to null, "2 GB" to null, "5 GB" to null, "10 GB" to null),
+    cAj.addView(Ui.segmented(this, listOf("0.5 GB" to null, "2 GB" to null, "5 GB" to null, "10 GB" to null, "20 GB" to null, "50 GB" to null),
         initial = CoreConfig.PRUNE_OPCIONES.indexOf(aj.pruneMiB).coerceAtLeast(0)) { guardar(aj.copy(pruneMiB = CoreConfig.PRUNE_OPCIONES[it])) })
     texto(cAj, "Memory for the database", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("100 MB" to null, "450 MB" to null, "1 GB" to null),

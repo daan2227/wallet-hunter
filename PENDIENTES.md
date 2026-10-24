@@ -110,8 +110,18 @@
   `taproot_audit.h`), así que no hay atajo. Selector de rango (inicio y ancho hasta 2^40) y progreso con
   ritmo y ETA medidos en vivo. Los hallazgos van al baúl como los demás (source `taproot-audit`). Probado el
   motor en el banco de pruebas (`tools/ec-harness/taproot_audit.cpp`), no en un teléfono. Un rango de 2^40
-  son días de cómputo incluso con varios núcleos: el selector lo permite, no lo recomienda. La carga no se
-  puede reanudar: si se para, la siguiente vez vuelve a empezar desde el principio del rango elegido.
+  son días de cómputo incluso con varios núcleos: el selector lo permite, no lo recomienda.
+
+  Añadido después: **reanudar** una auditoría parada (aproximado — guarda hasta dónde llegó y retoma desde
+  ahí la próxima vez con el MISMO inicio y ancho; un puñado de claves justo en el punto de corte puede quedar
+  repetido o, más raro, sin probar — insignificante frente al rango entero), selector de **núcleos a usar**,
+  **historial** de los rangos ya barridos (los últimos 20, en el teléfono), **aviso del sistema al terminar**
+  (se dispara aunque la pantalla esté cerrada, porque el propio motor avisa) y recuerda el último inicio,
+  ancho, núcleos y lo pegado la próxima vez que se abre la pantalla.
+
+  Descartado: probar las dos paridades de la clave interna. No hace falta — BIP341 toma siempre la Y par al
+  reconstruir la clave interna (lift_x), así que la salida tweakeada depende sólo de la x de la clave interna,
+  no de qué raíz cuadrada diera la privada candidata: ya está bien como está.
 
 ## Conocido tras la revisión total (no corregido)
 

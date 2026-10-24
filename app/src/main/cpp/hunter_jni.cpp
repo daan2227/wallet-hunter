@@ -131,6 +131,7 @@ static std::mutex              g_por_guardar_mtx;
 static JavaVM   *g_vm          = nullptr;
 static jclass    g_engine_cls  = nullptr;
 static jmethodID g_al_hallar   = nullptr;
+static jmethodID g_tr_terminado = nullptr;   /* HunterEngine.taprootTerminado(Z): aviso de fin, en segundo plano o no */
 
 static std::atomic<long>   g_count(0);
 static std::atomic<long>   g_found(0);
@@ -1268,11 +1269,13 @@ JNIEXPORT jint JNICALL JNI_OnLoad(JavaVM *vm, void *){
     if(c){
         g_engine_cls=(jclass)env->NewGlobalRef(c);
         g_al_hallar=env->GetStaticMethodID(c,"alHallar","(Ljava/lang/String;)Z");
+        g_tr_terminado=env->GetStaticMethodID(c,"taprootTerminado","(Z)V");
         env->DeleteLocalRef(c);
     }
     if(env->ExceptionCheck()){
         env->ExceptionClear();
         g_al_hallar=nullptr;
+        g_tr_terminado=nullptr;
     }
     return JNI_VERSION_1_6;
 }
@@ -3669,6 +3672,21 @@ static uint8_t  g_tr_start[32] = {0};
 static char g_tr_status[256] = "";
 static std::mutex g_tr_status_mtx;
 static std::string g_tr_path;
+static std::atomic<uint64_t> g_tr_reanudo_desde(0);   /* por dónde seguir: 0 = desde el principio */
+
+/* Mismo patrón que entregar_al_baul: adjunta el hilo nativo a la JVM sólo para esta llamada. Se usa para
+   avisar de que el barrido ha terminado (solo o parado), también si la pantalla no está abierta: el hilo
+   envoltorio de taprootIniciar sigue vivo aunque se cierre la Activity. */
+static void avisar_tr_terminado(bool completo){
+    if(!g_vm || !g_engine_cls || !g_tr_terminado) return;
+    JNIEnv *env=nullptr; bool adjuntado=false;
+    jint st=g_vm->GetEnv((void**)&env,JNI_VERSION_1_6);
+    if(st==JNI_EDETACHED){ if(g_vm->AttachCurrentThread(&env,nullptr)!=JNI_OK) return; adjuntado=true; }
+    else if(st!=JNI_OK) return;
+    env->CallStaticVoidMethod(g_engine_cls,g_tr_terminado,(jboolean)(completo?JNI_TRUE:JNI_FALSE));
+    if(env->ExceptionCheck()) env->ExceptionClear();
+    if(adjuntado) g_vm->DetachCurrentThread();
+}
 
 static void *tr_load_fn(void*){
     char status[256];
@@ -3745,20 +3763,31 @@ Java_com_hunter_btc_HunterEngine_taprootIniciar(JNIEnv *env, jobject, jstring st
     uint64_t ancho = strtoull(aw,nullptr,10);
     env->ReleaseStringUTFChars(startHex,sh); env->ReleaseStringUTFChars(anchoStr,aw);
     if(ancho==0 || ancho>(1ULL<<40)) return env->NewStringUTF("Width must be between 1 and 2^40");
-    g_tr_width = ancho; g_tr_claimed.store(0); g_tr_done.store(0);
+    g_tr_width = ancho; g_tr_claimed.store(g_tr_reanudo_desde.exchange(0)); g_tr_done.store(g_tr_claimed.load());
     g_tr_parar.store(false); g_tr_corriendo.store(true);
     int n = hilos>0 ? hilos : 1;
     std::thread([n]{
         std::vector<std::thread> ts;
         for(int i=0;i<n;i++) ts.emplace_back(tr_worker_fn, nullptr);
         for(auto &t: ts) t.join();
+        // Completo = agotó el rango sin que se pidiera parar antes. Si se pidió parar, aunque el
+        // último lote reclamado llegara justo al final, se cuenta como parado: fue a propósito.
+        bool completo = !g_tr_parar.load() && g_tr_claimed.load() >= g_tr_width;
         g_tr_corriendo.store(false);
-        add_log("Taproot audit: finished (range scanned or stopped)");
+        add_log(completo ? "Taproot audit: finished (range scanned end to end)" : "Taproot audit: stopped");
+        avisar_tr_terminado(completo);
     }).detach();
     return env->NewStringUTF("");
 }
 extern "C" JNIEXPORT void JNICALL
 Java_com_hunter_btc_HunterEngine_taprootDetener(JNIEnv*, jobject){ g_tr_parar.store(true); }
+/* Por dónde seguir la próxima vez que se llame a taprootIniciar (0 = desde el principio). Hay que
+   llamarlo ANTES de taprootIniciar: éste lo lee y lo deja otra vez a 0, así que una reanudación es de
+   un solo uso y la siguiente, sin pedirlo, empieza de cero. */
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_taprootFijarReanudo(JNIEnv*, jobject, jlong desde){
+    g_tr_reanudo_desde.store(desde>0?(uint64_t)desde:0);
+}
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_taprootCorriendo(JNIEnv*, jobject){ return g_tr_corriendo.load(); }
 extern "C" JNIEXPORT jlong JNICALL

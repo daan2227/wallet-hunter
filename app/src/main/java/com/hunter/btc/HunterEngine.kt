@@ -326,5 +326,21 @@ object HunterEngine {
     external fun taprootHechas(): Long
     /** El ancho del rango en curso (0 si no hay ninguno). */
     external fun taprootAncho(): Long
+    /** Antes de [taprootIniciar]: por dónde seguir (candidatas ya probadas de una vez anterior con el
+     *  mismo inicio y ancho), o 0 para empezar de cero. De un solo uso: el motor lo deja a 0 en cuanto
+     *  arranca, así que una vez gastado, la siguiente vez que se llame a Start sin pedirlo, empieza
+     *  desde el principio otra vez. */
+    external fun taprootFijarReanudo(desde: Long)
+
+    /**
+     * La llama el motor cuando el barrido termina, se haya o no cerrado la pantalla: el hilo que lo
+     * reparte entre los núcleos sigue vivo aunque la Activity ya no exista.
+     * @param completo true si agotó el rango entero; false si se pidió Stop antes de llegar al final.
+     */
+    @JvmStatic
+    fun taprootTerminado(completo: Boolean) {
+        val ctx = appCtx ?: return
+        try { Avisos.taprootTerminado(ctx, completo) } catch (e: Throwable) {}
+    }
 
 }
