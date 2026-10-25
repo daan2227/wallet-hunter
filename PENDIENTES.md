@@ -182,6 +182,43 @@ Hallazgos menores, dejados como están (documentados, no fallos de implementaci�
   ruido de por medio, la línea de progreso podría quedar fuera de esa ventana y la barra mostraría "sin
   datos" en vez de un número — subestima, nunca sobreestima, así que no engaña con un progreso falso.
 
+### Errores antes silenciosos, ahora registrados
+
+A raíz de la pregunta "¿se ven todos los errores en Debug?": no, de 415 bloques `catch` en todo el Kotlin de
+la app, sólo 3 llamaban a `Log.*`/`RegistroFallos.anotar` — los otros 412 se tragaban el error sin dejar
+ningún rastro, ni en pantalla ni en fichero. Es un patrón deliberado (que un fallo puntual de red/fichero no
+tumbe la app), pero significaba que Debug no enseñaba de verdad "todos" los errores.
+
+Añadido `RegistroFallos.anotar(donde: String, e: Throwable)`: igual que las versiones con `Context` que ya
+existían, pero usando un `Context` de aplicación guardado internamente (se rellena en `instalar()`, que corre
+al abrir cualquier pantalla), para no tener que colar un `Context` por cada función de una clase que no lo
+recibía. El texto pasa igual por `Secretos.tachar()` antes de escribirse.
+
+Revisadas las cuatro áreas que de verdad importan (seis repasos en paralelo, el mismo reparto que la
+auditoría de arriba, cada uno decidiendo caso por caso qué merecía instrumentarse) e instrumentados **79**
+catches silenciosos:
+- **Red** (8): `ChainApi`, `ElectrumClient`, `LightClient`, `P2pBroadcast`, `VerificacionLigera`.
+- **Bitcoin Core** (24): `CoreNodo`, `CoreBackend`, `CoreSnapshot`, `PestanaCore`, `HerramientasNodo`,
+  `VerificacionNodo` — incluido `CoreBackend.verificarMonedas`, la comprobación con el nodo propio antes de
+  enviar, que antes caía a "no se pudo comprobar" sin dejar ningún rastro de por qué el nodo dejó de
+  contestar a mitad.
+- **Firma y envío** (~12): `FirmaTx`, `Psbt`, `UmbralEnvio`, varios en `WalletActivity` (selección de
+  monedas, derivar dirección nueva, guardar en el baúl, exportar backup).
+- **Baúl, PIN, huella y backup** (~35): `MatchVault` (migración, buzón cifrado, y sobre todo
+  `guardarRecuperada` — una seed recuperada puede haber costado horas de cómputo, que se perdiera sin rastro
+  habría sido lo peor posible), `WalletManager`, `HuellaDesbloqueo`, `VaultActivity`.
+
+Dejados exactamente igual, a propósito: cualquier catch donde "falló" es el resultado NORMAL de la operación
+(un PIN o una contraseña de backup incorrectos — indistinguibles de un error real por diseño, para no dar
+pistas a quien intente adivinarlos; un dato pegado por el usuario que no tiene el formato esperado), bucles de
+sondeo de la UI cada 1–3 segundos (instrumentar ahí habría inundado `crash_log.txt` con el mismo fallo
+repetido durante toda una caída de red/nodo, sin ninguna bandera barata de "ya avisé" para evitarlo), y
+clases puras sin `Context` con sus propios tests JVM (`SeedEnvelope`, `Shamir256`, `BuzonCifrado` — su fallo
+ya queda capturado en el punto donde `MatchVault` las llama).
+
+No se ha compilado de verdad (sin NDK/SDK de Android en este entorno; sólo contado llaves por fichero a mano
+y dejado que lo verifique la CI), ni probado en un teléfono.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van
