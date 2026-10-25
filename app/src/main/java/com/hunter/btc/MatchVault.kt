@@ -822,7 +822,9 @@ object MatchVault {
     fun recoger(ctx: Context): Int {
         var nuevos = 0
         while (true) {
-            val l = try { HunterEngine.popPorGuardar() } catch (t: Throwable) { "" }
+            val l = try { HunterEngine.popPorGuardar() } catch (t: Throwable) {
+                RegistroFallos.anotar("MatchVault.recoger: popPorGuardar", t); ""
+            }
             if (l.isEmpty()) break
             val e = deLinea(l) ?: continue
             try {
@@ -830,7 +832,10 @@ object MatchVault {
                 alGuardar(ctx, e)
             } catch (t: Throwable) {
                 // El baúl no se abre: se devuelve al motor y se reintenta luego.
-                try { HunterEngine.devolverPorGuardar(l) } catch (t2: Throwable) {}
+                RegistroFallos.anotar("MatchVault.recoger: no se pudo guardar, se devuelve al motor", t)
+                try { HunterEngine.devolverPorGuardar(l) } catch (t2: Throwable) {
+                    RegistroFallos.anotar("MatchVault.recoger: devolverPorGuardar también falló (hallazgo en riesgo)", t2)
+                }
                 break
             }
         }

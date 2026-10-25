@@ -48,10 +48,10 @@ object UmbralEnvio {
 
     fun leer(ctx: Context): Long = try {
         ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getLong(CLAVE, POR_DEFECTO_SAT)
-    } catch (e: Throwable) { POR_DEFECTO_SAT }
+    } catch (e: Throwable) { RegistroFallos.anotar("UmbralEnvio.leer", e); POR_DEFECTO_SAT }
 
     fun guardar(ctx: Context, sat: Long) {
         try { ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putLong(CLAVE, sat).apply() }
-        catch (e: Throwable) { }
+        catch (e: Throwable) { RegistroFallos.anotar("UmbralEnvio.guardar", e) }
     }
 }

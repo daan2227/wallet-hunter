@@ -420,7 +420,7 @@ class WalletActivity : FragmentActivity() {
     private fun cargarWifExtras() {
         wifExtras.clear()
         if (!isWifMode || wifKey.isEmpty()) return
-        val lineas = try { HunterEngine.wifDirecciones(wifKey, isTestnet) } catch (e: Throwable) { "" }
+        val lineas = try { HunterEngine.wifDirecciones(wifKey, isTestnet) } catch (e: Throwable) { RegistroFallos.anotar("WalletActivity.cargarWifExtras", e); "" }
         for (linea in lineas.lines()) {
             val partes = linea.trim().split(' ', limit = 2)
             if (partes.size != 2) continue
@@ -964,7 +964,7 @@ class WalletActivity : FragmentActivity() {
                     val a = o.optString("addr"); if (a.isNotEmpty())
                         r[a] = "m/$purpose'/$coin'/${Frase.cuenta(mn)}'/1/${o.optInt("i")}"
                 }
-            } catch (e: Exception) {}
+            } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.direccionesDeCambio: purpose $purpose", e) }
         }
         return r
     }

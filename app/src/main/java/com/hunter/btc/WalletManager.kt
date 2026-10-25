@@ -115,7 +115,9 @@ object WalletManager {
         val p = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val e = p.getString(PREF_HUELLA_ENC, null) ?: return null
         val i = p.getString(PREF_HUELLA_IV, null) ?: return null
-        return try { b64d(e) to b64d(i) } catch (x: IllegalArgumentException) { null }
+        return try { b64d(e) to b64d(i) } catch (x: IllegalArgumentException) {
+            RegistroFallos.anotar("WalletManager: datos de huella corruptos", x); null
+        }
     }
 
     fun huellaDesactivar(ctx: Context) {
@@ -541,7 +543,9 @@ object WalletManager {
             val dec = aesDecrypt(claveExistente(PROFILE_ALIAS),
                 Base64.decode(c, Base64.NO_WRAP), Base64.decode(iv, Base64.NO_WRAP)) ?: return ""
             String(dec, Charsets.UTF_8)
-        } catch (e: Throwable) { "" }
+        } catch (e: Throwable) {
+            RegistroFallos.anotar("WalletManager.getUsername", e); ""
+        }
     }
 
     /** Guarda el nombre de usuario cifrado con Keystore. Vacío = lo borra. */
@@ -963,7 +967,9 @@ object WalletManager {
         return try {
             // Recoge lo que el motor no haya podido entregar al baúl todavía,
             // para que un acierto reciente no se quede fuera del backup.
-            try { MatchVault.recoger(ctx) } catch (e: Exception) {}
+            try { MatchVault.recoger(ctx) } catch (e: Exception) {
+                RegistroFallos.anotar("WalletManager.exportBackup: recoger (un acierto puede faltar en la copia)", e)
+            }
 
             val wallets = listWallets(ctx)
             val mainSeed = loadSeed(ctx)

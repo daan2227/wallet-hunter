@@ -44,10 +44,12 @@ object VerificacionNodo {
         }
         Thread {
             try {
-                val sc = try { scripts() } catch (e: Exception) { emptyList() }
+                // Vacío por fallo real (no "sin direcciones") saldría igual como "Nothing to check": sin el
+                // registro no había forma de distinguir las dos cosas.
+                val sc = try { scripts() } catch (e: Exception) { RegistroFallos.anotar("VerificacionNodo: scripts()", e); emptyList() }
                 if (sc.isEmpty()) return@Thread terminar("Nothing to check", "This wallet has no addresses to check.")
                 val est = try { CoreConfig.leerEstado(CoreNodo.rpc(act).objeto("getblockchaininfo", lecturaMs = 6_000), null, null) }
-                          catch (e: Exception) { null }
+                          catch (e: Exception) { RegistroFallos.anotar("VerificacionNodo: getblockchaininfo", e); null }
                 if (est == null)
                     return@Thread terminar("Your node is not answering",
                         "Start it in the Core tab and wait until it has finished loading the snapshot.")
@@ -93,6 +95,7 @@ object VerificacionNodo {
                 terminar("Your node says", ("%.8f BTC in %d coin(s)\nUTXO set at block %,d%s")
                     .format(e.sat / 1e8, e.monedas.size, e.altura, cmp) + (if (e.monedas.isNotEmpty()) "\n\nCoins:\n$lista" else ""))
             } catch (t: Throwable) {
+                RegistroFallos.anotar("VerificacionNodo.mostrar", t)
                 terminar("Could not check", t.javaClass.simpleName)
             }
         }.start()

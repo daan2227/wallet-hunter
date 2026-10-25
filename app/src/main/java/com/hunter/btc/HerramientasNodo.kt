@@ -102,7 +102,12 @@ object HerramientasNodo {
             } catch (e: CoreRpcError) { "Core says: ${e.message}" }
               catch (e: IllegalArgumentException) { e.message ?: "Bad input" }
               catch (e: java.io.IOException) { "The node is not answering. Start it in the Core tab." }
-              catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+              catch (e: Exception) {
+                  // A diferencia de los tres de arriba (mensaje de Core, validación, nodo sin contestar),
+                  // este sólo enseña el nombre de la clase: sin esto no quedaba ningún rastro del porqué.
+                  RegistroFallos.anotar("HerramientasNodo.ejecutar: ${h.nombre}", e)
+                  "Failed: ${e.javaClass.simpleName}"
+              }
             ui.post { if (!act.isFinishing) resultado(act, h.nombre, texto) }
         }.start()
     }
