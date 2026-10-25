@@ -130,7 +130,7 @@ object Psbt {
                         "Its signature does not cover the amount, so the amount can't be checked. " +
                         "Attach the full previous transaction.")
             }
-            val imp = try { importe(d, i) } catch (e: Throwable) { null }
+            val imp = try { importe(d, i) } catch (e: Throwable) { RegistroFallos.anotar("Psbt.revisar: importe", e); null }
             if (imp == null) conocido = false else total += imp.first
         }
         val salidas = d.tx.outs.map { (SpkDireccion.de(it.spk, testnet) ?: "script ${hex(it.spk).take(20)}…") to it.value }
@@ -270,7 +270,7 @@ object Psbt {
     fun sign(d: Doc, privHex: String): Int {
         // Nunca se firma lo que no pasa la revisión (ver revisar).
         if (revisar(d).problemas.isNotEmpty()) return 0
-        val pub = try { HunterEngine.pubDeHex(privHex) } catch (e: Throwable) { "" }
+        val pub = try { HunterEngine.pubDeHex(privHex) } catch (e: Throwable) { RegistroFallos.anotar("Psbt.sign: pubDeHex", e); "" }
         if (pub.isBlank()) return 0
         val pubBytes = bytes(pub)
         val miH160 = hex(Ripemd160.hash160(pubBytes))
@@ -292,7 +292,7 @@ object Psbt {
                     sighashLegacy(d.tx, i, spkHex)
                 else -> continue
             }
-            val der = try { HunterEngine.firmarHash(privHex, hex(z)) } catch (e: Throwable) { "" }
+            val der = try { HunterEngine.firmarHash(privHex, hex(z)) } catch (e: Throwable) { RegistroFallos.anotar("Psbt.sign: firmarHash input #$i", e); "" }
             if (der.isBlank()) continue
             recs.add(Rec(byteArrayOf(0x02) + pubBytes, bytes(der + "01")))
             firmados++

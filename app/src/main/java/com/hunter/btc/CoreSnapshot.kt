@@ -29,8 +29,9 @@ object CoreSnapshot {
         } catch (e: Exception) { -1L }
         if (total > 0 && destino.parentFile!!.usableSpace < total + MARGEN)
             return "Not enough space: needs ${CoreConfig.bytes(total + MARGEN)}, free ${CoreConfig.bytes(destino.parentFile!!.usableSpace)}."
-        val entrada = try { ctx.contentResolver.openInputStream(uri) } catch (e: Exception) { null }
-            ?: return "Could not open that file."
+        val entrada = try { ctx.contentResolver.openInputStream(uri) } catch (e: Exception) {
+            RegistroFallos.anotar("CoreSnapshot.copiar: openInputStream", e); null
+        } ?: return "Could not open that file."
         return entrada.use { volcar(it, destino, 0L, total, c, progreso) }
     }
 
@@ -39,7 +40,9 @@ object CoreSnapshot {
         if (!CoreConfig.urlValida(url)) return "Only https:// links are accepted."
         val parte = File(destino.path + ".part")
         val ya = if (parte.isFile) parte.length() else 0L
-        val con = try { URL(url.trim()).openConnection() as HttpURLConnection } catch (e: Exception) { return "Bad link." }
+        val con = try { URL(url.trim()).openConnection() as HttpURLConnection } catch (e: Exception) {
+            RegistroFallos.anotar("CoreSnapshot.descargar: openConnection", e); return "Bad link."
+        }
         try {
             con.connectTimeout = 15_000; con.readTimeout = 30_000
             if (ya > 0) con.setRequestProperty("Range", "bytes=$ya-")
@@ -51,6 +54,7 @@ object CoreSnapshot {
                 return "Not enough space for ${CoreConfig.bytes(total)}."
             return con.inputStream.use { volcar(it, destino, if (code == 206) ya else 0L, total, c, progreso) }
         } catch (e: java.io.IOException) {
+            RegistroFallos.anotar("CoreSnapshot.descargar", e)
             return "Download interrupted (${e.javaClass.simpleName}). Press Download again to resume."
         } finally { con.disconnect() }
     }
@@ -74,6 +78,7 @@ object CoreSnapshot {
                 sal.fd.sync()
             }
         } catch (e: java.io.IOException) {
+            RegistroFallos.anotar("CoreSnapshot.volcar", e)
             return "Write failed: ${e.message}"
         }
         progreso(hecho, total)
@@ -87,5 +92,5 @@ object CoreSnapshot {
         f.inputStream().use { val b = ByteArray(51); var n = 0
             while (n < 51) { val k = it.read(b, n, 51 - n); if (k < 0) break; n += k }
             if (n < 51) null else CoreConfig.leerCabeceraSnapshot(b) }
-    } catch (e: Exception) { null }
+    } catch (e: Exception) { RegistroFallos.anotar("CoreSnapshot.cabecera", e); null }
 }

@@ -250,7 +250,9 @@ object MatchVault {
     }
 
     private fun contarBuzon(prefs: android.content.SharedPreferences): Int =
-        try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")).length() } catch (e: Exception) { 0 }
+        try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")).length() } catch (e: Exception) {
+            RegistroFallos.anotar("MatchVault.contarBuzon", e); 0
+        }
 
     // ── Buzón: hallazgos que llegan con el código cerrado ───────────────────────
 
@@ -269,7 +271,10 @@ object MatchVault {
     private fun leerBuzon(ctx: Context): Pair<List<Entry>, List<String>> {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val crudo = prefs.getString(BUZON_ITEMS, null) ?: return emptyList<Entry>() to emptyList()
-        val items = try { JSONArray(crudo) } catch (e: Exception) { return emptyList<Entry>() to emptyList() }
+        val items = try { JSONArray(crudo) } catch (e: Exception) {
+            RegistroFallos.anotar("MatchVault.leerBuzon: parseo", e)
+            return emptyList<Entry>() to emptyList()
+        }
         if (items.length() == 0) return emptyList<Entry>() to emptyList()
         val dek = WalletManager.claveDeBoveda() ?: return emptyList<Entry>() to (0 until items.length()).map { items.getString(it) }
         val privSell = prefs.getString(BUZON_PRIV, null); val privIv = prefs.getString(BUZON_PRIV_IV, null)
@@ -280,8 +285,12 @@ object MatchVault {
         val ok = ArrayList<Entry>(); val mal = ArrayList<String>()
         for (i in 0 until items.length()) {
             val p = items.getString(i)
-            val dec = try { BuzonCifrado.descifrar(priv, b64d(p), pub) } catch (e: Exception) { null }
-            val lote = dec?.let { try { fromJson(JSONArray(String(it, Charsets.UTF_8))) } catch (e: Exception) { null } }
+            val dec = try { BuzonCifrado.descifrar(priv, b64d(p), pub) } catch (e: Exception) {
+                RegistroFallos.anotar("MatchVault.leerBuzon: descifrar item", e); null
+            }
+            val lote = dec?.let { try { fromJson(JSONArray(String(it, Charsets.UTF_8))) } catch (e: Exception) {
+                RegistroFallos.anotar("MatchVault.leerBuzon: parseo item", e); null
+            } }
             if (lote != null) ok.addAll(lote) else mal.add(p)
         }
         java.util.Arrays.fill(priv, 0)
@@ -295,7 +304,9 @@ object MatchVault {
         // se lanza, y el motor lo conserva en memoria y lo reintenta (ver recoger).
         val pub = prefs.getString(BUZON_PUB, null) ?: throw IllegalStateException("vault locked")
         val paquete = BuzonCifrado.cifrar(b64d(pub), toJson(entries).toString().toByteArray(Charsets.UTF_8))
-        val arr = try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")) } catch (e: Exception) { JSONArray() }
+        val arr = try { JSONArray(prefs.getString(BUZON_ITEMS, "[]")) } catch (e: Exception) {
+            RegistroFallos.anotar("MatchVault.aBuzon: parseo (se pierden los pendientes)", e); JSONArray()
+        }
         if (arr.length() >= BUZON_MAX) throw IllegalStateException("vault mailbox full")
         arr.put(b64e(paquete))
         if (!prefs.edit().putString(BUZON_ITEMS, arr.toString()).commit()) throw IllegalStateException("vault locked")

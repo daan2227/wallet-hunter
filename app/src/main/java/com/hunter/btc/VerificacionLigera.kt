@@ -112,7 +112,9 @@ object VerificacionLigera {
     private fun empezar(act: Activity, nodo: LightClient.Direccion?, atras: Int, absoluta: Int,
                         saldoApiSat: Long, scripts: () -> List<String>) {
         Thread {
-            val sc = try { scripts() } catch (e: Exception) { emptyList() }
+            val sc = try { scripts() } catch (e: Exception) {
+                RegistroFallos.anotar("VerificacionLigera.empezar: scripts()", e); emptyList()
+            }
             if (sc.isEmpty()) {
                 act.runOnUiThread { Toast.makeText(act, "This wallet has no addresses to check", Toast.LENGTH_LONG).show() }
                 return@Thread
@@ -121,6 +123,7 @@ object VerificacionLigera {
             val c = LightClient(dir, 0, "", if (nodo != null) 1 else 2, 4,
                 resolver = { if (nodo != null) listOf(nodo) else LightClient.Seeds.resolver(dir) })
             try { c.iniciar(sc, SIN_ESCANEO) } catch (e: Exception) {
+                RegistroFallos.anotar("VerificacionLigera.empezar: c.iniciar()", e)
                 act.runOnUiThread { Toast.makeText(act, "Could not start: ${e.message}", Toast.LENGTH_LONG).show() }
                 return@Thread
             }
