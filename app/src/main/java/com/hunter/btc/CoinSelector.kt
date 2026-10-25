@@ -56,10 +56,16 @@ object CoinSelector {
      * @param inVBytes tamaño de una entrada según el tipo de dirección de origen
      * @param outVBytes tamaño de la salida al destino
      * @param changeVBytes tamaño de la salida de cambio
+     * @param polvoCambio por debajo de esto la salida de CAMBIO no se puede gastar sin perder
+     *   dinero. [DUST] (546, el de P2PKH) por defecto para no cambiar nada a quien ya llamaba
+     *   sin este parámetro; cuando se sabe el tipo de la dirección de cambio conviene pasar
+     *   [polvoDe] de esa dirección — una segwit/Taproot admite un cambio válido bastante más
+     *   pequeño (294/330), y usar siempre 546 aquí hacía que un sobrante en ese rango estrecho
+     *   se soltara entero a la comisión (pasada 1) cuando sí cabía como cambio de verdad.
      * @return null si el saldo no cubre importe + comisión
      */
     fun select(utxos: List<JSONObject>, amountSat: Long, feeRate: Long,
-               inVBytes: Int, outVBytes: Int, changeVBytes: Int): Plan? {
+               inVBytes: Int, outVBytes: Int, changeVBytes: Int, polvoCambio: Long = DUST): Plan? {
         if (utxos.isEmpty() || amountSat <= 0 || feeRate <= 0) return null
         fun value(u: JSONObject) = u.optLong("value", 0L)
         fun vsize(n: Int, withChange: Boolean) =
@@ -72,7 +78,7 @@ object CoinSelector {
         var bestLeft = Long.MAX_VALUE
         for (u in utxos) {
             val left = value(u) - amountSat - feeNoChange
-            if (left in 0..DUST && left < bestLeft) { best = u; bestLeft = left }
+            if (left in 0..polvoCambio && left < bestLeft) { best = u; bestLeft = left }
         }
         if (best != null) {
             // El sobrante va a la comisión: crear una salida de polvo costaría
@@ -83,7 +89,7 @@ object CoinSelector {
         // 2) una sola entrada, la más pequeña que cubra
         val vsOne = vsize(1, true)
         val feeOne = feeRate * vsOne
-        val fits = utxos.filter { value(it) >= amountSat + feeOne + DUST }
+        val fits = utxos.filter { value(it) >= amountSat + feeOne + polvoCambio }
         if (fits.isNotEmpty()) {
             val u = fits.minByOrNull { value(it) }!!
             return Plan(listOf(u), feeOne, value(u) - amountSat - feeOne, vsOne, "one input")
@@ -98,7 +104,7 @@ object CoinSelector {
             val fee = feeRate * vs
             if (total >= amountSat + fee) {
                 val change = total - amountSat - fee
-                if (change > DUST) return Plan(acc.toList(), fee, change, vs, "several inputs")
+                if (change > polvoCambio) return Plan(acc.toList(), fee, change, vs, "several inputs")
             }
             // Sin cambio: o el cambio sería polvo, o ni siquiera alcanza para pagar la salida de cambio.
             // Antes este caso sólo se probaba si ya llegaba CON cambio, que es más caro: "All" (el máximo

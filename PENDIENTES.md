@@ -268,6 +268,71 @@ vivo de `crash_log.txt` pasó de 800 a 6000 caracteres: con las nuevas ~80 fuent
 No se ha compilado de verdad (sin NDK/SDK de Android en este entorno; sólo contado llaves por fichero a mano
 y dejado que lo verifique la CI), ni probado en un teléfono.
 
+## Segunda verificación (2026-10-25): funcionalidad, no sólo seguridad
+
+A raíz de "quitar PIN" encontrarle un bug real nada más probarlo (ver arriba), se pidió una segunda pasada —
+seis repasos en paralelo, mismo reparto que las dos auditorías de seguridad, pero esta vez buscando
+corrección funcional, robustez y mejoras de producto, con instrucción explícita de cazar el mismo patrón que
+causó aquel bug: una función reciente que rompe una suposición de otra parte del código que nadie actualiza.
+Apareció varias veces más. Corregido:
+
+- **La auditoría Taproot no estaba conectada al freno de emergencia por calor, el wake lock, ni el apagado
+  automático por inactividad del servicio — los tres en `HunterService.kt`.** El freno de batería baja SÍ la
+  cubría (alguien se acordó); el de calor, el wake lock y el apagado a los 3 minutos de "nada corriendo", no
+  — los tres miraban `isRunning()`/`kangarooRunning()` nada más, escritos antes de que Taproot existiera.
+  Peor: `TaprootAuditActivity` nunca arrancaba `HunterService` en absoluto (a diferencia de Kangaroo), así
+  que un rango de días —la propia pantalla avisa de que puede tardar eso— corría sin que nada lo vigilara ni
+  le reservara batería despierta. Arreglado: los tres sitios de `HunterService` ahora miran también
+  `taprootCorriendo()`, y `TaprootAuditActivity.alPulsarEmpezar()` arranca el servicio igual que hace
+  Kangaroo en `MainActivity`.
+- **La descarga de snapshot UTXO (`PestanaCore.kt`, botón "Download a snapshot") ignoraba "Wi-Fi only".**
+  Ese ajuste ya bloqueaba arrancar el nodo y pausaba la sincronización P2P por datos móviles, pero la
+  descarga —varios GB, el propio diálogo lo avisa— se añadió después y no tenía la misma comprobación.
+  Arreglado: mismo aviso que ya usa `CoreNodo.arrancar()`.
+- **Carrera al reabrir el baúl o la lista de WIF con el PIN quitado (`MatchVault.abrir()`,
+  `WalletManager.leerWifs()`).** `AppLock.onActivityResumed` (que repone la clave tras un bloqueo) se
+  dispara DESPUÉS de `onStart()`/`onResume()` de la propia pantalla en una Activity que no se recrea —
+  pantalla apagada y vuelta a encender sin matar el proceso. Una lectura que arranca desde `onStart()` podía
+  llegar antes de que la clave estuviera repuesta y ver un "no se pudo abrir" pasajero: el mismo susto del
+  bug ya reportado, pero una ventana de carrera en vez de permanente. Arreglado con autocuración dentro de
+  los propios lectores (llaman a `entrarSinPin()` ellos mismos, barato cuando ya no hace falta) en vez de
+  depender sólo del aviso de `AppLock`.
+- **`P2pBroadcast` (el último recurso para difundir una transacción, P2P directo) no respeta "Tor only".**
+  Ese ajuste sólo hace que bitcoind hable nada más que con pares .onion; este cliente ligero es un camino
+  aparte que nunca se enteró de que existe. Con "Tor only" encendido y agotados la API y Electrum, la
+  transacción recién firmada —que delata justo qué direcciones son tuyas— habría salido por una conexión
+  P2P sin Tor, en el peor momento para que se note. Arreglado: con "Tor only" activo, este camino se rinde en
+  vez de difundir filtrando la IP (el llamante ya tiene un mensaje para "no se pudo difundir por ningún
+  medio"). **Sigue sin resolver, más grande:** las consultas de saldo/historial de `LightClient`,
+  `ElectrumClient` y `ChainApi` tampoco pasan por ningún proxy SOCKS5 aunque el nodo esté en modo Tor —
+  menos grave que filtrar una transacción recién firmada, pero real; arreglarlo de verdad exigiría enrutar
+  esos sockets por el mismo proxy que ya usa Core, trabajo no trivial que no se ha hecho.
+- **`CoinSelector.select()` usaba siempre el umbral de polvo de P2PKH (546 sat) para decidir el cambio,
+  aunque la dirección de cambio fuera segwit/Taproot (294/330).** No era un bug de fondos — nunca se perdía
+  dinero ni se creaba una salida inválida —, pero en un sobrante de 300-546 sat podía soltarse entero a la
+  comisión cuando cabía un cambio válido y más barato. Añadido un parámetro `polvoCambio` (con el 546 de
+  siempre por defecto, así que ninguna otra llamada cambia de comportamiento) y pasado `polvoDe(fromAddr)`
+  en el único sitio donde se construye de verdad el plan que se firma (`WalletActivity.kt`).
+- **`ElectrumClient` probaba sus 10 servidores siempre en el mismo orden fijo**, el mismo problema que
+  `ChainApi` ya se había encontrado y arreglado para sí mismo (con una red donde los primeros están
+  bloqueados, cada consulta se gasta el tiempo de espera entero en cada uno antes de llegar al que
+  funciona). Trasplantado el mismo patrón (`preferido`/`enOrden()`).
+- **`QrScanActivity`: perder la cámara (otra app la toma) se quedaba callado**, a diferencia de un error de
+  verdad — la vista previa se congelaba sin mensaje ni forma de reintentar. Ahora avisa igual que `onError`.
+- **`HerramientasNodo.kt` sólo validaba el primer campo del formulario** antes de ejecutar una herramienta
+  con varios (p. ej. "Verify a signed message": dirección, firma, mensaje); ahora pide rellenar cualquiera
+  que falte, respetando el único campo que sí puede quedar vacío a propósito (el rango del descriptor, ya
+  marcado "empty if…" en su propia etiqueta).
+- **Comentario desactualizado en `BackupStore.kt`**: decía que el cifrado usaba una clave derivada del PIN;
+  hace tiempo que usa una contraseña propia de la copia, independiente del código del teléfono.
+
+Revisado y descartado como mejora (riesgo/beneficio no lo justificaba, o ya estaba bien): importe de envío
+con `Double`+redondeo en vez de `BigDecimal` en `WalletActivity.kt` (inconsistente con `UmbralEnvio.parsear`,
+pero sin ningún caso real encontrado donde falle); el botón "Send" exige cambiar de pestaña para enviar un
+segundo pago (decisión consciente, ya documentada en el propio código); una auditoría Taproot parada por
+calor/batería con la pantalla de la app cerrada no guarda el punto de reanudar hasta que se reabre esa
+pantalla (limitación ya conocida del diseño de reanudar, no nueva).
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van

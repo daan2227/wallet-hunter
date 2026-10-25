@@ -959,6 +959,14 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             .setPositiveButton("Download") { _, _ ->
                 val u = campo.text.toString().trim()
                 if (!CoreConfig.urlValida(u)) { aviso("That is not a valid https link."); return@setPositiveButton }
+                // "Wi-Fi only" ya bloqueaba arrancar el nodo por datos móviles (CoreNodo.arrancar) y
+                // pausaba la sincronización P2P a mitad (CoreService.bucle); esta descarga —varios
+                // GB, el propio aviso de arriba lo dice— se añadió después y se quedó sin la misma
+                // comprobación: con el ajuste encendido, bajaba el snapshot entero por datos sin
+                // avisar ni pedir confirmación.
+                if (CoreNodo.ajustes(act).soloWifi && CoreNodo.redDeDatos(act)) {
+                    aviso("Wi-Fi only is on and you are on mobile data."); return@setPositiveButton
+                }
                 correr("Downloading…") { c -> CoreSnapshot.descargar(u, CoreNodo.snapshot(act), c) { a, b -> progreso(a, b) } }
             }.setNegativeButton("Cancel", null).show()
     }

@@ -457,6 +457,11 @@ class TaprootAuditActivity : AppCompatActivity() {
         HunterEngine.taprootFijarReanudo(desde)
         val err = HunterEngine.taprootIniciar(inicio, ancho.toString(), hilosActual())
         if (err.isNotEmpty()) { Toast.makeText(this, err, Toast.LENGTH_LONG).show(); return }
+        // Igual que Kangaroo (ver el comentario en MainActivity, misma razón): sin esto, salir de
+        // la app o apagar la pantalla a mitad de un rango de días lo dejaba sin wake lock y sin
+        // freno térmico, justo lo contrario de lo que promete la explicación de arriba.
+        try { startForegroundService(Intent(this, HunterService::class.java)) }
+        catch (ex: Exception) { try { startService(Intent(this, HunterService::class.java)) } catch (ex2: Exception) {} }
         inicioCorridaMs = System.currentTimeMillis(); ultDone = desde; ultMs = inicioCorridaMs
         barra.visibility = View.VISIBLE; barra.progress = (desde * 1000 / ancho.coerceAtLeast(1)).toInt().coerceIn(0, 1000)
         etInicio.isEnabled = false; sbBits.isEnabled = false; sbHilos.isEnabled = false; btnCargar.isEnabled = false

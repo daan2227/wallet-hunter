@@ -31,6 +31,19 @@ object ElectrumClient {
     private const val READ_TIMEOUT_MS    = 6000
 
     /**
+     * El servidor que respondió la última vez. Igual que ChainApi.preferido (mismo problema, nunca
+     * se trasplantó aquí): en una red donde los primeros de la lista fija están bloqueados, cada
+     * consulta se gastaba el tiempo de espera entero (hasta 4s) en cada uno antes de llegar al que
+     * sí responde. @Volatile y no un lock: lo escriben varios hilos de consulta a la vez y lo peor
+     * que puede pasar es que dos acierten el mismo valor.
+     */
+    @Volatile private var preferido = 0
+    private fun enOrden(): List<Pair<String, Int>> {
+        val p = preferido.coerceIn(0, SERVERS.size - 1)
+        return SERVERS.indices.map { (p + it) % SERVERS.size }.map { SERVERS[it] }
+    }
+
+    /**
      * Usa BtcAddress, que sí verifica el checksum. Base58Check.decodePayload y
      * Bech32.decode no lo hacían, así que una dirección con un carácter mal
      * tecleado devolvía silenciosamente el scripthash de otra dirección y se
@@ -204,7 +217,7 @@ object ElectrumClient {
     }
 
     private fun request(method: String, params: List<Any>, testnet: Boolean): JSONObject? {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else enOrden()
         for ((host, port) in servers) {
             try {
                 val result = connect(host, port) { reader, writer ->
@@ -215,6 +228,7 @@ object ElectrumClient {
                 }
                 if (result != null) {
                     Log.d("Electrum", "OK: $host")
+                    if (!testnet) preferido = SERVERS.indexOf(host to port)
                     return result
                 }
             } catch (e: Exception) {
@@ -231,7 +245,7 @@ object ElectrumClient {
      */
     private fun requestRaw(method: String, params: List<Any>, testnet: Boolean,
                            acepta: (Any) -> Boolean = { true }): Any? {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else enOrden()
         for ((host, port) in servers) {
             try {
                 val result = connect(host, port) { reader, writer ->
@@ -248,7 +262,11 @@ object ElectrumClient {
                     }
                     o.opt("result")?.takeIf { it != JSONObject.NULL }
                 }
-                if (result != null && acepta(result)) { Log.d("Electrum", "OK: $host"); return result }
+                if (result != null && acepta(result)) {
+                    Log.d("Electrum", "OK: $host")
+                    if (!testnet) preferido = SERVERS.indexOf(host to port)
+                    return result
+                }
                 if (result != null) Log.w("Electrum", "$host: unexpected answer, trying the next one")
             } catch (e: RechazoNodo) {
                 // Rechazo del nodo: no sirve reintentar en otro servidor, porque
@@ -267,7 +285,7 @@ object ElectrumClient {
     /** Lista de resultados; null si nadie respondió (lista vacía SÍ es una respuesta). */
     private fun requestArrayOrNull(method: String, params: List<Any>, testnet: Boolean):
             List<JSONObject>? {
-        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else SERVERS
+        val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else enOrden()
         for ((host, port) in servers) {
             try {
                 val result = connect(host, port) { reader, writer ->
@@ -277,7 +295,11 @@ object ElectrumClient {
                     val arr = JSONObject(line).optJSONArray("result") ?: return@connect null
                     (0 until arr.length()).map { arr.getJSONObject(it) }
                 }
-                if (result != null) { Log.d("Electrum", "OK: $host"); return result }
+                if (result != null) {
+                    Log.d("Electrum", "OK: $host")
+                    if (!testnet) preferido = SERVERS.indexOf(host to port)
+                    return result
+                }
             } catch (e: Exception) {
                 Log.w("Electrum", "$host:$port failed: ${e.message}")
             }

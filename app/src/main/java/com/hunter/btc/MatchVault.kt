@@ -131,6 +131,13 @@ object MatchVault {
         // el suyo y parecería un baúl estropeado.
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val hayDek = WalletManager.dekExiste(ctx)
+        // Autocuración: sin código quitado a propósito, lo normal es que entrarSinPin() ya haya
+        // repuesto la clave al reanudar (AppLock). Pero AppLock.onActivityResumed se dispara
+        // DESPUÉS de onStart()/onResume() de la propia pantalla en una Activity que no se recrea
+        // (pantalla apagada y vuelta a encender sin matar el proceso), así que una lectura desde
+        // onStart() podía llegar antes de que la clave estuviera repuesta y ver un "no se pudo
+        // abrir" pasajero. Barato: si ya está abierta o si hay código, entrarSinPin() no hace nada.
+        if (hayDek) WalletManager.entrarSinPin(ctx)
         val dek = if (hayDek) WalletManager.claveDeBoveda() else null
         val encP = prefs.getString(PREF_ENC_P, null); val ivP = prefs.getString(PREF_IV_P, null)
         val enSobre = encP != null && ivP != null

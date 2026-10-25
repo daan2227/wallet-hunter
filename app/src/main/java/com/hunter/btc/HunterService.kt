@@ -283,9 +283,17 @@ class HunterService : Service() {
             val kangOps = try {
                 if (HunterEngine.kangarooRunning()) HunterEngine.kangarooOps() else -1L
             } catch (e: Throwable) { -1L }
+            // La auditoría Taproot no tenía servicio propio ni wake lock (a diferencia de
+            // WeakService para BSGS/Kangaroo del Weak-key audit): con la pantalla apagada y nada
+            // reclamándolo, Android podía frenar sus hilos nativos sin avisar, justo lo contrario
+            // de lo que promete su propia pantalla ("can take days even with several cores"). Se
+            // calcula aquí, una vez, para el wake lock de abajo Y para el apagado por inactividad
+            // más abajo — ese apagado tenía el MISMO hueco: paraba el servicio (wake lock incluido)
+            // a los tres minutos de "nada corriendo" sin mirar nunca si Taproot seguía trabajando.
+            val trCorriendo = try { HunterEngine.taprootCorriendo() } catch (e: Throwable) { false }
             // Wake lock: renovado mientras algo trabaje, suelto cuando no.
             try {
-                val activo = running || kangOps >= 0
+                val activo = running || kangOps >= 0 || trCorriendo
                 wakeLock?.let { if (activo) it.acquire(WAKE_MS) else if (it.isHeld) it.release() }
             } catch (e: Throwable) {}
             // Un Kangaroo que este servicio relanzó tras morir la app no tiene
@@ -371,7 +379,7 @@ class HunterService : Service() {
 
             // Sin nada trabajando durante tres minutos y con la app cerrada el servicio se va: seguía en
             // primer plano para siempre, con su bucle de 2 s y un proceso logcat cada 10 s.
-            if (!running && kangOps < 0) {
+            if (!running && kangOps < 0 && !trCorriendo) {
                 if (idleDesde == 0L) idleDesde = System.currentTimeMillis()
                 else if (System.currentTimeMillis() - idleDesde > 180_000L && !AppLock.appVisible()) {
                     try { stopForeground(true) } catch (e: Throwable) {}
@@ -397,15 +405,22 @@ class HunterService : Service() {
     private fun avisarDeCalor() {
         val bruta = HunterEngine.isRunning()
         val kang  = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        // La auditoría Taproot se añadió después de este freno y se quedó fuera: su propia
+        // pantalla avisa de que un rango grande "can take days even with several cores", así que
+        // es justo el motor que más tiempo pasa corriendo con la pantalla apagada — y el único
+        // freno de emergencia que SÍ la cubría hasta ahora era el de batería baja (battReceiver,
+        // más abajo), no el de calor.
+        val trAud = try { HunterEngine.taprootCorriendo() } catch (e: Throwable) { false }
         // Sin nada buscando no hay nada que frenar ni nada que contar. El
         // escalon sigue subiendo y bajando por dentro —tiene que hacerlo, o no
         // podria enfriarse—, pero callado: el movil puede estar caliente por
         // otra app, y avisar de que "se para por calor" lo que ya estaba parado
         // solo sirve para pisar la notificacion de reposo con un susto.
-        if (!bruta && !kang) return
+        if (!bruta && !kang && !trAud) return
         if (Termico.parado) {
             if (bruta) HunterEngine.stopHunting()
             if (kang)  Thread { try { HunterEngine.kangarooStop() } catch (e: Throwable) {} }.start()
+            if (trAud) Thread { try { HunterEngine.taprootDetener() } catch (e: Throwable) {} }.start()
             try {
                 getSharedPreferences("hunter", android.content.Context.MODE_PRIVATE).edit()
                     .putBoolean("kangaroo_corriendo", false)
@@ -416,6 +431,7 @@ class HunterService : Service() {
                     "Paused: too hot",
                     "${"%.0f".format(Termico.tempC)} \u00b0C. " +
                     if (kang) "The Kangaroo work is saved."
+                    else if (trAud) "The Taproot audit's progress is kept; resume it from its own screen."
                     else "It will not restart on its own: let it cool down first."))
         } else if (Termico.limitando) {
             getSystemService(NotificationManager::class.java)

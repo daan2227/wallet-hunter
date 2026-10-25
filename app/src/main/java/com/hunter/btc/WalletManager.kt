@@ -313,6 +313,8 @@ object WalletManager {
     private fun leerWifs(ctx: Context): List<Triple<String,String,String>>? {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
         val hayDek = dekExiste(ctx)
+        // Autocuración de la misma carrera que en MatchVault.abrir(): ver el comentario ahí.
+        if (hayDek) entrarSinPin(ctx)
         val dek = if (hayDek) claveBoveda else null
         // Dentro del sobre del código: sin sesión no se abre (null = «cerrada», que quien lee ya trata como
         // «no se pudo abrir» y no reescribe nada).

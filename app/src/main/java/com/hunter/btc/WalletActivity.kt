@@ -2519,7 +2519,11 @@ class WalletActivity : FragmentActivity() {
                             else -> CoinSelector.Plan(chosen, fCon, 0L, vsCon, "hand-picked")
                         }
                     } else {
-                        CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes)
+                        // El cambio vuelve a fromAddr: con polvoDe(fromAddr) en vez del fijo de
+                        // P2PKH, una dirección segwit/Taproot deja crear un cambio válido más
+                        // pequeño en vez de soltarlo entero a la comisión en ese rango estrecho.
+                        CoinSelector.select(chosen, amtSat, feeRate, inVBytes, outVBytes, chgVBytes,
+                            CoinSelector.polvoDe(fromAddr))
                     }
                     if (plan0 == null || plan0.chosen.isEmpty()) {
                         runOnUiThread {

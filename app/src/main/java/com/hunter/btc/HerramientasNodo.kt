@@ -90,7 +90,16 @@ object HerramientasNodo {
     }
 
     private fun ejecutar(act: Activity, h: Herramienta, valores: List<String>) {
-        if (valores.first().isBlank()) { Toast.makeText(act, "Fill in the first field", Toast.LENGTH_SHORT).show(); return }
+        // Sólo el primer campo se comprobaba: una herramienta con varios (p. ej. "Verify a signed
+        // message": dirección, firma, mensaje) dejaba pasar los demás en blanco, y el error que
+        // devolvía Core era menos claro que pedir rellenarlo aquí. "empty if…" en el propio nombre
+        // del campo (el rango del descriptor) es la señal de que ESE sí puede quedar vacío.
+        val faltante = h.campos.indices.firstOrNull {
+            valores[it].isBlank() && !h.campos[it].contains("empty if", ignoreCase = true)
+        }
+        if (faltante != null) {
+            Toast.makeText(act, "Fill in \"${h.campos[faltante]}\"", Toast.LENGTH_SHORT).show(); return
+        }
         val ui = Handler(Looper.getMainLooper())
         Thread {
             val texto = try {

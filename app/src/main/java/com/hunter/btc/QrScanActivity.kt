@@ -155,7 +155,10 @@ class QrScanActivity : AppCompatActivity() {
         try {
             cm.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(c: CameraDevice) { camara = c; sesionar(c, tam) }
-                override fun onDisconnected(c: CameraDevice) { c.close(); camara = null }
+                // Otra app toma la cámara (llamada entrante con vídeo, otra app de escaneo): a
+                // diferencia de onError, esto se quedaba callado — la vista previa se congelaba
+                // sin ningún mensaje ni forma de reintentar hasta salir a mano de la pantalla.
+                override fun onDisconnected(c: CameraDevice) { c.close(); camara = null; fallo("Camera is in use by another app") }
                 override fun onError(c: CameraDevice, e: Int) { c.close(); camara = null; fallo("Camera error $e") }
             }, manejador)
         } catch (e: Exception) { fallo("Could not open the camera") }

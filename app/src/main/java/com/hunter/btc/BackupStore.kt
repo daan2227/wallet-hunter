@@ -15,9 +15,10 @@ import java.io.File
  * Aquí se conservan las últimas [MAX_KEPT] y se listan para compartir, mirar
  * qué llevan dentro o restaurar sin pasar por el selector de ficheros.
  *
- * El contenido va cifrado con AES-GCM bajo una clave derivada del PIN con
- * PBKDF2; el fichero en sí no aporta protección, así que tampoco conviene
- * acumular copias sin límite.
+ * El contenido va cifrado con AES-GCM bajo una clave derivada con PBKDF2 de una contraseña
+ * PROPIA de la copia (formato "WHB2"), no del PIN de la app — las dos son independientes a
+ * propósito: una copia tiene que poder abrirse sin el código de este teléfono. El fichero en sí
+ * no aporta protección, así que tampoco conviene acumular copias sin límite.
  */
 object BackupStore {
 
