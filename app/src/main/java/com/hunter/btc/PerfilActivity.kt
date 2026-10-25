@@ -108,6 +108,17 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
             typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f); setPadding(0, 0, 0, dp(12))
         })
         cPin.addView(boton(if (WalletManager.hasPin(this)) "Change PIN" else "Set PIN") { cambiarPin() })
+        // Quitar el código del todo: sólo para un teléfono que se sabe que se queda en un sitio
+        // seguro. Sin "Change PIN" al lado (arriba), que pasa a decir "Set PIN" en cuanto se quita.
+        if (WalletManager.hasPin(this)) {
+            cPin.addView(TextView(this).apply {
+                text = "Remove PIN (secure environments only)"
+                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.RED)
+                typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, dp(4))
+                setOnClickListener { confirmarQuitarPin() }
+            })
+        }
         root.addView(cPin)
 
         // Huella: opcional, a elección de quien usa la app (apagada por defecto).
@@ -198,6 +209,36 @@ class PerfilActivity : androidx.appcompat.app.AppCompatActivity() {
         if (WalletManager.hasPin(this)) PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) nuevoPin() }
         else nuevoPin()
     }
+    /**
+     * Pregunta dos veces antes de quitar el código: primero con un aviso explícito de lo que
+     * cambia (nadie más lo va a leer por el usuario), y luego con el propio código, para
+     * comprobar que quien lo pulsa de verdad lo sabe y no sólo tiene el teléfono ya desbloqueado
+     * en la mano.
+     */
+    private fun confirmarQuitarPin() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Remove the PIN?")
+            .setMessage("From then on the app opens straight away: no PIN to see your wallets, open " +
+                "the vault, or send money. Only this phone's own lock screen protects them after " +
+                "that — anyone who can unlock the phone can do all of that. Fingerprint unlock for " +
+                "this app, which only made sense as a shortcut to the PIN, turns off too.\n\n" +
+                "Only do this on a phone you are sure stays somewhere safe. You can set a PIN again " +
+                "at any time.")
+            .setPositiveButton("Remove PIN") { _, _ ->
+                PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                    if (!ok) return@show
+                    if (WalletManager.quitarPin(this)) {
+                        Toast.makeText(this, "PIN removed", Toast.LENGTH_LONG).show()
+                        recreate()
+                    } else {
+                        Toast.makeText(this, "Could not remove it", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun nuevoPin() {
         PinAuthHelper.pantalla(this, isSetup = true, autoBiometric = false) { ok ->
             if (ok) { Toast.makeText(this, "PIN updated", Toast.LENGTH_SHORT).show(); recreate() }

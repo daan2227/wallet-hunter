@@ -76,9 +76,14 @@ object AppLock {
      * si Android revive el proceso por una notificación.
      */
     fun init(act: Activity) {
+        RegistroFallos.instalar(act)
+        // Fuera del "if (registrado) return": esto tiene que intentarse en CADA onCreate (todas las
+        // pantallas llaman a init), no sólo en la primera vez del proceso — si no, una pantalla
+        // nueva abierta después de un bloqueo (ver bloquear(), que olvida claveSemilla) se quedaría
+        // sin clave hasta el siguiente resume. Barato cuando ya está abierta o cuando hay código.
+        try { WalletManager.entrarSinPin(act) } catch (e: Throwable) { RegistroFallos.anotar("AppLock.init: entrarSinPin", e) }
         if (registrado) return
         registrado = true
-        RegistroFallos.instalar(act)
         val app = act.application
 
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
@@ -106,6 +111,12 @@ object AppLock {
             // Debug no aplicaba el ajuste de capturas (las demás lo hacen en su onCreate).
             override fun onActivityCreated(a: Activity, b: Bundle?) { if (a is DebugActivity) PantallaSegura.aplicar(a) }
             override fun onActivityResumed(a: Activity) {
+                // Sin código a propósito: un bloqueo (pantalla apagada, app en segundo plano) olvida
+                // claveSemilla igual que con código puesto (ver bloquear()), y aquí no hay pantalla
+                // de código que la vuelva a pedir — sólo este resume. init() ya lo intenta en cada
+                // onCreate; esto cubre volver a una pantalla que ya existía, sin uno nuevo.
+                if (!WalletManager.hasPin(a) && !WalletManager.claveSemillaLista())
+                    try { WalletManager.entrarSinPin(a) } catch (e: Throwable) { RegistroFallos.anotar("AppLock.onActivityResumed: entrarSinPin", e) }
                 // Lockout por demasiados intentos de PIN: cubre TODA la app. Sea
                 // cual sea la pantalla que se reanude, se le pone encima la de
                 // bloqueo mientras quede cuenta atrás.

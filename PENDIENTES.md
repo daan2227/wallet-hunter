@@ -141,6 +141,27 @@
   banco corre con qemu/x86, el móvil es ARM64 con su propio camino en `fe_mul`/`fe_sqr`) — no probado en un
   teléfono.
 
+- **Quitar el código, para "entornos seguros" (sin probar en un teléfono).** En Perfil, junto a "Change
+  PIN": "Remove PIN", sólo visible con un código puesto. Pide primero un aviso explícito (qué deja de
+  protegerse) y luego el propio código vigente — no basta con tener el teléfono ya desbloqueado en la mano,
+  hace falta demostrar que se sabe. A partir de ahí la app abre directamente, sin pedir nada, en cada arranque
+  y tras cada bloqueo (pantalla apagada, segundos fuera de la app): la única barrera que queda es el bloqueo
+  de pantalla del propio teléfono. La huella de la app se apaga a la vez, porque sólo tenía sentido como atajo
+  al código.
+
+  Por dentro (`WalletManager.quitarPin`/`entrarSinPin`): las semillas, la lista de WIF y la clave de datos del
+  baúl (DEK) que estaban selladas con la clave del código se vuelven a sellar, en el mismo guardado, con una
+  clave de puro Keystore (hardware, sin huella ni autenticación exigida — el mismo mecanismo que ya protege el
+  nombre de perfil) en vez de quedarse sin forma de abrirse. `savePin()` ya sabía re-envolver "desde la clave
+  vigente"; el único cambio ahí es que esa clave vigente ahora puede venir también de aquí, no sólo de un PIN
+  anterior — así que volver a poner un código más tarde (el mismo botón, que pasa a decir "Set PIN") funciona
+  sin tocar nada más.
+
+  Riesgo que no se puede quitar, sólo trasladar: con el código quitado, cualquiera que desbloquee el teléfono
+  —con su propio PIN, patrón o huella del sistema— puede abrir la cartera, el baúl y enviar fondos sin teclear
+  nada más. Es exactamente lo que dice el aviso antes de confirmar. Pensado para un teléfono dedicado que se
+  sabe que queda en un sitio de confianza, no para el día a día.
+
 ## Auditoría general (2026-10-25)
 
 Seis repasos en paralelo, cada uno sobre un área: núcleo criptográfico nativo, baúl/PIN/huella/backup,

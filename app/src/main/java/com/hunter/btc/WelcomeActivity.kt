@@ -35,6 +35,11 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         if (WalletManager.hasPin(this)) {
             showSplashThenPin()
+        } else if (WalletManager.sinPinDeliberado(this)) {
+            // El código se quitó a propósito (Perfil, "entornos seguros"): directo a la app, sin
+            // pantalla de por medio. entrarSinPin() ya corre en AppLock.init de arriba, pero por si
+            // falla silenciosamente no hay ninguna pantalla de código a la que caer aquí.
+            goMain()
         } else {
             showPinSetup()
         }

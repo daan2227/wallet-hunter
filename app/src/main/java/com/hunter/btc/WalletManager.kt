@@ -36,6 +36,9 @@ object WalletManager {
     private const val PREF_SEED_P   = "seed_pin"
     private const val PREF_SEED_PIV = "seed_pin_iv"
     private const val PREF_ADDRS = "wallet_addrs"
+    /** Para "entornos seguros": el código quitado a propósito. Ver quitarPin()/entrarSinPin(). */
+    private const val PREF_SIN_PIN = "pin_quitado"
+    private const val ALIAS_SIN_PIN = "hunter_sin_pin_key"
     private const val PBKDF2_ITER = 100000
     /** Vueltas de PBKDF2 para un código NUEVO (alfanumérico de 8-24). Los antiguos (seis dígitos) siguen con
      *  PBKDF2_ITER: cada código guarda las suyas en PREF_ITER, y sin esa marca es uno antiguo. */
@@ -465,13 +468,18 @@ object WalletManager {
         val nueva = pinToKey(pin, salt, PBKDF2_ITER_NUEVO)
         val (enc, iv) = aesEncrypt(nueva, "wallet_ok".toByteArray())
         val ed = prefs.edit()
-        if (!reenvolver(ctx, if (hayPin) antigua else null, nueva, ed)) return false
+        // antigua, no "si hayPin antigua si no null": sin código puesto puede que no haya nada que
+        // envolver todavía (instalación nueva, antigua es null) o que SÍ lo haya, sellado con la
+        // clave de "sin PIN" (se había quitado antes, ver quitarPin) — y entonces antigua es esa
+        // clave, no null. reenvolver ya distingue sola los dos casos por que antigua sea null o no.
+        if (!reenvolver(ctx, antigua, nueva, ed)) return false
         ed.putString(PREF_SALT, b64e(salt))
           .putInt(PREF_ITER, PBKDF2_ITER_NUEVO)
           .putString(PREF_VER,  b64e(enc))
           .putString(PREF_VIV,  b64e(iv))
-          // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella).
+          // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella), y ya no está "quitado".
           .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+          .remove(PREF_SIN_PIN)
         if (!ed.commit()) return false
         // Lo que la huella guardaba era la clave del código anterior: ya no sirve.
         if (huellaActivada(ctx)) huellaDesactivar(ctx)
@@ -481,11 +489,13 @@ object WalletManager {
     }
 
     /**
-     * Pone cada semilla bajo la clave `nueva`. Con sobre previo lo abre con
-     * `antigua` y lo vuelve a cerrar; sin `antigua` da por hecho que ya va con la
-     * vigente (checkPin). Las que sólo tienen Keystore se envuelven ahora.
-     * Escribe en `ed` sin confirmar: el que llama decide. false si una semilla no
-     * se puede abrir con `antigua`; entonces no debe confirmarse nada.
+     * Pone cada semilla bajo la clave `nueva`. Con sobre previo lo abre con `antigua` y lo vuelve
+     * a cerrar; sin `antigua` da por hecho que ya va con la vigente (checkPin) o que aún no hay
+     * nada que abrir (instalación nueva). `antigua` no tiene por qué venir de un código: puede ser
+     * también la clave de "sin PIN" (quitarPin), si se está volviendo a poner uno después de
+     * haberlo quitado — para esta función las dos son sólo una SecretKey, da igual de dónde salga.
+     * Las que sólo tienen Keystore se envuelven ahora. Escribe en `ed` sin confirmar: el que llama
+     * decide. false si una semilla no se puede abrir con `antigua`; entonces no debe confirmarse nada.
      */
     private fun reenvolver(ctx: Context, antigua: SecretKey?, nueva: SecretKey,
                            ed: android.content.SharedPreferences.Editor): Boolean {
@@ -693,6 +703,64 @@ object WalletManager {
 
     fun hasPin(ctx: Context) =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).contains(PREF_SALT)
+
+    // ── Quitar el código, para "entornos seguros" ───────────────────────────
+    //
+    // Sin código, el teléfono propio (su bloqueo de pantalla) pasa a ser la única barrera: la app
+    // abre directamente, sin pedir nada, igual que durante los segundos de la instalación antes de
+    // fijar el primero. La diferencia es que aquí YA hay semillas, WIF y un baúl cifrados con la
+    // clave del código: quitarlo tiene que volver a sellar todo eso con una clave que no dependa de
+    // ningún PIN, o se quedaría sin forma de abrirse. Esa clave es de puro Keystore (hardware,
+    // sin huella ni autenticación exigida) — el mismo mecanismo que ya usa el nombre de perfil.
+    //
+    // Se puede volver a poner un código cuando se quiera (el botón de Perfil pasa a "Set PIN"), y
+    // savePin() ya sabe re-envolver desde esta clave: ver el comentario en reenvolver.
+
+    /** ¿Se quitó el código a propósito? (A diferencia de la instalación nueva, aquí ya hay datos.) */
+    fun sinPinDeliberado(ctx: Context): Boolean =
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_SIN_PIN, false)
+
+    /**
+     * Quita el código. Hace falta que la sesión YA esté abierta con el código vigente —se comprueba
+     * fuera, con PinAuthHelper.show, igual que para cambiarlo o para la huella— porque esta función
+     * usa [claveSemilla] tal cual, sin volver a pedir nada: no basta con tener el teléfono en la
+     * mano, hace falta haber tecleado el código una vez más para confirmar que se quiere esto.
+     */
+    fun quitarPin(ctx: Context): Boolean {
+        val antigua = claveSemilla ?: return false
+        val nueva = getOrCreateKey(ALIAS_SIN_PIN)
+        val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val ed = prefs.edit()
+        if (!reenvolver(ctx, antigua, nueva, ed)) return false
+        ed.remove(PREF_SALT).remove(PREF_VER).remove(PREF_VIV).remove(PREF_ITER)
+          .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
+          .putBoolean(PREF_SIN_PIN, true)
+        if (!ed.commit()) return false
+        // La huella sólo tenía sentido como atajo al código: sin código, no pinta nada.
+        if (huellaActivada(ctx)) huellaDesactivar(ctx)
+        claveSemilla = nueva
+        abrirBoveda(ctx, nueva)
+        return true
+    }
+
+    /**
+     * Abre la sesión sin pedir nada, cuando el código se quitó a propósito: la clave de Keystore
+     * abre lo que ya había. Llamada en cada arranque y cada vez que la app vuelve a primer plano
+     * (AppLock), porque un bloqueo (pantalla apagada, app en segundo plano) olvida [claveSemilla]
+     * igual que con código — si no, "quitar el código" sólo habría evitado la primera pantalla, no
+     * los bloqueos de después. No hace nada si hay código, si no se quitó a propósito, o si la
+     * sesión ya está abierta.
+     */
+    fun entrarSinPin(ctx: Context): Boolean {
+        if (hasPin(ctx) || !sinPinDeliberado(ctx)) return false
+        if (claveSemillaLista()) return true
+        val clave = try { claveExistente(ALIAS_SIN_PIN) } catch (e: Throwable) {
+            RegistroFallos.anotar("WalletManager.entrarSinPin", e); return false
+        }
+        claveSemilla = clave
+        abrirBoveda(ctx, clave)
+        return true
+    }
 
 
     fun loadAddresses(ctx: Context): String? =
