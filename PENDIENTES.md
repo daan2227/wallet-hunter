@@ -176,6 +176,21 @@
   preguntan "¿hay que enseñar la pantalla del código?" (AppLock, MainActivity, PinAuthHelper) se quedan como
   estaban, porque ahí `hasPin()` solo sí es la pregunta correcta.
 
+- **Núcleos para verificar firmas y freno por calor/batería del nodo (sin probar en un teléfono).** A raíz
+  de "¿hay manera de aligerar Core?": el nodo no tenía NINGÚN control de calor ni de batería, a diferencia
+  del motor de escaneo (`Termico`/`HunterService`), que sí los tiene desde hace tiempo. Verificar bloques en
+  paralelo (varios núcleos a la vez) calienta el teléfono igual que Kangaroo, y nada lo vigilaba.
+  - Nuevo selector "CPU for checking signatures" en Ajustes de Core (Auto / mitad de los núcleos / 1 núcleo)
+    → `par=N` en `bitcoin.conf`. Auto (por defecto) no escribe la línea, así que nadie cambia de
+    comportamiento sin tocar el ajuste. Sólo se aplica al arrancar el nodo: Core no tiene un RPC para
+    cambiarlo con el nodo ya en marcha.
+  - `CoreService.bucle()` ahora llama a `Termico.muestra(ctx)` en cada vuelta (se autolimita a una vez cada
+    5 s, así que no pasa nada por llamarlo desde dos sitios a la vez) y para el nodo, con aviso, si
+    `Termico.parado` (el mismo escalón final que usa el motor de escaneo) o si la batería baja del 15 % sin
+    estar cargando. A diferencia del motor de escaneo, que puede bajar el ritmo en escalones intermedios
+    (`setCpuLimit`), Core no tiene esa palanca en caliente — por eso aquí la única respuesta es parar del
+    todo, no ir más despacio.
+
 ## Auditoría general (2026-10-25)
 
 Seis repasos en paralelo, cada uno sobre un área: núcleo criptográfico nativo, baúl/PIN/huella/backup,

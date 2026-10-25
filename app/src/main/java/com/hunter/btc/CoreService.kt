@@ -73,6 +73,22 @@ class CoreService : Service() {
                     aviso("Bitcoin Core paused", "Mobile data detected: Wi-Fi only is on.")
                     CoreNodo.parar(this); break
                 }
+                // Verificar bloques en paralelo calienta el teléfono igual que el motor de escaneo, pero
+                // antes nada lo vigilaba aquí: Termico ya es el gobernador compartido de toda la app
+                // (lo alimenta quien lo llame; muestra() se autolimita a una vez cada 5 s), sólo faltaba
+                // que este servicio también lo alimentara y le hiciera caso. Sin la palanca en caliente que
+                // sí tiene el motor de escaneo (no hay RPC para bajarle el ritmo a Core ya arrancado, "par"
+                // sólo se lee al arrancar) la única respuesta posible es parar, como hace el motor en su
+                // último escalón — no hay un paso intermedio de "más despacio" para el nodo.
+                val bat = Termico.muestra(this)
+                if (Termico.parado) {
+                    aviso("Bitcoin Core paused: too hot", "${"%.0f".format(Termico.tempC)} °C. Start it again once the phone cools down.")
+                    CoreNodo.parar(this); break
+                }
+                if (Termico.bateriaBaja(bat)) {
+                    aviso("Bitcoin Core paused: battery low", "${bat?.nivel}%. Charge it and start again.")
+                    CoreNodo.parar(this); break
+                }
                 try {
                     val r = CoreNodo.rpc(this)
                     val e = CoreConfig.leerEstado(r.objeto("getblockchaininfo"), null, null)

@@ -333,6 +333,18 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     texto(cAj, "Memory for the database", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("100 MB" to null, "450 MB" to null, "1 GB" to null),
         initial = CoreConfig.DBCACHE_OPCIONES.indexOf(aj.dbcacheMiB).coerceAtLeast(0)) { guardar(aj.copy(dbcacheMiB = CoreConfig.DBCACHE_OPCIONES[it])) })
+    val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+    val mitad = (nucleos / 2).coerceAtLeast(1)
+    texto(cAj, "CPU for checking signatures", AppTheme.TXT_PRI)
+    texto(cAj, "Verifying blocks in parallel is what makes a sync fast, and what makes the phone run hot. " +
+        "Fewer cores at once means less heat and battery, slower sync. Applies the next time the node starts.",
+        AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
+    // Las etiquetas "Half" y "1 core" se solapan en un teléfono de un solo núcleo (rarísimo, pero
+    // posible en un emulador): entonces se deja sólo Auto/1, sin repetir la misma opción dos veces.
+    val opcionesPar = if (mitad > 1) listOf(0, mitad, 1) else listOf(0, 1)
+    val etiquetasPar = opcionesPar.map { if (it == 0) "Auto" to null else "$it core${if (it > 1) "s" else ""}" to null }
+    cAj.addView(Ui.segmented(this, etiquetasPar,
+        initial = opcionesPar.indexOf(aj.parNucleos).coerceAtLeast(0)) { guardar(aj.copy(parNucleos = opcionesPar[it])) })
     texto(cAj, "Network", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("Wi-Fi only" to null, "Any network" to null),
         initial = if (aj.soloWifi) 0 else 1) { guardar(aj.copy(soloWifi = it == 0)) })

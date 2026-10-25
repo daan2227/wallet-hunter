@@ -32,12 +32,15 @@ object CoreConfig {
         /** EXPERIMENTAL en Core: difundir mis transacciones por conexiones cortas de Tor. Sólo con [red] != 0. */
         val difusionPrivada: Boolean = false,
         /** Servir filtros de bloque BIP157 sólo en 127.0.0.1, para el cliente ligero de esta app. Ocupa ~10 GB más. */
-        val servirFiltros: Boolean = false
+        val servirFiltros: Boolean = false,
+        /** Núcleos para verificar firmas en paralelo. 0 = automático (lo decide Core, como hasta ahora). */
+        val parNucleos: Int = 0
     ) {
         fun normalizado() = copy(pruneMiB = pruneMiB.coerceAtLeast(PRUNE_MIN),
                                  dbcacheMiB = dbcacheMiB.coerceIn(4, 4096),
                                  red = red.coerceIn(0, 2),
-                                 proxy = if (proxyValido(proxy)) proxy.trim() else PROXY_TOR)
+                                 proxy = if (proxyValido(proxy)) proxy.trim() else PROXY_TOR,
+                                 parNucleos = parNucleos.coerceIn(0, 16))
     }
 
     const val PROXY_TOR = "127.0.0.1:9050"
@@ -85,6 +88,12 @@ object CoreConfig {
                 if (a.difusionPrivada) appendLine("privatebroadcast=1")
             }
             appendLine("maxconnections=12")
+            // 0 = se omite y Core decide solo (lo de siempre); por encima de 0, menos núcleos de golpe
+            // verificando firmas en paralelo durante la sincronización = menos calor y batería, a costa
+            // de ir más despacio. No hay forma de cambiarlo con el nodo ya arrancado (no es un RPC, es
+            // un ajuste de arranque): por eso el freno por calor de verdad (CoreService) para el nodo
+            // en vez de intentar bajarle el ritmo en caliente.
+            if (a.parNucleos > 0) appendLine("par=${a.parNucleos}")
             appendLine("blocksonly=${if (a.soloBloques) 1 else 0}")
             appendLine("txindex=0")
             appendLine("shrinkdebugfile=1")
