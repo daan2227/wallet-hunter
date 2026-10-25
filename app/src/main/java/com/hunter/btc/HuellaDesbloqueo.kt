@@ -70,7 +70,10 @@ object HuellaDesbloqueo {
         if (!disponible(act)) return alTerminar(false, "No fingerprint is enrolled on this phone")
         val cifrador = try {
             Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, clave()) }
-        } catch (e: Exception) { return alTerminar(false, "Could not prepare the key: ${e.javaClass.simpleName}") }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("HuellaDesbloqueo.activar: preparar cifrador", e)
+            return alTerminar(false, "Could not prepare the key: ${e.javaClass.simpleName}")
+        }
         BiometricPrompt(act, ContextCompat.getMainExecutor(act), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
                 try {
@@ -78,7 +81,10 @@ object HuellaDesbloqueo {
                     val enc = c.doFinal(raw)
                     if (WalletManager.huellaGuardar(act, enc, c.iv)) alTerminar(true, null)
                     else alTerminar(false, "Could not save it")
-                } catch (e: Exception) { alTerminar(false, "Failed: ${e.javaClass.simpleName}") }
+                } catch (e: Exception) {
+                    RegistroFallos.anotar("HuellaDesbloqueo.activar: sellar la clave", e)
+                    alTerminar(false, "Failed: ${e.javaClass.simpleName}")
+                }
                 finally { java.util.Arrays.fill(raw, 0) }
             }
             override fun onAuthenticationError(code: Int, msg: CharSequence) {
@@ -100,14 +106,22 @@ object HuellaDesbloqueo {
             Toast.makeText(act, "Your fingerprints changed, so fingerprint unlock was turned off. Use your code.",
                 Toast.LENGTH_LONG).show()
             return alTerminar(false)
-        } catch (e: Exception) { return alTerminar(false) }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("HuellaDesbloqueo.desbloquear: preparar cifrador", e)
+            return alTerminar(false)
+        }
         BiometricPrompt(act, ContextCompat.getMainExecutor(act), object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(r: BiometricPrompt.AuthenticationResult) {
                 var raw: ByteArray? = null
                 val ok = try {
                     raw = r.cryptoObject!!.cipher!!.doFinal(guardada.first)
                     WalletManager.entrarConClave(act, raw)
-                } catch (e: Exception) { false }
+                } catch (e: Exception) {
+                    // La huella YA tuvo éxito: si esto falla es que la clave sellada o el
+                    // descifrado tienen un problema real, no "huella incorrecta".
+                    RegistroFallos.anotar("HuellaDesbloqueo.desbloquear: descifrar tras huella OK", e)
+                    false
+                }
                 finally { raw?.let { java.util.Arrays.fill(it, 0) } }
                 alTerminar(ok)
             }

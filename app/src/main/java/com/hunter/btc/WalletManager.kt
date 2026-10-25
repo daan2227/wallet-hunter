@@ -1047,7 +1047,9 @@ object WalletManager {
             // conserva esos hallazgos: no se poda ninguna.
             if (!MatchVault.hayCopiaIlegible(ctx)) BackupStore.prune(ctx)
             file
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("WalletManager.exportBackup", e); null
+        }
     }
 
     /** importBackup: la copia trae semillas y no hay sesión abierta con el PIN. */

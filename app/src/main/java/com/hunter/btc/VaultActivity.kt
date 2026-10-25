@@ -144,11 +144,17 @@ class VaultActivity : AppCompatActivity() {
                 MatchVault.recoger(this)
                 MatchVault.completarClaves(this)
                 MatchVault.listaONull(this)
-            } catch (e: Exception) { null }
+            } catch (e: Exception) {
+                RegistroFallos.anotar("VaultActivity.mostrar: leer el baúl", e); null
+            }
             val wifs = try {
                 WalletManager.listWifs(this).mapTo(HashSet()) { it.second }
-            } catch (e: Exception) { HashSet<String>() }
-            val seeds = try { WalletManager.todasLasSeeds(this) } catch (e: Exception) { emptySet<String>() }
+            } catch (e: Exception) {
+                RegistroFallos.anotar("VaultActivity.mostrar: listWifs", e); HashSet<String>()
+            }
+            val seeds = try { WalletManager.todasLasSeeds(this) } catch (e: Exception) {
+                RegistroFallos.anotar("VaultActivity.mostrar: todasLasSeeds", e); emptySet<String>()
+            }
             runOnUiThread {
                 if (bloqueado || isFinishing) return@runOnUiThread
                 // null = hay baúl y no se pudo abrir. Antes se enseñaba como "No finds yet": quien lo
@@ -345,7 +351,9 @@ class VaultActivity : AppCompatActivity() {
 
     private fun anadirTodos() {
         Thread {
-            val (ok, mal) = try { MatchVault.todosACarteraResumen(this) } catch (e: Exception) { 0 to 0 }
+            val (ok, mal) = try { MatchVault.todosACarteraResumen(this) } catch (e: Exception) {
+                RegistroFallos.anotar("VaultActivity.anadirTodos", e); 0 to 0
+            }
             runOnUiThread {
                 if (bloqueado || isFinishing) return@runOnUiThread
                 val mensaje = when {
@@ -415,7 +423,9 @@ class VaultActivity : AppCompatActivity() {
         boton.text = "Checking…"
         Thread {
             val (consultadas, respondidas) = try { MatchVault.actualizarSaldos(this, soloPendientes = false) }
-                                              catch (e: Exception) { 0 to 0 }
+                                              catch (e: Exception) {
+                                                  RegistroFallos.anotar("VaultActivity.comprobarSaldos", e); 0 to 0
+                                              }
             runOnUiThread {
                 if (bloqueado || isFinishing) return@runOnUiThread
                 Toast.makeText(this, when {
@@ -492,7 +502,9 @@ class VaultActivity : AppCompatActivity() {
             if (!enCartera) bCartera.setOnClickListener {
                 bCartera.isEnabled = false
                 Thread {
-                    val ok = try { MatchVault.aCartera(this, e) } catch (t: Throwable) { false }
+                    val ok = try { MatchVault.aCartera(this, e) } catch (t: Throwable) {
+                        RegistroFallos.anotar("VaultActivity: añadir hallazgo a la cartera", t); false
+                    }
                     runOnUiThread {
                         if (bloqueado || isFinishing) return@runOnUiThread
                         if (ok) {
@@ -529,7 +541,9 @@ class VaultActivity : AppCompatActivity() {
                             "backed up or added it to your wallet, its key is lost."
                         else "This removes it from the vault.")
                     .setPositiveButton("Delete") { _, _ ->
-                        val ok = try { MatchVault.eliminar(this@VaultActivity, e) } catch (t: Throwable) { false }
+                        val ok = try { MatchVault.eliminar(this@VaultActivity, e) } catch (t: Throwable) {
+                            RegistroFallos.anotar("VaultActivity: borrar hallazgo", t); false
+                        }
                         Toast.makeText(this@VaultActivity,
                             if (ok) "Removed from the vault" else "Could not remove it",
                             Toast.LENGTH_SHORT).show()

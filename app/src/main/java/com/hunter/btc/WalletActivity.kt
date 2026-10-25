@@ -2101,7 +2101,7 @@ class WalletActivity : FragmentActivity() {
             tvFromBal.text = "Checking the balance…"
             Thread {
                 val res = BalanceLookup.query(addr, isTestnet)
-                val monedas = try { ChainInfo.utxos(addr, isTestnet) } catch (e: Exception) { null }
+                val monedas = try { ChainInfo.utxos(addr, isTestnet) } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.loadFromBalance: utxos", e); null }
                 runOnUiThread {
                     // Una respuesta que llega tarde, de la dirección que ya no está
                     // elegida, no puede poner su saldo en esta.
@@ -2154,7 +2154,7 @@ class WalletActivity : FragmentActivity() {
                 // Lo mismo que gastaría Enviar: las monedas elegidas a mano, o las
                 // confirmadas de la dirección. Con dos o más, la comisión crece con
                 // cada entrada; restar la de una sola dejaba el envío sin fondos.
-                val lista = try { ChainInfo.utxos(addrDe, isTestnet) } catch (e: Exception) { null }
+                val lista = try { ChainInfo.utxos(addrDe, isTestnet) } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.chipMax: utxos", e); null }
                 val usar: List<org.json.JSONObject>? = when {
                     manual.isNotEmpty() -> manual
                     lista != null -> lista.filter { it.optBoolean("confirmed", true) }
@@ -3150,7 +3150,7 @@ class WalletActivity : FragmentActivity() {
                         if (a.isEmpty()) continue
                         if (BalanceLookup.isUsed(a, isTestnet) == false) { encontrada = o.optInt("i") to a; break }
                     }
-                } catch (e: Exception) { }
+                } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.btnNueva: deriveAddresses", e) }
                 runOnUiThread {
                     btnNueva.text = "New address"
                     val hallada = encontrada
@@ -3682,7 +3682,7 @@ class WalletActivity : FragmentActivity() {
                         val a = arr.optJSONObject(i)?.optString("addr", "") ?: ""
                         if (a.isNotEmpty()) direcciones.add(a)
                     }
-                } catch (e: Exception) { }
+                } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.scriptsDeCartera: purpose $purpose change $change", e) }
             }
         }
         val out = ArrayList<String>()
@@ -3856,7 +3856,7 @@ class WalletActivity : FragmentActivity() {
         val nombre = currentWalletName; val addr = wifAddr
         Thread {
             val r = try { MatchVault.guardarCartera(this, nombre, origen, seed, wif, addr) }
-                    catch (t: Throwable) { -1 }
+                    catch (t: Throwable) { RegistroFallos.anotar("WalletActivity.guardarEnBaul", t); -1 }
             runOnUiThread {
                 Toast.makeText(this, when (r) {
                     1    -> "Saved to the finds vault"
@@ -4453,7 +4453,7 @@ class WalletActivity : FragmentActivity() {
                         d.dismiss()
                         Toast.makeText(this, "Encrypting the backup…", Toast.LENGTH_SHORT).show()
                         Thread {
-                            val file = try { WalletManager.exportBackup(this, p1) } catch (e: Exception) { null }
+                            val file = try { WalletManager.exportBackup(this, p1) } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.exportBackup", e); null }
                             runOnUiThread {
                                 if (file != null) {
                                     Toast.makeText(this, "Backup saved to the vault", Toast.LENGTH_SHORT).show()

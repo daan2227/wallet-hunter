@@ -592,7 +592,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 val o = CoreNodo.rpc(act).llamar("gettxoutsetinfo", JSONArray().put("none"), 30 * 60_000) as? org.json.JSONObject
                 val u = o?.let { CoreConfig.leerUtxoStats(it) }
                 if (u != null) "%,d coins · %,.2f BTC in existence\nAt block %,d".format(u.monedas, u.btc, u.altura) else "No answer."
-            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            } catch (e: CoreRpcError) { "Core: ${e.message}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnUtxo", e); "Failed: ${e.javaClass.simpleName}" }
             runOnUiThread { tvUtxo.text = txt; btnUtxo.isEnabled = true; btnUtxo.alpha = 1f }
         }.start()
     }
@@ -661,7 +662,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 }
             } catch (e: ConversorUtxo.FormatoInvalido) { fin = "Could not read the file: ${e.message}" }
               catch (e: java.io.IOException) { fin = "Disk error: ${e.message}" }
-              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.convertirDs", e); fin = "Failed: ${e.javaClass.simpleName}" }
             cancelDs = null
             ocupadoDs(false, fin)
             listo?.let { usarEnScanner(it) }
@@ -687,7 +688,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 ruta.delete()
                 CoreNodo.rpc(act).llamar("dumptxoutset", JSONArray().put("utxo_dump.dat").put("latest"), 120 * 60_000)
                 null
-            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            } catch (e: CoreRpcError) { "Core: ${e.message}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnDsDump", e); "Failed: ${e.javaClass.simpleName}" }
             if (err != null || !ruta.isFile) { ocupadoDs(false, err ?: "The node did not write the file."); return@Thread }
             ocupadoDs(false)
             runOnUiThread { convertirDs(ruta, true) }
@@ -775,7 +777,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                     }
                 }
             } catch (e: CoreRpcError) { fin = "Core: ${e.message}" }
-              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnDat", e); fin = "Failed: ${e.javaClass.simpleName}" }
             vivo.set(false)
             if (listo == null) { temporal.delete(); enCurso.delete() }
             ocupadoDat(false, fin)
@@ -855,7 +857,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             } catch (e: CoreRpcError) { fin = "Core: ${e.message}" }
               catch (e: ConversorUtxo.FormatoInvalido) { fin = "Could not read the file: ${e.message}" }
               catch (e: java.io.IOException) { fin = "Disk error: ${e.message}" }
-              catch (e: Exception) { fin = "Failed: ${e.javaClass.simpleName}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.convertirCsv", e); fin = "Failed: ${e.javaClass.simpleName}" }
             cancelCsv = null
             ocupadoCsv(false, fin)
             listo?.let { terminadoCsv(it, fin) }
@@ -880,7 +882,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 ruta.delete()
                 CoreNodo.rpc(act).llamar("dumptxoutset", JSONArray().put("utxo_dump.dat").put("latest"), 120 * 60_000)
                 null
-            } catch (e: CoreRpcError) { "Core: ${e.message}" } catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+            } catch (e: CoreRpcError) { "Core: ${e.message}" }
+              catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnCsvDump", e); "Failed: ${e.javaClass.simpleName}" }
             if (err != null || !ruta.isFile) { ocupadoCsv(false, err ?: "The node did not write the file."); return@Thread }
             ocupadoCsv(false)
             runOnUiThread { convertirCsv(ruta, true) }
@@ -917,7 +920,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                         val r = CoreNodo.rpc(act).llamar("pruneblockchain", JSONArray().put(altura), 120_000)
                         aviso("Pruned up to block $r")
                     } catch (e: CoreRpcError) { aviso("Core: ${e.message}") }
-                      catch (e: Exception) { aviso("Could not prune: ${e.javaClass.simpleName}") }
+                      catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnPodar", e); aviso("Could not prune: ${e.javaClass.simpleName}") }
                     runOnUiThread { refrescar() }
                 }.start()
             }.setNegativeButton("Cancel", null).show()
@@ -928,7 +931,9 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
         val c = CoreSnapshot.Cancelar(); tarea = c
         barraSnap.progress = 0; fijarOcupado(true, texto)
         Thread {
-            val err = try { trabajo(c) } catch (e: Exception) { "${e.javaClass.simpleName}: ${e.message}" }
+            val err = try { trabajo(c) } catch (e: Exception) {
+                RegistroFallos.anotar("PestanaCore.correr", e); "${e.javaClass.simpleName}: ${e.message}"
+            }
             tarea = null; fijarOcupado(false)
             aviso(err ?: "Snapshot file ready.")
             runOnUiThread { refrescar() }
@@ -982,7 +987,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                         val o = r as? org.json.JSONObject
                         "Loaded ${o?.optLong("coins_loaded", 0L) ?: 0} coins at block ${o?.optLong("base_height", 0L) ?: 0}"
                     } catch (e: CoreRpcError) { "Core refused: ${e.message}" }
-                      catch (e: Exception) { "Failed: ${e.javaClass.simpleName}" }
+                      catch (e: Exception) { RegistroFallos.anotar("PestanaCore.btnCargar", e); "Failed: ${e.javaClass.simpleName}" }
                     fijarOcupado(false)
                     if (msg.startsWith("Loaded")) aviso(msg) else detalle("Snapshot not loaded", msg)
                     runOnUiThread { refrescar() }
