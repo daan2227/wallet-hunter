@@ -267,7 +267,9 @@ object WalletManager {
             val cipher = Cipher.getInstance("AES/GCM/NoPadding")
             cipher.init(Cipher.DECRYPT_MODE, claveExistente(WIF_KEY_ALIAS), GCMParameterSpec(128, Base64.decode(i, Base64.NO_WRAP)))
             parseWifs(String(cipher.doFinal(Base64.decode(e, Base64.NO_WRAP)), Charsets.UTF_8))
-        } catch (x: Exception) { null }
+        } catch (x: Exception) {
+            RegistroFallos.anotar("WalletManager.leerWifsAntiguaConSesion", x); null
+        }
     }
 
     /**
