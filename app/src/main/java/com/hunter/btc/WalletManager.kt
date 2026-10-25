@@ -212,8 +212,8 @@ object WalletManager {
     private fun writeWifs(ctx: Context, list: List<Triple<String,String,String>>, conservarAntigua: Boolean = false) {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
         if (list.isEmpty()) { prefs.edit().clear().apply(); return }
-        val conPin = hasPin(ctx)
-        val dek = if (conPin) (claveBoveda ?: throw IllegalStateException("WIF list locked")) else null
+        val hayDek = dekExiste(ctx)
+        val dek = if (hayDek) (claveBoveda ?: throw IllegalStateException("WIF list locked")) else null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, getOrCreateKey(WIF_KEY_ALIAS))
         val enc = cipher.doFinal(serializeWifs(list).toByteArray(Charsets.UTF_8))
@@ -237,7 +237,7 @@ object WalletManager {
     }
 
     /** La lista de WIF está cerrada: hay WIF y falta la sesión del código para abrirla. */
-    fun wifsBloqueadas(ctx: Context): Boolean = hasPin(ctx) && claveBoveda == null && hayWifs(ctx)
+    fun wifsBloqueadas(ctx: Context): Boolean = dekExiste(ctx) && claveBoveda == null && hayWifs(ctx)
 
     /**
      * Al abrir la sesión: si la lista de WIF aún estaba sólo bajo el Keystore (instalación anterior a este sobre), se
@@ -245,7 +245,7 @@ object WalletManager {
      * borra la vieja. Un fallo deja la lista como estaba.
      */
     private fun alDesbloquearWifs(ctx: Context) {
-        if (!hasPin(ctx) || claveBoveda == null) return
+        if (!dekExiste(ctx) || claveBoveda == null) return
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
         if (prefs.contains(PREF_WIF_ENC_P) || !prefs.contains(PREF_WIF_ENC)) return
         val lista = synchronized(this) { leerWifsAntiguaConSesion(ctx) } ?: return
@@ -312,8 +312,8 @@ object WalletManager {
      */
     private fun leerWifs(ctx: Context): List<Triple<String,String,String>>? {
         val prefs = ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE)
-        val conPin = hasPin(ctx)
-        val dek = if (conPin) claveBoveda else null
+        val hayDek = dekExiste(ctx)
+        val dek = if (hayDek) claveBoveda else null
         // Dentro del sobre del código: sin sesión no se abre (null = «cerrada», que quien lee ya trata como
         // «no se pudo abrir» y no reescribe nada).
         val encP = prefs.getString(PREF_WIF_ENC_P, null); val ivP = prefs.getString(PREF_WIF_IV_P, null)
@@ -331,8 +331,8 @@ object WalletManager {
             }
         }
         val encB64 = prefs.getString(PREF_WIF_ENC, null)
-        // Con código puesto y la sesión cerrada, la copia antigua (sólo Keystore) tampoco se enseña.
-        if (encB64 != null && conPin && dek == null) return null
+        // Con código puesto (o quitado a propósito) y la sesión cerrada, la copia antigua (sólo Keystore) tampoco se enseña.
+        if (encB64 != null && hayDek && dek == null) return null
         if (encB64 != null) {
             val ivB64 = prefs.getString(PREF_WIF_IV, null) ?: return null
             return try {
@@ -719,6 +719,17 @@ object WalletManager {
     /** ¿Se quitó el código a propósito? (A diferencia de la instalación nueva, aquí ya hay datos.) */
     fun sinPinDeliberado(ctx: Context): Boolean =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getBoolean(PREF_SIN_PIN, false)
+
+    /**
+     * ¿Existe la clave de datos (DEK) que sella el baúl y la lista de WIF? Antes esto era lo
+     * mismo que "hay código", porque el DEK sólo nacía dentro de savePin(). Desde que se puede
+     * quitar el código sin perder el DEK (quitarPin() lo resella con la clave de Keystore, no lo
+     * borra) dejó de serlo: un código quitado a propósito TAMBIÉN tiene DEK, y claveDeBoveda()
+     * puede estar perfectamente abierta con hasPin()==false. Todo el código de MatchVault y de
+     * aquí abajo que decidía "¿uso el DEK?" mirando sólo hasPin() se quedaba corto en ese caso —
+     * fue justo el bug que dejaba "el baúl no se pudo abrir" nada más quitar el PIN.
+     */
+    fun dekExiste(ctx: Context): Boolean = hasPin(ctx) || sinPinDeliberado(ctx)
 
     /**
      * Quita el código. Hace falta que la sesión YA esté abierta con el código vigente —se comprueba

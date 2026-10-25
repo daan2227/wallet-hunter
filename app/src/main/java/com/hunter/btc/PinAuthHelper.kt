@@ -328,7 +328,7 @@ object PinAuthHelper {
                 val elegido = v
                 Thread {
                     val guardado = WalletManager.savePin(activity, elegido)
-                    val sinClave = !guardado && WalletManager.hasPin(activity) && !WalletManager.claveSemillaLista()
+                    val sinClave = !guardado && WalletManager.dekExiste(activity) && !WalletManager.claveSemillaLista()
                     handler.post {
                         ocupado = false; entrada(true)
                         when {

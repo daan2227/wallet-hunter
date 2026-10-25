@@ -303,7 +303,10 @@ class WalletActivity : FragmentActivity() {
      * sin PIN no la protege nada.
      */
     private fun guardarConPin(onOk: () -> Unit, onCancel: () -> Unit) {
-        if (WalletManager.hasPin(this)) conSesion(onOk)
+        // sinPinDeliberado: se quitó el código a propósito (Perfil, "entornos seguros"); eso no es
+        // "sin ninguno todavía" — conSesion() ya sabe abrir sin pedir nada en ese caso. Sin esto,
+        // guardar una cartera nueva después de quitar el código volvía a forzar "elige uno".
+        if (WalletManager.hasPin(this) || WalletManager.sinPinDeliberado(this)) conSesion(onOk)
         else showPinDialog(isSetup = true) { ok -> if (ok) onOk() else onCancel() }
     }
 

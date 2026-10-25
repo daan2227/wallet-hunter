@@ -162,6 +162,20 @@
   nada más. Es exactamente lo que dice el aviso antes de confirmar. Pensado para un teléfono dedicado que se
   sabe que queda en un sitio de confianza, no para el día a día.
 
+  **Corregido tras probarlo de verdad en un teléfono** (lo demás de esta función seguía sin probarse hasta
+  entonces): al quitar el código, el baúl decía «The vault could not be opened». La causa: `MatchVault` y la
+  lista de WIF decidían en varios sitios "¿uso la clave de datos (DEK)?" mirando sólo `hasPin(ctx)` — una
+  suposición válida ANTES de esta función (el DEK sólo nacía dentro de `savePin()`, así que sin código no
+  podía haber DEK) que dejó de serlo en cuanto `quitarPin()` empezó a re-sellar el DEK con la clave de
+  Keystore en vez de borrarlo: con el código recién quitado, `claveDeBoveda()` SÍ está abierta, pero
+  `hasPin(ctx)` ya es `false`, y el código forzaba `dek = null` de todas formas. Mismo patrón en
+  `MatchVault.abrir/leer/alDesbloquear/write/bloqueado`, en el equivalente de `WalletManager` para la lista de
+  WIF, y en `WalletActivity.guardarConPin` (que volvía a forzar "elige un código" al guardar una cartera
+  nueva, en vez de abrir sin pedir nada). Arreglado con un criterio nuevo, `WalletManager.dekExiste(ctx)` —
+  "hay código, O se quitó a propósito"— que sustituye a `hasPin(ctx)` en todos esos sitios; los que de verdad
+  preguntan "¿hay que enseñar la pantalla del código?" (AppLock, MainActivity, PinAuthHelper) se quedan como
+  estaban, porque ahí `hasPin()` solo sí es la pregunta correcta.
+
 ## Auditoría general (2026-10-25)
 
 Seis repasos en paralelo, cada uno sobre un área: núcleo criptográfico nativo, baúl/PIN/huella/backup,

@@ -119,7 +119,7 @@ object MatchVault {
     private fun b64d(s: String) = Base64.decode(s, Base64.NO_WRAP)
 
     /** Con código puesto y la sesión cerrada: el baúl no se abre (ni se enseña la copia antigua). */
-    fun bloqueado(ctx: Context): Boolean = WalletManager.hasPin(ctx) && WalletManager.claveDeBoveda() == null
+    fun bloqueado(ctx: Context): Boolean = WalletManager.dekExiste(ctx) && WalletManager.claveDeBoveda() == null
 
     /**
      * Abre el baúl tal como está en disco. null = no se puede ahora: cerrado (falta la sesión) o ilegible.
@@ -130,8 +130,8 @@ object MatchVault {
         // mismo guardado. Si no, una lectura que cayera entre dos escrituras vería un IV que no es
         // el suyo y parecería un baúl estropeado.
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        val conPin = WalletManager.hasPin(ctx)
-        val dek = if (conPin) WalletManager.claveDeBoveda() else null
+        val hayDek = WalletManager.dekExiste(ctx)
+        val dek = if (hayDek) WalletManager.claveDeBoveda() else null
         val encP = prefs.getString(PREF_ENC_P, null); val ivP = prefs.getString(PREF_IV_P, null)
         val enSobre = encP != null && ivP != null
         val enc: ByteArray; val iv: ByteArray
@@ -146,7 +146,7 @@ object MatchVault {
         } else {
             val e = prefs.getString(PREF_ENC, null); val i = prefs.getString(PREF_IV, null)
             if (e == null || i == null) return Abierto(emptyList(), false)
-            if (conPin && dek == null) return null
+            if (hayDek && dek == null) return null
             enc = b64d(e); iv = b64d(i)
         }
         // «La clave no existe» puede ser un fallo pasajero del Keystore: se insiste un poco antes de darlo por
@@ -192,7 +192,7 @@ object MatchVault {
      */
     private fun leer(ctx: Context): List<Entry>? = synchronized(this) {
         val a = abrir(ctx) ?: return null
-        if (!WalletManager.hasPin(ctx) || WalletManager.claveDeBoveda() == null) return a.lista
+        if (!WalletManager.dekExiste(ctx) || WalletManager.claveDeBoveda() == null) return a.lista
         integrar(ctx, a).first
     }
 
@@ -320,7 +320,7 @@ object MatchVault {
     fun alDesbloquear(ctx: Context) {
         val recogidas: List<Entry>
         synchronized(this) {
-            if (!WalletManager.hasPin(ctx) || WalletManager.claveDeBoveda() == null) return
+            if (!WalletManager.dekExiste(ctx) || WalletManager.claveDeBoveda() == null) return
             asegurarBuzon(ctx)
             val a = abrir(ctx) ?: return
             recogidas = integrar(ctx, a).second
@@ -342,8 +342,8 @@ object MatchVault {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         // Un baúl vacío quita sólo su contenido: borrar todo se llevaría también las copias apartadas y el buzón.
         if (entries.isEmpty()) { prefs.edit().remove(PREF_ENC).remove(PREF_IV).remove(PREF_ENC_P).remove(PREF_IV_P).commit(); return }
-        val conPin = WalletManager.hasPin(ctx)
-        val dek = if (conPin) (WalletManager.claveDeBoveda() ?: throw IllegalStateException("vault locked")) else null
+        val hayDek = WalletManager.dekExiste(ctx)
+        val dek = if (hayDek) (WalletManager.claveDeBoveda() ?: throw IllegalStateException("vault locked")) else null
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val enc = cipher.doFinal(toJson(entries).toString().toByteArray(Charsets.UTF_8))
