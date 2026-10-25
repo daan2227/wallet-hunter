@@ -410,7 +410,9 @@ object MatchVault {
         val nuevas = todas.map { e ->
             if (e.privHex.length != 64 || (e.addr.isNotEmpty() && e.wif.isNotEmpty())) e
             else {
-                val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) { "" }
+                val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) {
+                    RegistroFallos.anotar("MatchVault.completarClaves", t); ""
+                }
                 if (!d.contains("|")) e
                 else {
                     tocadas++
@@ -657,7 +659,9 @@ object MatchVault {
     }
 
     private fun alGuardar(ctx: Context, e: Entry) {
-        if (autoCartera(ctx)) try { aCartera(ctx, e) } catch (t: Throwable) {}
+        if (autoCartera(ctx)) try { aCartera(ctx, e) } catch (t: Throwable) {
+            RegistroFallos.anotar("MatchVault.alGuardar: auto-añadir a la cartera falló", t)
+        }
     }
 
     /**
@@ -669,11 +673,15 @@ object MatchVault {
             if (e.addr.isNotEmpty()) return e.wif to e.addr
             // Una WIF sin dirección (derivación fallida al guardar): se saca de la propia WIF, para no
             // dejar en la cartera una clave con la dirección en blanco.
-            val a = try { HunterEngine.wifToAddr(e.wif) } catch (t: Throwable) { "" }
+            val a = try { HunterEngine.wifToAddr(e.wif) } catch (t: Throwable) {
+                RegistroFallos.anotar("MatchVault.wifDe: wifToAddr", t); ""
+            }
             return e.wif to (if (a.isEmpty() || a.startsWith("ERROR")) "" else a)
         }
         if (e.privHex.length != 64) return null
-        val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) { "" }
+        val d = try { HunterEngine.datosDeClave(e.privHex) } catch (t: Throwable) {
+            RegistroFallos.anotar("MatchVault.wifDe: datosDeClave", t); ""
+        }
         if (!d.contains("|")) return null
         return d.substringBefore("|") to e.addr.ifEmpty { d.substringAfter("|") }
     }
@@ -743,7 +751,9 @@ object MatchVault {
             leg.isNotEmpty()  -> leg to "m/44'/0'/0'/0/0"
             else -> o.keys().asSequence().firstOrNull()?.let { k -> o.optString(k) to "?" }
         }
-    } catch (t: Throwable) { null }
+    } catch (t: Throwable) {
+        RegistroFallos.anotar("MatchVault.primeraDireccion", t); null
+    }
 
     /**
      * Guarda en el baúl la seed que ha encontrado Recovery.
@@ -765,7 +775,11 @@ object MatchVault {
             val ok = leer(ctx)?.any { it.addr == addr } == true
             if (ok) alGuardar(ctx, e)
             ok
-        } catch (t: Throwable) { false }
+        } catch (t: Throwable) {
+            // Una seed recuperada puede haber costado horas de cómputo: que no quede
+            // guardada sin que haya ni rastro del motivo sería lo peor posible aquí.
+            RegistroFallos.anotar("MatchVault.guardarRecuperada", t); false
+        }
     }
 
     /**
@@ -783,12 +797,16 @@ object MatchVault {
             Entry(ts = System.currentTimeMillis(), source = origen ?: "imported", addr = addr,
                   wif = "", privHex = "", btc = 0.0, extra = "SEED:$seed PATH:$ruta NAME:$nom")
         } else if (wif.isNotEmpty()) {
-            val addr = wifAddr.ifEmpty { try { HunterEngine.wifToAddr(wif) } catch (t: Throwable) { "" } }
+            val addr = wifAddr.ifEmpty { try { HunterEngine.wifToAddr(wif) } catch (t: Throwable) {
+                RegistroFallos.anotar("MatchVault.guardarCartera: wifToAddr", t); ""
+            } }
             if (addr.isEmpty()) return -1
             Entry(ts = System.currentTimeMillis(), source = origen ?: "imported", addr = addr,
                   wif = wif, privHex = "", btc = 0.0, extra = "NAME:$nom")
         } else return -1
-        return try { if (add(ctx, listOf(e), seguro = true) > 0) 1 else 0 } catch (t: Throwable) { -1 }
+        return try { if (add(ctx, listOf(e), seguro = true) > 0) 1 else 0 } catch (t: Throwable) {
+            RegistroFallos.anotar("MatchVault.guardarCartera: add", t); -1
+        }
     }
 
     /** Añade a la cartera todos los hallazgos que tengan clave. @return cuántos. */
@@ -799,7 +817,9 @@ object MatchVault {
         var ok = 0; var mal = 0
         for (e in list(ctx)) {
             if (e.wif.isEmpty() && e.privHex.length != 64 && seedDe(e).isEmpty()) continue   // sin clave: nada que añadir
-            if (try { aCartera(ctx, e) } catch (t: Throwable) { false }) ok++ else mal++
+            if (try { aCartera(ctx, e) } catch (t: Throwable) {
+                RegistroFallos.anotar("MatchVault.todosACarteraResumen: aCartera", t); false
+            }) ok++ else mal++
         }
         return ok to mal
     }
