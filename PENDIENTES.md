@@ -141,6 +141,47 @@
   banco corre con qemu/x86, el móvil es ARM64 con su propio camino en `fe_mul`/`fe_sqr`) — no probado en un
   teléfono.
 
+## Auditoría general (2026-10-25)
+
+Seis repasos en paralelo, cada uno sobre un área: núcleo criptográfico nativo, baúl/PIN/huella/backup,
+integración de Bitcoin Core, cliente ligero/Electrum/difusión/precios, firma de transacciones/PSBT/envío, y
+superficie expuesta de la app (manifest, pantallas, logs, portapapeles). Sin fallos críticos en ninguna de
+las seis. Un hallazgo alto, corregido:
+
+- **`DebugActivity.kt` enseñaba claves privadas en texto plano, sin protección de pantalla.** El log del
+  motor que se ve en vivo ahí puede llevar una clave entera (la de un puzzle resuelto, por ejemplo) antes de
+  tacharla — el botón "Copy" ya la tachaba desde hace tiempo, pero lo que se veía en el `TextView` en vivo,
+  no. Y a diferencia del baúl, del envío o de la auditoría Taproot, esta pantalla no ponía `FLAG_SECURE`: una
+  captura, una grabación de pantalla o la miniatura de "Recientes" podían enseñarla igual. Corregido:
+  `PantallaSegura.aplicar()` en el `onCreate` (fijo, no opcional) y `Secretos.tachar()` aplicado también al
+  texto que se pinta en pantalla, no sólo al que se copia.
+
+Hallazgos menores, dejados como están (documentados, no fallos de implementación):
+
+- `WalletManager.kt`: un comentario dice que no hay forma de probar el código offline sin conexión; en
+  realidad el verificador cifrado con la clave del PIN sí permite probarlo offline si alguien saca los
+  SharedPreferences (ya mitigado por la política de 8–24 caracteres y 600 000 vueltas de `PoliticaPin.kt`,
+  que si lo dice bien) — falta corregir el comentario para que no afirme algo que no es cierto por sí solo.
+- Un código antiguo de 6 dígitos (100 000 combinaciones) se sigue aceptando indefinidamente tras migrar a uno
+  nuevo; sólo avisa una vez al usarlo, sin forzar el cambio. Decisión de UX consciente, no un descuido.
+- `Psbt.kt::revisar()`: la protección contra un importe de entrada no verificado (tipo CVE-2020-14199) sólo
+  cubre P2PKH explícitamente; otras entradas "legacy" sin compromiso de importe (P2SH simple, P2PK) no la
+  llevan. Impacto limitado porque `Psbt.sign()` de todas formas sólo firma P2WPKH/P2PKH — no se pierden
+  fondos propios por esto, pero el total/comisión que se enseña en pantalla al revisar una PSBT ajena
+  (coordinador multisig, compañero de coinjoin) podría ser engañoso.
+- Confianza en un único servidor (`ChainApi`/`ElectrumClient`/`BalanceLookup`, el primero que conteste, sin
+  cruzar fuentes) para saldo/UTXO/historial cuando no hay nodo propio: **revisado y no es una vía de pérdida
+  de fondos** — para direcciones segwit/Taproot el propio sighash incluye el importe, así que un servidor
+  mentiroso sólo logra que el envío se rechace en la red, no que se pierda nada; el único caso donde SÍ
+  importaría (legacy P2PKH, cuya firma no compromete el importe) ya está bloqueado explícitamente en
+  `WalletActivity.kt` (variable `entradaLegacy`) si la fuente no es de fiar y el nodo propio no lo confirma.
+- `bsgs.h`: el mismo caso raro ya aceptado en `taproot_audit.h` (el acumulador cae justo en ±G) existe
+  también aquí sin cubrir explícitamente, pero sólo sería alcanzable con una tabla del tamaño del orden de la
+  curva (~2^256) — inalcanzable con los límites reales de la app (hasta 2^40).
+- `CoreNodo.cola()` sólo lee los últimos 512 KB de `debug.log`: en una carga de snapshot muy larga con mucho
+  ruido de por medio, la línea de progreso podría quedar fuera de esa ventana y la barra mostraría "sin
+  datos" en vez de un número — subestima, nunca sobreestima, así que no engaña con un progreso falso.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van

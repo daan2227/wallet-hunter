@@ -440,8 +440,11 @@ object WalletManager {
     }
 
     /* PIN: guarda salt + texto de verificacion cifrado con clave derivada del PIN
-       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false
-       No hay hash almacenado -> no hay brute-force offline directo */
+       Si el PIN es incorrecto PBKDF2 genera clave diferente -> AES falla -> checkPin devuelve false.
+       OJO: esto NO impide un ataque de fuerza bruta offline si alguien saca estos SharedPreferences
+       (root, copia ADB): el propio texto cifrado funciona como un "hash" que se puede probar candidata
+       a candidata sin el telefono. Lo que de verdad lo hace caro es PoliticaPin (8-24 caracteres, 600 000
+       vueltas de PBKDF2), no la ausencia de un hash explicito. */
     /**
      * Fija o cambia el PIN. Las semillas se vuelven a cerrar con la clave nueva
      * en el MISMO commit que el PIN: o cambian las dos cosas, o ninguna. false si

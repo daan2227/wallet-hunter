@@ -33,6 +33,11 @@ class DebugActivity : AppCompatActivity() {
         // proceso por una notificacion, asi que todas lo llaman. Es
         // idempotente: engancha los avisos del sistema una sola vez.
         AppLock.init(this)
+        // El log del motor (ver construirLogs) puede llevar una clave privada
+        // entera —la del puzzle resuelto, por ejemplo— mientras no se ha
+        // tachado todavía. Sin esto, una captura de pantalla, una grabación o
+        // la miniatura de "Recientes" podían enseñarla igual que en el baúl.
+        PantallaSegura.aplicar(this)
 
         val ACCENT  = AppTheme.ACCENT
         val ACCENT2 = AppTheme.BLUE
@@ -354,7 +359,9 @@ class DebugActivity : AppCompatActivity() {
         if (refrescando || tvLiveLog == null) return
         refrescando = true
         Thread {
-            val txt = try { construirLogs() } catch (e: Throwable) { "" }
+            // Tachado aquí, no sólo al copiar: construirLogs() mete el log del
+            // motor tal cual, y ese puede llevar una clave privada entera.
+            val txt = try { Secretos.tachar(construirLogs()) } catch (e: Throwable) { "" }
             runOnUiThread {
                 refrescando = false
                 if (!isFinishing && txt.isNotEmpty()) tvLiveLog?.text = txt
