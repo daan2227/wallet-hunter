@@ -32,7 +32,7 @@ object CoreBackend {
         val v = try {
             val e = CoreConfig.leerEstado(CoreNodo.rpc(ctx).objeto("getblockchaininfo", lecturaMs = 4_000), null, null)
             !e.descargaInicial && e.bloques >= e.cabeceras - 1 && e.bloques > 0
-        } catch (e: Exception) { false }
+        } catch (e: Exception) { RegistroFallos.anotar("CoreBackend.alDia", e); false }
         alDia = v; comprobadoMs = ahora
         return v
     }
@@ -72,7 +72,7 @@ object CoreBackend {
                 // -26 (política: comisión baja, polvo, conflicto…) y -22 (no decodifica): el mismo resultado en cualquier nodo.
                 else -> "ERROR: ${e.message}"
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) { RegistroFallos.anotar("CoreBackend.difundir", e); null }
     }
 
     /** Resultado de comprobar las monedas de un envío con el nodo. */
@@ -100,7 +100,14 @@ object CoreBackend {
                 CoreConfig.comprobarMoneda(res, m.getLong("value"), txid, vout)?.let { return Verificacion.Mal(it) }
             }
             Verificacion.Ok
-        } catch (e: Exception) { Verificacion.NoDisponible }
+        } catch (e: Exception) {
+            // El nodo parecía disponible (pasó disponible()) y a mitad de comprobar las monedas dejó de
+            // contestar: cae a NoDisponible, que el llamador trata como "no se pudo comprobar, sigue por lo
+            // de siempre" — sin esto no quedaba ningún rastro de que la comprobación con el nodo propio,
+            // pensada justo para cuando no te fías del servidor de respaldo, había fallado a mitad.
+            RegistroFallos.anotar("CoreBackend.verificarMonedas", e)
+            Verificacion.NoDisponible
+        }
     }
 
     /** Comisiones por estimatesmartfee, o null si el nodo no tiene datos (p. ej. con «blocks only»). */
@@ -115,13 +122,13 @@ object CoreBackend {
             Tarifas.desdeEsplora(est, ChainInfo.TARIFA_MAX)?.let {
                 ChainInfo.Fees(it.fastest, it.halfHour, it.hour, it.economy, 1)
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) { RegistroFallos.anotar("CoreBackend.tarifas", e); null }
     }
 
     /** Altura del nodo (sólo si está al día). */
     fun altura(ctx: Context?): Int? {
         if (!disponible(ctx)) return null
         return try { (CoreNodo.rpc(ctx!!).llamar("getblockcount", JSONArray(), 4_000) as? Number)?.toInt() }
-        catch (e: Exception) { null }
+        catch (e: Exception) { RegistroFallos.anotar("CoreBackend.altura", e); null }
     }
 }

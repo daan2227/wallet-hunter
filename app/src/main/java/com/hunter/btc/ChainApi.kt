@@ -115,7 +115,10 @@ object ChainApi {
                 try {
                     if (conn.responseCode != 200) null else leerAcotado(conn.inputStream)
                 } finally { conn.disconnect() }
-            } catch (e: Exception) { null }
+            } catch (e: Exception) {
+                RegistroFallos.anotar("ChainApi.getDeTodos: $host", e)
+                null
+            }
         }
 
     /** Lo que devuelve un intento de difundir. */

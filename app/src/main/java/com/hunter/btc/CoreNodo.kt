@@ -95,6 +95,7 @@ object CoreNodo {
             }.start()
             null
         } catch (e: Exception) {
+            RegistroFallos.anotar("CoreNodo.arrancar", e)
             "Could not start the node: ${e.javaClass.simpleName}: ${e.message}"
         }
     }

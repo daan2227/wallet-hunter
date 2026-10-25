@@ -13,6 +13,10 @@ import android.content.Context
 object RegistroFallos {
     private const val TOPE = 256 * 1024
     @Volatile private var instalado = false
+    // Para poder anotar un error desde una clase sin Context a mano (ElectrumClient,
+    // CoinSelector, Psbt...) sin tener que colar un Context por cada firma de función.
+    // Se rellena en instalar(), que corre al abrir CUALQUIER pantalla (AppLock.init).
+    @Volatile private var appCtx: Context? = null
 
     /**
      * Añade [texto] a [f], con las claves tachadas. Si el fichero pasa del tope
@@ -38,13 +42,26 @@ object RegistroFallos {
         anotar(ctx, "\n$donde: ${e.message}\n${e.stackTraceToString()}\n")
 
     /**
+     * Igual que las de arriba pero sin pedir un Context: para los ~150 catch silenciosos
+     * fuera de una Activity (red, Core, firma, baúl) que antes no dejaban ningún rastro —
+     * ver PENDIENTES.md, "¿se ven todos los errores en Debug?". Si se llama antes de que
+     * cualquier pantalla haya arrancado (appCtx aún null, en la práctica no pasa: instalar()
+     * corre en el primer onCreate de la app) no hace nada, en vez de reventar.
+     */
+    fun anotar(donde: String, e: Throwable) {
+        val ctx = appCtx ?: return
+        anotar(ctx, donde, e)
+    }
+
+    /**
      * Manejador global de cierres, con el contexto de la aplicación: lo instala
      * la primera pantalla que arranque (AppLock.init), no sólo MainActivity.
      */
     fun instalar(ctx: Context) {
+        val app = ctx.applicationContext
+        appCtx = app   // se guarda siempre, aunque ya estuviera instalado (barato, y evita una ventana sin él)
         if (instalado) return
         instalado = true
-        val app = ctx.applicationContext
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
             val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
             anotar(app, "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")

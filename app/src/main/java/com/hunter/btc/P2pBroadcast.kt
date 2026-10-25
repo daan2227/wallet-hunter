@@ -35,6 +35,7 @@ object P2pBroadcast {
             }
             null
         } catch (e: Throwable) {
+            RegistroFallos.anotar("P2pBroadcast.difundir", e)
             null
         } finally {
             c.detener()

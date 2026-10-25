@@ -107,6 +107,6 @@ object FirmaTx {
                 b.write(le(htype.toLong(), 4))
                 hex(dsha(b.toByteArray()))
             }
-        } catch (e: Throwable) { null }
+        } catch (e: Throwable) { RegistroFallos.anotar("FirmaTx.z", e); null }
     }
 }

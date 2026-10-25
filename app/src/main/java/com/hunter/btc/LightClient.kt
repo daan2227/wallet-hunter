@@ -176,7 +176,9 @@ class LightClient(
         if (faltan <= 0 && !monitor) return
         if (pool.isEmpty() && ahora() - ultimoRefresco > 30_000) {
             ultimoRefresco = ahora()
-            pool = ArrayDeque(try { resolver() } catch (e: Exception) { emptyList() })
+            pool = ArrayDeque(try { resolver() } catch (e: Exception) {
+                RegistroFallos.anotar("LightClient.mantenerPares: resolver()", e); emptyList()
+            })
         }
         var lanzar = maxOf(faltan, 0) + (if (monitor) 1 else 0)
         var esMonitor = monitor

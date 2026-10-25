@@ -64,7 +64,10 @@ object ElectrumClient {
             }
             val sha = MessageDigest.getInstance("SHA-256").digest(script)
             sha.reversed().joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("ElectrumClient.addrToScripthash", e)
+            null
+        }
     }
 
     fun getBalance(addr: String, testnet: Boolean = false): Balance? {
@@ -85,7 +88,10 @@ object ElectrumClient {
                 ?: emptyList()
             resp.map { TxEntry(it.getString("tx_hash"), it.getInt("height")) }
                 .sortedByDescending { it.height }
-        } catch (e: Exception) { emptyList() }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("ElectrumClient.getHistory: respuesta no parseable", e)
+            emptyList()
+        }
     }
 
     /**
@@ -128,7 +134,10 @@ object ElectrumClient {
                     put("confirmed", it.optInt("height", 0) > 0)
                 }
             }
-        } catch (e: Exception) { null }
+        } catch (e: Exception) {
+            RegistroFallos.anotar("ElectrumClient.listUnspent: respuesta no parseable", e)
+            null
+        }
     }
 
     /**
