@@ -193,10 +193,8 @@ las seis. Un hallazgo alto, corregido:
 
 Hallazgos menores, dejados como están (documentados, no fallos de implementación):
 
-- `WalletManager.kt`: un comentario dice que no hay forma de probar el código offline sin conexión; en
-  realidad el verificador cifrado con la clave del PIN sí permite probarlo offline si alguien saca los
-  SharedPreferences (ya mitigado por la política de 8–24 caracteres y 600 000 vueltas de `PoliticaPin.kt`,
-  que si lo dice bien) — falta corregir el comentario para que no afirme algo que no es cierto por sí solo.
+- ~~`WalletManager.kt`: comentario engañoso sobre el PIN offline~~ — corregido en el mismo commit que
+  encontró el hallazgo (ver "Auditoría general" arriba); quedó aquí por error, ya no es un pendiente.
 - Un código antiguo de 6 dígitos (100 000 combinaciones) se sigue aceptando indefinidamente tras migrar a uno
   nuevo; sólo avisa una vez al usarlo, sin forzar el cambio. Decisión de UX consciente, no un descuido.
 - `Psbt.kt::revisar()`: la protección contra un importe de entrada no verificado (tipo CVE-2020-14199) sólo
