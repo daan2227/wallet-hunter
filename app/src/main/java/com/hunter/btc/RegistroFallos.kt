@@ -35,11 +35,19 @@ object RegistroFallos {
         } catch (e: Throwable) { }
     }
 
+    private fun marca() =
+        java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
+
+    /**
+     * Con fecha siempre, aquí y en ningún otro sitio: antes cada llamante ponía la suya (o
+     * ninguna) — el manejador de cierres sí, los otros ~415 catch del resto de la app no. Un
+     * error sin fecha en un fichero que crece durante semanas no sirve de mucho como historial.
+     */
     fun anotar(ctx: Context, texto: String) =
-        añadir(java.io.File(ctx.applicationContext.filesDir, "crash_log.txt"), texto)
+        añadir(java.io.File(ctx.applicationContext.filesDir, "crash_log.txt"), "\n[${marca()}] $texto")
 
     fun anotar(ctx: Context, donde: String, e: Throwable) =
-        anotar(ctx, "\n$donde: ${e.message}\n${e.stackTraceToString()}\n")
+        anotar(ctx, "$donde: ${e.message}\n${e.stackTraceToString()}\n")
 
     /**
      * Igual que las de arriba pero sin pedir un Context: para los ~150 catch silenciosos
@@ -63,8 +71,9 @@ object RegistroFallos {
         if (instalado) return
         instalado = true
         Thread.setDefaultUncaughtExceptionHandler { _, e ->
-            val ts = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US).format(java.util.Date())
-            anotar(app, "\n=== $ts ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
+            // La fecha la pone anotar(); aquí solo la marca de "esto no fue un error cualquiera,
+            // fue un cierre" para que se distinga a simple vista del resto del historial.
+            anotar(app, "=== CRASH ===\n${e.javaClass.name}\n${e.message}\n${e.stackTraceToString()}\n")
             android.os.Process.killProcess(android.os.Process.myPid())
         }
     }

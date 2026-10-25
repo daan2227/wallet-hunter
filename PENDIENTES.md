@@ -216,6 +216,20 @@ repetido durante toda una caída de red/nodo, sin ninguna bandera barata de "ya 
 clases puras sin `Context` con sus propios tests JVM (`SeedEnvelope`, `Shamir256`, `BuzonCifrado` — su fallo
 ya queda capturado en el punto donde `MatchVault` las llama).
 
+Añadido después, a raíz de "¿podemos mejorar el debug, no guarda un histórico con fechas?": tenía razón en
+parte — las 79 instrumentaciones de arriba (y las que ya había antes en `MainActivity`/`PestanaPuzzle`) se
+escribían SIN fecha; sólo el manejador de cierres la ponía. Corregido centralizando la fecha en
+`RegistroFallos.anotar(ctx, texto)` (la función por la que pasan todas las demás), así que ahora toda entrada
+a `crash_log.txt` lleva `[yyyy-MM-dd HH:mm:ss]` sin que cada llamante tenga que acordarse; de paso, el
+`stamp` del log del motor (`engine_log.txt`) pasó de sólo-hora a fecha completa, por el mismo motivo (un
+fichero que dura semanas con sólo "14:32:10" no dice de qué día es). Y el propio "histórico" ya existía pero
+estaba escondido: "Clear" archiva con fecha en el nombre y guarda las últimas 3 copias de cada fichero desde
+hace tiempo, sólo que nada en la app lo enseñaba — hacía falta un explorador de ficheros o ADB para verlo.
+Añadido un botón "History" en Debug que lista esos archivados (`Diagnostico.archivados()`) con fecha legible
+y tamaño, y al tocar uno enseña su contenido (tachado) en el mismo visor de siempre. De paso, la vista en
+vivo de `crash_log.txt` pasó de 800 a 6000 caracteres: con las nuevas ~80 fuentes de error escribiendo ahí,
+800 se quedaban en menos de una traza completa.
+
 No se ha compilado de verdad (sin NDK/SDK de Android en este entorno; sólo contado llaves por fichero a mano
 y dejado que lo verifique la CI), ni probado en un teléfono.
 

@@ -170,6 +170,20 @@ class DebugActivity : AppCompatActivity() {
             tvLive.text = if (n == 0) "Nothing to archive." else "Archived $n file(s). Nothing was deleted."
         })
         liveCard.addView(logBtnRow)
+        val histBtnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(6) }
+        }
+        histBtnRow.addView(actionBtn("History", AppTheme.TXT_SEC) { mostrarHistorial() })
+        liveCard.addView(histBtnRow)
+        liveCard.addView(TextView(this).apply {
+            text = "History: the dated copies that \"Clear\" leaves behind (the last 3 of each), " +
+                "so an old error doesn't have to still be in the live log above to be found."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context); setPadding(0, dp(6), 0, 0)
+        })
         liveCard.addView(TextView(this).apply {
             text = "Check app: runs the health checks and saves the result to app_log.txt."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
@@ -402,11 +416,13 @@ class DebugActivity : AppCompatActivity() {
             sb.appendLine(colaDe(app, 3000))
         }
 
-        // Cierres.
+        // Cierres y, desde que RegistroFallos.anotar(donde, e) existe, también los ~80 catches que
+        // antes se tragaban el error sin dejar rastro (ver PENDIENTES.md): un fichero más concurrido
+        // que antes, con cada entrada ya fechada — 800 caracteres se quedaban en menos de una traza.
         val crash = File(filesDir, "crash_log.txt")
         if (crash.exists() && crash.length() > 0) {
             sb.appendLine("=== crash_log.txt ===")
-            sb.appendLine(colaDe(crash, 800))
+            sb.appendLine(colaDe(crash, 6000))
         }
 
         return sb.toString()
@@ -422,6 +438,34 @@ class DebugActivity : AppCompatActivity() {
                     "\n\n(also saved to ${Diagnostico.APP})"
             }
         }.start()
+    }
+
+    /**
+     * Lista los históricos que "Clear" ya archiva (con fecha en el nombre) y que hasta ahora
+     * nadie enseñaba en la app. Al elegir uno, se detiene el refresco en vivo (si no, el
+     * siguiente tick lo tapa con el log actual) y se enseña su contenido, tachado por si acaso
+     * —ya debería estarlo desde que se escribió, pero un archivo muy antiguo pudo escribirse
+     * antes de que RegistroFallos tachara al vuelo.
+     */
+    private fun mostrarHistorial() {
+        val archivos = try { Diagnostico.archivados(applicationContext) } catch (e: Throwable) { emptyList() }
+        if (archivos.isEmpty()) {
+            android.widget.Toast.makeText(this,
+                "No archived logs yet — tap Clear first to archive the current ones.",
+                android.widget.Toast.LENGTH_LONG).show()
+            return
+        }
+        val etiquetas = archivos.map { Diagnostico.etiquetaArchivo(it) }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Archived logs (last 3 of each)")
+            .setItems(etiquetas) { _, i ->
+                stopLogRefresh()
+                val f = archivos[i]
+                val texto = try { Secretos.tachar(f.readText()) } catch (e: Throwable) { "(could not read ${f.name})" }
+                tvLiveLog?.text = "=== ${f.name} ===\n\n$texto"
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     /**

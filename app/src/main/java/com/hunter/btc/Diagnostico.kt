@@ -38,7 +38,9 @@ object Diagnostico {
 
     @Volatile private var ultimoVolcado = 0L
     @Volatile private var ultimaLinea: String? = null
-    private val stamp get() = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+    // Con fecha, no solo hora: este fichero crece durante semanas (TOPE de RegistroFallos),
+    // y "14:32:10" solo no dice de qué día es un lote del motor.
+    private val stamp get() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date())
 
     fun enSegundoPlano(bloque: () -> Unit) {
         fondo.execute { try { bloque() } catch (e: Throwable) { } }
@@ -117,6 +119,31 @@ object Diagnostico {
                 ?.forEach { it.delete() }
         }
         return n
+    }
+
+    /**
+     * Las copias archivadas (con fecha en el nombre) que haya, más recientes primero —
+     * lo que "Clear" va dejando atrás y que hasta ahora nadie enseñaba: existían en el
+     * almacenamiento de la app, pero sólo se veían con un explorador de ficheros o ADB.
+     */
+    fun archivados(ctx: Context): List<File> {
+        val patron = Regex("""(${BASES.joinToString("|") { Regex.escape(it) }})\.(\d{8}-\d{6})\.txt""")
+        return (ctx.filesDir.listFiles() ?: emptyArray())
+            .filter { patron.matches(it.name) }
+            .sortedByDescending { it.name }
+    }
+
+    /** "crash_log — 2026-10-25 02:15 (3 KB)", a partir del nombre de fichero que arma archivar(). */
+    fun etiquetaArchivo(f: File): String {
+        val m = Regex("""^(.*)\.(\d{8}-\d{6})\.txt$""").find(f.name)
+        val fecha = m?.let {
+            try {
+                val d = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).parse(it.groupValues[2])
+                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(d!!)
+            } catch (e: Exception) { null }
+        }
+        val base = m?.groupValues?.get(1) ?: f.name
+        return "$base — ${fecha ?: "?"} (${f.length() / 1024} KB)"
     }
 
     /**
