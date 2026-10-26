@@ -48,6 +48,31 @@ struct Lector {
     uint64_t bits(int k) { uint64_t v = 0; for (int i = 0; i < k; i++) v = (v << 1) | bit(); return v; }
 };
 
+
+/* Lector por palabras: hasta 64 bits en un registro; la parte unaria se cuenta con clz en vez de
+ * leer bit a bit (cada bit era una llamada, una comprobación de límites y un desplazamiento). Mismo
+ * resultado y mismas excepciones con un filtro cortado que Lector. */
+struct LectorRapido {
+    const uint8_t *p; size_t n; size_t byte = 0; uint64_t buf = 0; int disp = 0;
+    inline void recargar() {
+        while (disp <= 56 && byte < n) { buf |= (uint64_t)p[byte++] << (56 - disp); disp += 8; }
+    }
+    inline uint64_t unos() {
+        uint64_t q = 0;
+        for (;;) {
+            if (disp == 0) { recargar(); if (disp == 0) throw std::runtime_error("filtro cortado"); }
+            uint64_t inv = ~buf;
+            int lz = inv ? __builtin_clzll(inv) : 64;
+            if (lz < disp) { q += lz; buf <<= (lz + 1); disp -= lz + 1; return q; }
+            q += disp; buf = 0; disp = 0;
+        }
+    }
+    inline uint64_t bits(int k) {
+        if (disp < k) { recargar(); if (disp < k) throw std::runtime_error("filtro cortado"); }
+        uint64_t v = buf >> (64 - k); buf <<= k; disp -= k; return v;
+    }
+};
+
 /* Varint de Bitcoin (CompactSize). */
 static void varint_put(std::vector<uint8_t> &o, uint64_t v) {
     if (v < 0xfd) { o.push_back((uint8_t)v); }
@@ -111,11 +136,10 @@ static bool contiene(const std::vector<uint8_t> &filtro, uint64_t k0, uint64_t k
     if (N == 0) return false;
     uint64_t F = N * M;
     uint64_t objetivo = valor(k0, k1, elemento, F);
-    Lector r{filtro.data() + pos, filtro.size() - pos};
+    LectorRapido r{filtro.data() + pos, filtro.size() - pos};
     uint64_t x = 0;
     for (uint64_t i = 0; i < N; i++) {
-        uint64_t q = 0;
-        while (r.bit() == 1) q++;
+        uint64_t q = r.unos();
         uint64_t delta = (q << P) | r.bits(P);
         x += delta;
         if (x == objetivo) return true;
@@ -145,11 +169,10 @@ static Conjunto decodificar(const std::vector<uint8_t> &filtro, uint64_t k0, uin
     if (N > (uint64_t)(filtro.size() - pos) * 8 / (P + 1)) throw std::runtime_error("filtro con N imposible");
     c.F = N * M;
     c.v.reserve((size_t)N);
-    Lector r{filtro.data() + pos, filtro.size() - pos};
+    LectorRapido r{filtro.data() + pos, filtro.size() - pos};
     uint64_t x = 0;
     for (uint64_t i = 0; i < N; i++) {
-        uint64_t q = 0;
-        while (r.bit() == 1) q++;
+        uint64_t q = r.unos();
         x += (q << P) | r.bits(P);
         c.v.push_back(x);
     }

@@ -129,8 +129,8 @@ public:
 
         /* Contexto del padre y validación. */
         uint32_t h_padre = fork + (uint32_t)camino.size();
-        PuntoDeControl pc = contexto(fork, camino, h_padre);
-        ErrCabecera e = validar_hijo(p_, pc, cab80, ahora);
+        PuntoDeControl pc = contexto(fork, camino, h_padre, padre);
+        ErrCabecera e = validar_hijo(p_, pc, cab80, ahora, h.data());
         if (e != ErrCabecera::Ok) { r.estado = Estado::Rechazada; r.err = e; return r; }
         uint32_t altura_nueva = h_padre + 1;
         auto ex = exigidos_.find(altura_nueva);
@@ -138,7 +138,7 @@ public:
         /* Una rama que cruza una altura exigida con otro hash no puede ganar nunca. */
 
         if (camino.empty() && fork == altura()) {   /* extiende la punta */
-            agregar_principal(c);
+            agregar_principal(c, h);
             r.estado = Estado::Extiende; return r;
         }
 
@@ -164,7 +164,7 @@ public:
             principal_.pop_back();
             ramas_[clave(hash_de(viejo))] = {viejo, hv};
         }
-        for (auto &x : camino) { ramas_.erase(clave(hash_de(x))); agregar_principal(x); }
+        for (auto &x : camino) { Hash32 hx = hash_de(x); ramas_.erase(clave(hx)); agregar_principal(x, hx); }
         podar();
         return r;
     }
@@ -203,12 +203,22 @@ private:
     static std::string clave(const Hash32 &h) { return std::string((const char *)h.data(), 32); }
     static Hash32 hash_de(const Cab80 &c) { Hash32 h; hash_cabecera(c.data(), h.data()); return h; }
 
-    void agregar_principal(const Cab80 &c) {
+    /* [hc] es el hash de [c], ya calculado por quien llama. Los de la ventana se guardan en un anillo
+       para no rehacer el doble SHA-256 del que sale del índice. */
+    void agregar_principal(const Cab80 &c, const Hash32 &hc) {
         principal_.push_back(c);
         uint32_t h = altura();
-        indice_[clave(hash_de(c))] = h;
-        if (h > ventana_) indice_.erase(clave(hash_de(principal_[h - ventana_])));
+        indice_[clave(hc)] = h;
+        if (anillo_.size() != (size_t)ventana_ + 1) anillo_.assign((size_t)ventana_ + 1, Hash32{});
+        anillo_[h % anillo_.size()] = hc;
+        if (h > ventana_) {
+            uint32_t vieja = h - ventana_;
+            /* Toda altura >= 1 de la principal entró por aquí (también al volver a entrar tras un
+               reorg), y la ranura de [vieja] no la puede pisar nadie hasta la altura vieja+ventana+1. */
+            indice_.erase(clave(anillo_[vieja % anillo_.size()]));
+        }
     }
+
     void podar() {
         if (ramas_.size() <= 4000) return;
         for (auto it = ramas_.begin(); it != ramas_.end();)
@@ -216,13 +226,13 @@ private:
     }
 
     /* Estado del bloque de altura `h_padre`, que está en la rama `camino` colgada de `fork`. */
-    PuntoDeControl contexto(uint32_t fork, const std::vector<Cab80> &camino, uint32_t h_padre) const {
+    PuntoDeControl contexto(uint32_t fork, const std::vector<Cab80> &camino, uint32_t h_padre, const Hash32 &hash_padre) const {
         auto en = [&](uint32_t k) -> const Cab80 & { return k > fork ? camino[k - fork - 1] : principal_[k]; };
         PuntoDeControl pc;
         pc.altura = h_padre;
         const Cab80 &pad = en(h_padre);
         Cabecera cp = parsear_cabecera(pad.data(), 80);
-        hash_cabecera(pad.data(), pc.hash);
+        memcpy(pc.hash, hash_padre.data(), 32);   /* es el prev de la cabecera que se añade: ya se conoce */
         pc.bits = cp.bits; pc.tiempo = cp.tiempo;
         uint32_t desde = h_padre >= 10 ? h_padre - 10 : 0;
         for (uint32_t k = desde; k <= h_padre; k++) pc.ultimos.push_back(parsear_cabecera(en(k).data(), 80).tiempo);
@@ -238,6 +248,7 @@ private:
     std::unordered_map<std::string, uint32_t> indice_;
     std::map<std::string, Rama> ramas_;
     std::map<uint32_t, Hash32> exigidos_;
+    std::vector<Hash32> anillo_;
 };
 
 }  // namespace btc

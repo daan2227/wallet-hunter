@@ -70,7 +70,8 @@ struct PuntoDeControl {
 };
 
 /* Comprueba una cabecera frente al estado de su padre, sin modificar nada. */
-static ErrCabecera validar_hijo(const ParamsRed &p, const PuntoDeControl &pc, const uint8_t *cab80, uint32_t ahora) {
+static ErrCabecera validar_hijo(const ParamsRed &p, const PuntoDeControl &pc, const uint8_t *cab80, uint32_t ahora,
+                                const uint8_t *hash_ya = nullptr) {
     Cabecera c = parsear_cabecera(cab80, 80);
     if (memcmp(c.prev, pc.hash, 32) != 0) return ErrCabecera::NoEncadena;
     uint32_t altura = pc.altura + 1;
@@ -81,7 +82,7 @@ static ErrCabecera validar_hijo(const ParamsRed &p, const PuntoDeControl &pc, co
     uint8_t t[32], lim[32];
     if (!bits_a_objetivo(c.bits, t) || !bits_a_objetivo(p.limite_bits, lim)) return ErrCabecera::BitsMalos;
     if (memcmp(t, lim, 32) > 0) return ErrCabecera::ObjetivoAlto;
-    if (!prueba_de_trabajo(cab80)) return ErrCabecera::SinTrabajo;
+    if (!prueba_de_trabajo(cab80, hash_ya)) return ErrCabecera::SinTrabajo;
     std::vector<uint32_t> o = pc.ultimos;
     std::sort(o.begin(), o.end());
     if (c.tiempo <= o[o.size() / 2]) return ErrCabecera::TiempoBajo;

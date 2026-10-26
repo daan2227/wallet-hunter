@@ -146,6 +146,8 @@ object ExportadorUtxo {
         val quiereHash = InstantaneaUtxo.Col.HASH in columnas || f.hashEmpieza.isNotEmpty()
         val quiereScript = InstantaneaUtxo.Col.SCRIPT in columnas || f.scriptContiene.isNotEmpty()
         val quiereFecha = InstantaneaUtxo.Col.FECHA in columnas || f.pideFecha
+        // Codificar la dirección (base58/bech32) es lo más caro de cada fila: sólo si sale en el CSV o la pide el filtro.
+        val quiereDir = InstantaneaUtxo.Col.WALLET in columnas || f.direccionContiene.isNotEmpty()
         val parcial = File(salida.path + ".part")
         var monedas = 0L; var filas = 0L
         try {
@@ -158,6 +160,7 @@ object ExportadorUtxo {
                     out.write((InstantaneaUtxo.cabecera(columnas) + "\n").toByteArray())
                     val txid = ByteArray(32); val h20 = ByteArray(20); val h32 = ByteArray(32); val datos = ByteArray(1 shl 14)
                     val sb = StringBuilder(256)
+                    var fila = ByteArray(1024)
                     var siguienteAviso = 0L
                     while (monedas < total) {
                         l.leer(txid, 32)
@@ -180,8 +183,8 @@ object ExportadorUtxo {
                                 nSize < 2 -> {
                                     l.leer(h20, 20)
                                     if (pasa) {
-                                        if (nSize == 0) { tipo = "P2PKH"; addr = SpkDireccion.p2pkh(h20) }
-                                        else { tipo = "P2SH"; addr = SpkDireccion.p2sh(h20) }
+                                        if (nSize == 0) { tipo = "P2PKH"; if (quiereDir) addr = SpkDireccion.p2pkh(h20) }
+                                        else { tipo = "P2SH"; if (quiereDir) addr = SpkDireccion.p2sh(h20) }
                                         if (quiereHash) hash = hex(h20)
                                         if (quiereScript) script = if (nSize == 0) "76a914" + hex(h20) + "88ac" else "a914" + hex(h20) + "87"
                                     }
@@ -195,7 +198,7 @@ object ExportadorUtxo {
                                         if (k != null) {
                                             pub = hex(k)
                                             val h = ConversorUtxo.hash160(k)
-                                            addr = SpkDireccion.p2pkh(h)
+                                            if (quiereDir) addr = SpkDireccion.p2pkh(h)
                                             if (quiereHash) hash = hex(h)
                                             if (quiereScript) script = (if (k.size == 33) "21" else "41") + pub + "ac"
                                         }
@@ -206,15 +209,15 @@ object ExportadorUtxo {
                                     if (len <= datos.size) {
                                         l.leer(datos, len)
                                         if (pasa) {
-                                            val s = datos.copyOf(len)
-                                            addr = SpkDireccion.de(s) ?: ""
-                                            if (quiereScript) script = hex(s)
+                                            val s = datos
+                                            if (quiereScript) script = hex(s, 0, len)
                                             when {
                                                 len == 22 && s[0].toInt() == 0 && s[1].toInt() == 0x14 -> { tipo = "P2WPKH"; hash = hex(s, 2, 22) }
                                                 len == 34 && s[0].toInt() == 0 && s[1].toInt() == 0x20 -> { tipo = "P2WSH"; hash = hex(s, 2, 34) }
                                                 len == 34 && s[0].toInt() == 0x51 && s[1].toInt() == 0x20 -> { tipo = "P2TR"; pub = hex(s, 2, 34); hash = pub }
-                                                else -> tipo = if (addr.isEmpty()) "Non-standard" else "Other"
+                                                else -> tipo = if (SpkDireccion.de(s, len).also { if (quiereDir) addr = it ?: "" } == null) "Non-standard" else "Other"
                                             }
+                                            if (quiereDir && addr.isEmpty() && tipo != "Non-standard") addr = SpkDireccion.de(s, len) ?: ""
                                         }
                                     } else { l.saltar(len.toLong()); if (pasa) tipo = "Non-standard" }
                                 }
@@ -234,7 +237,13 @@ object ExportadorUtxo {
                                         InstantaneaUtxo.Col.UTXO -> sb.append(txidHex).append(':').append(vout)
                                         InstantaneaUtxo.Col.TXID -> sb.append(txidHex)
                                         InstantaneaUtxo.Col.VOUT -> sb.append(vout)
-                                        InstantaneaUtxo.Col.FONDO_BTC -> sb.append(InstantaneaUtxo.btc(sat))
+                                        InstantaneaUtxo.Col.FONDO_BTC -> {
+                                            val d = sat % 100_000_000L
+                                            sb.append(sat / 100_000_000L).append('.')
+                                            var p = 10_000_000L
+                                            while (p > 1 && d < p) { sb.append('0'); p /= 10 }
+                                            sb.append(d)
+                                        }
                                         InstantaneaUtxo.Col.FONDO_SAT -> sb.append(sat)
                                         InstantaneaUtxo.Col.TIPO -> sb.append(tipo)
                                         InstantaneaUtxo.Col.CLAVE -> sb.append(pub)
@@ -247,7 +256,10 @@ object ExportadorUtxo {
                                     }
                                 }
                                 sb.append('\n')
-                                out.write(sb.toString().toByteArray(Charsets.US_ASCII)); filas++
+                                val nb = sb.length
+                                if (nb > fila.size) fila = ByteArray(nb * 2)
+                                for (k in 0 until nb) fila[k] = sb[k].code.toByte()   // todo es ASCII (dirección, hex, cifras)
+                                out.write(fila, 0, nb); filas++
                             }
                         }
                         if (monedas >= siguienteAviso) {

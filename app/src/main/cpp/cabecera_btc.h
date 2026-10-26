@@ -50,11 +50,11 @@ static bool bits_a_objetivo(uint32_t bits, uint8_t t[32]) {
 }
 
 /* Prueba de trabajo: el hash (como número, big-endian) no puede pasar el objetivo. */
-static bool prueba_de_trabajo(const uint8_t *cab80) {
+static bool prueba_de_trabajo(const uint8_t *cab80, const uint8_t *hash_ya = nullptr) {
     Cabecera c = parsear_cabecera(cab80, 80);
     uint8_t t[32];
     if (!bits_a_objetivo(c.bits, t)) return false;
-    uint8_t h[32]; hash_cabecera(cab80, h);
+    uint8_t h[32]; if (hash_ya) memcpy(h, hash_ya, 32); else hash_cabecera(cab80, h);
     uint8_t mostrar[32];
     for (int i = 0; i < 32; i++) mostrar[i] = h[31 - i];
     return memcmp(mostrar, t, 32) <= 0;

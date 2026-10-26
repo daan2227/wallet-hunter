@@ -70,9 +70,16 @@ static bool tweak(secp256k1_context *ctx, const uint8_t *internal_xonly, uint8_t
     uint8_t p33[33]; p33[0]=0x02; memcpy(p33+1,internal_xonly,32);
     secp256k1_pubkey pub;
     if(!secp256k1_ec_pubkey_parse(ctx,&pub,p33,33)) return false;
-    if(!secp256k1_ec_pubkey_tweak_add(ctx,&pub,t)) return false;
+    // t·G con la tabla del generador (pubkey_create) + una suma, en vez de la multiplicación
+    // GENÉRICA que tweak_add hace por dentro (era el 80 % del tiempo por candidata). Medido
+    // ~1,25x de punta a punta e idéntico candidata a candidata. Si t es 0 o >= orden (prob
+    // ~2^-128), create() falla donde tweak_add no: se cae a la vía de siempre.
+    secp256k1_pubkey tG, Q; const secp256k1_pubkey *vv[2]={&pub,&tG};
+    if(!secp256k1_ec_pubkey_create(ctx,&tG,t) || !secp256k1_ec_pubkey_combine(ctx,&Q,vv,2)){
+        Q=pub; if(!secp256k1_ec_pubkey_tweak_add(ctx,&Q,t)) return false;
+    }
     uint8_t out33[33]; size_t len=33;
-    secp256k1_ec_pubkey_serialize(ctx,out33,&len,&pub,SECP256K1_EC_COMPRESSED);
+    secp256k1_ec_pubkey_serialize(ctx,out33,&len,&Q,SECP256K1_EC_COMPRESSED);
     memcpy(out_xonly,out33+1,32);
     return true;
 }
