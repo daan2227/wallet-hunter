@@ -186,7 +186,8 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Descripción
         root.addView(TextView(this).apply {
-            text = "Pick a PIN to protect your wallets."
+            // "PIN" hacía esperar 4-6 cifras; la pantalla siguiente pide letras, números y un símbolo.
+            text = "Pick a code to protect your wallets: 8–24 characters with letters, numbers and a symbol."
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             gravity = Gravity.CENTER
@@ -195,7 +196,7 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
 
         // Botón crear PIN
         root.addView(Button(this).apply {
-            text = "Create the PIN"
+            text = "Create the code"
             textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.ON_ACCENT)
             typeface = AppTheme.bold(context)
             isAllCaps = false

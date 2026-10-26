@@ -912,10 +912,26 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 runOnUiThread { refrescar() }
             }.start()
         } else {
-            arranquePedido = System.currentTimeMillis()
-            aplicarModo(1); tvEstado.text = "Starting…"; tvEstado.setTextColor(AppTheme.WARN)
-            CoreService.arrancar(act)
-            h.postDelayed({ refrescar() }, 1500)
+            fun arrancarYa() {
+                arranquePedido = System.currentTimeMillis()
+                aplicarModo(1); tvEstado.text = "Starting…"; tvEstado.setTextColor(AppTheme.WARN)
+                CoreService.arrancar(act)
+                h.postDelayed({ refrescar() }, 1500)
+            }
+            // Primer arranque, sin cadena ni snapshot: sin avisar, el nodo se pone a validar desde 2009 y
+            // tarda días, cuando la tarjeta de snapshot de más abajo lo deja usable en horas. Una vez.
+            val prefs = act.getSharedPreferences("core", android.content.Context.MODE_PRIVATE)
+            val sinCadena = !java.io.File(CoreNodo.datadir(act), "chainstate").isDirectory
+            if (sinCadena && !CoreNodo.snapshot(act).isFile && !prefs.getBoolean("aviso_snapshot", false)) {
+                prefs.edit().putBoolean("aviso_snapshot", true).apply()
+                android.app.AlertDialog.Builder(act).setTitle("Start from scratch?")
+                    .setMessage("Without a UTXO snapshot the node checks the whole history since 2009 before it " +
+                        "is usable: that takes days on a phone. With a snapshot it is usable in hours. " +
+                        "The snapshot card is further down this page.")
+                    .setPositiveButton("Load a snapshot first") { _, _ -> scroll.post { scroll.smoothScrollTo(0, cSn.top) } }
+                    .setNegativeButton("Start anyway") { _, _ -> arrancarYa() }
+                    .show()
+            } else arrancarYa()
         }
     }
 
@@ -987,8 +1003,13 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
 
     btnBorrar.setOnClickListener {
         if (ocupado) return@setOnClickListener
-        CoreNodo.snapshot(act).delete(); java.io.File(CoreNodo.snapshot(act).path + ".part").delete()
-        refrescar()
+        // Un toque borraba varios GB y, con ellos, la descarga a medias que se podía reanudar.
+        android.app.AlertDialog.Builder(act).setTitle("Delete the snapshot file?")
+            .setMessage("A partial download is lost too and would have to start over.")
+            .setPositiveButton("Delete") { _, _ ->
+                CoreNodo.snapshot(act).delete(); java.io.File(CoreNodo.snapshot(act).path + ".part").delete()
+                refrescar()
+            }.setNegativeButton("Cancel", null).show()
     }
 
     btnCargar.setOnClickListener {

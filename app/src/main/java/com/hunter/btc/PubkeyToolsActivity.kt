@@ -1451,16 +1451,41 @@ class PubkeyToolsActivity : Activity() {
                 Toast.makeText(this, "Need at least $k different shares (k = $k)", Toast.LENGTH_LONG).show(); return@boton
             }
             val partes = leidas.map { it.x to it.y }
-            when (val r = Shamir256.combinar(partes)) {
-                is Shamir256.Resultado.Error -> salC.addView(filaResultado("Cannot combine", r.motivo))
-                is Shamir256.Resultado.Ok -> {
-                    salC.addView(filaResultado("Recombined key",
-                        r.secreto.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
-                    salC.addView(filaResultado("Check", if (k != null)
-                        "Checked: $k or more distinct shares were given (k = $k)."
-                        else "Old shares (no k in them): only correct with at least k distinct shares, " +
-                        "and fewer give a wrong key without any warning."))
+            // La misma parte pegada dos veces no cuenta doble; dos distintas con el mismo número sí es un error.
+            val porX = partes.groupBy { it.first }
+            val choque = porX.entries.firstOrNull { (_, v) -> v.map { it.second.toList() }.distinct().size > 1 }
+            if (choque != null) {
+                salC.addView(filaResultado("Cannot combine", "Two different shares both say they are share #${choque.key}."))
+                return@boton
+            }
+            val unicas = porX.values.map { it.first() }
+            // Con partes de sobra se comprueban entre sí: antes, una parte con un solo bit cambiado daba
+            // una clave equivocada sin ningún aviso.
+            val comprobacion = if (k != null) ShamirComprobacion.comprobar(unicas, k) else null
+            if (comprobacion is ShamirComprobacion.R.Incoherente) {
+                salC.addView(filaResultado("Cannot combine", "Some shares disagree with the others, and there aren't " +
+                    "enough extra shares to tell which one is wrong. Check each share, or paste more of them."))
+                return@boton
+            }
+            val clave: ByteArray? = when (comprobacion) {
+                is ShamirComprobacion.R.Corregido -> comprobacion.secreto
+                else -> when (val r = Shamir256.combinar(unicas)) {
+                    is Shamir256.Resultado.Error -> { salC.addView(filaResultado("Cannot combine", r.motivo)); null }
+                    is Shamir256.Resultado.Ok -> r.secreto
                 }
+            }
+            if (clave != null) {
+                salC.addView(filaResultado("Recombined key", clave.joinToString("") { "%02x".format(it.toInt() and 0xFF) }, true))
+                salC.addView(filaResultado("Check", when (comprobacion) {
+                    is ShamirComprobacion.R.Coherente -> "Verified: ${comprobacion.extra} extra share(s) agree with the rest."
+                    is ShamirComprobacion.R.Corregido -> "Share(s) #${comprobacion.malas.joinToString(", #")} were wrong " +
+                        "and were left out; the key was rebuilt from the others."
+                    is ShamirComprobacion.R.DemasiadasPartes -> "Combined, but too many shares to cross-check them all."
+                    ShamirComprobacion.R.SinRedundancia -> "Exactly $k shares (k = $k): correct only if none of them has " +
+                        "a typo. Paste one more share to check them against each other."
+                    else -> "Old shares (no k in them): only correct with at least k distinct shares, " +
+                        "and fewer give a wrong key without any warning."
+                }))
             }
         }
     }

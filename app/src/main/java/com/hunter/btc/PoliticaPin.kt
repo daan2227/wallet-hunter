@@ -17,8 +17,11 @@ object PoliticaPin {
     const val MIN = 8
     const val MAX = 24
 
-    /** Bits mínimos según [FuerzaContrasena]: descarta «Abcd1234!» y parecidos. */
-    private const val MIN_BITS = 35.0
+    /** Bits mínimos según [FuerzaContrasena]: descarta «Abcd1234!» y parecidos. 40 y no 35: con las
+     *  600 000 vueltas de PBKDF2 (~190 ms por intento en una JVM de escritorio), cada 5 bits más
+     *  multiplican por 32 el coste de un ataque offline, y un código al azar de 8 caracteres ya da
+     *  ~52 bits — sobra margen. Sólo afecta al ELEGIR un código; los ya puestos siguen abriendo. */
+    private const val MIN_BITS = 40.0
 
     private fun esSimbolo(c: Char) = !c.isLetterOrDigit() && !c.isWhitespace() && !c.isISOControl()
 

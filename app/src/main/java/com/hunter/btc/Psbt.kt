@@ -78,11 +78,21 @@ object Psbt {
     class Revision(val salidas: List<Pair<String, Long>>, val totalEntradas: Long?,
                    val comision: Long?, val problemas: List<String>)
 
-    private fun esP2pkh(spk: ByteArray): Boolean {
-        // Los bytes son con signo en Kotlin: 0x88 y 0xac salen negativos.
-        fun b(i: Int) = spk[i].toInt() and 0xFF
-        return spk.size == 25 && b(0) == 0x76 && b(1) == 0xa9 && b(2) == 0x14 && b(23) == 0x88 && b(24) == 0xac
+    /** Programa segwit (v0..v16): OP_n + un push de 2..40 bytes que ocupa el resto del script. */
+    private fun esPrograma(spk: ByteArray): Boolean {
+        if (spk.size < 4 || spk.size > 42) return false
+        val v = spk[0].toInt() and 0xFF
+        return (v == 0x00 || v in 0x51..0x60) && (spk[1].toInt() and 0xFF) == spk.size - 2
     }
+
+    private fun esP2sh(spk: ByteArray): Boolean {
+        fun b(i: Int) = spk[i].toInt() and 0xFF
+        return spk.size == 23 && b(0) == 0xa9 && b(1) == 0x14 && b(22) == 0x87
+    }
+
+    /** ¿Firmar esta entrada compromete su importe? Sólo si se gasta por segwit (BIP143/341). */
+    private fun comprometeImporte(spk: ByteArray, redeem: ByteArray?): Boolean =
+        esPrograma(spk) || (esP2sh(spk) && redeem != null && esPrograma(redeem))
 
     private fun importe(d: Doc, i: Int): Pair<Long, ByteArray>? {
         val recs = d.inputs[i]
@@ -125,7 +135,8 @@ object Psbt {
             // comprobar. Sin la transacción anterior completa no se firma.
             if (nwu == null && wu != null) {
                 val c = TxDecoder.Cursor(wu.value); c.u64(); val spk = c.bytes(c.varint().toInt())
-                if (esP2pkh(spk))
+                val redeem = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x04 }?.value
+                if (!comprometeImporte(spk, redeem))
                     problemas.add("Input #$i is a legacy coin with no previous transaction attached. " +
                         "Its signature does not cover the amount, so the amount can't be checked. " +
                         "Attach the full previous transaction.")

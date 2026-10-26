@@ -165,7 +165,7 @@ class DebugActivity : AppCompatActivity() {
                 "log", Secretos.tachar(tvLive.text.toString())))
             android.widget.Toast.makeText(this, "Log copied", android.widget.Toast.LENGTH_SHORT).show()
         })
-        logBtnRow.addView(actionBtn("Clear", RED) {
+        logBtnRow.addView(actionBtn("Archive", RED) {
             val n = Diagnostico.archivar(this)
             tvLive.text = if (n == 0) "Nothing to archive." else "Archived $n file(s). Nothing was deleted."
         })
@@ -179,7 +179,7 @@ class DebugActivity : AppCompatActivity() {
         histBtnRow.addView(actionBtn("History", AppTheme.TXT_SEC) { mostrarHistorial() })
         liveCard.addView(histBtnRow)
         liveCard.addView(TextView(this).apply {
-            text = "History: the dated copies that \"Clear\" leaves behind (the last 3 of each), " +
+            text = "History: the dated copies that \"Archive\" leaves behind (the last 3 of each), " +
                 "so an old error doesn't have to still be in the live log above to be found."
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.body(context); setPadding(0, dp(6), 0, 0)
@@ -451,7 +451,7 @@ class DebugActivity : AppCompatActivity() {
         val archivos = try { Diagnostico.archivados(applicationContext) } catch (e: Throwable) { emptyList() }
         if (archivos.isEmpty()) {
             android.widget.Toast.makeText(this,
-                "No archived logs yet — tap Clear first to archive the current ones.",
+                "No archived logs yet — tap Archive first to save the current ones.",
                 android.widget.Toast.LENGTH_LONG).show()
             return
         }

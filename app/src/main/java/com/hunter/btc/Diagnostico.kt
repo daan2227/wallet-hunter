@@ -128,9 +128,12 @@ object Diagnostico {
      */
     fun archivados(ctx: Context): List<File> {
         val patron = Regex("""(${BASES.joinToString("|") { Regex.escape(it) }})\.(\d{8}-\d{6})\.txt""")
+        // Por la FECHA del nombre, no por el nombre entero: así agrupaba por fichero en orden
+        // alfabético, y un puz_debug de hace una semana salía por delante del crash_log de hoy.
         return (ctx.filesDir.listFiles() ?: emptyArray())
-            .filter { patron.matches(it.name) }
-            .sortedByDescending { it.name }
+            .mapNotNull { f -> patron.matchEntire(f.name)?.let { f to it.groupValues[2] } }
+            .sortedByDescending { it.second }
+            .map { it.first }
     }
 
     /** "crash_log — 2026-10-25 02:15 (3 KB)", a partir del nombre de fichero que arma archivar(). */

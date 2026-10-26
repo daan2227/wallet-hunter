@@ -32,7 +32,8 @@ object FuerzaContrasena {
     private val COMUNES = listOf(
         "password", "passw0rd", "qwertyuiop", "asdfghjkl", "zxcvbnm", "qwerty", "123456789",
         "12345678", "123456", "abcdef", "letmein", "admin", "welcome", "bitcoin", "wallet",
-        "hunter", "satoshi", "iloveyou", "trustno1", "monkey", "dragon", "master", "login", "1234"
+        "hunter", "satoshi", "iloveyou", "trustno1", "monkey", "dragon", "master", "login", "1234",
+        "zxcvbn", "asdfgh", "asdf", "zxcv", "qwer"
     ).sortedByDescending { it.length }
 
     /** Lo que cuesta, a un atacante, saber que usaste una de esas palabras. */
@@ -54,7 +55,7 @@ object FuerzaContrasena {
                     (w[0].isUpperCase() && w.drop(1).all { it.isLowerCase() })
         if (!forma) return false
         val v = w.count { esVocal(it) }.toDouble() / w.length
-        return v in 0.2..0.6
+        return v in 0.12..0.6 && w.any { esVocal(it) }
     }
 
     /** Parte «MiPerroLoro» en «Mi», «Perro», «Loro»: cada trozo se juzga por separado. */
@@ -72,15 +73,33 @@ object FuerzaContrasena {
      * protege sólo esta contraseña. Ahora se trocea en palabras, años y símbolos, y lo que parece palabra o
      * año cuesta lo que le cuesta a un atacante con diccionario; lo que no, cuenta por carácter al azar.
      */
+    /** "P@ssw0rd" -> "password": la sustitución que un atacante prueba la primera. Uno a uno, así las
+     *  posiciones casan con la contraseña original. */
+    private fun sinLeet(s: String) = String(CharArray(s.length) { i -> when (s[i]) {
+        '@', '4' -> 'a'; '$', '5' -> 's'; '0' -> 'o'; '1', '!' -> 'i'; '3' -> 'e'; '7' -> 't'; else -> s[i] } })
+
+    /** Periodo más corto si [pw] es un bloque repetido entero ("Aa1!Aa1!Aa1!" -> 4), o null. */
+    private fun periodo(pw: String): Int? {
+        for (p in 1..pw.length / 2) if (pw.length % p == 0 && pw.indices.all { pw[it] == pw[it % p] }) return p
+        return null
+    }
+
     fun evaluar(pw: String): Resultado {
         if (pw.isEmpty()) return Resultado(0.0, Nivel.DEBIL)
+        // Repetir un bloque no añade lo que aparenta: cuenta como el bloque y poco más.
+        periodo(pw)?.let { p -> if (p > 1) {
+            val b = (evaluar(pw.substring(0, p)).bits + 2.0)
+            return Resultado(b, nivelDe(b)) } }
         // Las palabras sabidas no aportan el largo que parecen: se quitan del
         // cálculo y cada una cuenta como una sola elección.
         var resto = pw
         var comunes = 0
         for (c in COMUNES) {
-            val re = Regex(Regex.escape(c), RegexOption.IGNORE_CASE)
-            if (re.containsMatchIn(resto)) { comunes++; resto = re.replace(resto, "") }
+            while (true) {
+                val i = sinLeet(resto.lowercase()).indexOf(sinLeet(c))
+                if (i < 0) break
+                comunes++; resto = resto.removeRange(i, i + c.length)
+            }
         }
         var bits = comunes * BITS_POR_PALABRA_COMUN
         if (resto.isNotEmpty()) {
@@ -117,13 +136,14 @@ object FuerzaContrasena {
             if (tieneSecuencia(resto)) bits -= 10
         }
         bits = bits.coerceAtLeast(0.0)
-        val nivel = when {
-            bits < 40 -> Nivel.DEBIL
-            bits < 55 -> Nivel.JUSTA
-            bits < 70 -> Nivel.BUENA
-            else      -> Nivel.FUERTE
-        }
-        return Resultado(bits, nivel)
+        return Resultado(bits, nivelDe(bits))
+    }
+
+    private fun nivelDe(bits: Double) = when {
+        bits < 40 -> Nivel.DEBIL
+        bits < 55 -> Nivel.JUSTA
+        bits < 70 -> Nivel.BUENA
+        else      -> Nivel.FUERTE
     }
 
     /** Cuatro o más caracteres seguidos en orden (abcd, 1234, dcba). */

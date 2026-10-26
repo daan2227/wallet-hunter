@@ -2338,6 +2338,12 @@ class WalletActivity : FragmentActivity() {
                 tvStatus.text = "The destination address is missing."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
+            // El teclado decimal deja teclear más de 8 cifras: "0.123456789" se redondeaba en silencio a
+            // 12 345 679 sat. PagoUri ya rechazaba esto en las URIs; el campo a mano no.
+            if (etAmt.text.toString().replace(',', '.').substringAfter('.', "").length > 8) {
+                tvStatus.text = "Bitcoin has at most 8 decimals."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
             if (amtBtc.isNaN() || amtBtc.isInfinite() || amtBtc > 21_000_000.0) {
                 tvStatus.text = "That amount is not valid."
                 tvStatus.setTextColor(RED); return@setOnClickListener
@@ -3714,7 +3720,9 @@ class WalletActivity : FragmentActivity() {
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
-            if (av && !isTestnet) "Verify with the network" else null,
+            // Sin "av": es la única forma de comprobar el saldo sin fiarse de un servidor y sin nodo propio,
+            // y escondida tras las opciones avanzadas no la encontraba nadie.
+            if (!isTestnet) "Verify with the network" else null,
             if (av && !isTestnet) "Verify with my node" else null,
             // En testnet se ofrece siempre, aunque el modo avanzado esté apagado: si no, quien lo activó y
             // luego lo apagó se quedaba en una red de pruebas sin forma de volver a mainnet.

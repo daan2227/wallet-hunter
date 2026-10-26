@@ -346,6 +346,49 @@ segundo pago (decisión consciente, ya documentada en el propio código); una au
 calor/batería con la pantalla de la app cerrada no guarda el punto de reanudar hasta que se reabre esa
 pantalla (limitación ya conocida del diseño de reanudar, no nueva).
 
+## Tercera pasada (2026-10-26): mejoras experimentadas por función
+
+Seis repasos en paralelo, cada uno prototipando en una copia aparte y midiendo antes/después; sólo se ha
+aplicado lo que ganaba algo medible SIN cambiar ningún resultado.
+
+**Rendimiento (medido en el escritorio; en el teléfono la proporción debería parecerse, no medido allí):**
+- Filtros BIP158 (`gcs_bip158.h`): lector de 64 en 64 bits en vez de bit a bit, ~4x por bloque. Mismos
+  conjuntos decodificados en 400 filtros, vectores de Core 10/10.
+- Cargar cabeceras (`almacen_btc.h`, `cabecera_btc.h`, `cadena_btc.h`): el hash de cada cabecera se
+  calculaba 5 veces; ahora 1. ~3,5x en cada arranque del cliente ligero; misma punta tras reorgs aleatorios.
+- Auditoría Taproot (`taproot_audit.h`): t·G con la tabla del generador en vez de la multiplicación
+  genérica de `tweak_add` (era el 80 % del tiempo). ~1,25x de punta a punta; ~2x acumulado sobre la versión
+  original. 0 diferencias en 40 000 candidatas.
+- CSV de UTXO (`SpkDireccion`, `ExportadorUtxo`): base58 sin BigInteger, bech32 sin colecciones, y la
+  dirección sólo se calcula si se pide. 2,5-3,5x con las columnas por defecto, salida idéntica byte a byte.
+
+**Corrección y seguridad:**
+- `Psbt.revisar`: la protección contra un importe sin verificar cubre ya todo lo que no sea segwit (antes
+  sólo P2PKH; pasaban P2PK, multisig desnudo y P2SH no segwit).
+- Enviar: un importe con más de 8 decimales se redondeaba en silencio; ahora se rechaza.
+- Política del código (`FuerzaContrasena`, `PoliticaPin`): deshace leetspeak, detecta bloques repetidos y
+  filas de teclado, y el mínimo sube de 35 a 40 bits. Corpus: débiles aceptadas 9/37 -> 0/37, fuertes
+  rechazadas 0/18 -> 0/18. Sólo afecta al ELEGIR un código; los ya puestos siguen abriendo.
+- Shamir (`ShamirComprobacion`, nuevo, mismo formato de partes): con partes de sobra, detecta una parte
+  corrupta y la corrige si sobran al menos dos; antes daba una clave equivocada sin avisar.
+- `NombreSeguro`: recortar un nombre largo ya no le quita la extensión (el motor elige .bin/CSV por ella).
+
+**Experiencia de uso:** History de Debug ordenado por fecha de verdad (salía por nombre de fichero);
+confirmación antes de borrar el snapshot (y su descarga a medias); aviso al primer "Start" de Core sin
+snapshot (días frente a horas); "Verify with the network" visible sin modo avanzado; la bienvenida dice
+"código de 8-24 caracteres" en vez de "PIN"; el botón "Clear" de Debug se llama "Archive" (no borraba nada).
+
+**Probado y dejado fuera a propósito:**
+- Selector de monedas branch-and-bound: -0,37 % de coste y -2 % de salidas de cambio en 4 899 casos, 0
+  peores, pero toca la selección de fondos por muy poco: no compensa el riesgo ahora.
+- Buscar las 8 ramas de la cartera en paralelo: ~4x más rápido en simulación, pero exige hacer seguras
+  para hilos dos estructuras de `BalanceLookup` y no se ha podido probar contra el límite de peticiones real
+  de los servidores (aquí no hay red).
+- Reutilizar la conexión TLS de Electrum, y el buzón cifrado en fichero de sólo añadir: cambios más
+  invasivos para caminos de respaldo o casos raros.
+- Argon2/scrypt en vez de PBKDF2: no está en Android sin una dependencia nueva y obligaría a migrar todos
+  los baúles; subir el mínimo de bits del código consigue un efecto parecido sin tocar el formato.
+
 ## Conocido tras la revisión total (no corregido)
 
 - **Baúl y WIF atados al código (sin probar en un teléfono).** Con código puesto, el baúl y la lista de WIF van

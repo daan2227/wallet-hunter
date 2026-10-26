@@ -11,11 +11,17 @@ package com.hunter.btc
  * nunca "." ni "..". Pura: se prueba en la JVM.
  */
 object NombreSeguro {
+    /** Corta a [max] sin perder la extensión: el cargador del motor decide .bin / CSV por ella. */
+    private fun recortar(s: String, max: Int): String {
+        if (s.length <= max) return s
+        val ext = s.substringAfterLast('.', "").let { if (it.isNotEmpty() && it.length <= 10) ".$it" else "" }
+        return s.take(max - ext.length) + ext
+    }
     fun limpiar(nombre: String?, porDefecto: String = "dataset.csv"): String {
         if (nombre == null) return porDefecto
         val ultimo = nombre.substringAfterLast('/').substringAfterLast('\\')
         val limpio = ultimo.map { c -> if (c.isLetterOrDigit() && c.code < 128 || c in "._-") c else '_' }
-            .joinToString("").trimStart('.').take(100)
+            .joinToString("").trimStart('.').let { recortar(it, 100) }
         return if (limpio.isEmpty() || limpio.all { it == '.' || it == '_' }) porDefecto else limpio
     }
 }
