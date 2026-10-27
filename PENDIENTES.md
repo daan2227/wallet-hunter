@@ -448,3 +448,18 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   suma cubra importe + comisión y sobre a lo sumo el polvo: transacción sin salida de cambio. Menos
   entradas primero, y a igualdad el menor sobrante. Tope de 100 000 nodos. Probado contra fuerza bruta
   (3 000 casos). Si no hay combinación exacta, sigue la pasada de mayor a menor de siempre.
+
+## Argon2id para el código y las copias (2026-10-27)
+
+- `Argon2id.kt`: Argon2id (RFC 9106) y BLAKE2b en Kotlin puro, comprobados byte a byte contra la
+  implementación de referencia (argon2-cffi/hashlib) con p = 1–4 y varias pasadas.
+  32 MiB, t = 3, p = 1: ~120 ms en un PC; en el móvil sin medir (se espera de 0,5 a 1,5 s por intento).
+- Un código NUEVO (o cambiado) se deriva con Argon2id y lo anota en `pin_kdf`. Los códigos existentes
+  siguen con PBKDF2 y se abren igual; pasan a Argon2id cuando se cambia el código. No hay migración
+  automática (reabrir y reenvolver todo al entrar sin que el usuario lo pida es justo lo que no se
+  quiere arriesgar sin poder probarlo en un móvil).
+- Las copias nuevas son WHB3 (Argon2id, parámetros dentro del fichero y acotados al leer). WHB2 y las
+  de PIN antiguas se siguen abriendo. Una copia WHB3 no la abre una versión anterior de la app.
+- Sin memoria para los 32 MiB: guardar un código falla sin cambiar nada y abrir devuelve "código
+  incorrecto" (queda en el registro de fallos); no se cuelga la app.
+- Sin probar en móvil. La derivación de la clave sí; el cableado en `WalletManager` sólo lo compila la CI.

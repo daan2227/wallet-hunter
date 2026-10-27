@@ -44,6 +44,12 @@ object WalletManager {
      *  PBKDF2_ITER: cada código guarda las suyas en PREF_ITER, y sin esa marca es uno antiguo. */
     private const val PBKDF2_ITER_NUEVO = 600000
     private const val PREF_ITER = "pin_iter"
+    /** Cómo se derivó la clave de un código NUEVO: "argon2id:<KiB>:<t>:<p>". Sin esta marca, PBKDF2 con PREF_ITER vueltas. */
+    private const val PREF_KDF = "pin_kdf"
+    private const val ARGON_KIB = 32768
+    private const val ARGON_T = 3
+    private const val ARGON_P = 1
+    private const val KDF_ARGON = "argon2id:$ARGON_KIB:$ARGON_T:$ARGON_P"
 
     /**
      * La clave que YA existe, o excepción. Para LEER: crear una nueva en una ruta de lectura sobrescribe
@@ -169,6 +175,21 @@ object WalletManager {
         val spec = PBEKeySpec(pin.toCharArray(), salt, iter, 256)
         val raw  = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
         return SecretKeySpec(raw, "AES")
+    }
+
+    /** Clave AES-256 del código según [kdf] (PREF_KDF); null/desconocido = PBKDF2 con [iter] vueltas. */
+    private fun claveDeCodigo(pin: String, salt: ByteArray, kdf: String?, iter: Int): SecretKey {
+        val partes = kdf?.split(':')
+        if (partes != null && partes.size == 4 && partes[0] == "argon2id") {
+            val m = partes[1].toIntOrNull(); val t = partes[2].toIntOrNull(); val p = partes[3].toIntOrNull()
+            // Acotado: la marca está en las preferencias, que no son de fiar para pedir gigas de memoria.
+            require(m != null && t != null && p != null && m in 8..262144 && t in 1..20 && p in 1..8) { "KDF del código" }
+            val pw = pin.toByteArray(Charsets.UTF_8)
+            val raw = Argon2id.derivar(pw, salt, t, m, p, 32)
+            java.util.Arrays.fill(pw, 0)
+            return SecretKeySpec(raw, "AES").also { java.util.Arrays.fill(raw, 0) }
+        }
+        return pinToKey(pin, salt, iter)
     }
 
     private fun aesEncrypt(key: SecretKey, data: ByteArray): Pair<ByteArray,ByteArray> {
@@ -467,7 +488,9 @@ object WalletManager {
         val antigua = claveSemilla
         if (hayPin && antigua == null) return false
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
-        val nueva = pinToKey(pin, salt, PBKDF2_ITER_NUEVO)
+        // Argon2id pide 32 MiB seguidos: sin memoria, no se cambia nada (un OutOfMemoryError no es una Exception).
+        val nueva = try { claveDeCodigo(pin, salt, KDF_ARGON, PBKDF2_ITER_NUEVO) }
+                    catch (e: OutOfMemoryError) { RegistroFallos.anotar("WalletManager.savePin: sin memoria para Argon2id", e); return false }
         val (enc, iv) = aesEncrypt(nueva, "wallet_ok".toByteArray())
         val ed = prefs.edit()
         // antigua, no "si hayPin antigua si no null": sin código puesto puede que no haya nada que
@@ -477,6 +500,7 @@ object WalletManager {
         if (!reenvolver(ctx, antigua, nueva, ed)) return false
         ed.putString(PREF_SALT, b64e(salt))
           .putInt(PREF_ITER, PBKDF2_ITER_NUEVO)
+          .putString(PREF_KDF, KDF_ARGON)
           .putString(PREF_VER,  b64e(enc))
           .putString(PREF_VIV,  b64e(iv))
           // Un PIN nuevo empieza sin fallos a cuestas (ni veto de huella), y ya no está "quitado".
@@ -686,7 +710,9 @@ object WalletManager {
         val salt = b64d(prefs.getString(PREF_SALT, null) ?: return null)
         val enc  = b64d(prefs.getString(PREF_VER,  null) ?: return null)
         val iv   = b64d(prefs.getString(PREF_VIV,  null) ?: return null)
-        val key  = pinToKey(pin, salt, prefs.getInt(PREF_ITER, PBKDF2_ITER))
+        val key  = try { claveDeCodigo(pin, salt, prefs.getString(PREF_KDF, null), prefs.getInt(PREF_ITER, PBKDF2_ITER)) }
+                   catch (e: IllegalArgumentException) { return null }
+                   catch (e: OutOfMemoryError) { RegistroFallos.anotar("WalletManager.claveDelPin: sin memoria para Argon2id", e); return null }
         val dec  = aesDecrypt(key, enc, iv) ?: return null
         return if (String(dec) == "wallet_ok") key else null
     }
@@ -745,7 +771,7 @@ object WalletManager {
         val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val ed = prefs.edit()
         if (!reenvolver(ctx, antigua, nueva, ed)) return false
-        ed.remove(PREF_SALT).remove(PREF_VER).remove(PREF_VIV).remove(PREF_ITER)
+        ed.remove(PREF_SALT).remove(PREF_VER).remove(PREF_VIV).remove(PREF_ITER).remove(PREF_KDF)
           .remove(PREF_FALLOS).remove(PREF_ESPERA_INI).remove(PREF_ESPERA_BOOT).remove(PREF_ESPERA_FIN_OLD).remove(PREF_ESPERA_MS).remove(PREF_BIO_BLOQ)
           .putBoolean(PREF_SIN_PIN, true)
         if (!ed.commit()) return false
@@ -1287,8 +1313,10 @@ object WalletManager {
     // "WHB2" y dice cuántas vueltas usa, para poder subirlas sin romper nada.
     // Las copias de antes, sin esa marca, se siguen abriendo con su PIN.
 
+    /** WHB3: la misma estructura, derivando la clave con Argon2id (memoria, t, p en lugar de las vueltas de PBKDF2). */
+    private val MAGIA_COPIA_3 = "WHB3".toByteArray(Charsets.US_ASCII)
+    private fun esCopia3(d: ByteArray) = d.size > 12 && d.copyOfRange(0, 4).contentEquals(MAGIA_COPIA_3)
     private val MAGIA_COPIA = "WHB2".toByteArray(Charsets.US_ASCII)
-    private const val VUELTAS_COPIA = 600_000
     private const val VUELTAS_COPIA_V1 = 100_000
 
     /** Longitud mínima de la contraseña de una copia nueva. */
@@ -1300,15 +1328,22 @@ object WalletManager {
         return javax.crypto.spec.SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
     }
 
-    /** [WHB2][vueltas][salt][iv][cifrado], cada trozo con su longitud delante. */
+    private fun claveCopia3(secreto: String, salt: ByteArray, mKiB: Int, t: Int, p: Int): javax.crypto.SecretKey {
+        val pw = secreto.toByteArray(Charsets.UTF_8)
+        val raw = Argon2id.derivar(pw, salt, t, mKiB, p, 32)
+        java.util.Arrays.fill(pw, 0)
+        return javax.crypto.spec.SecretKeySpec(raw, "AES").also { java.util.Arrays.fill(raw, 0) }
+    }
+
+    /** [WHB3][memoria KiB][t][p][salt][iv][cifrado], cada trozo de longitud variable con su longitud delante. */
     private fun cifrarCopia(secreto: String, json: String): ByteArray {
         val salt = ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, claveCopia(secreto, salt, VUELTAS_COPIA))
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, claveCopia3(secreto, salt, ARGON_KIB, ARGON_T, ARGON_P))
         val enc = cipher.doFinal(json.toByteArray(Charsets.UTF_8))
         val out = java.io.ByteArrayOutputStream()
         java.io.DataOutputStream(out).apply {
-            write(MAGIA_COPIA); writeInt(VUELTAS_COPIA)
+            write(MAGIA_COPIA_3); writeInt(ARGON_KIB); writeInt(ARGON_T); writeInt(ARGON_P)
             writeInt(salt.size); write(salt)
             writeInt(cipher.iv.size); write(cipher.iv)
             write(enc); flush()
@@ -1318,9 +1353,16 @@ object WalletManager {
 
     /** El JSON de dentro. Lanza excepción si la contraseña no es o el fichero no vale. */
     private fun descifrarCopia(secreto: String, data: ByteArray): String {
+        val v3 = esCopia3(data)
         val nueva = data.size > 8 && data.copyOfRange(0, 4).contentEquals(MAGIA_COPIA)
         val dis = java.io.DataInputStream(java.io.ByteArrayInputStream(data))
-        val vueltas = if (nueva) { dis.skipBytes(4); dis.readInt() } else VUELTAS_COPIA_V1
+        // WHB3: memoria, t y p acotados (un fichero manipulado no puede pedir gigas ni horas).
+        var mKiB = 0; var tArgon = 0; var pArgon = 0
+        if (v3) {
+            dis.skipBytes(4); mKiB = dis.readInt(); tArgon = dis.readInt(); pArgon = dis.readInt()
+            require(mKiB in 8..262144 && tArgon in 1..20 && pArgon in 1..8)
+        }
+        val vueltas = if (v3) 1 else if (nueva) { dis.skipBytes(4); dis.readInt() } else VUELTAS_COPIA_V1
         require(vueltas in 1..10_000_000)
         // Tamaños acotados: un fichero manipulado con un entero enorme pedía gigas y tumbaba la app con un
         // OutOfMemoryError (que no es una Exception y no lo recogía nadie).
@@ -1330,14 +1372,14 @@ object WalletManager {
         val iv   = ByteArray(nIv).also { dis.readFully(it) }
         val enc  = dis.readBytes()
         val cipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, claveCopia(secreto, salt, vueltas),
+        cipher.init(javax.crypto.Cipher.DECRYPT_MODE, if (v3) claveCopia3(secreto, salt, mKiB, tArgon, pArgon) else claveCopia(secreto, salt, vueltas),
             javax.crypto.spec.GCMParameterSpec(128, iv))
         return String(cipher.doFinal(enc), Charsets.UTF_8)
     }
 
     /** ¿Es del formato viejo, cifrado con el PIN? */
     fun copiaConPin(data: ByteArray): Boolean =
-        !(data.size > 8 && data.copyOfRange(0, 4).contentEquals(MAGIA_COPIA))
+        !(data.size > 8 && data.copyOfRange(0, 4).contentEquals(MAGIA_COPIA)) && !esCopia3(data)
 
 
 }
