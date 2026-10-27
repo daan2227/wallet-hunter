@@ -188,7 +188,7 @@ object ElectrumClient {
         // Sólo vale como éxito un txid de verdad (64 hex): un servidor que
         // devolviera cualquier otra cosa hacía que la app dijera "enviado" sin
         // que nada se hubiera difundido. Si no lo es, se prueba el siguiente.
-        requestRaw("blockchain.transaction.broadcast", listOf(rawHex), testnet) { r ->
+        requestRaw("blockchain.transaction.broadcast", listOf(rawHex), testnet, reutilizar = false) { r ->
             r is String && TXID.matches(r)
         } as? String
 
@@ -243,12 +243,12 @@ object ElectrumClient {
      * Como [request], pero devuelve el "result" crudo: estimatefee da un número
      * y broadcast una cadena, ninguno de los dos es un objeto JSON.
      */
-    private fun requestRaw(method: String, params: List<Any>, testnet: Boolean,
+    private fun requestRaw(method: String, params: List<Any>, testnet: Boolean, reutilizar: Boolean = true,
                            acepta: (Any) -> Boolean = { true }): Any? {
         val servers = if (testnet) listOf("electrum.blockstream.info" to 60002) else enOrden()
         for ((host, port) in servers) {
             try {
-                val result = connect(host, port) { reader, writer ->
+                val result = connect(host, port, reutilizar) { reader, writer ->
                     val req = "{\"id\":1,\"method\":\"$method\",\"params\":${params.toJsonArray()}}\n"
                     writer.write(req); writer.flush()
                     val line = leerLinea(reader) ?: return@connect null
@@ -307,7 +307,17 @@ object ElectrumClient {
         return null
     }
 
-    private fun <T> connect(host: String, port: Int, block: (BufferedReader, BufferedWriter) -> T): T {
+    private class Conn(val ssl: javax.net.ssl.SSLSocket, val reader: BufferedReader, val writer: BufferedWriter)
+
+    /** Conexiones TLS libres por servidor: ver PoolConexiones. */
+    private val pool = PoolConexiones<Conn>(maxPorClave = 4, inactivoMs = 20_000L) {
+        try { it.ssl.close() } catch (_: Exception) {}
+    }
+
+    /** Cierra las conexiones guardadas (al cambiar el proxy: no deben seguir saliendo por el camino viejo). */
+    fun cerrarLibres() = pool.vaciar()
+
+    private fun abrir(host: String, port: Int): Conn {
         // Conectamos primero un socket plano para que aplique CONNECT_TIMEOUT_MS y
         // luego montamos TLS encima. createSocket(socket, host, port, autoClose=true)
         // hace que el SSLSocket sea dueño del plano, así cerrarlo cierra ambos.
@@ -320,7 +330,7 @@ object ElectrumClient {
             try { plain.close() } catch (_: Exception) {}
             throw e
         }
-        ssl.use {
+        try {
             // Un SSLSocket valida la cadena de certificados pero NO comprueba que
             // el certificado corresponda a `host` salvo que se pida explícitamente.
             // Sin esto, cualquier certificado de cualquier CA de confianza sirve
@@ -330,9 +340,53 @@ object ElectrumClient {
             }
             ssl.soTimeout = READ_TIMEOUT_MS
             ssl.startHandshake()
-            val reader = BufferedReader(InputStreamReader(ssl.inputStream))
-            val writer = BufferedWriter(OutputStreamWriter(ssl.outputStream))
-            return block(reader, writer)
+            return Conn(ssl, BufferedReader(InputStreamReader(ssl.inputStream)),
+                        BufferedWriter(OutputStreamWriter(ssl.outputStream)))
+        } catch (e: Throwable) {
+            try { ssl.close() } catch (_: Exception) {}
+            throw e
+        }
+    }
+
+    private fun cerrar(c: Conn) { try { c.ssl.close() } catch (_: Exception) {} }
+
+    /**
+     * Ejecuta [block] contra [host]:[port], reutilizando una conexión libre si la hay.
+     *
+     * Una conexión reutilizada puede haberla cerrado el servidor mientras estaba parada: si falla (o no
+     * contesta) se descarta y se repite UNA vez con una nueva, sin que quien llama se entere. [reutilizar]
+     * = false para lo que no se puede arriesgar a hacer dos veces (difundir una transacción): ahí siempre
+     * va por una conexión nueva, y no se deja libre.
+     */
+    private fun <T> connect(host: String, port: Int, reutilizar: Boolean = true,
+                            block: (BufferedReader, BufferedWriter) -> T): T {
+        val clave = "$host:$port"
+        if (reutilizar) {
+            val vieja = pool.tomar(clave)
+            if (vieja != null) {
+                try {
+                    val r = block(vieja.reader, vieja.writer)
+                    if (r != null) { pool.devolver(clave, vieja); return r }
+                } catch (e: RechazoNodo) {
+                    pool.devolver(clave, vieja)       // el nodo contestó: la conexión está bien
+                    throw e
+                } catch (e: Exception) {
+                    // la cerró el servidor mientras esperaba: se prueba con una nueva
+                }
+                cerrar(vieja)
+            }
+        }
+        val nueva = abrir(host, port)
+        try {
+            val r = block(nueva.reader, nueva.writer)
+            if (reutilizar && r != null) pool.devolver(clave, nueva) else cerrar(nueva)
+            return r
+        } catch (e: RechazoNodo) {
+            if (reutilizar) pool.devolver(clave, nueva) else cerrar(nueva)
+            throw e
+        } catch (e: Throwable) {
+            cerrar(nueva)
+            throw e
         }
     }
 

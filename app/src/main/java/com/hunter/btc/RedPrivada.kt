@@ -38,7 +38,11 @@ object RedPrivada {
 
     fun cargar(ctx: Context) {
         val p = prefs(ctx)
-        proxy = if (p.getBoolean(K_ON, false)) deDireccion(direccion(ctx)) else null
+        val nuevo = if (p.getBoolean(K_ON, false)) deDireccion(direccion(ctx)) else null
+        val cambia = nuevo?.address() != proxy?.address()
+        proxy = nuevo
+        // Las conexiones guardadas salieron por el camino anterior (directo o por otro proxy).
+        if (cambia) try { ElectrumClient.cerrarLibres() } catch (_: Throwable) {}
     }
 
     fun poner(ctx: Context, activar: Boolean) {

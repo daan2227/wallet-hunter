@@ -463,3 +463,20 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Sin memoria para los 32 MiB: guardar un código falla sin cambiar nada y abrir devuelve "código
   incorrecto" (queda en el registro de fallos); no se cuelga la app.
 - Sin probar en móvil. La derivación de la clave sí; el cableado en `WalletManager` sólo lo compila la CI.
+
+## Electrum: conexiones reutilizadas (2026-10-27)
+
+- `PoolConexiones` (probada en JVM) guarda hasta 4 conexiones TLS por servidor durante 20 s; cada
+  consulta reutiliza una en vez de repetir el apretón de manos. Si la reutilizada falla porque el
+  servidor la cerró, se repite una vez con una nueva sin que quien llama lo note.
+- Difundir una transacción NUNCA reutiliza (ni deja libre) la conexión: repetirla por error de una
+  conexión muerta podría dar un falso "ya está en la mempool".
+- Cambiar el proxy de Tor cierra todas las guardadas.
+- Sin probar contra servidores reales; `ElectrumClient` se compiló aparte con piezas de prueba.
+
+## Decidido no hacer
+
+- **Buzón del baúl "append-only".** Cada hallazgo con el código cerrado relee y reescribe una lista
+  JSON en las preferencias (tope 2000 paquetes). Son eventos raros y el coste es de milisegundos;
+  cambiar el almacenamiento a un fichero de sólo-añadir toca la ruta que protege los hallazgos
+  (perderlos es lo peor que puede pasar) a cambio de nada medible. No se toca.
