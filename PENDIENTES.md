@@ -480,3 +480,11 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   JSON en las preferencias (tope 2000 paquetes). Son eventos raros y el coste es de milisegundos;
   cambiar el almacenamiento a un fichero de sólo-añadir toca la ruta que protege los hallazgos
   (perderlos es lo peor que puede pasar) a cambio de nada medible. No se toca.
+
+## Etiquetas BIP329 (2026-10-27)
+
+- Opciones (avanzadas) → "Export labels (BIP329)" / "Import labels (BIP329)": JSON Lines como Sparrow,
+  Nunchuk o BitBox. Direcciones (las que ya había), transacciones (nuevas: "Add a label" en el detalle,
+  y se ven en el historial) y monedas. Los tipos que la app no usa (xpub, pubkey, input) se guardan tal
+  cual y vuelven a salir al exportar. Una etiqueta vacía al importar borra la que hubiera (lo dice BIP329).
+- `Bip329` con pruebas de JVM (incluido el ejemplo del estándar). Sin probar en móvil.

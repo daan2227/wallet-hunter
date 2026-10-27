@@ -23,6 +23,7 @@ private data class BalanceRow(
 class WalletActivity : FragmentActivity() {
     private val REQ_IMPORT_BACKUP = 1002
     private val REQ_QR = 1003
+    private val REQ_IMPORT_LABELS = 1004
     /** Qué hacer con el texto de un QR leído: lo pone la pestaña Enviar. */
     private var alLeerQr: ((String) -> Unit)? = null
 
@@ -1114,7 +1115,7 @@ class WalletActivity : FragmentActivity() {
                             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                         }
                         arriba.addView(TextView(this).apply {
-                            text = when { m.neto > 0 -> "Received"; m.neto < 0 -> "Sent"; else -> "Moved" }
+                            text = Etiquetas.deTx(context, m.txid) ?: when { m.neto > 0 -> "Received"; m.neto < 0 -> "Sent"; else -> "Moved" }
                             textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI); typeface = AppTheme.medium(context)
                             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                         })
@@ -1223,6 +1224,7 @@ class WalletActivity : FragmentActivity() {
             r.addView(tv);sheet.addView(r)
             tv.setOnLongClickListener{(getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("tx",v));Toast.makeText(this,"Copied",Toast.LENGTH_SHORT).show();true}
         }
+        Etiquetas.deTx(this, m.txid)?.let { row("Label", it, AppTheme.ACCENT) }
         row("Transaction ID", m.txid)
         row("Status", if (m.confirmado) "Confirmed" else "Pending", if (m.confirmado) GREEN else AppTheme.WARN)
         if (m.neto != 0L) row(if (m.neto > 0) "Received" else "Sent (fee included)",
@@ -1246,11 +1248,21 @@ class WalletActivity : FragmentActivity() {
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
         val btnExplorer = boton("View in the explorer", false).apply { layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply { marginEnd = dp(8) } }
         val btnClose = boton("Close", false).apply { layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f) }
+        val btnEtiqueta = boton(if (Etiquetas.deTx(this, m.txid) != null) "Edit label" else "Add a label", false).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(44)).apply { topMargin = dp(8) }
+        }
+        sheet.addView(btnEtiqueta)
         btnRow.addView(btnExplorer); btnRow.addView(btnClose); sheet.addView(btnRow)
         val txDlg = AlertDialog.Builder(this).setView(android.widget.ScrollView(this).apply { addView(sheet) }).setCancelable(true).create()
         txDlg.window?.apply{setBackgroundDrawableResource(android.R.color.transparent);setLayout((resources.displayMetrics.widthPixels*0.93f).toInt(),android.view.WindowManager.LayoutParams.WRAP_CONTENT);setGravity(Gravity.CENTER);attributes=attributes?.also{it.dimAmount=0.7f};addFlags(android.view.WindowManager.LayoutParams.FLAG_DIM_BEHIND)}
         txDlg.show()
         btnClose.setOnClickListener { txDlg.dismiss() }
+        btnEtiqueta.setOnClickListener {
+            val campo = Ui.input(this, "Label (shared with other wallets via BIP329)").apply { setText(Etiquetas.deTx(this@WalletActivity, m.txid) ?: "") }
+            AlertDialog.Builder(this).setTitle("Transaction label").setView(campo)
+                .setPositiveButton("Save") { _, _ -> Etiquetas.ponerTx(this, m.txid, campo.text.toString()); txDlg.dismiss(); buildUI() }
+                .setNegativeButton("Cancel", null).show()
+        }
         btnExplorer.setOnClickListener {
             val url = if (isTestnet) "https://mempool.space/testnet/tx/${m.txid}" else "https://mempool.space/tx/${m.txid}"
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
@@ -3748,6 +3760,7 @@ class WalletActivity : FragmentActivity() {
             // luego lo apagó se quedaba en una red de pruebas sin forma de volver a mainnet.
             "Change PIN", if (av || isTestnet) "Toggle Testnet" else null, "Fiat currency",
             if (av) "Backup vault" else null, if (av) "Restore from file" else null,
+            if (av) "Export labels (BIP329)" else null, if (av) "Import labels (BIP329)" else null,
             "Delete wallet",
             if (av) "Advanced options: on (turn off)" else "Advanced options: off (turn on)",
             "Cancel")
@@ -3814,6 +3827,9 @@ class WalletActivity : FragmentActivity() {
                     // contraseñas sin límite contra copias antiguas cifradas con el PIN.
                     "Backup vault" -> PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) showBackupVault() }
                     "Restore from file" -> PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) showRestoreDialog() }
+                    "Export labels (BIP329)" -> exportarEtiquetas()
+                    "Import labels (BIP329)" -> startActivityForResult(android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
+                        type = "*/*"; addCategory(android.content.Intent.CATEGORY_OPENABLE) }, REQ_IMPORT_LABELS)
                     "Delete wallet" -> {
                         val nombre = currentWalletName.ifEmpty { "this wallet" }
                         val aviso = buildString {
@@ -4704,6 +4720,39 @@ class WalletActivity : FragmentActivity() {
             .show()
     }
 
+    /** Etiquetas de direcciones, transacciones y monedas en BIP329, para Sparrow, Nunchuk y demás. */
+    private fun exportarEtiquetas() {
+        try {
+            val texto = Etiquetas.exportar(this)
+            if (texto.isBlank()) { Toast.makeText(this, "There are no labels to export yet.", Toast.LENGTH_LONG).show(); return }
+            val f = java.io.File(BackupStore.compartidos(this), "labels_${System.currentTimeMillis()}.jsonl")
+            f.writeText(texto)
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", f)
+            startActivity(android.content.Intent.createChooser(
+                android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }, "Share labels"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not export the labels: ${e.message}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun importarEtiquetas(uri: android.net.Uri) {
+        // Tope: un fichero de etiquetas de varios MB ya es raro; uno de cientos sería otra cosa.
+        val texto = try {
+            contentResolver.openInputStream(uri)?.use { ins ->
+                val b = ins.readBytes(); if (b.size > 8 * 1024 * 1024) null else String(b, Charsets.UTF_8)
+            }
+        } catch (e: Exception) { null }
+        if (texto == null) { Toast.makeText(this, "Could not read the file (or it is too big).", Toast.LENGTH_LONG).show(); return }
+        val (ok, mal) = Etiquetas.importar(this, texto)
+        AlertDialog.Builder(this).setTitle("Labels imported")
+            .setMessage("$ok labels applied." + if (mal > 0) "\n$mal lines skipped (not BIP329 or unknown type)." else "")
+            .setPositiveButton("OK") { _, _ -> buildUI() }.show()
+    }
+
     private fun showRestoreDialog() {
         val intent = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT).apply {
             type = "*/*"
@@ -4734,6 +4783,9 @@ class WalletActivity : FragmentActivity() {
         super.onActivityResult(req, res, data)
         if (req == REQ_IMPORT_BACKUP && res == RESULT_OK) {
             data?.data?.let { doRestore(it) }
+        }
+        if (req == REQ_IMPORT_LABELS && res == RESULT_OK) {
+            data?.data?.let { importarEtiquetas(it) }
         }
         if (req == REQ_QR && res == RESULT_OK) {
             data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeerQr?.invoke(it) }
