@@ -203,9 +203,9 @@ class LightClient(
         var c: Conexion? = null
         var s: Socket? = null
         try {
-            s = Socket()
+            s = RedPrivada.socket(d.host)
             s.tcpNoDelay = true
-            s.connect(InetSocketAddress(d.host, d.port), 5000)
+            s.connect(RedPrivada.destino(d.host, d.port), if (RedPrivada.activa()) 30_000 else 5000)
             s.soTimeout = 0
             synchronized(lock) {
                 if (!activo || h == 0L) { s.close(); return }

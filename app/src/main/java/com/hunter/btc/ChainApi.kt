@@ -67,8 +67,7 @@ object ChainApi {
     fun get(ruta: String, testnet: Boolean = false): String? {
         for ((idx, host) in enOrden()) {
             try {
-                val conn = java.net.URL(base(host, testnet) + ruta)
-                    .openConnection() as java.net.HttpURLConnection
+                val conn = RedPrivada.abrir(base(host, testnet) + ruta)
                 conn.connectTimeout = CONNECT_MS
                 conn.readTimeout = READ_MS
                 val cuerpo = try {
@@ -110,7 +109,7 @@ object ChainApi {
     fun getDeTodos(ruta: String, testnet: Boolean = false): List<String> =
         HOSTS.mapNotNull { host ->
             try {
-                val conn = java.net.URL(base(host, testnet) + ruta).openConnection() as java.net.HttpURLConnection
+                val conn = RedPrivada.abrir(base(host, testnet) + ruta)
                 conn.connectTimeout = CONNECT_MS; conn.readTimeout = READ_MS
                 try {
                     if (conn.responseCode != 200) null else leerAcotado(conn.inputStream)
@@ -146,8 +145,7 @@ object ChainApi {
         var huboRechazo: String? = null
         for ((idx, host) in enOrden()) {
             try {
-                val conn = java.net.URL(base(host, testnet) + "/tx")
-                    .openConnection() as java.net.HttpURLConnection
+                val conn = RedPrivada.abrir(base(host, testnet) + "/tx")
                 conn.requestMethod = "POST"
                 conn.doOutput = true
                 conn.setRequestProperty("Content-Type", "text/plain")

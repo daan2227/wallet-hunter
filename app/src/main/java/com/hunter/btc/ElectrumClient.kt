@@ -311,9 +311,9 @@ object ElectrumClient {
         // Conectamos primero un socket plano para que aplique CONNECT_TIMEOUT_MS y
         // luego montamos TLS encima. createSocket(socket, host, port, autoClose=true)
         // hace que el SSLSocket sea dueño del plano, así cerrarlo cierra ambos.
-        val plain = java.net.Socket()
+        val plain = RedPrivada.socket(host)
         val ssl = try {
-            plain.connect(java.net.InetSocketAddress(host, port), CONNECT_TIMEOUT_MS)
+            plain.connect(RedPrivada.destino(host, port), CONNECT_TIMEOUT_MS)
             val factory = SSLSocketFactory.getDefault() as SSLSocketFactory
             factory.createSocket(plain, host, port, true) as javax.net.ssl.SSLSocket
         } catch (e: Throwable) {

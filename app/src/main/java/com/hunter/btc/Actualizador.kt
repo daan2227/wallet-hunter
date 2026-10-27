@@ -18,7 +18,6 @@ import androidx.core.content.FileProvider
 import androidx.core.content.pm.PackageInfoCompat
 import java.io.File
 import java.net.HttpURLConnection
-import java.net.URL
 import java.security.MessageDigest
 
 /**
@@ -120,7 +119,7 @@ object Actualizador {
     // ── Red ──────────────────────────────────────────────────────────────────
 
     private fun abrir(url: String, timeoutLectura: Int): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
+        RedPrivada.abrir(url).apply {
             connectTimeout = 15_000
             readTimeout = timeoutLectura
             instanceFollowRedirects = true   // github.com → objects.githubusercontent.com, ambos https

@@ -425,4 +425,12 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - **Sin probar en un móvil.** Sólo funciona a partir de tener instalada una
   compilación que ya lo incluya, y si la instalada y la nueva están firmadas
   con la misma clave (el keystore de release del secreto de la CI).
-- No pasa por Tor aunque esté configurado: la consulta va directa a github.com.
+- Con More → Privacy → "Balance lookups through Tor" activo, la consulta y la descarga van por el proxy SOCKS5.
+
+## Tor para consultas ligeras (2026-10-27)
+
+- More → Privacy: interruptor y dirección del proxy (por defecto 127.0.0.1:9050, Orbot).
+  Cubre saldos/comisiones/difusión (ChainApi), Electrum, pares P2P del cliente ligero y el
+  actualizador. Con Tor activo no hay respaldo directo: si el proxy no responde, falla.
+  Los destinos se mandan sin resolver (DNS remoto) y 127.0.0.1 se salta el proxy.
+- Sin probar en móvil ni con Orbot real. El cliente ligero P2P por Tor será más lento (5 s → 30 s de espera).

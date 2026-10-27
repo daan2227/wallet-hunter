@@ -205,6 +205,21 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         PantallaSegura.aplicar(this)
     }
 
+    filaSwitch(privacidad, "Balance lookups through Tor",
+        "Balances, fees, broadcast, Electrum, light-client peers and updates go through the SOCKS5 proxy " +
+        "(${RedPrivada.direccion(this)}, Orbot). If Tor isn't running they fail: never direct.",
+        RedPrivada.activa()) { on -> RedPrivada.poner(this, on) }
+    fila(privacidad, R.drawable.ic_gear, "Tor proxy address", "host:port of the SOCKS5 proxy",
+         RedPrivada.direccion(this)) {
+        val campo = Ui.input(this, "127.0.0.1:9050", mono = true).apply { setText(RedPrivada.direccion(this@buildMoreTab)) }
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Tor proxy address").setView(campo)
+            .setPositiveButton("Save") { _, _ ->
+                val t = campo.text.toString().trim()
+                if (CoreConfig.proxyValido(t)) { RedPrivada.ponerDireccion(this, t); recreate() }
+                else Toast.makeText(this, "Use host:port, e.g. 127.0.0.1:9050", Toast.LENGTH_LONG).show()
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     val rendimiento = grupo("Performance")
     // Pasos redondos de %, no de uno en uno: para segundo plano lo que importa
     // es el extremo bajo, así que hay más escalones ahí.
