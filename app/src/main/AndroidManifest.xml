@@ -104,6 +104,11 @@
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
 
+        <activity android:name=".CarteraExternaActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
         <activity android:name=".VaultActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />

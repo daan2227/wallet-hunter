@@ -502,3 +502,19 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Sin probar con un Keystone/SeedSigner/Coldcard reales ni en móvil.
 - Nota: el paquete "bbqr" de PyPI NO es el de Coinkite (es otra herramienta y al importarse ejecuta
   apt-get); por eso los vectores salen del de npm.
+
+## Cartera vigilada desde xpub/descriptor (2026-10-27)
+
+- "Watch" acepta, además de una dirección, una xpub/ypub/zpub o un descriptor `pkh`, `sh(wpkh)`, `wpkh`
+  o `tr` con `[huella/ruta]` (una línea con `<0;1>` o dos líneas, recepción y cambio). Abre una pantalla
+  propia (CarteraExternaActivity): saldo con hueco de 20 en las dos ramas, recibir, preparar la PSBT
+  (QR animado, fichero o base64) y difundir lo firmado (QR, fichero o pegado; finaliza la PSBT o acepta
+  la transacción ya hecha).
+- Probado contra Bitcoin Core 30: checksums y direcciones de los cuatro tipos (deriveaddresses), y la
+  PSBT que arma la app desde la xpub de un monedero de Core la firmó Core entera y su mempool aceptó la
+  transacción (regtest, a mano). Lo que se puede, en pruebas de JVM (DescriptorTest, MotorVigiladaTest).
+- La curva en la app es el motor nativo (`HunterEngine.ec`); en las pruebas, una implementación lenta
+  con BigInteger (EcLento, sólo en test).
+- Sin probar en móvil ni con un firmador físico. Sin descriptor con origen, un firmador externo puede no
+  reconocer las entradas: la pantalla lo avisa.
+- PSBT v2: se leen (Core 30 las crea así); las que crea la app siguen siendo v0, que entiende todo el mundo.

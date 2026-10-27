@@ -3522,6 +3522,19 @@ class WalletActivity : FragmentActivity() {
             }
         }
 
+        // Carteras con las claves fuera (xpub/descriptor, multifirma, herencia): su propia pantalla.
+        CarterasExternas.lista(this).forEach { e ->
+            walletCard(e.nombre, "External keys · PSBT", null, onRename = {
+                renombrar(e.nombre) { n ->
+                    CarterasExternas.renombrar(this, e.id, n)
+                    selectorDlg?.dismiss(); showWalletSelectorDialog(forceShow = true)
+                }
+            }) {
+                selectorDlg?.dismiss()
+                startActivity(Intent(this, CarteraExternaActivity::class.java).putExtra(CarteraExternaActivity.EXTRA_ID, e.id))
+            }
+        }
+
         // Crear, como acción principal; importar y vigilar, debajo.
         val btnCrear = botonHoja("Create new wallet", principal = true)
         sheet.addView(btnCrear)
@@ -4369,13 +4382,15 @@ class WalletActivity : FragmentActivity() {
             setPadding(0,0,0,dp(6))
         })
         sheet.addView(TextView(this).apply {
-            text = "Monitor any Bitcoin address (read-only, no private key needed)"
+            text = "Monitor any Bitcoin address, or a whole wallet from its xpub/descriptor " +
+                   "(read-only; you can prepare PSBTs for the device that has the keys)"
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, 0, 0, dp(18)); setLineSpacing(0f, 1.3f)
         })
         val etAddr = EditText(this).apply {
-            hint = "bc1q... or 1... or 3..."; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            hint = "Address, xpub/zpub or descriptor"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)
+            maxLines = 6
             background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             setPadding(dp(14), dp(14), dp(14), dp(14)); textSize = AppTheme.SP_BODY
             minHeight = dp(48)
@@ -4421,6 +4436,19 @@ class WalletActivity : FragmentActivity() {
         btnAdd.setOnClickListener {
             val addr = etAddr.text.toString().trim()
             val label = etLabel.text.toString().trim().ifEmpty { "Watcher" }
+            // Una xpub o un descriptor: cartera entera, con su propia pantalla.
+            val pareceDescriptor = addr.contains('(') || addr.contains('\n') ||
+                listOf("xpub", "ypub", "zpub", "tpub", "upub", "vpub").any { addr.startsWith(it) }
+            if (pareceDescriptor) {
+                val (motor, error) = CarterasExternas.motorDe(addr)
+                if (motor == null) { Toast.makeText(this, error ?: "Not recognised", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                if (motor.testnet != isTestnet) { Toast.makeText(this, "That key is for ${if (motor.testnet) "testnet" else "mainnet"}.", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                dlg.dismiss()
+                val id = CarterasExternas.anadir(this, label, motor.texto())
+                startActivity(Intent(this, CarteraExternaActivity::class.java).putExtra(CarteraExternaActivity.EXTRA_ID, id))
+                finish()
+                return@setOnClickListener
+            }
             // Una dirección de la otra red, o con una letra mal, se guardaba y luego
             // sólo decía "no answer". Se valida con la red de esta cartera.
             when (val v = BtcAddress.validate(addr, isTestnet)) {
