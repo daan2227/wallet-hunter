@@ -117,3 +117,35 @@ object EcLentoPriv {
         }
     }
 }
+
+/** Schnorr BIP340 y ECDH x-only con BigInteger (sólo pruebas): la curva de Nostr en la JVM. */
+object EcLentoNostr {
+    private val N = EcLento.N
+    private fun bi(h: String) = java.math.BigInteger(1, Descriptor.bytes(h))
+    private fun b32(x: java.math.BigInteger) = EcLento.b32(x)
+    private fun lift(x: ByteArray) = EcLento.parse(byteArrayOf(2) + x)
+    val curva = NostrEvento.Curva { op, a, b ->
+        when (op) {
+            "xonly" -> Descriptor.hex(b32(EcLento.mul(bi(a))!!.first))
+            "schnorr" -> {
+                val (m, aux) = b.split('|').let { Descriptor.bytes(it[0]) to Descriptor.bytes(it[1]) }
+                var d = bi(a); val P = EcLento.mul(d)!!; if (P.second.testBit(0)) d = N - d
+                val px = b32(P.first)
+                val t = b32(d).zip(EcLento.tagged("BIP0340/aux", aux).toList()) { x, y -> (x.toInt() xor y.toInt()).toByte() }.toByteArray()
+                var k = java.math.BigInteger(1, EcLento.tagged("BIP0340/nonce", t + px + m)).mod(N)
+                val R = EcLento.mul(k)!!; if (R.second.testBit(0)) k = N - k
+                val e = java.math.BigInteger(1, EcLento.tagged("BIP0340/challenge", b32(R.first) + px + m)).mod(N)
+                Descriptor.hex(b32(R.first) + b32(k.add(e.multiply(d)).mod(N)))
+            }
+            "schnorr_ok" -> try {
+                val (m, s) = b.split('|').let { Descriptor.bytes(it[0]) to Descriptor.bytes(it[1]) }
+                val P = lift(Descriptor.bytes(a)); val r = java.math.BigInteger(1, s.copyOfRange(0, 32)); val ss = java.math.BigInteger(1, s.copyOfRange(32, 64))
+                val e = java.math.BigInteger(1, EcLento.tagged("BIP0340/challenge", s.copyOfRange(0, 32) + Descriptor.bytes(a) + m)).mod(N)
+                val R = EcLento.add(EcLento.mul(ss), EcLento.mul(N - e, P))
+                if (R != null && !R.second.testBit(0) && R.first == r) "1" else ""
+            } catch (x: Exception) { "" }
+            "ecdh_x" -> Descriptor.hex(b32(EcLento.mul(bi(a), lift(Descriptor.bytes(b)))!!.first))
+            else -> ""
+        }
+    }
+}

@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <secp256k1.h>
 #include <secp256k1_extrakeys.h>
+#include <secp256k1_schnorrsig.h>
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <openssl/evp.h>
@@ -117,6 +118,32 @@ inline bool ckd_pub_ruta(const secp256k1_context *ctx, const uint8_t clave33[33]
         memcpy(c, I + 32, 32);
     }
     memcpy(o33, k, 33); return true;
+}
+
+/* ── Nostr (NIP-01/04/44) ─────────────────────────────────────────────────────────────────────── */
+
+/* x-only (32) de una privada: la "pubkey" de Nostr. */
+inline bool xonly_de_priv(const secp256k1_context *ctx, const uint8_t k[32], uint8_t x32[32]) {
+    secp256k1_keypair kp; if (!secp256k1_keypair_create(ctx, &kp, k)) return false;
+    secp256k1_xonly_pubkey xo; int par = 0;
+    if (!secp256k1_keypair_xonly_pub(ctx, &xo, &par, &kp)) return false;
+    secp256k1_xonly_pubkey_serialize(ctx, x32, &xo); return true;
+}
+/* Firma Schnorr BIP340 de un mensaje de 32 bytes con [aux] de 32 (aleatorio en uso normal). */
+inline bool schnorr_firmar(const secp256k1_context *ctx, const uint8_t k[32], const uint8_t msg[32], const uint8_t aux[32], uint8_t sig[64]) {
+    secp256k1_keypair kp; if (!secp256k1_keypair_create(ctx, &kp, k)) return false;
+    return secp256k1_schnorrsig_sign32(ctx, sig, msg, &kp, aux) == 1;
+}
+/* Verifica una firma BIP340 de [msg] (32) por la x-only [px]. */
+inline bool schnorr_verificar(const secp256k1_context *ctx, const uint8_t sig[64], const uint8_t msg[32], const uint8_t px[32]) {
+    secp256k1_xonly_pubkey xo; if (!secp256k1_xonly_pubkey_parse(ctx, &xo, px)) return false;
+    return secp256k1_schnorrsig_verify(ctx, sig, msg, 32, &xo) == 1;
+}
+/* Secreto compartido de Nostr: la x de k·P, con P la x-only [px] levantada con y par (NIP-04 y NIP-44). */
+inline bool ecdh_x(const secp256k1_context *ctx, const uint8_t k[32], const uint8_t px[32], uint8_t out[32]) {
+    uint8_t p33[33]; p33[0] = 0x02; memcpy(p33 + 1, px, 32);
+    uint8_t r[33]; if (!pub_mul(ctx, p33, k, r)) return false;
+    memcpy(out, r + 1, 32); return true;
 }
 
 /* ── Silent Payments (BIP352), lado del que envía ──────────────────────────────────────────────

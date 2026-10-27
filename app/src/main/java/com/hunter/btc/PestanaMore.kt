@@ -291,6 +291,8 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
                 startActivity(Intent(this, LightningActivity::class.java).putExtra(LightningActivity.EXTRA_TESTNET, i == 1))
             }.show()
     }
+    fila(claves, R.drawable.ic_wallet, "Remote Lightning node (NWC)", "Control your own node with Nostr Wallet Connect",
+         null) { startActivity(Intent(this, NwcActivity::class.java)) }
     // Pool del puzzle: barrer trozos que reparte un servidor (tools/pool/servidor.py) y demostrarlo.
     fila(claves, R.drawable.ic_puzzle, "Puzzle pool", "Scan ranges handed out by a pool server, with proof of work",
          if (PoolPuzzle.activo()) "On" else null) {

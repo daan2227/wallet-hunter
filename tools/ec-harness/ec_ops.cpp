@@ -80,6 +80,40 @@ int main(int argc, char **argv) {
     /* m/84'/0'/0'/0/0 de BIP84 */
     { uint8_t pub[33]; ecops::ckd_pub_ruta(ctx, cpub, cta.chain_code, {0, 0}, pub);
       debe(hs(pub, 33) == "0330d54fd0dd420a6e5f8d3624f5f3482cae350f79d5f0753bf5beef9c2d91af3c", "BIP84 primera pública"); }
+    /* BIP340: firmar con los vectores oficiales que traen privada (se compara la firma exacta). */
+    { std::ifstream b("datos/bip340.csv"); std::string l; std::getline(b, l); int n = 0;
+      while (std::getline(b, l)) {
+          std::vector<std::string> c; std::stringstream ss(l); std::string t; while (std::getline(ss, t, ',')) c.push_back(t);
+          if (c.size() < 7 || c[1].empty() || c[4].size() != 64) continue;
+          auto lower = [](std::string z) { for (auto &ch : z) ch = tolower(ch); return z; };
+          uint8_t sig[64], x[32];
+          bool ok = ecops::schnorr_firmar(ctx, hx(c[1]).data(), hx(c[4]).data(), hx(c[3]).data(), sig) &&
+                    ecops::xonly_de_priv(ctx, hx(c[1]).data(), x) &&
+                    hs(sig, 64) == lower(c[5]) && hs(x, 32) == lower(c[2]);
+          debe(ok, "BIP340 vector " + c[0]); n++;
+      }
+      printf("BIP340: %d vectores de firma\n", n); }
+    /* BIP340: verificar con TODOS los vectores (válidos e inválidos). */
+    { std::ifstream b("datos/bip340.csv"); std::string l; std::getline(b, l); int n = 0;
+      while (std::getline(b, l)) {
+          std::vector<std::string> c; std::stringstream ss(l); std::string t; while (std::getline(ss, t, ',')) c.push_back(t);
+          if (c.size() < 7 || c[4].size() != 64 || c[5].size() != 128 || c[2].size() != 64) continue;   /* mensajes de otro largo: no se usan */
+          bool esperado = c[6] == "TRUE";
+          bool r = ecops::schnorr_verificar(ctx, hx(c[5]).data(), hx(c[4]).data(), hx(c[2]).data());
+          debe(r == esperado, "BIP340 verificar " + c[0]); n++;
+      }
+      printf("BIP340: %d vectores de verificación\n", n); }
+    /* NIP-44: la clave de conversación es HMAC-SHA256("nip44-v2", ecdh_x). */
+    { std::ifstream b("datos/nip44_conv.txt"); std::string l; int n = 0;
+      while (std::getline(b, l)) {
+          if (l.empty() || l[0] == '#') continue;
+          std::istringstream is(l); std::string a1, p2, ck; is >> a1 >> p2 >> ck;
+          uint8_t sx[32], mac[32]; unsigned int ml = 32;
+          bool ok = ecops::ecdh_x(ctx, hx(a1).data(), hx(p2).data(), sx);
+          if (ok) HMAC(EVP_sha256(), "nip44-v2", 8, sx, 32, mac, &ml);
+          debe(ok && hs(mac, 32) == ck, "NIP-44 conversation key"); n++;
+      }
+      printf("NIP-44: %d claves de conversación\n", n); }
     secp256k1_context_destroy(ctx);
     printf(fallos ? "\nHAY FALLOS: %d de %d\n" : "\nTodas las pruebas correctas (%d de %d).\n", fallos ? fallos : pruebas, pruebas);
     return fallos ? 1 : 0;

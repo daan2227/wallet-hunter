@@ -637,3 +637,20 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   la parte Lightning del QR unificado se pagó entre dos nodos.
 - (El QR unificado y la retirada entraron ya en el commit anterior, junto con la pantalla.)
 - No se abre un canal directamente con monedas de la cartera: LDK Node 0.7 sólo financia desde la suya.
+
+## Control remoto de un nodo Lightning (NWC, NIP-47) (2026-10-27)
+
+- More → Tools → "Remote Lightning node (NWC)": se escanea o pega la conexión `nostr+walletconnect://…`
+  que da tu nodo (Alby Hub, LNbits, Umbrel/Start9 con NWC…). Saldo, cobrar con factura (QR), pagar
+  facturas, movimientos y desconectar. La conexión va cifrada con la clave del baúl (su secreto permite
+  gastar) y abrir la pantalla pide el código.
+- Todo propio y sin librerías: WebSocket (RFC 6455, por Tor si está activado), eventos de Nostr (NIP-01),
+  NIP-44 v2 (ChaCha20 + HKDF + HMAC) con respaldo NIP-04 si el servicio es antiguo. Las respuestas sólo se
+  aceptan firmadas por el servicio y referidas a nuestra petición (un relay no puede inventarse un "pagado").
+- Motor: firma y verificación Schnorr (BIP340) y ECDH x-only (`HunterEngine.ec` "xonly", "schnorr",
+  "schnorr_ok", "ecdh_x"); el banco nativo pasa los vectores oficiales de BIP340 (4 de firma, 15 de
+  verificación) y las 35 claves de conversación de NIP-44.
+- Probado: NIP-44 contra TODOS los vectores oficiales (Nip44Test); el id y la firma de un evento real de
+  nostr-sdk (NostrEventoTest); y de punta a punta contra un relay local de nostr-sdk con un servicio NWC
+  hecho con nostr-sdk, en NIP-44 y en NIP-04: info, saldo, factura, pago, error de saldo y movimientos.
+- Sin probar en móvil ni contra un servicio real (Alby Hub…).

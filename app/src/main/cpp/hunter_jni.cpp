@@ -3880,7 +3880,11 @@ Java_com_hunter_btc_HunterEngine_taprootAncho(JNIEnv*, jobject){ return (jlong)g
  *   tr         a = x-only 32 (o pública 33)                 → x-only de la salida BIP86
  *   ckd        a = clave33 ‖ cadena32 de una xpub, b = "c/i" → pública 33 (derivación pública)
  *   priv_sum   a = "k1,k2,…", b = "0,1,…" (negar)           → suma mod n
- *   sp_send    a = "suma32|outpoint36", b = "scan:spend,…"  → "x1,x2,…" (BIP352) */
+ *   sp_send    a = "suma32|outpoint36", b = "scan:spend,…"  → "x1,x2,…" (BIP352)
+ *   xonly      a = privada                                  → x-only 32 (pubkey de Nostr)
+ *   schnorr    a = privada, b = "mensaje32|aux32"           → firma BIP340 de 64
+ *   ecdh_x     a = privada, b = x-only del otro             → x del secreto compartido (NIP-04/44)
+ *   schnorr_ok a = x-only, b = "mensaje32|firma64"          → "1" si la firma BIP340 vale */
 static bool de_hex(const std::string &s, std::vector<uint8_t> &o) {
     if (s.size() % 2) return false; o.resize(s.size() / 2);
     for (size_t i = 0; i < o.size(); i++) {
@@ -3929,6 +3933,25 @@ static std::string ec_op(const std::string &op, const std::string &a, const std:
         for (auto &t : trocear(b, ',')) neg.push_back(t == "1");
         bool ok = ecops::priv_sumar(ctx, ks, neg, o32);
         for (auto &k : ks) OPENSSL_cleanse(k.data(), k.size());
+        std::string r = ok ? a_hex(o32, 32) : ""; OPENSSL_cleanse(o32, 32); return r;
+    }
+    if (op == "xonly") { if (!de_hex(a, x) || x.size() != 32 || !ecops::xonly_de_priv(ctx, x.data(), o32)) return ""; OPENSSL_cleanse(x.data(), x.size()); return a_hex(o32, 32); }
+    if (op == "schnorr") {          /* b = "mensaje32|aux32" */
+        auto pb = trocear(b, '|'); std::vector<uint8_t> m, aux; uint8_t sig[64];
+        if (!de_hex(a, x) || x.size() != 32 || pb.size() != 2 || !de_hex(pb[0], m) || m.size() != 32 || !de_hex(pb[1], aux) || aux.size() != 32) return "";
+        bool ok = ecops::schnorr_firmar(ctx, x.data(), m.data(), aux.data(), sig);
+        OPENSSL_cleanse(x.data(), x.size());
+        return ok ? a_hex(sig, 64) : "";
+    }
+    if (op == "schnorr_ok") {       /* a = x-only, b = "mensaje32|firma64" → "1" o "" */
+        auto pb = trocear(b, '|'); std::vector<uint8_t> m, sg;
+        if (!de_hex(a, x) || x.size() != 32 || pb.size() != 2 || !de_hex(pb[0], m) || m.size() != 32 || !de_hex(pb[1], sg) || sg.size() != 64) return "";
+        return ecops::schnorr_verificar(ctx, sg.data(), m.data(), x.data()) ? "1" : "";
+    }
+    if (op == "ecdh_x") {           /* a = privada, b = x-only del otro */
+        if (!de_hex(a, x) || x.size() != 32 || !de_hex(b, y) || y.size() != 32) return "";
+        bool ok = ecops::ecdh_x(ctx, x.data(), y.data(), o32);
+        OPENSSL_cleanse(x.data(), x.size());
         std::string r = ok ? a_hex(o32, 32) : ""; OPENSSL_cleanse(o32, 32); return r;
     }
     if (op == "sp_send") {
