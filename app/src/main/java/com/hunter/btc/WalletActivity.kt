@@ -2385,12 +2385,22 @@ class WalletActivity : FragmentActivity() {
                 tvStatus.text = "The minimum for this address is $polvo sat: the network rejects smaller amounts."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
-            val check = BtcAddress.validate(toAddr, isTestnet)
+            // Silent Payments (sp1…): la dirección de verdad se calcula al firmar, con las claves de las entradas.
+            val esSp = SilentPayments.esDireccion(toAddr)
+            if (esSp && SilentPayments.decodificar(toAddr, isTestnet) == null) {
+                tvStatus.text = "Invalid silent payment address (or for the other network)."
+                tvStatus.setTextColor(RED); return@setOnClickListener
+            }
+            if (esSp && isWifMode && wifKey.isEmpty()) {
+                tvStatus.text = "A silent payment needs the private key of the inputs: not possible from a watch-only wallet."
+                tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
+            }
+            val check = if (esSp) null else BtcAddress.validate(toAddr, isTestnet)
             if (check is BtcAddress.Result.Invalid) {
                 tvStatus.text = "Invalid address: ${check.reason}"
                 tvStatus.setTextColor(RED); return@setOnClickListener
             }
-            val addrType = (check as BtcAddress.Result.Valid).info.type
+            val addrType = if (esSp) BtcAddress.Type.P2TR else (check as BtcAddress.Result.Valid).info.type
             // El contrato de doSend no cambia: -1 sigue queriendo decir "la que
             // recomiende la red". Lo que cambia es que ahora se elige viendo el
             // tiempo estimado en vez de escribiendo un número a ciegas.
@@ -2652,6 +2662,21 @@ class WalletActivity : FragmentActivity() {
                     }
                     val changePath = if (wifSnap) null
                                      else HdScanner.nextChangePath(mnSnap, purpose, isTestnet)
+                    // Silent Payments: con las privadas de las entradas elegidas y la dirección sp1 sale una Taproot
+                    // de un solo uso. Las entradas son las de plan.chosen, las mismas que firma el motor.
+                    var destinoTx = toAddr
+                    if (SilentPayments.esDireccion(toAddr)) {
+                        val priv = if (wifSnap) HunterEngine.hexDeWif(wifKeySnap) else HunterEngine.deriveRuta(mnSnap, pathStr)
+                        val tr = fromKey.startsWith("p2tr") || fromKey == "wif_p2tr"
+                        val ent = plan.chosen.map { SilentPayments.Entrada(priv, tr, it.getString("txid"), it.getInt("vout")) }
+                        val spk = if (priv.length == 64) SilentPayments.salida({ op, a, b -> HunterEngine.ec(op, a, b) }, toAddr, isTestnet, ent) else null
+                        val real = spk?.let { SpkDireccion.de(it, isTestnet) }
+                        if (real == null) {
+                            runOnUiThread { tvStatus.text = "Could not compute the silent payment output."; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
+                            return@Thread
+                        }
+                        destinoTx = real
+                    }
                     runOnUiThread {
                         tvStatus.text = if (changePath != null)
                             "Change to a new address (${changePath.substringAfterLast('/')})"
@@ -2675,10 +2700,10 @@ class WalletActivity : FragmentActivity() {
                         .put("path",     pathStr)
                         .apply { if (wifSnap) { put("wif", wifKeySnap); put("wif_tipo", tipoWif(fromKey)) } }
                         .put("utxos",    utxoArr)
-                        .put("to",       toAddr)
+                        .put("to",       destinoTx)
                         .put("amount",   amtSat)
                         .put("outputs", org.json.JSONArray().apply {
-                            put(JSONObject().put("to", toAddr).put("amount", amtPrincipal))
+                            put(JSONObject().put("to", destinoTx).put("amount", amtPrincipal))
                             extras.forEach { e ->
                                 put(if (e.datos != null) JSONObject().put("data", e.datos)
                                     else JSONObject().put("to", e.addr).put("amount", e.sat))
@@ -2701,6 +2726,7 @@ class WalletActivity : FragmentActivity() {
                     val resumen = buildString {
                         appendLine("Send %.8f BTC".format(amtPrincipal / 1e8) + fiatEntre(amtPrincipal))
                         appendLine("to $toAddr" + if (addrType.isNotEmpty()) " ($addrType)" else "")
+                        if (destinoTx != toAddr) appendLine("(silent payment: one-time address $destinoTx)")
                         extras.forEach { e ->
                             if (e.datos != null) appendLine("+ OP_RETURN: ${e.datos.length / 2} bytes of data (0 BTC)")
                             else appendLine("+ %.8f BTC to %s".format(e.sat / 1e8, e.addr))

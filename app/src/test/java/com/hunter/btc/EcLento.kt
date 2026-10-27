@@ -56,3 +56,30 @@ object EcLento {
         Descriptor.hex(b32(q.first))
     }
 }
+
+/** Las operaciones de HunterEngine.ec que usa SilentPayments, con BigInteger (sólo pruebas). */
+object EcLentoOps {
+    private fun bi(h: String) = java.math.BigInteger(1, Descriptor.bytes(h))
+    private fun h32(x: java.math.BigInteger) = Descriptor.hex(EcLento.b32(x))
+    val ec = SilentPayments.Ec { op, a, b ->
+        when (op) {
+            "pub" -> Descriptor.hex(EcLento.ser(EcLento.mul(bi(a))!!))
+            "priv_sum" -> {
+                val ks = a.split(','); val ng = b.split(',')
+                var s = java.math.BigInteger.ZERO
+                for ((i, k) in ks.withIndex()) { val v = bi(k); s += if (ng.getOrNull(i) == "1") EcLento.N - v else v }
+                s = s.mod(EcLento.N); if (s.signum() == 0) "" else h32(s)
+            }
+            "sp_send" -> {
+                val (suma, op36) = a.split('|'); val (scan, spend) = b.split(':')
+                val sa = bi(suma); val A = EcLento.ser(EcLento.mul(sa)!!)
+                val ih = bi(Descriptor.hex(EcLento.tagged("BIP0352/Inputs", Descriptor.bytes(op36) + A)))
+                val ecdh = EcLento.ser(EcLento.mul(ih.multiply(sa).mod(EcLento.N), EcLento.parse(Descriptor.bytes(scan)))!!)
+                val t = bi(Descriptor.hex(EcLento.tagged("BIP0352/SharedSecret", ecdh + byteArrayOf(0, 0, 0, 0))))
+                val p = EcLento.add(EcLento.parse(Descriptor.bytes(spend)), EcLento.mul(t))!!
+                h32(p.first)
+            }
+            else -> ""
+        }
+    }
+}

@@ -518,3 +518,14 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Sin probar en móvil ni con un firmador físico. Sin descriptor con origen, un firmador externo puede no
   reconocer las entradas: la pantalla lo avisa.
 - PSBT v2: se leen (Core 30 las crea así); las que crea la app siguen siendo v0, que entiende todo el mundo.
+
+## Enviar a Silent Payments (2026-10-27)
+
+- En Enviar se puede pegar una dirección `sp1…` (o `tsp1…` en testnet): al firmar se calcula, con las
+  privadas de las entradas elegidas, la Taproot de un solo uso (BIP352) y se paga a ella. El resumen
+  enseña las dos. Las entradas Taproot usan su clave ajustada (BIP86), como pide BIP352.
+- La aritmética está en el motor (ec_ops.h, 24 vectores oficiales en el banco) y la parte de Kotlin
+  (dirección, claves, outpoint menor) contra los vectores de un destinatario (SilentPaymentsTest).
+- Sólo enviar. RECIBIR pagos silenciosos exige escanear cada bloque (indexador o el nodo propio) y no
+  está. Tampoco desde carteras vigiladas o externas: hace falta la privada de las entradas.
+- Sin probar en móvil ni contra un receptor real (Core 30 no tiene Silent Payments).

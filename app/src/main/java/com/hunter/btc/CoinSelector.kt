@@ -36,6 +36,7 @@ object CoinSelector {
         val a = addr.lowercase()
         return when {
             a.startsWith("bc1p") || a.startsWith("tb1p") || a.startsWith("bcrt1p") -> 330L
+            a.startsWith("sp1") || a.startsWith("tsp1") -> 330L                                                // Silent Payments: P2TR
             (a.startsWith("bc1q") || a.startsWith("tb1q") || a.startsWith("bcrt1q")) && a.length > 50 -> 330L  // P2WSH
             a.startsWith("bc1q") || a.startsWith("tb1q") || a.startsWith("bcrt1q") -> 294L                    // P2WPKH
             a.startsWith("3") || a.startsWith("2") -> 540L                                                      // P2SH
@@ -195,6 +196,7 @@ object CoinSelector {
     /** Tamaño en vB de una salida según el tipo de dirección que la recibe. */
     fun outputVBytes(addr: String) = when {
         addr.startsWith("bc1p") || addr.startsWith("tb1p") -> 43
+        addr.startsWith("sp1") || addr.startsWith("tsp1") -> 43         // Silent Payments: sale una P2TR
         // P2WSH (bc1q de 62 caracteres): programa de 32 bytes, como Taproot.
         (addr.startsWith("bc1") || addr.startsWith("tb1")) && addr.length > 50 -> 43
         addr.startsWith("bc1")  || addr.startsWith("tb1")  -> 31
