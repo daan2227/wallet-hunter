@@ -95,6 +95,9 @@ object CoinSelector {
             return Plan(listOf(u), feeOne, value(u) - amountSat - feeOne, vsOne, "one input")
         }
 
+        // 2b) varias entradas que suman justo, sin cambio (búsqueda Branch and Bound)
+        sinCambioExacto(utxos, amountSat, feeRate, inVBytes, outVBytes, polvoCambio)?.let { return it }
+
         // 3) acumular de mayor a menor
         val acc = mutableListOf<JSONObject>()
         var total = 0L
@@ -115,6 +118,64 @@ object CoinSelector {
             // Si no llega ni así, seguir sumando entradas.
         }
         return null
+    }
+
+    /** Tope de nodos que visita la búsqueda: acota el tiempo con cientos de monedas. */
+    internal const val BNB_NODOS = 100_000
+
+    /**
+     * Branch and Bound: un conjunto de VARIAS monedas cuya suma cubre importe + comisión y sobra a lo
+     * sumo [polvoCambio] (que va a la comisión), o sea, una transacción sin salida de cambio. Evita
+     * crear una moneda nueva y, con ella, el rastro del cambio y el coste de gastarla después.
+     * Entre las soluciones elige las de menos entradas y, a igualdad, el menor sobrante.
+     *
+     * Sólo cuenta monedas que valen más que lo que cuesta gastarlas ([inVBytes] × [feeRate]); una de polvo
+     * hace crecer el sobrante al añadirla y rompe la poda. Con una sola entrada ya lo resuelven las
+     * pasadas anteriores, así que esto sólo busca de 2 en adelante.
+     */
+    internal fun sinCambioExacto(utxos: List<JSONObject>, amountSat: Long, feeRate: Long,
+                                 inVBytes: Int, outVBytes: Int, polvoCambio: Long): Plan? {
+        val costeEntrada = inVBytes * feeRate
+        val v = utxos.filter { it.optLong("value", 0L) > costeEntrada }
+            .sortedByDescending { it.optLong("value", 0L) }
+        if (v.size < 2) return null
+        val valores = LongArray(v.size) { v[it].optLong("value", 0L) }
+        val resto = LongArray(v.size + 1)            // resto[i] = suma de valores[i..]
+        for (i in v.size - 1 downTo 0) resto[i] = resto[i + 1] + valores[i]
+        fun objetivo(n: Int) = amountSat + feeRate * (inVBytes * n + outVBytes + 11)
+        if (resto[0] < objetivo(2)) return null
+
+        var mejor: IntArray? = null
+        var mejorN = Int.MAX_VALUE; var mejorSobra = Long.MAX_VALUE
+        var nodos = 0
+        val elegidas = IntArray(v.size)
+
+        fun buscar(i: Int, n: Int, suma: Long) {
+            if (++nodos > BNB_NODOS) return
+            if (n >= 2) {
+                val sobra = suma - objetivo(n)
+                if (sobra >= 0) {
+                    // Cubre. Si el sobrante cabe en polvo, es candidata; añadir más monedas sólo lo
+                    // empeora (cada una suma más de lo que cuesta), así que no se sigue por aquí.
+                    if (sobra <= polvoCambio && (n < mejorN || (n == mejorN && sobra < mejorSobra))) {
+                        mejorN = n; mejorSobra = sobra; mejor = elegidas.copyOf(n)
+                    }
+                    return
+                }
+            }
+            if (i >= v.size || n + 1 > mejorN) return
+            // Ni cogiendo todo lo que queda se llega con al menos 2 monedas.
+            if (suma + resto[i] < objetivo(maxOf(n, 2))) return
+            elegidas[n] = i
+            buscar(i + 1, n + 1, suma + valores[i])     // con esta
+            buscar(i + 1, n, suma)                      // sin esta
+        }
+        buscar(0, 0, 0L)
+
+        val m = mejor ?: return null
+        val chosen = m.map { v[it] }
+        val total = m.sumOf { valores[it] }
+        return Plan(chosen, total - amountSat, 0L, inVBytes * m.size + outVBytes + 11, "no change (exact match)")
     }
 
     /** Tamaño en vB de una entrada según el tipo de dirección que la gasta. */

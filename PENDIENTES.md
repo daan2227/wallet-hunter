@@ -441,3 +441,10 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   (también si la pantalla no existe): ya no se pierde un barrido de días si matan el proceso.
 - Sigue sin reanudarse solo tras reiniciar el móvil: el botón "Resume from there" hay que pulsarlo.
 - Sin probar en móvil; la parte nativa sólo se compila en la CI.
+
+## Selector de monedas: Branch and Bound (2026-10-27)
+
+- Cuando ninguna moneda sola alcanza, `CoinSelector.sinCambioExacto` busca un conjunto de 2 o más cuya
+  suma cubra importe + comisión y sobre a lo sumo el polvo: transacción sin salida de cambio. Menos
+  entradas primero, y a igualdad el menor sobrante. Tope de 100 000 nodos. Probado contra fuerza bruta
+  (3 000 casos). Si no hay combinación exacta, sigue la pasada de mayor a menor de siempre.
