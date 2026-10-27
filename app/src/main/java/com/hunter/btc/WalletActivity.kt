@@ -810,8 +810,12 @@ class WalletActivity : FragmentActivity() {
                 val nuevasGastables = linkedMapOf<String, String>()
                 val clavePorProposito = mapOf(44 to "p2pkh", 49 to "p2sh",
                                               84 to "p2wpkh", 86 to "p2tr")
-                for (purpose in HdScanner.PURPOSES) {
-                    val (usadas, _, incompletoRec) = HdScanner.scanBranchInformado(mnemonicSnap, purpose, change = 0, testnet = isTestnet)
+                // Las ocho ramas (4 tipos × recepción/cambio) se recorren a la vez; abajo se
+                // procesan en el mismo orden de siempre.
+                val ramasHd = HdScanner.PURPOSES.flatMap { listOf(it to 0, it to 1) }
+                val resultadosHd = HdScanner.escanearRamas(mnemonicSnap, ramasHd, isTestnet)
+                for ((k, purpose) in HdScanner.PURPOSES.withIndex()) {
+                    val (usadas, _, incompletoRec) = resultadosHd[2 * k]
                     if (incompletoRec) fallosHD++
                     for (f in usadas) {
                         hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} [${f.index}]"
@@ -829,7 +833,7 @@ class WalletActivity : FragmentActivity() {
                     // El cambio también guarda fondos entre envíos. Un cambio ya
                     // gastado no sale en el saldo, pero sí en el historial: sin él
                     // el envío que lo gastó no aparecía.
-                    val (camb, _, incompletoCam) = HdScanner.scanBranchInformado(mnemonicSnap, purpose, change = 1, testnet = isTestnet)
+                    val (camb, _, incompletoCam) = resultadosHd[2 * k + 1]
                     if (incompletoCam) fallosHD++
                     for (f in camb) {
                         hdUsadas[f.addr] = "${HdScanner.purposeLabel(purpose)} change [${f.index}]"

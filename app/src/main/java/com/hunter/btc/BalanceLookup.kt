@@ -52,16 +52,18 @@ object BalanceLookup {
      * dos veces (¿usada? y ¿saldo?) al mismo servidor, y cada consulta es un dato
      * más que ese servidor ve sobre la cartera. La memoria dura hasta olvidar().
      */
-    private val memoDirecciones = HashMap<String, String?>()
-    private var memoActiva = false
+    // Varias ramas HD se recorren a la vez (HdScanner.escanearRamas): la memoria es concurrente y la
+    // consulta de red va FUERA de cualquier cerrojo, que antes la hacía una a una. Los fallos no se
+    // guardan: una respuesta que no llegó no es un dato, y otra rama puede preguntar lo mismo.
+    private val memoDirecciones = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var memoActiva = false
 
-    @Synchronized
     private fun jsonDeDireccion(addr: String, testnet: Boolean): String? {
         if (!memoActiva) return ChainApi.get("/address/$addr", testnet)
         val clave = (if (testnet) "t|" else "m|") + addr
-        if (memoDirecciones.containsKey(clave)) return memoDirecciones[clave]
+        memoDirecciones[clave]?.let { return it }
         val js = ChainApi.get("/address/$addr", testnet)
-        memoDirecciones[clave] = js
+        if (js != null && memoActiva) memoDirecciones[clave] = js
         return js
     }
 
@@ -69,10 +71,8 @@ object BalanceLookup {
      * La memoria vive sólo durante una búsqueda de direcciones. Fuera de ella cada
      * consulta va al servidor: un saldo viejo en Enviar o en Recibir sería peor.
      */
-    @Synchronized
     fun iniciarMemo() { memoDirecciones.clear(); memoActiva = true }
 
-    @Synchronized
     fun terminarMemo() { memoActiva = false; memoDirecciones.clear() }
 
     /**

@@ -120,6 +120,32 @@ object HdScanner {
         return Triple(usadas, primeraLibre, incompleto)
     }
 
+    /** Cuántas ramas se recorren a la vez: las ocho (4 tipos × recepción/cambio) harían ráfagas que los servidores públicos frenan. */
+    const val RAMAS_A_LA_VEZ = 4
+
+    /**
+     * [scanBranchInformado] de varias ramas (propósito, cambio) a la vez, con el resultado de cada
+     * una en el MISMO orden que se pidieron: quien lo use ve exactamente lo que vería uno a uno,
+     * sólo que antes. Cada rama sigue siendo secuencial por dentro (su hueco de 20 depende del orden).
+     */
+    fun escanearRamas(mnemonic: String, ramas: List<Pair<Int, Int>>, testnet: Boolean = false,
+                      hilos: Int = RAMAS_A_LA_VEZ): List<Triple<List<Found>, Int, Boolean>> {
+        if (ramas.isEmpty()) return emptyList()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(hilos.coerceIn(1, ramas.size)) { r ->
+            Thread(r, "hd-rama").also { it.isDaemon = true }
+        }
+        try {
+            val futuros = ramas.map { (purpose, change) ->
+                pool.submit<Triple<List<Found>, Int, Boolean>> {
+                    // Una rama que revienta no tumba a las demás: queda como incompleta.
+                    try { scanBranchInformado(mnemonic, purpose, change, testnet) }
+                    catch (e: Exception) { Triple(emptyList(), -1, true) }
+                }
+            }
+            return futuros.map { it.get() }
+        } finally { pool.shutdown() }
+    }
+
     /**
      * Dirección de cambio sin estrenar para el próximo envío.
      *

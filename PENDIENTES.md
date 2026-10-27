@@ -421,3 +421,12 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   cuenta (Sparrow, Electrum offline); un Coldcard/Ledger sin esa información puede no hacerlo.
 - Una xpub como cartera vigilada (varias direcciones, cambio derivado) sigue sin existir.
 - Sin probar en móvil; la construcción sí tiene pruebas de JVM.
+
+## Recorrido HD en paralelo (2026-10-27)
+
+- `HdScanner.escanearRamas`: las ocho ramas (4 tipos × recepción/cambio) del repaso de saldo se
+  recorren con 4 hilos y se procesan en el mismo orden de antes; cada rama sigue siendo secuencial.
+- `BalanceLookup`: la memoria de direcciones es concurrente y la consulta de red ya no va dentro de
+  un `@Synchronized` (que lo hacía todo uno a uno). Los fallos no se memorizan.
+- Sin medir en móvil ni contra los servidores reales (límites de ritmo de mempool.space sin probar);
+  si empiezan a salir "no answer" con la seed grande, bajar `RAMAS_A_LA_VEZ`.
