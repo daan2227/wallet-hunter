@@ -7,6 +7,7 @@
 #   wif          - todas las direcciones de una WIF, contra vectores publicados
 #   xpub         - xpub/zpub de la cuenta, contra el vector publicado de BIP84
 #   taproot_audit - el motor de auditoría Taproot (fuerza bruta con el tweak de BIP341)
+#   ec_ops       - Silent Payments (vectores oficiales de BIP352), salida BIP86 y BIP32 público
 #     tools/ec-harness/con_secp.sh app/src/main/cpp/secp256k1
 # Para medir, a mano despues: ./recuperacion <hilos>, ./escaner <grupos>
 set -e
@@ -24,6 +25,7 @@ g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o escaner escaner.cpp "$T/sec
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o bsgs bsgs.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lpthread
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o wif wif.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
 g++ -O2 -Wno-unused-result -I$C -I"$SECP/include" -o xpub xpub.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
+g++ -O2 -std=c++17 -Wno-unused-result -Wno-deprecated-declarations -I$C -I"$SECP/include" -o ec_ops ec_ops.cpp $C/bip32.cpp $C/sha512.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto
 g++ -O2 -std=c++17 -Wno-unused-result -I$C -I"$SECP/include" -o taproot_audit taproot_audit.cpp "$T/secp.o" "$T/pre1.o" "$T/pre2.o" -lcrypto -lpthread
 rm -rf "$T"
 echo "=== recuperacion ==="; ./recuperacion
@@ -32,3 +34,4 @@ echo "=== bsgs ===";         ./bsgs
 echo "=== wif ===";          ./wif
 echo "=== xpub ===";         ./xpub
 echo "=== taproot_audit ==="; ./taproot_audit
+echo "=== ec_ops (BIP352, BIP86, BIP32) ==="; ./ec_ops datos/bip352_envio.txt

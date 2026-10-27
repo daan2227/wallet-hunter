@@ -36,6 +36,7 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
+#include "ec_ops.h"   /* xpub vigilada, Taproot BIP86, Silent Payments, multifirma */
 #include "kangaroo.h"
 #include "fe_arm64.h"
 #include "gpu/gpu_kangaroo.h"
@@ -3818,5 +3819,94 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_taprootHechas(JNIEnv*, jobject){ return (jlong)g_tr_done.load(); }
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_taprootAncho(JNIEnv*, jobject){ return (jlong)g_tr_width; }
+
+
+/* ── Operaciones de curva para Kotlin (ver ec_ops.h) ───────────────────────────────────────────────
+ * Una sola entrada con un nombre de operación: hex de entrada y salida, "" si algo no vale.
+ *   pub        a = privada                                  → pública 33
+ *   pub_mul    a = pública 33, b = escalar                  → a·b
+ *   pub_tweak  a = pública 33, b = escalar                  → a + b·G
+ *   pub_sum    a = "p1,p2,…"                                → suma
+ *   tr         a = x-only 32 (o pública 33)                 → x-only de la salida BIP86
+ *   ckd        a = clave33 ‖ cadena32 de una xpub, b = "c/i" → pública 33 (derivación pública)
+ *   priv_sum   a = "k1,k2,…", b = "0,1,…" (negar)           → suma mod n
+ *   sp_send    a = "suma32|outpoint36", b = "scan:spend,…"  → "x1,x2,…" (BIP352) */
+static bool de_hex(const std::string &s, std::vector<uint8_t> &o) {
+    if (s.size() % 2) return false; o.resize(s.size() / 2);
+    for (size_t i = 0; i < o.size(); i++) {
+        int a = -1, b = -1; char c1 = tolower(s[2*i]), c2 = tolower(s[2*i+1]);
+        if (c1 >= '0' && c1 <= '9') a = c1 - '0'; else if (c1 >= 'a' && c1 <= 'f') a = c1 - 'a' + 10;
+        if (c2 >= '0' && c2 <= '9') b = c2 - '0'; else if (c2 >= 'a' && c2 <= 'f') b = c2 - 'a' + 10;
+        if (a < 0 || b < 0) return false; o[i] = (uint8_t)((a << 4) | b);
+    }
+    return true;
+}
+static std::string a_hex(const uint8_t *b, size_t n) { static const char *H = "0123456789abcdef"; std::string s(n * 2, '0');
+    for (size_t i = 0; i < n; i++) { s[2*i] = H[b[i] >> 4]; s[2*i+1] = H[b[i] & 15]; } return s; }
+static std::vector<std::string> trocear(const std::string &s, char c) {
+    std::vector<std::string> v; std::string t; for (char x : s) { if (x == c) { v.push_back(t); t.clear(); } else t += x; }
+    if (!t.empty() || !v.empty()) v.push_back(t); return v; }
+
+static std::string ec_op(const std::string &op, const std::string &a, const std::string &b) {
+    static secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN | SECP256K1_CONTEXT_VERIFY);
+    std::vector<uint8_t> x, y; uint8_t o33[33], o32[32];
+    if (op == "pub") { if (!de_hex(a, x) || x.size() != 32 || !ecops::pub_de_priv(ctx, x.data(), o33)) return ""; OPENSSL_cleanse(x.data(), x.size()); return a_hex(o33, 33); }
+    if (op == "pub_mul" || op == "pub_tweak") {
+        if (!de_hex(a, x) || x.size() != 33 || !de_hex(b, y) || y.size() != 32) return "";
+        bool ok = op == "pub_mul" ? ecops::pub_mul(ctx, x.data(), y.data(), o33) : ecops::pub_add_tweak(ctx, x.data(), y.data(), o33);
+        return ok ? a_hex(o33, 33) : "";
+    }
+    if (op == "pub_sum") {
+        std::vector<std::vector<uint8_t>> ps;
+        for (auto &t : trocear(a, ',')) { std::vector<uint8_t> p; if (!de_hex(t, p) || p.size() != 33) return ""; ps.push_back(p); }
+        return ecops::pub_sumar(ctx, ps, o33) ? a_hex(o33, 33) : "";
+    }
+    if (op == "tr") {
+        if (!de_hex(a, x) || (x.size() != 32 && x.size() != 33)) return "";
+        const uint8_t *ix = x.size() == 33 ? x.data() + 1 : x.data();
+        return ecops::tr_salida(ctx, ix, o32) ? a_hex(o32, 32) : "";
+    }
+    if (op == "ckd") {
+        if (!de_hex(a, x) || x.size() != 65) return "";
+        std::vector<uint32_t> ruta;
+        for (auto &t : trocear(b, '/')) { if (t.empty() || t.size() > 10) return ""; char *e = nullptr; unsigned long v = strtoul(t.c_str(), &e, 10);
+            if (*e || v >= 0x80000000UL) return ""; ruta.push_back((uint32_t)v); }
+        return ecops::ckd_pub_ruta(ctx, x.data(), x.data() + 33, ruta, o33) ? a_hex(o33, 33) : "";
+    }
+    if (op == "priv_sum") {
+        std::vector<std::vector<uint8_t>> ks; std::vector<bool> neg;
+        for (auto &t : trocear(a, ',')) { std::vector<uint8_t> k; if (!de_hex(t, k) || k.size() != 32) return ""; ks.push_back(k); }
+        for (auto &t : trocear(b, ',')) neg.push_back(t == "1");
+        bool ok = ecops::priv_sumar(ctx, ks, neg, o32);
+        for (auto &k : ks) OPENSSL_cleanse(k.data(), k.size());
+        std::string r = ok ? a_hex(o32, 32) : ""; OPENSSL_cleanse(o32, 32); return r;
+    }
+    if (op == "sp_send") {
+        auto pa = trocear(a, '|'); std::vector<uint8_t> suma, op36;
+        if (pa.size() != 2 || !de_hex(pa[0], suma) || suma.size() != 32 || !de_hex(pa[1], op36) || op36.size() != 36) return "";
+        std::vector<ecops::Destinatario> ds;
+        for (auto &t : trocear(b, ',')) {
+            auto kv = trocear(t, ':'); std::vector<uint8_t> sc, sp;
+            if (kv.size() != 2 || !de_hex(kv[0], sc) || sc.size() != 33 || !de_hex(kv[1], sp) || sp.size() != 33) return "";
+            ecops::Destinatario d; memcpy(d.scan, sc.data(), 33); memcpy(d.spend, sp.data(), 33); ds.push_back(d);
+        }
+        std::vector<std::vector<uint8_t>> out;
+        bool ok = !ds.empty() && ecops::sp_salidas(ctx, suma.data(), op36.data(), ds, out);
+        OPENSSL_cleanse(suma.data(), suma.size());
+        if (!ok) return "";
+        std::string r; for (size_t i = 0; i < out.size(); i++) { if (i) r += ","; r += a_hex(out[i].data(), 32); }
+        return r;
+    }
+    return "";
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_ec(JNIEnv *env, jobject, jstring jop, jstring ja, jstring jb) {
+    auto leer = [&](jstring j) { if (!j) return std::string(); const char *c = env->GetStringUTFChars(j, nullptr); std::string s = c ? c : ""; if (c) env->ReleaseStringUTFChars(j, c); return s; };
+    std::string op = leer(jop), a = leer(ja), b = leer(jb);
+    std::string r = ec_op(op, a, b);
+    OPENSSL_cleanse(&a[0], a.size());
+    return env->NewStringUTF(r.c_str());
+}
 
 }

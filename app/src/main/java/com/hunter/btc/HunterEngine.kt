@@ -112,6 +112,11 @@ object HunterEngine {
     external fun deriveRuta(mnemonic: String, path: String): String
     /** Pública comprimida (66 hex) de una privada hex, o "". */
     external fun pubDeHex(privHex: String): String
+    /**
+     * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
+     * "ckd", "priv_sum", "sp_send". Hex de entrada y de salida; "" si algo no vale.
+     */
+    external fun ec(op: String, a: String, b: String): String
     /** Firma un hash de 32 bytes (hex) con una privada hex → DER hex (sin byte
      *  de sighash), para firmar PSBT. */
     external fun firmarHash(privHex: String, hashHex: String): String

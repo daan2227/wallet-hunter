@@ -19,3 +19,4 @@ gpu_kangaroo
 # Vectores de prueba de Bitcoin Core: sin ellos bip158 no tiene qué comprobar.
 !datos/
 !datos/*.txt
+ec_ops
