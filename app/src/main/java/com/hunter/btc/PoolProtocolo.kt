@@ -27,6 +27,19 @@ object PoolProtocolo {
         if (!ok) null else Trabajo(o.getLong("id"), o.optInt("puzzle", 0), ini, fin, obj, ts)
     } catch (e: Exception) { null }
 
+    /**
+     * ¿Es de verdad un trozo del puzzle que dice? La dirección tiene que ser la de ese puzzle (la tabla de la
+     * app) y el rango, estar dentro de 2^(N-1)…2^N-1. Sin esto, un servidor malicioso podría poner el teléfono
+     * a buscar la clave de cualquier otra dirección.
+     */
+    fun esDelPuzzle(t: Trabajo, direccionDelPuzzle: (Int) -> String?): Boolean {
+        if (t.puzzle !in 1..160) return false
+        if (direccionDelPuzzle(t.puzzle) != t.objetivo) return false
+        val ini = java.math.BigInteger(t.inicio, 16); val fin = java.math.BigInteger(t.fin, 16)
+        val lo = java.math.BigInteger.ONE.shiftLeft(t.puzzle - 1); val hi = java.math.BigInteger.ONE.shiftLeft(t.puzzle).subtract(java.math.BigInteger.ONE)
+        return ini >= lo && fin <= hi
+    }
+
     /** "h160:priv,h160:priv" del motor → mapa sólo con los testigos de este trabajo. */
     fun testigosHallados(motor: String, t: Trabajo): Map<String, String> =
         motor.split(',').mapNotNull { p -> p.split(':').takeIf { it.size == 2 && it[0] in t.testigos && HEX64.matches(it[1]) }?.let { it[0] to it[1] } }.toMap()

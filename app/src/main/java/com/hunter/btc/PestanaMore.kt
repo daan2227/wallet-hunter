@@ -320,7 +320,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
                 if (!PoolPuzzle.urlValida(u)) { Toast.makeText(this, "Use https:// (or http:// to a .onion address)", Toast.LENGTH_LONG).show(); return@setOnClickListener }
                 PoolPuzzle.ponerUrl(this, u)
                 val hilos = maxOf(1, Runtime.getRuntime().availableProcessors() - 1)
-                PoolPuzzle.empezar(this, hilos, 70)
+                PoolPuzzle.empezar(this, hilos, 70) { n -> puzzles.firstOrNull { it.num == n }?.addr }
                 b.text = "Stop"
             }
         }

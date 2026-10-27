@@ -227,6 +227,9 @@ object Ur {
                 val pSeq = l.uint(); pLen = l.uint(); pLargo = l.uint(); pCrc = l.uint(); frag = l.bytes()
                 require(pSeq == seq && pLen == len && frag.isNotEmpty() && pLen in 1..10_000 && pLargo in 1..50_000_000)
             } catch (e: Exception) { return false }
+            // El largo declarado tiene que caber justo en los fragmentos: si no, un QR malicioso pediría
+            // reservar hasta 50 MB al juntarlos (y cerraría la app).
+            if (pLargo > pLen * frag.size || pLargo <= (pLen - 1) * frag.size) return false
             if (n == 0) { n = pLen.toInt(); largo = pLargo.toInt(); checksum = pCrc; fragLargo = frag.size; tipo = t }
             else if (n.toLong() != pLen || largo.toLong() != pLargo || checksum != pCrc || fragLargo != frag.size) return false
             cola.addLast(Parte(elegirFragmentos(seq, n, checksum).toSet(), frag))

@@ -40,6 +40,7 @@ class CarteraExternaActivity : AppCompatActivity() {
         setTheme(AppTheme.estilo(this))
         super.onCreate(savedInstanceState)
         AppTheme.init(this); AppLock.init(this)
+        Fiat.cargar(this) { }
         val e = CarterasExternas.de(this, intent.getStringExtra(EXTRA_ID) ?: "")
         val m = e?.let { CarterasExternas.motorDe(it.descriptor).first }
         if (e == null || m == null) { Toast.makeText(this, "This wallet could not be opened.", Toast.LENGTH_LONG).show(); finish(); return }
@@ -83,6 +84,7 @@ class CarteraExternaActivity : AppCompatActivity() {
         val total = monedas.sumOf { it.valor }
         val pend = monedas.filter { !it.confirmada }.sumOf { it.valor }
         caja.addView(texto(if (cargando && monedas.isEmpty()) "Checking the network…" else btc(total), 26f, AppTheme.ACCENT, true))
+        if (!(cargando && monedas.isEmpty())) Fiat.de(this, total)?.let { caja.addView(texto("≈ $it", AppTheme.SP_CAPTION, AppTheme.TXT_SEC)) }
         if (pend > 0) caja.addView(texto("of which unconfirmed: ${btc(pend)}", AppTheme.SP_CAPTION, AppTheme.WARN))
         caja.addView(boton("Receive") { recibir() })
         caja.addView(boton("Send (prepare PSBT to sign elsewhere)", principal = true) { enviar() })
@@ -94,7 +96,14 @@ class CarteraExternaActivity : AppCompatActivity() {
             for (m in monedas.sortedByDescending { it.valor }) {
                 val dir = motor.direccion(m.c, m.i) ?: "?"
                 caja.addView(texto("${btc(m.valor)}${if (m.confirmada) "" else " (pending)"}\n${if (m.c == 1) "change" else "receive"} #${m.i} · ${dir.take(14)}…${dir.takeLast(6)}",
-                    AppTheme.SP_CAPTION, AppTheme.TXT_PRI))
+                    AppTheme.SP_CAPTION, if (m.confirmada) AppTheme.TXT_PRI else AppTheme.WARN).apply {
+                    // Tocar copia la dirección entera (para comprobarla en el firmador o en un explorador).
+                    isClickable = true; foreground = Ui.toque()
+                    setOnClickListener {
+                        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("address", dir))
+                        Toast.makeText(this@CarteraExternaActivity, "Address copied", Toast.LENGTH_SHORT).show()
+                    }
+                })
             }
         }
         caja.addView(boton("Remove this wallet from the app") {

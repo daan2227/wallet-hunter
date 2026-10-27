@@ -31,3 +31,17 @@ class PoolProtocoloTest {
         assertNotNull(PoolProtocolo.claveDe("x\n1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum PRIV:${"0".repeat(59)}d2c55 y", t.objetivo))
     }
 }
+
+class PoolPuzzleValidoTest {
+    private fun t(puzzle: Int, ini: String, fin: String, obj: String) = PoolProtocolo.Trabajo(1, puzzle, ini.padStart(64, '0'), fin.padStart(64, '0'), obj, listOf("ab".repeat(20)))
+    private val dir = { n: Int -> if (n == 20) "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum" else null }
+
+    @Test fun soloLaDireccionYElRangoDelPuzzle() {
+        org.junit.Assert.assertTrue(PoolProtocolo.esDelPuzzle(t(20, "80000", "80fff", "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum"), dir))
+        // otra dirección: el servidor querría usar el teléfono para buscar otra clave
+        org.junit.Assert.assertFalse(PoolProtocolo.esDelPuzzle(t(20, "80000", "80fff", "1BgGZ9tcN4rm9KBzDn7KprQz87SZ26SAMH"), dir))
+        // fuera del rango del puzzle 20 (2^19 … 2^20-1)
+        org.junit.Assert.assertFalse(PoolProtocolo.esDelPuzzle(t(20, "7ffff", "80fff", "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum"), dir))
+        org.junit.Assert.assertFalse(PoolProtocolo.esDelPuzzle(t(20, "ff000", "100fff", "1HsMJxNiV7TLxmoF6uJNkydxPFDog4NQum"), dir))
+    }
+}

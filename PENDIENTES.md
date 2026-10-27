@@ -654,3 +654,19 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   nostr-sdk (NostrEventoTest); y de punta a punta contra un relay local de nostr-sdk con un servicio NWC
   hecho con nostr-sdk, en NIP-44 y en NIP-04: info, saldo, factura, pago, error de saldo y movimientos.
 - Sin probar en móvil ni contra un servicio real (Alby Hub…).
+
+## Revisión de seguridad e interfaz de lo nuevo (2026-10-27)
+
+- QR animado UR: el largo declarado tiene que caber en los fragmentos (un QR malicioso pedía reservar
+  hasta 50 MB al juntarlo y cerraba la app). Prueba nueva en UrTest.
+- Pool: un trabajo sólo se acepta si la dirección es la del puzzle que dice (tabla de la app) y el rango
+  cae en 2^(N-1)…2^N-1; si no, se para. Antes un servidor malicioso podía poner el teléfono a buscar la
+  clave de cualquier dirección. Prueba nueva (PoolPuzzleValidoTest).
+- Firmar con el teléfono (multifirma/herencia): antes de pedir el código se enseña a quién paga, cuánto y la
+  comisión, y se rechaza lo que no pasa Psbt.revisar. Antes una PSBT llegada de fuera se firmaba sin verla.
+- Pagos Lightning (nodo propio y NWC) y "retirar" del nodo: piden el código por encima del umbral de
+  Perfil (o siempre con la huella activada, o si el importe no se sabe), como los envíos en cadena.
+- Interfaz: valor en moneda junto a los saldos y en las confirmaciones de pago (Lightning, NWC, cartera
+  externa); en la cartera externa, tocar una moneda copia su dirección y las pendientes salen en ámbar.
+- Pendiente (no hecho): los descriptores de las carteras externas se guardan sin cifrar en el almacén
+  privado de la app; no permiten gastar pero sí ver todo el historial.

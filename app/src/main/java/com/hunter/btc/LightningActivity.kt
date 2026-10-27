@@ -35,6 +35,7 @@ class LightningActivity : AppCompatActivity() {
         setTheme(AppTheme.estilo(this))
         super.onCreate(savedInstanceState)
         AppTheme.init(this); AppLock.init(this)
+        Fiat.cargar(this) { }   // el precio, para el valor junto a los importes
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         testnet = intent.getBooleanExtra(EXTRA_TESTNET, false)
         val scroll = ScrollView(this).apply { setBackgroundColor(AppTheme.BG_DEEP); isFillViewport = true }
@@ -100,6 +101,7 @@ class LightningActivity : AppCompatActivity() {
         }
         val (cadena, canales) = try { m.saldos() } catch (e: Exception) { 0L to 0L }
         caja.addView(texto("%,d sat".format(canales), 26f, AppTheme.ACCENT, true))
+        Fiat.de(this, canales)?.let { caja.addView(texto("≈ $it", AppTheme.SP_CAPTION, AppTheme.TXT_SEC)) }
         caja.addView(texto("in channels · %,d sat on-chain (node wallet)".format(cadena), AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
         caja.addView(boton("Receive (invoice)", principal = true) { recibir() })
         caja.addView(boton("Pay an invoice") { pagarElegir() })
@@ -197,14 +199,23 @@ class LightningActivity : AppCompatActivity() {
         if (red != esperada) { Toast.makeText(this, "That invoice is for another network.", Toast.LENGTH_LONG).show(); return }
         val etLibre = Ui.input(this, "Amount in sat").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         val b = AlertDialog.Builder(this).setTitle("Pay this invoice?")
-            .setMessage((if (sats != null) "%,d sat".format(sats) else "Any amount: enter it below") + (if (desc.isNotBlank()) "\n\n“$desc”" else ""))
+            .setMessage((if (sats != null) "%,d sat".format(sats) + Fiat.entre(this, sats) else "Any amount: enter it below") + (if (desc.isNotBlank()) "\n\n“$desc”" else ""))
             .setNegativeButton("Cancel", null)
         if (sats == null) b.setView(LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(etLibre) })
         b.setPositiveButton("Pay") { _, _ ->
             val libre = etLibre.text.toString().toLongOrNull()
             if (sats == null && (libre == null || libre <= 0)) { Toast.makeText(this, "Enter an amount.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-            enHilo("Pay") { m.pagar(fac, libre) }
+            conCodigoSiToca(sats ?: libre) { enHilo("Pay") { m.pagar(fac, libre) } }
         }.show()
+    }
+
+
+    /** Como al enviar en la cadena: por encima del umbral de Perfil (o con la huella activada), el código otra vez. */
+    private fun conCodigoSiToca(sats: Long?, accion: () -> Unit) {
+        val pide = WalletManager.hasPin(this) &&
+            (WalletManager.huellaActivada(this) || sats == null || UmbralEnvio.exige(UmbralEnvio.leer(this), sats))
+        if (!pide) { accion(); return }
+        PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false, permitirHuella = false) { ok -> if (ok) accion() }
     }
 
     private fun fondear() {
@@ -234,7 +245,8 @@ class LightningActivity : AppCompatActivity() {
             .setNegativeButton("Cancel", null).setPositiveButton("Withdraw") { _, _ ->
                 val a = et.text.toString().trim()
                 if (BtcAddress.validate(a, testnet) !is BtcAddress.Result.Valid) { Toast.makeText(this, "Invalid address.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
-                enHilo("Withdraw") { val txid = m.vaciarCadena(a); runOnUiThread { copiar("txid", txid) } }
+                val todo = try { m.saldos().first } catch (e: Exception) { null }
+                conCodigoSiToca(todo) { enHilo("Withdraw") { val txid = m.vaciarCadena(a); runOnUiThread { copiar("txid", txid) } } }
             }.show()
     }
 

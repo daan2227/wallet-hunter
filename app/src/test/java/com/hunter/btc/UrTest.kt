@@ -45,6 +45,16 @@ class UrTest {
         }
     }
 
+    @Test fun noAceptaUnLargoQueNoCabeEnLosFragmentos() {
+        // Parte 1 de 2 con fragmentos de 10 bytes declarando un mensaje de 40 MB: antes se aceptaba y al
+        // completar se reservaban 40 MB.
+        val o = java.io.ByteArrayOutputStream()
+        o.write(0x85); o.write(0x01); o.write(0x02); o.write(0x1a); o.write(byteArrayOf(0x02, 0x62, 0x5a, 0x00))
+        o.write(0x1a); o.write(byteArrayOf(0, 0, 0, 1)); o.write(0x4a); o.write(ByteArray(10))
+        val parte = "ur:bytes/1-2/" + Ur.bytewordsMin(o.toByteArray())
+        assertEquals(false, Ur.Decodificador().recibir(parte))
+    }
+
     @Test fun rechazaBasuraYChecksumMalo() {
         val d = Ur.Decodificador()
         assertEquals(false, d.recibir("hola"))

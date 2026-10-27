@@ -26,13 +26,13 @@ object PoolPuzzle {
     /** https, o http a un .onion (por Tor). */
     fun urlValida(u: String) = u.startsWith("https://") || (u.startsWith("http://") && (java.net.URI(u).host ?: "").endsWith(".onion"))
 
-    fun empezar(ctx: Context, hilos: Int, cpu: Int) {
+    fun empezar(ctx: Context, hilos: Int, cpu: Int, direccionDelPuzzle: (Int) -> String?) {
         if (activo()) return
         val app = ctx.applicationContext
         val base = url(app)
         if (!urlValida(base)) { estado = "The pool URL must be https:// (or http:// to a .onion)"; return }
         parar = false
-        hilo = Thread({ bucle(app, base, hilos, cpu) }, "pool-puzzle").also { it.isDaemon = true; it.start() }
+        hilo = Thread({ bucle(app, base, hilos, cpu, direccionDelPuzzle) }, "pool-puzzle").also { it.isDaemon = true; it.start() }
     }
 
     fun detener() {
@@ -49,13 +49,16 @@ object PoolPuzzle {
         finally { c.disconnect() }
     } catch (e: Exception) { null }
 
-    private fun bucle(ctx: Context, base: String, hilos: Int, cpu: Int) {
+    private fun bucle(ctx: Context, base: String, hilos: Int, cpu: Int, direccionDelPuzzle: (Int) -> String?) {
         var hechos = 0
         while (!parar) {
             if (HunterEngine.isRunning()) { estado = "Waiting: the engine is busy with another scan"; Thread.sleep(10_000); continue }
             estado = "Asking the pool for a range…"
             val t = http("$base/trabajo?cliente=${cliente(ctx)}")?.let { PoolProtocolo.leerTrabajo(it) }
             if (t == null) { estado = "No answer (or an invalid job) from the pool; retrying in 1 min"; Thread.sleep(60_000); continue }
+            if (!PoolProtocolo.esDelPuzzle(t, direccionDelPuzzle)) {
+                estado = "The pool sent a range that is not puzzle #${t.puzzle}'s address or range: stopped"; parar = true; continue
+            }
             if (!HunterEngine.poolCanarios(t.testigos.joinToString(","))) { estado = "Could not set the proof addresses"; Thread.sleep(10_000); continue }
             HunterEngine.setTarget(t.objetivo)
             HunterEngine.setRange(t.inicio, t.fin)

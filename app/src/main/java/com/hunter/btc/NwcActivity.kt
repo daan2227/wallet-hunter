@@ -51,6 +51,7 @@ class NwcActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(AppTheme.estilo(this)); super.onCreate(savedInstanceState)
         AppTheme.init(this); AppLock.init(this)
+        Fiat.cargar(this) { }   // el precio, para el valor junto a los importes
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         val scroll = ScrollView(this).apply { setBackgroundColor(AppTheme.BG_DEEP); isFillViewport = true }
         caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(40)) }
@@ -98,6 +99,7 @@ class NwcActivity : AppCompatActivity() {
             return
         }
         caja.addView(texto(if (ocupado) "Asking your node…" else saldo?.let { "%,d sat".format(it) } ?: "—", 26f, AppTheme.ACCENT, true))
+        saldo?.let { Fiat.de(this, it) }?.let { caja.addView(texto("≈ $it", AppTheme.SP_CAPTION, AppTheme.TXT_SEC)) }
         caja.addView(texto("via ${n.relays.first()}${if (RedPrivada.activa()) " · through Tor" else ""}", AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
         caja.addView(boton("Receive (invoice)", principal = true) { recibir() })
         caja.addView(boton("Pay an invoice") { pagarElegir() })
@@ -154,6 +156,15 @@ class NwcActivity : AppCompatActivity() {
             }.show()
     }
 
+
+    /** Como al enviar en la cadena: por encima del umbral de Perfil (o con la huella activada), el código otra vez. */
+    private fun conCodigoSiToca(sats: Long?, accion: () -> Unit) {
+        val pide = WalletManager.hasPin(this) &&
+            (WalletManager.huellaActivada(this) || sats == null || UmbralEnvio.exige(UmbralEnvio.leer(this), sats))
+        if (!pide) { accion(); return }
+        PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false, permitirHuella = false) { ok -> if (ok) accion() }
+    }
+
     private fun pagarElegir() {
         val et = Ui.input(this, "lnbc… invoice", mono = true)
         AlertDialog.Builder(this).setTitle("Pay").setView(LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(et) })
@@ -169,10 +180,10 @@ class NwcActivity : AppCompatActivity() {
         val importe = Regex("^ln(?:bc|tb|bcrt)(\\d+)([munp]?)1", RegexOption.IGNORE_CASE).find(f)?.let { m ->
             val v = m.groupValues[1].toLong(); when (m.groupValues[2].lowercase()) { "m" -> v * 100_000; "u" -> v * 100; "n" -> v / 10; "p" -> v / 10_000; else -> v * 100_000_000 } }
         AlertDialog.Builder(this).setTitle("Pay with your remote node?")
-            .setMessage((importe?.let { "%,d sat".format(it) } ?: "Amount set by the invoice") + "\n\n${f.take(40)}…")
+            .setMessage((importe?.let { "%,d sat".format(it) + Fiat.entre(this, it) } ?: "Amount set by the invoice") + "\n\n${f.take(40)}…")
             .setNegativeButton("Cancel", null).setPositiveButton("Pay") { _, _ ->
-                enHilo("Pay") { n.pagar(f); saldo = try { n.saldoSat() } catch (e: Exception) { saldo }
-                    runOnUiThread { Toast.makeText(this, "Paid", Toast.LENGTH_LONG).show() } }
+                conCodigoSiToca(importe) { enHilo("Pay") { n.pagar(f); saldo = try { n.saldoSat() } catch (e: Exception) { saldo }
+                    runOnUiThread { Toast.makeText(this, "Paid", Toast.LENGTH_LONG).show() } } }
             }.show()
     }
 }
