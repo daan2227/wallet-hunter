@@ -3,6 +3,7 @@ package com.hunter.btc
 import org.lightningdevkit.ldknode.Bolt11Invoice
 import org.lightningdevkit.ldknode.Bolt11InvoiceDescription
 import org.lightningdevkit.ldknode.Builder
+import org.lightningdevkit.ldknode.ElectrumSyncConfig
 import org.lightningdevkit.ldknode.EsploraSyncConfig
 import org.lightningdevkit.ldknode.Event
 import org.lightningdevkit.ldknode.LogLevel
@@ -24,7 +25,8 @@ class MotorLn(val node: Node) {
 
     companion object {
         /**
-         * Construye el nodo. [chain]: ("esplora", url) o ("bitcoind", "host:puerto:usuario:clave").
+         * Construye el nodo. [chain]: ("esplora", url), ("electrum", "ssl://host:puerto" o "tcp://…") o
+         * ("bitcoind", "host:puerto:usuario:clave"); ver [cadena].
          * [lsp]: (nodeId, host:puerto, token o "") para recibir con canal "justo a tiempo" (LSPS2), o null.
          */
         fun construir(dir: String, red: Network, frase: String, chain: Pair<String, String>,
@@ -35,13 +37,39 @@ class MotorLn(val node: Node) {
             b.setFilesystemLogger("$dir/ldk.log", LogLevel.INFO)
             b.setEntropyBip39Mnemonic(frase, null)
             when (chain.first) {
-                "bitcoind" -> { val p = chain.second.split(':'); b.setChainSourceBitcoindRpc(p[0], p[1].toUShort(), p[2], p[3]) }
+                "bitcoind" -> { val p = chain.second.split(":", limit = 4); b.setChainSourceBitcoindRpc(p[0], p[1].toUShort(), p[2], p[3]) }
+                "electrum" -> b.setChainSourceElectrum(chain.second, ElectrumSyncConfig(null))
                 else -> b.setChainSourceEsplora(chain.second, EsploraSyncConfig(null))
             }
             if (rgs != null) b.setGossipSourceRgs(rgs) else b.setGossipSourceP2p()
             if (escuchar.isNotEmpty()) b.setListeningAddresses(escuchar)
             lsp?.let { (id, dirLsp, token) -> b.setLiquiditySourceLsps2(id, dirLsp, token.ifEmpty { null }) }
             return MotorLn(b.build())
+        }
+
+        /**
+         * De dónde sigue la cadena el nodo: [fuente] "esplora" (URL https, o la de blockstream.info), "electrum"
+         * (un servidor Electrum: "ssl://host:puerto" o "tcp://host:puerto", el propio en casa por ejemplo) o "core"
+         * (el Bitcoin Core de la pestaña Core, por RPC en 127.0.0.1 con su cookie "usuario:clave").
+         * Lanza IllegalArgumentException con un motivo legible si algo no vale.
+         */
+        fun cadena(fuente: String, url: String, testnet: Boolean, cookie: String?, puertoCore: Int): Pair<String, String> = when (fuente) {
+            "electrum" -> {
+                val u = url.trim()
+                require(Regex("^(ssl|tcp)://[A-Za-z0-9.-]+:\\d{1,5}$").matches(u)) { "Electrum server: use ssl://host:port (or tcp:// for one on your own network)" }
+                "electrum" to u
+            }
+            "core" -> {
+                require(!testnet) { "Your Core node runs on mainnet: choose Esplora or Electrum for testnet" }
+                val c = cookie?.trim() ?: throw IllegalArgumentException("Start Bitcoin Core first (Core tab): it has no RPC cookie yet")
+                require(c.contains(':') && !c.contains('\n')) { "Unexpected Core cookie" }
+                "bitcoind" to "127.0.0.1:$puertoCore:$c"
+            }
+            else -> {
+                val u = url.trim().trimEnd('/').ifEmpty { if (testnet) "https://blockstream.info/testnet/api" else "https://blockstream.info/api" }
+                require(u.startsWith("https://") || Regex("^http://(127\\.0\\.0\\.1|localhost|10\\.|192\\.168\\.).*").matches(u)) { "Esplora: use an https:// URL" }
+                "esplora" to u
+            }
         }
 
         /** "nodeId@host:puerto" → (nodeId, host:puerto); null si no tiene esa forma. */
@@ -90,6 +118,13 @@ class MotorLn(val node: Node) {
         }
         return inv.toString()
     }
+
+    /**
+     * QR unificado (BIP21 con "lightning="): "bitcoin:<dirección>?amount=…&lightning=<factura>". Quien paga
+     * elige en cadena o Lightning; las dos llegan a este nodo.
+     */
+    fun qrUnificado(sats: Long, descripcion: String, segundos: Int = 3600): String =
+        node.unifiedQrPayment().receive(sats.toULong(), descripcion.take(120), segundos.toUInt())
 
     /** Capacidad de entrada total de los canales listos (sat). */
     fun entrante(): Long = canales().filter { it.listo }.sumOf { it.entranteSat }

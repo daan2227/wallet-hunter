@@ -94,6 +94,8 @@ class LightningActivity : AppCompatActivity() {
                 PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) enHilo("Start") { Ln.arrancar(this, testnet) } }
             })
             caja.addView(boton("Liquidity provider (LSP) for receiving") { lspDialogo() })
+            val (f, u) = Ln.fuente(this)
+            caja.addView(boton("Chain source: " + when (f) { "electrum" -> "Electrum $u"; "core" -> "my Bitcoin Core"; else -> "Esplora ${u.ifEmpty { "(blockstream.info)" }}" }) { fuenteDialogo() })
             return
         }
         val (cadena, canales) = try { m.saldos() } catch (e: Exception) { 0L to 0L }
@@ -104,6 +106,7 @@ class LightningActivity : AppCompatActivity() {
         caja.addView(boton("Add on-chain funds to the node") { fondear() })
         caja.addView(boton("Open a channel") { abrirCanal() })
         caja.addView(boton("Withdraw on-chain funds") { retirar() })
+        caja.addView(boton("Withdraw to my main wallet") { retirarACartera() })
         caja.addView(boton("Sync now") { enHilo("Sync") { m.sincronizar() } })
         val cs = try { m.canales() } catch (e: Exception) { emptyList() }
         if (cs.isNotEmpty()) caja.addView(Ui.sectionLabel(this, "Channels", topGap = dp(16)))
@@ -137,7 +140,7 @@ class LightningActivity : AppCompatActivity() {
         val lado = (resources.displayMetrics.widthPixels * 0.75f).toInt()
         val v = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(dp(16), dp(16), dp(16), 0)
-            addView(ImageView(context).apply { setImageBitmap(QrAnimado.qr(contenido.uppercase(), lado)) }, LinearLayout.LayoutParams(lado, lado))
+            addView(ImageView(context).apply { setImageBitmap(QrAnimado.qr(if (contenido.startsWith("bitcoin:")) contenido else contenido.uppercase(), lado)) }, LinearLayout.LayoutParams(lado, lado))
             addView(texto(nota, AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
         }
         AlertDialog.Builder(this).setTitle(titulo).setView(v).setPositiveButton("Copy") { _, _ -> copiar(titulo, contenido) }.setNegativeButton("Close", null).show()
@@ -147,9 +150,21 @@ class LightningActivity : AppCompatActivity() {
         val m = Ln.motor ?: return
         val etSat = Ui.input(this, "Amount in sat (empty = any)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         val etDesc = Ui.input(this, "Description")
-        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etSat); addView(etDesc) }
+        val cbUnif = android.widget.CheckBox(this).apply { text = "Unified QR (on-chain or Lightning; needs an amount)"; setTextColor(AppTheme.TXT_PRI) }
+        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etSat); addView(etDesc); addView(cbUnif) }
         AlertDialog.Builder(this).setTitle("Receive").setView(v).setNegativeButton("Cancel", null).setPositiveButton("Create invoice") { _, _ ->
             val sats = etSat.text.toString().toLongOrNull()
+            if (cbUnif.isChecked) {
+                if (sats == null || sats <= 0) { Toast.makeText(this, "A unified QR needs an amount.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                Thread {
+                    val r = try { Result.success(m.qrUnificado(sats, etDesc.text.toString().ifBlank { "Hunter Suite" })) } catch (e: Exception) { Result.failure(e) }
+                    runOnUiThread {
+                        r.onSuccess { qrDialogo("Unified QR", it, "The payer's wallet chooses on-chain or Lightning. Keep this screen open until it is paid.") }
+                         .onFailure { Toast.makeText(this, "Could not create it: ${it.message}", Toast.LENGTH_LONG).show() }
+                    }
+                }.start()
+                return@setPositiveButton
+            }
             Thread {
                 // Sin capacidad de entrada suficiente y con LSP configurado: canal "justo a tiempo".
                 val jit = Ln.lsp(this) != null && (try { m.entrante() } catch (e: Exception) { 0L }) < (sats ?: 1L)
@@ -221,6 +236,49 @@ class LightningActivity : AppCompatActivity() {
                 if (BtcAddress.validate(a, testnet) !is BtcAddress.Result.Valid) { Toast.makeText(this, "Invalid address.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
                 enHilo("Withdraw") { val txid = m.vaciarCadena(a); runOnUiThread { copiar("txid", txid) } }
             }.show()
+    }
+
+    /** De dónde sigue la cadena el nodo: Esplora, un servidor Electrum (el propio) o el Bitcoin Core de la app. */
+    private fun fuenteDialogo() {
+        val (f, u) = Ln.fuente(this)
+        val opciones = arrayOf("Esplora (blockstream.info or your own)", "Electrum server (e.g. your Fulcrum/electrs)", "My Bitcoin Core (Core tab, mainnet)")
+        val claves = arrayOf("esplora", "electrum", "core")
+        var elegida = claves.indexOf(f).coerceAtLeast(0)
+        val etUrl = Ui.input(this, "ssl://host:50002 · tcp://192.168.1.10:50001 · https://…", mono = true).apply { setText(u) }
+        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0)
+            addView(texto("Applies on the next start. The node's own traffic does not use the app's Tor proxy: " +
+                "for privacy prefer your own Electrum server or Core node.", AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
+            addView(etUrl) }
+        AlertDialog.Builder(this).setTitle("Chain source")
+            .setSingleChoiceItems(opciones, elegida) { _, i -> elegida = i }
+            .setView(v)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Save") { _, _ ->
+                val clave = claves[elegida]
+                try {
+                    val cookie = if (clave == "core") "comprobacion:x" else null   // la de verdad se lee al arrancar
+                    MotorLn.cadena(clave, etUrl.text.toString(), testnet, cookie, CoreConfig.RPC_PORT)
+                    Ln.ponerFuente(this, clave, etUrl.text.toString()); pintar()
+                } catch (e: IllegalArgumentException) { Toast.makeText(this, e.message, Toast.LENGTH_LONG).show() }
+            }.show()
+    }
+
+    /** Todo lo de la cartera en cadena del nodo a la siguiente dirección sin usar (bc1q) de la cartera principal. */
+    private fun retirarACartera() {
+        val m = Ln.motor ?: return
+        PinAuthHelper.show(this, autoBiometric = false) { ok ->
+            if (!ok) return@show
+            enHilo("Withdraw") {
+                val mn = WalletManager.loadSeed(this) ?: throw IllegalStateException("There is no main wallet (seed) on this phone")
+                val (_, libre) = HdScanner.scanBranch(mn, 84, 0, testnet)
+                if (libre < 0) throw IllegalStateException("Could not check which address of your wallet is unused (network)")
+                val arr = org.json.JSONArray(HunterEngine.deriveAddresses(mn, 84, 0, libre, 1, testnet))
+                val dir = arr.getJSONObject(0).getString("addr")
+                val txid = m.vaciarCadena(dir)
+                runOnUiThread { AlertDialog.Builder(this).setTitle("Sent to your wallet")
+                    .setMessage("To $dir (receive #$libre)\nTransaction $txid").setPositiveButton("OK", null).show() }
+            }
+        }
     }
 
     private fun lspDialogo() {

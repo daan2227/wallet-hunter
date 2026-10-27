@@ -18,6 +18,10 @@ object Ln {
 
     private fun p(ctx: Context) = ctx.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /** Fuente de la cadena: "esplora", "electrum" o "core", y la URL (Esplora propio o servidor Electrum). */
+    fun fuente(ctx: Context) = (p(ctx).getString("fuente", "esplora") ?: "esplora") to (p(ctx).getString("fuente_url", "") ?: "")
+    fun ponerFuente(ctx: Context, f: String, url: String) = p(ctx).edit().putString("fuente", f).putString("fuente_url", url.trim()).apply()
+
     fun lsp(ctx: Context): Triple<String, String, String>? {
         val id = p(ctx).getString("lsp_id", "") ?: ""; val dir = p(ctx).getString("lsp_dir", "") ?: ""
         return if (id.length == 66 && dir.contains(':')) Triple(id, dir, p(ctx).getString("lsp_token", "") ?: "") else null
@@ -46,9 +50,11 @@ object Ln {
         val f = frase(ctx) ?: throw IllegalStateException("Unlock the app first")
         val red = if (testnet) "testnet" else "mainnet"
         val dir = java.io.File(ctx.filesDir, "ln/$red").apply { mkdirs() }.path
-        val esplora = if (testnet) "https://blockstream.info/testnet/api" else "https://blockstream.info/api"
+        val (f0, url) = fuente(ctx)
+        val cookie = if (f0 == "core") CoreNodo.cookie(ctx).takeIf { it.exists() }?.readText() else null
+        val cadena = MotorLn.cadena(f0, url, testnet, cookie, CoreConfig.RPC_PORT)
         val rgs = if (testnet) "https://rapidsync.lightningdevkit.org/testnet/snapshot" else "https://rapidsync.lightningdevkit.org/snapshot"
-        val m = MotorLn.construir(dir, if (testnet) Network.TESTNET else Network.BITCOIN, f, "esplora" to esplora, rgs, lsp = lsp(ctx))
+        val m = MotorLn.construir(dir, if (testnet) Network.TESTNET else Network.BITCOIN, f, cadena, rgs, lsp = lsp(ctx))
         m.arrancar()
         this.testnet = testnet
         motor = m

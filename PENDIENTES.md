@@ -613,3 +613,16 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Límites: el estado de los canales vive en el teléfono (la frase sola no recupera lo que hay en canales;
   no hay copia en VSS); el nodo funciona mientras la pantalla está abierta (para cobrar hay que estar en
   línea); el tráfico de Lightning no pasa por Tor; Esplora de blockstream.info y RGS de LDK como fuentes.
+
+## Lightning: fuente de la cadena (2026-10-27)
+
+- Pantalla de Lightning (con el nodo parado) → "Chain source": Esplora (blockstream.info o el tuyo, https),
+  servidor Electrum (`ssl://host:puerto`, o `tcp://` dentro de tu red: Fulcrum, electrs…) o el Bitcoin
+  Core de la pestaña Core (RPC a 127.0.0.1 con su cookie, sólo mainnet; hay que tenerlo arrancado).
+- Probado con la versión JVM de LDK Node: dos nodos en regtest con canal y pago, uno siguiendo la cadena
+  SÓLO por Electrum (electrs 0.12 compilado aquí) y el otro por bitcoind RPC (la misma vía que la cookie
+  de Core). MotorLnCadenaTest prueba la elección y sus errores.
+- Ojo: ElectrumX 2.0 (protocolo 1.6) exige `server.version` primero y LDK no lo manda: con un servidor así
+  falla. Fulcrum, electrs y ElectrumX 1.x van bien. El tráfico del nodo no usa el proxy Tor de la app.
+- Con el Core podado, si el teléfono pasa mucho tiempo sin abrir el nodo Lightning, Core puede borrar
+  bloques que LDK aún no vio: en ese caso, Electrum o Esplora.
