@@ -67,6 +67,9 @@ object Psbt {
     }
 
     /** txid en el orden en que se escribe (big-endian, como en los exploradores). */
+    /** Un txid tal como va en la transacción, en el orden en que lo enseñan los exploradores. */
+    fun hexRev(b: ByteArray): String = hex(rev(b))
+
     internal fun txidHex(tx: Tx): String = hex(rev(dsha(sinTestigos(tx))))
 
     /** txid de una transacción firmada en hex (con o sin testigos), o null si no se puede leer. */
@@ -163,15 +166,49 @@ object Psbt {
         if (!(m[0].toInt() == 0x70 && m[1].toInt() == 0x73 && m[2].toInt() == 0x62 && m[3].toInt() == 0x74 && (m[4].toInt() and 0xFF) == 0xFF)) null
         else {
             val globals = readMap(c)
-            val txRec = globals.firstOrNull { it.key.isNotEmpty() && it.key[0].toInt() == 0x00 }
-            if (txRec == null) null else {
+            val txRec = globals.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x00 }
+            if (txRec != null) {
                 val tx = parseTx(txRec.value)
                 val inputs = ArrayList<MutableList<Rec>>(); for (i in tx.ins.indices) inputs.add(readMap(c))
                 val outputs = ArrayList<MutableList<Rec>>(); for (j in tx.outs.indices) outputs.add(readMap(c))
                 Doc(globals, inputs, outputs, tx)
-            }
+            } else leerV2(c, globals)
         }
     } catch (e: Throwable) { null }
+
+    /**
+     * PSBT versión 2 (BIP370): la transacción no va entera en el global, sino repartida por entradas y
+     * salidas. Bitcoin Core 30 las crea así por defecto, y Sparrow las acepta. Se reconstruye la [Tx]
+     * para que todo lo demás (revisar, firmar, finalizar, extraer) funcione igual; al volver a
+     * serializar los campos se escriben tal como vinieron.
+     */
+    private fun leerV2(c: TxDecoder.Cursor, globals: MutableList<Rec>): Doc? {
+        fun g(t: Int) = globals.firstOrNull { it.key.size == 1 && (it.key[0].toInt() and 0xff) == t }?.value
+        fun leU(b: ByteArray): Long { var v = 0L; for (i in b.indices.reversed()) v = (v shl 8) or (b[i].toLong() and 0xff); return v }
+        if (g(0xfb)?.let { leU(it) } != 2L) return null
+        val nIn = g(0x04)?.let { TxDecoder.Cursor(it).varint().toInt() } ?: return null
+        val nOut = g(0x05)?.let { TxDecoder.Cursor(it).varint().toInt() } ?: return null
+        require(nIn in 0..100_000 && nOut in 0..100_000)
+        val version = g(0x02)?.let { leU(it) } ?: return null
+        val inputs = ArrayList<MutableList<Rec>>(); repeat(nIn) { inputs.add(readMap(c)) }
+        val outputs = ArrayList<MutableList<Rec>>(); repeat(nOut) { outputs.add(readMap(c)) }
+        fun f(m: List<Rec>, t: Int) = m.firstOrNull { it.key.size == 1 && it.key[0].toInt() == t }?.value
+        val ins = inputs.map { m ->
+            TxIn(f(m, 0x0e)?.takeIf { it.size == 32 } ?: return null, f(m, 0x0f)?.let { leU(it) } ?: return null,
+                 f(m, 0x10)?.let { leU(it) } ?: 0xFFFFFFFFL)
+        }
+        val outs = outputs.map { m -> TxOut(f(m, 0x03)?.let { leU(it) } ?: return null, f(m, 0x04) ?: return null) }
+        // nLockTime (BIP370): por altura si todas las que piden algo lo admiten así, si no por tiempo; si ninguna, el de reserva.
+        val alturas = inputs.mapNotNull { f(it, 0x12)?.let { b -> leU(b) } }
+        val tiempos = inputs.mapNotNull { f(it, 0x11)?.let { b -> leU(b) } }
+        val porAltura = alturas.isNotEmpty() && inputs.all { f(it, 0x11) == null || f(it, 0x12) != null }
+        val locktime = when {
+            porAltura -> alturas.max()
+            tiempos.isNotEmpty() -> tiempos.max()
+            else -> g(0x03)?.let { leU(it) } ?: 0L
+        }
+        return Doc(globals, inputs, outputs, Tx(version, ins, outs, locktime))
+    }
 
     fun serialize(d: Doc): ByteArray {
         val o = ByteArrayOutputStream()
@@ -239,7 +276,7 @@ object Psbt {
      * anterior si es legacy, que es lo que su firmante necesita para comprobar
      * el importe.
      */
-    fun crear(txHex: String, entradas: List<EntradaPsbt>): ByteArray {
+    fun crear(txHex: String, entradas: List<EntradaPsbt>, salidasPropias: Map<Int, Derivacion> = emptyMap()): ByteArray {
         val raw = bytes(txHex)
         val tx = parseTx(raw)
         require(tx.ins.size == entradas.size) { "una entrada por cada UTXO" }
@@ -261,7 +298,20 @@ object Psbt {
             }
             recs
         }
-        val outputs = tx.outs.map { mutableListOf<Rec>() }
+        // Las salidas propias (el cambio) llevan su derivación: así el firmador sabe que vuelven a la cartera
+        // y no las enseña como un pago a un tercero.
+        val outputs = tx.outs.indices.map { j ->
+            val recs = mutableListOf<Rec>()
+            salidasPropias[j]?.let { d ->
+                val indices = d.ruta.fold(ByteArray(0)) { acc, i -> acc + le(i, 4) }
+                if (d.rescate != null) recs.add(Rec(byteArrayOf(0x00), d.rescate))                // PSBT_OUT_REDEEM_SCRIPT
+                if (d.tapInterna != null) {
+                    recs.add(Rec(byteArrayOf(0x05), d.tapInterna))                               // PSBT_OUT_TAP_INTERNAL_KEY
+                    recs.add(Rec(byteArrayOf(0x07) + d.tapInterna, byteArrayOf(0) + d.huella + indices))  // PSBT_OUT_TAP_BIP32_DERIVATION
+                } else recs.add(Rec(byteArrayOf(0x02) + d.pub33, d.huella + indices))           // PSBT_OUT_BIP32_DERIVATION
+            }
+            recs
+        }
         return serialize(Doc(globals, inputs, outputs, tx))
     }
 
@@ -339,5 +389,89 @@ object Psbt {
             firmados++
         }
         return firmados
+    }
+
+    // ── Finalizar y extraer (BIP174: Input Finalizer y Transaction Extractor) ───────────────────────
+
+    /**
+     * Para las entradas que trae otro aparato con sus firmas parciales: arma el scriptSig/testigo final
+     * de las de una sola clave (P2PKH, P2SH-P2WPKH, P2WPKH, P2TR por clave) y, si se pasa [wsh], el de
+     * las P2WSH (multifirma, herencia): recibe el script y las firmas, devuelve la pila del testigo o null.
+     * Como dice BIP174, al finalizar una entrada se quitan sus demás campos salvo los UTXO (y los de v2).
+     * Devuelve cuántas entradas quedaron finalizadas (contando las que ya venían así).
+     */
+    fun finalizar(d: Doc, wsh: ((script: ByteArray, firmas: Map<String, ByteArray>) -> List<ByteArray>?)? = null): Int {
+        var hechas = 0
+        for (i in d.tx.ins.indices) {
+            val recs = d.inputs[i]
+            fun campo(t: Int) = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == t }
+            if (campo(0x07) != null || campo(0x08) != null) { hechas++; continue }
+            val (_, spk) = importe(d, i) ?: continue
+            val firmas = recs.filter { it.key.size == 34 && it.key[0].toInt() == 0x02 }
+                .associate { hex(it.key.copyOfRange(1, 34)) to it.value }
+            var scriptSig: ByteArray? = null; var testigo: List<ByteArray>? = null
+            fun firmaDe(h160: ByteArray) = firmas.entries.firstOrNull { Ripemd160.hash160(bytes(it.key)).contentEquals(h160) }
+            when {
+                spk.size == 22 && spk[0].toInt() == 0 && spk[1].toInt() == 0x14 ->
+                    firmaDe(spk.copyOfRange(2, 22))?.let { testigo = listOf(it.value, bytes(it.key)) }
+                spk.size == 25 && spk[0] == 0x76.toByte() && spk[1] == 0xa9.toByte() ->
+                    firmaDe(spk.copyOfRange(3, 23))?.let { scriptSig = empujar(it.value) + empujar(bytes(it.key)) }
+                spk.size == 23 && spk[0] == 0xa9.toByte() -> {
+                    val rd = campo(0x04)?.value
+                    if (rd != null && rd.size == 22 && rd[0].toInt() == 0 && rd[1].toInt() == 0x14 &&
+                        Ripemd160.hash160(rd).contentEquals(spk.copyOfRange(2, 22)))
+                        firmaDe(rd.copyOfRange(2, 22))?.let { testigo = listOf(it.value, bytes(it.key)); scriptSig = empujar(rd) }
+                }
+                spk.size == 34 && spk[0].toInt() == 0x51 && spk[1].toInt() == 0x20 ->
+                    campo(0x13)?.let { testigo = listOf(it.value) }
+                spk.size == 34 && spk[0].toInt() == 0 && spk[1].toInt() == 0x20 && wsh != null -> {
+                    val ws = campo(0x05)?.value
+                    if (ws != null && sha(ws).contentEquals(spk.copyOfRange(2, 34)))
+                        wsh(ws, firmas)?.let { testigo = it + listOf(ws) }
+                }
+            }
+            if (scriptSig == null && testigo == null) continue
+            // Se quedan los UTXO y, en una PSBT v2, los campos que SON la transacción (txid, vout, secuencia, bloqueos).
+            val utxos = recs.filter { it.key.size == 1 && (it.key[0].toInt() and 0xff) in setOf(0x00, 0x01, 0x0e, 0x0f, 0x10, 0x11, 0x12) }
+            recs.clear(); recs.addAll(utxos)
+            scriptSig?.let { recs.add(Rec(byteArrayOf(0x07), it)) }
+            testigo?.let { t ->
+                val o = ByteArrayOutputStream(); o.write(varint(t.size.toLong()))
+                for (e in t) { o.write(varint(e.size.toLong())); o.write(e) }
+                recs.add(Rec(byteArrayOf(0x08), o.toByteArray()))
+            }
+            hechas++
+        }
+        return hechas
+    }
+
+    /** La transacción lista para difundir (con testigos si hace falta), o null si falta alguna entrada por finalizar. */
+    fun extraer(d: Doc): ByteArray? {
+        val ss = ArrayList<ByteArray>(); val ws = ArrayList<ByteArray?>()
+        for (recs in d.inputs) {
+            val a = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x07 }?.value
+            val w = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x08 }?.value
+            if (a == null && w == null) return null
+            ss.add(a ?: ByteArray(0)); ws.add(w)
+        }
+        val conTestigo = ws.any { it != null }
+        val o = ByteArrayOutputStream()
+        o.write(le(d.tx.version, 4))
+        if (conTestigo) { o.write(0); o.write(1) }
+        o.write(varint(d.tx.ins.size.toLong()))
+        d.tx.ins.forEachIndexed { i, x -> o.write(x.txid); o.write(le(x.vout, 4)); o.write(varint(ss[i].size.toLong())); o.write(ss[i]); o.write(le(x.seq, 4)) }
+        o.write(varint(d.tx.outs.size.toLong()))
+        for (x in d.tx.outs) { o.write(le(x.value, 8)); o.write(varint(x.spk.size.toLong())); o.write(x.spk) }
+        if (conTestigo) for (w in ws) o.write(w ?: byteArrayOf(0))
+        o.write(le(d.tx.locktime, 4))
+        return o.toByteArray()
+    }
+
+    /** Empuje mínimo de [b] en un script. */
+    internal fun empujar(b: ByteArray): ByteArray = when {
+        b.isEmpty() -> byteArrayOf(0)
+        b.size < 0x4c -> byteArrayOf(b.size.toByte()) + b
+        b.size <= 0xff -> byteArrayOf(0x4c, b.size.toByte()) + b
+        else -> byteArrayOf(0x4d, (b.size and 0xff).toByte(), (b.size shr 8).toByte()) + b
     }
 }
