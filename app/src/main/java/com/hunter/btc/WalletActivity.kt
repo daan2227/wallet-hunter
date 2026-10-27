@@ -2330,8 +2330,10 @@ class WalletActivity : FragmentActivity() {
             val fromKey = keys.getOrNull(fromIdx) ?: return@setOnClickListener
             val fromAddr = addresses[fromKey] ?: return@setOnClickListener
             // Una dirección vigilada no tiene clave con la que firmar.
-            if (isWifMode && wifKey.isEmpty()) {
-                tvStatus.text = "This is a watch-only wallet: it has no key to send with."
+            // Sí puede preparar la PSBT sin firmar: otro aparato, el que tiene la clave, la firma.
+            if (isWifMode && wifKey.isEmpty() && !exportar) {
+                tvStatus.text = "This is a watch-only wallet: it has no key to send with. " +
+                                "Use \"Export as PSBT\" to sign it on another device."
                 tvStatus.setTextColor(AppTheme.WARN); return@setOnClickListener
             }
             if (toAddr.isEmpty()) {
@@ -2745,7 +2747,21 @@ class WalletActivity : FragmentActivity() {
 
                     if (exportarPsbt) {
                         runOnUiThread { tvStatus.text = "Building the PSBT…"; tvStatus.setTextColor(TXT_SEC) }
-                        val sinFirmar = HunterEngine.buildAndSignTx(JSONObject(req).put("unsigned", 1).toString())
+                        // Una dirección vigilada no tiene clave: el motor no puede ni armar la
+                        // transacción sin firmar, así que se hace aquí con lo mismo que decidió el plan
+                        // (entradas, salidas, cambio de vuelta a la propia dirección).
+                        val vigilada = wifSnap && wifKeySnap.isEmpty()
+                        val sinFirmar = if (vigilada) try {
+                            fun spkDe(a: String) = ((BtcAddress.validate(a, isTestnet) as BtcAddress.Result.Valid).info)
+                                .let { BtcAddress.scriptPubKey(it) }
+                            val salidas = ArrayList<Pair<ByteArray, Long>>()
+                            salidas.add(spkDe(toAddr) to amtPrincipal)
+                            extras.forEach { e -> salidas.add(
+                                if (e.datos != null) Psbt.scriptDatos(e.datos) to 0L else spkDe(e.addr ?: "") to e.sat) }
+                            if (plan.changeSat > 0) salidas.add(spkDe(fromAddr) to plan.changeSat)
+                            Psbt.sinFirmar(plan.chosen.map { it.getString("txid") to it.getInt("vout") }, salidas, (tip ?: 0).toLong())
+                        } catch (e: Exception) { "ERROR: could not build the transaction (${e.message})" }
+                        else HunterEngine.buildAndSignTx(JSONObject(req).put("unsigned", 1).toString())
                         if (sinFirmar.startsWith("ERROR")) {
                             runOnUiThread { tvStatus.text = sinFirmar; tvStatus.setTextColor(RED); btnSend.isEnabled = true }
                             return@Thread

@@ -110,3 +110,38 @@ class PsbtTest {
         assertEquals(0, tap.value[0].toInt())
     }
 }
+
+class PsbtSinFirmarTest {
+    private fun h(s: String) = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+    @Test fun construyeLoQueSeLeeDeVuelta() {
+        val txid = "aa".repeat(31) + "01"
+        val spkA = h("0014" + "11".repeat(20)); val spkB = h("5120" + "22".repeat(32))
+        val hex = Psbt.sinFirmar(listOf(txid to 3), listOf(spkA to 50_000L, spkB to 1234L), 840_000L)
+        val tx = Psbt.parseTx(h(hex))
+        assertEquals(1L, tx.version); assertEquals(1, tx.ins.size); assertEquals(2, tx.outs.size)
+        assertEquals(3L, tx.ins[0].vout); assertEquals(Psbt.SEQUENCIA, tx.ins[0].seq)
+        assertEquals(0, tx.ins[0].scriptSig.size)
+        // el txid se escribe al revés en la transacción
+        assertEquals(1, tx.ins[0].txid[0].toInt()); assertEquals(0xaa, tx.ins[0].txid[31].toInt() and 0xff)
+        assertEquals(50_000L, tx.outs[0].value); assertArrayEquals(spkB, tx.outs[1].spk)
+        assertEquals(840_000L, tx.locktime)
+    }
+
+    @Test fun alRevesDeUnaPsbtCoincide() {
+        val hex = Psbt.sinFirmar(listOf("bb".repeat(32) to 0), listOf(h("0014" + "33".repeat(20)) to 1000L), 0)
+        val psbt = Psbt.crear(hex, listOf(Psbt.EntradaPsbt(5000, h("0014" + "44".repeat(20)), null)))
+        val doc = Psbt.parse(psbt)!!
+        assertEquals(1, doc.tx.ins.size); assertEquals(1000L, doc.tx.outs[0].value)
+    }
+
+    @Test fun opReturn() {
+        assertArrayEquals(h("6a03616263"), Psbt.scriptDatos("616263"))
+        val largo = "ab".repeat(76)
+        assertArrayEquals(h("6a4c4c") + h(largo), Psbt.scriptDatos(largo))
+    }
+
+    @Test(expected = IllegalArgumentException::class) fun sinSalidasNo() {
+        Psbt.sinFirmar(listOf("cc".repeat(32) to 0), emptyList(), 0)
+    }
+}

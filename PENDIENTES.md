@@ -413,24 +413,11 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   `String` son inmutables y el recolector puede copiarlos. El motor nativo
   limpia sus copias (`OPENSSL_cleanse`); la parte de Kotlin no.
 
-- **Exportar PSBT de una cartera vigilada.** Hace falta derivar el cambio desde
-  la xpub, que hoy sólo sirve para importar.
+## PSBT desde una cartera vigilada (2026-10-27)
 
-## Actualizador (2026-10-27)
-
-- More → Updates busca la última compilación de `main` (release `latest-build-main`,
-  fichero `version.json` que escribe la CI) y la instala tras comprobar SHA-256,
-  paquete, versionCode y certificado de firma. Al abrir la app mira solo, como
-  mucho cada 12 h (se apaga en More).
-- **Sin probar en un móvil.** Sólo funciona a partir de tener instalada una
-  compilación que ya lo incluya, y si la instalada y la nueva están firmadas
-  con la misma clave (el keystore de release del secreto de la CI).
-- Con More → Privacy → "Balance lookups through Tor" activo, la consulta y la descarga van por el proxy SOCKS5.
-
-## Tor para consultas ligeras (2026-10-27)
-
-- More → Privacy: interruptor y dirección del proxy (por defecto 127.0.0.1:9050, Orbot).
-  Cubre saldos/comisiones/difusión (ChainApi), Electrum, pares P2P del cliente ligero y el
-  actualizador. Con Tor activo no hay respaldo directo: si el proxy no responde, falla.
-  Los destinos se mandan sin resolver (DNS remoto) y 127.0.0.1 se salta el proxy.
-- Sin probar en móvil ni con Orbot real. El cliente ligero P2P por Tor será más lento (5 s → 30 s de espera).
+- Una cartera vigilada es una sola dirección: "Export as PSBT" (opciones avanzadas) arma la
+  transacción sin firmar en Kotlin (`Psbt.sinFirmar`), con el cambio de vuelta a la misma dirección,
+  y la comparte. Sin derivación BIP32 en las entradas: el firmador debe reconocer el script por su
+  cuenta (Sparrow, Electrum offline); un Coldcard/Ledger sin esa información puede no hacerlo.
+- Una xpub como cartera vigilada (varias direcciones, cambio derivado) sigue sin existir.
+- Sin probar en móvil; la construcción sí tiene pruebas de JVM.

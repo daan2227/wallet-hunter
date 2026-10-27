@@ -203,6 +203,36 @@ object Psbt {
         if (duro) n + 0x80000000L else n
     }
 
+    /** Secuencia de las entradas: la misma del motor nativo (RBF activado, nLockTime válido). */
+    const val SEQUENCIA = 0xFFFFFFFDL
+
+    /**
+     * La transacción sin firmar (versión 1, sin scriptSig ni testigos) que el motor nativo
+     * construiría con la opción "unsigned", pero sin necesitar ninguna clave: para una
+     * dirección vigilada, que sólo tiene el script. [entradas] son (txid como lo muestra
+     * un explorador, vout); [salidas], (script, importe) en el orden en que van.
+     */
+    fun sinFirmar(entradas: List<Pair<String, Int>>, salidas: List<Pair<ByteArray, Long>>, locktime: Long): String {
+        require(entradas.isNotEmpty() && salidas.isNotEmpty()) { "sin entradas o sin salidas" }
+        val o = ByteArrayOutputStream()
+        o.write(le(1, 4)); o.write(varint(entradas.size.toLong()))
+        for ((txid, vout) in entradas) {
+            require(txid.length == 64) { "txid" }
+            o.write(rev(bytes(txid))); o.write(le(vout.toLong(), 4)); o.write(0); o.write(le(SEQUENCIA, 4))
+        }
+        o.write(varint(salidas.size.toLong()))
+        for ((spk, v) in salidas) { o.write(le(v, 8)); o.write(varint(spk.size.toLong())); o.write(spk) }
+        o.write(le(locktime, 4))
+        return hex(o.toByteArray())
+    }
+
+    /** Script de un OP_RETURN con [datos] (hex), como lo escribe el motor: 6a + push. */
+    fun scriptDatos(datosHex: String): ByteArray {
+        val d = bytes(datosHex)
+        require(d.size <= 80) { "OP_RETURN de más de 80 bytes" }
+        return if (d.size <= 75) byteArrayOf(0x6a, d.size.toByte()) + d else byteArrayOf(0x6a, 0x4c, d.size.toByte()) + d
+    }
+
     /**
      * PSBT (BIP174) sin firmar de la transacción [txHex] (sin scriptSig ni
      * testigos). Cada entrada lleva su UTXO: witness_utxo, o la transacción
