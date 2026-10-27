@@ -41,6 +41,10 @@ class QrScanActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_TEXTO = "qr_texto"
+        /** Entrada: aceptar QR animados (UR o BBQr) y seguir leyendo hasta tener el fichero entero. */
+        const val EXTRA_ANIMADO = "qr_animado"
+        /** Salida en modo animado: los bytes reconstruidos (PSBT o transacción). */
+        const val EXTRA_BYTES = "qr_bytes"
         private const val REQ_CAMARA = 51
     }
 
@@ -53,6 +57,10 @@ class QrScanActivity : AppCompatActivity() {
     @Volatile private var hecho = false
     private val qr = com.google.zxing.qrcode.QRCodeReader()
     private val pistas = mapOf(com.google.zxing.DecodeHintType.TRY_HARDER to true)
+    private var animado = false
+    private val ur = Ur.Decodificador()
+    private val bbqr = Bbqr.Juntador()
+    private var tvAviso: TextView? = null
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -60,6 +68,7 @@ class QrScanActivity : AppCompatActivity() {
         setTheme(AppTheme.estilo(this))
         super.onCreate(savedInstanceState)
         AppLock.init(this)
+        animado = intent.getBooleanExtra(EXTRA_ANIMADO, false)
 
         val raiz = FrameLayout(this).apply { setBackgroundColor(android.graphics.Color.BLACK) }
         vista = TextureView(this)
@@ -74,7 +83,9 @@ class QrScanActivity : AppCompatActivity() {
             }
         }, FrameLayout.LayoutParams(lado, lado, Gravity.CENTER))
         raiz.addView(TextView(this).apply {
-            text = "Point the camera at the QR code"
+            tvAviso = this
+            text = if (animado) "Point the camera at the QR code (animated QR: hold it until it completes)"
+                   else "Point the camera at the QR code"
             setTextColor(android.graphics.Color.WHITE); textSize = AppTheme.SP_BODY
             typeface = AppTheme.medium(context); gravity = Gravity.CENTER
         }, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
@@ -200,6 +211,7 @@ class QrScanActivity : AppCompatActivity() {
             val fuente = com.google.zxing.PlanarYUVLuminanceSource(datos, w, h, 0, 0, w, h, false)
             val bmp = com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(fuente))
             val res = try { qr.decode(bmp, pistas) } catch (e: Exception) { null } finally { qr.reset() }
+            if (res != null && res.text.isNotBlank() && animado && alimentarAnimado(res.text.trim())) return
             if (res != null && res.text.isNotBlank()) {
                 hecho = true
                 runOnUiThread {
@@ -208,6 +220,33 @@ class QrScanActivity : AppCompatActivity() {
                 }
             }
         } finally { img.close() }
+    }
+
+    /** true si el texto era una parte de un QR animado (y se queda leyendo, o termina si ya está todo). */
+    private fun alimentarAnimado(t: String): Boolean {
+        val esUr = t.length > 3 && t.substring(0, 3).equals("ur:", ignoreCase = true)
+        val esBb = t.startsWith("B$")
+        if (!esUr && !esBb) return false
+        val bytes: ByteArray? = if (esUr) {
+            ur.recibir(t)
+            if (ur.error != null) { fallo("The animated QR is damaged (checksum). Try again."); return true }
+            if (ur.listo) ur.resultado?.let { Ur.deCborBytes(it) ?: it } else null
+        } else {
+            bbqr.recibir(t)
+            if (bbqr.listo) bbqr.resultado() ?: run { fallo("The animated QR could not be decoded."); return true } else null
+        }
+        if (bytes == null) {
+            val (r, n) = if (esUr) ur.recibidos to ur.total else bbqr.recibidas to bbqr.totalPartes
+            runOnUiThread { tvAviso?.text = "Reading animated QR… $r of $n" }
+            return true
+        }
+        hecho = true
+        runOnUiThread {
+            setResult(RESULT_OK, Intent().putExtra(EXTRA_BYTES, bytes)
+                .putExtra(EXTRA_TEXTO, android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)))
+            finish()
+        }
+        return true
     }
 
     private fun fallo(t: String) = runOnUiThread {

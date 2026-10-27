@@ -195,6 +195,15 @@ class PubkeyToolsActivity : Activity() {
         typeface = AppTheme.medium(context); setPadding(0, dp(6), 0, dp(6))
     }
 
+    private var alLeerQr: ((String) -> Unit)? = null
+    private val REQ_QR_PSBT = 71
+
+    override fun onActivityResult(req: Int, res: Int, data: android.content.Intent?) {
+        super.onActivityResult(req, res, data)
+        if (req == REQ_QR_PSBT && res == RESULT_OK)
+            data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeerQr?.invoke(it) }
+    }
+
     private fun entrada(hint: String, varias: Boolean = false): EditText {
         val e = EditText(this).apply {
             this.hint = hint
@@ -1297,6 +1306,17 @@ class PubkeyToolsActivity : Activity() {
             val d = leer()
             if (d == null) { Toast.makeText(this, "Not a valid PSBT", Toast.LENGTH_SHORT).show(); return@boton }
             Psbt.resumen(d).forEach { (l, v) -> salida.addView(filaResultado(l, v)) }
+        }
+        // Desde un aparato sin conexión (Keystone, SeedSigner, Coldcard Q…): QR animado UR o BBQr.
+        boton("Scan animated QR") {
+            alLeerQr = { txt -> et.setText(txt) }
+            startActivityForResult(android.content.Intent(this, QrScanActivity::class.java)
+                .putExtra(QrScanActivity.EXTRA_ANIMADO, true), REQ_QR_PSBT)
+        }
+        boton("Show as animated QR") {
+            val d = leer()
+            if (d == null) { Toast.makeText(this, "Not a valid PSBT", Toast.LENGTH_SHORT).show(); return@boton }
+            QrAnimado.mostrar(this, Psbt.serialize(d), "PSBT")
         }
         root.addView(rotulo("Sign — private key (hex or WIF)"))
         val etKey = entrada("64-hex or WIF")

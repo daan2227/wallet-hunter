@@ -1199,6 +1199,14 @@ class WalletActivity : FragmentActivity() {
 
     /** Guarda la PSBT en la carpeta compartida y abre la hoja de compartir. */
     private fun compartirPsbt(bin: ByteArray) {
+        // A un aparato sin conexión se le pasa mejor por QR animado; a otra app o al ordenador, como fichero.
+        AlertDialog.Builder(this).setTitle("PSBT ready")
+            .setItems(arrayOf("Show as animated QR (UR / BBQr)", "Share as file")) { _, i ->
+                if (i == 0) QrAnimado.mostrar(this, bin, "Scan with the signing device") else compartirPsbtFichero(bin)
+            }.show()
+    }
+
+    private fun compartirPsbtFichero(bin: ByteArray) {
         try {
             val f = java.io.File(BackupStore.compartidos(this), "psbt_${System.currentTimeMillis()}.psbt")
             f.writeBytes(bin)

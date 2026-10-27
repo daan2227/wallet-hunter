@@ -488,3 +488,17 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   y se ven en el historial) y monedas. Los tipos que la app no usa (xpub, pubkey, input) se guardan tal
   cual y vuelven a salir al exportar. Una etiqueta vacía al importar borra la que hubiera (lo dice BIP329).
 - `Bip329` con pruebas de JVM (incluido el ejemplo del estándar). Sin probar en móvil.
+
+## QR animados: UR y BBQr (2026-10-27)
+
+- `Ur.kt`: Uniform Resources (bytewords, CBOR, fountain codes con Xoshiro256**), codificador y
+  decodificador. Coincide bit a bit con la referencia (@ngraveio/bc-ur 1.1.13): 3 000 elecciones de
+  fragmentos y todas las partes de 7 mensajes. La referencia también lee lo que genera Kotlin.
+- `Bbqr.kt`: BBQr de Coinkite; lee H, 2 y Z (deflate) y escribe en 2 (base32): el deflate de Java no
+  deja fijar la ventana de 1 KiB del estándar. Comprobado contra la librería oficial (npm "bbqr").
+- Al exportar una PSBT: "Show as animated QR (UR / BBQr)" o "Share as file". En Pubkey tools → PSBT:
+  "Scan animated QR" y "Show as animated QR". El lector de QR, en modo animado, sigue leyendo y
+  enseña "Reading animated QR… n of m".
+- Sin probar con un Keystone/SeedSigner/Coldcard reales ni en móvil.
+- Nota: el paquete "bbqr" de PyPI NO es el de Coinkite (es otra herramienta y al importarse ejecuta
+  apt-get); por eso los vectores salen del de npm.
