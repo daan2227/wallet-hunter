@@ -790,8 +790,31 @@ struct PuzzleBatchCtx {
 };
 static PuzzleBatchCtx g_pbctx;
 
+/* Pool del puzzle: direcciones "testigo" (canarios) que el servidor siembra en el trozo del rango que
+ * reparte. Encontrar sus claves demuestra que el trozo se barrió entero. Se apuntan aparte (no van al baúl,
+ * no paran el motor: no valen nada). Pocas (<= 16) y se mira primero un prefijo de 4 bytes: apenas cuesta. */
+static const int MAX_CANARIOS = 16;
+static uint32_t g_can_pref[MAX_CANARIOS];
+static uint8_t  g_can_h160[MAX_CANARIOS][20];
+static std::atomic<int> g_n_can(0);
+static std::mutex g_can_mtx;
+static std::vector<std::string> g_can_hallados;   /* "h160hex:privhex" */
+
 static void puzzle_h160(PuzzleBatchCtx *c, long idx, const uint8_t *h160){
     c->done++;
+    int nc=g_n_can.load(std::memory_order_relaxed);
+    if(nc){
+        uint32_t pre; memcpy(&pre,h160,4);
+        for(int k=0;k<nc;k++) if(pre==g_can_pref[k] && memcmp(h160,g_can_h160[k],20)==0){
+            uint8_t pk[32]; memcpy(pk,c->priv_base,32);
+            { uint64_t add=(uint64_t)idx; for(int b=31;b>=0&&add;b--){ uint64_t sm=(uint64_t)pk[b]+(add&0xFF); pk[b]=(uint8_t)sm; add=(add>>8)+(sm>>8); } }
+            char t[20*2+1+64+1]; int n=0;
+            for(int b=0;b<20;b++) n+=snprintf(t+n,sizeof(t)-n,"%02x",h160[b]);
+            t[n++]=':'; for(int b=0;b<32;b++) n+=snprintf(t+n,sizeof(t)-n,"%02x",pk[b]);
+            std::lock_guard<std::mutex> lk(g_can_mtx);
+            if(g_can_hallados.size()<256) g_can_hallados.push_back(t);
+        }
+    }
     int match=0;
     if(g_has_target){
         if(memcmp(h160,g_target_h160,HASH160_BYTES)==0) match=1;
@@ -3936,4 +3959,30 @@ Java_com_hunter_btc_HunterEngine_ec(JNIEnv *env, jobject, jstring jop, jstring j
     return env->NewStringUTF(r.c_str());
 }
 
+
+/* Pool: fija los canarios (h160 en hex separados por comas; "" los quita). Sólo con el motor parado. */
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_poolCanarios(JNIEnv *env, jobject, jstring jc){
+    if(g_running.load()) return JNI_FALSE;
+    const char *c=jc?env->GetStringUTFChars(jc,nullptr):nullptr; std::string s=c?c:""; if(c) env->ReleaseStringUTFChars(jc,c);
+    int n=0; std::vector<uint8_t> b;
+    for(auto &t: trocear(s,',')){
+        if(t.empty()) continue;
+        if(n>=MAX_CANARIOS || !de_hex(t,b) || b.size()!=20){ g_n_can.store(0); return JNI_FALSE; }
+        memcpy(g_can_h160[n],b.data(),20); memcpy(&g_can_pref[n],b.data(),4); n++;
+    }
+    { std::lock_guard<std::mutex> lk(g_can_mtx); g_can_hallados.clear(); }
+    g_n_can.store(n);
+    return JNI_TRUE;
+}
+/* Los canarios encontrados desde la última llamada: "h160:priv" separados por comas. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_poolCanariosHallados(JNIEnv *env, jobject){
+    std::string r;
+    { std::lock_guard<std::mutex> lk(g_can_mtx);
+      for(size_t i=0;i<g_can_hallados.size();i++){ if(i) r+=","; r+=g_can_hallados[i]; }
+      for(auto &x: g_can_hallados) OPENSSL_cleanse(&x[0],x.size());
+      g_can_hallados.clear(); }
+    return env->NewStringUTF(r.c_str());
+}
 }

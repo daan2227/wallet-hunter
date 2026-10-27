@@ -284,6 +284,40 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
          "Addresses, Hex↔WIF, sign/verify, xpub, inspector, balance, sweep, vanity, split, QR, brainwallet, nonce", null) {
         startActivity(Intent(this, PubkeyToolsActivity::class.java))
     }
+    // Pool del puzzle: barrer trozos que reparte un servidor (tools/pool/servidor.py) y demostrarlo.
+    fila(claves, R.drawable.ic_puzzle, "Puzzle pool", "Scan ranges handed out by a pool server, with proof of work",
+         if (PoolPuzzle.activo()) "On" else null) {
+        val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0) }
+        val etUrl = Ui.input(this, "https://pool.example.com", mono = true).apply { setText(PoolPuzzle.url(this@buildMoreTab)) }
+        val tvEstado = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(10), 0, 0) }
+        caja.addView(TextView(this).apply {
+            text = "The server splits the puzzle range into pieces and plants a few proof addresses in each. " +
+                   "Your phone scans its piece (sequential mode) and sends back the proof keys. If the puzzle key " +
+                   "appears, it goes to the pool AND to your vault. Uses the same engine as the Puzzle tab."
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+        })
+        caja.addView(etUrl); caja.addView(tvEstado)
+        val h = android.os.Handler(android.os.Looper.getMainLooper())
+        val refresco = object : Runnable { override fun run() { tvEstado.text = PoolPuzzle.estado; h.postDelayed(this, 1500) } }
+        val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Puzzle pool").setView(caja)
+            .setNegativeButton("Close", null)
+            .setPositiveButton(if (PoolPuzzle.activo()) "Stop" else "Start", null).create()
+        dlg.setOnShowListener {
+            h.post(refresco)
+            val b = dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE)
+            b.setOnClickListener {
+                if (PoolPuzzle.activo()) { PoolPuzzle.detener(); b.text = "Start"; return@setOnClickListener }
+                val u = etUrl.text.toString().trim()
+                if (!PoolPuzzle.urlValida(u)) { Toast.makeText(this, "Use https:// (or http:// to a .onion address)", Toast.LENGTH_LONG).show(); return@setOnClickListener }
+                PoolPuzzle.ponerUrl(this, u)
+                val hilos = maxOf(1, Runtime.getRuntime().availableProcessors() - 1)
+                PoolPuzzle.empezar(this, hilos, 70)
+                b.text = "Stop"
+            }
+        }
+        dlg.setOnDismissListener { h.removeCallbacks(refresco) }
+        dlg.show()
+    }
 
     val cuenta = grupo("Account")
     val uname = WalletManager.getUsername(this)

@@ -583,3 +583,18 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   entradas entró en la mempool. PayjoinTest: la buena pasa y cinco variantes tramposas se rechazan.
 - Sólo pagar (no cobrar: haría falta un servidor) y sólo BIP78 v1 (no la v2/BIP77 con directorio).
   Sin probar en móvil ni contra un cobrador real (BTCPay).
+
+## Pool del puzzle (2026-10-27)
+
+- Servidor de referencia en `tools/pool/servidor.py` (sólo biblioteca estándar de Python, SQLite):
+  reparte el rango del puzzle en trozos de 2^bits claves y en cada uno siembra 1–16 "testigos" (claves
+  al azar dentro del trozo, de las que manda sólo la dirección). El cliente barre el trozo y devuelve las
+  claves de los testigos: sin barrerlo no se pueden saber, así que es la prueba del trabajo. Si sale la
+  clave del puzzle, el servidor la comprueba. `tools/pool/prueba.py` lo prueba con el puzzle #20 en trozos
+  de 2^12 (cliente honrado aceptado, tramposo rechazado) y comprueba curva/RIPEMD-160/direcciones.
+- Motor: `poolCanarios` fija hasta 16 direcciones testigo que se apuntan aparte (no van al baúl ni paran
+  el barrido; se compara un prefijo de 4 bytes antes del hash160 entero). App: More → Tools → "Puzzle
+  pool" (URL https o .onion, Start/Stop, estado). Barre en modo secuencial con el mismo motor que la
+  pestaña Puzzle; si el motor está ocupado, espera.
+- Límites: el pool se fía de que quien encuentra la clave la devuelva (repartir premios es del operador);
+  sin probar en móvil ni con un servidor público; la parte nativa sólo la compila la CI.

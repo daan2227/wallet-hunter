@@ -66,6 +66,10 @@ object HunterEngine {
     external fun importarClave(entrada: String, testnet: Boolean, hexComprimida: Boolean): String
     /** xpub/ypub/zpub (o tpub/upub/vpub) de la cuenta 0 de la frase, para [purpose] 44, 49, 84 o 86. */
     external fun exportarXpub(mnemonic: String, purpose: Int, testnet: Boolean): String
+    /** Pool del puzzle: direcciones testigo (hash160 en hex, separados por comas; "" las quita). Motor parado. */
+    external fun poolCanarios(h160s: String): Boolean
+    /** Los testigos encontrados desde la última llamada: "h160:privhex" separados por comas. */
+    external fun poolCanariosHallados(): String
     /** "huella_maestro|xpub" (o tpub) del nodo de una ruta, p. ej. "m/48'/0'/0'/2'" para una multifirma. */
     external fun xpubDeRuta(mnemonic: String, path: String, testnet: Boolean): String
     /** "pub33hex|huella8hex" de una ruta de la frase, para la derivación BIP32 de una PSBT. */
