@@ -598,3 +598,18 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   pestaña Puzzle; si el motor está ocupado, espera.
 - Límites: el pool se fía de que quien encuentra la clave la devuelva (repartir premios es del operador);
   sin probar en móvil ni con un servidor público; la parte nativa sólo la compila la CI.
+
+## Lightning (experimental) (2026-10-27)
+
+- Nodo propio de LDK Node 0.7.0 (`org.lightningdevkit:ldk-node-android`, ~26 MB sin comprimir de
+  librería arm64): More → Tools → "Lightning (experimental)", mainnet o testnet. Recibir con factura
+  BOLT11 (QR), pagar facturas (pegar o escanear), fondear el nodo en cadena, abrir y cerrar canales,
+  retirar, LSP opcional (LSPS2: canal "justo a tiempo" al cobrar sin capacidad de entrada).
+- Frase PROPIA de 24 palabras para el nodo (no la de las carteras: LDK deriva su cartera en cadena y se
+  pisarían), cifrada con la clave del baúl; arrancar el nodo pide el código.
+- Probado con la versión JVM de la misma librería y el mismo envoltorio (MotorLn) contra bitcoind en
+  regtest: dos nodos, fondeo, canal de 500 000 sat, 6 confirmaciones, factura de 25 000 sat pagada y
+  recibida. En Android sólo lo compila la CI: SIN PROBAR en móvil.
+- Límites: el estado de los canales vive en el teléfono (la frase sola no recupera lo que hay en canales;
+  no hay copia en VSS); el nodo funciona mientras la pantalla está abierta (para cobrar hay que estar en
+  línea); el tráfico de Lightning no pasa por Tor; Esplora de blockstream.info y RGS de LDK como fuentes.

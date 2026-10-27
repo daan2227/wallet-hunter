@@ -284,6 +284,13 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
          "Addresses, Hex↔WIF, sign/verify, xpub, inspector, balance, sweep, vanity, split, QR, brainwallet, nonce", null) {
         startActivity(Intent(this, PubkeyToolsActivity::class.java))
     }
+    fila(claves, R.drawable.ic_wallet, "Lightning (experimental)", "Own LDK node: invoices, payments, channels",
+         if (Ln.motor != null) "On" else null) {
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Lightning network")
+            .setItems(arrayOf("Mainnet (real bitcoin)", "Testnet")) { _, i ->
+                startActivity(Intent(this, LightningActivity::class.java).putExtra(LightningActivity.EXTRA_TESTNET, i == 1))
+            }.show()
+    }
     // Pool del puzzle: barrer trozos que reparte un servidor (tools/pool/servidor.py) y demostrarlo.
     fila(claves, R.drawable.ic_puzzle, "Puzzle pool", "Scan ranges handed out by a pool server, with proof of work",
          if (PoolPuzzle.activo()) "On" else null) {

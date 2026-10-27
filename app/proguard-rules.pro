@@ -8,3 +8,11 @@
 # está casi todo el dex que no se usa.
 -keep class com.hunter.btc.** { *; }
 -dontobfuscate
+
+# Lightning (LDK Node): los bindings UniFFI llaman a la librería nativa con JNA, que busca clases y
+# métodos por reflexión. R8 no lo ve: sin esto, compila y revienta en el móvil al arrancar el nodo.
+-keep class org.lightningdevkit.ldknode.** { *; }
+-keep class com.sun.jna.** { *; }
+-keep class * implements com.sun.jna.** { *; }
+-dontwarn java.awt.**
+-dontwarn org.slf4j.**
