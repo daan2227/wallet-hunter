@@ -3673,6 +3673,14 @@ static char g_tr_status[256] = "";
 static std::mutex g_tr_status_mtx;
 static std::string g_tr_path;
 static std::atomic<uint64_t> g_tr_reanudo_desde(0);   /* por dónde seguir: 0 = desde el principio */
+/* Reanudación EXACTA. Los lotes se reparten en orden pero terminan en cualquier orden, así que
+   g_tr_done (cuántas se probaron) no es un prefijo: reanudar desde ahí se saltaría lo que quedó a
+   medias. Cada hilo anota el principio del lote que lleva entre manos (TR_LIBRE si ninguno), y el
+   punto seguro es el mínimo de esos y de lo repartido: todo lo anterior está probado. A cambio, al
+   reanudar se repite como mucho un lote por hilo. */
+static const uint64_t TR_LIBRE = ~0ULL;
+static const int TR_MAX_HILOS = 64;
+static std::atomic<uint64_t> g_tr_en_curso[TR_MAX_HILOS];
 
 /* Mismo patrón que entregar_al_baul: adjunta el hilo nativo a la JVM sólo para esta llamada. Se usa para
    avisar de que el barrido ha terminado (solo o parado), también si la pantalla no está abierta: el hilo
@@ -3701,12 +3709,17 @@ static void *tr_load_fn(void*){
 
 static const int TR_HILO_LOTE = 4096;   /* candidatas que reclama un hilo de una vez */
 
-static void *tr_worker_fn(void*){
+static void *tr_worker_fn(void *arg){
+    std::atomic<uint64_t> &mio = g_tr_en_curso[(int)(intptr_t)arg];
     secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN|SECP256K1_CONTEXT_VERIFY);
-    if(!ctx) return nullptr;
+    if(!ctx){ mio.store(TR_LIBRE); return nullptr; }
     while(!g_tr_parar.load()){
+        /* Cota inferior ANTES de reclamar: entre el fetch_add y el store de abajo, quien calcule el
+           punto seguro ve un valor que no pasa de este lote. */
+        mio.store(g_tr_claimed.load());
         uint64_t desde = g_tr_claimed.fetch_add(TR_HILO_LOTE);
-        if(desde >= g_tr_width) break;
+        mio.store(desde);
+        if(desde >= g_tr_width){ mio.store(TR_LIBRE); break; }
         uint64_t cuenta = std::min((uint64_t)TR_HILO_LOTE, g_tr_width - desde);
         uint64_t hecho = tr_audit::escanear_bloque_rapido(ctx,&g_tr_obj,g_tr_start,desde,cuenta,g_tr_parar,
             [&](const char *privhex, const char *addr){
@@ -3719,7 +3732,8 @@ static void *tr_worker_fn(void*){
                 add_log(std::string("*** TAPROOT AUDIT MATCH *** ")+addr);
             });
         g_tr_done.fetch_add(hecho);
-        if(hecho < cuenta) break;   /* parar() a mitad de un lote: no pedir más */
+        if(hecho < cuenta) break;   /* parar() a mitad de un lote: no pedir más; mio queda en su inicio */
+        mio.store(TR_LIBRE);
     }
     secp256k1_context_destroy(ctx);
     return nullptr;
@@ -3765,10 +3779,11 @@ Java_com_hunter_btc_HunterEngine_taprootIniciar(JNIEnv *env, jobject, jstring st
     if(ancho==0 || ancho>(1ULL<<40)) return env->NewStringUTF("Width must be between 1 and 2^40");
     g_tr_width = ancho; g_tr_claimed.store(g_tr_reanudo_desde.exchange(0)); g_tr_done.store(g_tr_claimed.load());
     g_tr_parar.store(false); g_tr_corriendo.store(true);
-    int n = hilos>0 ? hilos : 1;
+    int n = hilos>0 ? (hilos<TR_MAX_HILOS?hilos:TR_MAX_HILOS) : 1;
+    for(int i=0;i<TR_MAX_HILOS;i++) g_tr_en_curso[i].store(TR_LIBRE);
     std::thread([n]{
         std::vector<std::thread> ts;
-        for(int i=0;i<n;i++) ts.emplace_back(tr_worker_fn, nullptr);
+        for(int i=0;i<n;i++) ts.emplace_back(tr_worker_fn, (void*)(intptr_t)i);
         for(auto &t: ts) t.join();
         // Completo = agotó el rango sin que se pidiera parar antes. Si se pidió parar, aunque el
         // último lote reclamado llegara justo al final, se cuenta como parado: fue a propósito.
@@ -3790,6 +3805,15 @@ Java_com_hunter_btc_HunterEngine_taprootFijarReanudo(JNIEnv*, jobject, jlong des
 }
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_taprootCorriendo(JNIEnv*, jobject){ return g_tr_corriendo.load(); }
+/* Por dónde se puede reanudar sin saltarse nada: todo lo anterior está probado (ver g_tr_en_curso).
+   Válido también una vez parado el barrido. */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_taprootSeguro(JNIEnv*, jobject){
+    uint64_t m = g_tr_claimed.load();          /* PRIMERO lo repartido, luego los lotes en marcha */
+    for(int i=0;i<TR_MAX_HILOS;i++){ uint64_t v=g_tr_en_curso[i].load(); if(v<m) m=v; }
+    if(m > g_tr_width) m = g_tr_width;
+    return (jlong)m;
+}
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_taprootHechas(JNIEnv*, jobject){ return (jlong)g_tr_done.load(); }
 extern "C" JNIEXPORT jlong JNICALL

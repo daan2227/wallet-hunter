@@ -430,3 +430,14 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   un `@Synchronized` (que lo hacía todo uno a uno). Los fallos no se memorizan.
 - Sin medir en móvil ni contra los servidores reales (límites de ritmo de mempool.space sin probar);
   si empiezan a salir "no answer" con la seed grande, bajar `RAMAS_A_LA_VEZ`.
+
+## Taproot: reanudación exacta y a prueba de cierres (2026-10-27)
+
+- El motor expone `taprootSeguro()`: el mínimo entre lo repartido y el lote que lleva cada hilo, o sea,
+  todo lo anterior está probado. Antes se reanudaba desde las "hechas", que no son un prefijo y se
+  saltaban lo que quedaba a medias. Al reanudar se repite como mucho un lote (4096) por hilo.
+  El protocolo se comprobó con una simulación aparte (300 rondas, hasta 16 hilos, paradas al azar).
+- `TaprootPunto` lo anota en disco al arrancar, cada 10 s (pantalla y `HunterService`) y al terminar
+  (también si la pantalla no existe): ya no se pierde un barrido de días si matan el proceso.
+- Sigue sin reanudarse solo tras reiniciar el móvil: el botón "Resume from there" hay que pulsarlo.
+- Sin probar en móvil; la parte nativa sólo se compila en la CI.

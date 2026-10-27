@@ -279,9 +279,9 @@ class TaprootAuditActivity : AppCompatActivity() {
             tvReanudar.text = ""; btnReanudar.visibility = View.GONE
             return
         }
-        tvReanudar.text = ("A previous run of this exact start and width reached %.2f %% (%,d of %,d). It can only " +
-            "resume approximately: a small number of keys right around that point (at most a couple of batches) " +
-            "might be skipped or checked twice — negligible next to the whole range.").format(
+        tvReanudar.text = ("A previous run of this exact start and width reached %.2f %% (%,d of %,d). It resumes " +
+            "from a safe point: nothing before it is skipped, and a few thousand keys per core right after it " +
+            "may be checked a second time.").format(
                 desde * 100.0 / ancho, desde, ancho)
         btnReanudar.visibility = View.VISIBLE
     }
@@ -296,9 +296,9 @@ class TaprootAuditActivity : AppCompatActivity() {
         return p.getLong("ultimo_done", 0L) to p.getBoolean("ultimo_completo", false)
     }
 
-    private fun guardarPuntoFinal(inicio: String, ancho: Long, hechas: Long, completo: Boolean) {
+    private fun guardarPuntoFinal(inicio: String, ancho: Long, hechas: Long, completo: Boolean, reanudarEn: Long = hechas) {
         prefs().edit().putString("ultimo_start", inicio).putLong("ultimo_ancho", ancho)
-            .putLong("ultimo_done", hechas).putBoolean("ultimo_completo", completo).apply()
+            .putLong("ultimo_done", reanudarEn).putBoolean("ultimo_completo", completo).apply()
         // Al principio: JSONArray.put(0, x) NO inserta, SUSTITUYE lo que hubiera ahí — hay que
         // reconstruir el array entero con la entrada nueva delante.
         val vieja = try { JSONArray(prefs().getString("historial", null) ?: "[]") } catch (e: Exception) { JSONArray() }
@@ -457,6 +457,7 @@ class TaprootAuditActivity : AppCompatActivity() {
         HunterEngine.taprootFijarReanudo(desde)
         val err = HunterEngine.taprootIniciar(inicio, ancho.toString(), hilosActual())
         if (err.isNotEmpty()) { Toast.makeText(this, err, Toast.LENGTH_LONG).show(); return }
+        TaprootPunto.iniciar(this, inicio, ancho, desde)
         // Igual que Kangaroo (ver el comentario en MainActivity, misma razón): sin esto, salir de
         // la app o apagar la pantalla a mitad de un rango de días lo dejaba sin wake lock y sin
         // freno térmico, justo lo contrario de lo que promete la explicación de arriba.
@@ -491,11 +492,15 @@ class TaprootAuditActivity : AppCompatActivity() {
             val completo = hechas >= ancho
             tvProg.text = tvProg.text.toString() + (if (completo) "\nFinished: the whole range was scanned."
                 else "\nStopped. Matches, if any, are already in the vault.")
-            guardarPuntoFinal(etInicio.text.toString().trim().lowercase(), ancho, hechas, completo)
+            // El punto de reanudación es el seguro del motor, no las "hechas" (no son un prefijo).
+            val seguro = TaprootPunto.seguro().takeIf { it >= 0 } ?: hechas
+            guardarPuntoFinal(etInicio.text.toString().trim().lowercase(), ancho, hechas, completo,
+                              if (completo) ancho else seguro)
             pintarReanudar()
             return
         }
         btnEmpezar.isEnabled = true; btnEmpezar.text = "Stop"
+        TaprootPunto.guardar(this)
         h.postDelayed({ sondearMarcha() }, 1000)
     }
 

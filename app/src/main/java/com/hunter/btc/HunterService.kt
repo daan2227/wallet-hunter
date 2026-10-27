@@ -388,6 +388,9 @@ class HunterService : Service() {
                 }
             } else idleDesde = 0L
 
+            // Con la pantalla cerrada nadie más anota por dónde va la auditoría Taproot.
+            if (trCorriendo) try { TaprootPunto.guardar(this@HunterService) } catch (e: Throwable) {}
+
             handler.postDelayed(this, 2000L)
         }
     }

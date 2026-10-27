@@ -324,6 +324,9 @@ object HunterEngine {
     external fun taprootCorriendo(): Boolean
     /** Candidatas ya probadas en este barrido. */
     external fun taprootHechas(): Long
+    /** Por dónde reanudar sin saltarse nada: todo lo anterior está probado. Con el motor en marcha es una
+     *  cota que sólo sube; ya parado es el punto final. Las "hechas" no sirven: no son un prefijo. */
+    external fun taprootSeguro(): Long
     /** El ancho del rango en curso (0 si no hay ninguno). */
     external fun taprootAncho(): Long
     /** Antes de [taprootIniciar]: por dónde seguir (candidatas ya probadas de una vez anterior con el
@@ -340,6 +343,8 @@ object HunterEngine {
     @JvmStatic
     fun taprootTerminado(completo: Boolean) {
         val ctx = appCtx ?: return
+        // El punto final queda en disco aunque la pantalla ya no exista.
+        try { TaprootPunto.guardar(ctx, forzar = true) } catch (e: Throwable) {}
         try { Avisos.taprootTerminado(ctx, completo) } catch (e: Throwable) {}
     }
 
