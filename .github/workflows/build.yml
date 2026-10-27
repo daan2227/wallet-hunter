@@ -119,6 +119,8 @@ jobs:
     - name: Banco ARM64 (qemu)
       if: steps.motor.outputs.arm == '1'
       run: |
+        # Sin update el índice de la imagen puede apuntar a paquetes ya retirados (404).
+        sudo apt-get update -qq > /dev/null
         sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu qemu-user > /dev/null
         tools/ec-harness/arm64.sh
 
