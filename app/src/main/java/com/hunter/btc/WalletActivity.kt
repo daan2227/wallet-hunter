@@ -3801,6 +3801,7 @@ class WalletActivity : FragmentActivity() {
         val av = avanzado()
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
+            if (av && !isWifMode && mnemonic.isNotEmpty()) "New multisig with this wallet" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
             // Sin "av": es la única forma de comprobar el saldo sin fiarse de un servidor y sin nodo propio,
@@ -3838,6 +3839,7 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
+                    "New multisig with this wallet" -> authenticate { CrearMultifirma.mostrar(this, mnemonic, isTestnet) }
                     "Advanced options: on (turn off)", "Advanced options: off (turn on)" -> {
                         getSharedPreferences("hunter", MODE_PRIVATE).edit().putBoolean("modo_avanzado", !av).apply()
                         // Al volver a la vista simple no pueden quedar cosas avanzadas que se enviarían sin verse.

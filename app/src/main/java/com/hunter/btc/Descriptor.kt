@@ -25,8 +25,7 @@ object Descriptor {
         val testnet get() = clave.testnet
         /** El descriptor canónico, con checksum: lo que se guarda y lo que se exporta. */
         fun texto(): String {
-            val k = (clave.huella?.let { "[" + hex(it) + clave.ruta.joinToString("") { r -> "/" + paso(r) } + "]" } ?: "") +
-                    clave.texto + "/<0;1>/*"
+            val k = claveExprTexto(clave)
             val d = if (tipo == Tipo.SH_WPKH) "sh(wpkh($k))" else "${tipo.nombre}($k)"
             return d + "#" + checksum(d)
         }
@@ -98,26 +97,34 @@ object Descriptor {
             d.startsWith("tr(") && d.endsWith(")") && !d.contains(',') -> Tipo.TR to d.substring(3, d.length - 1)
             else -> return R.Mal("Only pkh, sh(wpkh), wpkh and tr (key path) descriptors are supported")
         }
-        // Origen
+        val (ck, aviso) = leerClaveExpr(dentro)
+        if (ck == null) return R.Mal(aviso ?: "Bad key")
+        aviso?.let { avisos.add(it) }
+        return R.Ok(Vigilada(tipo, ck), avisos)
+    }
+
+    /** Una expresión de clave ([huella/ruta]xpub… y su derivación) → la clave, o (null, motivo). Si la clave vale, el 2.º valor es un aviso. */
+    fun leerClaveExpr(dentro: String): Pair<ClaveX?, String?> {
         var resto = dentro
-        var huella: ByteArray? = null; val ruta = ArrayList<Long>()
+        var huella: ByteArray? = null; val ruta = ArrayList<Long>(); var aviso: String? = null
         if (resto.startsWith("[")) {
-            val fin = resto.indexOf(']'); if (fin < 0) return R.Mal("Unclosed key origin")
+            val fin = resto.indexOf(']'); if (fin < 0) return null to "Unclosed key origin"
             val partes = resto.substring(1, fin).split('/')
-            if (partes[0].length != 8 || !partes[0].all { it in "0123456789abcdefABCDEF" }) return R.Mal("Bad fingerprint")
+            if (partes[0].length != 8 || !partes[0].all { it in "0123456789abcdefABCDEF" }) return null to "Bad fingerprint"
             huella = bytes(partes[0].lowercase())
-            for (p in partes.drop(1)) ruta.add(pasoDe(p) ?: return R.Mal("Bad origin path step: $p"))
+            for (p in partes.drop(1)) ruta.add(pasoDe(p) ?: return null to "Bad origin path step: $p")
             resto = resto.substring(fin + 1)
-        } else avisos.add("No key origin: an external signer may not recognise the inputs")
-        // Clave y derivación posterior
+        } else aviso = "No key origin: an external signer may not recognise the inputs"
         val barra = resto.indexOf('/')
         val claveTxt = if (barra < 0) resto else resto.substring(0, barra)
         val deriv = if (barra < 0) "" else resto.substring(barra)
-        if (deriv !in setOf("", "/<0;1>/*", "/0/*", "/1/*")) return R.Mal("Unsupported derivation after the key: $deriv")
-        val ck0 = leerClave(claveTxt) ?: return R.Mal("Not a valid extended public key")
-        val ck = ClaveX(ck0.clave33, ck0.cadena, ck0.testnet, huella, ruta, ck0.texto)
-        return R.Ok(Vigilada(tipo, ck), avisos)
+        if (deriv !in setOf("", "/<0;1>/*", "/0/*", "/1/*")) return null to "Unsupported derivation after the key: $deriv"
+        val ck0 = leerClave(claveTxt) ?: return null to "Not a valid extended public key"
+        return ClaveX(ck0.clave33, ck0.cadena, ck0.testnet, huella, ruta, ck0.texto) to aviso
     }
+
+    /** La expresión de una clave para el descriptor, con su origen si lo tiene y las ramas 0 y 1. */
+    fun claveExprTexto(k: ClaveX) = (k.huella?.let { "[" + hex(it) + k.ruta.joinToString("") { r -> "/" + paso(r) } + "]" } ?: "") + k.texto + "/<0;1>/*"
 
     /** xpub/tpub o sus variantes SLIP-132; null si no vale o es privada. */
     private fun leerClave(t: String): ClaveX? {

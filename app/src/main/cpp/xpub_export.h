@@ -107,3 +107,35 @@ static std::string xpub_de_cuenta(const uint8_t seed[64], int purpose, bool test
     secp256k1_context_destroy(ctx);
     return out;
 }
+
+/*
+ * "huella_maestro|xpub" (o tpub) del nodo de una ruta cualquiera, p. ej. m/48'/0'/0'/2' (BIP48, la de las
+ * multifirmas P2WSH). La huella es la del MAESTRO: la que va en el origen [huella/ruta] del descriptor.
+ * Cadena vacía si algo falla.
+ */
+static std::string xpub_de_ruta(const uint8_t seed[64], const uint32_t *ruta, int n, bool testnet) {
+    if (n < 1 || n > 10) return "";
+    secp256k1_context *ctx = secp256k1_context_create(SECP256K1_CONTEXT_SIGN);
+    std::string out;
+    XNodo nodo, padre, sig; uint8_t I[64];
+    struct Borra { XNodo *a, *b, *c; uint8_t *i;
+        ~Borra() { OPENSSL_cleanse(a, sizeof(XNodo)); OPENSSL_cleanse(b, sizeof(XNodo)); OPENSSL_cleanse(c, sizeof(XNodo)); OPENSSL_cleanse(i, 64); }
+    } borra{&nodo, &padre, &sig, I};
+    xpub_hmac((const uint8_t *)"Bitcoin seed", 12, seed, 64, I);
+    memcpy(nodo.key, I, 32); memcpy(nodo.chain, I + 32, 32);
+    uint8_t fpm[4];
+    { secp256k1_pubkey pk; uint8_t p33[33]; size_t l = 33; uint8_t h[20];
+      if (!secp256k1_ec_pubkey_create(ctx, &pk, nodo.key)) { secp256k1_context_destroy(ctx); return ""; }
+      secp256k1_ec_pubkey_serialize(ctx, p33, &l, &pk, SECP256K1_EC_COMPRESSED); xpub_hash160_de(p33, 33, h); memcpy(fpm, h, 4); }
+    bool ok = true;
+    for (int i = 0; i < n && ok; i++) { padre = nodo; ok = xpub_hijo(ctx, padre, ruta[i], sig); nodo = sig; }
+    if (ok) {
+        secp256k1_pubkey pk; uint8_t p33[33]; size_t l = 33; uint8_t h[20];
+        secp256k1_ec_pubkey_create(ctx, &pk, padre.key);
+        secp256k1_ec_pubkey_serialize(ctx, p33, &l, &pk, SECP256K1_EC_COMPRESSED); xpub_hash160_de(p33, 33, h);
+        std::string x = xpub_serializar(nodo, (uint8_t)n, h, ruta[n - 1], testnet ? 0x043587cfu : 0x0488b21eu, ctx);
+        if (!x.empty()) { char f[9]; snprintf(f, 9, "%02x%02x%02x%02x", fpm[0], fpm[1], fpm[2], fpm[3]); out = std::string(f) + "|" + x; }
+    }
+    secp256k1_context_destroy(ctx);
+    return out;
+}

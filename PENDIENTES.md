@@ -540,3 +540,19 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   apagado y, si Tor está activado, sale por Tor.
 - `Movimientos` (detector) con pruebas de JVM. Sin probar en móvil: el ritmo real lo decide Android
   (en reposo puede espaciarlo bastante más).
+
+## Multifirma (2026-10-27)
+
+- Descriptores `wsh(sortedmulti(k,…))` y `wsh(multi(k,…))` con claves `[huella/ruta]xpub`: se vigilan
+  como cualquier cartera externa (pegándolos en "Watch"), con PSBT que lleva el script y la derivación
+  de TODAS las claves (y del cambio), y finalización con k firmas.
+- Opciones → "New multisig with this wallet" (avanzado): enseña la clave BIP48 de la cartera
+  (`[huella/48h/0h/0h/2h]xpub`, nuevo `HunterEngine.xpubDeRuta`), se pegan las de los demás, se elige k y
+  se crea la cartera. "Sign with a wallet on this phone": pone la firma de las claves de las semillas del
+  teléfono (por la huella), pidiendo el código; si ya hay k firmas, se difunde.
+- Probado con tres monederos de Bitcoin Core 30 en regtest: direcciones y checksum iguales, PSBT de la app
+  con una firma puesta por la app (ECDSA de prueba) y otra por Core → la mempool la aceptó, y la
+  finalización de la app da la misma transacción que finalizepsbt (MultifirmaTest en la JVM; el banco
+  nativo prueba xpubDeRuta).
+- Sin probar en móvil ni con firmadores físicos. Recuperar una multifirma exige el descriptor: la app
+  lo dice al crearla.

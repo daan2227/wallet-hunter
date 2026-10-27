@@ -1572,6 +1572,33 @@ Java_com_hunter_btc_HunterEngine_exportarXpub(JNIEnv *env, jobject, jstring jmn,
     return env->NewStringUTF(out.c_str());
 }
 
+/* "huella|xpub" del nodo de [jpath] ("m/48'/0'/0'/2'"), para dar la clave de esta cartera a una
+ * multifirma. Sólo la pública sale del motor. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_xpubDeRuta(JNIEnv *env, jobject, jstring jmn, jstring jpath, jboolean jtestnet) {
+    const char *m = env->GetStringUTFChars(jmn, nullptr);
+    const char *p = env->GetStringUTFChars(jpath, nullptr);
+    std::string out;
+    if (m && p) {
+        std::vector<uint32_t> ruta; std::string s(p); bool ok = s.rfind("m/", 0) == 0;
+        if (ok) { std::string t; s = s.substr(2) + "/";
+            for (char c : s) { if (c == '/') { if (t.empty() || t.size() > 11) { ok = false; break; }
+                bool h = t.back() == '\'' || t.back() == 'h'; if (h) t.pop_back();
+                char *e = nullptr; unsigned long v = strtoul(t.c_str(), &e, 10);
+                if (*e || v >= 0x80000000UL) { ok = false; break; }
+                ruta.push_back((uint32_t)v + (h ? 0x80000000u : 0)); t.clear(); } else t += c; } }
+        if (ok && !ruta.empty()) {
+            uint8_t seed[64] = {0}; uint32_t cta = 0;
+            semilla_de_frase(m, strlen(m), seed, &cta);
+            out = xpub_de_ruta(seed, ruta.data(), (int)ruta.size(), jtestnet != JNI_FALSE);
+            OPENSSL_cleanse(seed, sizeof seed);
+        }
+    }
+    if (m) env->ReleaseStringUTFChars(jmn, m);
+    if (p) env->ReleaseStringUTFChars(jpath, p);
+    return env->NewStringUTF(out.c_str());
+}
+
 /* Para una PSBT: la clave pública de una ruta de la frase y la huella del maestro
  * (los 4 primeros bytes del hash160 de la clave maestra), como "pub33hex|fp8hex".
  * Así un firmador externo reconoce sus entradas por la derivación BIP32. Vacío si

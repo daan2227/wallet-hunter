@@ -208,10 +208,29 @@ class CarteraExternaActivity : AppCompatActivity() {
             }.show()
     }
 
-    private fun compartir(psbt: ByteArray) {
-        AlertDialog.Builder(this).setTitle("PSBT ready")
-            .setItems(arrayOf("Show as animated QR (UR / BBQr)", "Share as file", "Copy as base64")) { _, i ->
+    private fun compartir(psbt: ByteArray, firmadasAqui: Int = 0) {
+        val multi = motor is MotorMultifirma
+        val opciones = arrayOf("Show as animated QR (UR / BBQr)", "Share as file", "Copy as base64") +
+            (if (multi) arrayOf("Sign with a wallet on this phone") else emptyArray())
+        AlertDialog.Builder(this).setTitle(if (firmadasAqui > 0) "PSBT ready · $firmadasAqui signature(s) added here" else "PSBT ready")
+            .setItems(opciones) { _, i ->
                 when (i) {
+                    3 -> {
+                        val d = Psbt.parse(psbt) ?: return@setItems
+                        FirmaPropia.firmar(this, d) { n ->
+                            when {
+                                n < 0 -> {}
+                                n == 0 -> { Toast.makeText(this, "None of this PSBT's keys belongs to a wallet on this phone.", Toast.LENGTH_LONG).show(); compartir(psbt, firmadasAqui) }
+                                else -> {
+                                    val nueva = Psbt.serialize(d)
+                                    // Si ya hay bastantes firmas, se puede difundir directamente.
+                                    val copia = Psbt.parse(nueva)!!
+                                    if (Psbt.finalizar(copia) { s2, f -> motor.testigoWsh(s2, f) } == copia.tx.ins.size) procesarBytes(nueva)
+                                    else compartir(nueva, firmadasAqui + n)
+                                }
+                            }
+                        }
+                    }
                     0 -> QrAnimado.mostrar(this, psbt, "Scan with the signing device")
                     1 -> try {
                         val f = java.io.File(BackupStore.compartidos(this), "psbt_${System.currentTimeMillis()}.psbt"); f.writeBytes(psbt)
@@ -273,9 +292,15 @@ class CarteraExternaActivity : AppCompatActivity() {
             val d = Psbt.parse(b) ?: run { Toast.makeText(this, "The PSBT could not be read.", Toast.LENGTH_LONG).show(); return }
             val n = Psbt.finalizar(d) { s, f -> motor.testigoWsh(s, f) }
             Psbt.extraer(d) ?: run {
-                AlertDialog.Builder(this).setTitle("Not fully signed yet")
+                val dlg = AlertDialog.Builder(this).setTitle("Not fully signed yet")
                     .setMessage("$n of ${d.tx.ins.size} inputs have enough signatures. Sign it on the device(s) that are missing, then try again.")
-                    .setPositiveButton("OK", null).show(); return
+                    .setPositiveButton("OK", null)
+                if (motor is MotorMultifirma) dlg.setNeutralButton("Add this phone's signature") { _, _ ->
+                    val orig = Psbt.parse(b)!!
+                    FirmaPropia.firmar(this, orig) { k -> if (k > 0) procesarBytes(Psbt.serialize(orig)) else if (k == 0)
+                        Toast.makeText(this, "None of its keys belongs to a wallet on this phone.", Toast.LENGTH_LONG).show() }
+                }
+                dlg.show(); return
             }
         } else b
         val tx = try { Psbt.parseTx(raw) } catch (e: Exception) { null }

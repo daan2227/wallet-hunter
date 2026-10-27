@@ -37,6 +37,17 @@ int main() {
     printf("%s  BIP49 usa la versión ypub\n", ver_ypub ? "OK  " : "MAL ");
     if (!ver_ypub) fallos++;
 
+    /* xpub_de_ruta: m/44'/0'/0' tiene que ser exactamente la de xpub_de_cuenta(44) (las dos son "xpub"),
+       y la huella del maestro de "abandon … about" es 73c5da0a (la de los vectores de BIP84/BIP86). */
+    {
+        const uint32_t H = 0x80000000u; uint32_t r44[3] = {H + 44, H, H};
+        std::string x = xpub_de_ruta(seed, r44, 3, false);
+        debe("xpub_de_ruta m/44'/0'/0'", x, ("73c5da0a|" + xpub_de_cuenta(seed, 44, false)).c_str());
+        uint32_t r48[4] = {H + 48, H, H, H + 2};
+        std::string m = xpub_de_ruta(seed, r48, 4, false);
+        bool ok48 = m.rfind("73c5da0a|xpub", 0) == 0 && m.size() > 100;
+        printf("%s  xpub_de_ruta m/48'/0'/0'/2' (huella y formato)\n", ok48 ? "OK  " : "MAL "); if (!ok48) fallos++;
+    }
     printf(fallos ? "\nHAY FALLOS: %d\n" : "\nTodas las pruebas correctas.\n", fallos);
     return fallos ? 1 : 0;
 }

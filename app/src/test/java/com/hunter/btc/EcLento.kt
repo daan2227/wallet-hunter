@@ -83,3 +83,37 @@ object EcLentoOps {
         }
     }
 }
+
+/** Derivación PRIVADA BIP32 y firma ECDSA (low-S, DER) con BigInteger: sólo para las pruebas. */
+object EcLentoPriv {
+    private fun hmac512(k: ByteArray, d: ByteArray) =
+        javax.crypto.Mac.getInstance("HmacSHA512").apply { init(javax.crypto.spec.SecretKeySpec(k, "HmacSHA512")) }.doFinal(d)
+
+    /** Privada (hex) de [ruta] ("48h/1h/0h/2h/0/0") desde una xprv/tprv maestra. */
+    fun derivar(xprv: String, ruta: String): String {
+        val raw = Descriptor.b58check(xprv)!!
+        var k = java.math.BigInteger(1, raw.copyOfRange(46, 78)); var c = raw.copyOfRange(13, 45)
+        for (s in ruta.split('/')) {
+            val h = s.endsWith("h") || s.endsWith("'")
+            val i = s.trimEnd('h', '\'').toLong() + if (h) 0x80000000L else 0L
+            val datos = if (h) byteArrayOf(0) + EcLento.b32(k) else EcLento.ser(EcLento.mul(k)!!)
+            val I = hmac512(c, datos + byteArrayOf((i ushr 24).toByte(), (i ushr 16).toByte(), (i ushr 8).toByte(), i.toByte()))
+            k = (java.math.BigInteger(1, I.copyOfRange(0, 32)) + k).mod(EcLento.N); c = I.copyOfRange(32, 64)
+        }
+        return Descriptor.hex(EcLento.b32(k))
+    }
+
+    fun firmar(privHex: String, zHex: String): String {
+        val d = java.math.BigInteger(1, Descriptor.bytes(privHex)); val z = java.math.BigInteger(1, Descriptor.bytes(zHex))
+        val rnd = java.security.SecureRandom()
+        while (true) {
+            val k = java.math.BigInteger(256, rnd).mod(EcLento.N); if (k.signum() == 0) continue
+            val r = EcLento.mul(k)!!.first.mod(EcLento.N); if (r.signum() == 0) continue
+            var s = k.modInverse(EcLento.N).multiply(z.add(r.multiply(d))).mod(EcLento.N); if (s.signum() == 0) continue
+            if (s > EcLento.N.shiftRight(1)) s = EcLento.N - s
+            fun ent(x: java.math.BigInteger): ByteArray { val b = x.toByteArray(); return byteArrayOf(0x02, b.size.toByte()) + b }
+            val rr = ent(r); val ss = ent(s)
+            return Descriptor.hex(byteArrayOf(0x30, (rr.size + ss.size).toByte()) + rr + ss)
+        }
+    }
+}

@@ -223,7 +223,9 @@ object Psbt {
      * la transacción anterior entera si la entrada es legacy.
      */
     class EntradaPsbt(val importe: Long, val spk: ByteArray, val txAnterior: ByteArray?,
-                      val derivacion: Derivacion? = null)
+                      val derivacion: Derivacion? = null,
+                      /** Registros (clave, valor) que se añaden tal cual: script de testigo, derivaciones de una multifirma… */
+                      val extras: List<Pair<ByteArray, ByteArray>> = emptyList())
 
     /**
      * Lo que un firmador externo necesita para reconocer la entrada como suya:
@@ -276,7 +278,8 @@ object Psbt {
      * anterior si es legacy, que es lo que su firmante necesita para comprobar
      * el importe.
      */
-    fun crear(txHex: String, entradas: List<EntradaPsbt>, salidasPropias: Map<Int, Derivacion> = emptyMap()): ByteArray {
+    fun crear(txHex: String, entradas: List<EntradaPsbt>, salidasPropias: Map<Int, Derivacion> = emptyMap(),
+              salidasExtras: Map<Int, List<Pair<ByteArray, ByteArray>>> = emptyMap()): ByteArray {
         val raw = bytes(txHex)
         val tx = parseTx(raw)
         require(tx.ins.size == entradas.size) { "una entrada por cada UTXO" }
@@ -296,6 +299,7 @@ object Psbt {
                     recs.add(Rec(byteArrayOf(0x06) + d.pub33, d.huella + indices))           // PSBT_IN_BIP32_DERIVATION
                 }
             }
+            e.extras.forEach { (k, v) -> recs.add(Rec(k, v)) }
             recs
         }
         // Las salidas propias (el cambio) llevan su derivación: así el firmador sabe que vuelven a la cartera
@@ -310,6 +314,7 @@ object Psbt {
                     recs.add(Rec(byteArrayOf(0x07) + d.tapInterna, byteArrayOf(0) + d.huella + indices))  // PSBT_OUT_TAP_BIP32_DERIVATION
                 } else recs.add(Rec(byteArrayOf(0x02) + d.pub33, d.huella + indices))           // PSBT_OUT_BIP32_DERIVATION
             }
+            salidasExtras[j]?.forEach { (k, v) -> recs.add(Rec(k, v)) }
             recs
         }
         return serialize(Doc(globals, inputs, outputs, tx))
@@ -355,6 +360,51 @@ object Psbt {
         b.write(le(amount, 8)); b.write(le(tx.ins[idx].seq, 4)); b.write(dsha(op.toByteArray()))
         b.write(le(tx.locktime, 4)); b.write(le(1, 4))
         return dsha(b.toByteArray())
+    }
+
+    /**
+     * Pone la firma de [pub33] en las entradas P2WSH (multifirma, herencia) cuyo script de testigo la
+     * contiene. [firma] recibe el hash (hex) y devuelve la firma DER (hex, sin el byte de tipo): en la app,
+     * HunterEngine.firmarHash con la privada, que no sale del motor. Devuelve cuántas firmó.
+     */
+    fun firmarWsh(d: Doc, pub33: ByteArray, firma: (String) -> String): Int {
+        if (revisar(d).problemas.isNotEmpty()) return 0
+        var n = 0
+        for (i in d.tx.ins.indices) {
+            val recs = d.inputs[i]
+            if (recs.any { it.key.size == 34 && it.key[0].toInt() == 0x02 && it.key.copyOfRange(1, 34).contentEquals(pub33) }) continue
+            val ws = recs.firstOrNull { it.key.size == 1 && it.key[0].toInt() == 0x05 }?.value ?: continue
+            val (importe, spk) = importe(d, i) ?: continue
+            if (spk.size != 34 || spk[0].toInt() != 0 || spk[1].toInt() != 0x20 || !sha(ws).contentEquals(spk.copyOfRange(2, 34))) continue
+            if (!contiene(ws, pub33)) continue
+            val z = sighashBip143(d.tx, i, hex(varint(ws.size.toLong()) + ws), importe)
+            val der = firma(hex(z)); if (der.isBlank()) continue
+            recs.add(Rec(byteArrayOf(0x02) + pub33, bytes(der + "01")))
+            n++
+        }
+        return n
+    }
+
+    /** Las claves de [huella] que piden firma en las entradas (PSBT_IN_BIP32_DERIVATION): (pública 33, ruta). */
+    fun clavesDe(d: Doc, huella: ByteArray): List<Pair<ByteArray, List<Long>>> {
+        val out = LinkedHashMap<String, Pair<ByteArray, List<Long>>>()
+        for (recs in d.inputs) for (r in recs) {
+            if (r.key.size != 34 || r.key[0].toInt() != 0x06 || r.value.size < 4 || (r.value.size - 4) % 4 != 0) continue
+            if (!r.value.copyOfRange(0, 4).contentEquals(huella)) continue
+            val ruta = (4 until r.value.size step 4).map { j ->
+                (r.value[j].toLong() and 0xff) or ((r.value[j + 1].toLong() and 0xff) shl 8) or
+                ((r.value[j + 2].toLong() and 0xff) shl 16) or ((r.value[j + 3].toLong() and 0xff) shl 24) }
+            out[hex(r.key)] = r.key.copyOfRange(1, 34) to ruta
+        }
+        return out.values.toList()
+    }
+
+    /** [0x80000030, 0x80000000, 0, 5] → "m/48'/0'/0/5". */
+    fun rutaTexto(r: List<Long>) = "m" + r.joinToString("") { "/" + if (it >= 0x80000000L) "${it - 0x80000000L}'" else "$it" }
+
+    private fun contiene(h: ByteArray, n: ByteArray): Boolean {
+        outer@ for (i in 0..h.size - n.size) { for (j in n.indices) if (h[i + j] != n[j]) continue@outer; return true }
+        return false
     }
 
     /** Firma las entradas que controla [privHex]. Devuelve cuántas firmó. */
