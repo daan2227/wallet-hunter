@@ -118,6 +118,15 @@ class CarteraExternaActivity : AppCompatActivity() {
                         for (u in us) nuevas.add(Moneda(c, i, u.optString("txid"), u.optInt("vout"), u.optLong("value"), u.optBoolean("confirmed", true)))
                     }
                 }
+                // Avisos de movimientos: las usadas y la próxima de recibir, con el nombre de la cartera.
+                if (AvisosMovimientos.activos(this)) {
+                    val dirs = HashMap<String, String>()
+                    for ((c, r) in ramas.withIndex()) {
+                        r.usadas.forEach { i -> motor.direccion(c, i)?.let { dirs[it] = entrada.nombre } }
+                        if (c == 0 && r.primeraLibre >= 0) motor.direccion(0, r.primeraLibre)?.let { dirs[it] = entrada.nombre }
+                    }
+                    AvisosMovimientos.registrar(this, dirs)
+                }
                 runOnUiThread {
                     libreRecibir = ramas[0].primeraLibre; libreCambio = ramas[1].primeraLibre
                     monedas.clear(); monedas.addAll(nuevas); cargando = false; pintar()

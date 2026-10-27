@@ -529,3 +529,14 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Sólo enviar. RECIBIR pagos silenciosos exige escanear cada bloque (indexador o el nodo propio) y no
   está. Tampoco desde carteras vigiladas o externas: hace falta la privada de las entradas.
 - Sin probar en móvil ni contra un receptor real (Core 30 no tiene Silent Payments).
+
+## Avisos de movimientos (2026-10-27)
+
+- More → Notifications → "Payments on watched addresses" (apagado por defecto). Con él, JobScheduler
+  despierta la app cada ~30 min con red y se consulta cada dirección apuntada: las vigiladas sueltas,
+  las de las carteras externas (usadas y la próxima de recibir) y las de la cartera tras refrescar el
+  saldo. Avisa "Incoming/Outgoing payment" con el importe y el nombre. La primera consulta sólo apunta.
+- Privacidad: consultar periódicamente le dice al servidor qué direcciones son tuyas; por eso va
+  apagado y, si Tor está activado, sale por Tor.
+- `Movimientos` (detector) con pruebas de JVM. Sin probar en móvil: el ritmo real lo decide Android
+  (en reposo puede espaciarlo bastante más).

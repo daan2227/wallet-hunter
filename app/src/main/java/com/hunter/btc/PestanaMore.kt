@@ -191,6 +191,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         // Si lo enciende pero el sistema las tiene bloqueadas, llévale a los ajustes.
         if (on && Build.VERSION.SDK_INT >= 33 && Avisos.faltaPermiso(this)) Avisos.abrirAjustes(this)
     }
+    filaSwitch(avisos, "Payments on watched addresses",
+        "Every ~30 min, ask the network about your watched and wallet addresses (via Tor if enabled in Privacy)",
+        AvisosMovimientos.activos(this)) { on -> AvisosMovimientos.poner(this, on) }
     filaSwitch(avisos, "Vibrate on find", null, Avisos.vibrarOn(this)) { Avisos.setVibrar(this, it) }
     filaSwitch(avisos, "Coin sound on find", "Play a sound when a key is found",
         Avisos.sonidoOn(this)) { on ->

@@ -863,6 +863,10 @@ class WalletActivity : FragmentActivity() {
             // que el total no sea completo: se avisa y el diálogo de borrado no
             // lo da por cero.
             val huboFallo = sinRed || rows.any { it.sat < 0 } || fallosHD > 0
+            // Para los avisos de movimientos (si están activados): las direcciones de esta cartera.
+            if (AvisosMovimientos.activos(this)) try {
+                AvisosMovimientos.registrar(this, rows.filter { it.addr.isNotEmpty() }.associate { it.addr to currentWalletName })
+            } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.avisosMovimientos", e) }
             val hallados = hdUsadas.toMap()
             runOnUiThread {
                 if (gen == generacion) {
