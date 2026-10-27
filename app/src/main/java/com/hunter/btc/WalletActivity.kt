@@ -692,6 +692,8 @@ class WalletActivity : FragmentActivity() {
         }
         actionBar?.addView(actionBtn("Send", R.drawable.ic_send, primary = false, last = false)
             .apply { setOnClickListener { tabBtns[2].performClick() } })
+        actionBar?.addView(actionBtn("Lightning", R.drawable.ic_bolt, primary = false, last = false)
+            .apply { setOnClickListener { menuLightning() } })
         actionBar?.addView(actionBtn("Receive", R.drawable.ic_receive, primary = true, last = true)
             .apply { setOnClickListener { tabBtns[3].performClick() } })
         root.addView(actionBar)
@@ -894,15 +896,8 @@ class WalletActivity : FragmentActivity() {
                 monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
-                // El nodo Lightning de la app, si está en marcha en esta red: su saldo aparte.
-                Ln.motor?.takeIf { Ln.testnet == isTestnet }?.let { m ->
-                    val (cadenaLn, canalesLn) = try { m.saldos() } catch (e: Exception) { 0L to 0L }
-                    ll.addView(TextView(this).apply {
-                        text = "Lightning node: %,d sat in channels · %,d sat on-chain".format(canalesLn, cadenaLn)
-                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
-                        setPadding(0, 0, 0, dp(8))
-                    })
-                }
+                // Lightning: siempre a la vista. Con el nodo en marcha, su saldo; si no, cómo encenderlo.
+                ll.addView(tarjetaLightning())
                 if (pend != 0L) ll.addView(TextView(this).apply {
                     text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8) + fiatEntre(pend)
                     textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
@@ -1784,7 +1779,7 @@ class WalletActivity : FragmentActivity() {
             else if (p.esPeticion) etAmt.setText("")
         }
         alLeerQr = { rellenar(it) }
-        // "Send to my Lightning node" (Opciones) deja aquí la dirección del nodo.
+        // "Move bitcoin from this wallet to Lightning" (botón Lightning) deja aquí la dirección del nodo.
         destinoPendiente?.let { rellenar(it); destinoPendiente = null }
         val filaAcciones = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -3840,6 +3835,100 @@ class WalletActivity : FragmentActivity() {
         return out
     }
 
+    /** El nodo Lightning de la app si está en marcha en la red de esta cartera. */
+    private fun nodoLn(): MotorLn? = Ln.motor?.takeIf { Ln.testnet == isTestnet }
+
+    /** Tarjeta del saldo: lo que hay en Lightning, o cómo encenderlo. Tocarla abre las acciones. */
+    private fun tarjetaLightning(): View {
+        val m = nodoLn()
+        val (cadenaLn, canalesLn) = m?.let { try { it.saldos() } catch (e: Exception) { null } } ?: (0L to 0L)
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            background = cardBg(); setPadding(dp(16), dp(14), dp(16), dp(14))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
+            isClickable = true; foreground = Ui.toque(); setOnClickListener { menuLightning() }
+            addView(Ui.icon(this@WalletActivity, R.drawable.ic_bolt, 20, AppTheme.ACCENT).apply {
+                (layoutParams as? LinearLayout.LayoutParams)?.marginEnd = dp(12) })
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                addView(TextView(context).apply {
+                    text = if (m != null) "Lightning · %,d sat".format(canalesLn) else "Lightning"
+                    textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI); typeface = AppTheme.bold(context)
+                })
+                addView(TextView(context).apply {
+                    text = if (m != null) "%,d sat on-chain in the node · tap to move funds or pay".format(cadenaLn)
+                           else "Node off · tap to start it, or use your remote node (NWC)"
+                    textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
+                })
+            })
+            addView(Ui.icon(this@WalletActivity, R.drawable.ic_chevron, 18, AppTheme.TXT_SEC))
+        }
+    }
+
+    /** Lo que se puede hacer con Lightning desde esta cartera. */
+    private fun menuLightning() {
+        val m = nodoLn()
+        val vigilada = isWifMode && wifKey.isEmpty()
+        val opciones = if (m == null) listOf("Start my Lightning node", "Remote Lightning node (NWC)")
+            else listOfNotNull(if (!vigilada) "Move bitcoin from this wallet to Lightning" else null,
+                               "Move Lightning on-chain funds to this wallet", "Open Lightning (pay, receive, channels)", "Remote Lightning node (NWC)")
+        AlertDialog.Builder(this).setTitle(if (m == null) "Lightning (node off)" else "Lightning")
+            .setItems(opciones.toTypedArray()) { _, i ->
+                when (opciones[i]) {
+                    "Start my Lightning node", "Open Lightning (pay, receive, channels)" ->
+                        startActivity(Intent(this, LightningActivity::class.java).putExtra(LightningActivity.EXTRA_TESTNET, isTestnet))
+                    "Remote Lightning node (NWC)" -> startActivity(Intent(this, NwcActivity::class.java))
+                    "Move bitcoin from this wallet to Lightning" -> Thread {
+                        val a = try { m!!.direccionCadena() } catch (e: Exception) { null }
+                        runOnUiThread {
+                            if (a == null) Toast.makeText(this, "The node did not give an address.", Toast.LENGTH_LONG).show()
+                            else {
+                                Toast.makeText(this, "Send to your Lightning node: enter the amount. Then open a channel in Lightning.", Toast.LENGTH_LONG).show()
+                                destinoPendiente = a; botonesPestana.getOrNull(2)?.performClick()
+                            }
+                        }
+                    }.start()
+                    "Move Lightning on-chain funds to this wallet" -> retirarLnAEstaCartera(m!!)
+                }
+            }.show()
+    }
+
+    /**
+     * Todo lo que el nodo tiene en cadena (lo que vuelve al cerrar canales, o lo que no se usó) a la siguiente
+     * dirección sin usar de ESTA cartera (bc1q de la semilla, o la dirección de la WIF / vigilada).
+     */
+    private fun retirarLnAEstaCartera(m: MotorLn) {
+        val mn = mnemonic; val wif = isWifMode; val red = isTestnet
+        Thread {
+            val cadenaLn = try { m.saldos().first } catch (e: Exception) { 0L }
+            val dir: String? = try {
+                if (!wif && mn.isNotEmpty()) {
+                    val libre = HdScanner.scanBranch(mn, 84, 0, red).second
+                    if (libre < 0) null else org.json.JSONArray(HunterEngine.deriveAddresses(mn, 84, 0, libre, 1, red)).getJSONObject(0).getString("addr")
+                } else addresses["wif_p2wpkh"] ?: wifAddr.takeIf { it.isNotEmpty() }
+            } catch (e: Exception) { null }
+            runOnUiThread {
+                when {
+                    cadenaLn <= 0 -> Toast.makeText(this, "The node has no on-chain funds. Close a channel first to bring its balance back on-chain.", Toast.LENGTH_LONG).show()
+                    dir == null -> Toast.makeText(this, "Could not find an unused address of this wallet (network).", Toast.LENGTH_LONG).show()
+                    else -> AlertDialog.Builder(this).setTitle("Move to this wallet?")
+                        .setMessage("All the node's on-chain funds (%,d sat, minus the fee)".format(cadenaLn) + fiatEntre(cadenaLn) + "\nto $dir")
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Move") { _, _ ->
+                            val enviar = { Thread {
+                                val r = try { "Sent. Transaction " + m.vaciarCadena(dir) } catch (e: Exception) { "Not sent: ${e.message}" }
+                                runOnUiThread { Toast.makeText(this, r, Toast.LENGTH_LONG).show(); buildUI() }
+                            }.start() }
+                            if (WalletManager.hasPin(this) && (WalletManager.huellaActivada(this) || UmbralEnvio.exige(UmbralEnvio.leer(this), cadenaLn)))
+                                PinAuthHelper.pantalla(this, isSetup = false, autoBiometric = false, permitirHuella = false) { ok -> if (ok) enviar() }
+                            else enviar()
+                        }.show()
+                }
+            }
+        }.start()
+    }
+
     private fun showMenu() {
         // "Save to finds vault" sólo en las carteras que puso el usuario y que
         // tienen clave: las que vienen de un hallazgo ya están en el baúl, y
@@ -3851,7 +3940,7 @@ class WalletActivity : FragmentActivity() {
         val av = avanzado()
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
-            if (Ln.motor != null && !(isWifMode && wifKey.isEmpty())) "Send to my Lightning node" else null,
+            "Lightning",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New multisig with this wallet" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New inheritance wallet (timelock)" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "My key for someone else's multisig / inheritance" else null,
@@ -3892,17 +3981,7 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
-                    "Send to my Lightning node" -> {
-                        val m = Ln.motor
-                        if (m == null || Ln.testnet != isTestnet) Toast.makeText(this, "Start the Lightning node on this network first (More → Tools → Lightning).", Toast.LENGTH_LONG).show()
-                        else Thread {
-                            val a = try { m.direccionCadena() } catch (e: Exception) { null }
-                            runOnUiThread {
-                                if (a == null) Toast.makeText(this, "The node did not give an address.", Toast.LENGTH_LONG).show()
-                                else { destinoPendiente = a; botonesPestana.getOrNull(2)?.performClick() }
-                            }
-                        }.start()
-                    }
+                    "Lightning" -> menuLightning()
                     "New multisig with this wallet" -> authenticate { CrearMultifirma.mostrar(this, mnemonic, isTestnet) }
                     "New inheritance wallet (timelock)" -> authenticate { CrearHerencia.mostrar(this, mnemonic, isTestnet) }
                     "My key for someone else's multisig / inheritance" -> authenticate {

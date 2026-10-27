@@ -670,3 +670,12 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   externa); en la cartera externa, tocar una moneda copia su dirección y las pendientes salen en ámbar.
 - Pendiente (no hecho): los descriptores de las carteras externas se guardan sin cifrar en el almacén
   privado de la app; no permiten gastar pero sí ver todo el historial.
+
+## Lightning a la vista en la cartera (2026-10-27)
+
+- Antes la integración no se veía: la opción y el saldo sólo salían con el nodo ya arrancado. Ahora, en la
+  pantalla de la cartera: botón "Lightning" junto a Send/Receive y una tarjeta en el saldo (con el nodo
+  apagado dice cómo encenderlo; en marcha, su saldo). Desde ahí: encender/abrir el nodo, mandar bitcoin de
+  ESTA cartera al nodo (abre Enviar con su dirección), traer lo que el nodo tiene en cadena a ESTA cartera
+  (siguiente bc1q libre, o la de la WIF/vigilada; con código por encima del umbral) y el nodo remoto (NWC).
+- Sin probar en móvil; lo compila la CI.
