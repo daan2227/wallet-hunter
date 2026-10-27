@@ -627,6 +627,7 @@ class WalletActivity : FragmentActivity() {
             }
             tabBtns.add(btn); tabs.addView(btn)
         }
+        botonesPestana = tabBtns
         tabBtns.forEachIndexed { i, btn ->
             btn.setOnClickListener {
                 tabBtns.forEach { b ->
@@ -893,6 +894,15 @@ class WalletActivity : FragmentActivity() {
                 monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
+                // El nodo Lightning de la app, si está en marcha en esta red: su saldo aparte.
+                Ln.motor?.takeIf { Ln.testnet == isTestnet }?.let { m ->
+                    val (cadenaLn, canalesLn) = try { m.saldos() } catch (e: Exception) { 0L to 0L }
+                    ll.addView(TextView(this).apply {
+                        text = "Lightning node: %,d sat in channels · %,d sat on-chain".format(canalesLn, cadenaLn)
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+                        setPadding(0, 0, 0, dp(8))
+                    })
+                }
                 if (pend != 0L) ll.addView(TextView(this).apply {
                     text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8) + fiatEntre(pend)
                     textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
@@ -1774,6 +1784,8 @@ class WalletActivity : FragmentActivity() {
             else if (p.esPeticion) etAmt.setText("")
         }
         alLeerQr = { rellenar(it) }
+        // "Send to my Lightning node" (Opciones) deja aquí la dirección del nodo.
+        destinoPendiente?.let { rellenar(it); destinoPendiente = null }
         val filaAcciones = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(
@@ -3365,6 +3377,9 @@ class WalletActivity : FragmentActivity() {
 
     /** Lo pone el botón "Export as PSBT" antes de disparar el envío: mismas comprobaciones. */
     private var exportarSiguiente = false
+    /** Botones de pestaña (Balance, History, Send, Receive) y un destino para rellenar al abrir Enviar. */
+    private var botonesPestana: List<Button> = emptyList()
+    private var destinoPendiente: String? = null
     /** (dirección, endpoint pj=) de la última petición de pago leída con Payjoin (BIP78). */
     private var payjoinPara: Pair<String, String>? = null
 
@@ -3836,6 +3851,7 @@ class WalletActivity : FragmentActivity() {
         val av = avanzado()
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
+            if (Ln.motor != null && !(isWifMode && wifKey.isEmpty())) "Send to my Lightning node" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New multisig with this wallet" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New inheritance wallet (timelock)" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "My key for someone else's multisig / inheritance" else null,
@@ -3876,6 +3892,17 @@ class WalletActivity : FragmentActivity() {
                         d.show()
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
+                    "Send to my Lightning node" -> {
+                        val m = Ln.motor
+                        if (m == null || Ln.testnet != isTestnet) Toast.makeText(this, "Start the Lightning node on this network first (More → Tools → Lightning).", Toast.LENGTH_LONG).show()
+                        else Thread {
+                            val a = try { m.direccionCadena() } catch (e: Exception) { null }
+                            runOnUiThread {
+                                if (a == null) Toast.makeText(this, "The node did not give an address.", Toast.LENGTH_LONG).show()
+                                else { destinoPendiente = a; botonesPestana.getOrNull(2)?.performClick() }
+                            }
+                        }.start()
+                    }
                     "New multisig with this wallet" -> authenticate { CrearMultifirma.mostrar(this, mnemonic, isTestnet) }
                     "New inheritance wallet (timelock)" -> authenticate { CrearHerencia.mostrar(this, mnemonic, isTestnet) }
                     "My key for someone else's multisig / inheritance" -> authenticate {

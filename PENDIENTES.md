@@ -626,3 +626,14 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   falla. Fulcrum, electrs y ElectrumX 1.x van bien. El tráfico del nodo no usa el proxy Tor de la app.
 - Con el Core podado, si el teléfono pasa mucho tiempo sin abrir el nodo Lightning, Core puede borrar
   bloques que LDK aún no vio: en ese caso, Electrum o Esplora.
+
+## Lightning con la cartera (2026-10-27)
+
+- Opciones de la cartera → "Send to my Lightning node": abre Enviar con una dirección del nodo (con el
+  nodo en marcha en la misma red). En Lightning → "Withdraw to my main wallet": todo lo de la cartera en
+  cadena del nodo a la siguiente bc1q sin usar de la cartera principal (pide el código).
+- En el saldo de la cartera sale la línea "Lightning node: … in channels · … on-chain" si el nodo corre.
+- Recibir → "Unified QR": `bitcoin:<dir>?amount=…&lightning=<factura>`; quien paga elige. Probado en regtest:
+  la parte Lightning del QR unificado se pagó entre dos nodos.
+- (El QR unificado y la retirada entraron ya en el commit anterior, junto con la pantalla.)
+- No se abre un canal directamente con monedas de la cartera: LDK Node 0.7 sólo financia desde la suya.
