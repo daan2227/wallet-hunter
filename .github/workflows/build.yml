@@ -304,3 +304,17 @@ jobs:
 
         # --clobber reemplaza el APK anterior conservando el release y el tag.
         gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
+
+        # version.json: lo que consulta el actualizador de la app (Actualizador.kt).
+        # Se sube DESPUÉS del APK: si se cortara entre medias, la app vería la
+        # versión vieja junto al APK nuevo y no ofrecería nada; al revés, una
+        # versión nueva con el APK viejo, y la suma no cuadraría.
+        if [ "$TAG" = "latest-build-main" ]; then
+          APK=app/build/outputs/apk/release/app-release.apk
+          SHA=$(sha256sum "$APK" | cut -d' ' -f1)
+          BYTES=$(stat -c %s "$APK")
+          printf '{"versionCode":%s,"versionName":"1.0.%s","sha256":"%s","size":%s,"commit":"%s"}\n' \
+            "${{ github.run_number }}" "${{ github.run_number }}" "$SHA" "$BYTES" "${{ github.sha }}" > version.json
+          cat version.json
+          gh release upload "$TAG" version.json --clobber
+        fi

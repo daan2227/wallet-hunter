@@ -4,4 +4,6 @@
 <paths>
     <files-path name="backups" path="backups/" />
     <files-path name="shared" path="shared/" />
+    <!-- El APK descargado por el actualizador, para dárselo al instalador. -->
+    <files-path name="updates" path="updates/" />
 </paths>

@@ -756,6 +756,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             android.util.Log.e("MainActivity", "vault: ${e.message}", e)
         }
 
+        // ¿Hay una compilación nueva? Como mucho cada 12 h y sólo pregunta a
+        // github.com por version.json (ni direcciones ni claves). Se apaga en
+        // More → Updates. No al recrear la pantalla (cambio de tema, giro).
+        if (savedState == null) Actualizador.comprobarSiToca(this)
+
         // Init
         try {
             if (csvPath.isNotEmpty() && File(csvPath).exists() && !HunterEngine.isCsvLoaded())

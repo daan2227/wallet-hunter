@@ -367,6 +367,12 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         }
         dlg.show()
     }
+    fila(app, R.drawable.ic_refresh, "Updates", "Check for a new build now",
+         Actualizador.nombreInstalada(this)) {
+        Actualizador.comprobarAhora(this)
+    }
+    filaSwitch(app, "Check for updates automatically", "Asks github.com at most every 12 h",
+        Actualizador.autoOn(this)) { Actualizador.setAuto(this, it) }
     fila(app, R.drawable.ic_help, "Help", "How the weak-key audit works", null) {
         startActivity(Intent(this, HelpActivity::class.java))
     }

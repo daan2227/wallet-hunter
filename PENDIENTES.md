@@ -415,3 +415,14 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 
 - **Exportar PSBT de una cartera vigilada.** Hace falta derivar el cambio desde
   la xpub, que hoy sólo sirve para importar.
+
+## Actualizador (2026-10-27)
+
+- More → Updates busca la última compilación de `main` (release `latest-build-main`,
+  fichero `version.json` que escribe la CI) y la instala tras comprobar SHA-256,
+  paquete, versionCode y certificado de firma. Al abrir la app mira solo, como
+  mucho cada 12 h (se apaga en More).
+- **Sin probar en un móvil.** Sólo funciona a partir de tener instalada una
+  compilación que ya lo incluya, y si la instalada y la nueva están firmadas
+  con la misma clave (el keystore de release del secreto de la CI).
+- No pasa por Tor aunque esté configurado: la consulta va directa a github.com.

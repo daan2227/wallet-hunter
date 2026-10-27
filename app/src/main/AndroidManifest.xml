@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Sólo para leer el QR de la dirección al enviar (QrScanActivity). -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Instalar sus propias actualizaciones (Actualizador.kt). Android además
+         pide al usuario permiso expreso, y sólo instala encima un APK con la misma firma. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature android:name="android.hardware.camera.any" android:required="false" />
 
     <application
