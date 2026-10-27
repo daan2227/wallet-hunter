@@ -1766,6 +1766,7 @@ class WalletActivity : FragmentActivity() {
                 Toast.makeText(this, p.error, Toast.LENGTH_LONG).show()
                 return
             }
+            payjoinPara = Payjoin.endpoint(texto)?.let { p.direccion to it }
             etTo.setText(p.direccion)
             // Una petición sin importe deja el campo vacío: antes se quedaba el
             // importe del envío anterior, que no era el que pedía nadie.
@@ -2870,14 +2871,46 @@ class WalletActivity : FragmentActivity() {
                         }
                         runOnUiThread { tvStatus.text = txt; tvStatus.setTextColor(RED); btnSend.isEnabled = true }; return@Thread
                     }
+                    // Payjoin (BIP78): si la petición lo ofrecía, se intenta; ante cualquier fallo, la original.
+                    var aDifundir = rawTx
+                    var notaPj = ""
+                    val pj = payjoinPara?.takeIf { it.first == toAddr }?.second
+                    if (pj != null && extras.isEmpty() && destinoTx == toAddr && (fromKey.startsWith("p2wpkh") || fromKey == "wif_p2wpkh")) {
+                        runOnUiThread { tvStatus.text = "Payjoin: asking the receiver…"; tvStatus.setTextColor(TXT_SEC) }
+                        notaPj = try {
+                            val fromSpk = BtcAddress.scriptPubKey((BtcAddress.validate(fromAddr, isTestnet) as BtcAddress.Result.Valid).info)
+                            val raw = Descriptor.bytes(rawTx)
+                            val txO = Psbt.parseTx(raw)
+                            val destSpk = BtcAddress.scriptPubKey((BtcAddress.validate(toAddr, isTestnet) as BtcAddress.Result.Valid).info)
+                            val us = plan.chosen.map { it.getLong("value") to fromSpk }
+                            val cambioIdx = txO.outs.indexOfFirst { !it.spk.contentEquals(destSpk) }.takeIf { it >= 0 }
+                            val propios = (listOf(fromSpk) + txO.outs.filter { !it.spk.contentEquals(destSpk) }.map { it.spk }).map { Descriptor.hex(it) }.toSet()
+                            val maxCom = feeRate * 68
+                            val orig = Payjoin.psbtOriginal(raw, us)
+                            val resp = Payjoin.pedir(Payjoin.url(pj, cambioIdx, maxCom, feeRate), orig)
+                                ?: throw IllegalStateException("the receiver did not answer")
+                            val prop = Psbt.parse(resp) ?: throw IllegalStateException("unreadable proposal")
+                            val od = Psbt.parse(orig)!!
+                            Payjoin.comprobar(od, prop, us, propios, maxCom)?.let { throw IllegalStateException(it) }
+                            Payjoin.prepararParaFirmar(od, prop, us)
+                            val priv = if (wifSnap) HunterEngine.hexDeWif(wifKeySnap) else HunterEngine.deriveRuta(mnSnap, pathStr)
+                            if (Psbt.sign(prop, priv) != od.tx.ins.size) throw IllegalStateException("could not sign our inputs")
+                            if (Psbt.finalizar(prop) != prop.tx.ins.size) throw IllegalStateException("could not finalize")
+                            aDifundir = Psbt.extraer(prop)!!.joinToString("") { "%02x".format(it) }
+                            " (payjoin)"
+                        } catch (e: Exception) {
+                            RegistroFallos.anotar("WalletActivity.payjoin", e)
+                            " (payjoin not used: ${e.message}; sent as a normal transaction)"
+                        }
+                    }
                     runOnUiThread { tvStatus.text = "Broadcasting…"; tvStatus.setTextColor(TXT_SEC) }
                     // Difundir también tenía un único camino. Si la firma salió
                     // bien y no se puede difundir, la transacción se pierde sin
                     // más: mejor que lo intenten los dos.
-                    val resp = ChainInfo.broadcast(rawTx, isTestnet)
+                    val resp = ChainInfo.broadcast(aDifundir, isTestnet)
                     val ok = !resp.startsWith("ERROR")
                     runOnUiThread {
-                        tvStatus.text = if (ok) "Sent.\nTransaction ID: $resp"
+                        tvStatus.text = if (ok) "Sent$notaPj.\nTransaction ID: $resp"
                                         else resp.removePrefix("ERROR: ")
                         tvStatus.setTextColor(if (ok) GREEN else RED)
                         // Enviado: el mismo formulario otra vez pagaría dos veces, o
@@ -3332,6 +3365,8 @@ class WalletActivity : FragmentActivity() {
 
     /** Lo pone el botón "Export as PSBT" antes de disparar el envío: mismas comprobaciones. */
     private var exportarSiguiente = false
+    /** (dirección, endpoint pj=) de la última petición de pago leída con Payjoin (BIP78). */
+    private var payjoinPara: Pair<String, String>? = null
 
     /** Salidas extra del formulario de Enviar. Se vacían al cambiar de cartera y al enviar. */
     private val salidasExtraEnvio = mutableListOf<SalidaExtra>()

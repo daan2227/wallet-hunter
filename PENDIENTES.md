@@ -570,3 +570,16 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   finalización idéntica a finalizepsbt (HerenciaTest).
 - Sin probar en móvil. El dueño tiene que mover las monedas antes de N bloques para que el heredero no
   pueda gastarlas: la pantalla lo recuerda, pero no lo hace sola.
+
+## Payjoin (BIP78, el que paga) (2026-10-27)
+
+- Si la petición de pago (QR o pegada) trae `pj=` (https, o http a .onion), al enviar desde una
+  dirección bc1q la app manda la transacción firmada al cobrador, comprueba su propuesta (versión,
+  locktime, nuestras entradas y secuencias, que el cobrador ponga una moneda suya firmada y del mismo
+  tipo, que el pago no baje, que no se quede con más de una entrada de comisión de nuestro cambio, que la
+  comisión total no baje), vuelve a firmar sus entradas y la difunde. Ante cualquier fallo difunde la
+  original (lo que BIP78 prevé) y lo dice.
+- Probado con un cobrador de prueba sobre Bitcoin Core 30 (Python + RPC): la transacción de dos
+  entradas entró en la mempool. PayjoinTest: la buena pasa y cinco variantes tramposas se rechazan.
+- Sólo pagar (no cobrar: haría falta un servidor) y sólo BIP78 v1 (no la v2/BIP77 con directorio).
+  Sin probar en móvil ni contra un cobrador real (BTCPay).
