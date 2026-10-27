@@ -556,3 +556,17 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   nativo prueba xpubDeRuta).
 - Sin probar en móvil ni con firmadores físicos. Recuperar una multifirma exige el descriptor: la app
   lo dice al crearla.
+
+## Herencia con bloqueo de tiempo (2026-10-27)
+
+- Plantilla Miniscript `wsh(or_d(pk(DUEÑO),and_v(v:pk(HEREDERO),older(N))))` (la de Liana/Nunchuk): el
+  dueño gasta cuando quiere; el heredero, cuando una moneda lleva N bloques sin moverse.
+- Opciones → "New inheritance wallet (timelock)": clave propia m/48'/coin'/1'/2', clave del heredero
+  pegada y plazo en meses (1–15, en bloques hasta 65535). "My key for someone else's multisig /
+  inheritance" enseña las claves BIP48 de la cartera para dárselas a otro. Se vigila como cualquier
+  cartera externa; al enviar, la casilla "Spend as the heir" hace la PSBT con versión 2 y secuencia N.
+- Probado con Bitcoin Core 30 en regtest (older(10)): gasto del dueño firmado y finalizado por la app →
+  aceptado; el del heredero rechazado ("non-BIP68-final") hasta la confirmación 10 y aceptado en ella;
+  finalización idéntica a finalizepsbt (HerenciaTest).
+- Sin probar en móvil. El dueño tiene que mover las monedas antes de N bloques para que el heredero no
+  pueda gastarlas: la pantalla lo recuerda, pero no lo hace sola.

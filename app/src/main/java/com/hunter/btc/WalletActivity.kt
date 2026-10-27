@@ -3802,6 +3802,8 @@ class WalletActivity : FragmentActivity() {
         val opciones = listOfNotNull("Switch Wallet", "Show seed / WIF",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Export xpub" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New multisig with this wallet" else null,
+            if (av && !isWifMode && mnemonic.isNotEmpty()) "New inheritance wallet (timelock)" else null,
+            if (av && !isWifMode && mnemonic.isNotEmpty()) "My key for someone else's multisig / inheritance" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
             // Sin "av": es la única forma de comprobar el saldo sin fiarse de un servidor y sin nodo propio,
@@ -3840,6 +3842,20 @@ class WalletActivity : FragmentActivity() {
                     }
                     "Export xpub" -> authenticate { mostrarXpubs() }
                     "New multisig with this wallet" -> authenticate { CrearMultifirma.mostrar(this, mnemonic, isTestnet) }
+                    "New inheritance wallet (timelock)" -> authenticate { CrearHerencia.mostrar(this, mnemonic, isTestnet) }
+                    "My key for someone else's multisig / inheritance" -> authenticate {
+                        // Las públicas BIP48 de esta cartera: la de multifirma (cuenta 0) y la de herencia (cuenta 1).
+                        val c = if (isTestnet) 1 else 0
+                        fun k(cta: Int) = HunterEngine.xpubDeRuta(mnemonic, "m/48'/$c'/$cta'/2'", isTestnet).split('|')
+                            .takeIf { it.size == 2 }?.let { "[${it[0]}/48h/${c}h/${cta}h/2h]${it[1]}" } ?: "?"
+                        val txt = "As a co-signer of a multisig:\n${k(0)}\n\nAs the heir of an inheritance wallet:\n${k(1)}"
+                        AlertDialog.Builder(this).setTitle("Your public keys").setMessage(txt)
+                            .setPositiveButton("Copy") { _, _ ->
+                                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+                                    .setPrimaryClip(android.content.ClipData.newPlainText("keys", txt))
+                                Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+                            }.setNegativeButton("Close", null).show()
+                    }
                     "Advanced options: on (turn off)", "Advanced options: off (turn on)" -> {
                         getSharedPreferences("hunter", MODE_PRIVATE).edit().putBoolean("modo_avanzado", !av).apply()
                         // Al volver a la vista simple no pueden quedar cosas avanzadas que se enviarían sin verse.

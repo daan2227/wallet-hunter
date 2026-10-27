@@ -251,13 +251,16 @@ object Psbt {
      * dirección vigilada, que sólo tiene el script. [entradas] son (txid como lo muestra
      * un explorador, vout); [salidas], (script, importe) en el orden en que van.
      */
-    fun sinFirmar(entradas: List<Pair<String, Int>>, salidas: List<Pair<ByteArray, Long>>, locktime: Long): String {
+    fun sinFirmar(entradas: List<Pair<String, Int>>, salidas: List<Pair<ByteArray, Long>>, locktime: Long,
+                  version: Long = 1, secuencia: Long = SEQUENCIA): String {
         require(entradas.isNotEmpty() && salidas.isNotEmpty()) { "sin entradas o sin salidas" }
+        // Un bloqueo relativo (OP_CHECKSEQUENCEVERIFY) sólo cuenta con versión 2 y la secuencia de la entrada (BIP68/112).
+        require(version >= 1 && secuencia in 0..0xFFFFFFFFL)
         val o = ByteArrayOutputStream()
-        o.write(le(1, 4)); o.write(varint(entradas.size.toLong()))
+        o.write(le(version, 4)); o.write(varint(entradas.size.toLong()))
         for ((txid, vout) in entradas) {
             require(txid.length == 64) { "txid" }
-            o.write(rev(bytes(txid))); o.write(le(vout.toLong(), 4)); o.write(0); o.write(le(SEQUENCIA, 4))
+            o.write(rev(bytes(txid))); o.write(le(vout.toLong(), 4)); o.write(0); o.write(le(secuencia, 4))
         }
         o.write(varint(salidas.size.toLong()))
         for ((spk, v) in salidas) { o.write(le(v, 8)); o.write(varint(spk.size.toLong())); o.write(spk) }

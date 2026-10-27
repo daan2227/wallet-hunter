@@ -75,6 +75,11 @@ class CarteraExternaActivity : AppCompatActivity() {
         caja.addView(Ui.pageTitle(this, entrada.nombre, lados = false))
         caja.addView(texto(motor.descripcion + if (motor.testnet) " · testnet" else "", AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
         for (a in motor.avisos) caja.addView(texto("⚠ $a", AppTheme.SP_CAPTION, AppTheme.WARN))
+        (motor as? MotorHerencia)?.let { h ->
+            caja.addView(texto("The heir can spend any coin that stays unmoved for ${h.bloques} blocks (~${h.bloques / 144} days). " +
+                "To keep the heir locked out, send the coins to this same wallet before then: that restarts the clock.",
+                AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
+        }
         val total = monedas.sumOf { it.valor }
         val pend = monedas.filter { !it.confirmada }.sumOf { it.valor }
         caja.addView(texto(if (cargando && monedas.isEmpty()) "Checking the network…" else btc(total), 26f, AppTheme.ACCENT, true))
@@ -167,10 +172,19 @@ class CarteraExternaActivity : AppCompatActivity() {
         val etAmt = Ui.input(this, "Amount (BTC)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL }
         val etFee = Ui.input(this, "Fee rate (sat/vB)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etTo); addView(etAmt); addView(etFee) }
+        val her = motor as? MotorHerencia
+        val cbHeredero = her?.let { h -> android.widget.CheckBox(this).apply {
+            text = "Spend as the heir (only works for coins unmoved for ${h.bloques} blocks)"
+            setTextColor(AppTheme.TXT_PRI); isChecked = h.modoHeredero
+            v.addView(this)
+        } }
         Thread { ChainInfo.fees(motor.testnet)?.let { f -> runOnUiThread { if (etFee.text.isEmpty()) etFee.setText(f.halfHour.toString()) } } }.start()
         AlertDialog.Builder(this).setTitle("Send").setView(v)
             .setNegativeButton("Cancel", null)
-            .setPositiveButton("Prepare") { _, _ -> prepararPsbt(etTo.text.toString().trim(), etAmt.text.toString(), etFee.text.toString()) }
+            .setPositiveButton("Prepare") { _, _ ->
+                her?.modoHeredero = cbHeredero?.isChecked == true
+                prepararPsbt(etTo.text.toString().trim(), etAmt.text.toString(), etFee.text.toString())
+            }
             .show()
     }
 
@@ -209,7 +223,7 @@ class CarteraExternaActivity : AppCompatActivity() {
     }
 
     private fun compartir(psbt: ByteArray, firmadasAqui: Int = 0) {
-        val multi = motor is MotorMultifirma
+        val multi = motor is MotorMultifirma || motor is MotorHerencia
         val opciones = arrayOf("Show as animated QR (UR / BBQr)", "Share as file", "Copy as base64") +
             (if (multi) arrayOf("Sign with a wallet on this phone") else emptyArray())
         AlertDialog.Builder(this).setTitle(if (firmadasAqui > 0) "PSBT ready · $firmadasAqui signature(s) added here" else "PSBT ready")
@@ -295,7 +309,7 @@ class CarteraExternaActivity : AppCompatActivity() {
                 val dlg = AlertDialog.Builder(this).setTitle("Not fully signed yet")
                     .setMessage("$n of ${d.tx.ins.size} inputs have enough signatures. Sign it on the device(s) that are missing, then try again.")
                     .setPositiveButton("OK", null)
-                if (motor is MotorMultifirma) dlg.setNeutralButton("Add this phone's signature") { _, _ ->
+                if (motor is MotorMultifirma || motor is MotorHerencia) dlg.setNeutralButton("Add this phone's signature") { _, _ ->
                     val orig = Psbt.parse(b)!!
                     FirmaPropia.firmar(this, orig) { k -> if (k > 0) procesarBytes(Psbt.serialize(orig)) else if (k == 0)
                         Toast.makeText(this, "None of its keys belongs to a wallet on this phone.", Toast.LENGTH_LONG).show() }
