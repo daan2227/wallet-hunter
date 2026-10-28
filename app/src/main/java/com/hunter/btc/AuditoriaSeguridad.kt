@@ -132,6 +132,7 @@ object AuditoriaSeguridad {
                     fr.palabras == 12 -> h.add(Hallazgo(Gravedad.INFO, "${pre}12-word seed",
                         "12 words give 128-bit security — strong and standard. 24 words give 256-bit.",
                         "Nothing to do. If you want extra margin for a large, long-term holding, a 24-word seed is an option."))
+                    else -> {}
                 }
             }
             if (c.passphrase != null && c.passphrase.isNotEmpty()) {

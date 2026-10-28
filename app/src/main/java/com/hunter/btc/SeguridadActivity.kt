@@ -148,7 +148,8 @@ class SeguridadActivity : AppCompatActivity() {
             val (usadas, _) = HdScanner.scanBranch(mn, purpose, 0, testnet)
             for (f in usadas) {
                 miradas++
-                val js = ChainApi.get("/address/${f.addr}", testnet) ?: run { fallo = true; continue }
+                val js = ChainApi.get("/address/${f.addr}", testnet)
+                if (js == null) { fallo = true; continue }
                 val tx = try { JSONObject(js).optJSONObject("chain_stats")?.optInt("tx_count", 0) ?: 0 } catch (e: Exception) { 0 }
                 if (tx > 1) reutil++
                 if (rawTxs.size < 120) {
