@@ -138,6 +138,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_recovery, "Mnemonic strength")  { construirMnemonicStrength() }
         seccion(page, R.drawable.ic_warning, "Weak RNG check (Milk Sad)") { construirMilkSad() }
+        seccion(page, R.drawable.ic_warning, "Legacy weak wallets (Randstorm / Android 2013)") { construirLegacyRng() }
         seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
         seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
 
@@ -1016,6 +1017,38 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tvProg)
         nota(AppTheme.TXT_MUTED, "This only rules out the 'bx seed' / Milk Sad generator. Scanning all seeds can take a while; " +
              "it runs on this phone and nothing is sent anywhere.")
+    }
+
+    // ── Legacy weak wallets: Randstorm & the 2013 Android SecureRandom bug ──
+    /*
+     * Honesto a propósito: NO finge escanear. Estos dos fallos no se pueden
+     * reproducir como el de Milk Sad (barriendo semillas): el de Android 2013
+     * sólo deja rastro EXPLOTABLE cuando repitió un nonce de firma —y eso ya lo
+     * caza "Nonce-reuse audit"—; y Randstorm (BitcoinJS 2011–2015) no tiene una
+     * reproducción pública determinista, así que el consejo responsable es mover
+     * los fondos, no prometer un barrido que no existe.
+     */
+    private fun construirLegacyRng() {
+        desc("Two famous weak random-number bugs hit old wallets. Neither can be scanned seed-by-seed like " +
+             "Milk Sad, so this is guidance, not a brute-force — it never promises a sweep it can't do.")
+
+        root.addView(filaResultado("Android 2013 SecureRandom bug",
+            "Bitcoin apps built on Android before mid-2013 could get poor randomness. The part an attacker can " +
+            "actually exploit is a REPEATED signature nonce — and the 'Nonce-reuse audit' tool above already " +
+            "detects exactly that on your own transactions. If that audit flags a key, move its coins now.", true))
+        nota(AppTheme.TXT_SEC, "What to do: run 'Nonce-reuse audit' (same category, above) on any wallet you created " +
+            "in an Android app around 2013. A clean result there means this bug did not expose your keys.")
+
+        root.addView(filaResultado("Randstorm (BitcoinJS, 2011–2015)",
+            "Browser wallets made on sites that used an old BitcoinJS SecureRandom (e.g. some blockchain.info / " +
+            "bitaddress-style pages) could have low-entropy keys. There is NO public, deterministic way to " +
+            "reproduce those keys, so no honest scanner exists — anyone claiming to 'scan for Randstorm' is guessing.", true))
+        nota(AppTheme.TXT_SEC, "What to do: if you ever generated a wallet in a web browser between 2011 and 2015, treat it " +
+            "as at risk. Create a NEW wallet here with a freshly generated phrase and move ALL funds to it. Don't wait " +
+            "for a scan that can't be made.")
+
+        nota(AppTheme.TXT_MUTED, "Nothing here leaves the phone. For a full self-check of your seeds and wallets, use " +
+            "'Security check' in More → it bundles these warnings with the on-chain nonce and address-reuse checks.")
     }
 
     // ── Mnemonic strength audit ────────────────────────────────────────────

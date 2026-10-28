@@ -705,3 +705,15 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   hilos (parable, con progreso). Si la encuentra: VULNERABLE, mover los fondos. Todo en el teléfono.
 - Pendiente de esta tanda: auditoría de firmas (nonce reusado/sesgado) en Tools; Randstorm/Android-2013.
 - Sólo defensivo; sin probar en móvil (el barrido completo puede tardar bastante en un teléfono).
+
+## Tools → Milk Sad modo fechas + aviso Randstorm/Android-2013 (2026-10-28)
+
+- Milk Sad: control segmentado "All 2^32 seeds" / "Date window (seconds-seeded)". El `bx` real sembraba
+  con nanosegundos (hay que barrer todo), pero la familia de herramientas débiles que sembraban el MT con
+  la hora en SEGUNDOS deja una ventana pequeña: dos campos de fecha (UTC) acotan el rango de semillas.
+- Nueva sección "Legacy weak wallets (Randstorm / Android 2013)": INFORMATIVA, no finge escanear.
+  · Android 2013 (SecureRandom): el rastro explotable es un nonce de firma repetido → ya lo caza
+    "Nonce-reuse audit"; se remite a esa herramienta.
+  · Randstorm (BitcoinJS 2011–2015): sin reproducción pública determinista → no hay escáner honesto;
+    el consejo es mover los fondos si la cartera se generó en un navegador entre 2011 y 2015.
+- Sólo defensivo; sin probar en móvil. Lo compila la CI.
