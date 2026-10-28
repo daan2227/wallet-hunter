@@ -959,8 +959,24 @@ class PubkeyToolsActivity : Activity() {
              "space is tiny and anyone can rebuild those keys. Paste your phrase; it stays on-device. " +
              "If it matches, move your coins to a new wallet made with a trusted generator.")
         val et = entrada("Your 12 / 24-word phrase", varias = true)
+        // Modo: todo (2^32) o una ventana de fechas, para los generadores débiles que sembraban con la hora
+        // en SEGUNDOS (muchos de la familia Milk Sad). Con bx (nanosegundos) hay que barrer todo.
+        var modoFechas = false
+        var etDesde: EditText? = null
+        var etHasta: EditText? = null
+        val seg = Ui.segmented(this, listOf("All 2^32 seeds" to null, "Date window (seconds-seeded)" to null)) {
+            modoFechas = it == 1
+            val vis = if (modoFechas) android.view.View.VISIBLE else android.view.View.GONE
+            etDesde?.visibility = vis; etHasta?.visibility = vis
+        }
+        root.addView(seg)
+        etDesde = entrada("From date (YYYY-MM-DD, e.g. 2015-01-01)").apply { visibility = android.view.View.GONE }
+        etHasta = entrada("To date (YYYY-MM-DD, e.g. 2024-01-01)").apply { visibility = android.view.View.GONE }
         val salida = salidaBox()
         val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        fun diaASeg(t: String): Long? = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd").apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.trim())?.time?.div(1000)
+        } catch (e: Exception) { null }
         lateinit var btn: Button
         btn = boton("Check") {
             if (msCorriendo) { HunterEngine.milksadDetener(); return@boton }
@@ -968,8 +984,14 @@ class PubkeyToolsActivity : Activity() {
             val frase = et.text.toString()
             val ent = Bip39.entropia(frase)
             if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            var ini = 0L; var fin = 0x100000000L
+            if (modoFechas) {
+                val d = diaASeg(etDesde!!.text.toString()); val h0 = diaASeg(etHasta!!.text.toString())
+                if (d == null || h0 == null || h0 <= d) { salida.addView(filaResultado("Bad dates", "Use YYYY-MM-DD, and 'to' after 'from'.")); return@boton }
+                ini = d; fin = (h0 + 86400).coerceAtMost(0x100000000L)
+            }
             val hex = ent.joinToString("") { "%02x".format(it) }
-            val err = HunterEngine.milksadBuscar(hex, 0, 0x100000000L, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+            val err = HunterEngine.milksadBuscar(hex, ini, fin, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
             if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
             msCorriendo = true; btn.text = "Stop"
             val n = ent.size
@@ -986,7 +1008,7 @@ class PubkeyToolsActivity : Activity() {
                         salida.addView(filaResultado("⚠ VULNERABLE — Milk Sad", "Your phrase comes from the broken generator (32-bit seed $sem). Anyone can rebuild its keys.", true))
                         salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
                     } else {
-                        salida.addView(filaResultado("✓ Not from Milk Sad", "Your phrase was not produced by this broken generator across all 2^32 seeds.", true))
+                        salida.addView(filaResultado("✓ Not found", if (modoFechas) "Not produced by a seconds-seeded generator in that date window." else "Your phrase was not produced by this broken generator across all 2^32 seeds.", true))
                     }
                 }
             })
