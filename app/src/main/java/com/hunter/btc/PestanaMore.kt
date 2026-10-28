@@ -279,6 +279,11 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     rendimiento.addView(cajaTecho)
     habilitarTecho(prefs.getBoolean("modo_ahorro", false))
 
+    val seguridad = grupo("Security")
+    fila(seguridad, R.drawable.ic_lock, "Security check", "Audit your seeds and wallets, and get a score with what to fix", null) {
+        startActivity(Intent(this, SeguridadActivity::class.java))
+    }
+
     val claves = grupo("Tools")
     fila(claves, R.drawable.ic_search, "Tools",
          "Addresses, Hex↔WIF, sign/verify, xpub, inspector, balance, sweep, vanity, split, QR, brainwallet, nonce", null) {

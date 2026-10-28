@@ -679,3 +679,16 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   ESTA cartera al nodo (abre Enviar con su dirección), traer lo que el nodo tiene en cadena a ESTA cartera
   (siguiente bc1q libre, o la de la WIF/vigilada; con código por encima del umbral) y el nodo remoto (NWC).
 - Sin probar en móvil; lo compila la CI.
+
+## Security check: revisar la seguridad de tus semillas y carteras (2026-10-28)
+
+- More → Security → "Security check" (pide el código): revisa TUS semillas y carteras y da una nota de
+  0 a 100 con los hallazgos ordenados por gravedad y un consejo para cada uno.
+- Sin red, al abrir: frase débil o con checksum malo (crítico), passphrase floja, código no puesto / viejo
+  (PBKDF2 en vez de Argon2id), huella, copia de seguridad hecha, bloqueo de capturas.
+- "Deep check (uses the network)": reutilización de direcciones (privacidad) y, lo importante, nonce de
+  firma repetido en tus transacciones (AuditoriaNonce): si la misma clave firmó dos mensajes con el mismo
+  r, la privada está al descubierto y avisa de mover los fondos ya. Las consultas van por Tor si está activado.
+- Motores puros probados en JVM: AuditoriaSeguridad (puntuación) y AuditoriaNonce (vectores de nonce reusado
+  hechos con secp256k1). Pantalla con FLAG_SECURE. Sin probar en móvil; lo compila la CI.
+- Sólo defensivo: todo es sobre las carteras propias de este teléfono.
