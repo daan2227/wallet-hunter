@@ -70,6 +70,23 @@ object Bip39 {
     fun normalize(raw: String): List<String> =
         raw.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
 
+    /** La entropia (bytes) de una frase valida, o null. Para auditar contra RNG rotos (Milk Sad). */
+    fun entropia(raw: String): ByteArray? {
+        val words = normalize(raw)
+        if (words.size !in VALID_LENGTHS) return null
+        val idx = words.map { index[it] ?: return null }
+        val totalBits = words.size * 11
+        val entBits = totalBits - totalBits / 33
+        if (entBits % 8 != 0) return null
+        val ent = ByteArray(entBits / 8)
+        var bit = 0
+        for (v in idx) for (b in 10 downTo 0) {
+            if (bit < entBits && ((v shr b) and 1) == 1) ent[bit / 8] = (ent[bit / 8].toInt() or (1 shl (7 - (bit % 8)))).toByte()
+            bit++
+        }
+        return if (validate(raw) is Result.Valid) ent else null
+    }
+
     fun validate(raw: String): Result {
         val words = normalize(raw)
 

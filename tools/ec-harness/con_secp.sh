@@ -35,3 +35,4 @@ echo "=== wif ===";          ./wif
 echo "=== xpub ===";         ./xpub
 echo "=== taproot_audit ==="; ./taproot_audit
 echo "=== ec_ops (BIP352, BIP86, BIP32) ==="; ./ec_ops datos/bip352_envio.txt
+echo "=== milksad (RNG de bx) ==="; g++ -O2 -std=c++17 -I$C -o milksad_t milksad.cpp && ./milksad_t

@@ -118,6 +118,16 @@ object HunterEngine {
     external fun deriveRuta(mnemonic: String, path: String): String
     /** Pública comprimida (66 hex) de una privada hex, o "". */
     external fun pubDeHex(privHex: String): String
+    // Auditoria Milk Sad (RNG roto de bx; ver milksad.h)
+    /** Busca la semilla de 32 bits que genera la entropia [entHex] (16/24/32 bytes) en [ini,fin). "" = arranco. */
+    external fun milksadBuscar(entHex: String, ini: Long, fin: Long, hilos: Int): String
+    external fun milksadDetener()
+    external fun milksadCorriendo(): Boolean
+    external fun milksadHechas(): Long
+    external fun milksadTotal(): Long
+    external fun milksadResultado(): Long
+    external fun milksadEntropia(semilla: Long, n: Int): String
+
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
      * "ckd", "priv_sum", "sp_send". Hex de entrada y de salida; "" si algo no vale.

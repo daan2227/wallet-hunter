@@ -692,3 +692,16 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
 - Motores puros probados en JVM: AuditoriaSeguridad (puntuación) y AuditoriaNonce (vectores de nonce reusado
   hechos con secp256k1). Pantalla con FLAG_SECURE. Sin probar en móvil; lo compila la CI.
 - Sólo defensivo: todo es sobre las carteras propias de este teléfono.
+
+## Tools → Weak RNG check (Milk Sad) (2026-10-28)
+
+- Nueva herramienta en Tools: comprueba si TU frase pudo salir del generador roto de `bx seed` de
+  libbitcoin (Milk Sad, CVE-2023-39910), que sembraba un Mersenne Twister con sólo 32 bits → 2^32 claves.
+- Motor nativo `milksad.h`: cada byte de entropía = los 8 bits altos de una palabra del MT, verificado
+  contra la implementación real de bx (libstdc++, `uniform_int_distribution<uint16_t>(0,255)`). La CI lo
+  prueba (tools/ec-harness/milksad.cpp): seed 0 / 128 bits da la entropía de la frase "milk sad …", y el
+  barrido encuentra una semilla conocida y descarta una entropía ajena.
+- La pantalla saca la entropía de la frase (Bip39.entropia, probado) y barre las 2^32 semillas con varios
+  hilos (parable, con progreso). Si la encuentra: VULNERABLE, mover los fondos. Todo en el teléfono.
+- Pendiente de esta tanda: auditoría de firmas (nonce reusado/sesgado) en Tools; Randstorm/Android-2013.
+- Sólo defensivo; sin probar en móvil (el barrido completo puede tardar bastante en un teléfono).

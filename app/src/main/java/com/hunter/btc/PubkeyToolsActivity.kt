@@ -137,6 +137,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_search, "Signature low-S / malleability") { construirMalleability() }
         seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
         seccion(page, R.drawable.ic_recovery, "Mnemonic strength")  { construirMnemonicStrength() }
+        seccion(page, R.drawable.ic_warning, "Weak RNG check (Milk Sad)") { construirMilkSad() }
         seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
         seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
 
@@ -948,6 +949,51 @@ class PubkeyToolsActivity : Activity() {
             if (n > 0) salida.addView(filaResultado("Summary", "$n checked · $high high-S (malleable)"))
             else if (salida.childCount == 0) Toast.makeText(this, "Paste signatures", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    // ── Weak RNG check (Milk Sad, CVE-2023-39910) ───────────────────────────
+    @Volatile private var msCorriendo = false
+    private fun construirMilkSad() {
+        desc("Checks whether YOUR seed phrase could have come from the broken \"bx seed\" generator " +
+             "(Milk Sad, CVE-2023-39910): it seeded a random generator with only 32 bits, so the whole key " +
+             "space is tiny and anyone can rebuild those keys. Paste your phrase; it stays on-device. " +
+             "If it matches, move your coins to a new wallet made with a trusted generator.")
+        val et = entrada("Your 12 / 24-word phrase", varias = true)
+        val salida = salidaBox()
+        val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (msCorriendo) { HunterEngine.milksadDetener(); return@boton }
+            salida.removeAllViews()
+            val frase = et.text.toString()
+            val ent = Bip39.entropia(frase)
+            if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            val hex = ent.joinToString("") { "%02x".format(it) }
+            val err = HunterEngine.milksadBuscar(hex, 0, 0x100000000L, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
+            msCorriendo = true; btn.text = "Stop"
+            val n = ent.size
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            h.post(object : Runnable {
+                override fun run() {
+                    val corre = HunterEngine.milksadCorriendo()
+                    val hechas = HunterEngine.milksadHechas(); val total = HunterEngine.milksadTotal().coerceAtLeast(1)
+                    tvProg.text = "Scanned %,d of %,d seeds (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
+                    if (corre) { h.postDelayed(this, 500); return }
+                    msCorriendo = false; btn.text = "Check"
+                    val sem = HunterEngine.milksadResultado()
+                    if (sem >= 0) {
+                        salida.addView(filaResultado("⚠ VULNERABLE — Milk Sad", "Your phrase comes from the broken generator (32-bit seed $sem). Anyone can rebuild its keys.", true))
+                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                    } else {
+                        salida.addView(filaResultado("✓ Not from Milk Sad", "Your phrase was not produced by this broken generator across all 2^32 seeds.", true))
+                    }
+                }
+            })
+        }
+        root.addView(tvProg)
+        nota(AppTheme.TXT_MUTED, "This only rules out the 'bx seed' / Milk Sad generator. Scanning all seeds can take a while; " +
+             "it runs on this phone and nothing is sent anywhere.")
     }
 
     // ── Mnemonic strength audit ────────────────────────────────────────────

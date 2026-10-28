@@ -14,6 +14,7 @@
 #include <vector>
 #include <ctime>
 #include <thread>
+#include <memory>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -36,7 +37,8 @@
 #include <openssl/bn.h>
 #include <openssl/ripemd.h>
 #include "jac_batch.h"
-#include "ec_ops.h"   /* xpub vigilada, Taproot BIP86, Silent Payments, multifirma */
+#include "ec_ops.h"
+#include "milksad.h"   /* auditoría del RNG roto de bx (Milk Sad) */
 #include "kangaroo.h"
 #include "fe_arm64.h"
 #include "gpu/gpu_kangaroo.h"
@@ -4008,4 +4010,63 @@ Java_com_hunter_btc_HunterEngine_poolCanariosHallados(JNIEnv *env, jobject){
       g_can_hallados.clear(); }
     return env->NewStringUTF(r.c_str());
 }
+
+/* ── Auditoría Milk Sad ─────────────────────────────────────────────────────────────────────────── */
+static std::atomic<bool>     g_ms_cancel(false);
+static std::atomic<bool>     g_ms_corriendo(false);
+static std::atomic<uint64_t> g_ms_hechas(0);
+static std::atomic<int64_t>  g_ms_resultado(-1);
+static std::atomic<uint64_t> g_ms_total(0);
+
+/* Arranca el barrido de [ini, fin) buscando la semilla de 32 bits de la entropia [ent] (hex de 16/24/32
+ * bytes), con [hilos] hilos. Devuelve "" si arrancó, o un motivo. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_milksadBuscar(JNIEnv *env, jobject, jstring jent, jlong jini, jlong jfin, jint jhilos) {
+    if (g_ms_corriendo.load()) return env->NewStringUTF("already running");
+    const char *e = jent ? env->GetStringUTFChars(jent, nullptr) : nullptr;
+    std::string eh = e ? e : ""; if (e) env->ReleaseStringUTFChars(jent, e);
+    std::vector<uint8_t> ent;
+    if (!de_hex(eh, ent) || (ent.size() != 16 && ent.size() != 24 && ent.size() != 32)) return env->NewStringUTF("entropy must be 16/24/32 bytes");
+    uint64_t ini = (uint64_t)jini, fin = (uint64_t)jfin;
+    if (fin > 0x100000000ULL) fin = 0x100000000ULL;
+    if (ini >= fin) return env->NewStringUTF("empty range");
+    int n = jhilos > 0 ? (jhilos < 32 ? jhilos : 32) : 1;
+    g_ms_cancel.store(false); g_ms_hechas.store(0); g_ms_resultado.store(-1);
+    g_ms_total.store(fin - ini); g_ms_corriendo.store(true);
+    auto objetivo = std::make_shared<std::vector<uint8_t>>(ent);
+    std::thread([objetivo, ini, fin, n]{
+        std::vector<std::thread> ts;
+        uint64_t paso = (fin - ini + n - 1) / n;
+        for (int t = 0; t < n; t++) {
+            uint64_t a = ini + (uint64_t)t * paso, b = std::min(fin, a + paso);
+            if (a >= b) break;
+            ts.emplace_back([objetivo, a, b]{
+                int64_t r = milksad::buscar(objetivo->data(), (int)objetivo->size(), a, b, &g_ms_cancel, &g_ms_hechas);
+                if (r >= 0) { g_ms_resultado.store(r); g_ms_cancel.store(true); }
+            });
+        }
+        for (auto &th : ts) th.join();
+        g_ms_corriendo.store(false);
+    }).detach();
+    return env->NewStringUTF("");
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_milksadDetener(JNIEnv*, jobject){ g_ms_cancel.store(true); }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_milksadCorriendo(JNIEnv*, jobject){ return g_ms_corriendo.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_milksadHechas(JNIEnv*, jobject){ return (jlong)g_ms_hechas.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_milksadTotal(JNIEnv*, jobject){ return (jlong)g_ms_total.load(); }
+/* La semilla hallada (>=0), -1 si aún nada / terminó sin encontrarla. */
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_milksadResultado(JNIEnv*, jobject){ return (jlong)g_ms_resultado.load(); }
+/* La entropia (hex) de una semilla concreta y un tamaño: para enseñar la frase hallada. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_milksadEntropia(JNIEnv *env, jobject, jlong jsem, jint jn){
+    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
+    uint8_t out[32]; milksad::entropia((uint32_t)jsem, out, n);
+    return env->NewStringUTF(a_hex(out, n).c_str());
+}
+
 }
