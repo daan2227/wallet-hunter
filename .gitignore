@@ -8,6 +8,9 @@
 # tenia: en un clon limpio la comprobacion falla por un fichero que falta.
 !tools/*.py
 !scripts/*.py
+# Y los datos de prueba: los ejemplos de OpenTimestamps son .txt con su .ots, y
+# sin esta linea el .ots subia y su archivo no, y la prueba fallaba en la CI.
+!app/src/test/resources/**/*.txt
 
 # Firma de release — el keystore nunca se versiona.
 *.keystore
