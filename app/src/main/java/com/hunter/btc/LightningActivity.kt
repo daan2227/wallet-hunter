@@ -196,7 +196,9 @@ class LightningActivity : AppCompatActivity() {
 
     private fun pagar(fac: String) {
         val m = Ln.motor ?: return
-        // Un LNURL o una Lightning Address (usuario@dominio) va por LNURL; una factura (lnbc…) nunca lo parece.
+        // usuario@dominio: primero BIP353 (DNSSEC); si ese nombre no tiene registro, como Lightning Address.
+        if ('@' in fac && Bip353.leer(fac) != null) { nombre(m, fac); return }
+        // Un LNURL va por LNURL; una factura (lnbc…) nunca lo parece.
         Lnurl.leer(fac)?.let { lnurl(m, it); return }
         val (sats, desc, red) = try { m.leerFactura(fac) } catch (e: Exception) { Toast.makeText(this, "Not a valid invoice.", Toast.LENGTH_LONG).show(); return }
         val esperada = if (testnet) org.lightningdevkit.ldknode.Network.TESTNET else org.lightningdevkit.ldknode.Network.BITCOIN
@@ -213,6 +215,56 @@ class LightningActivity : AppCompatActivity() {
         }.show()
     }
 
+
+    // ── BIP353 (₿usuario@dominio) ──
+
+    private fun nombre(m: MotorLn, texto: String) {
+        val n = Bip353.leer(texto) ?: return
+        Toast.makeText(this, "Looking up $n…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val r = ResolverNombre.resolver(texto)
+            runOnUiThread {
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                val comoDireccion = Lnurl.direccion(texto)
+                when (r) {
+                    is Bip353.Resultado.Instrucciones -> pagarNombre(m, r)
+                    // Hay registro pero no se pudo validar: no se cambia de vía a escondidas; se dice y se elige.
+                    is Bip353.Resultado.Error -> AlertDialog.Builder(this).setTitle("$n not verified").setMessage(r.motivo +
+                            (if (comoDireccion != null) "\n\nYou can still try it as a Lightning Address (checked over HTTPS instead of DNSSEC)." else ""))
+                        .setNegativeButton("Cancel", null)
+                        .apply { if (comoDireccion != null) setPositiveButton("Try as Lightning Address") { _, _ -> lnurl(m, comoDireccion) } }
+                        .show()
+                    else -> if (comoDireccion != null) lnurl(m, comoDireccion) else aviso("$n", "No payment instructions for this name.")
+                }
+            }
+        }.start()
+    }
+
+    private fun pagarNombre(m: MotorLn, r: Bip353.Resultado.Instrucciones) {
+        val lno = Bip353.parametro(r.uri, "lno"); val ln = Bip353.parametro(r.uri, "lightning")
+        if (lno == null && ln == null) {
+            aviso("${r.nombre}", "This name only gives an on-chain address" + (Bip353.direccion(r.uri)?.let { ": $it" } ?: "") +
+                ".\nPay it from your wallet's Send screen (it accepts the name too).")
+            return
+        }
+        // Sólo la parte Lightning: si fallara, que no se pague en cadena desde el nodo sin preguntar.
+        val importe = Bip353.parametro(r.uri, "amount")?.let { try { java.math.BigDecimal(it).movePointRight(8).longValueExact() } catch (e: Exception) { -1L } }
+        if (importe != null && importe <= 0) { aviso("${r.nombre}", "The amount in its payment instructions is not valid."); return }
+        val et = if (importe == null) Ui.input(this, "Amount in sat").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER } else null
+        AlertDialog.Builder(this).setTitle("Pay ${r.nombre}")
+            .setMessage("Verified with DNSSEC.\n" + (if (lno != null) "Lightning offer (BOLT12)" else "Lightning invoice") +
+                (importe?.let { "\nAmount: %,d sat".format(it) + Fiat.entre(this, it) } ?: ""))
+            .apply { et?.let { setView(LinearLayout(this@LightningActivity).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(it) }) } }
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Pay") { _, _ ->
+                val sat = importe ?: et?.text?.toString()?.toLongOrNull()
+                if (sat == null || sat <= 0) { Toast.makeText(this, "Enter an amount.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                val partes = listOfNotNull(lno?.let { "lno=$it" }, ln?.let { "lightning=$it" },
+                    "amount=" + java.math.BigDecimal.valueOf(sat).movePointLeft(8).toPlainString())
+                val uri = "bitcoin:?" + partes.joinToString("&")
+                conCodigoSiToca(sat) { enHilo("Pay") { val hecho = m.pagarUri(uri); runOnUiThread { Toast.makeText(this, hecho, Toast.LENGTH_LONG).show() } } }
+            }.show()
+    }
 
     // ── LNURL (LUD-06 pagar, LUD-16 Lightning Address, LUD-03 retirar) ──
 

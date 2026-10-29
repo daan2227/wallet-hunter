@@ -1814,7 +1814,7 @@ class WalletActivity : FragmentActivity() {
         toCard.addView(toHead)
 
         val etTo = EditText(this).apply {
-            hint = "bc1… o 1… o 3…"
+            hint = "bc1… o 1… o 3… o ₿name@domain"
             textSize = AppTheme.SP_CAPTION
             setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.mono(context)
@@ -1832,6 +1832,28 @@ class WalletActivity : FragmentActivity() {
         // Pegar y escanear: teclear 42 caracteres a mano es como se manda
         // dinero a una dirección con uno cambiado.
         fun rellenar(texto: String) {
+            // ₿usuario@dominio (BIP353): se resuelve validando DNSSEC en el teléfono y se rellena lo que diga.
+            if ('@' in texto && !texto.trim().startsWith("bitcoin:", ignoreCase = true) && Bip353.leer(texto) != null) {
+                val n = Bip353.leer(texto)
+                Toast.makeText(this, "Looking up $n…", Toast.LENGTH_SHORT).show()
+                Thread {
+                    val r = ResolverNombre.resolver(texto)
+                    runOnUiThread {
+                        if (isFinishing || isDestroyed) return@runOnUiThread
+                        when (r) {
+                            is Bip353.Resultado.Instrucciones -> {
+                                val d = Bip353.direccion(r.uri)
+                                if (d == null) Toast.makeText(this, "${r.nombre} only accepts Lightning: pay it from the Lightning screen.", Toast.LENGTH_LONG).show()
+                                else { rellenar(r.uri); Toast.makeText(this, "${r.nombre} → $d (verified with DNSSEC)", Toast.LENGTH_LONG).show() }
+                            }
+                            is Bip353.Resultado.Error -> AlertDialog.Builder(this).setTitle("Name not verified")
+                                .setMessage(r.motivo + "\n\nNothing was filled in.").setPositiveButton("OK", null).show()
+                            else -> Toast.makeText(this, "$n has no payment address.", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                }.start()
+                return
+            }
             val p = PagoUri.leer(texto)
             if (p.error != null) {
                 Toast.makeText(this, p.error, Toast.LENGTH_LONG).show()
@@ -1845,6 +1867,8 @@ class WalletActivity : FragmentActivity() {
             else if (p.esPeticion) etAmt.setText("")
         }
         alLeerQr = { rellenar(it) }
+        // Un nombre tecleado a mano se resuelve al salir del campo.
+        etTo.setOnFocusChangeListener { _, foco -> if (!foco && '@' in etTo.text) rellenar(etTo.text.toString()) }
         // "Move bitcoin from this wallet to Lightning" (botón Lightning) deja aquí la dirección del nodo.
         destinoPendiente?.let { rellenar(it); destinoPendiente = null }
         val filaAcciones = LinearLayout(this).apply {
