@@ -109,6 +109,7 @@ class LightningActivity : AppCompatActivity() {
         caja.addView(boton("Open a channel") { abrirCanal() })
         caja.addView(boton("Withdraw on-chain funds") { retirar() })
         caja.addView(boton("Withdraw to my main wallet") { retirarACartera() })
+        caja.addView(boton("How to move funds (on-chain ↔ Lightning)") { guiaMover() })
         caja.addView(boton("Sync now") { enHilo("Sync") { m.sincronizar() } })
         val cs = try { m.canales() } catch (e: Exception) { emptyList() }
         if (cs.isNotEmpty()) caja.addView(Ui.sectionLabel(this, "Channels", topGap = dp(16)))
@@ -215,6 +216,39 @@ class LightningActivity : AppCompatActivity() {
         }.show()
     }
 
+
+    /**
+     * Mover fondos entre la cadena y Lightning con lo que ya tiene el nodo (canales, LSP, retirar), sin swaps:
+     * Boltz está suspendido desde agosto de 2026 y Blockstream Swaps es una beta cerrada sin API pública.
+     * Cada camino dice qué cuesta y lleva a su acción.
+     */
+    private fun guiaMover() {
+        lateinit var d: AlertDialog
+        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
+        fun paso(titulo: String, texto: String, vararg acciones: Pair<String, () -> Unit>) {
+            v.addView(texto(titulo, AppTheme.SP_BODY, AppTheme.TXT_PRI, true).apply { setPadding(0, dp(12), 0, dp(2)) })
+            v.addView(texto(texto, AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
+            for ((t, a) in acciones) v.addView(boton(t) { d.dismiss(); a() })
+        }
+        paso("Wallet → Lightning",
+            "1. Send bitcoin from your wallet to the node's on-chain address.\n2. When it confirms, open a channel with it.\n" +
+            "Costs one on-chain fee plus the channel opening; takes about 10–60 min.",
+            "Node's on-chain address" to { fondear() }, "Open a channel" to { abrirCanal() })
+        paso("Receive into Lightning without a channel",
+            "With a liquidity provider (LSP) set, \"Receive\" makes an invoice and the LSP opens the channel when it is paid. " +
+            "The LSP charges a fee for that first channel.",
+            "Liquidity provider (LSP)" to { lspDialogo() })
+        paso("Lightning → wallet",
+            "1. Close a channel (long-press it): its balance returns to the node's on-chain wallet after it confirms.\n" +
+            "2. Withdraw it to your main wallet.\nCosts the closing fee plus one on-chain send.",
+            "Withdraw to my main wallet" to { retirarACartera() })
+        paso("Why no swaps",
+            "A swap would do this in one step without channels, but it needs a provider: Boltz has been suspended since " +
+            "August 2026 and Blockstream Swaps is an invite-only beta without a public API. They can be added when one is available.")
+        d = AlertDialog.Builder(this).setTitle("Move funds").setView(android.widget.ScrollView(this).apply { addView(v) })
+            .setPositiveButton("Close", null).create()
+        d.show()
+    }
 
     // ── BIP353 (₿usuario@dominio) ──
 
