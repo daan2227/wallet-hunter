@@ -1285,6 +1285,14 @@ class WalletActivity : FragmentActivity() {
             startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(url)))
         }
         btnAcelerar?.setOnClickListener { txDlg.dismiss(); acelerar(m, propias, cambio) }
+        // Cancelar: el mismo reemplazo, pero todo de vuelta a la dirección de origen.
+        if (puedeAcelerar) {
+            val btnCancelar = boton("Cancel this send (pay it back to me)", false).apply {
+                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(48)).apply { topMargin = dp(8) }
+            }
+            btnCancelar.setOnClickListener { txDlg.dismiss(); acelerar(m, propias, cambio, cancelar = true) }
+            sheet.addView(btnCancelar, sheet.indexOfChild(btnRow))
+        }
 
         // CPFP: un pago recibido sin confirmar se acelera gastándolo desde aquí
         // con una transacción hija de comisión alta. Las dos juntas pagan la tasa
@@ -1385,11 +1393,15 @@ class WalletActivity : FragmentActivity() {
      *
      * Sólo para envíos sencillos hechos desde una dirección: un destinatario y,
      * como mucho, un cambio propio. Es lo que hace la app al enviar.
+     *
+     * Con [cancelar], la nueva gasta las mismas entradas y lo devuelve TODO a la
+     * dirección de origen (menos la comisión): si se confirma antes que la vieja,
+     * el envío no llega a pasar. La tasa la elige el usuario (Reemplazo.opciones).
      */
-    private fun acelerar(m: MovTx, propias: Set<String>, cambio: Map<String, String>) {
+    private fun acelerar(m: MovTx, propias: Set<String>, cambio: Map<String, String>, cancelar: Boolean = false) {
         fun aviso(t: String) = runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread   // salió de la pantalla: un diálogo aquí lanzaría BadTokenException
-            AlertDialog.Builder(this).setTitle("Cannot speed it up").setMessage(t)
+            AlertDialog.Builder(this).setTitle(if (cancelar) "Cannot cancel it" else "Cannot speed it up").setMessage(t)
                 .setPositiveButton("Got it", null).show()
         }
         if (isWifMode && wifKey.isEmpty()) { aviso("This is a watch-only wallet: it has no key to sign with."); return }
@@ -1458,6 +1470,9 @@ class WalletActivity : FragmentActivity() {
                     if (a in propias) cambioAddr = a
                     else { ajenas++; destino = a; importe = o.optLong("value") }
                 }
+                // Cancelar no vuelve a pagar a nadie: todo va a la dirección de origen, que es de esta cartera y
+                // cuyas entradas ya se contrastaron arriba. Lo de abajo (destinatario y cambio) es sólo de acelerar.
+                if (!cancelar) {
                 if (ajenas != 1) return@Thread aviso("Only simple sends (one recipient) can be sped up here.")
                 if (cambioAddr.isEmpty()) return@Thread aviso("It has no change output: there is nothing to take the extra fee from without paying the recipient less.")
                 // El destinatario y el importe salen de la API, y la nueva transacción
@@ -1481,6 +1496,7 @@ class WalletActivity : FragmentActivity() {
                     return@Thread aviso("No server answered for that transaction. Not rebuilding it.")
                 if (discrepa)
                     return@Thread aviso("The servers do not agree on who that transaction pays. Not rebuilding it.")
+                }
 
                 val vsize = (tx.optLong("weight", 0) + 3) / 4
                 // Sólo se acelera una transacción que se puede reemplazar (BIP125): alguna
@@ -1490,22 +1506,46 @@ class WalletActivity : FragmentActivity() {
                 val feeViejo = tx.optLong("fee", 0)
                 if (vsize <= 0 || feeViejo <= 0) return@Thread aviso("The transaction data is incomplete.")
                 val tasaVieja = (feeViejo + vsize - 1) / vsize
-                val rapida = (ChainInfo.fees(isTestnet)?.fastest ?: 0).toLong()
-                val tasaNueva = maxOf(rapida, tasaVieja + 2)
+                // Cancelar: las mismas entradas y UNA salida, de vuelta a la de origen; ocupa menos que la vieja.
+                val vsizeNuevo = if (!cancelar) vsize else {
+                    val spkOrigen = vin.getJSONObject(0).getJSONObject("prevout").optString("scriptpubkey")
+                    if (spkOrigen.isEmpty()) return@Thread aviso("The transaction data is incomplete.")
+                    Reemplazo.vsizeCancelacion(vsize, (0 until vout.length()).map { vout.getJSONObject(it).optString("scriptpubkey").length / 2 }, spkOrigen.length / 2)
+                }
+                val minima = Reemplazo.tasaMinima(feeViejo, vsize)
+                val f = ChainInfo.fees(isTestnet)
+                val tasaNueva = elegirTasa(Reemplazo.opciones(minima, f?.fastest?.toLong(), f?.halfHour?.toLong(), f?.hour?.toLong()), minima)
+                    ?: return@Thread
+                if (tasaNueva < minima) return@Thread aviso("The new rate must be at least $minima sat/vB to replace the old one.")
                 if (tasaNueva > ChainInfo.TARIFA_MAX)
                     return@Thread aviso("The fee needed (%d sat/vB) is above the safety limit of %d sat/vB.".format(tasaNueva, ChainInfo.TARIFA_MAX))
                 // BIP125: la nueva tiene que pagar más en total, y al menos
                 // 1 sat/vB más que la vieja por el espacio que ocupa.
-                val feeNuevo = maxOf(tasaNueva * vsize, feeViejo + vsize)
-                val cambioNuevo = totalIn - importe - feeNuevo
+                val feeNuevo = Reemplazo.comision(tasaNueva, vsizeNuevo, feeViejo)
+                if (cancelar) {
+                    destino = origen; importe = totalIn - feeNuevo
+                    if (importe <= CoinSelector.polvoDe(origen)) return@Thread aviso("After the fee, too little would come back to cancel it.")
+                }
+                val cambioNuevo = if (cancelar) 0L else totalIn - importe - feeNuevo
                 if (cambioNuevo < 0) return@Thread aviso("The change is not enough to pay a higher fee.")
                 val rutaCambio = when {
-                    wifSnap || cambioAddr == origen -> null      // vuelve a la de origen
+                    cancelar || wifSnap || cambioAddr == origen -> null      // vuelve a la de origen
                     else -> cambio[cambioAddr]
                         ?: return@Thread aviso("The change address is not one this wallet can derive.")
                 }
 
-                val resumen = buildString {
+                val resumen = if (cancelar) buildString {
+                    appendLine("The send is replaced by one that pays you back:")
+                    appendLine("%.8f BTC return to $origen".format(importe / 1e8) + fiatEntre(importe))
+                    appendLine()
+                    appendLine("Fee  %,d → %,d sat".format(feeViejo, feeNuevo))
+                    appendLine("Rate %d → %d sat/vB".format(tasaVieja, feeNuevo / vsizeNuevo))
+                    appendLine()
+                    append("It only works if this is confirmed before the original. If the original is mined first, the " +
+                           "payment goes through and this is dropped.")
+                    appendLine()
+                    append("Unconfirmed transactions that spend this one's change are dropped with it.")
+                } else buildString {
                     appendLine("Recipient still receives %.8f BTC".format(importe / 1e8) + fiatEntre(importe))
                     appendLine("to $destino")
                     appendLine()
@@ -1527,10 +1567,10 @@ class WalletActivity : FragmentActivity() {
                     // Si la pantalla ya no existe (se salió o se recreó), no se muestra: el diálogo lanzaría
                     // BadTokenException y nadie contestaría nunca.
                     if (isFinishing || isDestroyed) { seguir.offer(false); return@runOnUiThread }
-                    AlertDialog.Builder(this).setTitle("Speed up the send?").setMessage(resumen)
+                    AlertDialog.Builder(this).setTitle(if (cancelar) "Cancel the send?" else "Speed up the send?").setMessage(resumen)
                         .setCancelable(false)
-                        .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
-                        .setPositiveButton("Speed up") { _, _ -> seguir.offer(true) }
+                        .setNegativeButton(if (cancelar) "Keep it" else "Cancel") { _, _ -> seguir.offer(false) }
+                        .setPositiveButton(if (cancelar) "Cancel the send" else "Speed up") { _, _ -> seguir.offer(true) }
                         .show()
                 }
                 // Con tope: sin él, un diálogo que se pierde (rotación, tema) dejaba este hilo esperando
@@ -1563,12 +1603,38 @@ class WalletActivity : FragmentActivity() {
                             .setMessage(resp.removePrefix("ERROR: "))
                             .setPositiveButton("Got it", null).show()
                     } else {
-                        Toast.makeText(this, "Sped up. New transaction: ${resp.take(16)}…", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, (if (cancelar) "Cancel sent. Replacement: " else "Sped up. New transaction: ") + "${resp.take(16)}…", Toast.LENGTH_LONG).show()
                         tabContent.removeAllViews(); loadHistoryTab()
                     }
                 }
             } catch (e: Exception) { aviso(motivo(e)) }
         }.start()
+    }
+
+    /**
+     * Pregunta la tasa nueva de un reemplazo: las [opciones] o una a mano (que no baje de [minima]).
+     * Bloquea hasta la respuesta: llamar desde un hilo. null = cancelado; una tasa a mano menor que la
+     * mínima vuelve tal cual, y quien llama lo avisa.
+     */
+    private fun elegirTasa(opciones: List<Pair<String, Long>>, minima: Long): Long? {
+        val q = java.util.concurrent.ArrayBlockingQueue<Long>(1)
+        runOnUiThread {
+            if (isFinishing || isDestroyed) { q.offer(-1L); return@runOnUiThread }
+            val nombres = opciones.map { "${it.first} — ${it.second} sat/vB" } + "Custom…"
+            AlertDialog.Builder(this).setTitle("New fee rate").setCancelable(false)
+                .setItems(nombres.toTypedArray()) { _, i ->
+                    if (i < opciones.size) { q.offer(opciones[i].second); return@setItems }
+                    val campo = Ui.input(this, "At least $minima sat/vB").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+                    AlertDialog.Builder(this).setTitle("Custom fee rate").setView(campo).setCancelable(false)
+                        .setNegativeButton("Cancel") { _, _ -> q.offer(-1L) }
+                        .setPositiveButton("OK") { _, _ -> q.offer(campo.text.toString().trim().toLongOrNull() ?: 0L) }
+                        .show()
+                }
+                .setNegativeButton("Cancel") { _, _ -> q.offer(-1L) }
+                .show()
+        }
+        val r = q.poll(5, java.util.concurrent.TimeUnit.MINUTES)
+        return if (r == null || r < 0) null else r
     }
 
     /* -- SEND -- */
