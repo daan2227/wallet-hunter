@@ -48,9 +48,18 @@ object Bip39 {
      */
     fun generate(palabras: Int = 12): String {
         require(palabras in VALID_LENGTHS) { "BIP39: $palabras palabras no es una longitud valida" }
-        val entBits = palabras * 11 * 32 / 33
-        val ent = ByteArray(entBits / 8)
+        val ent = ByteArray(palabras * 11 * 32 / 33 / 8)
         java.security.SecureRandom().nextBytes(ent)
+        val frase = deEntropia(ent)
+        check(validate(frase) == Result.Valid) { "BIP39: la frase generada no valida" }
+        return frase
+    }
+
+    /** La frase de una entropía de 16/20/24/28/32 bytes (12–24 palabras). La usan [generate] y BIP85. */
+    fun deEntropia(ent: ByteArray): String {
+        require(ent.size in setOf(16, 20, 24, 28, 32)) { "BIP39: ${ent.size} bytes de entropía no es válido" }
+        val entBits = ent.size * 8
+        val palabras = (entBits + entBits / 32) / 11
         val hash = MessageDigest.getInstance("SHA-256").digest(ent)
 
         fun bit(i: Int): Int =
@@ -58,13 +67,11 @@ object Bip39 {
             else ((hash[(i - entBits) / 8].toInt() and 0xff) shr (7 - (i - entBits) % 8)) and 1
 
         val w = Bip39Words.WORDS
-        val frase = (0 until palabras).joinToString(" ") { k ->
+        return (0 until palabras).joinToString(" ") { k ->
             var v = 0
             for (b in 0 until 11) v = (v shl 1) or bit(k * 11 + b)
             w[v]
         }
-        check(validate(frase) == Result.Valid) { "BIP39: la frase generada no valida" }
-        return frase
     }
 
     fun normalize(raw: String): List<String> =

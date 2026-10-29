@@ -104,6 +104,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_copy,   "Hex ↔ WIF")            { construirWifHex() }
         seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
         seccion(page, R.drawable.ic_import, "Mnemonic tools (BIP39)") { construirMnemonic() }
+        seccion(page, R.drawable.ic_recovery, "Child seeds (BIP85)") { construirBip85() }
         seccion(page, R.drawable.ic_recovery, "Custom derivation path") { construirDerivacion() }
         seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
 
@@ -1248,6 +1249,105 @@ class PubkeyToolsActivity : Activity() {
         }
         nota(AppTheme.WARN, "A generated phrase controls real funds if you send to it. " +
              "Write it down offline; anyone with the phrase has the money.")
+    }
+
+    // ── Child seeds (BIP85) ────────────────────────────────────────────────
+    /*
+     * De una semilla madre salen hijas independientes por su número. La madre puede ser una cartera de este
+     * teléfono (pide el código; si tiene passphrase, cuenta, como en Coldcard) o una frase pegada. La clave
+     * de la ruta la deriva el motor; Bip85 (probado con los vectores oficiales) hace el resto.
+     */
+    private fun construirBip85() {
+        desc("Derive independent child seeds, keys or passwords from ONE parent seed, each by its number " +
+             "(BIP85). Use them for a hot wallet, a gift or a test wallet without new backups: the parent plus " +
+             "the number rebuilds any child. A leaked child never exposes the parent or its siblings — but " +
+             "losing the parent loses every child. Same results as Coldcard, Passport, SeedSigner and others.")
+        val carteras = listOf("" to WalletManager.mainName(this)) + WalletManager.listWallets(this)
+        var deTelefono = true
+        var carteraSel: Pair<String, String>? = null
+        var btnCartera: Button? = null
+        var etFrase: EditText? = null
+        root.addView(Ui.segmented(this, listOf("A wallet on this phone" to null, "Paste a phrase" to null)) {
+            deTelefono = it == 0
+            btnCartera?.visibility = if (deTelefono) android.view.View.VISIBLE else android.view.View.GONE
+            etFrase?.visibility = if (deTelefono) android.view.View.GONE else android.view.View.VISIBLE
+        })
+        btnCartera = boton("Choose the parent wallet ▾") {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Parent wallet")
+                .setItems(carteras.map { it.second }.toTypedArray()) { _, i ->
+                    carteraSel = carteras[i]; btnCartera?.text = "Parent: ${carteras[i].second}"
+                }.show()
+        }
+        etFrase = entrada("Parent phrase (12–24 words)", varias = true).apply { visibility = android.view.View.GONE }
+
+        root.addView(rotulo("What to derive"))
+        var tipo = 0; var palabras = 12
+        var segPalabras: android.view.View? = null
+        var etLargo: EditText? = null
+        root.addView(Ui.segmented(this, listOf("Phrase" to null, "WIF key" to null, "Password" to null, "Hex" to null)) {
+            tipo = it
+            segPalabras?.visibility = if (tipo == 0) android.view.View.VISIBLE else android.view.View.GONE
+            etLargo?.visibility = if (tipo >= 2) android.view.View.VISIBLE else android.view.View.GONE
+        })
+        segPalabras = Ui.segmented(this, listOf("12 words" to null, "18 words" to null, "24 words" to null)) {
+            palabras = listOf(12, 18, 24)[it]
+        }.also { root.addView(it) }
+        etLargo = entrada("Length: password 20–86 characters, hex 16–64 bytes").apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER; visibility = android.view.View.GONE
+        }
+        root.addView(rotulo("Child number"))
+        val etIdx = entrada("0, 1, 2…").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
+
+        lateinit var salida: LinearLayout
+        boton("Derive child") {
+            salida.removeAllViews()
+            val indice = etIdx.text.toString().trim().ifEmpty { "0" }.toIntOrNull()
+            if (indice == null || indice < 0) { salida.addView(filaResultado("Invalid number", "Use 0, 1, 2…")); return@boton }
+            val largo = etLargo?.text.toString().trim().toIntOrNull() ?: if (tipo == 2) 21 else 32
+            val t = tipo; val n = palabras
+            val ruta = try {
+                when (t) {
+                    0 -> Bip85.rutaFrase(n, indice); 1 -> Bip85.rutaWif(indice)
+                    2 -> Bip85.rutaClave(largo, indice); else -> Bip85.rutaHex(largo, indice)
+                }
+            } catch (e: IllegalArgumentException) {
+                salida.addView(filaResultado("Invalid length", if (t == 2) "Passwords: 20–86 characters." else "Hex: 16–64 bytes.")); return@boton
+            }
+            fun derivar(madre: String) = Thread {
+                val k = try { HunterEngine.deriveRuta(madre, ruta) } catch (e: Throwable) { "" }
+                val res = if (k.length != 64) null else {
+                    val ent = Bip85.entropia(Descriptor.bytes(k))
+                    val v = when (t) {
+                        0 -> "Child phrase #$indice ($n words)" to Bip85.frase(ent, n)
+                        1 -> Bip85.wif(ent)?.let { "Child WIF #$indice (Bitcoin Core hdseed)" to it }
+                        2 -> "Child password #$indice ($largo characters)" to Bip85.clave(ent, largo)
+                        else -> "Child hex #$indice ($largo bytes)" to Bip85.hex(ent, largo)
+                    }
+                    java.util.Arrays.fill(ent, 0); v
+                }
+                runOnUiThread {
+                    if (res == null) salida.addView(filaResultado("Could not derive", "This number gives no valid key; try the next one."))
+                    else { salida.addView(filaResultado(res.first, res.second, true)); salida.addView(filaResultado("Path", ruta)) }
+                }
+            }.start()
+            if (deTelefono) {
+                val sel = carteraSel
+                if (sel == null) { Toast.makeText(this, "Choose the parent wallet", Toast.LENGTH_SHORT).show(); return@boton }
+                PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                    if (!ok) return@show
+                    val mn = if (sel.first.isEmpty()) WalletManager.loadSeed(this) else WalletManager.loadWalletSeed(this, sel.first)
+                    if (mn == null) salida.addView(filaResultado("No seed", "That wallet has no seed phrase on this phone."))
+                    else derivar(mn)
+                }
+            } else {
+                val m = etFrase?.text.toString().trim().lowercase().replace(Regex("\\s+"), " ")
+                if (Bip39.validate(m) !is Bip39.Result.Valid) { salida.addView(filaResultado("Invalid phrase", "Enter a valid BIP39 parent phrase.")); return@boton }
+                derivar(m)
+            }
+        }
+        salida = salidaBox()
+        nota(AppTheme.BLUE, "Write down which number you used for each child. With a phone wallet, its passphrase " +
+             "(if any) is part of the parent, as in hardware wallets. Everything is computed on this phone.")
     }
 
     // ── Custom derivation path ─────────────────────────────────────────────
