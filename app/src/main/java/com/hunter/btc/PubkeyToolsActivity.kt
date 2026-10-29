@@ -111,6 +111,7 @@ class PubkeyToolsActivity : Activity() {
         cabecera(page, "Sign, encrypt & backup")
         seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_finger, "Sign & verify (BIP322: bc1q, bc1p, 3…)") { construirBip322() }
+        seccion(page, R.drawable.ic_clock,  "Timestamp a file (OpenTimestamps)") { construirOts() }
         seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
         seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
@@ -206,7 +207,51 @@ class PubkeyToolsActivity : Activity() {
         super.onActivityResult(req, res, data)
         if (req == REQ_QR_PSBT && res == RESULT_OK)
             data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeerQr?.invoke(it) }
+        if (req == REQ_ELEGIR && res == RESULT_OK) data?.data?.let { alElegir?.invoke(it) }
+        if (req == REQ_GUARDAR) {
+            val u = data?.data; val b = porGuardar
+            val ok = res == RESULT_OK && u != null && b != null &&
+                try { contentResolver.openOutputStream(u)?.use { it.write(b) } != null } catch (e: Exception) { RegistroFallos.anotar("Tools.guardar", e); false }
+            porGuardar = null; alGuardar?.invoke(ok)
+        }
     }
+
+    // ── Archivos (selector del sistema): el archivo no sale del teléfono ──
+    private var alElegir: ((android.net.Uri) -> Unit)? = null
+    private var porGuardar: ByteArray? = null
+    private var alGuardar: ((Boolean) -> Unit)? = null
+    private val REQ_ELEGIR = 72
+    private val REQ_GUARDAR = 73
+
+    private fun elegirArchivo(f: (android.net.Uri) -> Unit) {
+        alElegir = f
+        startActivityForResult(android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT)
+            .addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("*/*"), REQ_ELEGIR)
+    }
+    private fun guardarArchivo(nombre: String, bytes: ByteArray, listo: (Boolean) -> Unit) {
+        porGuardar = bytes; alGuardar = listo
+        startActivityForResult(android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT)
+            .addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("application/octet-stream")
+            .putExtra(android.content.Intent.EXTRA_TITLE, nombre), REQ_GUARDAR)
+    }
+    private fun nombreDe(u: android.net.Uri): String = try {
+        contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)
+            ?.use { if (it.moveToFirst()) it.getString(0) else null }
+    } catch (e: Exception) { null } ?: "file"
+    /** SHA-256 del archivo, leído por trozos (puede ser grande). */
+    private fun sha256De(u: android.net.Uri): ByteArray? = try {
+        val md = java.security.MessageDigest.getInstance("SHA-256"); val buf = ByteArray(64 * 1024)
+        contentResolver.openInputStream(u)?.use { while (true) { val n = it.read(buf); if (n < 0) break; md.update(buf, 0, n) } } ?: throw java.io.IOException("no se abre")
+        md.digest()
+    } catch (e: Exception) { RegistroFallos.anotar("Tools.sha256De", e); null }
+    /** Un archivo pequeño entero (un .ots), con tope. */
+    private fun leerPequeno(u: android.net.Uri, max: Int = 1 shl 20): ByteArray? = try {
+        contentResolver.openInputStream(u)?.use { ent ->
+            val o = java.io.ByteArrayOutputStream(); val buf = ByteArray(8192)
+            while (true) { val n = ent.read(buf); if (n < 0) break; if (o.size() + n > max) throw java.io.IOException("demasiado grande"); o.write(buf, 0, n) }
+            o.toByteArray()
+        }
+    } catch (e: Exception) { RegistroFallos.anotar("Tools.leerPequeno", e); null }
 
     private fun entrada(hint: String, varias: Boolean = false): EditText {
         val e = EditText(this).apply {
@@ -542,6 +587,124 @@ class PubkeyToolsActivity : Activity() {
         salVer = salidaBox()
         nota(AppTheme.BLUE, "The message must match exactly, including spaces and line breaks. Signing never moves " +
              "funds. Multisig and time-locked scripts can't be checked here and show as \"can't tell\".")
+    }
+
+    // ── Timestamp a file (OpenTimestamps) ─────────────────────────────────
+    /*
+     * Sellar: SHA-256 del archivo (aquí), nonce, a los calendarios, y se guarda el .ots. Comprobar: abrir un
+     * .ots, ver si es del archivo, completar lo pendiente y comprobar contra la cabecera del bloque (con su
+     * prueba de trabajo). Ots está probado con los ejemplos oficiales; la red va en SelloTiempo.
+     */
+    private fun construirOts() {
+        desc("Prove a file existed by a date — a contract, a photo, a document — anchored in Bitcoin, for free. " +
+             "Only a fingerprint (hash) mixed with a random value leaves the phone, never the file. Public calendars " +
+             "put it in a Bitcoin block within a few hours; then 'Upgrade' completes the proof. Compatible with opentimestamps.org.")
+        fun hex(b: ByteArray) = b.joinToString("") { "%02x".format(it) }
+        fun fecha(s: Long) = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm 'UTC'", java.util.Locale.US)
+            .apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(s * 1000))
+
+        root.addView(rotulo("1 · Timestamp"))
+        lateinit var salSello: LinearLayout
+        fun sellar(digest: ByteArray?, nombre: String) {
+            salSello.removeAllViews()
+            if (digest == null) { salSello.addView(filaResultado("Could not read it", "Try again.")); return }
+            salSello.addView(filaResultado("SHA-256 of $nombre", hex(digest)))
+            salSello.addView(filaResultado("Sending to the calendars…", "Only this fingerprint, mixed with a random value."))
+            Thread {
+                val (arch, n) = try { SelloTiempo.sellar(digest) } catch (e: Throwable) { RegistroFallos.anotar("Tools.ots", e); null to 0 }
+                runOnUiThread {
+                    if (arch == null || n == 0) { salSello.addView(filaResultado("No calendar answered", "Check the connection and try again.")); return@runOnUiThread }
+                    salSello.addView(filaResultado("Sent to $n calendar(s)", "Pending: it will be in a Bitcoin block within a few hours.", true))
+                    guardarArchivo("$nombre.ots", Ots.escribir(arch)) { ok ->
+                        salSello.addView(filaResultado(if (ok) "Proof saved" else "Proof NOT saved", if (ok)
+                            "Keep the .ots next to the original. Come back in a few hours and use 'Upgrade' to complete it."
+                            else "Without the .ots there is no proof. Timestamp it again."))
+                    }
+                }
+            }.start()
+        }
+        boton("Choose a file to timestamp") { elegirArchivo { u -> sellar(sha256De(u), nombreDe(u)) } }
+        val etTxt = entrada("…or a text to timestamp (keep it exactly as typed)", varias = true)
+        boton("Timestamp this text") {
+            val t = etTxt.text.toString()
+            if (t.isEmpty()) { Toast.makeText(this, "Type a text", Toast.LENGTH_SHORT).show(); return@boton }
+            sellar(java.security.MessageDigest.getInstance("SHA-256").digest(t.toByteArray(Charsets.UTF_8)), "text")
+        }
+        salSello = salidaBox()
+
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) }
+        })
+        root.addView(rotulo("2 · Check or upgrade a proof"))
+        var prueba: Ots.Archivo? = null
+        var nombrePrueba = "proof.ots"
+        lateinit var salVer: LinearLayout
+        fun resumen(a: Ots.Archivo) {
+            salVer.removeAllViews()
+            val todas = a.sello.todas().map { it.second }
+            val alturas = todas.filterIsInstance<Ots.Atestacion.Bitcoin>().map { it.altura }.sorted()
+            val pend = todas.count { it is Ots.Atestacion.Pendiente }
+            salVer.addView(filaResultado("File fingerprint in the proof", hex(a.digest)))
+            salVer.addView(filaResultado("State", when {
+                alturas.isNotEmpty() -> "Anchored in Bitcoin block ${alturas.first()}" + (if (pend > 0) " (and $pend calendar(s) still pending)" else "") + ". Verify it on the chain."
+                pend > 0 -> "Pending in $pend calendar(s). Use 'Upgrade' a few hours after timestamping."
+                else -> "No Bitcoin attestation in this proof."
+            }, true))
+        }
+        boton("Open a .ots proof") {
+            elegirArchivo { u ->
+                val b = leerPequeno(u)
+                val a = try { if (b == null) null else Ots.leer(b) } catch (e: IllegalArgumentException) { null }
+                if (a == null) { salVer.removeAllViews(); salVer.addView(filaResultado("Not a valid .ots proof", "Choose the .ots file.")); return@elegirArchivo }
+                prueba = a; nombrePrueba = nombreDe(u); resumen(a)
+            }
+        }
+        boton("Does it match the original file?") {
+            val a = prueba ?: run { Toast.makeText(this, "Open a .ots proof first", Toast.LENGTH_SHORT).show(); return@boton }
+            elegirArchivo { u ->
+                Thread {
+                    val d = if (a.hashTag == 0x08) sha256De(u) else leerPequeno(u, 32 shl 20)?.let { Ots.hashArchivo(a.hashTag, it) }
+                    runOnUiThread {
+                        salVer.addView(if (d != null && d.contentEquals(a.digest))
+                            filaResultado("✓ Same file", "${nombreDe(u)} is the file this proof is about.", true)
+                            else filaResultado("✗ Different file", "${nombreDe(u)} is NOT the file of this proof (any change, even one byte, gives another fingerprint)."))
+                    }
+                }.start()
+            }
+        }
+        boton("Upgrade (complete pending)") {
+            val a = prueba ?: run { Toast.makeText(this, "Open a .ots proof first", Toast.LENGTH_SHORT).show(); return@boton }
+            salVer.addView(filaResultado("Asking the calendars…", ""))
+            Thread {
+                val n = try { SelloTiempo.actualizar(a) } catch (e: Throwable) { 0 }
+                runOnUiThread {
+                    if (n == 0) { salVer.addView(filaResultado("Still pending", "Not in a block yet. Try again later (usually a few hours).")); return@runOnUiThread }
+                    resumen(a)
+                    guardarArchivo(nombrePrueba, Ots.escribir(a)) { ok ->
+                        salVer.addView(filaResultado(if (ok) "Upgraded proof saved" else "Upgraded proof NOT saved",
+                            if (ok) "Now it can be verified without any calendar." else "Try 'Upgrade' again to save it."))
+                    }
+                }
+            }.start()
+        }
+        boton("Verify on the Bitcoin chain") {
+            val a = prueba ?: run { Toast.makeText(this, "Open a .ots proof first", Toast.LENGTH_SHORT).show(); return@boton }
+            salVer.addView(filaResultado("Checking block headers…", ""))
+            Thread {
+                val r = try { SelloTiempo.verificar(a) } catch (e: Throwable) { emptyList() }
+                runOnUiThread {
+                    if (r.isEmpty()) { salVer.addView(filaResultado("Nothing to verify yet", "The proof has no Bitcoin attestation. Use 'Upgrade' first.")); return@runOnUiThread }
+                    val buenos = r.filterIsInstance<SelloTiempo.Resultado.Anclado>().sortedBy { it.altura }
+                    buenos.firstOrNull()?.let { salVer.addView(filaResultado("✓ VERIFIED", "The file existed by ${fecha(it.hora)} — Bitcoin block ${it.altura}.\nIt also needs 'Does it match the original file?' to say it is the same file.", true)) }
+                    for (f in r.filterIsInstance<SelloTiempo.Resultado.Falla>()) salVer.addView(filaResultado("✗ Block ${f.altura}", f.motivo))
+                }
+            }.start()
+        }
+        salVer = salidaBox()
+        nota(AppTheme.BLUE, "A timestamp proves the file existed by that date — not who made it or that it is true. " +
+             "Keep the original file unchanged together with its .ots.")
     }
 
     // ── Inspector ─────────────────────────────────────────────────────────
