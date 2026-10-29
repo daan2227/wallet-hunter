@@ -127,6 +127,11 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_import, "PSBT (decode / sign)") { construirPsbt() }
         seccion(page, R.drawable.ic_search, "Script decoder")       { construirScript() }
 
+        cabecera(page, "Explorer")
+        seccion(page, R.drawable.ic_clock,  "Network & mempool now") { construirRed() }
+        seccion(page, R.drawable.ic_export, "Recent blocks")        { construirBloques() }
+        seccion(page, R.drawable.ic_search, "Look up tx / block / address") { construirBuscar() }
+
         cabecera(page, "Monitor & generate")
         seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
         seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
@@ -811,6 +816,136 @@ class PubkeyToolsActivity : Activity() {
         salVer = salidaBox()
         nota(AppTheme.BLUE, "A valid proof shows control of those coins when it was made; \"unspent right now\" is checked " +
              "against the chain when you press the button. It never proves there are no OTHER coins.")
+    }
+
+    // ── Explorer ───────────────────────────────────────────────────────────
+    /*
+     * Un explorador de bloques con la API Esplora que ya usa la app (mempool.space o blockstream.info, el que
+     * conteste; por Tor si está activado). Las cuentas (bloques proyectados, halving, ajuste) son de Explorador.
+     */
+    private fun btcTxt(s: Long) = "%.8f BTC".format(s / 1e8)
+    private fun haceTxt(t: Long): String {
+        val s = System.currentTimeMillis() / 1000 - t
+        return when { s < 60 -> "just now"; s < 3600 -> "${s / 60} min ago"; s < 86400 -> "${s / 3600} h ago"; else -> "${s / 86400} days ago" }
+    }
+    private fun fechaTxt(t: Long) = java.text.SimpleDateFormat("d MMM yyyy, HH:mm", java.util.Locale.US).format(java.util.Date(t * 1000))
+    private fun cargando(salida: LinearLayout) { salida.removeAllViews(); salida.addView(filaResultado("Loading…", "")) }
+
+    private fun construirRed() {
+        desc("The network right now: height, mempool, what would fit in the next blocks, the next halving and " +
+             "the next difficulty adjustment. From a public explorer (via Tor if it is on).")
+        lateinit var salida: LinearLayout
+        boton("Refresh") {
+            cargando(salida)
+            Thread {
+                val punta = ChainApi.get("/blocks/tip/height")?.trim()?.toLongOrNull()
+                val mem = ChainApi.get("/mempool")?.let { Explorador.leerMempool(it) }
+                val tPunta = ChainApi.get("/blocks/tip/hash")?.trim()?.let { ChainApi.get("/block/$it") }
+                    ?.let { try { org.json.JSONObject(it).optLong("timestamp") } catch (e: Exception) { null } }
+                val tInicio = punta?.let { p -> ChainApi.get("/block-height/${Explorador.inicioPeriodo(p)}")?.trim()?.let { ChainApi.get("/block/$it") } }
+                    ?.let { try { org.json.JSONObject(it).optLong("timestamp") } catch (e: Exception) { null } }
+                runOnUiThread {
+                    salida.removeAllViews()
+                    if (punta == null) { salida.addView(filaResultado("No network", "No explorer answered.")); return@runOnUiThread }
+                    salida.addView(filaResultado("Block height", "%,d".format(punta) + (tPunta?.let { " · last block ${haceTxt(it)}" } ?: ""), true))
+                    if (mem != null) {
+                        salida.addView(filaResultado("Mempool", "%,d transactions · %.1f MvB · fees %s".format(mem.txs, mem.vsize / 1e6, btcTxt(mem.comisionTotal))))
+                        val bloques = Explorador.proyectar(mem.histograma, 6)
+                        for ((i, b) in bloques.withIndex()) salida.addView(filaResultado(
+                            if (i == 0) "Next block (~10 min)" else "Block +${i + 1} (~${(i + 1) * 10} min)",
+                            "%.1f – %.1f sat/vB · median %.1f · %.2f MvB".format(b.minima, b.maxima, b.mediana, b.vsize / 1e6)))
+                    }
+                    val h = Explorador.halving(punta)
+                    salida.addView(filaResultado("Next halving", "Block %,d · in %,d blocks (~%,d days)\nSubsidy %s → %s".format(
+                        h.siguiente, h.faltan, h.faltan * 10 / 1440, btcTxt(h.subvencionAhora), btcTxt(h.subvencionDespues))))
+                    val a = if (tInicio != null && tPunta != null) Explorador.ajuste(punta, tInicio, tPunta) else null
+                    if (a != null) salida.addView(filaResultado("Next difficulty adjustment", "%+.1f %% estimated · in %,d blocks (%s)\nAverage block time this period: %.1f min".format(
+                        a.cambio * 100, a.faltan, fechaTxt(System.currentTimeMillis() / 1000 + a.segundosHasta.toLong()), a.mediaSeg / 60)))
+                }
+            }.start()
+        }
+        salida = salidaBox()
+        nota(AppTheme.TXT_MUTED, "Projected blocks assume miners take the highest fee rates first; real blocks can differ (CPFP, private deals).")
+    }
+
+    private fun construirBloques() {
+        desc("The latest blocks: height, when, how many transactions and how big. Tap a row to copy its hash.")
+        lateinit var salida: LinearLayout
+        boton("Load") {
+            cargando(salida)
+            Thread {
+                val bs = ChainApi.get("/blocks")?.let { Explorador.leerBloques(it) }.orEmpty()
+                runOnUiThread {
+                    salida.removeAllViews()
+                    if (bs.isEmpty()) { salida.addView(filaResultado("No network", "No explorer answered.")); return@runOnUiThread }
+                    for (b in bs) salida.addView(filaResultado("#%,d · %s".format(b.altura, haceTxt(b.hora)),
+                        "%,d txs · %.2f MB · %.2f MWU\n%s".format(b.txs, b.tamano / 1e6, b.peso / 1e6, b.hash)).apply { setOnClickListener { copiar(b.hash) } })
+                }
+            }.start()
+        }
+        salida = salidaBox()
+    }
+
+    private fun construirBuscar() {
+        desc("Paste a transaction id, a block height or hash, or an address. For an unconfirmed transaction it " +
+             "estimates in which upcoming block it would fit at its fee rate.")
+        val et = entrada("txid, block height/hash or address")
+        lateinit var salida: LinearLayout
+        boton("Look up") {
+            val q = Explorador.que(et.text.toString())
+            if (q == null) { Toast.makeText(this, "Not a txid, block or address", Toast.LENGTH_SHORT).show(); return@boton }
+            cargando(salida)
+            Thread {
+                val filas = ArrayList<Triple<String, String, Boolean>>()
+                fun fila(a: String, b: String, d: Boolean = false) = filas.add(Triple(a, b, d))
+                when (q) {
+                    is Explorador.Busqueda.Tx -> {
+                        val punta = ChainApi.get("/blocks/tip/height")?.trim()?.toLongOrNull()
+                        val t = ChainApi.get("/tx/${q.txid}")?.let { Explorador.leerTx(it, punta) }
+                        if (t == null) fila("Not found", "No explorer knows this transaction.")
+                        else {
+                            if (t.altura != null) fila("✓ Confirmed", "%,d confirmation(s) · block %,d".format(t.confirmaciones, t.altura) + (t.hora?.let { " · ${fechaTxt(it)}" } ?: ""), true)
+                            else {
+                                val b = ChainApi.get("/mempool")?.let { Explorador.leerMempool(it) }?.let { Explorador.proyectar(it.histograma) }
+                                val pos = b?.let { Explorador.posicion(t.tasa, it) }
+                                fila("Unconfirmed", when {
+                                    b == null -> "In the mempool."
+                                    pos == null -> "Its fee rate is below the next ${b.size} projected blocks: it may wait a long time." +
+                                        (if (t.rbf) " It is replaceable: you can raise its fee (RBF)." else " Speed it up with a child (CPFP).")
+                                    else -> "Would fit in projected block #${pos + 1} (~${(pos + 1) * 10} min) at its fee rate."
+                                }, true)
+                            }
+                            fila("Fee", "%,d sat · %.1f sat/vB · %,d vB".format(t.comision, t.tasa, t.vsize))
+                            fila("Inputs / outputs", "${t.entradas} → ${t.salidas} · ${btcTxt(t.totalSalidas)} out")
+                            fila("Replaceable (RBF)", if (t.rbf) "Yes" else "No")
+                            fila("txid", t.txid)
+                        }
+                    }
+                    is Explorador.Busqueda.BloqueAltura, is Explorador.Busqueda.BloqueHash -> {
+                        val hash = if (q is Explorador.Busqueda.BloqueHash) q.hash else ChainApi.get("/block-height/${(q as Explorador.Busqueda.BloqueAltura).altura}")?.trim()
+                        val b = hash?.let { ChainApi.get("/block/$it") }?.let { try { Explorador.leerBloque(org.json.JSONObject(it)) } catch (e: Exception) { null } }
+                        if (b == null) fila("Not found", "No explorer knows this block.")
+                        else {
+                            fila("Block %,d".format(b.altura), "${fechaTxt(b.hora)} (${haceTxt(b.hora)})", true)
+                            fila("Transactions", "%,d".format(b.txs)); fila("Size", "%.2f MB · %.2f MWU".format(b.tamano / 1e6, b.peso / 1e6))
+                            fila("Halving era", "#${b.altura / 210_000 + 1} · subsidy ${btcTxt(Explorador.halving(b.altura).subvencionAhora)}")
+                            fila("Hash", b.hash)
+                        }
+                    }
+                    is Explorador.Busqueda.Direccion -> {
+                        val s = ChainApi.get("/address/${q.d}")?.let { Explorador.leerDireccion(it) }
+                        if (s == null) fila("Not found", "No explorer answered.")
+                        else {
+                            fila("Balance", btcTxt(s.confirmado), true)
+                            if (s.sinConfirmar != 0L) fila("Unconfirmed", (if (s.sinConfirmar > 0) "+" else "") + btcTxt(s.sinConfirmar))
+                            fila("Transactions", "%,d".format(s.txs) + if (s.txs > 1) " · reused address (less private)" else "")
+                        }
+                    }
+                }
+                runOnUiThread { salida.removeAllViews(); for ((a, b, d) in filas) salida.addView(filaResultado(a, b, d)) }
+            }.start()
+        }
+        salida = salidaBox()
     }
 
     // ── Inspector ─────────────────────────────────────────────────────────
