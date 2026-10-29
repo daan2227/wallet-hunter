@@ -139,6 +139,15 @@ inline bool schnorr_verificar(const secp256k1_context *ctx, const uint8_t sig[64
     secp256k1_xonly_pubkey xo; if (!secp256k1_xonly_pubkey_parse(ctx, &xo, px)) return false;
     return secp256k1_schnorrsig_verify(ctx, sig, msg, 32, &xo) == 1;
 }
+/* Verifica una firma ECDSA DER (sin byte de sighash) de [msg] (32) por la pública [pub] (33 o 65 bytes).
+ * Como exige BIP322 (y la política de Core): DER estricto y s bajo; secp256k1_ecdsa_verify ya rechaza s alto. */
+inline bool ecdsa_verificar(const secp256k1_context *ctx, const uint8_t *der, size_t nder, const uint8_t msg[32],
+                            const uint8_t *pub, size_t npub) {
+    secp256k1_pubkey p; secp256k1_ecdsa_signature s;
+    if (!secp256k1_ec_pubkey_parse(ctx, &p, pub, npub)) return false;
+    if (!secp256k1_ecdsa_signature_parse_der(ctx, &s, der, nder)) return false;
+    return secp256k1_ecdsa_verify(ctx, &s, msg, &p) == 1;
+}
 /* Secreto compartido de Nostr: la x de k·P, con P la x-only [px] levantada con y par (NIP-04 y NIP-44). */
 inline bool ecdh_x(const secp256k1_context *ctx, const uint8_t k[32], const uint8_t px[32], uint8_t out[32]) {
     uint8_t p33[33]; p33[0] = 0x02; memcpy(p33 + 1, px, 32);

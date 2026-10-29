@@ -110,6 +110,7 @@ class PubkeyToolsActivity : Activity() {
 
         cabecera(page, "Sign, encrypt & backup")
         seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
+        seccion(page, R.drawable.ic_finger, "Sign & verify (BIP322: bc1q, bc1p, 3…)") { construirBip322() }
         seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
         seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
@@ -433,6 +434,114 @@ class PubkeyToolsActivity : Activity() {
         }
         nota(AppTheme.BLUE, "Signing never touches funds — it just proves control of the key. " +
              "Verify recovers the signer's address from the signature and compares it.")
+    }
+
+    // ── Sign & verify (BIP322) ─────────────────────────────────────────────
+    /*
+     * Firma y verificación de mensajes para direcciones modernas. La firma se hace con una cartera del teléfono
+     * (se busca la dirección entre sus primeras de recepción y cambio; pide el código) o con una clave pegada.
+     * Antes de enseñarla se verifica con el mismo verificador. Bip322 está probado con los vectores oficiales.
+     */
+    private fun construirBip322() {
+        desc("Prove you control a modern address — bc1q, bc1p (Taproot), 3… or 1… — by signing a message " +
+             "(BIP322), and check anyone's BIP322 signature. The classic tool above only covers 1… keys. " +
+             "Nothing is sent: the signature is a transaction that can never be broadcast.")
+        root.addView(rotulo("Sign with"))
+        val carteras = listOf("" to WalletManager.mainName(this)) + WalletManager.listWallets(this)
+        var deTelefono = true
+        var carteraSel: Pair<String, String>? = null
+        var btnCartera: Button? = null
+        var etClave: EditText? = null
+        root.addView(Ui.segmented(this, listOf("A wallet on this phone" to null, "Private key" to null)) {
+            deTelefono = it == 0
+            btnCartera?.visibility = if (deTelefono) android.view.View.VISIBLE else android.view.View.GONE
+            etClave?.visibility = if (deTelefono) android.view.View.GONE else android.view.View.VISIBLE
+        })
+        btnCartera = boton("Choose the wallet ▾") {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Wallet")
+                .setItems(carteras.map { it.second }.toTypedArray()) { _, i ->
+                    carteraSel = carteras[i]; btnCartera?.text = "Wallet: ${carteras[i].second}"
+                }.show()
+        }
+        etClave = entrada("Private key: 64-hex or WIF").apply { visibility = android.view.View.GONE }
+        root.addView(rotulo("Address"))
+        val etDir = entrada("bc1q…, bc1p…, 3… or 1… — one of yours")
+        root.addView(rotulo("Message"))
+        val etMsg = entrada("the exact text to sign", varias = true)
+        lateinit var salFirma: LinearLayout
+        boton("Sign (BIP322)") {
+            salFirma.removeAllViews()
+            val dir = etDir.text.toString().trim()
+            val inf = FirmaBip322.info(dir)
+            if (inf == null) { salFirma.addView(filaResultado("Invalid address", "Check the address.")); return@boton }
+            if (inf.type == BtcAddress.Type.P2WSH) {
+                salFirma.addView(filaResultado("Not supported here", "Script addresses (bc1q… of 62 characters, e.g. multisig) sign with their co-signers' tools."))
+                return@boton
+            }
+            val msg = etMsg.text.toString().toByteArray(Charsets.UTF_8)
+            val telefono = deTelefono
+            fun mostrar(f: String?) = runOnUiThread {
+                if (f == null) {
+                    salFirma.addView(filaResultado("Not signed", if (telefono)
+                        "That address is not among the first 200 receive or change addresses of this wallet (account 0)."
+                        else "That key does not control this address."))
+                } else {
+                    salFirma.addView(filaResultado("Signature (BIP322)", f, true))
+                    if (f.startsWith("smp")) salFirma.addView(filaResultado("Same, without the 'smp' prefix (older verifiers)", f.substring(3)))
+                    val ok = Bip322.verificar(inf, msg, f, FirmaBip322.verificador) is Bip322.Veredicto.Valida
+                    salFirma.addView(filaResultado("Self-check", if (ok) "✓ The signature verifies." else "✗ It does not verify — don't use it."))
+                }
+            }
+            if (telefono) {
+                val sel = carteraSel
+                if (sel == null) { Toast.makeText(this, "Choose the wallet", Toast.LENGTH_SHORT).show(); return@boton }
+                PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                    if (!ok) return@show
+                    val mn = if (sel.first.isEmpty()) WalletManager.loadSeed(this) else WalletManager.loadWalletSeed(this, sel.first)
+                    if (mn == null) { salFirma.addView(filaResultado("No seed", "That wallet has no seed phrase on this phone.")); return@show }
+                    Thread {
+                        val priv = try { FirmaBip322.privadaDe(mn, inf, dir) } catch (e: Throwable) { null }
+                        mostrar(priv?.let { try { FirmaBip322.firmar(it, inf, msg) } catch (e: Throwable) { null } })
+                    }.start()
+                }
+            } else {
+                val hx = hexClave(etClave?.text.toString())
+                if (hx.isBlank()) { Toast.makeText(this, "Invalid private key", Toast.LENGTH_SHORT).show(); return@boton }
+                Thread { mostrar(try { FirmaBip322.firmar(hx, inf, msg) } catch (e: Throwable) { null }) }.start()
+            }
+        }
+        salFirma = salidaBox()
+
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) }
+        })
+        root.addView(rotulo("Verify — address"))
+        val etA = entrada("bc1q…, bc1p…, 3… or 1…")
+        root.addView(rotulo("Message"))
+        val etM2 = entrada("the exact message", varias = true)
+        root.addView(rotulo("Signature"))
+        val etS = entrada("smp…, ful… or plain base64", varias = true)
+        lateinit var salVer: LinearLayout
+        boton("Verify (BIP322)") {
+            salVer.removeAllViews()
+            val addr = etA.text.toString().trim()
+            val inf = FirmaBip322.info(addr)
+            if (inf == null) { salVer.addView(filaResultado("Invalid address", "Check the address.")); return@boton }
+            val v = try {
+                Bip322.verificar(inf, etM2.text.toString().toByteArray(Charsets.UTF_8), etS.text.toString(), FirmaBip322.verificador)
+            } catch (e: Throwable) { Bip322.Veredicto.Invalida("The signature could not be read.") }
+            when (v) {
+                is Bip322.Veredicto.Valida -> salVer.addView(filaResultado("✓ VALID", "Signed by $addr" +
+                    (if (v.tiempo != 0L || v.edad != 0L) "\nWith a time lock: nLockTime ${v.tiempo}, nSequence ${v.edad}." else ""), true))
+                is Bip322.Veredicto.Invalida -> salVer.addView(filaResultado("✗ NOT valid", v.motivo))
+                is Bip322.Veredicto.Inconclusa -> salVer.addView(filaResultado("? Can't tell", v.motivo))
+            }
+        }
+        salVer = salidaBox()
+        nota(AppTheme.BLUE, "The message must match exactly, including spaces and line breaks. Signing never moves " +
+             "funds. Multisig and time-locked scripts can't be checked here and show as \"can't tell\".")
     }
 
     // ── Inspector ─────────────────────────────────────────────────────────

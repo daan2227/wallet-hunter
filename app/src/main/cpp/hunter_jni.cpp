@@ -3886,7 +3886,8 @@ Java_com_hunter_btc_HunterEngine_taprootAncho(JNIEnv*, jobject){ return (jlong)g
  *   xonly      a = privada                                  → x-only 32 (pubkey de Nostr)
  *   schnorr    a = privada, b = "mensaje32|aux32"           → firma BIP340 de 64
  *   ecdh_x     a = privada, b = x-only del otro             → x del secreto compartido (NIP-04/44)
- *   schnorr_ok a = x-only, b = "mensaje32|firma64"          → "1" si la firma BIP340 vale */
+ *   schnorr_ok a = x-only, b = "mensaje32|firma64"          → "1" si la firma BIP340 vale
+ *   ecdsa_ok   a = pública 33/65, b = "mensaje32|firmaDER"  → "1" si la firma ECDSA vale (DER estricto, s bajo) */
 static bool de_hex(const std::string &s, std::vector<uint8_t> &o) {
     if (s.size() % 2) return false; o.resize(s.size() / 2);
     for (size_t i = 0; i < o.size(); i++) {
@@ -3949,6 +3950,12 @@ static std::string ec_op(const std::string &op, const std::string &a, const std:
         auto pb = trocear(b, '|'); std::vector<uint8_t> m, sg;
         if (!de_hex(a, x) || x.size() != 32 || pb.size() != 2 || !de_hex(pb[0], m) || m.size() != 32 || !de_hex(pb[1], sg) || sg.size() != 64) return "";
         return ecops::schnorr_verificar(ctx, sg.data(), m.data(), x.data()) ? "1" : "";
+    }
+    if (op == "ecdsa_ok") {         /* a = pública 33/65, b = "mensaje32|firmaDER" → "1" o "" */
+        auto pb = trocear(b, '|'); std::vector<uint8_t> m, sg;
+        if (!de_hex(a, x) || (x.size() != 33 && x.size() != 65) || pb.size() != 2 || !de_hex(pb[0], m) || m.size() != 32
+            || !de_hex(pb[1], sg) || sg.size() < 8 || sg.size() > 72) return "";
+        return ecops::ecdsa_verificar(ctx, sg.data(), sg.size(), m.data(), x.data(), x.size()) ? "1" : "";
     }
     if (op == "ecdh_x") {           /* a = privada, b = x-only del otro */
         if (!de_hex(a, x) || x.size() != 32 || !de_hex(b, y) || y.size() != 32) return "";

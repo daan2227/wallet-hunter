@@ -114,6 +114,61 @@ int main(int argc, char **argv) {
           debe(ok && hs(mac, 32) == ck, "NIP-44 conversation key"); n++;
       }
       printf("NIP-44: %d claves de conversación\n", n); }
+    /* BIP322: las firmas de los vectores oficiales verifican con su sighash (ECDSA y Schnorr); y ecdsa_verificar
+     * rechaza mensaje cambiado, s alto (LOW_S) y DER no estricto (STRICTENC), como pide la especificación. */
+    { std::ifstream b("datos/bip322_firmas.txt"); std::string l; int n = 0;
+      while (std::getline(b, l)) {
+          if (l.empty() || l[0] == '#') continue;
+          std::istringstream is(l); std::string tipo, p, h, s; is >> tipo >> p >> h >> s;
+          auto P = hx(p), H = hx(h), S = hx(s);
+          if (tipo == "ECDSA") {
+              debe(ecops::ecdsa_verificar(ctx, S.data(), S.size(), H.data(), P.data(), P.size()), "BIP322 ECDSA vector");
+              auto H2 = H; H2[0] ^= 1;
+              debe(!ecops::ecdsa_verificar(ctx, S.data(), S.size(), H2.data(), P.data(), P.size()), "BIP322 ECDSA mensaje cambiado");
+          } else {
+              debe(ecops::schnorr_verificar(ctx, S.data(), H.data(), P.data()), "BIP322 Schnorr vector");
+              auto H2 = H; H2[31] ^= 1;
+              debe(!ecops::schnorr_verificar(ctx, S.data(), H2.data(), P.data()), "BIP322 Schnorr mensaje cambiado");
+          }
+          n++;
+      }
+      /* Firma propia: vale; con s alto (n - s) no; con un 0x00 de relleno en r (DER no mínimo) no. */
+      uint8_t k[32]; for (int i = 0; i < 32; i++) k[i] = (uint8_t)(i * 7 + 1);
+      uint8_t m[32]; for (int i = 0; i < 32; i++) m[i] = (uint8_t)(0xa0 ^ i);
+      uint8_t pub[33]; ecops::pub_de_priv(ctx, k, pub);
+      secp256k1_ecdsa_signature sg; secp256k1_ecdsa_sign(ctx, &sg, m, k, nullptr, nullptr);
+      uint8_t der[72]; size_t nd = sizeof der; secp256k1_ecdsa_signature_serialize_der(ctx, der, &nd, &sg);
+      debe(ecops::ecdsa_verificar(ctx, der, nd, m, pub, 33), "ECDSA propia");
+      uint8_t c64[64]; secp256k1_ecdsa_signature_serialize_compact(ctx, c64, &sg);
+      { /* s → n − s */
+        static const uint8_t N[32] = {0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFE,
+                                      0xBA,0xAE,0xDC,0xE6,0xAF,0x48,0xA0,0x3B,0xBF,0xD2,0x5E,0x8C,0xD0,0x36,0x41,0x41};
+        int borrow = 0; for (int i = 31; i >= 0; i--) { int v = N[i] - c64[32 + i] - borrow; borrow = v < 0; c64[32 + i] = (uint8_t)(v & 0xff); }
+        secp256k1_ecdsa_signature alto; secp256k1_ecdsa_signature_parse_compact(ctx, &alto, c64);
+        uint8_t d2[72]; size_t n2 = sizeof d2; secp256k1_ecdsa_signature_serialize_der(ctx, d2, &n2, &alto);
+        debe(!ecops::ecdsa_verificar(ctx, d2, n2, m, pub, 33), "ECDSA s alto rechazada");
+      }
+      { /* r con un 0x00 de más delante: DER válido para BER, no para DER estricto */
+        std::vector<uint8_t> d(der, der + nd); size_t rl = d[3];
+        d.insert(d.begin() + 4, 0x00); d[3] = (uint8_t)(rl + 1); d[1] = (uint8_t)(d[1] + 1);
+        if (d[5] < 0x80) debe(!ecops::ecdsa_verificar(ctx, d.data(), d.size(), m, pub, 33), "ECDSA DER no estricto rechazada");
+      }
+      /* La ruta Taproot de FirmaBip322: d' = (±d) + H_TapTweak(x(P)) con priv_sumar; su x-only tiene que ser la
+       * clave de salida BIP86 (tr_salida) y su firma BIP340 tiene que verificar por ella. Con claves de y par e impar. */
+      int impares = 0;
+      for (int c = 1; c <= 40; c++) {
+          uint8_t d[32]; for (int i = 0; i < 32; i++) d[i] = (uint8_t)(c * 31 + i * 17 + (i * c) % 251);
+          uint8_t p33[33]; if (!ecops::pub_de_priv(ctx, d, p33)) continue;
+          bool impar = p33[0] == 3; impares += impar;
+          uint8_t t[32]; ecops::tagged("TapTweak", p33 + 1, 32, t);
+          std::vector<std::vector<uint8_t>> ks = { std::vector<uint8_t>(d, d + 32), std::vector<uint8_t>(t, t + 32) };
+          uint8_t dq[32], xq[32], q[32], sig[64], aux[32] = {7};
+          bool ok = ecops::priv_sumar(ctx, ks, { impar, false }, dq) && ecops::xonly_de_priv(ctx, dq, xq) && ecops::tr_salida(ctx, p33 + 1, q);
+          debe(ok && memcmp(xq, q, 32) == 0, "Taproot: la privada ajustada da la clave de salida");
+          debe(ok && ecops::schnorr_firmar(ctx, dq, m, aux, sig) && ecops::schnorr_verificar(ctx, sig, m, q), "Taproot: firma por la clave de salida");
+      }
+      debe(impares > 5 && impares < 35, "Taproot: hubo claves de y par y de y impar");
+      printf("BIP322: %d firmas de vectores + casos negativos + 40 ajustes Taproot\n", n); }
     secp256k1_context_destroy(ctx);
     printf(fallos ? "\nHAY FALLOS: %d de %d\n" : "\nTodas las pruebas correctas (%d de %d).\n", fallos ? fallos : pruebas, pruebas);
     return fallos ? 1 : 0;

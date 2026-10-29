@@ -130,7 +130,8 @@ object HunterEngine {
 
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
-     * "ckd", "priv_sum", "sp_send". Hex de entrada y de salida; "" si algo no vale.
+     * "ckd", "priv_sum", "sp_send", "xonly", "schnorr", "schnorr_ok", "ecdsa_ok", "ecdh_x".
+     * Hex de entrada y de salida; "" si algo no vale.
      */
     external fun ec(op: String, a: String, b: String): String
     /** Firma un hash de 32 bytes (hex) con una privada hex → DER hex (sin byte
