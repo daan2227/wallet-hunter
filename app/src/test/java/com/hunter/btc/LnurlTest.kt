@@ -58,6 +58,37 @@ class LnurlTest {
         assertTrue(Lnurl.leerRespuesta("<html>") is Lnurl.Respuesta.Error)
     }
 
+    private fun hexa(h: String) = ByteArray(h.length / 2) { h.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+
+    @Test fun lud05VectorOficial() {
+        // LUD-05: hashingKey y dominio → los cuatro índices; los ≥ 2^31 van endurecidos.
+        val idx = Lnurl.indicesAuth(hexa("7d417a6a5e9a6a4a879aeaba11a11838764c8fa2b959c242d43dea682b3e409b"), "site.com")
+        assertEquals(listOf(1588488367L, 2659270754L, 38110259L, 4136336762L), idx)
+        assertEquals("m/138'/1588488367/511787106'/38110259/1988853114'", Lnurl.rutaAuth(idx))
+    }
+
+    @Test fun lud04FirmaSobreK1TalCual() {
+        // El ejemplo de LUD-04: la firma DER verifica sobre k1 (32 bytes) SIN volver a hacer hash, con s bajo.
+        val k1 = java.math.BigInteger(1, hexa("e2af6254a8df433264fa23f67eb8188635d15ce883e8fc020989d5f82ae6f11e"))
+        val pub = EcLento.parse(hexa("02c3b844b8104f0c1b15c507774c9ba7fc609f58f343b9b149122e944dd20c9362"))
+        val der = hexa("304402203767faf494f110b139293d9bab3c50e07b3bf33c463d4aa767256cd09132dc5102205821f8efacdb5c595b92ada255876d9201e126e2f31a140d44561cc1f7e9e43d")
+        val r = java.math.BigInteger(1, der.copyOfRange(4, 4 + der[3])); val sIni = 4 + der[3] + 2
+        val s = java.math.BigInteger(1, der.copyOfRange(sIni, sIni + der[sIni - 1]))
+        val n = EcLento.N; val w = s.modInverse(n)
+        assertTrue(s <= n.shiftRight(1))
+        assertEquals(r, EcLento.add(EcLento.mul(k1 * w % n), EcLento.mul(r * w % n, pub))!!.first.mod(n))
+    }
+
+    @Test fun enlaceDeLogin() {
+        val k1 = "e2af6254a8df433264fa23f67eb8188635d15ce883e8fc020989d5f82ae6f11e"
+        val l = Lnurl.login("https://Auth.Site.com/lnurl?tag=login&k1=$k1&action=register")!!
+        assertEquals(k1, l.k1); assertEquals("register", l.accion); assertEquals("auth.site.com", l.dominio)
+        assertEquals("https://Auth.Site.com/lnurl?tag=login&k1=$k1&action=register&sig=3044&key=02ab", Lnurl.urlLogin(l, "3044", "02ab"))
+        assertNull(Lnurl.login("https://a.com/x?tag=payRequest&k1=$k1"))
+        assertNull(Lnurl.login("https://a.com/x?tag=login&k1=abc"))
+        assertEquals("login", Lnurl.leer("keyauth://a.com/x?tag=login&k1=$k1").let { (it as Lnurl.Destino.Url).pista })
+    }
+
     @Test fun retiro() {
         val r = (Lnurl.leerRespuesta("""{"tag":"withdrawRequest","callback":"https://w.com/cb","k1":"abc 1","minWithdrawable":0,"maxWithdrawable":100000,"defaultDescription":"Gift"}""")
             as Lnurl.Respuesta.EsRetiro).r

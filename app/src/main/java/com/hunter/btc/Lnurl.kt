@@ -86,7 +86,7 @@ object Lnurl {
         else when (o.optString("tag")) {
             "payRequest" -> leerPago(o)
             "withdrawRequest" -> leerRetiro(o)
-            "login" -> Respuesta.Error("LNURL-auth (login) is not supported yet.")
+            "login" -> Respuesta.Error("This is a login link: it must not be fetched before signing.")
             "channelRequest" -> Respuesta.Error("LNURL-channel is not supported.")
             else -> Respuesta.Error("Unknown LNURL type.")
         }
@@ -174,6 +174,45 @@ object Lnurl {
         val o = JSONObject(json)
         if (o.optString("status").equals("OK", true)) null else o.optString("reason", "The service did not accept it.")
     } catch (e: Exception) { "The service did not answer." }
+
+    // ── LNURL-auth (LUD-04 entrar firmando, LUD-05 clave por dominio) ──────────────────────────────
+
+    /** Un inicio de sesión: el reto [k1] (32 bytes hex) que se firma, la [accion] si la dice, y el dominio. */
+    data class Login(val url: String, val k1: String, val accion: String?, val dominio: String)
+
+    /** Si [url] es un LNURL-auth (tag=login con k1 de 32 bytes), sus datos. No se hace GET antes de firmar. */
+    fun login(url: String): Login? {
+        val q = try { java.net.URI(url).rawQuery } catch (e: Exception) { null } ?: return null
+        val p = q.split('&').associate { it.substringBefore('=').lowercase() to java.net.URLDecoder.decode(it.substringAfter('=', ""), "UTF-8") }
+        if (p["tag"] != "login") return null
+        val k1 = p["k1"]?.lowercase() ?: return null
+        if (!Regex("^[0-9a-f]{64}$").matches(k1)) return null
+        val accion = p["action"]?.takeIf { it in setOf("register", "login", "link", "auth") }
+        return Login(url, k1, accion, dominio(url).trimEnd('.'))
+    }
+
+    /**
+     * LUD-05: los cuatro índices de la clave de [dominio], de HMAC-SHA256(hashingKey = privada de m/138'/0,
+     * dominio): los primeros 16 bytes como cuatro uint32 big-endian.
+     */
+    fun indicesAuth(hashingKey: ByteArray, dominio: String): List<Long> {
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256")
+        mac.init(javax.crypto.spec.SecretKeySpec(hashingKey, "HmacSHA256"))
+        val h = mac.doFinal(dominio.toByteArray(Charsets.UTF_8))
+        return (0 until 4).map { i -> (0 until 4).fold(0L) { a, j -> (a shl 8) or (h[i * 4 + j].toLong() and 0xff) } }
+    }
+
+    /**
+     * La ruta de la clave del dominio, m/138'/a/b/c/d. Un índice ≥ 2^31 es, en BIP32, uno endurecido (así lo
+     * hace la referencia de LUD-05): se escribe como (x − 2^31)' para no depender de cómo lea números grandes
+     * quien deriva.
+     */
+    fun rutaAuth(indices: List<Long>): String =
+        "m/138'/" + indices.joinToString("/") { if (it >= 0x80000000L) "${it - 0x80000000L}'" else "$it" }
+
+    /** La URL de vuelta con la firma DER de k1 y la pública comprimida (hex). */
+    fun urlLogin(l: Login, firmaDerHex: String, pubHex: String): String =
+        l.url + (if ('?' in l.url) "&" else "?") + "sig=$firmaDerHex&key=$pubHex"
 
     // ── bech32 (sin el límite de 90 caracteres de las direcciones) ─────────────────────────────────
 

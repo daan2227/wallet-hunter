@@ -273,7 +273,34 @@ class LightningActivity : AppCompatActivity() {
         AlertDialog.Builder(this).setTitle(titulo).setMessage(t).setPositiveButton("OK", null).show()
     }
 
+    /**
+     * LNURL-auth: entrar en un sitio firmando su reto con una clave SÓLO de ese dominio (LUD-05), sacada de la
+     * semilla del nodo. No se mueve dinero y un sitio no puede relacionarla con otro.
+     */
+    private fun lnurlLogin(l: Lnurl.Login) {
+        val que = when (l.accion) { "register" -> "Create an account"; "link" -> "Link this key"; "auth" -> "Authorize"; else -> "Log in" }
+        AlertDialog.Builder(this).setTitle("$que at ${l.dominio}?")
+            .setMessage("You sign in with a key made only for ${l.dominio} from this Lightning wallet's seed. No money moves, " +
+                        "and other sites can't link it to this one. Make sure ${l.dominio} is the site you expect.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton(que) { _, _ ->
+                enHilo("Log in") {
+                    val mn = Ln.frase(this) ?: throw Exception("The vault is locked.")
+                    val hk = HunterEngine.deriveRuta(mn, "m/138'/0")
+                    if (hk.length != 64) throw Exception("Could not derive the key.")
+                    val priv = HunterEngine.deriveRuta(mn, Lnurl.rutaAuth(Lnurl.indicesAuth(Descriptor.bytes(hk), l.dominio)))
+                    val pub = if (priv.length == 64) HunterEngine.ec("pub", priv, "") else ""
+                    val firma = if (pub.length == 66) HunterEngine.firmarHash(priv, l.k1) else ""
+                    if (firma.isEmpty()) throw Exception("Could not sign.")
+                    val resp = LnurlCliente.get(Lnurl.urlLogin(l, firma, pub)) ?: throw Exception("${l.dominio} did not answer.")
+                    Lnurl.leerOk(resp)?.let { throw Exception(it) }
+                    runOnUiThread { Toast.makeText(this, "Done at ${l.dominio}", Toast.LENGTH_LONG).show() }
+                }
+            }.show()
+    }
+
     private fun lnurl(m: MotorLn, d: Lnurl.Destino) {
+        if (d is Lnurl.Destino.Url) Lnurl.login(d.url)?.let { lnurlLogin(it); return }   // LUD-04: sin GET antes de firmar
         val url = when (d) { is Lnurl.Destino.Url -> d.url; is Lnurl.Destino.Direccion -> Lnurl.urlDe(d) }
         Toast.makeText(this, "Contacting ${Lnurl.dominio(url)}…", Toast.LENGTH_SHORT).show()
         Thread {
