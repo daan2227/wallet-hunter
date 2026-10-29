@@ -95,39 +95,50 @@ object Bip322 {
 
     // ── Hash de firma ──────────────────────────────────────────────────────────────────────────────
 
-    /** BIP143 de la entrada 0 (importe 0, que es lo que paga to_spend), SIGHASH_ALL. */
-    fun sighashV0(tx: Tx, scriptCode: ByteArray): ByteArray {
+    /** Lo que gasta una entrada: su importe y su scriptPubKey (de la salida previa). */
+    class Previa(val valor: Long, val script: ByteArray)
+
+    /** BIP143 de la entrada [i] que gasta [valor], SIGHASH_ALL. */
+    fun sighashV0(tx: Tx, i: Int, scriptCode: ByteArray, valor: Long): ByteArray {
         val prev = java.io.ByteArrayOutputStream(); val seq = java.io.ByteArrayOutputStream(); val outs = java.io.ByteArrayOutputStream()
         for (e in tx.entradas) { prev.write(e.txid); prev.write(le(e.vout, 4)); seq.write(le(e.secuencia, 4)) }
         for (s in tx.salidas) { outs.write(le(s.valor, 8)); outs.write(vstr(s.script)) }
-        val e0 = tx.entradas[0]
+        val ei = tx.entradas[i]
         val o = java.io.ByteArrayOutputStream()
         o.write(le(tx.version, 4)); o.write(dsha(prev.toByteArray())); o.write(dsha(seq.toByteArray()))
-        o.write(e0.txid); o.write(le(e0.vout, 4)); o.write(vstr(scriptCode)); o.write(le(0, 8)); o.write(le(e0.secuencia, 4))
+        o.write(ei.txid); o.write(le(ei.vout, 4)); o.write(vstr(scriptCode)); o.write(le(valor, 8)); o.write(le(ei.secuencia, 4))
         o.write(dsha(outs.toByteArray())); o.write(le(tx.bloqueo, 4)); o.write(le(1, 4))
         return dsha(o.toByteArray())
     }
+    /** BIP143 de la entrada 0 (importe 0, que es lo que paga to_spend). */
+    fun sighashV0(tx: Tx, scriptCode: ByteArray): ByteArray = sighashV0(tx, 0, scriptCode, 0)
 
-    /** El sighash clásico de la entrada 0 con [scriptCode], SIGHASH_ALL. */
-    fun sighashLegado(tx: Tx, scriptCode: ByteArray): ByteArray {
-        val t = Tx(tx.version, tx.entradas.mapIndexed { i, e -> Entrada(e.txid, e.vout, if (i == 0) scriptCode else ByteArray(0), e.secuencia, emptyList()) },
+    /** El sighash clásico de la entrada [i] con [scriptCode], SIGHASH_ALL. */
+    fun sighashLegado(tx: Tx, i: Int, scriptCode: ByteArray): ByteArray {
+        val t = Tx(tx.version, tx.entradas.mapIndexed { k, e -> Entrada(e.txid, e.vout, if (k == i) scriptCode else ByteArray(0), e.secuencia, emptyList()) },
                    tx.salidas, tx.bloqueo)
         return dsha(serializar(t, false) + le(1, 4))
     }
+    fun sighashLegado(tx: Tx, scriptCode: ByteArray): ByteArray = sighashLegado(tx, 0, scriptCode)
 
-    /** BIP341, entrada 0 por clave, sin anejo; [tipo] 0 (DEFAULT) o 1 (ALL). Todas las entradas gastan 0 de [spk]. */
-    fun sighashTaproot(tx: Tx, spk: ByteArray, tipo: Int): ByteArray {
+    /** BIP341, entrada [i] por clave, sin anejo; [tipo] 0 (DEFAULT) o 1 (ALL). Firma los importes y scripts de TODAS. */
+    fun sighashTaproot(tx: Tx, i: Int, previas: List<Previa>, tipo: Int): ByteArray {
+        require(previas.size == tx.entradas.size)
         val prev = java.io.ByteArrayOutputStream(); val imp = java.io.ByteArrayOutputStream()
         val spks = java.io.ByteArrayOutputStream(); val seq = java.io.ByteArrayOutputStream(); val outs = java.io.ByteArrayOutputStream()
-        for (e in tx.entradas) { prev.write(e.txid); prev.write(le(e.vout, 4)); imp.write(le(0, 8)); spks.write(vstr(spk)); seq.write(le(e.secuencia, 4)) }
+        for ((k, e) in tx.entradas.withIndex()) {
+            prev.write(e.txid); prev.write(le(e.vout, 4)); imp.write(le(previas[k].valor, 8)); spks.write(vstr(previas[k].script)); seq.write(le(e.secuencia, 4))
+        }
         for (s in tx.salidas) { outs.write(le(s.valor, 8)); outs.write(vstr(s.script)) }
         val o = java.io.ByteArrayOutputStream()
         o.write(0); o.write(tipo); o.write(le(tx.version, 4)); o.write(le(tx.bloqueo, 4))
         o.write(sha(prev.toByteArray())); o.write(sha(imp.toByteArray())); o.write(sha(spks.toByteArray())); o.write(sha(seq.toByteArray()))
         o.write(sha(outs.toByteArray()))
-        o.write(0); o.write(le(0, 4))
+        o.write(0); o.write(le(i.toLong(), 4))
         return etiquetado("TapSighash", o.toByteArray())
     }
+    /** La entrada 0 de una to_sign de una sola entrada (gasta 0 de [spk]). */
+    fun sighashTaproot(tx: Tx, spk: ByteArray, tipo: Int): ByteArray = sighashTaproot(tx, 0, tx.entradas.map { Previa(0, spk) }, tipo)
 
     /** El ajuste BIP341/BIP86 de una x-only sin árbol de scripts: t = hash etiquetado "TapTweak". */
     fun tapTweak(xonly: ByteArray): ByteArray = etiquetado("TapTweak", xonly)
@@ -216,10 +227,19 @@ object Bip322 {
         return comprobar(info, spk, tx, v)
     }
 
-    /** Evalúa el gasto de to_spend:0 por to_sign para los scripts de una clave. */
-    private fun comprobar(info: BtcAddress.Info, spk: ByteArray, tx: Tx, v: Verificador): Veredicto {
-        val e = tx.entradas[0]; val w = e.testigo
-        val mal = Veredicto.Invalida("The signature does not match this message and address.")
+    /** Evalúa el gasto de to_spend:0 por to_sign (de una sola entrada) para los scripts de una clave. */
+    private fun comprobar(info: BtcAddress.Info, spk: ByteArray, tx: Tx, v: Verificador): Veredicto =
+        comprobarEntrada(tx, 0, listOf(Previa(0, spk)), v)
+
+    /**
+     * Evalúa el gasto de la entrada [i] de [tx], que gasta [previas][i], según el tipo de su script: P2WPKH,
+     * P2TR por clave, P2SH-P2WPKH o P2PKH. Otro script → inconcluso. [previas] son las de TODAS las entradas
+     * (Taproot las firma todas).
+     */
+    fun comprobarEntrada(tx: Tx, i: Int, previas: List<Previa>, v: Verificador): Veredicto {
+        val e = tx.entradas[i]; val w = e.testigo
+        val spk = previas[i].script; val valor = previas[i].valor
+        val mal = Veredicto.Invalida(if (i == 0) "The signature does not match this message and address." else "Coin #$i is not signed by its owner.")
         val ok = Veredicto.Valida(tx.bloqueo, e.secuencia)
         fun v0(h160: ByteArray): Veredicto {
             if (w.size != 2) return mal
@@ -227,10 +247,10 @@ object Bip322 {
             if (pub.size != 33 || (pub[0].toInt() != 2 && pub[0].toInt() != 3)) return mal   // segwit: sólo comprimidas
             if (!Ripemd160.hash160(pub).contentEquals(h160)) return mal
             if (sig.isEmpty() || sig.last().toInt() != 0x01) return mal                        // SIGHASH_ALL
-            return if (v.ecdsa(pub, sighashV0(tx, p2pkh(h160)), sig.copyOfRange(0, sig.size - 1))) ok else mal
+            return if (v.ecdsa(pub, sighashV0(tx, i, p2pkh(h160), valor), sig.copyOfRange(0, sig.size - 1))) ok else mal
         }
-        return when (info.type) {
-            BtcAddress.Type.P2WPKH -> if (e.scriptSig.isNotEmpty()) mal else v0(info.program)
+        return when (tipoDe(spk)) {
+            BtcAddress.Type.P2WPKH -> if (e.scriptSig.isNotEmpty()) mal else v0(spk.copyOfRange(2, 22))
             BtcAddress.Type.P2TR -> {
                 if (e.scriptSig.isNotEmpty() || w.isEmpty()) return mal
                 if (w.size >= 2 && w.last().isNotEmpty() && w.last()[0].toInt() == 0x50) return Veredicto.Inconclusa("Taproot annex is not allowed.")
@@ -238,13 +258,13 @@ object Bip322 {
                 val sig = w[0]
                 val tipo = when (sig.size) { 64 -> 0; 65 -> sig[64].toInt() and 0xff; else -> return mal }
                 if (sig.size == 65 && tipo != 0x01) return mal
-                if (v.schnorr(info.program, sighashTaproot(tx, spk, tipo), sig.copyOfRange(0, 64))) ok else mal
+                if (v.schnorr(spk.copyOfRange(2, 34), sighashTaproot(tx, i, previas, tipo), sig.copyOfRange(0, 64))) ok else mal
             }
             BtcAddress.Type.P2SH -> {
                 // El último empuje es el script que se canjea; tiene que ser el de la dirección.
                 val pushes = empujes(e.scriptSig) ?: return Veredicto.Inconclusa("This P2SH script can't be checked here.")
                 val redeem = pushes.lastOrNull() ?: return mal
-                if (!Ripemd160.hash160(redeem).contentEquals(info.program)) return mal
+                if (!Ripemd160.hash160(redeem).contentEquals(spk.copyOfRange(2, 22))) return mal
                 if (pushes.size == 1 && redeem.size == 22 && redeem[0].toInt() == 0 && redeem[1].toInt() == 0x14) v0(redeem.copyOfRange(2, 22))
                 else Veredicto.Inconclusa("This P2SH script (multisig or wrapped script) can't be checked here.")
             }
@@ -253,13 +273,177 @@ object Bip322 {
                 val pushes = empujes(e.scriptSig) ?: return mal
                 if (pushes.size != 2) return mal
                 val sig = pushes[0]; val pub = pushes[1]
-                if (!Ripemd160.hash160(pub).contentEquals(info.program)) return mal
+                if (!Ripemd160.hash160(pub).contentEquals(spk.copyOfRange(3, 23))) return mal
                 if (sig.isEmpty() || sig.last().toInt() != 0x01) return mal
-                if (v.ecdsa(pub, sighashLegado(tx, spk), sig.copyOfRange(0, sig.size - 1))) ok else mal
+                if (v.ecdsa(pub, sighashLegado(tx, i, spk), sig.copyOfRange(0, sig.size - 1))) ok else mal
             }
             BtcAddress.Type.P2WSH -> Veredicto.Inconclusa("Script (P2WSH) signatures, such as multisig, can't be checked here.")
+            null -> Veredicto.Inconclusa("This kind of script can't be checked here.")
         }
     }
+
+    /** El tipo de un scriptPubKey estándar, o null. */
+    fun tipoDe(s: ByteArray): BtcAddress.Type? = when {
+        s.size == 22 && s[0].toInt() == 0x00 && s[1].toInt() == 0x14 -> BtcAddress.Type.P2WPKH
+        s.size == 34 && s[0].toInt() == 0x00 && s[1].toInt() == 0x20 -> BtcAddress.Type.P2WSH
+        s.size == 34 && s[0].toInt() == 0x51 && s[1].toInt() == 0x20 -> BtcAddress.Type.P2TR
+        s.size == 23 && (s[0].toInt() and 0xff) == 0xa9 && s[1].toInt() == 0x14 && (s[22].toInt() and 0xff) == 0x87 -> BtcAddress.Type.P2SH
+        s.size == 25 && s[0].toInt() == 0x76 && (s[1].toInt() and 0xff) == 0xa9 && s[2].toInt() == 0x14 &&
+            (s[23].toInt() and 0xff) == 0x88 && (s[24].toInt() and 0xff) == 0xac -> BtcAddress.Type.P2PKH
+        else -> null
+    }
+
+    // ── Prueba de fondos ("pof") ───────────────────────────────────────────────────────────────────
+    //
+    // La misma firma, pero to_sign gasta ADEMÁS las monedas que se quieren enseñar, cada una firmada por su
+    // dueño, y se entrega como PSBT finalizada. Prueba control de esas monedas sin moverlas (la transacción
+    // gasta to_spend, que no existe, así que nunca es válida en la red). Que sigan sin gastar y su importe
+    // real los dice la cadena, no la firma: eso lo mira quien verifica (FirmaBip322.comprobarEnCadena).
+
+    /** Una moneda: su outpoint (txid en orden interno) y lo que gasta; [txPrevia] entera si es P2PKH. */
+    class Moneda(val txid: ByteArray, val vout: Long, val previa: Previa, val txPrevia: ByteArray? = null) {
+        val txidTexto: String get() = txid.reversedArray().joinToString("") { "%02x".format(it) }
+    }
+
+    /** Una clave que firma una entrada: su pública, y cómo firmar con ella (ECDSA o Schnorr ya ajustada). */
+    class Clave(val pub33: ByteArray, val ecdsa: (ByteArray) -> ByteArray?, val schnorr: (ByteArray) -> ByteArray?)
+
+    class Fondos(val veredicto: Veredicto, val monedas: List<Moneda>)
+
+    /**
+     * Firma una prueba de fondos de [mensaje] por [info] que enseña [monedas]. [claves][0] es la de la
+     * dirección; [claves][k] la de la moneda k-1. null si alguna clave no es la de lo que firma.
+     */
+    fun firmarFondos(info: BtcAddress.Info, mensaje: ByteArray, monedas: List<Moneda>, claves: List<Clave>): String? {
+        require(claves.size == monedas.size + 1 && monedas.isNotEmpty())
+        val spkA = BtcAddress.scriptPubKey(info)
+        val spend = toSpend(spkA, mensaje)
+        val ins = listOf(Entrada(txid(spend), 0, ByteArray(0), 0, emptyList())) +
+                  monedas.map { Entrada(it.txid, it.vout, ByteArray(0), 0, emptyList()) }
+        val sinFirmar = Tx(0, ins, listOf(Salida(0, OP_RETURN)), 0)
+        val previas = listOf(Previa(0, spkA)) + monedas.map { it.previa }
+        val firmadas = ArrayList<Entrada>()
+        for ((i, e) in ins.withIndex()) {
+            val c = claves[i]; val spk = previas[i].script; val h160 = Ripemd160.hash160(c.pub33)
+            val (ss, w) = when (tipoDe(spk)) {
+                BtcAddress.Type.P2WPKH -> {
+                    if (!h160.contentEquals(spk.copyOfRange(2, 22))) return null
+                    val der = c.ecdsa(sighashV0(sinFirmar, i, p2pkh(h160), previas[i].valor)) ?: return null
+                    ByteArray(0) to listOf(der + 0x01.toByte(), c.pub33)
+                }
+                BtcAddress.Type.P2SH -> {
+                    val redeem = byteArrayOf(0x00, 0x14) + h160
+                    if (!Ripemd160.hash160(redeem).contentEquals(spk.copyOfRange(2, 22))) return null
+                    val der = c.ecdsa(sighashV0(sinFirmar, i, p2pkh(h160), previas[i].valor)) ?: return null
+                    empuje(redeem) to listOf(der + 0x01.toByte(), c.pub33)
+                }
+                BtcAddress.Type.P2PKH -> {
+                    if (!h160.contentEquals(spk.copyOfRange(3, 23))) return null
+                    val der = c.ecdsa(sighashLegado(sinFirmar, i, spk)) ?: return null
+                    (empuje(der + 0x01.toByte()) + empuje(c.pub33)) to emptyList<ByteArray>()
+                }
+                BtcAddress.Type.P2TR -> {
+                    val sig = c.schnorr(sighashTaproot(sinFirmar, i, previas, 0))?.takeIf { it.size == 64 } ?: return null
+                    ByteArray(0) to listOf(sig)
+                }
+                else -> return null
+            }
+            firmadas.add(Entrada(e.txid, e.vout, ss, e.secuencia, w))
+        }
+        // PSBT finalizada: la transacción sin firmar y, por entrada, lo que gasta y su firma final.
+        val o = java.io.ByteArrayOutputStream()
+        fun par(k: Int, v: ByteArray) { o.write(varint(1)); o.write(k); o.write(vstr(v)) }
+        o.write("psbt".toByteArray()); o.write(0xff)
+        par(0x00, serializar(sinFirmar, false)); o.write(0)
+        for ((i, e) in firmadas.withIndex()) {
+            val p = previas[i]
+            if (tipoDe(p.script) == BtcAddress.Type.P2PKH) par(0x00, if (i == 0) serializar(spend, false) else monedas[i - 1].txPrevia ?: return null)
+            else par(0x01, le(p.valor, 8) + vstr(p.script))
+            if (e.scriptSig.isNotEmpty()) par(0x07, e.scriptSig)
+            if (e.testigo.isNotEmpty()) par(0x08, pilaSerializada(e.testigo))
+            o.write(0)
+        }
+        o.write(0)   // la única salida, sin campos
+        return "pof" + b64(o.toByteArray())
+    }
+
+    /**
+     * Verifica una prueba de fondos: la firma de la dirección y la de cada moneda. Devuelve el veredicto y las
+     * monedas que enseña (sin mirar la cadena: si existen, su importe real y si siguen sin gastar, aparte).
+     */
+    fun verificarFondos(info: BtcAddress.Info, mensaje: ByteArray, firmaTexto: String, v: Verificador): Fondos {
+        fun mal(m: String) = Fondos(Veredicto.Invalida(m), emptyList())
+        val f = firmaTexto.filterNot { it.isWhitespace() }
+        if (!f.startsWith("pof")) return mal("A proof of funds starts with 'pof'.")
+        val b = deB64(f.drop(3)) ?: return mal("The proof is not valid base64.")
+        val psbt = leerPsbt(b) ?: return mal("The proof is not a valid PSBT.")
+        val (sinFirmar, mapas) = psbt
+        if (sinFirmar.entradas.size < 2) return mal("A proof of funds must include at least one coin.")
+        val spkA = BtcAddress.scriptPubKey(info)
+        val spend = toSpend(spkA, mensaje)
+        val e0 = sinFirmar.entradas[0]
+        if (!e0.txid.contentEquals(txid(spend)) || e0.vout != 0L) return mal("The proof does not commit to this message and address.")
+        if (sinFirmar.salidas.size != 1 || sinFirmar.salidas[0].valor != 0L || !sinFirmar.salidas[0].script.contentEquals(OP_RETURN))
+            return mal("The signed transaction must have a single empty OP_RETURN output.")
+        if (sinFirmar.version != 0L && sinFirmar.version != 2L) return Fondos(Veredicto.Inconclusa("Unknown transaction version."), emptyList())
+        // Lo que gasta cada entrada: la 0 es to_spend; las demás, su witness_utxo o la salida de su tx previa
+        // (que tiene que ser la del outpoint: se comprueba su txid). Una tx previa puede venir sólo la primera vez.
+        val previasTx = HashMap<String, ByteArray>()
+        val previas = ArrayList<Previa>(); val monedas = ArrayList<Moneda>()
+        for ((i, e) in sinFirmar.entradas.withIndex()) {
+            val m = mapas[i]
+            if (i == 0) { previas.add(Previa(0, spkA)); continue }
+            val clave = e.txid.joinToString("") { "%02x".format(it) }
+            val cruda = m[0x00]?.also { if (!dsha(it).contentEquals(e.txid)) return mal("Coin #$i: its previous transaction does not match.") ; previasTx[clave] = it }
+                ?: previasTx[clave]
+            val p = when {
+                m[0x01] != null -> {
+                    val wu = m[0x01]!!; if (wu.size < 9) return mal("Coin #$i: bad data.")
+                    val l = Lector(wu); val valor = l.u64(); val s = l.bytes(l.varint().toInt()); if (l.quedan() != 0) return mal("Coin #$i: bad data.")
+                    Previa(valor, s)
+                }
+                cruda != null -> {
+                    val tx = leer(cruda) ?: return mal("Coin #$i: bad previous transaction.")
+                    val sal = tx.salidas.getOrNull(e.vout.toInt()) ?: return mal("Coin #$i: that output does not exist.")
+                    Previa(sal.valor, sal.script)
+                }
+                else -> return mal("Coin #$i has no data about what it spends.")
+            }
+            previas.add(p); monedas.add(Moneda(e.txid, e.vout, p, cruda))
+        }
+        val firmada = Tx(sinFirmar.version, sinFirmar.entradas.mapIndexed { i, e ->
+            val w = mapas[i][0x08]?.let { leerPila(it) ?: return mal("Input #$i: bad witness.") } ?: emptyList()
+            Entrada(e.txid, e.vout, mapas[i][0x07] ?: ByteArray(0), e.secuencia, w)
+        }, sinFirmar.salidas, sinFirmar.bloqueo)
+        for (i in firmada.entradas.indices) {
+            when (val r = comprobarEntrada(firmada, i, previas, v)) {
+                is Veredicto.Valida -> {}
+                else -> return Fondos(r, monedas)
+            }
+        }
+        return Fondos(Veredicto.Valida(firmada.bloqueo, firmada.entradas[0].secuencia), monedas)
+    }
+
+    /** Una PSBT: la transacción sin firmar y, por entrada, sus campos (tipo de clave de 1 byte → valor). */
+    private fun leerPsbt(b: ByteArray): Pair<Tx, List<Map<Int, ByteArray>>>? = try {
+        require(b.size > 5 && String(b, 0, 4, Charsets.US_ASCII) == "psbt" && (b[4].toInt() and 0xff) == 0xff)
+        val c = Lector(b); c.p = 5
+        fun mapa(): Map<Int, ByteArray> {
+            val m = HashMap<Int, ByteArray>()
+            while (true) {
+                val kl = c.varint().toInt(); if (kl == 0) return m
+                val k = c.bytes(kl); val vl = c.varint().toInt(); val v = c.bytes(vl)
+                if (kl == 1) { require((k[0].toInt() and 0xff) !in m) { "clave repetida" }; m[k[0].toInt() and 0xff] = v }
+            }
+        }
+        val g = mapa()
+        val tx = leer(g[0x00]!!)!!
+        require(tx.entradas.all { it.scriptSig.isEmpty() && it.testigo.isEmpty() })
+        val ins = tx.entradas.map { mapa() }
+        repeat(tx.salidas.size) { mapa() }
+        require(c.quedan() == 0)
+        tx to ins
+    } catch (e: Exception) { null }
 
     // ── Piezas ─────────────────────────────────────────────────────────────────────────────────────
 

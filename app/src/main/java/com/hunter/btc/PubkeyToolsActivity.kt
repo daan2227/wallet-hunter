@@ -112,6 +112,7 @@ class PubkeyToolsActivity : Activity() {
         seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
         seccion(page, R.drawable.ic_finger, "Sign & verify (BIP322: bc1q, bc1p, 3…)") { construirBip322() }
         seccion(page, R.drawable.ic_clock,  "Timestamp a file (OpenTimestamps)") { construirOts() }
+        seccion(page, R.drawable.ic_wallet, "Proof of reserves (BIP322)") { construirReservas() }
         seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
         seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
         seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
@@ -705,6 +706,111 @@ class PubkeyToolsActivity : Activity() {
         salVer = salidaBox()
         nota(AppTheme.BLUE, "A timestamp proves the file existed by that date — not who made it or that it is true. " +
              "Keep the original file unchanged together with its .ots.")
+    }
+
+    // ── Proof of reserves (BIP322 proof of funds) ─────────────────────────
+    /*
+     * Crear: con una cartera del teléfono (pide el código) se buscan sus monedas sin gastar y se firma una
+     * prueba "pof" con todas, que se autoverifica. Comprobar: la firma (Bip322, probado con los vectores) y,
+     * moneda a moneda en la cadena, que existe con ese importe y sigue sin gastar.
+     */
+    private fun construirReservas() {
+        desc("Prove how much you hold without moving it: a signed proof (BIP322 \"proof of funds\") that you control " +
+             "these coins. Useful for an inheritance, a loan or an audit. Whoever checks it sees each coin on the chain " +
+             "and whether it is still unspent. Privacy: the proof reveals those coins and links them together.")
+        fun btc(s: Long) = "%.8f BTC".format(s / 1e8)
+        root.addView(rotulo("1 · Create a proof"))
+        val carteras = listOf("" to WalletManager.mainName(this)) + WalletManager.listWallets(this)
+        var carteraSel: Pair<String, String>? = null
+        var btnCartera: Button? = null
+        btnCartera = boton("Choose the wallet ▾") {
+            androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Wallet")
+                .setItems(carteras.map { it.second }.toTypedArray()) { _, i ->
+                    carteraSel = carteras[i]; btnCartera?.text = "Wallet: ${carteras[i].second}"
+                }.show()
+        }
+        val etMsg = entrada("Message, e.g. \"Reserves of Ana, 29 Oct 2026\"", varias = true)
+        lateinit var salCrear: LinearLayout
+        boton("Create proof") {
+            salCrear.removeAllViews()
+            val sel = carteraSel
+            if (sel == null) { Toast.makeText(this, "Choose the wallet", Toast.LENGTH_SHORT).show(); return@boton }
+            val msgTxt = etMsg.text.toString()
+            if (msgTxt.isBlank()) { Toast.makeText(this, "Write a message (who, what for, date)", Toast.LENGTH_SHORT).show(); return@boton }
+            PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                if (!ok) return@show
+                val mn = if (sel.first.isEmpty()) WalletManager.loadSeed(this) else WalletManager.loadWalletSeed(this, sel.first)
+                if (mn == null) { salCrear.addView(filaResultado("No seed", "That wallet has no seed phrase on this phone.")); return@show }
+                salCrear.addView(filaResultado("Looking for your coins…", "This checks each address of the wallet; it can take a minute."))
+                Thread {
+                    val (ms, incompleto) = try { FirmaBip322.monedasDe(mn) } catch (e: Throwable) { RegistroFallos.anotar("Tools.reservas", e); emptyList<FirmaBip322.MonedaPropia>() to true }
+                    val dir = ms.maxByOrNull { it.moneda.previa.valor }?.direccion
+                    val prueba = if (dir == null) null else try { FirmaBip322.firmarFondos(mn, dir, msgTxt.toByteArray(Charsets.UTF_8), ms) } catch (e: Throwable) { null }
+                    runOnUiThread {
+                        salCrear.removeAllViews()
+                        if (ms.isEmpty() || dir == null) {
+                            salCrear.addView(filaResultado("No coins found", if (incompleto) "Some lookups failed; check the connection." else "This wallet has no unspent coins."))
+                            return@runOnUiThread
+                        }
+                        if (prueba == null) { salCrear.addView(filaResultado("Could not sign the proof", "Try again.")); return@runOnUiThread }
+                        salCrear.addView(filaResultado("Proves ${ms.size} coin(s)", btc(ms.sumOf { it.moneda.previa.valor }), true))
+                        if (incompleto) salCrear.addView(filaResultado("Note", "Some lookups failed: the proof may not include every coin."))
+                        salCrear.addView(filaResultado("Address", dir))
+                        salCrear.addView(filaResultado("Message", msgTxt))
+                        salCrear.addView(filaResultado("Proof (tap to copy)", if (prueba.length > 400) prueba.take(400) + "…" else prueba).apply {
+                            setOnClickListener { copiar(prueba) }
+                        })
+                        salCrear.addView(filaResultado("Save as a file", "Address, message and proof in a text file.").apply {
+                            setOnClickListener {
+                                guardarArchivo("proof-of-reserves.txt", "address: $dir\nmessage: $msgTxt\nproof: $prueba\n".toByteArray()) { g ->
+                                    Toast.makeText(this@PubkeyToolsActivity, if (g) "Saved" else "Not saved", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        })
+                    }
+                }.start()
+            }
+        }
+        salCrear = salidaBox()
+
+        root.addView(android.view.View(this).apply {
+            setBackgroundColor(AppTheme.BORDER_C)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1))
+                .apply { topMargin = dp(18); bottomMargin = dp(6) }
+        })
+        root.addView(rotulo("2 · Check a proof"))
+        val etA = entrada("Address")
+        val etM = entrada("Message (exactly as given)", varias = true)
+        val etP = entrada("Proof: pof…", varias = true)
+        lateinit var salVer: LinearLayout
+        boton("Check proof") {
+            salVer.removeAllViews()
+            val inf = FirmaBip322.info(etA.text.toString().trim())
+            if (inf == null) { salVer.addView(filaResultado("Invalid address", "Check the address.")); return@boton }
+            val msg = etM.text.toString().toByteArray(Charsets.UTF_8); val p = etP.text.toString()
+            salVer.addView(filaResultado("Checking…", "Signatures, then each coin on the chain."))
+            Thread {
+                val f = try { Bip322.verificarFondos(inf, msg, p, FirmaBip322.verificador) } catch (e: Throwable) { Bip322.Fondos(Bip322.Veredicto.Invalida("The proof could not be read."), emptyList()) }
+                val cadena = if (f.veredicto is Bip322.Veredicto.Valida) FirmaBip322.comprobarEnCadena(f.monedas) else emptyList()
+                runOnUiThread {
+                    salVer.removeAllViews()
+                    when (val v = f.veredicto) {
+                        is Bip322.Veredicto.Invalida -> { salVer.addView(filaResultado("✗ NOT valid", v.motivo)); return@runOnUiThread }
+                        is Bip322.Veredicto.Inconclusa -> { salVer.addView(filaResultado("? Can't tell", v.motivo)); return@runOnUiThread }
+                        is Bip322.Veredicto.Valida -> {}
+                    }
+                    val vivas = cadena.filter { it.existe && it.sinGastar == true }
+                    salVer.addView(filaResultado("✓ Signatures valid", "Whoever made this controls the address and ${f.monedas.size} coin(s).", true))
+                    salVer.addView(filaResultado("Unspent right now", "${vivas.size} of ${cadena.size} coin(s): ${btc(vivas.sumOf { it.moneda.previa.valor })}", true))
+                    for (c in cadena.take(30)) salVer.addView(filaResultado(
+                        "${if (c.existe && c.sinGastar == true) "✓" else "✗"} ${btc(c.moneda.previa.valor)}", "${c.moneda.txidTexto}:${c.moneda.vout}\n${c.nota}"))
+                    if (cadena.size > 30) salVer.addView(filaResultado("…", "${cadena.size - 30} more coin(s)"))
+                }
+            }.start()
+        }
+        salVer = salidaBox()
+        nota(AppTheme.BLUE, "A valid proof shows control of those coins when it was made; \"unspent right now\" is checked " +
+             "against the chain when you press the button. It never proves there are no OTHER coins.")
     }
 
     // ── Inspector ─────────────────────────────────────────────────────────

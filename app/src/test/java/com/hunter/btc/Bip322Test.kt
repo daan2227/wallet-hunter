@@ -194,6 +194,71 @@ class Bip322Test {
         assertEquals(null, firmarCon(otra, "bc1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l", "x"))
     }
 
+    // ── Prueba de fondos ──
+
+    @Test fun pruebasDeFondosOficiales() {
+        val a = generado.getJSONArray("proof_of_funds")
+        for (i in 0 until a.length()) {
+            val s = a.getJSONObject(i)
+            val f = Bip322.verificarFondos(info(s.getString("address")), s.getString("message").toByteArray(Charsets.UTF_8),
+                s.getJSONArray("bip322_signatures").getString(0), verificador)
+            assertEquals(s.getString("type"), Bip322.Veredicto.Valida(s.getLong("lock_time"), s.getLong("sequence")), f.veredicto)
+            val esperadas = ArrayList<Pair<Long, String>>()
+            val grupos = s.getJSONArray("additional_inputs")
+            for (g in 0 until grupos.length()) { val ms = grupos.getJSONArray(g)
+                for (k in 0 until ms.length()) ms.getJSONObject(k).let { esperadas.add(it.getLong("value") to it.getString("pk_script")) } }
+            assertEquals(esperadas, f.monedas.map { it.previa.valor to hex(it.previa.script) })
+        }
+    }
+
+    @Test fun pruebaDeFondosConImporteCambiadoNoVale() {
+        for (i in 0 until generado.getJSONArray("proof_of_funds").length()) {
+            val s = generado.getJSONArray("proof_of_funds").getJSONObject(i)
+            val b = java.util.Base64.getDecoder().decode(s.getJSONArray("bip322_signatures").getString(0).drop(3))
+            val valor = byteArrayOf(0x4e, 0x46, 0x05, 0, 0, 0, 0, 0)          // 345678 en LE: la primera moneda
+            val p = (0..b.size - 8).first { k -> (0 until 8).all { b[k + it] == valor[it] } }
+            b[p] = (b[p] + 1).toByte()
+            val f = Bip322.verificarFondos(info(s.getString("address")), s.getString("message").toByteArray(Charsets.UTF_8),
+                "pof" + java.util.Base64.getEncoder().encodeToString(b), verificador)
+            assertTrue("${s.getString("type")}: ${f.veredicto}", f.veredicto is Bip322.Veredicto.Invalida)
+        }
+    }
+
+    private fun clave(wif: String): Bip322.Clave {
+        val d = privDeWif(wif)
+        return Bip322.Clave(EcLento.ser(EcLento.mul(d)!!), { h -> firmarEcdsa(d, h) }, { h -> firmarSchnorr(ajustada(d), h, ByteArray(32)) })
+    }
+
+    @Test fun firmarYVerificarFondosDeCadaTipo() {
+        // Monedas de los cuatro tipos con claves de los vectores; las P2PKH llevan su transacción previa entera.
+        val pof = generado.getJSONArray("proof_of_funds")
+        val wifs = ArrayList<String>(); val scripts = ArrayList<String>()
+        for (i in 0 until pof.length()) { val s = pof.getJSONObject(i); val ks = s.getJSONArray("private_keys"); val g = s.getJSONArray("additional_inputs")
+            for (x in 0 until g.length()) { val ms = g.getJSONArray(x); for (k in 0 until ms.length()) { val m = ms.getJSONObject(k)
+                wifs.add(ks.getString(m.getInt("private_key_index"))); scripts.add(m.getString("pk_script")) } } }
+        wifs.add("KySmn2yeCukjHXnSu3M6vX7tNok4weu1FKbNEuVvm2b3ZidKhB4L"); scripts.add(hex(BtcAddress.scriptPubKey(info("bc1qqthe0hz8klx90e7stf6shclhsvqd5ly96pn53v"))))
+        val monedas = scripts.mapIndexed { k, sh ->
+            val spk = ByteArray(sh.length / 2) { sh.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+            val valor = 10_000L * (k + 1)
+            val previa = Bip322.serializar(Bip322.Tx(2, listOf(Bip322.Entrada(ByteArray(32) { k.toByte() }, 0, byteArrayOf(0x51), 0xffffffffL, emptyList())),
+                listOf(Bip322.Salida(1, byteArrayOf(0x6a)), Bip322.Salida(valor, spk)), 0), false)
+            Bip322.Moneda(Bip322.txid(Bip322.leer(previa)!!), 1, Bip322.Previa(valor, spk), if (Bip322.tipoDe(spk) == BtcAddress.Type.P2PKH) previa else null)
+        }
+        assertEquals(setOf(BtcAddress.Type.P2PKH, BtcAddress.Type.P2SH, BtcAddress.Type.P2TR, BtcAddress.Type.P2WPKH), monedas.map { Bip322.tipoDe(it.previa.script) }.toSet())
+        for ((wifD, dir) in listOf("L3VFeEujGtevx9w18HD1fhRbCH67Az2dpCymeRE1SoPK6XQtaN2k" to "bc1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l",
+                                   "KyrSGCFPhqZMjCe5fNTYddiLMp4tMj4gLKuJ26TsB2rvr1VJGPbt" to "bc1pss0zhytly75awhm6x2hhvd5lnzv3vssgrf9axfheq8ldyzn88ges79fler")) {
+            val msg = "These coins are mine".toByteArray()
+            val firma = Bip322.firmarFondos(info(dir), msg, monedas, listOf(clave(wifD)) + wifs.map { clave(it) })!!
+            val f = Bip322.verificarFondos(info(dir), msg, firma, verificador)
+            assertEquals(dir, Bip322.Veredicto.Valida(), f.veredicto)
+            assertEquals(monedas.map { it.previa.valor }, f.monedas.map { it.previa.valor })
+            assertTrue(Bip322.verificarFondos(info(dir), "Other".toByteArray(), firma, verificador).veredicto is Bip322.Veredicto.Invalida)
+        }
+        // Una moneda con la clave de otra: no se firma.
+        assertEquals(null, Bip322.firmarFondos(info("bc1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l"), "x".toByteArray(), monedas.take(1),
+            listOf(clave("L3VFeEujGtevx9w18HD1fhRbCH67Az2dpCymeRE1SoPK6XQtaN2k"), clave("KySmn2yeCukjHXnSu3M6vX7tNok4weu1FKbNEuVvm2b3ZidKhB4L"))))
+    }
+
     @Test fun firmaClasicaSeReconoce() {
         val sig = java.util.Base64.getEncoder().encodeToString(byteArrayOf(31) + ByteArray(64) { 1 })
         assertTrue(Bip322.verificar(info("bc1q9vza2e8x573nczrlzms0wvx3gsqjx7vavgkx0l"), "x".toByteArray(), sig, verificador) is Bip322.Veredicto.Inconclusa)
