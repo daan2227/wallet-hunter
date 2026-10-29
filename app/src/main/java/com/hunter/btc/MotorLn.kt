@@ -143,6 +143,23 @@ class MotorLn(val node: Node) {
                else node.bolt11Payment().send(inv, null)
     }
 
+    /** El importe exacto de una factura en msat (null si es de importe libre) y su red: LNURL-pay lo compara con lo pedido. */
+    fun msatDe(s: String): Pair<Long?, Network> {
+        val inv = Bolt11Invoice.fromStr(s.trim().removePrefix("lightning:").removePrefix("LIGHTNING:"))
+        return inv.amountMilliSatoshis()?.toLong() to inv.network()
+    }
+
+    /**
+     * Paga unas instrucciones BIP21 ("bitcoin:…?lno=…&lightning=…"): el nodo elige oferta BOLT12, factura
+     * BOLT11 o, si no hay nada Lightning, en cadena desde su propia cartera. Devuelve qué hizo.
+     */
+    fun pagarUri(uri: String): String = when (val r = node.unifiedQrPayment().send(uri, null)) {
+        is org.lightningdevkit.ldknode.QrPaymentResult.Bolt12 -> "Paid with a BOLT12 offer"
+        is org.lightningdevkit.ldknode.QrPaymentResult.Bolt11 -> "Paid with a Lightning invoice"
+        is org.lightningdevkit.ldknode.QrPaymentResult.Onchain -> "Sent on-chain: ${r.txid}"
+        else -> "Payment sent"
+    }
+
     /** Todo lo de la cartera en cadena del nodo a [direccion] (sin tocar la reserva de los canales). */
     fun vaciarCadena(direccion: String): String = node.onchainPayment().sendAllToAddress(direccion, true, null)
 

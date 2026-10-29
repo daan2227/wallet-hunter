@@ -181,7 +181,7 @@ class LightningActivity : AppCompatActivity() {
     }
 
     private fun pagarElegir() {
-        val et = Ui.input(this, "lnbc… invoice", mono = true)
+        val et = Ui.input(this, "lnbc… invoice, LNURL or user@domain", mono = true)
         AlertDialog.Builder(this).setTitle("Pay").setView(LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(et) })
             .setNeutralButton("Scan QR") { _, _ -> alLeer = { pagar(it) }; startActivityForResult(Intent(this, QrScanActivity::class.java), REQ_QR) }
             .setNegativeButton("Cancel", null).setPositiveButton("Continue") { _, _ -> pagar(et.text.toString()) }.show()
@@ -192,8 +192,12 @@ class LightningActivity : AppCompatActivity() {
         if (req == REQ_QR && res == RESULT_OK) data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeer?.invoke(it) }
     }
 
+    private val redEsperada get() = if (testnet) org.lightningdevkit.ldknode.Network.TESTNET else org.lightningdevkit.ldknode.Network.BITCOIN
+
     private fun pagar(fac: String) {
         val m = Ln.motor ?: return
+        // Un LNURL o una Lightning Address (usuario@dominio) va por LNURL; una factura (lnbc…) nunca lo parece.
+        Lnurl.leer(fac)?.let { lnurl(m, it); return }
         val (sats, desc, red) = try { m.leerFactura(fac) } catch (e: Exception) { Toast.makeText(this, "Not a valid invoice.", Toast.LENGTH_LONG).show(); return }
         val esperada = if (testnet) org.lightningdevkit.ldknode.Network.TESTNET else org.lightningdevkit.ldknode.Network.BITCOIN
         if (red != esperada) { Toast.makeText(this, "That invoice is for another network.", Toast.LENGTH_LONG).show(); return }
@@ -209,6 +213,93 @@ class LightningActivity : AppCompatActivity() {
         }.show()
     }
 
+
+    // ── LNURL (LUD-06 pagar, LUD-16 Lightning Address, LUD-03 retirar) ──
+
+    private fun aviso(titulo: String, t: String) {
+        if (isFinishing || isDestroyed) return
+        AlertDialog.Builder(this).setTitle(titulo).setMessage(t).setPositiveButton("OK", null).show()
+    }
+
+    private fun lnurl(m: MotorLn, d: Lnurl.Destino) {
+        val url = when (d) { is Lnurl.Destino.Url -> d.url; is Lnurl.Destino.Direccion -> Lnurl.urlDe(d) }
+        Toast.makeText(this, "Contacting ${Lnurl.dominio(url)}…", Toast.LENGTH_SHORT).show()
+        Thread {
+            val r = LnurlCliente.get(url)?.let { Lnurl.leerRespuesta(it) } ?: Lnurl.Respuesta.Error("The service did not answer.")
+            runOnUiThread {
+                when (r) {
+                    is Lnurl.Respuesta.Error -> aviso("LNURL", r.motivo)
+                    is Lnurl.Respuesta.EsPago -> lnurlPagar(m, r.p, d)
+                    is Lnurl.Respuesta.EsRetiro -> lnurlRetirar(m, r.r)
+                }
+            }
+        }.start()
+    }
+
+    private fun lnurlPagar(m: MotorLn, p: Lnurl.Pago, d: Lnurl.Destino) {
+        val min = (p.minMsat + 999) / 1000; val max = p.maxMsat / 1000
+        if (max < min || max < 1) { aviso("LNURL", "The service only accepts amounts below 1 sat."); return }
+        val etSat = Ui.input(this, if (min == max) "$min sat" else "Amount: %,d – %,d sat".format(min, max)).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER; if (min == max) setText("$min")
+        }
+        val etCom = if (p.comentarioMax > 0) Ui.input(this, "Comment (optional, up to ${p.comentarioMax} characters)") else null
+        val quien = if (d is Lnurl.Destino.Direccion) d.toString() else Lnurl.dominio(p.callback)
+        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etSat); etCom?.let { addView(it) } }
+        AlertDialog.Builder(this).setTitle("Pay $quien")
+            .setMessage("“${p.descripcion}”" + (p.identificador?.let { "\n$it" } ?: "") + "\nService: ${Lnurl.dominio(p.callback)}")
+            .setView(v).setNegativeButton("Cancel", null)
+            .setPositiveButton("Pay") { _, _ ->
+                val sat = etSat.text.toString().toLongOrNull()
+                if (sat == null || sat < min || sat > max) { Toast.makeText(this, "Between %,d and %,d sat.".format(min, max), Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                val msat = sat * 1000; val comentario = etCom?.text?.toString()
+                conCodigoSiToca(sat) {
+                    enHilo("Pay") {
+                        val resp = LnurlCliente.get(Lnurl.urlFactura(p, msat, comentario)) ?: throw Exception("The service did not answer.")
+                        val f = Lnurl.leerFactura(resp, p)
+                        val pr = f.pr ?: throw Exception(f.error ?: "The service did not return an invoice.")
+                        // LUD-06: sólo se paga si la factura pide exactamente lo elegido, y en esta red.
+                        val (facMsat, red) = m.msatDe(pr)
+                        if (red != redEsperada) throw Exception("The service's invoice is for another network.")
+                        Lnurl.comprobarImporte(msat, facMsat)?.let { throw Exception(it) }
+                        m.pagar(pr)
+                        f.accion?.let { a -> runOnUiThread { mostrarAccion(a) } }
+                    }
+                }
+            }.show()
+    }
+
+    /** LUD-09: lo que el servicio enseña tras pagar (un mensaje, o un enlace de su mismo dominio). */
+    private fun mostrarAccion(a: Lnurl.Accion) {
+        if (isFinishing || isDestroyed) return
+        when (a) {
+            is Lnurl.Accion.Mensaje -> aviso("Message from the service", a.texto)
+            is Lnurl.Accion.Enlace -> AlertDialog.Builder(this).setTitle("From the service").setMessage("${a.descripcion}\n\n${a.url}")
+                .setNegativeButton("Close", null)
+                .setPositiveButton("Open") { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(a.url))) }.show()
+        }
+    }
+
+    private fun lnurlRetirar(m: MotorLn, r: Lnurl.Retiro) {
+        val min = maxOf(1, (r.minMsat + 999) / 1000); val max = r.maxMsat / 1000
+        if (max < min) { aviso("LNURL", "The service only allows withdrawing less than 1 sat."); return }
+        val etSat = Ui.input(this, "Amount: %,d – %,d sat".format(min, max)).apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER; setText("$max") }
+        AlertDialog.Builder(this).setTitle("Receive from ${Lnurl.dominio(r.callback)}")
+            .setMessage(r.descripcion.ifBlank { "Withdraw from this service into this node." })
+            .setView(LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(etSat) })
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Receive") { _, _ ->
+                val sat = etSat.text.toString().toLongOrNull()
+                if (sat == null || sat < min || sat > max) { Toast.makeText(this, "Between %,d and %,d sat.".format(min, max), Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                enHilo("Receive") {
+                    // Sin capacidad de entrada suficiente y con LSP configurado, la factura abre el canal al cobrar.
+                    val jit = Ln.lsp(this) != null && m.entrante() < sat
+                    val inv = m.factura(sat, r.descripcion.ifBlank { "LNURL withdraw" }, jit = jit)
+                    val resp = LnurlCliente.get(Lnurl.urlRetiro(r, inv)) ?: throw Exception("The service did not answer.")
+                    Lnurl.leerOk(resp)?.let { throw Exception(it) }
+                    runOnUiThread { Toast.makeText(this, "Requested: the payment arrives when the service pays. Keep this screen open.", Toast.LENGTH_LONG).show() }
+                }
+            }.show()
+    }
 
     /** Como al enviar en la cadena: por encima del umbral de Perfil (o con la huella activada), el código otra vez. */
     private fun conCodigoSiToca(sats: Long?, accion: () -> Unit) {
