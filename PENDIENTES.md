@@ -717,3 +717,23 @@ snapshot (días frente a horas); "Verify with the network" visible sin modo avan
   · Randstorm (BitcoinJS 2011–2015): sin reproducción pública determinista → no hay escáner honesto;
     el consejo es mover los fondos si la cartera se generó en un navegador entre 2011 y 2015.
 - Sólo defensivo; sin probar en móvil. Lo compila la CI.
+
+## Fases 1–3: utilidades nuevas de la cadena (2026-10-29)
+
+Fase 1
+- BIP85 (Tools → Child seeds): frases, WIF, contraseñas y hex hijas de una semilla. Vectores oficiales.
+- BIP322 (Tools → Sign & verify BIP322): firmar y verificar mensajes con bc1q, bc1p, 3… y 1… (simple y
+  completo). Vectores oficiales en JVM; op nativa "ecdsa_ok" y el ajuste Taproot probados en el banco.
+- RBF: acelerar ya existía; ahora se elige la tasa y se puede cancelar un envío sin confirmar.
+Fase 2
+- OpenTimestamps (Tools → Timestamp a file): sellar, actualizar y verificar (raíz de Merkle + prueba de
+  trabajo de la cabecera). Ejemplos oficiales; el .ots que genera lo lee idéntico la referencia.
+- Prueba de reservas (Tools → Proof of reserves): BIP322 "proof of funds"; al comprobar, cada moneda se
+  mira en todos los servidores (existe, importe, sin gastar). Vectores oficiales.
+Fase 3
+- LNURL en Lightning: pagar (LUD-06/12/09), Lightning Address (LUD-16), retirar (LUD-03) y login (LUD-04/05).
+- BIP353 (₿usuario@dominio) en Enviar y en Lightning, con validación DNSSEC propia desde la raíz (no se fía
+  del resolvedor). Probado con una jerarquía DNSSEC de prueba (tools/bip353_cadena.py).
+
+Sin probar contra servicios reales (calendarios OTS, servicios LNURL, DNS) ni en el móvil: el entorno de
+desarrollo no tiene salida a esos servidores. Lo verificado es la CI y los vectores.
