@@ -27,37 +27,29 @@ class PubkeyToolsActivity : Activity() {
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
     private lateinit var root: LinearLayout   // contenedor actual (cuerpo de la sección en construcción)
 
-    // Índice plegable: cada categoría es una cabecera que abre/cierra su caja de
-    // herramientas. El buscador filtra por nombre y despliega las que coinciden.
-    private class Cat(val header: LinearLayout, val body: LinearLayout,
-                      val titulo: String, val chevron: ImageView) {
-        val tools = ArrayList<Pair<String, android.view.View>>()
+    // ── Índice de herramientas ────────────────────────────────────────────
+    //
+    // Era una lista de 45 secciones plegables bajo siete cabeceras: todas con el mismo peso, y para saber
+    // qué hacía cada una había que desplegarla. Ahora es una cuadrícula de tarjetas (icono, nombre y para qué
+    // sirve) con buscador, chips de categoría y las recientes arriba; cada herramienta se abre a pantalla
+    // completa. Se construye la primera vez que se abre y se conserva: un barrido en marcha sigue ahí al volver.
+    private class Herr(val cat: String, val icono: Int, val titulo: String, val sub: String,
+                       val claves: String, val build: () -> Unit) {
+        var vista: LinearLayout? = null
     }
-    private val cats = ArrayList<Cat>()
-    private var catActual: Cat? = null
-    private fun abrirCat(c: Cat, abierta: Boolean) {
-        c.body.visibility = if (abierta) android.view.View.VISIBLE else android.view.View.GONE
-        c.chevron.rotation = if (abierta) 90f else 0f
+    private val herrs = ArrayList<Herr>()
+    private fun reg(cat: String, icono: Int, titulo: String, sub: String, claves: String = "", build: () -> Unit) {
+        herrs.add(Herr(cat, icono, titulo, sub, claves, build))
     }
-    private fun filtrar(qRaw: String) {
-        val q = qRaw.trim().lowercase()
-        for (c in cats) {
-            if (q.isEmpty()) {
-                for ((_, v) in c.tools) v.visibility = android.view.View.VISIBLE
-                c.header.visibility = android.view.View.VISIBLE
-                abrirCat(c, false)
-            } else {
-                var alguna = false
-                for ((t, v) in c.tools) {
-                    val m = t.lowercase().contains(q)
-                    v.visibility = if (m) android.view.View.VISIBLE else android.view.View.GONE
-                    if (m) alguna = true
-                }
-                c.header.visibility = if (alguna) android.view.View.VISIBLE else android.view.View.GONE
-                abrirCat(c, alguna)
-            }
-        }
-    }
+    private val CATS = listOf("Keys", "Sign & backup", "Transactions", "Explorer", "Monitor", "Audit", "Utility")
+
+    private lateinit var inicio: ScrollView
+    private lateinit var rejilla: LinearLayout
+    private lateinit var detalle: ScrollView
+    private var abierta: Herr? = null
+    private var catSel: String? = null          // null = todas
+    private var busqueda = ""
+    private val chips = ArrayList<Pair<String?, TextView>>()
 
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
@@ -70,126 +62,255 @@ class PubkeyToolsActivity : Activity() {
         AppTheme.init(this)
         AppLock.init(this)
 
-        val scroll = ScrollView(this)
-        val page = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(0, dp(24), 0, dp(32))
-        }
-        scroll.addView(page)
-        setContentView(scroll)
-        root = page
+        val marco = android.widget.FrameLayout(this).apply { setBackgroundColor(AppTheme.BG_DEEP) }
+        inicio = ScrollView(this).apply { isFillViewport = true }
+        detalle = ScrollView(this).apply { isFillViewport = true; visibility = android.view.View.GONE }
+        marco.addView(inicio); marco.addView(detalle)
+        setContentView(marco)
+        registrar()
+        construirInicio()
+    }
 
+    override fun onBackPressed() {
+        if (abierta != null) cerrar() else super.onBackPressed()
+    }
+
+    private fun registrar() {
+        val K = "Keys"; val F = "Sign & backup"; val T = "Transactions"; val E = "Explorer"; val M = "Monitor"; val A = "Audit"; val U = "Utility"
+        reg(K, R.drawable.ic_search, "Addresses from a key", "Every address type of a private or public key", "wif hex p2pkh p2wpkh p2tr") { construirDirecciones() }
+        reg(K, R.drawable.ic_copy, "Hex ↔ WIF", "Convert a private key between formats") { construirWifHex() }
+        reg(K, R.drawable.ic_eye, "Key inspector", "Paste a key or an address: what it is", "address inspector") { construirInspector() }
+        reg(K, R.drawable.ic_import, "Seed phrase (BIP39)", "Check a phrase, make one, see its addresses", "mnemonic bip39 validate generate") { construirMnemonic() }
+        reg(K, R.drawable.ic_recovery, "Child seeds (BIP85)", "Independent seeds, keys and passwords from one", "bip85") { construirBip85() }
+        reg(K, R.drawable.ic_recovery, "Derivation path", "The key at an exact BIP32 path", "custom derivation bip32") { construirDerivacion() }
+        reg(K, R.drawable.ic_recovery, "xpub → addresses", "Addresses of an extended public key", "xpub zpub ypub") { construirXpub() }
+
+        reg(F, R.drawable.ic_finger, "Sign message", "Sign and verify with 1… keys (classic)", "sign verify message legacy") { construirFirma() }
+        reg(F, R.drawable.ic_finger, "Sign message (BIP322)", "Sign and verify with bc1q, bc1p and 3…", "bip322 sign verify") { construirBip322() }
+        reg(F, R.drawable.ic_clock, "Timestamp a file", "Prove a file existed by a date", "opentimestamps ots") { construirOts() }
+        reg(F, R.drawable.ic_wallet, "Proof of reserves", "Prove what you hold without moving it", "bip322 proof of funds reserves") { construirReservas() }
+        reg(F, R.drawable.ic_lock, "BIP38", "Encrypt a private key with a password", "bip38 encrypt") { construirBip38() }
+        reg(F, R.drawable.ic_lock, "Shamir split", "Split a secret into k-of-n shares", "shamir sss") { construirShamir() }
+        reg(F, R.drawable.ic_lock, "XOR split", "Split a key into parts that need each other", "key split xor") { construirSplit() }
+
+        reg(T, R.drawable.ic_wallet, "Balance & UTXOs", "Any address, read-only", "watch-only utxo") { construirBalance() }
+        reg(T, R.drawable.ic_clock, "Fee estimator", "Recommended fee rates now", "fees") { construirFee() }
+        reg(T, R.drawable.ic_gear, "Size & fee calculator", "A transaction's size and cost", "tx size fee calc") { construirFeeCalc() }
+        reg(T, R.drawable.ic_send, "Sweep a key", "Move all funds of a private key to you") { construirSweep() }
+        reg(T, R.drawable.ic_play, "Broadcast", "Send a signed raw transaction", "raw tx") { construirBroadcast() }
+        reg(T, R.drawable.ic_export, "Transaction decoder", "Read a raw transaction, offline") { construirDecoder() }
+        reg(T, R.drawable.ic_import, "PSBT", "Decode and sign partially signed transactions", "psbt decode sign") { construirPsbt() }
+        reg(T, R.drawable.ic_search, "Script decoder", "Read a Bitcoin script", "script asm") { construirScript() }
+
+        reg(E, R.drawable.ic_clock, "Network now", "Mempool, next blocks, halving, difficulty", "mempool fees halving difficulty") { construirRed() }
+        reg(E, R.drawable.ic_export, "Recent blocks", "The latest blocks mined") { construirBloques() }
+        reg(E, R.drawable.ic_search, "Look up", "A transaction, block or address", "tx block address explorer search txid") { construirBuscar() }
+
+        reg(M, R.drawable.ic_notif, "Watch addresses", "Get notified when they move") { construirWatch() }
+        reg(M, R.drawable.ic_dice, "Vanity address", "An address that starts how you want") { construirVanity() }
+        reg(M, R.drawable.ic_dice, "Dice → key", "A key from dice or coin flips", "dice coin entropy") { construirDados() }
+        reg(M, R.drawable.ic_receive, "QR code", "Turn any text into a QR") { construirQr() }
+
+        reg(A, R.drawable.ic_target, "Key in range (BSGS)", "Find a key in a small range", "bsgs solve") { construirBsgs() }
+        reg(A, R.drawable.ic_warning, "Nonce reuse", "Keys exposed by repeated signatures", "nonce-reuse audit") { construirNonce() }
+        reg(A, R.drawable.ic_warning, "Nonce leak (lattice)", "Recover a key from biased nonces", "lattice hnp") { construirLattice() }
+        reg(A, R.drawable.ic_finger, "RFC6979 check", "Are the signatures deterministic?", "rfc6979 nonce") { construirRfc6979() }
+        reg(A, R.drawable.ic_search, "Low-S / malleability", "Check a signature's form", "signature malleability low-s") { construirMalleability() }
+        reg(A, R.drawable.ic_edit, "Brainwallet check", "Is a passphrase key already known?") { construirBrainwallet() }
+        reg(A, R.drawable.ic_recovery, "Phrase strength", "Red flags of a hand-made phrase", "mnemonic strength") { construirMnemonicStrength() }
+        reg(A, R.drawable.ic_warning, "Weak RNG (Milk Sad)", "Did your phrase come from a broken generator?", "milk sad bx") { construirMilkSad() }
+        reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm and the 2013 Android bug", "randstorm android") { construirLegacyRng() }
+        reg(A, R.drawable.ic_eye, "Entropy checker", "How random is a value?", "entropy") { construirEntropia() }
+        reg(A, R.drawable.ic_clock, "Brute-force time", "How long to search a range of bits", "difficulty time") { construirDificultad() }
+
+        reg(U, R.drawable.ic_copy, "BTC ↔ sat", "Convert units") { construirUnidades() }
+    }
+
+    // ── Inicio: buscador, categorías, recientes y cuadrícula ──
+
+    private fun construirInicio() {
+        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(24), 0, dp(32)) }
         page.addView(TextView(this).apply {
-            text = "Tools"; textSize = 24f; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            setPadding(dp(20), 0, dp(20), dp(8))
+            text = "Tools"; textSize = 24f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context)
+            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0)
         })
-        page.addView(EditText(this).apply {
-            hint = "Search tools…"; isSingleLine = true
-            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-            setPadding(dp(14), dp(12), dp(14), dp(12))
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(20), dp(4), dp(20), dp(10)) }
-            addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(e: android.text.Editable?) { filtrar(e?.toString() ?: "") }
-                override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-                override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
-            })
+        page.addView(TextView(this).apply {
+            text = "${herrs.size} tools · everything runs on this phone"; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+            setPadding(dp(AppTheme.PAD_SIDE), dp(2), dp(AppTheme.PAD_SIDE), dp(12))
         })
-
-        cabecera(page, "Keys & addresses")
-        seccion(page, R.drawable.ic_search, "Addresses from a key") { construirDirecciones() }
-        seccion(page, R.drawable.ic_copy,   "Hex ↔ WIF")            { construirWifHex() }
-        seccion(page, R.drawable.ic_eye,    "Key / address inspector") { construirInspector() }
-        seccion(page, R.drawable.ic_import, "Mnemonic tools (BIP39)") { construirMnemonic() }
-        seccion(page, R.drawable.ic_recovery, "Child seeds (BIP85)") { construirBip85() }
-        seccion(page, R.drawable.ic_recovery, "Custom derivation path") { construirDerivacion() }
-        seccion(page, R.drawable.ic_recovery, "xpub → addresses")     { construirXpub() }
-
-        cabecera(page, "Sign, encrypt & backup")
-        seccion(page, R.drawable.ic_finger, "Sign & verify message") { construirFirma() }
-        seccion(page, R.drawable.ic_finger, "Sign & verify (BIP322: bc1q, bc1p, 3…)") { construirBip322() }
-        seccion(page, R.drawable.ic_clock,  "Timestamp a file (OpenTimestamps)") { construirOts() }
-        seccion(page, R.drawable.ic_wallet, "Proof of reserves (BIP322)") { construirReservas() }
-        seccion(page, R.drawable.ic_lock,   "BIP38 (encrypt key)")  { construirBip38() }
-        seccion(page, R.drawable.ic_lock,   "Shamir split (k-of-n)") { construirShamir() }
-        seccion(page, R.drawable.ic_lock,   "Key split (XOR)")      { construirSplit() }
-
-        cabecera(page, "Transactions")
-        seccion(page, R.drawable.ic_wallet, "Balance & UTXOs (watch-only)") { construirBalance() }
-        seccion(page, R.drawable.ic_clock,  "Fee estimator")        { construirFee() }
-        seccion(page, R.drawable.ic_gear,   "Tx size & fee calc")   { construirFeeCalc() }
-        seccion(page, R.drawable.ic_send,   "Sweep a key")          { construirSweep() }
-        seccion(page, R.drawable.ic_play,   "Broadcast raw tx")     { construirBroadcast() }
-        seccion(page, R.drawable.ic_export, "Transaction decoder")  { construirDecoder() }
-        seccion(page, R.drawable.ic_import, "PSBT (decode / sign)") { construirPsbt() }
-        seccion(page, R.drawable.ic_search, "Script decoder")       { construirScript() }
-
-        cabecera(page, "Explorer")
-        seccion(page, R.drawable.ic_clock,  "Network & mempool now") { construirRed() }
-        seccion(page, R.drawable.ic_export, "Recent blocks")        { construirBloques() }
-        seccion(page, R.drawable.ic_search, "Look up tx / block / address") { construirBuscar() }
-
-        cabecera(page, "Monitor & generate")
-        seccion(page, R.drawable.ic_notif,  "Watch addresses")      { construirWatch() }
-        seccion(page, R.drawable.ic_dice,   "Vanity address")       { construirVanity() }
-        seccion(page, R.drawable.ic_dice,   "Dice / coin → key")    { construirDados() }
-        seccion(page, R.drawable.ic_receive,"QR code")              { construirQr() }
-
-        cabecera(page, "Audit & analysis")
-        seccion(page, R.drawable.ic_target, "Solve key in range (BSGS)") { construirBsgs() }
-        seccion(page, R.drawable.ic_warning,"Nonce-reuse audit")    { construirNonce() }
-        seccion(page, R.drawable.ic_warning,"Nonce-leak recovery (lattice)") { construirLattice() }
-        seccion(page, R.drawable.ic_finger, "RFC6979 nonce check")  { construirRfc6979() }
-        seccion(page, R.drawable.ic_search, "Signature low-S / malleability") { construirMalleability() }
-        seccion(page, R.drawable.ic_edit,   "Brainwallet check")    { construirBrainwallet() }
-        seccion(page, R.drawable.ic_recovery, "Mnemonic strength")  { construirMnemonicStrength() }
-        seccion(page, R.drawable.ic_warning, "Weak RNG check (Milk Sad)") { construirMilkSad() }
-        seccion(page, R.drawable.ic_warning, "Legacy weak wallets (Randstorm / Android 2013)") { construirLegacyRng() }
-        seccion(page, R.drawable.ic_eye,    "Entropy checker")      { construirEntropia() }
-        seccion(page, R.drawable.ic_clock,  "Difficulty / time")    { construirDificultad() }
-
-        cabecera(page, "Utility")
-        seccion(page, R.drawable.ic_copy,   "BTC ↔ sat")            { construirUnidades() }
-    }
-
-    /** Cabecera de categoría: fila que abre/cierra su caja de herramientas. */
-    private fun cabecera(page: LinearLayout, t: String) {
-        val chevron = ImageView(this).apply {
-            setImageResource(R.drawable.ic_chevron); setColorFilter(AppTheme.TXT_SEC)
-            layoutParams = LinearLayout.LayoutParams(dp(18), dp(18))
-        }
-        val header = LinearLayout(this).apply {
+        page.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(10))
-            isClickable = true; isFocusable = true; foreground = Ui.toque()
-            addView(TextView(this@PubkeyToolsActivity).apply {
-                text = t.uppercase(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-                typeface = AppTheme.bold(context); letterSpacing = 0.08f
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(14), 0, dp(14), 0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48))
+                .apply { setMargins(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(12)) }
+            addView(Ui.icon(this@PubkeyToolsActivity, R.drawable.ic_search, 18, AppTheme.TXT_MUTED).apply {
+                (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(10)
             })
-            addView(chevron)
+            addView(EditText(this@PubkeyToolsActivity).apply {
+                hint = "Search tools…"; isSingleLine = true; background = null; setPadding(0, 0, 0, 0)
+                textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                addTextChangedListener(object : android.text.TextWatcher {
+                    override fun afterTextChanged(e: android.text.Editable?) { busqueda = e?.toString() ?: ""; pintarRejilla() }
+                    override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                    override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+                })
+            })
+        })
+        // Chips de categoría, en una fila que se desliza.
+        val fila = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0) }
+        chips.clear()
+        for (c in listOf<String?>(null) + CATS) {
+            val chip = TextView(this).apply {
+                text = c ?: "All"; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
+                setPadding(dp(14), 0, dp(14), 0)
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(34)).apply { marginEnd = dp(8) }
+                isClickable = true; foreground = Ui.toque()
+                setOnClickListener { catSel = c; marcarChips(); pintarRejilla() }
+            }
+            chips.add(c to chip); fila.addView(chip)
         }
-        val body = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; visibility = android.view.View.GONE
-        }
-        val cat = Cat(header, body, t, chevron)
-        header.setOnClickListener { abrirCat(cat, cat.body.visibility != android.view.View.VISIBLE) }
-        page.addView(header); page.addView(body)
-        cats.add(cat); catActual = cat
+        page.addView(android.widget.HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false; addView(fila)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
+        })
+        rejilla = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE - 5), 0, dp(AppTheme.PAD_SIDE - 5), 0) }
+        page.addView(rejilla)
+        root = rejilla
+        inicio.removeAllViews(); inicio.addView(page)
+        marcarChips(); pintarRejilla()
     }
 
-    /** Añade una sección plegable a la categoría actual; su cuerpo apunta [root] a él. */
-    private fun seccion(page: LinearLayout, icon: Int, title: String, build: () -> Unit) {
-        val card = Ui.section(this, icon, title) {
-            val prev = root; root = this; build(); root = prev
+    /** El chip elegido va relleno (sin el acento: está reservado a la acción principal). */
+    private fun marcarChips() {
+        for ((c, v) in chips) {
+            val on = c == catSel
+            v.background = Ui.cardBg(AppTheme.R_CHIP, if (on) AppTheme.BG_KEY else AppTheme.BG_CARD, this)
+            v.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+            v.typeface = if (on) AppTheme.bold(this) else AppTheme.medium(this)
         }
-        val c = catActual
-        if (c == null) { page.addView(card); return }
-        c.body.addView(card)
-        c.tools.add(title to card)
+    }
+
+    private fun prefs() = getSharedPreferences("herramientas", MODE_PRIVATE)
+    private fun recientes(): List<String> = prefs().getString("recientes", "")!!.split('\n').filter { it.isNotEmpty() }
+    private fun anotarReciente(t: String) =
+        prefs().edit().putString("recientes", (listOf(t) + recientes().filter { it != t }).take(4).joinToString("\n")).apply()
+
+    private fun pintarRejilla() {
+        rejilla.removeAllViews()
+        val q = busqueda.trim().lowercase()
+        val visibles = herrs.filter { h ->
+            (catSel == null || h.cat == catSel) && (q.isEmpty() || "${h.titulo} ${h.sub} ${h.claves} ${h.cat}".lowercase().contains(q))
+        }
+        if (visibles.isEmpty()) {
+            rejilla.addView(TextView(this).apply {
+                text = "No tool matches “$busqueda”."; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(context); setPadding(dp(5), dp(24), dp(5), 0)
+            })
+            return
+        }
+        if (catSel == null && q.isEmpty()) {
+            val rec = recientes().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }
+            if (rec.isNotEmpty()) { etiqueta("Recent"); cuadricula(rec) }
+        }
+        val grupos = if (catSel != null) listOf(catSel!! to visibles)
+                     else CATS.map { c -> c to visibles.filter { it.cat == c } }.filter { it.second.isNotEmpty() }
+        for ((c, hs) in grupos) { etiqueta(c); cuadricula(hs) }
+    }
+
+    private fun etiqueta(t: String) = rejilla.addView(TextView(this).apply {
+        text = t.uppercase(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.bold(context); letterSpacing = 0.08f
+        setPadding(dp(5), dp(18), dp(5), dp(8))
+    })
+
+    /** Las tarjetas de dos en dos; si sobra una, la otra mitad queda vacía. */
+    private fun cuadricula(hs: List<Herr>) {
+        for (par in hs.chunked(2)) {
+            val fila = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            for (h in par) fila.addView(tarjeta(h))
+            if (par.size == 1) fila.addView(android.view.View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) })
+            rejilla.addView(fila)
+        }
+    }
+
+    private fun tarjeta(h: Herr) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+        setPadding(dp(14), dp(14), dp(14), dp(14))
+        minimumHeight = dp(124)
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) }
+        isClickable = true; isFocusable = true; foreground = Ui.toque()
+        contentDescription = h.titulo
+        addView(android.widget.FrameLayout(context).apply {
+            background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, context)
+            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+            addView(Ui.icon(this@PubkeyToolsActivity, h.icono, 20, AppTheme.TXT_PRI).apply {
+                layoutParams = android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+            })
+        })
+        addView(TextView(context).apply {
+            text = h.titulo; textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(0, dp(12), 0, dp(2))
+        })
+        addView(TextView(context).apply {
+            text = h.sub; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+            maxLines = 2; ellipsize = android.text.TextUtils.TruncateAt.END; setLineSpacing(0f, 1.15f)
+        })
+        setOnClickListener { Ui.pulso(this); abrir(h) }
+    }
+
+    // ── Una herramienta a pantalla completa ──
+
+    private fun abrir(h: Herr) {
+        abierta = h; anotarReciente(h.titulo)
+        val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(12), 0, dp(32)) }
+        page.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(AppTheme.PAD_SIDE - 12), 0, dp(AppTheme.PAD_SIDE), dp(10))
+            addView(android.widget.FrameLayout(this@PubkeyToolsActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+                isClickable = true; foreground = Ui.toque(); contentDescription = "Back"
+                setOnClickListener { cerrar() }
+                addView(Ui.icon(this@PubkeyToolsActivity, R.drawable.ic_back, 22, AppTheme.TXT_PRI).apply {
+                    layoutParams = android.widget.FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
+                })
+            })
+            addView(LinearLayout(this@PubkeyToolsActivity).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(4), 0, 0, 0)
+                addView(TextView(context).apply {
+                    text = h.cat.uppercase(); textSize = AppTheme.SP_CAPTION - 1f; setTextColor(AppTheme.TXT_SEC)
+                    typeface = AppTheme.bold(context); letterSpacing = 0.08f
+                })
+                addView(TextView(context).apply { text = h.titulo; textSize = 22f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context) })
+            })
+        })
+        val cuerpo = h.vista ?: LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }.also { b ->
+            val prev = root; root = b
+            try { h.build() } finally { root = prev }
+            h.vista = b
+        }
+        (cuerpo.parent as? ViewGroup)?.removeView(cuerpo)
+        page.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
+            setPadding(dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD), dp(AppTheme.PAD_CARD))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+                .apply { setMargins(dp(AppTheme.PAD_SIDE - 6), 0, dp(AppTheme.PAD_SIDE - 6), 0) }
+            addView(cuerpo)
+        })
+        detalle.removeAllViews(); detalle.addView(page); detalle.scrollTo(0, 0)
+        inicio.visibility = android.view.View.GONE; detalle.visibility = android.view.View.VISIBLE
+    }
+
+    private fun cerrar() {
+        abierta = null
+        detalle.visibility = android.view.View.GONE; inicio.visibility = android.view.View.VISIBLE
+        // El cuerpo se conserva en su Herr; se suelta de la página para poder volver a engancharlo.
+        detalle.removeAllViews()
+        pintarRejilla()
     }
 
     // ── Piezas comunes (operan sobre [root]) ──────────────────────────────
@@ -495,7 +616,7 @@ class PubkeyToolsActivity : Activity() {
      */
     private fun construirBip322() {
         desc("Prove you control a modern address — bc1q, bc1p (Taproot), 3… or 1… — by signing a message " +
-             "(BIP322), and check anyone's BIP322 signature. The classic tool above only covers 1… keys. " +
+             "(BIP322), and check anyone's BIP322 signature. The classic \"Sign message\" tool only covers 1… keys. " +
              "Nothing is sent: the signature is a transaction that can never be broadcast.")
         root.addView(rotulo("Sign with"))
         val carteras = listOf("" to WalletManager.mainName(this)) + WalletManager.listWallets(this)
@@ -1548,9 +1669,9 @@ class PubkeyToolsActivity : Activity() {
 
         root.addView(filaResultado("Android 2013 SecureRandom bug",
             "Bitcoin apps built on Android before mid-2013 could get poor randomness. The part an attacker can " +
-            "actually exploit is a REPEATED signature nonce — and the 'Nonce-reuse audit' tool above already " +
+            "actually exploit is a REPEATED signature nonce — and the 'Nonce reuse' tool (Audit) already " +
             "detects exactly that on your own transactions. If that audit flags a key, move its coins now.", true))
-        nota(AppTheme.TXT_SEC, "What to do: run 'Nonce-reuse audit' (same category, above) on any wallet you created " +
+        nota(AppTheme.TXT_SEC, "What to do: run 'Nonce reuse' (in Audit) on any wallet you created " +
             "in an Android app around 2013. A clean result there means this bug did not expose your keys.")
 
         root.addView(filaResultado("Randstorm (BitcoinJS, 2011–2015)",
