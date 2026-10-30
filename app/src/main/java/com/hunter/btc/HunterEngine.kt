@@ -246,6 +246,12 @@ object HunterEngine {
     external fun minar(cabecera: ByteArray, desde: Int, cuantos: Int, objetivo: ByteArray, salida: LongArray): Long
     /** ¿El minero usa las instrucciones SHA-256 del procesador? */
     external fun minarConHw(): Boolean
+    /** Minero en la GPU (Vulkan): abrir ("" si va bien, o el motivo), su nombre, una tanda como minar() (−1 si
+     *  falla, y entonces queda cerrada) y cerrar. */
+    external fun gpuMinarAbrir(): String
+    external fun gpuMinarNombre(): String
+    external fun gpuMinar(cabecera: ByteArray, desde: Int, cuantos: Int, objetivo: ByteArray, salida: LongArray): Long
+    external fun gpuMinarCerrar()
     /** Usar la GPU como trabajador más de Kangaroo, en la próxima búsqueda. */
     external fun setUsarGpu(v: Boolean)
     /** Qué hace la GPU: off, starting, running on X, error: … */

@@ -150,6 +150,42 @@ class MineroActivity : AppCompatActivity() {
     private var motorTexto = "checking…"
     private val lote get() = if (tanda === Minero.tandaKotlin) 1 shl 16 else 1 shl 20
 
+    /** La GPU (Vulkan), opcional: sólo se usa si pasa la autoprueba del bloque 1. */
+    @Volatile private var gpuLista = false
+    /** Por encima de TEMP_TIBIO (hasta bajar 2 °C): menos hilos y la GPU en pausa. */
+    @Volatile private var caliente = false
+    private var gpuNombre = ""
+    private val hashesGpu = AtomicLong()
+    private lateinit var btGpu: TextView
+
+    /**
+     * Quien mina: un hilo de CPU (k) o la GPU (k = nHilos). La GPU ajusta su tanda para que dure ~0,1 s
+     * (Android corta los trabajos de GPU que tardan segundos) y, si falla, se apaga y sigue la CPU.
+     */
+    private inner class Obrero(val k: Int, val gpu: Boolean) {
+        var lote = if (gpu) 1 shl 20 else this@MineroActivity.lote
+        /** Con calor se para primero la GPU, luego los hilos de más. */
+        val pausado get() = if (gpu) caliente else k >= hilosActivos
+        fun hacer(cab: ByteArray, desde: Long, cuantos: Int, obj: ByteArray, sal: LongArray): Long? {
+            if (!gpu) return tanda.hacer(cab, desde.toInt(), cuantos, obj, sal)
+            val t0 = System.nanoTime()
+            val h = try { HunterEngine.gpuMinar(cab, desde.toInt(), cuantos, obj, sal) } catch (e: Throwable) { -1L }
+            if (h < 0) { gpuFallo(); return null }
+            val ms = (System.nanoTime() - t0) / 1e6
+            if (ms < 40 && lote < (1 shl 28)) lote *= 2 else if (ms > 150 && lote > (1 shl 14)) lote /= 2
+            hashesGpu.addAndGet(h)
+            return h
+        }
+    }
+
+    private fun obreros() = (0 until nHilos).map { Obrero(it, false) } + if (gpuLista) listOf(Obrero(nHilos, true)) else emptyList()
+
+    private fun gpuFallo() {
+        gpuLista = false
+        anotar("The GPU stopped working: going on with the CPU")
+        runOnUiThread { prefs().edit().putBoolean("gpu", false).apply(); pintarGpu() }
+    }
+
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this)); super.onCreate(s)
         AppTheme.init(this); AppLock.init(this)
@@ -159,6 +195,7 @@ class MineroActivity : AppCompatActivity() {
         caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(40)) }
         scroll.addView(caja); setContentView(scroll)
         construir()
+        if (prefs().getBoolean("gpu", false)) encenderGpu(false)
         Thread {
             val nativa = Minero.Tanda { c, d, n, o, sal -> HunterEngine.minar(c, d, n, o, sal) }
             val ok = try { Minero.autoprueba(nativa) } catch (e: Throwable) { false }
@@ -212,6 +249,13 @@ class MineroActivity : AppCompatActivity() {
             text = "Only while charging"; setTextColor(AppTheme.TXT_PRI); isChecked = soloCargando
             setOnCheckedChangeListener { _, v -> soloCargando = v; prefs().edit().putBoolean("solo_cargando", v).apply() }
         })
+        btGpu = boton("GPU: off") {
+            if (minando) Toast.makeText(this, "Stop mining first.", Toast.LENGTH_SHORT).show()
+            else if (gpuLista) apagarGpu() else encenderGpu(true)
+        }
+        caja.addView(btGpu)
+        caja.addView(texto("Experimental: also mine on the graphics chip (Vulkan). It is checked with block 1 before use; it heats " +
+            "the phone more than the CPU.", AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
 
         // ── Práctica ──
         caja.addView(Ui.sectionLabel(this, "Practice block (on this phone)", topGap = dp(16)))
@@ -255,6 +299,37 @@ class MineroActivity : AppCompatActivity() {
         pintarEstado(); pintarRecord()
     }
 
+    private fun pintarGpu() {
+        btGpu.text = if (gpuLista) "GPU: on · $gpuNombre" else "GPU: off"
+    }
+
+    private fun encenderGpu(avisar: Boolean) {
+        btGpu.text = "GPU: checking…"
+        Thread {
+            val err = try { HunterEngine.gpuMinarAbrir() } catch (e: Throwable) { e.message ?: "error" }
+            val ok = err.isEmpty() && Minero.autoprueba { c, d, n, o, sal -> HunterEngine.gpuMinar(c, d, n, o, sal) }
+            val nombre = if (ok) try { HunterEngine.gpuMinarNombre() } catch (e: Throwable) { "" } else ""
+            if (!ok) try { HunterEngine.gpuMinarCerrar() } catch (e: Throwable) { }
+            runOnUiThread {
+                gpuLista = ok; gpuNombre = nombre.ifEmpty { "GPU" }
+                prefs().edit().putBoolean("gpu", ok).apply()
+                pintarGpu()
+                if (!ok && avisar) Toast.makeText(this, if (err.isNotEmpty()) "No usable GPU: $err" else
+                    "The GPU failed its self-test (block 1): mining stays on the CPU.", Toast.LENGTH_LONG).show()
+            }
+        }.start()
+    }
+
+    private fun apagarGpu() {
+        gpuLista = false; prefs().edit().putBoolean("gpu", false).apply(); pintarGpu()
+        Thread { try { HunterEngine.gpuMinarCerrar() } catch (e: Throwable) { } }.start()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        if (gpuLista) Thread { try { HunterEngine.gpuMinarCerrar() } catch (e: Throwable) { } }.start()
+    }
+
     private fun anotar(s: String) = runOnUiThread {
         log.addFirst(java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US).format(java.util.Date()) + "  " + s)
         while (log.size > 12) log.removeLast()
@@ -293,18 +368,21 @@ class MineroActivity : AppCompatActivity() {
                 byteArrayOf(0xff.toByte(), 0xff.toByte(), 0, 0x1d) + ByteArray(4)
             val objetivo = Minero.objetivoBytes(Minero.objetivoCeros(ceros))
             anotar("Mining on top of ${tip.take(16)}… for $ceros zero bits")
-            // Cada hilo recorre su trozo del espacio de nonces.
-            val trozo = (0x1_0000_0000L / nHilos)
-            for (k in 0 until nHilos) hilos.add(Thread {
+            // Todos (hilos y GPU) toman trozos de un mismo contador: cada uno al ritmo que puede.
+            val siguiente = AtomicLong(0)
+            val lista = obreros()
+            val vivos = java.util.concurrent.atomic.AtomicInteger(lista.size)
+            for (o in lista) hilos.add(Thread {
                 android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
                 val sal = LongArray(3)
-                var n = k * trozo; val fin = if (k == nHilos - 1) 0x1_0000_0000L else (k + 1) * trozo
                 try {
-                    while (minando && n < fin) {
-                        if (k >= hilosActivos) { Thread.sleep(500); continue }
-                        val cuantos = minOf(lote.toLong(), fin - n).toInt()
-                        val hechos = tanda.hacer(base, n.toInt(), cuantos, objetivo, sal)
-                        hashes.addAndGet(hechos); n += hechos
+                    while (minando) {
+                        if (o.pausado) { Thread.sleep(500); continue }
+                        val l = o.lote.toLong()
+                        val desde = siguiente.getAndAdd(l)
+                        if (desde >= 0x1_0000_0000L) break
+                        val hechos = o.hacer(base, desde, minOf(l, 0x1_0000_0000L - desde).toInt(), objetivo, sal) ?: break
+                        hashes.addAndGet(hechos)
                         apuntarMejor(base, sal[1].toInt(), sal[2])
                         if (sal[0] >= 0) {
                             val nonce = sal[0]
@@ -313,8 +391,10 @@ class MineroActivity : AppCompatActivity() {
                             return@Thread
                         }
                     }
-                    if (minando && n >= fin) runOnUiThread { parar("No luck in this thread's nonces: try again") }
-                } catch (e: InterruptedException) { }
+                } catch (e: InterruptedException) { return@Thread }
+                // El último en acabar sin premio (los 4 300 millones de nonces vistos) lo dice.
+                if (vivos.decrementAndGet() == 0 && minando && siguiente.get() >= 0x1_0000_0000L)
+                    runOnUiThread { parar("No luck in all the nonces: try again") }
             }.apply { isDaemon = true; start() })
         }.start()
     }
@@ -358,7 +438,8 @@ class MineroActivity : AppCompatActivity() {
     /** H/s esperados: lo medido la última vez, o una cuenta prudente por hilo. */
     private fun estimacion(): Double {
         val m = prefs().getFloat("hr_hilo", 0f).toDouble()
-        return (if (m > 0) m else if (tanda === Minero.tandaKotlin) 0.5e6 else 3e6) * nHilos
+        return (if (m > 0) m else if (tanda === Minero.tandaKotlin) 0.5e6 else 3e6) * nHilos +
+            (if (gpuLista) prefs().getFloat("hr_gpu", 0f).toDouble() else 0.0)
     }
 
     private fun conectar() {
@@ -380,14 +461,15 @@ class MineroActivity : AppCompatActivity() {
     }
 
     private fun arrancarHilosSolo() {
-        for (k in 0 until nHilos) hilos.add(Thread {
+        for (o in obreros()) hilos.add(Thread {
+            val k = o.k
             android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_BACKGROUND)
             var cuenta = 0L
             val sal = LongArray(3)
             try { while (minando) {
                 val st = stratum
                 val t = st?.trabajo; val en1 = st?.extranonce1.orEmpty()
-                if (st == null || t == null || en1.isEmpty() || k >= hilosActivos) { Thread.sleep(300); continue }
+                if (st == null || t == null || en1.isEmpty() || o.pausado) { Thread.sleep(300); continue }
                 val gen = st.generacion
                 // extranonce2 distinto por hilo y vuelta: hilo en el byte alto, contador en el resto.
                 val bits = st.en2Tam * 8
@@ -397,7 +479,7 @@ class MineroActivity : AppCompatActivity() {
                 val objetivo = Minero.objetivoBytes(Minero.objetivoDeDificultad(st.dificultad))
                 var n = 0L
                 while (minando && n <= 0xffffffffL && stratum === st) {
-                    val hechos = tanda.hacer(cab, n.toInt(), minOf(lote.toLong(), 0x1_0000_0000L - n).toInt(), objetivo, sal)
+                    val hechos = o.hacer(cab, n, minOf(o.lote.toLong(), 0x1_0000_0000L - n).toInt(), objetivo, sal) ?: return@Thread
                     hashes.addAndGet(hechos)
                     apuntarMejor(cab, sal[1].toInt(), sal[2])
                     if (sal[0] >= 0) {
@@ -406,7 +488,7 @@ class MineroActivity : AppCompatActivity() {
                         n = sal[0] + 1
                     } else n += hechos
                     if (st.generacion != gen && st.trabajo?.limpiar != false) break
-                    if (k >= hilosActivos) break
+                    if (o.pausado) break
                 }
             } } catch (e: InterruptedException) {
             } catch (e: Exception) { RegistroFallos.anotar("Minero.solo", e); anotar("Miner thread stopped: ${e.message}") }
@@ -416,8 +498,8 @@ class MineroActivity : AppCompatActivity() {
     // ── Común ──
 
     private fun empezar(m: String) {
-        modo = m; minando = true; mejor = 0; mejorDif = 0.0; hashes.set(0); inicio = System.currentTimeMillis()
-        hilosActivos = nHilos
+        modo = m; minando = true; mejor = 0; mejorDif = 0.0; hashes.set(0); hashesGpu.set(0); inicio = System.currentTimeMillis()
+        hilosActivos = nHilos; caliente = false
         hilos.clear()
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btPractica.text = if (m == "practica") "Stop" else "Mine a practice block"
@@ -430,7 +512,9 @@ class MineroActivity : AppCompatActivity() {
         minando = false
         // La velocidad medida por hilo, para la próxima estimación y la dificultad sugerida al pool.
         val seg = (System.currentTimeMillis() - inicio) / 1000.0
-        if (seg > 10 && hashes.get() > 0) prefs().edit().putFloat("hr_hilo", (hashes.get() / seg / hilosActivos.coerceAtLeast(1)).toFloat()).apply()
+        val cpu = hashes.get() - hashesGpu.get()
+        if (seg > 10 && cpu > 0) prefs().edit().putFloat("hr_hilo", (cpu / seg / hilosActivos.coerceAtLeast(1)).toFloat()).apply()
+        if (seg > 10 && hashesGpu.get() > 0) prefs().edit().putFloat("hr_gpu", (hashesGpu.get() / seg).toFloat()).apply()
         stratum?.cerrar(); stratum = null
         hilos.forEach { it.interrupt() }; hilos.clear()
         h.removeCallbacksAndMessages(null)
@@ -459,7 +543,8 @@ class MineroActivity : AppCompatActivity() {
             append(" · engine: $motorTexto\n")
             if (minando || hashes.get() > 0) {
                 append("${Minero.corto(hr)}H/s · ${Minero.corto(hashes.get().toDouble())} hashes · %.0f s".format(java.util.Locale.US, seg))
-                if (hilosActivos < nHilos) append(" · warm: $hilosActivos of $nHilos threads")
+                if (gpuLista) append("\nGPU: ${Minero.corto(hashesGpu.get() / seg)}H/s of that")
+                if (caliente) append(" · warm: $hilosActivos of $nHilos threads" + if (gpuLista) ", GPU paused" else "")
                 append("\nBest hash this run: $mejor zero bits")
                 if (mejorDif > 0) append(" (difficulty ${Minero.corto(mejorDif)})")
             }
@@ -493,6 +578,7 @@ class MineroActivity : AppCompatActivity() {
         }
         if (!alEmpezar) {
             val antes = hilosActivos
+            caliente = if (temp >= TEMP_TIBIO) true else if (temp < TEMP_TIBIO - 2) false else caliente
             hilosActivos = when {
                 temp >= TEMP_TIBIO -> (nHilos / 2).coerceAtLeast(1)
                 temp < TEMP_TIBIO - 2 -> nHilos
