@@ -7,6 +7,9 @@
 uint ror_(uint x, int n) { return (x >> uint(n)) | (x << uint(32 - n)); }
 uint bsw(uint x) { return (x >> 24u) | ((x >> 8u) & 0xff00u) | ((x << 8u) & 0xff0000u) | (x << 24u); }
 
+/* Lo que sigue usa arrays: en la GPU no se compila (MINERO_SOLO_BASE), para que no le quite registros a la
+ * vía rápida; allí los candidatos los comprueba la CPU. */
+#ifndef MINERO_SOLO_BASE
 /* Un bloque: estado st, 16 palabras m (big-endian), resultado en o. */
 void comprimir(ARR8_IN(st), ARR16_IN(m), ARR8_OUT(o)) {
     uint w[16];
@@ -67,3 +70,4 @@ bool cumple(ARR8_IN(h), ARR8_IN(obj)) {
     }
     return true;
 }
+#endif

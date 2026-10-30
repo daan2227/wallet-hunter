@@ -25,18 +25,14 @@ static const uint H0T[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f
 
 /* El main() del shader para una invocación (gid), con los atómicos hechos a mano. */
 static void invocacion(const MinGpuParams &p, MinGpuRes &r, uint gid){
-    uint idx0=gid*p.iter; uint mid[8], obj[8];
-    for(int i=0;i<8;i++){ mid[i]=p.mid[i]; obj[i]=p.obj[i]; }
-    uint mejorZ=0, mejorN=0;
+    uint idx0=gid*p.iter; uint mid[8];
+    for(int i=0;i<8;i++) mid[i]=p.mid[i];
+    uint o0=p.obj[0], mejorZ=0, mejorN=0;
     for(uint k=0;k<p.iter;k++){
         uint idx=idx0+k; if(idx>=p.limite) break;
         uint alta=bsw(alta_rapida(mid,p.cola[0],p.cola[1],p.cola[2],p.base+idx));
         uint z=alta!=0u?CLZ(alta):32u;
-        if(alta==0u || alta<=obj[0]){
-            uint h[8]; minar_hash(mid,p.cola[0],p.cola[1],p.cola[2],p.base+idx,h);
-            z=ceros(h);
-            if(cumple(h,obj)) r.encontrado=std::min(r.encontrado,idx);
-        }
+        if(alta<=o0){ r.minCand=std::min(r.minCand,idx); uint j=r.n++; if(j<MIN_GPU_CAND) r.cand[j]=idx; }
         if(z>mejorZ){ mejorZ=z; mejorN=idx; }
     }
     uint antes=r.mejorZ; r.mejorZ=std::max(r.mejorZ,mejorZ); if(mejorZ>antes) r.mejorN=mejorN;
@@ -70,7 +66,7 @@ int main(){
     MinGpuRes r; min_gpu_res_iniciar(&r);
     uint grupos=(6000+16*64-1)/(16*64);
     for(uint g=0; g<grupos*64; g++) invocacion(p,r,g);
-    MinResultado mr; uint64_t hechos=min_gpu_leer(&r,desde,6000,&mr);
+    MinResultado mr; uint64_t hechos=min_gpu_leer(&r,cab,desde,6000,obj,&mr);
     printf("%s  ventana: nonce %lld (esperado %u), %llu hashes contados\n", (mr.encontrado==(int64_t)real && hechos==3001)?"OK ":"MAL",
            (long long)mr.encontrado, real, (unsigned long long)hechos);
     f|=!(mr.encontrado==(int64_t)real && hechos==3001 && mr.mejor_ceros==32 && mr.mejor_nonce==real);
@@ -79,10 +75,19 @@ int main(){
     uint32_t cero[8]={0};
     min_gpu_params(&p,cab,12345,50000,cero,8); min_gpu_res_iniciar(&r);
     for(uint g=0; g<(50000+511)/512*64; g++) invocacion(p,r,g);
-    hechos=min_gpu_leer(&r,12345,50000,&mr);
+    hechos=min_gpu_leer(&r,cab,12345,50000,cero,&mr);
     MinResultado cpu; min_tanda<sha256_block>(cab,12345,50000,cero,&cpu);
     printf("%s  sin premio: %llu hashes, mejor %d ceros (CPU: %d)\n", (hechos==50000&&mr.encontrado==-1&&mr.mejor_ceros==cpu.mejor_ceros)?"OK ":"MAL",
            (unsigned long long)hechos, mr.mejor_ceros, cpu.mejor_ceros);
     f|=!(hechos==50000&&mr.encontrado==-1&&mr.mejor_ceros==cpu.mejor_ceros&&mr.mejor_nonce==cpu.mejor_nonce);
+
+    /* 4) Objetivo fácil (12 ceros): cientos de candidatos, más de los que caben; el menor sigue siendo el de la CPU. */
+    uint32_t facil[8]={0x000fffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff,0xffffffff};
+    min_gpu_params(&p,cab,777,2000000,facil,32); min_gpu_res_iniciar(&r);
+    for(uint g=0; g<(2000000+2047)/2048*64; g++) invocacion(p,r,g);
+    hechos=min_gpu_leer(&r,cab,777,2000000,facil,&mr);
+    min_tanda<sha256_block>(cab,777,2000000,facil,&cpu);
+    printf("%s  objetivo fácil: %u candidatos, nonce %lld (CPU %lld)\n", (mr.encontrado==cpu.encontrado && r.n>MIN_GPU_CAND)?"OK ":"MAL", r.n,(long long)mr.encontrado,(long long)cpu.encontrado);
+    f|=!(mr.encontrado==cpu.encontrado && r.n>MIN_GPU_CAND);
     return f;
 }

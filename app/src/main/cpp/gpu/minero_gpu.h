@@ -130,5 +130,5 @@ static int64_t gpu_min_tanda(GpuMin *g,const uint8_t *cab,uint32_t desde,uint32_
     vkResetFences(g->dev,1,&g->fence);
     if(vkQueueSubmit(g->q,1,&si,g->fence)!=VK_SUCCESS) return -1;
     if(vkWaitForFences(g->dev,1,&g->fence,VK_TRUE,10ULL*1000000000ULL)!=VK_SUCCESS) return -1;
-    return (int64_t)min_gpu_leer(r,desde,cuantos,mr);
+    return (int64_t)min_gpu_leer(r,cab,desde,cuantos,obj,mr);
 }

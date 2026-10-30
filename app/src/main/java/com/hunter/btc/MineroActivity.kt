@@ -182,6 +182,7 @@ class MineroActivity : AppCompatActivity() {
 
     private fun gpuFallo() {
         gpuLista = false
+        if (nHilos == 0) runOnUiThread { nHilos = 1; pintarHilos(); parar("The GPU stopped working and no CPU threads were on") }
         anotar("The GPU stopped working: going on with the CPU")
         runOnUiThread { prefs().edit().putBoolean("gpu", false).apply(); pintarGpu() }
     }
@@ -240,11 +241,12 @@ class MineroActivity : AppCompatActivity() {
             "at $TEMP_MAX °C or below 20 % battery.", AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
 
         caja.addView(Ui.sectionLabel(this, "Threads", topGap = dp(12)))
-        val tvHilos = texto("")
+        tvHilos = texto("")
         val max = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        fun pintarHilos() { tvHilos.text = "$nHilos of $max cores" }
         pintarHilos()
-        caja.addView(fila(tvHilos, { if (!minando && nHilos > 1) { nHilos--; pintarHilos() } }, { if (!minando && nHilos < max) { nHilos++; pintarHilos() } }))
+        // Con la GPU encendida se puede bajar a 0 hilos: mina sólo la GPU (para medirla sin que la CPU le quite potencia).
+        caja.addView(fila(tvHilos, { if (!minando && nHilos > (if (gpuLista) 0 else 1)) { nHilos--; pintarHilos() } },
+            { if (!minando && nHilos < max) { nHilos++; pintarHilos() } }))
         caja.addView(android.widget.CheckBox(this).apply {
             text = "Only while charging"; setTextColor(AppTheme.TXT_PRI); isChecked = soloCargando
             setOnCheckedChangeListener { _, v -> soloCargando = v; prefs().edit().putBoolean("solo_cargando", v).apply() }
@@ -299,7 +301,15 @@ class MineroActivity : AppCompatActivity() {
         pintarEstado(); pintarRecord()
     }
 
+    private lateinit var tvHilos: TextView
+    private fun pintarHilos() {
+        val max = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
+        tvHilos.text = if (nHilos == 0) "No CPU threads · GPU only" else "$nHilos of $max cores"
+    }
+
     private fun pintarGpu() {
+        // Sin GPU no se puede minar con 0 hilos.
+        if (!gpuLista && nHilos == 0) { nHilos = 1; pintarHilos() }
         btGpu.text = if (gpuLista) "GPU: on · $gpuNombre" else "GPU: off"
     }
 
@@ -438,8 +448,8 @@ class MineroActivity : AppCompatActivity() {
     /** H/s esperados: lo medido la última vez, o una cuenta prudente por hilo. */
     private fun estimacion(): Double {
         val m = prefs().getFloat("hr_hilo", 0f).toDouble()
-        return (if (m > 0) m else if (tanda === Minero.tandaKotlin) 0.5e6 else 3e6) * nHilos +
-            (if (gpuLista) prefs().getFloat("hr_gpu", 0f).toDouble() else 0.0)
+        return ((if (m > 0) m else if (tanda === Minero.tandaKotlin) 0.5e6 else 3e6) * nHilos +
+            (if (gpuLista) prefs().getFloat("hr_gpu", 0f).toDouble() else 0.0)).takeIf { it > 0 } ?: 3e6
     }
 
     private fun conectar() {
@@ -586,7 +596,7 @@ class MineroActivity : AppCompatActivity() {
             val antes = hilosActivos
             caliente = if (temp >= TEMP_TIBIO) true else if (temp < TEMP_TIBIO - 2) false else caliente
             hilosActivos = when {
-                temp >= TEMP_TIBIO -> (nHilos / 2).coerceAtLeast(1)
+                temp >= TEMP_TIBIO -> (nHilos / 2).coerceAtLeast(minOf(1, nHilos))
                 temp < TEMP_TIBIO - 2 -> nHilos
                 else -> hilosActivos
             }

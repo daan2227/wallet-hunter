@@ -1,6 +1,7 @@
 #version 450
 /* Minero en la GPU: cada invocación prueba p.iter nonces seguidos. La SHA-256 está en minero_sha.inc y, desenrollada
- * para la GPU, en minero_sha_rapida.inc (gen_sha_rapida.py); las dos se prueban también como C++. Se genera minero_spv.h con gen_minero.mjs. */
+ * para la GPU, en minero_sha_rapida.inc (gen_sha_rapida.py); las dos se prueban también como C++. La GPU sólo
+ * calcula la palabra alta del hash y apunta candidatos; la CPU los comprueba con el hash entero. Se genera minero_spv.h con gen_minero.mjs. */
 layout(local_size_x = 64) in;
 
 layout(std430, binding = 0) readonly buffer Params {
@@ -14,10 +15,11 @@ layout(std430, binding = 0) readonly buffer Params {
 } p;
 
 layout(std430, binding = 1) buffer Resultado {
-    uint encontrado;  // menor índice (desde base) que cumple, o 0xffffffff
-    uint mejorZ;      // ceros del mejor hash
+    uint minCand;     // menor índice (desde base) candidato, o 0xffffffff
+    uint mejorZ;      // ceros del mejor hash (32 si la palabra alta es cero: la CPU afina)
     uint mejorN;      // índice del mejor (aproximado si dos empatan a la vez)
-    uint relleno;
+    uint n;           // candidatos vistos (pueden ser más que los que caben)
+    uint cand[256];   // índices candidatos: la palabra alta no pasa del objetivo. La CPU los comprueba enteros.
 } r;
 
 #define ARR8_IN(n) in uint n[8]
@@ -36,26 +38,25 @@ const uint KT[64] = uint[](
     0x748f82eeu,0x78a5636fu,0x84c87814u,0x8cc70208u,0x90befffau,0xa4506cebu,0xbef9a3f7u,0xc67178f2u);
 const uint H0T[8] = uint[](0x6a09e667u,0xbb67ae85u,0x3c6ef372u,0xa54ff53au,0x510e527fu,0x9b05688cu,0x1f83d9abu,0x5be0cd19u);
 
+#define MINERO_SOLO_BASE
 #include "minero_sha.inc"
 #include "minero_sha_rapida.inc"
 
 void main() {
     uint idx0 = gl_GlobalInvocationID.x * p.iter;
     uint mid[8]; for (int i = 0; i < 8; i++) mid[i] = p.mid[i];
-    uint obj[8]; for (int i = 0; i < 8; i++) obj[i] = p.obj[i];
+    uint o0 = p.obj[0];
     uint mejorZ = 0u; uint mejorN = 0u;
     for (uint k = 0u; k < p.iter; k++) {
         uint idx = idx0 + k;
         if (idx >= p.limite) break;
-        // Lo normal: sólo la palabra alta, desenrollado y cortado en la ronda 60.
+        // Sólo la palabra alta (desenrollado, cortado en la ronda 60). Si puede cumplir, se apunta y la CPU decide.
         uint alta = bsw(alta_rapida(mid, p.cola[0], p.cola[1], p.cola[2], p.base + idx));
         uint z = alta != 0u ? CLZ(alta) : 32u;
-        // Lo raro (palabra alta a cero, o que puede cumplir el objetivo): el hash entero.
-        if (alta == 0u || alta <= obj[0]) {
-            uint h[8];
-            minar_hash(mid, p.cola[0], p.cola[1], p.cola[2], p.base + idx, h);
-            z = ceros(h);
-            if (cumple(h, obj)) atomicMin(r.encontrado, idx);
+        if (alta <= o0) {
+            atomicMin(r.minCand, idx);
+            uint j = atomicAdd(r.n, 1u);
+            if (j < 256u) r.cand[j] = idx;
         }
         if (z > mejorZ) { mejorZ = z; mejorN = idx; }
     }
