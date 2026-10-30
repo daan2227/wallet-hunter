@@ -20,6 +20,7 @@ static const uint KT[64]={
     0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2};
 static const uint H0T[8]={0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19};
 #include "../../app/src/main/cpp/gpu/minero_sha.inc"
+#include "../../app/src/main/cpp/gpu/minero_sha_rapida.inc"
 #include "../../app/src/main/cpp/gpu/minero_gpu_params.h"
 
 /* El main() del shader para una invocación (gid), con los atómicos hechos a mano. */
@@ -29,10 +30,14 @@ static void invocacion(const MinGpuParams &p, MinGpuRes &r, uint gid){
     uint mejorZ=0, mejorN=0;
     for(uint k=0;k<p.iter;k++){
         uint idx=idx0+k; if(idx>=p.limite) break;
-        uint h[8]; minar_hash(mid,p.cola[0],p.cola[1],p.cola[2],p.base+idx,h);
-        uint alta=bsw(h[7]); uint z=alta!=0u?CLZ(alta):ceros(h);
+        uint alta=bsw(alta_rapida(mid,p.cola[0],p.cola[1],p.cola[2],p.base+idx));
+        uint z=alta!=0u?CLZ(alta):32u;
+        if(alta==0u || alta<=obj[0]){
+            uint h[8]; minar_hash(mid,p.cola[0],p.cola[1],p.cola[2],p.base+idx,h);
+            z=ceros(h);
+            if(cumple(h,obj)) r.encontrado=std::min(r.encontrado,idx);
+        }
         if(z>mejorZ){ mejorZ=z; mejorN=idx; }
-        if(alta<=obj[0] && cumple(h,obj)) r.encontrado=std::min(r.encontrado,idx);
     }
     uint antes=r.mejorZ; r.mejorZ=std::max(r.mejorZ,mejorZ); if(mejorZ>antes) r.mejorN=mejorN;
 }
@@ -55,8 +60,9 @@ int main(){
         uint8_t b2[64]={0}; for(int i=0;i<8;i++){ b2[4*i]=s[i]>>24; b2[4*i+1]=s[i]>>16; b2[4*i+2]=s[i]>>8; b2[4*i+3]=s[i]; }
         b2[32]=0x80; b2[62]=1; uint32_t t[8]; memcpy(t,MIN_H0,32); sha256_block(t,b2);
         if(memcmp(h,t,32)) malos++;
+        if(alta_rapida(p.mid,p.cola[0],p.cola[1],p.cola[2],n)!=t[7]) malos++;   /* la desenrollada */
     }
-    printf("%s  SHA-256 del shader == CPU en 20000 nonces (%ld distintos)\n", malos?"MAL":"OK ", malos); f|=malos!=0;
+    printf("%s  SHA-256 del shader (entera y desenrollada) == CPU en 20000 nonces (%ld distintos)\n", malos?"MAL":"OK ", malos); f|=malos!=0;
 
     /* 2) El main() del shader en una ventana alrededor del nonce del bloque 1, con límite que no es múltiplo. */
     uint32_t real=2573394689u, desde=real-3000;

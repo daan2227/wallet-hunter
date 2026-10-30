@@ -5,7 +5,8 @@ import fs from 'fs';
 import path from 'path';
 const dir = path.dirname(new URL(import.meta.url).pathname);
 const comp = fs.readFileSync(path.join(dir, 'minero.comp'), 'utf8')
-    .replace('#include "minero_sha.inc"', fs.readFileSync(path.join(dir, 'minero_sha.inc'), 'utf8'));
+    .replace('#include "minero_sha.inc"', fs.readFileSync(path.join(dir, 'minero_sha.inc'), 'utf8'))
+    .replace('#include "minero_sha_rapida.inc"', fs.readFileSync(path.join(dir, 'minero_sha_rapida.inc'), 'utf8'));
 // node-devel carga síncrono; su .then de Emscripten se resuelve a sí mismo, así que no se espera con await.
 const glslang = glslangInit();
 const spv = glslang.compileGLSL(comp, 'compute', false, '1.0');

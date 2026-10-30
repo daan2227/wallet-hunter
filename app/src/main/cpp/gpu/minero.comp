@@ -1,6 +1,6 @@
 #version 450
-/* Minero en la GPU: cada invocación prueba p.iter nonces seguidos. La SHA-256 está en minero_sha.inc (la misma
- * que se prueba en C++). Se genera minero_spv.h con gen_minero.mjs. */
+/* Minero en la GPU: cada invocación prueba p.iter nonces seguidos. La SHA-256 está en minero_sha.inc y, desenrollada
+ * para la GPU, en minero_sha_rapida.inc (gen_sha_rapida.py); las dos se prueban también como C++. Se genera minero_spv.h con gen_minero.mjs. */
 layout(local_size_x = 64) in;
 
 layout(std430, binding = 0) readonly buffer Params {
@@ -37,6 +37,7 @@ const uint KT[64] = uint[](
 const uint H0T[8] = uint[](0x6a09e667u,0xbb67ae85u,0x3c6ef372u,0xa54ff53au,0x510e527fu,0x9b05688cu,0x1f83d9abu,0x5be0cd19u);
 
 #include "minero_sha.inc"
+#include "minero_sha_rapida.inc"
 
 void main() {
     uint idx0 = gl_GlobalInvocationID.x * p.iter;
@@ -46,12 +47,17 @@ void main() {
     for (uint k = 0u; k < p.iter; k++) {
         uint idx = idx0 + k;
         if (idx >= p.limite) break;
-        uint h[8];
-        minar_hash(mid, p.cola[0], p.cola[1], p.cola[2], p.base + idx, h);
-        uint alta = bsw(h[7]);
-        uint z = alta != 0u ? CLZ(alta) : ceros(h);
+        // Lo normal: sólo la palabra alta, desenrollado y cortado en la ronda 60.
+        uint alta = bsw(alta_rapida(mid, p.cola[0], p.cola[1], p.cola[2], p.base + idx));
+        uint z = alta != 0u ? CLZ(alta) : 32u;
+        // Lo raro (palabra alta a cero, o que puede cumplir el objetivo): el hash entero.
+        if (alta == 0u || alta <= obj[0]) {
+            uint h[8];
+            minar_hash(mid, p.cola[0], p.cola[1], p.cola[2], p.base + idx, h);
+            z = ceros(h);
+            if (cumple(h, obj)) atomicMin(r.encontrado, idx);
+        }
         if (z > mejorZ) { mejorZ = z; mejorN = idx; }
-        if (alta <= obj[0] && cumple(h, obj)) atomicMin(r.encontrado, idx);
     }
     uint antes = atomicMax(r.mejorZ, mejorZ);
     if (mejorZ > antes) r.mejorN = mejorN;

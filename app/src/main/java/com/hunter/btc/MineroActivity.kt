@@ -550,6 +550,12 @@ class MineroActivity : AppCompatActivity() {
             }
             if (st != null) {
                 append("\nPool difficulty ${Minero.corto(st.dificultad)} · shares ${st.aceptadas} accepted, ${st.rechazadas} rejected")
+                if (hr > 0) {
+                    // Cada cuánto, de media, sale un share a la dificultad que ha puesto el pool.
+                    val cada = Minero.segundosPorBloque(hr, st.dificultad)
+                    append("\nA share every ~${Minero.escala(cada)} at this speed")
+                    if (cada > 86_400) append(" (this pool ignores the low difficulty asked for; public-pool.io honours it)")
+                }
                 if (st.trabajo == null) append("\nWaiting for work from the pool…")
             }
             if (dificultadRed > 0 && hr > 0 && modo == "solo")
