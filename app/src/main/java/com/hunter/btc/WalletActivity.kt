@@ -1103,6 +1103,13 @@ class WalletActivity : FragmentActivity() {
                         })
                         return@runOnUiThread
                     }
+                    if (!isTestnet) ll.addView(TextView(this).apply {
+                        text = "Tax report (FIFO)"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
+                        typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+                        setPadding(0, dp(6), 0, dp(4))
+                        isClickable = true; isFocusable = true
+                        setOnClickListener { informeFiscal(movs, faltan > 0 || buscando || descubriendo) }
+                    })
                     if (avanzado()) ll.addView(TextView(this).apply {
                         text = "Export as CSV"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
                         typeface = AppTheme.medium(context); gravity = Gravity.CENTER
@@ -1176,6 +1183,68 @@ class WalletActivity : FragmentActivity() {
      * El historial a un CSV en la carpeta compartida de la app, y a la hoja de
      * compartir. Sólo fechas, estado, txid e importes: sin claves ni direcciones.
      */
+    /**
+     * Ganancias por FIFO con el precio de cada día (InformeFiscal): pide los precios que falten, enseña el
+     * resultado por año y deja compartirlo como CSV. [incompleto] si el historial no está entero.
+     */
+    private fun informeFiscal(movs: List<MovTx>, incompleto: Boolean) {
+        val moneda = Fiat.codigo(this)
+        val conf = movs.filter { it.confirmado && it.tiempo > 0 && it.neto != 0L }
+        if (conf.isEmpty()) { Toast.makeText(this, "No confirmed transactions yet.", Toast.LENGTH_LONG).show(); return }
+        val tvProg = TextView(this).apply { text = "Getting daily $moneda prices… 0 of ${conf.size}"; setPadding(dp(24), dp(16), dp(24), dp(8)); setTextColor(TXT_PRI) }
+        val espera = AlertDialog.Builder(this).setTitle("Tax report").setView(tvProg).setNegativeButton("Cancel", null).create()
+        espera.show()
+        Thread {
+            val lista = ArrayList<InformeFiscal.Mov>(); var sinPrecio = 0
+            for ((k, m) in conf.withIndex()) {
+                if (!espera.isShowing) return@Thread
+                val p = Fiat.precioDia(this, moneda, m.tiempo)
+                if (p == null) sinPrecio++ else lista.add(InformeFiscal.Mov(m.tiempo, m.txid, m.neto, if (m.neto < 0) m.fee else 0, p))
+                runOnUiThread { tvProg.text = "Getting daily $moneda prices… ${k + 1} of ${conf.size}" }
+            }
+            runOnUiThread {
+                if (!espera.isShowing) return@runOnUiThread
+                espera.dismiss()
+                if (lista.isEmpty()) { Toast.makeText(this, "No $moneda prices (mempool.space has USD, EUR, GBP, CAD, CHF, AUD and JPY).", Toast.LENGTH_LONG).show(); return@runOnUiThread }
+                val r = InformeFiscal.calcular(lista)
+                val txt = buildString {
+                    for (a in r.anos()) appendLine("$a: gain %,.2f $moneda".format(r.ganancia(a)))
+                    appendLine()
+                    appendLine("${r.compras.size} receipts counted as acquisitions, ${r.ventas.size} sends as disposals (FIFO, daily price; the fee lowers the proceeds).")
+                    if (r.sinCoste > 0) appendLine("\n⚠ %.8f BTC were sent without an earlier receipt in this wallet: their cost is counted as 0. Add what you paid for them.".format(r.sinCoste / 1e8))
+                    if (sinPrecio > 0) appendLine("\n⚠ $sinPrecio transactions left out: no price for their day.")
+                    if (incompleto) appendLine("\n⚠ The history is not complete yet: the report may be missing transactions.")
+                    append("\nEvery send counts as a sale and every receipt as a purchase. Moving coins between your own wallets is not a sale: " +
+                        "remove those rows in the CSV. This is a helper, not tax advice: check your country's rules.")
+                }
+                AlertDialog.Builder(this).setTitle("Tax report · $moneda").setMessage(txt)
+                    .setNegativeButton("Close", null)
+                    .setPositiveButton("Share CSV") { _, _ -> compartirTexto(InformeFiscal.csv(r, moneda), "informe_fifo_${System.currentTimeMillis()}.csv", "Share tax report") }
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun compartirTexto(texto: String, nombre: String, titulo: String) {
+        Thread {
+            try {
+                val f = java.io.File(BackupStore.compartidos(this), nombre)
+                f.writeText(texto)
+                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", f)
+                runOnUiThread {
+                    startActivity(android.content.Intent.createChooser(
+                        android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                            type = "text/csv"
+                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }, titulo))
+                }
+            } catch (e: Exception) {
+                runOnUiThread { Toast.makeText(this, "Could not export: ${e.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
+
     private fun exportarCsv(movs: List<MovTx>) {
         val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.US)
         val sb = StringBuilder("date,status,txid,net_sat,fee_sat\n")
@@ -1187,23 +1256,7 @@ class WalletActivity : FragmentActivity() {
               .append(m.neto).append(',')
               .append(m.fee).append('\n')
         }
-        Thread {
-            try {
-                val f = java.io.File(BackupStore.compartidos(this), "historial_${System.currentTimeMillis()}.csv")
-                f.writeText(sb.toString())
-                val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.provider", f)
-                runOnUiThread {
-                    startActivity(android.content.Intent.createChooser(
-                        android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                            type = "text/csv"
-                            putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                            addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                        }, "Share history"))
-                }
-            } catch (e: Exception) {
-                runOnUiThread { Toast.makeText(this, "Could not export: ${e.message}", Toast.LENGTH_LONG).show() }
-            }
-        }.start()
+        compartirTexto(sb.toString(), "historial_${System.currentTimeMillis()}.csv", "Share history")
     }
 
     /** Guarda la PSBT en la carpeta compartida y abre la hoja de compartir. */

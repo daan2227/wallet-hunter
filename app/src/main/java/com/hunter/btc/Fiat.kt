@@ -71,6 +71,21 @@ object Fiat {
 
     fun vencidoONulo(ctx: Context) = precio(ctx) <= 0.0 || vencido()
 
+    /**
+     * El precio de 1 BTC en [codigo] el día (UTC) de [t], de mempool.space (USD, EUR, GBP, CAD, CHF, AUD, JPY).
+     * Se guarda por día: un día pasado no cambia. null sin red o si esa moneda no la tiene. Desde un hilo de fondo.
+     */
+    fun precioDia(ctx: Context, codigo: String, t: Long): Double? {
+        val dia = t / 86_400
+        val prefs = ctx.getSharedPreferences("precios_dia", Context.MODE_PRIVATE)
+        prefs.getString("${codigo}_$dia", null)?.toDoubleOrNull()?.let { return it }
+        val js = ChainApi.get("/v1/historical-price?currency=$codigo&timestamp=${dia * 86_400 + 43_200}", false) ?: return null
+        val v = try { JSONObject(js).getJSONArray("prices").getJSONObject(0).optDouble(codigo, 0.0) } catch (e: Exception) { 0.0 }
+        if (v <= 0 || !v.isFinite()) return null
+        if (dia < System.currentTimeMillis() / 86_400_000) prefs.edit().putString("${codigo}_$dia", v.toString()).apply()
+        return v
+    }
+
     /** "1,234.56 USD" sin mirar si los saldos están ocultos, o null si no se sabe el precio. */
     fun valor(ctx: Context, sat: Long): String? {
         val p = precio(ctx)
