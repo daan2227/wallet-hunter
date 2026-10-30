@@ -184,8 +184,13 @@ class LightningActivity : AppCompatActivity() {
     }
 
     private fun pagarElegir() {
-        val et = Ui.input(this, "lnbc… invoice, LNURL or user@domain", mono = true)
-        AlertDialog.Builder(this).setTitle("Pay").setView(LinearLayout(this).apply { setPadding(dp(16), dp(8), dp(16), 0); addView(et) })
+        val et = Ui.input(this, "Invoice, offer, LNURL or user@domain", mono = true)
+        lateinit var dlg: AlertDialog
+        val contactos = texto("Contacts…", AppTheme.SP_CAPTION, AppTheme.TXT_SEC, true).apply {
+            setPadding(0, dp(12), 0, dp(4)); isClickable = true; foreground = Ui.toque()
+            setOnClickListener { dlg.dismiss(); DialogoContactos.mostrar(this@LightningActivity, lightning = true, destinoActual = et.text.toString().takeIf { it.isNotBlank() }) { pagar(it) } }
+        }
+        dlg = AlertDialog.Builder(this).setTitle("Pay").setView(LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(et); addView(contactos) })
             .setNeutralButton("Scan QR") { _, _ -> alLeer = { pagar(it) }; startActivityForResult(Intent(this, QrScanActivity::class.java), REQ_QR) }
             .setNegativeButton("Cancel", null).setPositiveButton("Continue") { _, _ -> pagar(et.text.toString()) }.show()
     }
@@ -199,6 +204,8 @@ class LightningActivity : AppCompatActivity() {
 
     private fun pagar(fac: String) {
         val m = Ln.motor ?: return
+        // Una oferta BOLT12 (lno1…): se paga como oferta.
+        if (fac.trim().removePrefix("lightning:").removePrefix("LIGHTNING:").startsWith("lno1", ignoreCase = true)) { pagarOferta(m, fac.trim()); return }
         // usuario@dominio: primero BIP353 (DNSSEC); si ese nombre no tiene registro, como Lightning Address.
         if ('@' in fac && Bip353.leer(fac) != null) { nombre(m, fac); return }
         // Un LNURL va por LNURL; una factura (lnbc…) nunca lo parece.
@@ -218,6 +225,26 @@ class LightningActivity : AppCompatActivity() {
         }.show()
     }
 
+
+    private fun pagarOferta(m: MotorLn, s: String) {
+        val o = try { m.leerOferta(s, redEsperada) } catch (e: Exception) { Toast.makeText(this, "Not a valid BOLT12 offer.", Toast.LENGTH_LONG).show(); return }
+        if (!o.deEstaRed) { Toast.makeText(this, "That offer is for another network.", Toast.LENGTH_LONG).show(); return }
+        if (o.caducada) { Toast.makeText(this, "That offer has expired.", Toast.LENGTH_LONG).show(); return }
+        if (o.enOtraMoneda) { Toast.makeText(this, "That offer asks for an amount in a fiat currency, which is not supported.", Toast.LENGTH_LONG).show(); return }
+        val etSat = if (o.sats == null) Ui.input(this, "Amount in sat").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER } else null
+        val etNota = Ui.input(this, "Note to the recipient (optional)")
+        val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); etSat?.let { addView(it) }; addView(etNota) }
+        AlertDialog.Builder(this).setTitle("Pay this offer?")
+            .setMessage((if (o.sats != null) "%,d sat".format(o.sats) + Fiat.entre(this, o.sats) else "Any amount: enter it below") +
+                (if (o.descripcion.isNotBlank()) "\n\n“${o.descripcion}”" else "") + (o.emisor?.let { "\nFrom: $it" } ?: ""))
+            .setView(v).setNegativeButton("Cancel", null)
+            .setPositiveButton("Pay") { _, _ ->
+                val sats = o.sats ?: etSat?.text?.toString()?.toLongOrNull()
+                if (sats == null || sats <= 0) { Toast.makeText(this, "Enter an amount.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
+                val nota = etNota.text.toString().takeIf { it.isNotBlank() }
+                conCodigoSiToca(sats) { enHilo("Pay") { m.pagarOferta(s, if (o.sats == null) sats else null, nota) } }
+            }.show()
+    }
 
     /**
      * Oferta BOLT12: un QR que vale para muchos pagos (como una dirección, pero de Lightning). Se guarda la

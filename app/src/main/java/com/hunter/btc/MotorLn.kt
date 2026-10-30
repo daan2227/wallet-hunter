@@ -136,6 +136,25 @@ class MotorLn(val node: Node) {
         return (if (sats == null) b.receiveVariableAmount(d, null) else b.receive((sats * 1000).toULong(), d, null, null)).toString()
     }
 
+    /** Lo que dice una oferta BOLT12 antes de pagarla. [enOtraMoneda]: pide un importe en euros, dólares… */
+    class DatosOferta(val sats: Long?, val descripcion: String, val emisor: String?, val caducada: Boolean,
+                      val deEstaRed: Boolean, val enOtraMoneda: Boolean)
+
+    private fun ofertaDe(s: String) = org.lightningdevkit.ldknode.Offer.fromStr(s.trim().removePrefix("lightning:").removePrefix("LIGHTNING:"))
+
+    fun leerOferta(s: String, red: Network): DatosOferta {
+        val o = ofertaDe(s); val a = o.amount()
+        return DatosOferta((a as? org.lightningdevkit.ldknode.OfferAmount.Bitcoin)?.amountMsats?.toLong()?.div(1000),
+            o.offerDescription() ?: "", o.issuer(), o.isExpired(), o.supportsChain(red), a is org.lightningdevkit.ldknode.OfferAmount.Currency)
+    }
+
+    /** Paga una oferta BOLT12; [satsSiLibre] si no fija importe. [nota] la ve quien cobra. */
+    fun pagarOferta(s: String, satsSiLibre: Long?, nota: String?): String {
+        val o = ofertaDe(s)
+        return if (o.amount() == null) node.bolt12Payment().sendUsingAmount(o, ((satsSiLibre ?: 0) * 1000).toULong(), null, nota, null)
+               else node.bolt12Payment().send(o, null, nota, null)
+    }
+
     /** Capacidad de entrada total de los canales listos (sat). */
     fun entrante(): Long = canales().filter { it.listo }.sumOf { it.entranteSat }
 

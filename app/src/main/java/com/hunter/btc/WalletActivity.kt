@@ -1898,8 +1898,11 @@ class WalletActivity : FragmentActivity() {
             if (t.isEmpty()) Toast.makeText(this, "The clipboard is empty", Toast.LENGTH_SHORT).show()
             else rellenar(t)
         })
-        filaAcciones.addView(accion("Scan QR", R.drawable.ic_scan, true) {
+        filaAcciones.addView(accion("Scan QR", R.drawable.ic_scan, false) {
             startActivityForResult(Intent(this, QrScanActivity::class.java), REQ_QR)
+        })
+        filaAcciones.addView(accion("Contacts", R.drawable.ic_contacts, true) {
+            DialogoContactos.mostrar(this, lightning = false, destinoActual = etTo.text.toString().takeIf { it.isNotBlank() }) { rellenar(it) }
         })
         toCard.addView(filaAcciones)
         ll.addView(side(toCard, bottom = 20))
