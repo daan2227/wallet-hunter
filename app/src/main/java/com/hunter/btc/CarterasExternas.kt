@@ -44,6 +44,7 @@ object CarterasExternas {
     fun motorDe(texto: String): Pair<MotorCartera?, String?> {
         MotorMultifirma.leer(texto, derivador)?.let { (m, e) -> return m to e }
         MotorHerencia.leer(texto, derivador)?.let { (m, e) -> return m to e }
+        MotorHucha.leer(texto, derivador)?.let { (m, e) -> return m to e }
         return when (val r = Descriptor.leer(texto)) {
             is Descriptor.R.Ok -> MotorVigilada(r.v, derivador, tweaker, r.avisos) to null
             is Descriptor.R.Mal -> null to r.motivo

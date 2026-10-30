@@ -81,6 +81,12 @@ class CarteraExternaActivity : AppCompatActivity() {
                 "To keep the heir locked out, send the coins to this same wallet before then: that restarts the clock.",
                 AppTheme.SP_CAPTION, AppTheme.TXT_SEC))
         }
+        (motor as? MotorHucha)?.let { h ->
+            val cerrada = h.bloqueada(System.currentTimeMillis() / 1000, altura ?: 0)
+            caja.addView(texto(if (cerrada) "🔒 Locked: nothing can spend these coins before ${h.descripcion.substringAfter("from ")}. " +
+                "You can keep adding to it." else "🔓 Unlocked: you can spend these coins now (sign with this phone).",
+                AppTheme.SP_CAPTION, if (cerrada) AppTheme.WARN else AppTheme.TXT_SEC))
+        }
         val total = monedas.sumOf { it.valor }
         val pend = monedas.filter { !it.confirmada }.sumOf { it.valor }
         caja.addView(texto(if (cargando && monedas.isEmpty()) "Checking the network…" else btc(total), 26f, AppTheme.ACCENT, true))
@@ -115,11 +121,15 @@ class CarteraExternaActivity : AppCompatActivity() {
     }
 
     /** Recorre las dos ramas (hueco 20) y junta las monedas de las direcciones usadas. */
+    /** Altura de la red (para una hucha con altura de bloque); null hasta saberla. */
+    private var altura: Long? = null
+
     private fun refrescar() {
         if (cargando) return
         cargando = true; pintar()
         Thread {
             BalanceLookup.iniciarMemo()
+            (motor as? MotorHucha)?.let { if (!it.esFecha) altura = ChainInfo.tipHeight(motor.testnet)?.toLong() }
             val nuevas = ArrayList<Moneda>(); var fallo = false
             try {
                 val ramas = (0..1).map { c -> motor.escanear(c, { a -> BalanceLookup.isUsed(a, motor.testnet) }) }
@@ -175,6 +185,14 @@ class CarteraExternaActivity : AppCompatActivity() {
     // ── Enviar: la PSBT sin firmar ─────────────────────────────────────────────────────────────
 
     private fun enviar() {
+        (motor as? MotorHucha)?.let { h ->
+            // La red rechazaría el gasto: mejor decirlo aquí que con un error al difundir.
+            if (h.bloqueada(System.currentTimeMillis() / 1000, altura ?: 0)) {
+                AlertDialog.Builder(this).setTitle("Still locked").setMessage("These coins can be spent from ${h.descripcion.substringAfter("from ")}. " +
+                    "Not before: the network enforces it.").setPositiveButton("OK", null).show()
+                return
+            }
+        }
         if (monedas.isEmpty()) { Toast.makeText(this, "No coins (or not refreshed yet).", Toast.LENGTH_LONG).show(); return }
         if (libreCambio < 0) { Toast.makeText(this, "The change address is not known yet: refresh first.", Toast.LENGTH_LONG).show(); return }
         val etTo = Ui.input(this, "Destination address", mono = true)
@@ -232,7 +250,7 @@ class CarteraExternaActivity : AppCompatActivity() {
     }
 
     private fun compartir(psbt: ByteArray, firmadasAqui: Int = 0) {
-        val multi = motor is MotorMultifirma || motor is MotorHerencia
+        val multi = motor is MotorMultifirma || motor is MotorHerencia || motor is MotorHucha
         val opciones = arrayOf("Show as animated QR (UR / BBQr)", "Share as file", "Copy as base64") +
             (if (multi) arrayOf("Sign with a wallet on this phone") else emptyArray())
         AlertDialog.Builder(this).setTitle(if (firmadasAqui > 0) "PSBT ready · $firmadasAqui signature(s) added here" else "PSBT ready")
@@ -318,7 +336,7 @@ class CarteraExternaActivity : AppCompatActivity() {
                 val dlg = AlertDialog.Builder(this).setTitle("Not fully signed yet")
                     .setMessage("$n of ${d.tx.ins.size} inputs have enough signatures. Sign it on the device(s) that are missing, then try again.")
                     .setPositiveButton("OK", null)
-                if (motor is MotorMultifirma || motor is MotorHerencia) dlg.setNeutralButton("Add this phone's signature") { _, _ ->
+                if (motor is MotorMultifirma || motor is MotorHerencia || motor is MotorHucha) dlg.setNeutralButton("Add this phone's signature") { _, _ ->
                     val orig = Psbt.parse(b)!!
                     FirmaPropia.firmar(this, orig) { k -> if (k > 0) procesarBytes(Psbt.serialize(orig)) else if (k == 0)
                         Toast.makeText(this, "None of its keys belongs to a wallet on this phone.", Toast.LENGTH_LONG).show() }

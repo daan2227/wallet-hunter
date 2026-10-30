@@ -4118,6 +4118,7 @@ class WalletActivity : FragmentActivity() {
             "Lightning",
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New multisig with this wallet" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "New inheritance wallet (timelock)" else null,
+            if (!isWifMode && mnemonic.isNotEmpty()) "New savings vault (locked until a date)" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "My key for someone else's multisig / inheritance" else null,
             if (av && !isWifMode && mnemonic.isNotEmpty()) "Account" else null,
             if (av && alBaul) "Save to finds vault" else null,
@@ -4159,6 +4160,7 @@ class WalletActivity : FragmentActivity() {
                     "Lightning" -> menuLightning()
                     "New multisig with this wallet" -> authenticate { CrearMultifirma.mostrar(this, mnemonic, isTestnet) }
                     "New inheritance wallet (timelock)" -> authenticate { CrearHerencia.mostrar(this, mnemonic, isTestnet) }
+                    "New savings vault (locked until a date)" -> authenticate { CrearHucha.mostrar(this, mnemonic, isTestnet) }
                     "My key for someone else's multisig / inheritance" -> authenticate {
                         // Las públicas BIP48 de esta cartera: la de multifirma (cuenta 0) y la de herencia (cuenta 1).
                         val c = if (isTestnet) 1 else 0
