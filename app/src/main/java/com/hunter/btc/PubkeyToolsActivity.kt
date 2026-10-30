@@ -108,6 +108,7 @@ class PubkeyToolsActivity : Activity() {
         reg(E, R.drawable.ic_clock, "Network now", "Mempool, next blocks, halving, difficulty", "mempool fees halving difficulty") { construirRed() }
         reg(E, R.drawable.ic_export, "Recent blocks", "The latest blocks mined") { construirBloques() }
         reg(E, R.drawable.ic_search, "Look up", "A transaction, block or address", "tx block address explorer search txid") { construirBuscar() }
+        reg(E, R.drawable.ic_dice, "Block miner", "Mine a practice block, or try the solo lottery", "mining miner pow stratum solo ckpool hashrate") { construirMinero() }
 
         reg(M, R.drawable.ic_notif, "Watch addresses", "Get notified when they move") { construirWatch() }
         reg(M, R.drawable.ic_dice, "Vanity address", "An address that starts how you want") { construirVanity() }
@@ -2611,6 +2612,31 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── BTC ↔ sat ──────────────────────────────────────────────────────────
+    /** La calculadora de probabilidad aquí; el minero, en su pantalla (para pararlo al salir de ella). */
+    private fun construirMinero() {
+        desc("Bitcoin blocks are found by trial and error: whoever first finds a header whose hash is below the target " +
+             "wins the block reward. Try it on this phone with a practice block, or join the real lottery through a solo pool.")
+        boton("Open the miner") { startActivity(android.content.Intent(this, MineroActivity::class.java)) }
+        desc("Odds calculator: your hash rate against today's network difficulty.")
+        val et = entrada("Hash rate in MH/s (a phone: 1–10)")
+        val salida = salidaBox()
+        boton("Calculate") {
+            val mh = et.text.toString().replace(',', '.').toDoubleOrNull()?.takeIf { it > 0 } ?: return@boton
+            salida.removeAllViews()
+            Thread {
+                val dif = try { org.json.JSONObject(ChainApi.get("/v1/mining/hashrate/3d", false) ?: "").optDouble("currentDifficulty", 0.0) } catch (e: Exception) { 0.0 }
+                runOnUiThread {
+                    if (dif <= 0) { salida.addView(filaResultado("Network", "Could not get the difficulty")); return@runOnUiThread }
+                    val hr = mh * 1e6
+                    salida.addView(filaResultado("Network difficulty", "%.4g".format(java.util.Locale.US, dif)))
+                    salida.addView(filaResultado("One block every", Minero.escala(Minero.segundosPorBloque(hr, dif))))
+                    salida.addView(filaResultado("Chance in a day", "1 in %.2e".format(java.util.Locale.US, 1 / Minero.probabilidad(hr, dif, 86_400.0))))
+                    salida.addView(filaResultado("Chance in a year", "1 in %.2e".format(java.util.Locale.US, 1 / Minero.probabilidad(hr, dif, 31_557_600.0))))
+                }
+            }.start()
+        }
+    }
+
     private fun construirUnidades() {
         desc("Convert between BTC and satoshis. Type a value with a dot for BTC (0.0005) " +
              "or a whole number for sats (50000).")
