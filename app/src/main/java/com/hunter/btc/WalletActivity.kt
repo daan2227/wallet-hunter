@@ -2879,6 +2879,16 @@ class WalletActivity : FragmentActivity() {
                             "Change %.8f BTC to a new address (%s).".format(plan.changeSat / 1e8, changePath.substringAfterLast('/'))
                         else
                             "Change %.8f BTC to the source address: could not query the branch.".format(plan.changeSat / 1e8))
+                        // Lo que este envío deja ver: pistas para que un analista sepa cuál salida es el cambio.
+                        val avisosPriv = AnalisisPrivacidad.revisar(AnalisisPrivacidad.Envio(
+                            amtPrincipal, plan.changeSat, AnalisisPrivacidad.tipoDeClave(fromKey),
+                            (listOf(destinoTx) + extras.filter { it.datos == null }.mapNotNull { it.addr })
+                                .mapNotNull { (BtcAddress.validate(it, isTestnet) as? BtcAddress.Result.Valid)?.info?.type },
+                            plan.chosen.map { it.optLong("value") }, lista.size, changePath == null, extras.any { it.datos != null }))
+                        if (avisosPriv.isNotEmpty()) {
+                            appendLine(); appendLine("Privacy:")
+                            avisosPriv.forEach { appendLine((if (it.grave) "⚠ " else "• ") + it.texto) }
+                        }
                         appendLine()
                         appendLine("Sent as replaceable: you can raise the fee if it gets stuck.")
                         appendLine()
