@@ -126,6 +126,16 @@ class MotorLn(val node: Node) {
     fun qrUnificado(sats: Long, descripcion: String, segundos: Int = 3600): String =
         node.unifiedQrPayment().receive(sats.toULong(), descripcion.take(120), segundos.toUInt())
 
+    /**
+     * Oferta BOLT12 ("lno1…"): un QR fijo que se puede pagar muchas veces, sin hacer una factura nueva cada
+     * vez. [sats] null = el pagador elige el importe. Sin caducidad. Para cobrarla el nodo tiene que estar en
+     * línea, y el que paga necesita una cartera con BOLT12.
+     */
+    fun oferta(sats: Long?, descripcion: String): String {
+        val b = node.bolt12Payment(); val d = descripcion.take(120)
+        return (if (sats == null) b.receiveVariableAmount(d, null) else b.receive((sats * 1000).toULong(), d, null, null)).toString()
+    }
+
     /** Capacidad de entrada total de los canales listos (sat). */
     fun entrante(): Long = canales().filter { it.listo }.sumOf { it.entranteSat }
 

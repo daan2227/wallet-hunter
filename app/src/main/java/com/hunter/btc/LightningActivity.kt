@@ -155,7 +155,9 @@ class LightningActivity : AppCompatActivity() {
         val etDesc = Ui.input(this, "Description")
         val cbUnif = android.widget.CheckBox(this).apply { text = "Unified QR (on-chain or Lightning; needs an amount)"; setTextColor(AppTheme.TXT_PRI) }
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etSat); addView(etDesc); addView(cbUnif) }
-        AlertDialog.Builder(this).setTitle("Receive").setView(v).setNegativeButton("Cancel", null).setPositiveButton("Create invoice") { _, _ ->
+        AlertDialog.Builder(this).setTitle("Receive").setView(v).setNegativeButton("Cancel", null)
+            .setNeutralButton("Reusable offer") { _, _ -> ofertaReutilizable(m, etSat.text.toString().toLongOrNull()?.takeIf { it > 0 }, etDesc.text.toString()) }
+            .setPositiveButton("Create invoice") { _, _ ->
             val sats = etSat.text.toString().toLongOrNull()
             if (cbUnif.isChecked) {
                 if (sats == null || sats <= 0) { Toast.makeText(this, "A unified QR needs an amount.", Toast.LENGTH_LONG).show(); return@setPositiveButton }
@@ -216,6 +218,26 @@ class LightningActivity : AppCompatActivity() {
         }.show()
     }
 
+
+    /**
+     * Oferta BOLT12: un QR que vale para muchos pagos (como una dirección, pero de Lightning). Se guarda la
+     * última para volver a enseñarla sin hacer otra; con importe o descripción distintos se hace una nueva.
+     */
+    private fun ofertaReutilizable(m: MotorLn, sats: Long?, desc: String) {
+        val pr = getSharedPreferences("ln_oferta", MODE_PRIVATE)
+        val clave = "${sats ?: 0}|${desc.trim()}|$testnet|${m.id()}"
+        val guardada = pr.getString("oferta", null)?.takeIf { pr.getString("clave", "") == clave }
+        val nota = "Pay it as many times as you like from a wallet with BOLT12 (e.g. Phoenix). " +
+                   "The node must be online, with a channel or an LSP, to be paid."
+        if (guardada != null) { qrDialogo("Reusable offer", guardada, nota); return }
+        Thread {
+            val r = try { Result.success(m.oferta(sats, desc.ifBlank { "Hunter Suite" })) } catch (e: Exception) { Result.failure(e) }
+            runOnUiThread {
+                r.onSuccess { o -> pr.edit().putString("oferta", o).putString("clave", clave).apply(); qrDialogo("Reusable offer", o, nota) }
+                 .onFailure { Toast.makeText(this, "Could not create the offer: ${it.message}", Toast.LENGTH_LONG).show() }
+            }
+        }.start()
+    }
 
     /**
      * Mover fondos entre la cadena y Lightning con lo que ya tiene el nodo (canales, LSP, retirar), sin swaps:
