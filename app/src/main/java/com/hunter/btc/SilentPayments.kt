@@ -1,7 +1,7 @@
 package com.hunter.btc
 
 /**
- * Silent Payments (BIP352), lado del que envía: pagar a una dirección "sp1…" estática sin que la
+ * Silent Payments (BIP352), enviar y recibir. Enviar: pagar a una dirección "sp1…" estática sin que la
  * cadena lo delate. Con las claves de las entradas y la del destinatario se calcula una dirección
  * Taproot de un solo uso que sólo él sabe reconocer.
  *
@@ -38,6 +38,52 @@ object SilentPayments {
         return scan to spend
     }
 
+    /** La dirección sp1… (tsp1… en testnet), versión 0, de las públicas de escaneo y de gasto. */
+    fun codificar(scan: ByteArray, spend: ByteArray, testnet: Boolean): String {
+        val hrp = if (testnet) "tsp" else "sp"
+        val datos = listOf(0) + (convertir((scan + spend).map { it.toInt() and 0xff }, 8, 5, true) ?: return "").map { it.toInt() and 31 }
+        val pm = polymod(expandir(hrp) + datos + List(6) { 0 }) xor BECH32M
+        return hrp + "1" + (datos + List(6) { (pm shr (5 * (5 - it))) and 31 }).joinToString("") { CARS[it].toString() }
+    }
+
+    // ── Recibir ─────────────────────────────────────────────────────────────────────────────────
+
+    /** Rutas BIP352 de las claves de escaneo y de gasto. */
+    fun rutaEscaneo(testnet: Boolean) = "m/352'/${if (testnet) 1 else 0}'/0'/1'/0"
+    fun rutaGasto(testnet: Boolean) = "m/352'/${if (testnet) 1 else 0}'/0'/0'/0"
+
+    /** Una salida que es nuestra: su x-only y el ajuste t (la privada para gastarla es gasto + t). */
+    class Recibida(val x: String, val t: String)
+
+    /** El secreto compartido con una transacción: escaneo · tweak (el tweak = input_hash · A que da el servidor). */
+    fun secreto(ec: Ec, escaneoPriv: String, tweak: String): String? = ec.op("pub_mul", tweak, escaneoPriv).ifEmpty { null }
+
+    /** La x-only de la salida k-ésima para un secreto compartido, y su ajuste. */
+    fun salidaK(ec: Ec, secreto: String, gastoPub: String, k: Int): Pair<String, String>? {
+        val t = hx(tagged("BIP0352/SharedSecret", bs(secreto) + byteArrayOf((k ushr 24).toByte(), (k shr 16).toByte(), (k shr 8).toByte(), k.toByte())))
+        val p = ec.op("pub_tweak", gastoPub, t).ifEmpty { return null }
+        return p.substring(2) to t
+    }
+
+    /**
+     * Las salidas de una transacción ([salidas], x-only en hex) que son nuestras. Sin etiquetas: k empieza en 0
+     * y sube mientras alguna coincida (BIP352).
+     */
+    fun escanear(ec: Ec, escaneoPriv: String, gastoPub: String, tweak: String, salidas: Collection<String>): List<Recibida> {
+        val sec = secreto(ec, escaneoPriv, tweak) ?: return emptyList()
+        val quedan = salidas.map { it.lowercase() }.toMutableSet(); val r = ArrayList<Recibida>()
+        var k = 0
+        while (quedan.isNotEmpty()) {
+            val (x, t) = salidaK(ec, sec, gastoPub, k) ?: break
+            if (!quedan.remove(x)) break
+            r.add(Recibida(x, t)); k++
+        }
+        return r
+    }
+
+    /** La privada que gasta una salida recibida (para firmar con BIP340 por la vía de la clave, sin TapTweak). */
+    fun privada(ec: Ec, gastoPriv: String, t: String): String? = ec.op("priv_sum", "$gastoPriv,$t", "0,0").ifEmpty { null }
+
     private fun polymod(v: List<Int>): Int {
         val g = intArrayOf(0x3b6a57b2, 0x26508e6d, 0x1ea119fa, 0x3d4233dd, 0x2a1462b3)
         var chk = 1
@@ -45,9 +91,10 @@ object SilentPayments {
         return chk
     }
     private fun expandir(h: String) = h.map { it.code shr 5 } + listOf(0) + h.map { it.code and 31 }
-    private fun convertir(d: List<Int>, de: Int, a: Int): ByteArray? {
+    private fun convertir(d: List<Int>, de: Int, a: Int, rellenar: Boolean = false): ByteArray? {
         var acc = 0; var bits = 0; val out = java.io.ByteArrayOutputStream(); val max = (1 shl a) - 1
-        for (v in d) { acc = (acc shl de) or v; bits += de; while (bits >= a) { bits -= a; out.write((acc shr bits) and max) } }
+        for (v in d) { acc = ((acc shl de) or v) and 0xffffff; bits += de; while (bits >= a) { bits -= a; out.write((acc shr bits) and max) } }
+        if (rellenar) { if (bits > 0) out.write((acc shl (a - bits)) and max); return out.toByteArray() }
         if (bits >= de || ((acc shl (a - bits)) and max) != 0) return null
         return out.toByteArray()
     }

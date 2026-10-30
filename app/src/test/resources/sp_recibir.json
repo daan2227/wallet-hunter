@@ -1,0 +1,351 @@
+[
+{
+"comment": "Simple send: two inputs",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "024ac253c216532e961988e2a8ce266a447c894c781e52ef6cee902361db960004",
+"outputs": [
+"3e9fce73d4e77a4809908e3c3a2e54ee147b9312dc5044a193d1fc85de46e3c1"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "3e9fce73d4e77a4809908e3c3a2e54ee147b9312dc5044a193d1fc85de46e3c1",
+"t": "f438b40179a3c4262de12986c0e6cce0634007cdc79c1dcd3e20b9ebc2e7eef6",
+"sig": "74f85b856337fbe837643b86f462118159f93ac4acc2671522f27e8f67b079959195ccc7a5dbee396d2909f5d680d6e30cda7359aa2755822509b70d6b0687a1"
+}
+]
+},
+{
+"comment": "Simple send: two inputs, order reversed",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "024ac253c216532e961988e2a8ce266a447c894c781e52ef6cee902361db960004",
+"outputs": [
+"3e9fce73d4e77a4809908e3c3a2e54ee147b9312dc5044a193d1fc85de46e3c1"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "3e9fce73d4e77a4809908e3c3a2e54ee147b9312dc5044a193d1fc85de46e3c1",
+"t": "f438b40179a3c4262de12986c0e6cce0634007cdc79c1dcd3e20b9ebc2e7eef6",
+"sig": "74f85b856337fbe837643b86f462118159f93ac4acc2671522f27e8f67b079959195ccc7a5dbee396d2909f5d680d6e30cda7359aa2755822509b70d6b0687a1"
+}
+]
+},
+{
+"comment": "Simple send: two inputs from the same transaction",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "03aeea547819c08413974e2ab2b12212e007166bb2058f88b009e082b9b4914a58",
+"outputs": [
+"79e71baa2ba3fc66396de3a04f168c7bf24d6870ec88ca877754790c1db357b6"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "79e71baa2ba3fc66396de3a04f168c7bf24d6870ec88ca877754790c1db357b6",
+"t": "4851455bfbe1ab4f80156570aa45063201aa5c9e1b1dcd29f0f8c33d10bf77ae",
+"sig": "10332eea808b6a13f70059a8a73195808db782012907f5ba32b6eae66a2f66b4f65147e2b968a1678c5f73d57d5d195dbaf667b606ff80c8490eac1f3b710657"
+}
+]
+},
+{
+"comment": "Simple send: two inputs from the same transaction, order reversed",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "024cad5180a093d3af0f49f586bdf37f890920178e68e80561ed53351d0fa499ad",
+"outputs": [
+"f4c2da807f89cb1501f1a77322a895acfb93c28e08ed2724d2beb8e44539ba38"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "f4c2da807f89cb1501f1a77322a895acfb93c28e08ed2724d2beb8e44539ba38",
+"t": "ab0c9b87181bf527879f48db9f14a02233619b986f8e8f2d5d408ce68a709f51",
+"sig": "398a9790865791a9db41a8015afad3a47d60fec5086c50557806a49a1bc038808632b8fe679a7bb65fc6b455be994502eed849f1da3729cd948fc7be73d67295"
+}
+]
+},
+{
+"comment": "Outpoint ordering byte-lexicographically vs. vout-integer",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "031f9a80d0938cf980b51f7cc4fad713d49037f430646dff129c0570d75a40d8f0",
+"outputs": [
+"a85ef8701394b517a4b35217c4bd37ac01ebeed4b008f8d0879f9e09ba95319c"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "a85ef8701394b517a4b35217c4bd37ac01ebeed4b008f8d0879f9e09ba95319c",
+"t": "c8ac0292997b5bca98b3ebd99a57e253071137550f270452cd3df8a3e2266d36",
+"sig": "c036ee38bfe46aba03234339ae7219b31b824b52ef9d5ce05810a0d6f62330dedc2b55652578aa5bdabf930fae941acd839d5a66f8fce7caa9710ccb446bddd1"
+}
+]
+},
+{
+"comment": "Single recipient: multiple UTXOs from the same public key",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "0319949463fc6a2368d999a2a6a2bcb2dbf64a2ac6e00b3ba5659780c860a6d9e0",
+"outputs": [
+"548ae55c8eec1e736e8d3e520f011f1f42a56d166116ad210b3937599f87f566"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "548ae55c8eec1e736e8d3e520f011f1f42a56d166116ad210b3937599f87f566",
+"t": "f032695e2636619efa523fffaa9ef93c8802299181fd0461913c1b8daf9784cd",
+"sig": "f238386c5d5e5444f8d2c75aabbcb28c346f208c76f60823f5de3b67b79e0ec72ea5de2d7caec314e0971d3454f122dda342b3eede01b3857e83654e36b25f76"
+}
+]
+},
+{
+"comment": "Single recipient: taproot only inputs with even y-values",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02dc59cc8e8873b65c1dd5c416d4fbeb647372c329bd84a70c05b310e222e2c183",
+"outputs": [
+"de88bea8e7ffc9ce1af30d1132f910323c505185aec8eae361670421e749a1fb"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "de88bea8e7ffc9ce1af30d1132f910323c505185aec8eae361670421e749a1fb",
+"t": "3fb9ce5ce1746ced103c8ed254e81f6690764637ddbc876ec1f9b3ddab776b03",
+"sig": "c5acd25a8f021a4192f93bc34403fd8b76484613466336fb259c72d04c169824f2690ca34e96cee86b69f376c8377003268fda56feeb1b873e5783d7e19bcca5"
+}
+]
+},
+{
+"comment": "Single recipient: taproot only with mixed even/odd y-values",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "03b990f5b1d90ea8fd4bdd5c856a9dfe17035d196958062e2c6cb4c99e413f3548",
+"outputs": [
+"77cab7dd12b10259ee82c6ea4b509774e33e7078e7138f568092241bf26b99f1"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "77cab7dd12b10259ee82c6ea4b509774e33e7078e7138f568092241bf26b99f1",
+"t": "f5382508609771068ed079b24e1f72e4a17ee6d1c979066bf1d4e2a5676f09d4",
+"sig": "ff65833b8fd1ed3ef9d0443b4f702b45a3f2dd457ba247687e8207745c3be9d2bdad0ab3f07118f8b2efc6a04b95f7b3e218daf8a64137ec91bd2fc67fc137a5"
+}
+]
+},
+{
+"comment": "Single recipient: taproot input with even y-value and non-taproot input",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "0233c2a447b8b244e4ffcfb59fe365eaa3bb22288b31e2113b9998861f40d4d6da",
+"outputs": [
+"30523cca96b2a9ae3c98beb5e60f7d190ec5bc79b2d11a0b2d4d09a608c448f0"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "30523cca96b2a9ae3c98beb5e60f7d190ec5bc79b2d11a0b2d4d09a608c448f0",
+"t": "b40017865c79b1fcbed68896791be93186d08f47e416b289b8c063777e14e8df",
+"sig": "d1edeea28cf1033bcb3d89376cabaaaa2886cbd8fda112b5c61cc90a4e7f1878bdd62180b07d1dfc8ffee1863c525a0c7b5bcd413183282cfda756cb65787266"
+}
+]
+},
+{
+"comment": "Single recipient: taproot input with odd y-value and non-taproot input",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02d4e4f2c4cdb71c9c39a700a9ee1a0fc05b98362a441183f5770af7d6e2b3038c",
+"outputs": [
+"359358f59ee9e9eec3f00bdf4882570fd5c182e451aa2650b788544aff012a3a"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "359358f59ee9e9eec3f00bdf4882570fd5c182e451aa2650b788544aff012a3a",
+"t": "a2f9dd05d1d398347c885d9c61a64d18a264de6d49cea4326bafc2791d627fa7",
+"sig": "96038ad233d8befe342573a6e54828d863471fb2afbad575cc65271a2a649480ea14912b6abbd3fbf92efc1928c036f6e3eef927105af4ec1dd57cb909f360b8"
+}
+]
+},
+{
+"comment": "Multiple outputs: multiple outputs, same recipient",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "0314bec14463d6c0181083d607fecfba67bb83f95915f6f247975ec566d5642ee8",
+"outputs": [
+"e976a58fbd38aeb4e6093d4df02e9c1de0c4513ae0c588cef68cda5b2f8834ca",
+"f207162b1a7abc51c42017bef055e9ec1efc3d3567cb720357e2b84325db33ac"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "e976a58fbd38aeb4e6093d4df02e9c1de0c4513ae0c588cef68cda5b2f8834ca",
+"t": "d97e442d110c0bdd31161a7bb6e7862e038d02a09b1484dfbb463f2e0f7c9230",
+"sig": "29bd25d0f808d7fcd2aa6d5ed206053899198397506c301b218a9e47a3d7070af03e903ff718978d50d1b6b9af8cc0e313d84eda5d5b1e8e85e5516d630bbeb9"
+},
+{
+"x": "f207162b1a7abc51c42017bef055e9ec1efc3d3567cb720357e2b84325db33ac",
+"t": "33ce085c3c11eaad13694aae3c20301a6c83382ec89a7cde96c6799e2f88805a",
+"sig": "335667ca6cae7a26438f5cfdd73b3d48fa832fa9768521d7d5445f22c203ab0d74ed85088f27d29959ba627a4509996676f47df8ff284d292567b1beef0e3912"
+}
+]
+},
+{
+"comment": "Multiple outputs: multiple outputs, multiple recipients",
+"scan": "060b751d7892149006ed7b98606955a29fe284a1e900070c0971f5fb93dbf422",
+"spend": "9902c3c56e84002a7cd410113a9ab21d142be7f53cf5200720bb01314c5eb920",
+"tweak": "0314bec14463d6c0181083d607fecfba67bb83f95915f6f247975ec566d5642ee8",
+"outputs": [
+"2e847bb01d1b491da512ddd760b8509617ee38057003d6115d00ba562451323a",
+"841792c33c9dc6193e76744134125d40add8f2f4a96475f28ba150be032d64e8",
+"f207162b1a7abc51c42017bef055e9ec1efc3d3567cb720357e2b84325db33ac"
+],
+"address": "sp1qqgrz6j0lcqnc04vxccydl0kpsj4frfje0ktmgcl2t346hkw30226xqupawdf48k8882j0strrvcmgg2kdawz53a54dd376ngdhak364hzcmynqtn",
+"found": [
+{
+"x": "2e847bb01d1b491da512ddd760b8509617ee38057003d6115d00ba562451323a",
+"t": "72cd082cccb633bf85240a83494b32dc943a4d05647a6686d23ad4ca59c0ebe4",
+"sig": "38745f3d9f5eef0b1cfb17ca314efa8c521efab28a23aa20ec5e3abb561d42804d539906dce60c4ee7977966184e6f2cab1faa0e5377ceb7148ec5218b4e7878"
+},
+{
+"x": "841792c33c9dc6193e76744134125d40add8f2f4a96475f28ba150be032d64e8",
+"t": "2f17ea873a0047fc01ba8010fef0969e76d0e4283f600d48f735098b1fee6eb9",
+"sig": "c26f4e3cf371b90b840f48ea0e761b5ec31883ed55719f9ef06a90e282d85f565790ab780a3f491bc2668cc64e944dca849d1022a878cdadb8d168b8da4a6da3"
+}
+]
+},
+{
+"comment": "Single recipient: use silent payments for sender change",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "0314bec14463d6c0181083d607fecfba67bb83f95915f6f247975ec566d5642ee8",
+"outputs": [
+"be368e28979d950245d742891ae6064020ba548c1e2e65a639a8bb0675d95cff",
+"f207162b1a7abc51c42017bef055e9ec1efc3d3567cb720357e2b84325db33ac"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "f207162b1a7abc51c42017bef055e9ec1efc3d3567cb720357e2b84325db33ac",
+"t": "33ce085c3c11eaad13694aae3c20301a6c83382ec89a7cde96c6799e2f88805a",
+"sig": "335667ca6cae7a26438f5cfdd73b3d48fa832fa9768521d7d5445f22c203ab0d74ed85088f27d29959ba627a4509996676f47df8ff284d292567b1beef0e3912"
+}
+]
+},
+{
+"comment": "Single recipient: taproot input with NUMS point",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02213b872c9a6ee28a0d861384a1b3e3ec7257f4855ed09b4323e3899f3b028989",
+"outputs": [
+"79e79897c52935bfd97fc6e076a6431a0c7543ca8c31e0fc3cf719bb572c842d"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "79e79897c52935bfd97fc6e076a6431a0c7543ca8c31e0fc3cf719bb572c842d",
+"t": "3ddec3232609d348d6b8b53123b4f40f6d4f5398ca586f087b0416ec3b851496",
+"sig": "d7d06e3afb68363031e4eb18035c46ceae41bdbebe7888a4754bc9848c596436869aeaecff0527649a1f458b71c9ceecec10b535c09d01d720229aa228547706"
+}
+]
+},
+{
+"comment": "Pubkey extraction from malleated p2pkh",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "028d6617f9bfe08604beb2188f4eebec923f5f8cc436fa6d14e4256e49bc32e7c8",
+"outputs": [
+"4612cdbf845c66c7511d70aab4d9aed11e49e48cdb8d799d787101cdd0d53e4f"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "4612cdbf845c66c7511d70aab4d9aed11e49e48cdb8d799d787101cdd0d53e4f",
+"t": "10bde9781def20d7701e7603ef1b1e5e71c67bae7154818814e3c81ef5b1a3d3",
+"sig": "6137969f810e9e8ef6c9755010e808f5dd1aed705882e44d7f0ae64eb0c509ec8b62a0671bee0d5914ac27d2c463443e28e999d82dc3d3a4919f093872d947bb"
+}
+]
+},
+{
+"comment": "P2PKH and P2WPKH Uncompressed Keys are skipped",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02b04034f00da0678507d1345b7d56fecef825a1151f9dc7d8ca6946452a9e1f43",
+"outputs": [
+"67fee277da9e8542b5d2e6f32d660a9bbd3f0e107c2d53638ab1d869088882d6"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "67fee277da9e8542b5d2e6f32d660a9bbd3f0e107c2d53638ab1d869088882d6",
+"t": "688fa3aeb97d2a46ae87b03591921c2eaf4b505eb0ddca2733c94701e01060cf",
+"sig": "72e7ad573ac23255d4651d5b0326a200496588acb7a4894b22092236d5eda6a0a9a4d8429b022c2219081fefce5b33795cae488d10f5ea9438849ed8353624f2"
+}
+]
+},
+{
+"comment": "Skip invalid P2SH inputs",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02b04034f00da0678507d1345b7d56fecef825a1151f9dc7d8ca6946452a9e1f43",
+"outputs": [
+"67fee277da9e8542b5d2e6f32d660a9bbd3f0e107c2d53638ab1d869088882d6"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "67fee277da9e8542b5d2e6f32d660a9bbd3f0e107c2d53638ab1d869088882d6",
+"t": "688fa3aeb97d2a46ae87b03591921c2eaf4b505eb0ddca2733c94701e01060cf",
+"sig": "72e7ad573ac23255d4651d5b0326a200496588acb7a4894b22092236d5eda6a0a9a4d8429b022c2219081fefce5b33795cae488d10f5ea9438849ed8353624f2"
+}
+]
+},
+{
+"comment": "Recipient ignores unrelated outputs",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "0314bec14463d6c0181083d607fecfba67bb83f95915f6f247975ec566d5642ee8",
+"outputs": [
+"841792c33c9dc6193e76744134125d40add8f2f4a96475f28ba150be032d64e8",
+"782eeb913431ca6e9b8c2fd80a5f72ed2024ef72a3c6fb10263c379937323338"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": []
+},
+{
+"comment": "Input keys intermediate sum is zero but final sum is non-zero",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "039c68bacb7efbf2175d781822f460afc4839a5798fabb055b50d939231bf57bb6",
+"outputs": [
+"7e88a7536c90770be4d2693a84ed03abe3fdcc5a29f96ec3433effec3b0c2194"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "7e88a7536c90770be4d2693a84ed03abe3fdcc5a29f96ec3433effec3b0c2194",
+"t": "3d5b7a284108f93b9fe78f2c300d2ca9ef3b4e0cd0de673fc72990f2a4f417b9",
+"sig": "f8d5222f1a682215c40ab677f2104606f2a0e6c5cb1a2d248d970fb61d4eadb31702353e6b41ea5a9b24817efa0eaf535552eeee8a794b662c3cf303b6c86672"
+}
+]
+},
+{
+"comment": "Single recipient: taproot key-path spend with annex",
+"scan": "0f694e068028a717f8af6b9411f9a133dd3565258714cc226594b34db90c1f2c",
+"spend": "9d6ad855ce3417ef84e836892e5a56392bfba05fa5d97ccea30e266f540e08b3",
+"tweak": "02dc59cc8e8873b65c1dd5c416d4fbeb647372c329bd84a70c05b310e222e2c183",
+"outputs": [
+"de88bea8e7ffc9ce1af30d1132f910323c505185aec8eae361670421e749a1fb"
+],
+"address": "sp1qqgste7k9hx0qftg6qmwlkqtwuy6cycyavzmzj85c6qdfhjdpdjtdgqjuexzk6murw56suy3e0rd2cgqvycxttddwsvgxe2usfpxumr70xc9pkqwv",
+"found": [
+{
+"x": "de88bea8e7ffc9ce1af30d1132f910323c505185aec8eae361670421e749a1fb",
+"t": "3fb9ce5ce1746ced103c8ed254e81f6690764637ddbc876ec1f9b3ddab776b03",
+"sig": "c5acd25a8f021a4192f93bc34403fd8b76484613466336fb259c72d04c169824f2690ca34e96cee86b69f376c8377003268fda56feeb1b873e5783d7e19bcca5"
+}
+]
+}
+]

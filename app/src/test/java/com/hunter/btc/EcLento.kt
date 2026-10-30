@@ -70,6 +70,8 @@ object EcLentoOps {
                 for ((i, k) in ks.withIndex()) { val v = bi(k); s += if (ng.getOrNull(i) == "1") EcLento.N - v else v }
                 s = s.mod(EcLento.N); if (s.signum() == 0) "" else h32(s)
             }
+            "pub_mul" -> EcLento.mul(bi(b), EcLento.parse(Descriptor.bytes(a)))?.let { Descriptor.hex(EcLento.ser(it)) } ?: ""
+            "pub_tweak" -> EcLento.add(EcLento.parse(Descriptor.bytes(a)), EcLento.mul(bi(b)))?.let { Descriptor.hex(EcLento.ser(it)) } ?: ""
             "sp_send" -> {
                 val (suma, op36) = a.split('|'); val (scan, spend) = b.split(':')
                 val sa = bi(suma); val A = EcLento.ser(EcLento.mul(sa)!!)
