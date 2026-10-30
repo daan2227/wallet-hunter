@@ -2286,7 +2286,8 @@ class WalletActivity : FragmentActivity() {
                 val lista = try { ChainInfo.utxos(addrDe, isTestnet) } catch (e: Exception) { RegistroFallos.anotar("WalletActivity.chipMax: utxos", e); null }
                 val usar: List<org.json.JSONObject>? = when {
                     manual.isNotEmpty() -> manual
-                    lista != null -> lista.filter { it.optBoolean("confirmed", true) }
+                    lista != null -> MonedasCongeladas.utilizables(lista.filter { it.optBoolean("confirmed", true) },
+                        MonedasCongeladas.congeladas(this, isTestnet))
                     else -> null
                 }
                 runOnUiThread {
@@ -2405,20 +2406,26 @@ class WalletActivity : FragmentActivity() {
                         return@Thread
                     }
                     val utxos = JSONArray().also { a -> lista.forEach { a.put(it) } }
+                    MonedasCongeladas.revisar(this, isTestnet, lista)
                     runOnUiThread {
                         tvStatus.text = ""
-                        val items = Array(utxos.length()) { i ->
-                            val u = utxos.getJSONObject(i)
-                            "${Privacidad.monto(this, "%.8f BTC".format(u.getLong("value") / 1e8) + fiatEntre(u.getLong("value")))} · ${u.getString("txid").take(12)}…"
+                        val congeladas = MonedasCongeladas.congeladas(this, isTestnet).toMutableSet()
+                        fun etiqueta(u: org.json.JSONObject): String {
+                            val v = u.getLong("value")
+                            return (if (MonedasCongeladas.clave(u) in congeladas) "❄ " else "") +
+                                "${Privacidad.monto(this, "%.8f BTC".format(v / 1e8) + fiatEntre(v))} · ${u.getString("txid").take(12)}…" +
+                                (if (v <= MonedasCongeladas.POLVO) " · tiny (possible dust)" else "")
                         }
-                        val checked = BooleanArray(items.size) { true }
+                        val items = Array(utxos.length()) { i -> etiqueta(utxos.getJSONObject(i)) }
+                        // Las congeladas empiezan sin marcar: se pueden elegir a mano, pero no se cuelan.
+                        val checked = BooleanArray(items.size) { MonedasCongeladas.clave(utxos.getJSONObject(it)) !in congeladas }
                         // La selección se edita en una copia y sólo pasa a
                         // selectedUtxos con "Use these". Antes se rellenaba con
                         // TODAS al abrir: "Cancel" las dejaba elegidas a mano y el
                         // siguiente envío las gastaba todas, sin el selector.
                         val borrador = ArrayList<org.json.JSONObject>()
-                        for (i in 0 until utxos.length()) borrador.add(utxos.getJSONObject(i))
-                        AlertDialog.Builder(this)
+                        for (i in 0 until utxos.length()) if (checked[i]) borrador.add(utxos.getJSONObject(i))
+                        val dlg = AlertDialog.Builder(this)
                             .setTitle("Which coins are spent?")
                             .setMultiChoiceItems(items, checked) { _, idx, isChecked ->
                                 val u = utxos.getJSONObject(idx)
@@ -2436,6 +2443,19 @@ class WalletActivity : FragmentActivity() {
                             }
                             .setNegativeButton("Cancel", null)
                             .show()
+                        // Pulsación larga: congelar o descongelar (el envío automático no toca las congeladas).
+                        dlg.listView?.setOnItemLongClickListener { _, _, idx, _ ->
+                            val u = utxos.getJSONObject(idx); val k = MonedasCongeladas.clave(u)
+                            val congelar = k !in congeladas
+                            MonedasCongeladas.poner(this, isTestnet, k, congelar)
+                            if (congelar) { congeladas.add(k); borrador.remove(u); checked[idx] = false; dlg.listView.setItemChecked(idx, false) }
+                            else congeladas.remove(k)
+                            items[idx] = etiqueta(u)
+                            (dlg.listView.adapter as? android.widget.BaseAdapter)?.notifyDataSetChanged()
+                            Toast.makeText(this, if (congelar) "Frozen: automatic sends won't use it." else "Unfrozen.", Toast.LENGTH_SHORT).show()
+                            true
+                        }
+                        Toast.makeText(this, "Long-press a coin to freeze or unfreeze it.", Toast.LENGTH_SHORT).show()
                     }
                 } catch (e: Exception) {
                     runOnUiThread { tvStatus.text = motivo(e); tvStatus.setTextColor(RED) }
@@ -2585,11 +2605,19 @@ class WalletActivity : FragmentActivity() {
                     // Sin Coin Control sólo se gastan monedas confirmadas: una sin
                     // confirmar de un tercero puede desaparecer (RBF) y llevarse
                     // con ella este envío después de que el destinatario lo viera.
+                    // Y nunca las congeladas (polvo o apartadas a mano): sólo si se eligen en Coin control.
+                    val polvoNuevo = MonedasCongeladas.revisar(this, isTestnet, lista)
+                    val congeladas = MonedasCongeladas.congeladas(this, isTestnet)
                     val firmes = if (utxosSel.isNotEmpty()) lista
-                                 else lista.filter { it.optBoolean("confirmed", true) }
+                                 else MonedasCongeladas.utilizables(lista.filter { it.optBoolean("confirmed", true) }, congeladas)
+                    if (polvoNuevo > 0) runOnUiThread {
+                        Toast.makeText(this, "$polvoNuevo tiny coin(s) frozen: possible dust attack. Long-press them in Coin control to unfreeze.", Toast.LENGTH_LONG).show()
+                    }
                     if (firmes.isEmpty()) {
+                        val todasCongeladas = lista.isNotEmpty() && lista.all { MonedasCongeladas.clave(it) in congeladas }
                         runOnUiThread {
-                            tvStatus.text = "The coins on that address are not confirmed yet. " +
+                            tvStatus.text = if (todasCongeladas) "All coins on that address are frozen. Unfreeze one in Coin control (long-press), or pick it there."
+                                            else "The coins on that address are not confirmed yet. " +
                                             "Wait for a confirmation, or pick them in Coin control."
                             tvStatus.setTextColor(AppTheme.WARN); btnSend.isEnabled = true
                         }; return@Thread
