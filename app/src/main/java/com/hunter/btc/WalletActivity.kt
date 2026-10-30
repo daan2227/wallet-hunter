@@ -2131,6 +2131,11 @@ class WalletActivity : FragmentActivity() {
         })
         rowCoinCtl.isClickable = true; rowCoinCtl.isFocusable = true
         if (avanzado()) infoCard.addView(rowCoinCtl)
+        // Consolidar: juntar las monedas de la dirección en una con la red barata. Rellena el envío (todas las
+        // monedas no congeladas, a la misma dirección, a la tasa económica, "Max") y se revisa como siempre.
+        val rowConsolidar = infoRow(R.drawable.ic_refresh, TXT_SEC, "Consolidate coins", "Join them while fees are low", null)
+        rowConsolidar.isClickable = true; rowConsolidar.isFocusable = true; rowConsolidar.foreground = Ui.toque()
+        if (avanzado()) { infoCard.addView(sep()); infoCard.addView(rowConsolidar) }
         ll.addView(side(infoCard, bottom = 20))
 
         /* ── TOTAL Y ACCIÓN ────────────────────────────────────────────── */
@@ -2385,6 +2390,45 @@ class WalletActivity : FragmentActivity() {
             }
         }.start()
         paintFees()
+
+        rowConsolidar.setOnClickListener {
+            val claveOrigen = keys.getOrNull(fromIdx) ?: return@setOnClickListener
+            val origen = addresses[claveOrigen] ?: return@setOnClickListener
+            tvStatus.text = "Checking the coins and the fees…"; tvStatus.setTextColor(TXT_SEC)
+            Thread {
+                val lista = try { ChainInfo.utxos(origen, isTestnet) } catch (e: Exception) { null }
+                val f = ChainInfo.fees(isTestnet)
+                runOnUiThread {
+                    if (lista == null || f == null) { tvStatus.text = "Could not check the coins or the fees."; tvStatus.setTextColor(AppTheme.WARN); return@runOnUiThread }
+                    val monedas = MonedasCongeladas.utilizables(lista.filter { it.optBoolean("confirmed", true) }, MonedasCongeladas.congeladas(this, isTestnet))
+                    val tasa = maxOf(1L, f.economy.toLong())
+                    val plan = Consolidacion.evaluar(monedas.map { it.optLong("value") }, tasa,
+                        inputVBytesDe(claveOrigen).toLong(), CoinSelector.outputVBytes(origen).toLong())
+                    tvStatus.text = ""
+                    if (plan == null) { tvStatus.text = "Nothing to consolidate: this address has fewer than two coins worth joining."; tvStatus.setTextColor(TXT_SEC); return@runOnUiThread }
+                    val msg = buildString {
+                        appendLine("Join %d coins into one at %d sat/vB (the cheapest rate now).".format(plan.usar.size, tasa))
+                        appendLine("Fee now: %,d sat".format(plan.comision) + fiatEntre(plan.comision))
+                        appendLine("You keep: %.8f BTC".format(plan.recibe / 1e8))
+                        appendLine()
+                        if (plan.ahorroLuego > 0) appendLine("Spending them later at %d sat/vB would cost %,d sat more than this.".format(Consolidacion.TASA_REFERENCIA, plan.ahorroLuego))
+                        appendLine(if (plan.compensa) "✓ A good moment to consolidate." else "Fees are not low enough now for it to pay off: better wait.")
+                        if (plan.dejar.isNotEmpty()) appendLine("\n%d tiny coin(s) are left out: they are worth less than spending them costs.".format(plan.dejar.size))
+                        append("\nThe coins stay on this same address; you review the send before it goes out.")
+                    }
+                    AlertDialog.Builder(this).setTitle("Consolidate coins").setMessage(msg)
+                        .setNegativeButton("Cancel", null)
+                        .setPositiveButton("Prepare the send") { _, _ ->
+                            val elegidas = monedas.filter { it.optLong("value") in plan.usar }
+                            selectedUtxos.clear(); selectedUtxos.addAll(elegidas)
+                            tvCoinCtl.text = "%d · %.8f BTC".format(elegidas.size, elegidas.sumOf { it.optLong("value") } / 1e8)
+                            etTo.setText(origen)
+                            feeRate = tasa.toInt(); paintFees()
+                            chipMax.performClick()
+                        }.show()
+                }
+            }.start()
+        }
 
         /* ── MONEDAS (Coin Control) ────────────────────────────────────── */
         rowCoinCtl.setOnClickListener {
