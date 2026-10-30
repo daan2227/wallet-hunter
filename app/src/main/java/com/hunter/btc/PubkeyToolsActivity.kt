@@ -92,6 +92,9 @@ class PubkeyToolsActivity : Activity() {
         reg(F, R.drawable.ic_lock, "BIP38", "Encrypt a private key with a password", "bip38 encrypt") { construirBip38() }
         reg(F, R.drawable.ic_lock, "Shamir split", "Split a secret into k-of-n shares", "shamir sss") { construirShamir() }
         reg(F, R.drawable.ic_lock, "XOR split", "Split a key into parts that need each other", "key split xor") { construirSplit() }
+        reg(F, R.drawable.ic_scan, "SeedQR", "Your phrase as a QR for SeedSigner", "seedqr seedsigner qr backup") { construirSeedQr() }
+        reg(F, R.drawable.ic_lock, "Seed XOR", "Split a phrase into decoy phrases (Coldcard)", "seed xor coldcard split backup") { construirSeedXor() }
+        reg(F, R.drawable.ic_lock, "codex32", "Seed with a strong checksum, in k-of-n shares", "codex32 bip93 shamir shares backup") { construirCodex32() }
 
         reg(T, R.drawable.ic_wallet, "Balance & UTXOs", "Any address, read-only", "watch-only utxo") { construirBalance() }
         reg(T, R.drawable.ic_clock, "Fee estimator", "Recommended fee rates now", "fees") { construirFee() }
@@ -335,12 +338,32 @@ class PubkeyToolsActivity : Activity() {
         if (req == REQ_QR_PSBT && res == RESULT_OK)
             data?.getStringExtra(QrScanActivity.EXTRA_TEXTO)?.let { alLeerQr?.invoke(it) }
         if (req == REQ_ELEGIR && res == RESULT_OK) data?.data?.let { alElegir?.invoke(it) }
+        if (req == REQ_QR_SEMILLA && res == RESULT_OK)
+            alLeerSemilla?.invoke(data?.getStringExtra(QrScanActivity.EXTRA_TEXTO) ?: "", data?.getByteArrayExtra(QrScanActivity.EXTRA_SEGMENTOS))
         if (req == REQ_GUARDAR) {
             val u = data?.data; val b = porGuardar
             val ok = res == RESULT_OK && u != null && b != null &&
                 try { contentResolver.openOutputStream(u)?.use { it.write(b) } != null } catch (e: Exception) { RegistroFallos.anotar("Tools.guardar", e); false }
             porGuardar = null; alGuardar?.invoke(ok)
         }
+    }
+
+    private var alLeerSemilla: ((String, ByteArray?) -> Unit)? = null
+    private val REQ_QR_SEMILLA = 74
+
+    /** Elegir una cartera del teléfono y, con el código, su frase (las palabras, sin passphrase ni cuenta). */
+    private fun elegirCartera(alElegir: (String) -> Unit) {
+        val carteras = listOf("" to WalletManager.mainName(this)) + WalletManager.listWallets(this)
+        android.app.AlertDialog.Builder(this).setTitle("Wallet")
+            .setItems(carteras.map { it.second }.toTypedArray()) { _, i ->
+                PinAuthHelper.show(this, autoBiometric = false) { ok ->
+                    if (!ok) return@show
+                    val id = carteras[i].first
+                    val mn = if (id.isEmpty()) WalletManager.loadSeed(this) else WalletManager.loadWalletSeed(this, id)
+                    if (mn == null) Toast.makeText(this, "That wallet has no seed phrase on this phone.", Toast.LENGTH_LONG).show()
+                    else alElegir(Frase.palabras(mn))
+                }
+            }.show()
     }
 
     // ── Archivos (selector del sistema): el archivo no sale del teléfono ──
@@ -937,6 +960,139 @@ class PubkeyToolsActivity : Activity() {
         salVer = salidaBox()
         nota(AppTheme.BLUE, "A valid proof shows control of those coins when it was made; \"unspent right now\" is checked " +
              "against the chain when you press the button. It never proves there are no OTHER coins.")
+    }
+
+    // ── SeedQR, Seed XOR y codex32 ─────────────────────────────────────────
+
+    private fun imagenQr(bmp: android.graphics.Bitmap, pie: String) = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER
+        background = android.graphics.drawable.GradientDrawable().apply { setColor(android.graphics.Color.WHITE); cornerRadius = dp(16).toFloat() }
+        setPadding(dp(16), dp(16), dp(16), dp(10))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+        addView(ImageView(context).apply { setImageBitmap(bmp); adjustViewBounds = true
+            layoutParams = LinearLayout.LayoutParams(dp(220), dp(220)) })
+        addView(TextView(context).apply { text = pie; textSize = AppTheme.SP_CAPTION; setTextColor(android.graphics.Color.DKGRAY); gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) })
+    }
+
+    /** QR binario (modo byte) con [b] tal cual: sin ECI, como lo lee SeedSigner. */
+    private fun qrBinario(b: ByteArray, lado: Int): android.graphics.Bitmap {
+        val pistas = mapOf(com.google.zxing.EncodeHintType.ERROR_CORRECTION to com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.L,
+                           com.google.zxing.EncodeHintType.MARGIN to 1)
+        val m = com.google.zxing.qrcode.QRCodeWriter().encode(String(b, Charsets.ISO_8859_1), com.google.zxing.BarcodeFormat.QR_CODE, lado, lado, pistas)
+        val px = IntArray(m.width * m.height) { if (m.get(it % m.width, it / m.width)) android.graphics.Color.BLACK else android.graphics.Color.WHITE }
+        return android.graphics.Bitmap.createBitmap(px, m.width, m.height, android.graphics.Bitmap.Config.RGB_565)
+    }
+
+    private fun construirSeedQr() {
+        desc("Your seed phrase as a QR, the SeedSigner standard: scan it into SeedSigner (and other devices that read " +
+             "SeedQR) instead of typing the words. Standard is digits you could even copy by hand; Compact is smaller. " +
+             "Anyone who sees this QR can take your money: show it only to your own device.")
+        val et = entrada("12 or 24 words", varias = true)
+        boton("Use a wallet on this phone") { elegirCartera { et.setText(it) } }
+        lateinit var salida: LinearLayout
+        boton("Make SeedQR") {
+            salida.removeAllViews()
+            val f = Bip39.normalize(et.text.toString()).joinToString(" ")
+            val d = SeedQr.estandar(f); val c = SeedQr.compacto(f)
+            if (d == null || c == null) { salida.addView(filaResultado("Not a valid phrase", "SeedQR is for valid 12- or 24-word phrases.")); return@boton }
+            salida.addView(imagenQr(qrBitmap(d, 640), "Standard SeedQR"))
+            salida.addView(imagenQr(qrBinario(c, 640), "Compact SeedQR"))
+            salida.addView(filaResultado("Standard SeedQR digits (4 per word)", d.chunked(4).joinToString(" ")))
+        }
+        boton("Read a SeedQR") {
+            alLeerSemilla = { texto, bytes ->
+                salida.removeAllViews()
+                val f = bytes?.let { SeedQr.deCompacto(it) } ?: SeedQr.deEstandar(texto.filter { it.isDigit() })
+                if (f == null) salida.addView(filaResultado("Not a SeedQR", "It is neither a standard nor a compact SeedQR of a valid phrase."))
+                else { et.setText(f); salida.addView(filaResultado("Seed phrase", f, true)) }
+            }
+            startActivityForResult(android.content.Intent(this, QrScanActivity::class.java), REQ_QR_SEMILLA)
+        }
+        salida = salidaBox()
+        nota(AppTheme.WARN, "A passphrase (25th word), if you use one, is NOT in the QR: you still need it apart.")
+    }
+
+    private fun construirSeedXor() {
+        desc("Split your phrase into 2–4 phrases (Coldcard's Seed XOR). Each part is a normal, valid wallet — a decoy — " +
+             "and only ALL of them together give your real one. Keep them in different places. Compatible with Coldcard.")
+        root.addView(rotulo("Split"))
+        val et = entrada("Your 12 or 24 words", varias = true)
+        boton("Use a wallet on this phone") { elegirCartera { et.setText(it) } }
+        var n = 3
+        root.addView(Ui.segmented(this, listOf("2 parts" to null, "3 parts" to null, "4 parts" to null), initial = 1) { n = it + 2 })
+        lateinit var salPartir: LinearLayout
+        boton("Split") {
+            salPartir.removeAllViews()
+            val partes = SeedXor.partir(Bip39.normalize(et.text.toString()).joinToString(" "), n)
+            if (partes == null) { salPartir.addView(filaResultado("Not a valid phrase", "Use a valid 12- or 24-word phrase.")); return@boton }
+            partes.forEachIndexed { i, p -> salPartir.addView(filaResultado("Part ${i + 1} of $n", p, true)) }
+            salPartir.addView(filaResultado("Check", "Combining the $n parts gives back your phrase: " + if (SeedXor.juntar(partes) == Bip39.normalize(et.text.toString()).joinToString(" ")) "✓" else "✗"))
+        }
+        salPartir = salidaBox()
+        root.addView(rotulo("Combine"))
+        val etP = entrada("All the parts, one per line", varias = true)
+        lateinit var salJuntar: LinearLayout
+        boton("Combine") {
+            salJuntar.removeAllViews()
+            val partes = etP.text.toString().lines().map { Bip39.normalize(it).joinToString(" ") }.filter { it.isNotEmpty() }
+            val r = SeedXor.juntar(partes)
+            salJuntar.addView(if (r == null) filaResultado("Can't combine", "Each line must be a valid phrase, all of the same length (at least 2).")
+                              else filaResultado("Your phrase", r, true))
+        }
+        salJuntar = salidaBox()
+        nota(AppTheme.WARN, "Lose any one part and the real phrase is gone. If you use a passphrase, it is separate.")
+    }
+
+    private fun construirCodex32() {
+        desc("codex32 (BIP93): a BIP32 master seed written with a strong checksum that catches up to 8 wrong characters, " +
+             "optionally split into k-of-n shares you can even check by hand. Note: it holds the seed itself, NOT a " +
+             "12/24-word phrase, so it is for wallets that accept codex32 or an xprv.")
+        root.addView(rotulo("Check or recover"))
+        val et = entrada("A codex32 secret, or k shares — one per line", varias = true)
+        lateinit var sal: LinearLayout
+        fun mostrarSecreto(s: Codex32.Cadena) {
+            val semilla = Codex32.semilla(s)
+            if (semilla == null) { sal.addView(filaResultado("Not a master seed", "Valid codex32, but its payload is not a 16–64 byte seed.")); return }
+            sal.addView(filaResultado("✓ Valid secret (${semilla.size * 8}-bit seed)", s.toString(), true))
+            sal.addView(filaResultado("Master seed (hex)", semilla.joinToString("") { "%02x".format(it) }))
+            sal.addView(filaResultado("Master xprv", Codex32.xprv(semilla)))
+        }
+        boton("Check") {
+            sal.removeAllViews()
+            val lineas = et.text.toString().lines().map { it.trim() }.filter { it.isNotEmpty() }
+            if (lineas.isEmpty()) return@boton
+            val cad = lineas.map { Codex32.leer(it) }
+            cad.forEachIndexed { i, c -> if (c == null) { sal.addView(filaResultado("✗ Line ${i + 1} is not valid codex32", "A typo, a missing character, or mixed upper and lower case.")); return@boton } }
+            val ok = cad.filterNotNull()
+            val secreto = ok.firstOrNull { it.esSecreto }
+            when {
+                secreto != null && ok.size == 1 -> mostrarSecreto(secreto)
+                else -> {
+                    Codex32.problema(ok)?.let { sal.addView(filaResultado("Can't recover yet", it)); return@boton }
+                    mostrarSecreto(Codex32.recuperar(ok)!!)
+                }
+            }
+        }
+        sal = salidaBox()
+        root.addView(rotulo("Split a seed into shares"))
+        val etSemilla = entrada("Master seed in hex (16 or 32 bytes) — empty = a new random one")
+        val etId = entrada("Identifier: 4 characters (e.g. cash)")
+        var k = 2; var n = 3
+        root.addView(Ui.segmented(this, listOf("2 of 3" to null, "3 of 5" to null, "4 of 7" to null)) { k = listOf(2, 3, 4)[it]; n = listOf(3, 5, 7)[it] })
+        lateinit var salPartir: LinearLayout
+        boton("Make shares") {
+            salPartir.removeAllViews()
+            val h = etSemilla.text.toString().trim().lowercase()
+            val semilla = if (h.isEmpty()) ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }
+                          else if (Regex("^([0-9a-f]{32}|[0-9a-f]{64})$").matches(h)) Dnssec.hexa(h) else null
+            val id = etId.text.toString().trim().lowercase()
+            if (semilla == null) { salPartir.addView(filaResultado("Invalid seed", "Use 32 or 64 hex characters, or leave it empty.")); return@boton }
+            if (id.length != 4 || !id.all { it in Codex32.CS }) { salPartir.addView(filaResultado("Invalid identifier", "4 characters from: ${Codex32.CS}")); return@boton }
+            val partes = Codex32.partir(semilla, k, n, id)
+            partes.forEachIndexed { i, p -> salPartir.addView(filaResultado("Share ${i + 1} of $n (any $k recover it)", p.uppercase(), true)) }
+            salPartir.addView(filaResultado("Master xprv of this seed", Codex32.xprv(semilla)))
+        }
+        salPartir = salidaBox()
     }
 
     // ── Explorer ───────────────────────────────────────────────────────────

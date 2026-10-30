@@ -45,6 +45,8 @@ class QrScanActivity : AppCompatActivity() {
         const val EXTRA_ANIMADO = "qr_animado"
         /** Salida en modo animado: los bytes reconstruidos (PSBT o transacción). */
         const val EXTRA_BYTES = "qr_bytes"
+        /** Los bytes de un QR único en modo binario (p. ej. CompactSeedQR), si los tenía. */
+        const val EXTRA_SEGMENTOS = "qr_segmentos"
         private const val REQ_CAMARA = 51
     }
 
@@ -214,8 +216,12 @@ class QrScanActivity : AppCompatActivity() {
             if (res != null && res.text.isNotBlank() && animado && alimentarAnimado(res.text.trim())) return
             if (res != null && res.text.isNotBlank()) {
                 hecho = true
+                // Los bytes tal cual, si el QR era binario (CompactSeedQR): el texto los habría estropeado.
+                val segmentos = (res.resultMetadata?.get(com.google.zxing.ResultMetadataType.BYTE_SEGMENTS) as? List<*>)
+                    ?.filterIsInstance<ByteArray>()?.fold(ByteArray(0)) { a, b -> a + b }
                 runOnUiThread {
-                    setResult(RESULT_OK, Intent().putExtra(EXTRA_TEXTO, res.text.trim()))
+                    setResult(RESULT_OK, Intent().putExtra(EXTRA_TEXTO, res.text.trim())
+                        .apply { if (segmentos != null && segmentos.isNotEmpty()) putExtra(EXTRA_SEGMENTOS, segmentos) })
                     finish()
                 }
             }
