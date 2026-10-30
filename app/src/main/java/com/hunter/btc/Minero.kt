@@ -148,4 +148,66 @@ object Minero {
     fun nonceTexto(n: Int) = "%08x".format(n)
 
     fun cabeceraCon(c: ByteArray, nonce: Int) = c.copyOf(76) + le32(nonce.toLong() and 0xffffffffL)
+
+    // ── Tandas de nonces (nativo o Kotlin) ──
+
+    /**
+     * Prueba [cuantos] nonces desde [desde] (sin pasar de 0xffffffff) con [objetivo] (32 bytes, big-endian).
+     * [salida] = {nonce que cumple o -1, ceros del mejor hash, nonce del mejor}. Devuelve los hashes hechos.
+     * Es la firma de HunterEngine.minar (con las instrucciones SHA-256 del procesador).
+     */
+    fun interface Tanda { fun hacer(cab: ByteArray, desde: Int, cuantos: Int, objetivo: ByteArray, salida: LongArray): Long }
+
+    /** La misma tanda en Kotlin: el respaldo si el motor nativo no pasa la autoprueba. */
+    val tandaKotlin = Tanda { cab, desde, cuantos, objetivo, salida ->
+        val b = Buscador(cab); val obj = BigInteger(1, objetivo)
+        salida[0] = -1; salida[1] = -1; salida[2] = desde.toLong() and 0xffffffffL
+        var n = desde.toLong() and 0xffffffffL; var hechos = 0L
+        while (hechos < cuantos && n <= 0xffffffffL) {
+            b.hash(n.toInt()); hechos++
+            val alta = Integer.reverseBytes(b.h2[7])
+            val z = if (alta != 0) Integer.numberOfLeadingZeros(alta) else b.ceros()
+            if (z > salida[1]) { salida[1] = z.toLong(); salida[2] = n }
+            if (b.cumple(obj)) { salida[0] = n; break }
+            n++
+        }
+        hechos
+    }
+
+    /** Cabecera del bloque 1 con nonce 0, y su nonce: para comprobar que una Tanda mina bien. */
+    const val CABECERA_BLOQUE_1 = "010000006fe28c0ab6f1b372c1a6a246ae63f74f931e8365e15a089c68d6190000000000982051fd1e4ba744bbbe680e1fee14677ba1a3c3540bf7b1cdb606e857233e0e61bc6649ffff001d00000000"
+    const val NONCE_BLOQUE_1 = 2_573_394_689L
+
+    /** ¿La tanda encuentra el nonce del bloque 1 (y no antes) en una ventana a su alrededor? */
+    fun autoprueba(t: Tanda): Boolean = try {
+        val sal = LongArray(3)
+        val desde = (NONCE_BLOQUE_1 - 3000).toInt()
+        val h = t.hacer(Descriptor.bytes(CABECERA_BLOQUE_1), desde, 6000, objetivoBytes(objetivoDeBits(0x1d00ffff)), sal)
+        sal[0] == NONCE_BLOQUE_1 && h == 3001L && sal[1] >= 32
+    } catch (e: Throwable) { false }
+
+    fun objetivoBytes(o: BigInteger): ByteArray {
+        val b = o.toByteArray(); val r = ByteArray(32)
+        val n = minOf(32, b.size); System.arraycopy(b, b.size - n, r, 32 - n, n)
+        return if (o.bitLength() > 256) ByteArray(32) { -1 } else r
+    }
+
+    /** Objetivo de "N ceros delante": 2^(256−N) − 1. */
+    fun objetivoCeros(n: Int): BigInteger = BigInteger.ONE.shiftLeft(256 - n).subtract(BigInteger.ONE)
+
+    /** Dificultad de un hash (como la de un share): objetivo de dificultad 1 / hash. */
+    fun dificultadDe(hashTexto: String): Double {
+        val h = BigInteger(1, Descriptor.bytes(hashTexto)); if (h.signum() == 0) return Double.MAX_VALUE
+        return java.math.BigDecimal(OBJETIVO_1).divide(java.math.BigDecimal(h), java.math.MathContext.DECIMAL64).toDouble()
+    }
+
+    /** Dificultad del hash de [cab] con [nonce]. */
+    fun dificultadDe(cab: ByteArray, nonce: Long): Double = Buscador(cab).run { hash(nonce.toInt()); dificultadDe(hashTexto()) }
+
+    /** 1.23 k, 4.5 M, 150 T… */
+    fun corto(x: Double): String {
+        val u = listOf("" to 1.0, "k" to 1e3, "M" to 1e6, "G" to 1e9, "T" to 1e12, "P" to 1e15, "E" to 1e18)
+        val (s, v) = u.lastOrNull { x >= it.second } ?: u[0]
+        return "%.3g%s".format(java.util.Locale.US, x / v, if (s.isEmpty()) "" else " $s")
+    }
 }

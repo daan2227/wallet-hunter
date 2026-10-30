@@ -241,6 +241,11 @@ object HunterEngine {
      * por grupo", o "" si no hay Vulkan.
      */
     external fun gpuInfo(): String
+    /** Minero: prueba [cuantos] nonces desde [desde] sobre una cabecera de 80 bytes con [objetivo] (32 bytes,
+     *  big-endian). [salida] = {nonce que cumple o -1, ceros del mejor hash, nonce del mejor}. Devuelve los hashes. */
+    external fun minar(cabecera: ByteArray, desde: Int, cuantos: Int, objetivo: ByteArray, salida: LongArray): Long
+    /** ¿El minero usa las instrucciones SHA-256 del procesador? */
+    external fun minarConHw(): Boolean
     /** Usar la GPU como trabajador más de Kangaroo, en la próxima búsqueda. */
     external fun setUsarGpu(v: Boolean)
     /** Qué hace la GPU: off, starting, running on X, error: … */

@@ -44,4 +44,25 @@ class MineroTest {
         assertEquals(4.294967296e17, s, 1e6); assertEquals("13.6 billion years", Minero.escala(s))
         assertEquals(1 - Math.exp(-1.0), Minero.probabilidad(1e6, 1e14, s), 1e-12)
     }
+
+    @Test fun tandaKotlinYAutoprueba() {
+        assertTrue(Minero.autoprueba(Minero.tandaKotlin))
+        // Una tanda que no mina (devuelve siempre "nada") no pasa la autoprueba.
+        assertTrue(!Minero.autoprueba { _, _, n, _, s -> s[0] = -1; s[1] = 0; n.toLong() })
+        // Sin premio: recorre todo y el mejor nonce da esos ceros.
+        val c = Descriptor.bytes(Minero.CABECERA_BLOQUE_1); val s = LongArray(3)
+        assertEquals(5000L, Minero.tandaKotlin.hacer(c, 777, 5000, ByteArray(32), s))
+        val b = Minero.Buscador(c); b.hash(s[2].toInt()); assertEquals(s[1], b.ceros().toLong()); assertEquals(-1L, s[0])
+        // Se para en el último nonce.
+        assertEquals(16L, Minero.tandaKotlin.hacer(c, 0xfffffff0L.toInt(), 100, ByteArray(32), s))
+    }
+
+    @Test fun dificultades() {
+        assertEquals(1.0, Minero.dificultadDe("00000000ffff" + "0".repeat(52)), 1e-12)
+        // El bloque 1: 2^32 · 0xffff / 0x839a8e68… ≈ 1,94 (cumple dificultad 1 de sobra).
+        assertEquals(1.94, Minero.dificultadDe(Descriptor.bytes(Minero.CABECERA_BLOQUE_1), Minero.NONCE_BLOQUE_1), 0.01)
+        assertEquals("1.50 T", Minero.corto(1.5e12)); assertEquals("999", Minero.corto(999.0)); assertEquals("12.3 k", Minero.corto(12_345.0))
+        assertEquals(Minero.OBJETIVO_1, java.math.BigInteger(1, Minero.objetivoBytes(Minero.OBJETIVO_1)))
+        assertEquals(java.math.BigInteger.ONE.shiftLeft(232).subtract(java.math.BigInteger.ONE), Minero.objetivoCeros(24))
+    }
 }

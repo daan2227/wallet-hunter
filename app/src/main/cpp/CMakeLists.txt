@@ -47,6 +47,7 @@ add_library(hunter_jni SHARED hunter_jni.cpp
         bip32.cpp
         recovery_engine.cpp
         gpu/gpu_jni.cpp
+        minero_jni.cpp
         sha512.cpp
         sha512_hw.cpp
 )
