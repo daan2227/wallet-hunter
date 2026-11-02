@@ -29,7 +29,35 @@ object CoreNodo {
     fun datadir(ctx: Context): File = File(ctx.filesDir, "core").also { it.mkdirs() }
     fun cookie(ctx: Context): File = File(File(ctx.filesDir, "core_rpc").also { it.mkdirs() }, ".cookie")
     fun snapshot(ctx: Context): File = File(datadir(ctx), "snapshot.dat")
-    fun rpc(ctx: Context) = CoreRpc(cookie(ctx))
+    fun rpc(ctx: Context) = CoreRpc(cookie(ctx), puertoRpc(ctx)) { vivo(ctx) }
+
+    /** Puertos de este arranque (se eligen al azar en cada uno; ver CoreConfig.elegirPuerto). */
+    fun puertoRpc(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("rpc_port", CoreConfig.RPC_PORT)
+    fun puertoP2p(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getInt("p2p_port", CoreConfig.PUERTO_P2P_LOCAL)
+
+    @Volatile private var vivoCache = false
+    @Volatile private var vivoMs = 0L
+
+    /**
+     * ¿Corre NUESTRO bitcoind? Por su bitcoind.pid y /proc/<pid>/cmdline (sólo se ven los procesos propios).
+     * Sirve también tras recrearse la app, cuando [proceso] se ha perdido pero el nodo sigue. Sólo se recuerda
+     * el «sí» (2 s): un «no» recordado podía caer justo cuando Core acababa de escribir pid y cookie, y CoreRpc
+     * habría borrado la cookie buena. Core escribe el pid antes que la cookie, así que un «no» leído ahora es fiable.
+     */
+    fun vivo(ctx: Context): Boolean {
+        val ahora = System.currentTimeMillis()
+        if (vivoCache && ahora - vivoMs < 2_000) return true
+        val v = try {
+            val pid = File(datadir(ctx), "bitcoind.pid").readText().trim().toInt()
+            CoreConfig.esNuestroBitcoind(File("/proc/$pid/cmdline").readText(), binario(ctx)?.absolutePath)
+        } catch (e: Exception) { false }
+        vivoCache = v; vivoMs = ahora
+        return v
+    }
+
+    private fun puertoLibre(p: Int): Boolean = try {
+        java.net.ServerSocket(p, 1, java.net.InetAddress.getByName("127.0.0.1")).close(); true
+    } catch (e: Exception) { false }
 
     fun ajustes(ctx: Context): CoreConfig.Ajustes {
         val p = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -55,6 +83,9 @@ object CoreNodo {
 
     fun procesoVivo(): Boolean = proceso?.isAlive == true
 
+    /** Nuestro bitcoind corre, sea de este proceso de la app o de uno anterior. */
+    fun corre(ctx: Context): Boolean = procesoVivo() || vivo(ctx)
+
     /** Datos móviles (o cualquier red de pago): el nodo baja gigas. */
     fun redDeDatos(ctx: Context): Boolean {
         val cm = ctx.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
@@ -72,6 +103,9 @@ object CoreNodo {
     @Synchronized
     fun arrancar(ctx: Context): String? {
         if (procesoVivo()) return null
+        // Uno de una vida anterior de la app sigue en marcha: no se le borra la cookie ni se lanza otro.
+        vivoMs = 0L
+        if (vivo(ctx)) return null
         val bin = binario(ctx) ?: return "This build does not include Bitcoin Core."
         if (libre(ctx) < 1L shl 30) return "Less than 1 GB free: free some space first."
         val ajustes = ajustes(ctx)
@@ -80,8 +114,14 @@ object CoreNodo {
             val dir = datadir(ctx)
             val ck = cookie(ctx)
             ck.delete()   // una cookie vieja haría creer que el nodo ya contesta
+            // Puertos nuevos al azar en cada arranque: una app que espere en 8332/8333 no recibe nada.
+            val azar = java.security.SecureRandom()
+            val rpcP = CoreConfig.elegirPuerto(azar) { puertoLibre(it) } ?: CoreConfig.RPC_PORT
+            val p2pP = CoreConfig.elegirPuerto(azar, evitar = rpcP) { puertoLibre(it) } ?: CoreConfig.PUERTO_P2P_LOCAL
+            ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putInt("rpc_port", rpcP).putInt("p2p_port", p2pP).commit()
+            vivoMs = 0L
             val conf = File(dir, "bitcoin.conf")
-            conf.writeText(CoreConfig.conf(ajustes, ck.absolutePath))
+            conf.writeText(CoreConfig.conf(ajustes, ck.absolutePath, rpcP, p2pP))
             val cmd = listOf(bin.absolutePath) + CoreConfig.argumentos(dir.absolutePath, conf.absolutePath)
             paradaPedida = false
             val pb = ProcessBuilder(cmd).directory(dir).redirectErrorStream(true)

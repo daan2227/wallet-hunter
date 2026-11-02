@@ -170,4 +170,33 @@ class CoreConfigTest {
         org.junit.Assert.assertNull(CoreConfig.avisoVersion(""))             // sin datos no se alarma
         org.junit.Assert.assertNull(CoreConfig.avisoVersion("/Knots:30.0/"))
     }
+
+    @Test fun soloNuestroBitcoind() {
+        val bin = "/data/app/~~x/com.hunter.btc-1/lib/arm64/libbitcoind.so"
+        assertTrue(CoreConfig.esNuestroBitcoind("$bin\u0000-datadir=/d\u0000-conf=/d/bitcoin.conf\u0000", bin))
+        // Otro proceso con el mismo pid reutilizado, o uno que se llama parecido: no.
+        assertFalse(CoreConfig.esNuestroBitcoind("/system/bin/app_process\u0000", bin))
+        assertFalse(CoreConfig.esNuestroBitcoind("/sdcard/libbitcoind.so\u0000", bin))
+        assertFalse(CoreConfig.esNuestroBitcoind("", bin))
+        assertFalse(CoreConfig.esNuestroBitcoind("$bin\u0000", null))
+    }
+
+    @Test fun puertosAlAzar() {
+        val r = java.util.Random(7)
+        val p = CoreConfig.elegirPuerto(r) { true }!!
+        assertTrue(p in CoreConfig.PUERTOS_AZAR && p != 8332)
+        val q = CoreConfig.elegirPuerto(r, evitar = p) { it != p }!!
+        assertTrue(q != p)
+        assertNull(CoreConfig.elegirPuerto(r) { false })                       // todos ocupados
+        val c = CoreConfig.conf(CoreConfig.Ajustes(servirFiltros = true), "/x/.cookie", 41234, 51234)
+        assertTrue("rpcport=41234" in c && "bind=127.0.0.1:51234" in c && "rpcbind=127.0.0.1" in c)
+    }
+
+    @Test fun rpcNoMandaLaCookieSiElNodoNoEsNuestro() {
+        val ck = java.io.File.createTempFile("cookie", "").apply { writeText("__cookie__:secreto") }
+        try {
+            CoreRpc(ck, 1) { false }.llamar("getblockcount"); fail()
+        } catch (e: java.io.FileNotFoundException) { }
+        assertFalse(ck.exists())                                              // la cookie vieja se borra
+    }
 }

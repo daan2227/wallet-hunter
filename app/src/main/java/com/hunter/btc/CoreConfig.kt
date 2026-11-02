@@ -56,7 +56,7 @@ object CoreConfig {
     }
 
     /** El contenido de bitcoin.conf. [cookie] es la ruta ABSOLUTA de la cookie de RPC (en el almacén privado). */
-    fun conf(a0: Ajustes, cookie: String): String {
+    fun conf(a0: Ajustes, cookie: String, rpcPort: Int = RPC_PORT, p2pPort: Int = PUERTO_P2P_LOCAL): String {
         val a = a0.normalizado()
         require('\n' !in cookie && '\r' !in cookie) { "ruta con saltos de línea" }
         return buildString {
@@ -67,13 +67,13 @@ object CoreConfig {
             // Sólo se escucha en el propio teléfono, y con cookie (no hay contraseña fija).
             appendLine("rpcbind=127.0.0.1")
             appendLine("rpcallowip=127.0.0.1")
-            appendLine("rpcport=$RPC_PORT")
+            appendLine("rpcport=$rpcPort")
             appendLine("rpccookiefile=$cookie")
             // Un teléfono no abre puertos hacia fuera: sin conexiones entrantes ahorra datos y batería.
             if (a.servirFiltros) {
                 // Servir filtros BIP157 a esta misma app: sólo en el bucle local, nunca hacia fuera.
                 appendLine("listen=1")
-                appendLine("bind=127.0.0.1:$PUERTO_P2P_LOCAL")
+                appendLine("bind=127.0.0.1:$p2pPort")
                 appendLine("listenonion=0")
                 appendLine("blockfilterindex=basic")
                 appendLine("peerblockfilters=1")
@@ -156,6 +156,26 @@ object CoreConfig {
             version = red?.optString("subversion", "") ?: "",
             validandoAtras = atras, progresoAtras = progAtras
         )
+    }
+
+    /**
+     * ¿Es [cmdline] (el de /proc/<pid>/cmdline, separado por NUL) el de nuestro bitcoind ([binario], ruta absoluta)?
+     * En Android cualquier app puede escuchar en 127.0.0.1: antes de mandar la cookie o creer una respuesta hay
+     * que saber que quien está detrás es este proceso, no otro que ocupó el puerto cuando el nodo murió.
+     */
+    fun esNuestroBitcoind(cmdline: String, binario: String?): Boolean =
+        binario != null && cmdline.split('\u0000').firstOrNull() == binario
+
+    /** Puertos que se eligen al azar en cada arranque (no 8332/8333, que cualquiera sabe dónde esperar). */
+    val PUERTOS_AZAR = 20_000..59_999
+
+    /** Un puerto al azar de [PUERTOS_AZAR] que [libre] dé por libre, distinto de [evitar]; null tras muchos intentos. */
+    fun elegirPuerto(azar: java.util.Random, evitar: Int = -1, libre: (Int) -> Boolean): Int? {
+        repeat(64) {
+            val p = PUERTOS_AZAR.first + azar.nextInt(PUERTOS_AZAR.last - PUERTOS_AZAR.first + 1)
+            if (p != evitar && libre(p)) return p
+        }
+        return null
     }
 
     /** La primera versión de Core con los arreglos de seguridad que conocemos (la 32.0 nunca se publicó del todo). */

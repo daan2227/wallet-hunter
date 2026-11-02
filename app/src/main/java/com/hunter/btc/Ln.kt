@@ -51,8 +51,10 @@ object Ln {
         val red = if (testnet) "testnet" else "mainnet"
         val dir = java.io.File(ctx.filesDir, "ln/$red").apply { mkdirs() }.path
         val (f0, url) = fuente(ctx)
-        val cookie = if (f0 == "core") CoreNodo.cookie(ctx).takeIf { it.exists() }?.readText() else null
-        val cadena = MotorLn.cadena(f0, url, testnet, cookie, CoreConfig.RPC_PORT)
+        // Sólo con nuestro bitcoind en marcha: una cookie de un nodo muerto llevaría a LDK a creerse lo que
+        // contestara cualquier app en ese puerto (y un nodo Lightning al que le esconden la cadena pierde fondos).
+        val cookie = if (f0 == "core" && CoreNodo.vivo(ctx)) CoreNodo.cookie(ctx).takeIf { it.exists() }?.readText() else null
+        val cadena = MotorLn.cadena(f0, url, testnet, cookie, CoreNodo.puertoRpc(ctx))
         val rgs = if (testnet) "https://rapidsync.lightningdevkit.org/testnet/snapshot" else "https://rapidsync.lightningdevkit.org/snapshot"
         val m = MotorLn.construir(dir, if (testnet) Network.TESTNET else Network.BITCOIN, f, cadena, rgs, lsp = lsp(ctx))
         m.arrancar()

@@ -14,8 +14,12 @@ class CoreRpcError(val code: Int, mensaje: String) : Exception(mensaje) {
 /**
  * RPC contra el bitcoind del propio teléfono, por 127.0.0.1 y con la cookie que escribe el nodo
  * (rpccookiefile, en el almacén privado de la app): no hay contraseña guardada en ninguna parte.
+ *
+ * [vivo] dice si el que escucha es de verdad nuestro bitcoind. Si murió de golpe (Android lo mata por
+ * memoria), la cookie se queda y el puerto queda libre para cualquier app: sin esta comprobación se le
+ * mandaría la cookie y se creería lo que contestara.
  */
-class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC_PORT) {
+class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC_PORT, private val vivo: (() -> Boolean)? = null) {
 
     companion object {
         /** Saca `result` de una respuesta JSON-RPC o lanza [CoreRpcError]. Público para probarlo. */
@@ -49,6 +53,10 @@ class CoreRpc(private val cookie: File, private val puerto: Int = CoreConfig.RPC
     private fun enviar(cuerpo: String, lecturaMs: Int): String {
         // Sin cookie no hay nodo en marcha (Core la borra al parar y la escribe al arrancar). Antes esto se
         // lanzaba como «-28, cargando el índice», y la pantalla enseñaba «Starting…» con el nodo parado.
+        if (vivo != null && !vivo.invoke()) {
+            cookie.delete()   // de un nodo que ya no está: que nadie la use
+            throw java.io.FileNotFoundException("the node is not running")
+        }
         val ck = try { cookie.readText() } catch (e: Exception) {
             throw java.io.FileNotFoundException("no cookie: the node is not running")
         }

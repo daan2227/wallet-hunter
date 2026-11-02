@@ -325,7 +325,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     val nota = texto(cAj, "", AppTheme.TXT_MUTED, AppTheme.SP_CAPTION)
     fun guardar(n: CoreConfig.Ajustes) {
         aj = n.normalizado(); CoreNodo.guardarAjustes(act, aj)
-        nota.text = if (CoreNodo.procesoVivo() || CoreService.activo) "Saved. Restart the node to apply." else "Saved."
+        nota.text = if (CoreService.activo || CoreNodo.corre(act)) "Saved. Restart the node to apply." else "Saved."
     }
     texto(cAj, "Space for recent blocks", AppTheme.TXT_PRI)
     cAj.addView(Ui.segmented(this, listOf("0.5 GB" to null, "2 GB" to null, "5 GB" to null, "10 GB" to null, "20 GB" to null, "50 GB" to null),
@@ -420,7 +420,8 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
     var arranquePedido = 0L         // cuándo se pulsó Start: evita que el botón parpadee a «Start» antes de que el servicio arranque
     val refrescando = AtomicBoolean(false)
 
-    fun enMarcha() = CoreService.activo || CoreNodo.procesoVivo()
+    // También uno de una vida anterior de la app (su pid y /proc lo dicen), no sólo el de este proceso.
+    fun enMarcha() = CoreService.activo || CoreNodo.corre(act)
 
     fun fijarOcupado(si: Boolean, texto: String = "") {
         ocupado = si
