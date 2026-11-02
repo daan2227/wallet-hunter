@@ -11,16 +11,23 @@ name: Compilar Bitcoin Core (Android arm64)
 # Sin monedero, sin interfaz, sin ZMQ, sin tests: sólo el nodo. La cartera de la app
 # sigue siendo la de la app; el nodo valida la cadena.
 #
-# AVISO: el código fuente se obtiene por etiqueta de git y no se verifica aquí la firma
-# de los desarrolladores. El hash del commit queda en el registro de la ejecución; quien
-# quiera comprobarlo debe cotejarlo con el de la etiqueta firmada en bitcoin/bitcoin.
+# El código fuente se obtiene por etiqueta y se exige que apunte al commit fijado aquí (COMMIT):
+# si la etiqueta se moviera o se pidiera otra sin su commit, la compilación falla en vez de
+# empaquetar otro binario. El commit de cada etiqueta firmada se coteja a mano con bitcoin/bitcoin
+# antes de cambiarlo (git ls-remote --tags https://github.com/bitcoin/bitcoin.git 'vX.Y^{}').
+#
+# v32.1: la 32.0 se etiquetó pero nunca se publicó del todo (sus notas lo dicen); 32.1 es la
+# primera estable de la serie. Mismas alturas de assumeutxo que v32.0rc4 (CoreConfig.SNAPSHOTS_ACEPTADOS).
 
 on:
   workflow_dispatch:
     inputs:
       etiqueta:
         description: 'Etiqueta de Bitcoin Core'
-        default: 'v32.0rc4'
+        default: 'v32.1'
+      commit:
+        description: 'Commit al que debe apuntar la etiqueta (obligatorio si se cambia la etiqueta)'
+        default: 'f0de87f040621468b956f01f526a43a010310501'
   push:
     branches: [ 'claude/**' ]
     paths: [ '.github/workflows/core.yml' ]
@@ -29,7 +36,8 @@ permissions:
   contents: write
 
 env:
-  ETIQUETA: ${{ github.event.inputs.etiqueta || 'v32.0rc4' }}
+  ETIQUETA: ${{ github.event.inputs.etiqueta || 'v32.1' }}
+  COMMIT: ${{ github.event.inputs.commit || 'f0de87f040621468b956f01f526a43a010310501' }}
   API: 28
 
 jobs:
@@ -46,7 +54,12 @@ jobs:
     - name: Código fuente de Bitcoin Core
       run: |
         git clone --depth 1 --branch "$ETIQUETA" https://github.com/bitcoin/bitcoin.git core
-        echo "Commit de $ETIQUETA: $(git -C core rev-parse HEAD)"
+        REAL=$(git -C core rev-parse HEAD)
+        echo "Commit de $ETIQUETA: $REAL (esperado $COMMIT)"
+        if [ "$REAL" != "$COMMIT" ]; then
+          echo "::error::$ETIQUETA apunta a $REAL, no al commit fijado $COMMIT: no se compila."
+          exit 1
+        fi
 
     - name: NDK
       run: |

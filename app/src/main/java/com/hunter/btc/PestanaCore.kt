@@ -513,6 +513,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
             if (est.validandoAtras)
                 tvAtras.text = "Checking the history in the background: ${"%.1f".format(est.progresoAtras * 100)} %. " +
                     "The wallet data is usable already; this only re-verifies the past."
+            CoreConfig.avisoVersion(est.version)?.let { tvAtras.text = (tvAtras.text.toString() + "\n⚠ " + it).trim() }
         } else {
             barraSync.visibility = View.GONE
             vAltura.text = "–"; vPares.text = "–"

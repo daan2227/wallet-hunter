@@ -160,4 +160,14 @@ class CoreConfigTest {
     @Test fun bytesLegibles() {
         assertEquals("512 B", CoreConfig.bytes(512)); assertEquals("1.50 GB", CoreConfig.bytes(1610612736L))
     }
+
+    @Test fun avisoDeVersionAntigua() {
+        // v32.0rc4 se presenta como 32.0.0: la 32.0 nunca se publicó del todo y 32.1 trae los arreglos.
+        org.junit.Assert.assertNotNull(CoreConfig.avisoVersion("/Satoshi:32.0.0/"))
+        org.junit.Assert.assertNotNull(CoreConfig.avisoVersion("/Satoshi:29.1.0/"))
+        org.junit.Assert.assertNull(CoreConfig.avisoVersion("/Satoshi:32.1.0/"))
+        org.junit.Assert.assertNull(CoreConfig.avisoVersion("/Satoshi:33.0.0/"))
+        org.junit.Assert.assertNull(CoreConfig.avisoVersion(""))             // sin datos no se alarma
+        org.junit.Assert.assertNull(CoreConfig.avisoVersion("/Knots:30.0/"))
+    }
 }

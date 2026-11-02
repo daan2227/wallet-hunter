@@ -158,6 +158,22 @@ object CoreConfig {
         )
     }
 
+    /** La primera versión de Core con los arreglos de seguridad que conocemos (la 32.0 nunca se publicó del todo). */
+    val VERSION_SEGURA = Triple(32, 1, 0)
+
+    /**
+     * Si el nodo (su subversion, «/Satoshi:32.0.0/») es anterior a [VERSION_SEGURA], el aviso que hay que dar;
+     * null si está al día o no se sabe leer (no se alarma por lo que no se entiende).
+     */
+    fun avisoVersion(subversion: String): String? {
+        val m = Regex("Satoshi:(\\d+)\\.(\\d+)(?:\\.(\\d+))?").find(subversion) ?: return null
+        val v = Triple(m.groupValues[1].toInt(), m.groupValues[2].toInt(), m.groupValues[3].toIntOrNull() ?: 0)
+        val (a, b, c) = VERSION_SEGURA
+        val vieja = compareValuesBy(v, VERSION_SEGURA, { it.first }, { it.second }, { it.third }) < 0
+        return if (vieja) "This node is Bitcoin Core ${v.first}.${v.second}.${v.third}: versions before $a.$b.$c miss " +
+            "security fixes. Update the app to get the newer node." else null
+    }
+
     // ── Progreso de loadtxoutset, leído del debug.log ────────────────────────
     //
     // loadtxoutset es una sola llamada RPC que no devuelve nada hasta el final y, mientras corre, tiene
@@ -377,7 +393,7 @@ object CoreConfig {
     }
 
     /**
-     * Bloques en los que Core (v32.0rc4) acepta un snapshot de la red principal: su hash va fijado en
+     * Bloques en los que Core (v32.1, igual que v32.0rc4) acepta un snapshot de la red principal: su hash va fijado en
      * chainparams.cpp. Hash del bloque base -> altura. Con otra versión de Core la lista cambia (v29.0 sólo
      * trae 840000 y 880000; v31.1, hasta 935000), así que hay que revisarla al cambiar la etiqueta de core.yml.
      */
