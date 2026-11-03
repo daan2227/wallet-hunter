@@ -638,6 +638,8 @@ class MineroActivity : AppCompatActivity() {
         btPractica.text = if (m == "practica") "Stop" else "Mine a practice block"
         btSolo.text = if (m == "solo") "Stop" else "Start solo mining"
         btSoloArriba.text = if (m == "solo") "Stop" else "Start solo mining"
+        // Un solo "Stop" a la vista: el de arriba. El de la lotería, abajo, se oculta mientras mina.
+        btSolo.visibility = if (m == "solo") android.view.View.GONE else android.view.View.VISIBLE
         h.post(tic)
     }
 
@@ -655,6 +657,7 @@ class MineroActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btPractica.text = "Mine a practice block"; btSolo.text = "Start solo mining"
         btSoloArriba.text = "Start solo mining"
+        btSolo.visibility = android.view.View.VISIBLE
         anotar(motivo)
         pintarEstado()
     }
@@ -675,17 +678,15 @@ class MineroActivity : AppCompatActivity() {
         val st = stratum
         pintarHeroe(hr, seg)
         tvEstado.text = buildString {
-            append(if (minando) (if (modo == "solo") "Solo mining" else "Practice") else "Idle")
-            append(" · engine: $motorTexto\n")
-            if (minando || hashes.get() > 0) {
-                append("${hs(hr)} · ${Minero.corto(hashes.get().toDouble())} hashes · %.0f s".format(java.util.Locale.US, seg))
-                if (gpuLista) append("\nGPU: ${hs(hashesGpu.get() / seg)} of that")
-                if (caliente) append(" · warm: $hilosActivos of $nHilos threads" + if (gpuLista) ", GPU paused" else "")
-                append("\nBest hash this run: $mejor zero bits")
-                if (mejorDif > 0) append(" (difficulty ${Minero.corto(mejorDif)})")
-            }
+            // Sólo lo que no dicen ya la cifra y las filas de arriba (velocidad, GPU, shares, mejor
+            // dificultad): el motor, el total de hashes, el calor y lo que pide el pool y la red.
+            append("Engine: $motorTexto")
+            if (minando || hashes.get() > 0)
+                append("\n${Minero.corto(hashes.get().toDouble())} hashes in %.0f s".format(java.util.Locale.US, seg) +
+                       " · best hash $mejor zero bits")
+            if (caliente) append("\nWarm: $hilosActivos of $nHilos threads" + if (gpuLista) ", GPU paused" else "")
             if (st != null) {
-                append("\nPool difficulty ${Minero.corto(st.dificultad)} · shares ${st.aceptadas} accepted, ${st.rechazadas} rejected")
+                append("\nPool difficulty ${Minero.corto(st.dificultad)}")
                 if (hr > 0) {
                     // Cada cuánto, de media, sale un share a la dificultad que ha puesto el pool.
                     val cada = Minero.segundosPorBloque(hr, st.dificultad)
