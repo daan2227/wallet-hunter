@@ -263,6 +263,7 @@ object WeakController {
         root.addView(cabRango)
 
         val vSb = SeekBar(a).apply {
+            Ui.tintarDeslizador(this)
             max = BITS_MAX - BITS_MIN
             progress = (if (corriendo) bits else BITS_SUG) - BITS_MIN
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
@@ -318,6 +319,7 @@ object WeakController {
             cab.addView(tv)
             root.addView(cab)
             val sb = SeekBar(a).apply {
+                Ui.tintarDeslizador(this)
                 max = maxProg; progress = prog0
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -382,9 +384,11 @@ object WeakController {
         // determinista todas las claves públicas cargadas en rangos pequeños.
         val vBsgs = Button(a).apply {
             text = if (bsgsBatchOn) "Stop BSGS" else BSGS_LABEL; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.ON_ACCENT); typeface = AppTheme.bold(context)
+            // Secundario: un solo botón de oro por pantalla (el de la auditoría, encima).
+            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context)
             isAllCaps = false; stateListAnimator = null
-            background = Ui.botonAccento(context, AppTheme.R_INNER, AppTheme.ACCENT)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_KEY, context)
+            foreground = Ui.toque()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
                 .apply { topMargin = dp(10) }
             setOnClickListener { Ui.pulso(this); solveBsgsBatch() }
@@ -459,6 +463,8 @@ object WeakController {
         }
         chart = vChart
         vStats.addView(vChart)
+        // La gráfica sigue recibiendo puntos pero no se enseña: la cifra y su pico ya lo dicen.
+        vChart.visibility = android.view.View.GONE
 
         fun mini(label: String, tv: TextView) = LinearLayout(a).apply {
             // Fila de dato (Security print), no pastilla.
@@ -504,7 +510,8 @@ object WeakController {
         barraProg = vBarra
         vStats.addView(vBarra)
         if (corriendo) actualizarBarra()
-        root.addView(vStats)
+        // Arriba, justo bajo el título: la cifra es lo primero (antes quedaba tres pantallas abajo).
+        root.addView(vStats, 1.coerceAtMost(root.childCount))
 
         // Estado vacío: cuando aún no se ha auditado nada, en vez de dejar un
         // hueco bajo el botón. Al arrancar se oculta y aparece la tarjeta de

@@ -351,6 +351,7 @@ class MineroActivity : AppCompatActivity() {
             setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.body(context)
             minimumHeight = dp(48)
             isChecked = gpuLista
+            Ui.tintarInterruptor(this)
             setOnClickListener {
                 if (minando) Toast.makeText(this@MineroActivity, "Stop mining first.", Toast.LENGTH_SHORT).show()
                 else if (gpuLista) apagarGpu() else encenderGpu(true)

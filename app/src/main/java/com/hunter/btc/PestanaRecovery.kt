@@ -85,8 +85,18 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(20) }
+        ).apply { bottomMargin = dp(8) }
     })
+    // Security print: el coste del intento (tiempo y combinaciones) va arriba, en grande sobre el
+    // rosetón; se rellena más abajo, donde se crean sus vistas.
+    val cabezaRecovery = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(16) }
+    }
+    recoveryPage.addView(cabezaRecovery)
 
     // ── LAS PALABRAS ──────────────────────────────────────────────────
     //
@@ -116,22 +126,27 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     val tvRecoveryInfo = TextView(this).apply {
         text = "Tap a box to type it"
         textSize = AppTheme.SP_BODY
-        setTextColor(AppTheme.TXT_PRI)
-        typeface = AppTheme.medium(context)
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.body(context)
+        gravity = android.view.Gravity.CENTER
+        setPadding(0, dp(8), 0, 0)
     }
     val tvRecoveryEta = TextView(this).apply {
-        text = ""
-        textSize = AppTheme.SP_TITLE
+        text = "—"
+        textSize = 56f
         setTextColor(AppTheme.ACCENT)
-        typeface = AppTheme.title(context)
+        typeface = AppTheme.display(context)
+        letterSpacing = -0.03f
+        includeFontPadding = false
+        gravity = android.view.Gravity.CENTER
     }
     val tvRecoveryCombos = TextView(this).apply {
         text = "Some words are still missing"
-        textSize = AppTheme.SP_MICRO
+        textSize = AppTheme.SP_CAPTION
         setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)
-        setPadding(0, dp(6), 0, 0)
+        gravity = android.view.Gravity.CENTER
+        setPadding(0, dp(4), 0, 0)
     }
 
     lateinit var pintarPalabras: () -> Unit
@@ -143,13 +158,13 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
         when {
             huecos == 0 && puestas == palabras.size -> {
                 tvRecoveryInfo.text = "None missing"
-                tvRecoveryEta.text = ""
+                tvRecoveryEta.text = "—"
                 tvRecoveryCombos.text = "With no gaps there is nothing to try: " +
                                         "mark the ones you do not remember."
             }
             huecos == palabras.size -> {
                 tvRecoveryInfo.text = "Tap a box to type it"
-                tvRecoveryEta.text = ""
+                tvRecoveryEta.text = "—"
                 tvRecoveryCombos.text = "Type at least the ones you remember."
             }
             else -> {
@@ -286,17 +301,15 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     recoveryPage.addView(wordGrid)
 
     // ── LO QUE CUESTA EL INTENTO ──────────────────────────────────────
-    val costeCard = rCard()
-    val costeHead = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        isBaselineAligned = true
+    val costeCol = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = android.view.Gravity.CENTER_HORIZONTAL
+        addView(tvRecoveryEta); addView(tvRecoveryInfo); addView(tvRecoveryCombos)
     }
-    costeHead.addView(tvRecoveryInfo); costeHead.addView(tvRecoveryEta)
-    costeCard.addView(costeHead)
-    costeCard.addView(tvRecoveryCombos)
     refrescarCoste()
-
-    recoveryPage.addView(costeCard)
+    var probando = false
+    cabezaRecovery.addView(Ui.heroe(this, Roseton(this) { probando }, costeCol, alto = 210))
+    cabezaRecovery.addView(Ui.microimpresion(this, "bip39  ·  2048 words  ·  checksum filter  ·  pbkdf2-hmac-sha512"))
 
     // ── TARGET ADDRESS CARD ───────────────────────────────────────────
     val targetCard = rCard()
@@ -357,6 +370,18 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     }
     progressCard.addView(pbRecovery)
     progressCard.addView(tvRecoveryStatus)
+    // Sin nada que enseñar, la tarjeta no se ve (antes salía como un recuadro blanco vacío). Y el
+    // rosetón gira mientras se prueban combinaciones.
+    progressCard.visibility = android.view.View.GONE
+    tvRecoveryStatus.addTextChangedListener(object : android.text.TextWatcher {
+        override fun afterTextChanged(e: android.text.Editable?) {
+            val t = e?.toString() ?: ""
+            probando = t.startsWith("Trying") || t.startsWith("Starting")
+            if (t.isNotEmpty()) progressCard.visibility = android.view.View.VISIBLE
+        }
+        override fun beforeTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+        override fun onTextChanged(a: CharSequence?, b: Int, c: Int, d: Int) {}
+    })
 
     val tvRecoveryResult = TextView(this).apply {
         // Un resultado encontrado SÍ merece el acento: es el hallazgo.

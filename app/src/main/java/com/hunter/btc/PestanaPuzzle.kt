@@ -939,6 +939,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     val swGpu = android.widget.Switch(this).apply {
         isChecked = prefs.getBoolean("usar_gpu", false)
         isEnabled = false
+        Ui.tintarInterruptor(this)
     }
     gpuSwitch = swGpu   // el bloqueo en cascada lo salta y lo gestiona aparte
     filaGpu.addView(swGpu)

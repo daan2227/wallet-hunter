@@ -666,4 +666,21 @@ object Ui {
         }
         return punto to texto
     }
+
+    /** Interruptor en el oro del tema (sin esto salía el verde azulado de serie de Android). */
+    fun tintarInterruptor(sw: android.widget.CompoundButton) {
+        val estados = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        if (sw is android.widget.Switch) {
+            sw.thumbTintList = android.content.res.ColorStateList(estados, intArrayOf(AppTheme.ACCENT, AppTheme.TXT_MUTED))
+            sw.trackTintList = android.content.res.ColorStateList(estados,
+                intArrayOf((AppTheme.ACCENT and 0x00FFFFFF) or (0x66 shl 24), (AppTheme.TXT_MUTED and 0x00FFFFFF) or (0x55 shl 24)))
+        }
+    }
+
+    /** Deslizador visible en los dos temas: pista gris, avance y pulgar en oro. */
+    fun tintarDeslizador(sb: android.widget.SeekBar) {
+        sb.progressTintList = android.content.res.ColorStateList.valueOf(AppTheme.ACCENT)
+        sb.thumbTintList = android.content.res.ColorStateList.valueOf(AppTheme.ACCENT)
+        sb.progressBackgroundTintList = android.content.res.ColorStateList.valueOf(AppTheme.TXT_MUTED)
+    }
 }

@@ -667,6 +667,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         migrarTablaPuzzles()
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         window.statusBarColor = BG_DEEP
+        // Tema de día: iconos oscuros en la barra de estado (blancos sobre el fondo claro no se veían).
+        if (!AppTheme.isDark) {
+            window.decorView.systemUiVisibility =
+                window.decorView.systemUiVisibility or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+        }
         s = Strings.EN
         csvPath = prefs.getString("csvPath", "") ?: ""
         // Restaurar el modo de segundo plano (techo de CPU) guardado.
@@ -1562,6 +1567,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         val uiRunning = isNowRunning && !HunterEngine.isStopping()
         syncToggleButton(btnToggle, uiRunning && !puzzleMode, s.start)
         syncToggleButton(btnPuzzleToggle, uiRunning && puzzleMode, "Start puzzle")
+        // Un solo botón de oro: con el Kangaroo en marcha manda "Stop Kangaroo" y "Start puzzle" se oculta.
+        val kgCorre = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+        btnPuzzleToggle?.visibility = if (kgCorre) android.view.View.GONE else android.view.View.VISIBLE
         if (!uiRunning) activeToggleBtn = null
 
         // Checkpoint puzzle - guardar cada ~30 seg (cada ~37 ciclos de 800ms)

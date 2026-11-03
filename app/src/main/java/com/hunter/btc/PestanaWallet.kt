@@ -122,7 +122,10 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     })
     heroCard.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
         FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
-    page.addView(Ui.microimpresion(this, "finds vault  ·  aes-gcm  ·  encrypted on this phone  ·  mempool.space"))
+    page.addView(Ui.microimpresion(this, "finds vault  ·  aes-gcm  ·  encrypted on this phone  ·  mempool.space").apply {
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(20) }
+    })
     // Ocultar saldos: el mismo ajuste que en la cartera. Dentro del baúl
     // no se aplica —ver Privacidad—.
     filaRotulo.addView(Privacidad.ojo(this) {
@@ -211,32 +214,37 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     fun bigCard(icon: Int, label: String, sub: String, primary: Boolean,
                 last: Boolean, click: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = Ui.cardBg(AppTheme.R_CARD,
-            if (primary) AppTheme.ACCENT else AppTheme.BG_CARD, context)
-        setPadding(dp(18), dp(16), dp(18), dp(16))
-        isClickable = true; isFocusable = true
+        // Botón grande, no tarjeta: oro liso la principal, contorno fino la otra (Security print).
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(if (primary) AppTheme.ACCENT else android.graphics.Color.TRANSPARENT)
+            cornerRadius = dp(AppTheme.R_KEY).toFloat()
+            if (!primary) setStroke(dp(1), AppTheme.BORDER_C)
+        }
+        setPadding(dp(18), dp(14), dp(18), dp(14))
+        isClickable = true; isFocusable = true; foreground = Ui.toque()
         setOnClickListener { click() }
         layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             .apply { if (!last) marginEnd = dp(AppTheme.GAP) }
         addView(android.widget.ImageView(context).apply {
             setImageResource(icon)
-            setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.ACCENT)
+            setColorFilter(if (primary) AppTheme.ON_ACCENT else AppTheme.ACCENT)
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
         })
         addView(TextView(context).apply {
             text = label
             textSize = AppTheme.SP_BODY
-            setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+            setTextColor(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
             typeface = AppTheme.bold(context)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(24) }
+            ).apply { topMargin = dp(12) }
         })
         addView(TextView(context).apply {
             text = sub
             textSize = AppTheme.SP_MICRO
-            setTextColor(if (primary) 0xA8000000.toInt() else AppTheme.TXT_SEC)
+            // ON_ACCENT, no negro al 66 %: marrón sobre oro no se leía en el tema de día.
+            setTextColor(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, dp(2), 0, 0)
         })

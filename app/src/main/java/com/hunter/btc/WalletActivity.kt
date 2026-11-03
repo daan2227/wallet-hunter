@@ -987,20 +987,20 @@ class WalletActivity : FragmentActivity() {
                 // como doce cosas distintas.
                 ll.addView(Ui.sectionLabel(this, "Addresses", topGap = 24))
                 val lista = LinearLayout(this).apply {
-                    orientation = LinearLayout.VERTICAL; background = tarjeta()
-                    setPadding(0, dp(4), 0, dp(4))
+                    // Sin caja: las filas ya llevan su filete entre ellas.
+                    orientation = LinearLayout.VERTICAL
                 }
                 rows.forEachIndexed { n, (lbl, addr, bal, src) ->
                     if (n > 0) lista.addView(View(this).apply {
                         setBackgroundColor((TXT_PRI and 0x00FFFFFF) or (0x14 shl 24))
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
-                            marginStart = dp(16); marginEnd = dp(16)
+                            marginStart = 0; marginEnd = 0
                         }
                     })
                     val fila = LinearLayout(this).apply {
                         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
                         minimumHeight = dp(64)
-                        setPadding(dp(16), dp(12), dp(16), dp(12))
+                        setPadding(0, dp(12), 0, dp(12))
                         if (lbl != "Error" && addr.isNotEmpty()) {   // la fila de error no lleva dirección
                             isClickable = true; isFocusable = true; foreground = Ui.toque()
                             contentDescription = "$lbl, $addr. Double tap to copy"
@@ -1877,7 +1877,7 @@ class WalletActivity : FragmentActivity() {
         // Un EditText sin fondo: la cifra se escribe donde se lee, sin un campo
         // aparte que la repita más pequeña.
         val etAmt = EditText(this).apply {
-            hint = "0,00000000"
+            hint = "0.00000000"
             textSize = 40f
             setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.display(context)
@@ -4208,7 +4208,9 @@ class WalletActivity : FragmentActivity() {
         val (cadenaLn, canalesLn) = m?.let { try { it.saldos() } catch (e: Exception) { null } } ?: (0L to 0L)
         return LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            background = cardBg(); setPadding(dp(16), dp(14), dp(16), dp(14))
+            // Fila con filetes, no tarjeta (Security print).
+            background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
+            setPadding(0, dp(14), 0, dp(14))
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(12) }
             isClickable = true; foreground = Ui.toque(); setOnClickListener { menuLightning() }
             addView(Ui.icon(this@WalletActivity, R.drawable.ic_bolt, 20, AppTheme.ACCENT).apply {
