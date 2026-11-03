@@ -341,7 +341,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     }
 
     val app = grupo("App")
-    /* Tema: Dark, Light, Midnight (azul-tinta) y Auto (día/noche por hora).
+    /* Tema: Vault Gold (oscuro) y su versión de día (claro).
      *
      * Un toque abre el selector; al elegir se guarda el modo y se recrea la
      * pantalla, porque los colores se leen al construir cada vista y las que ya
@@ -349,23 +349,11 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
      * onSaveInstanceState, así que se vuelve a More. */
     fun nombreModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.OSCURO -> "Vault Gold"
-        AppTheme.Modo.CLARO -> "Light"
-        AppTheme.Modo.MENTA -> "Mint"
-        AppTheme.Modo.MEDIANOCHE -> "Midnight"
-        AppTheme.Modo.NEON -> "Neon"
-        AppTheme.Modo.EXCHANGE -> "Exchange"
-        AppTheme.Modo.SYNTHWAVE -> "Synthwave"
-        AppTheme.Modo.AUTO -> "Auto · day / night"
+        AppTheme.Modo.CLARO -> "Vault Gold · Day"
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
-        AppTheme.Modo.OSCURO -> "Dark slate · Bitcoin gold (default)"
-        AppTheme.Modo.MENTA -> "The previous dark theme · mint"
-        AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
-        AppTheme.Modo.NEON -> "Cyberpunk cyan"
-        AppTheme.Modo.EXCHANGE -> "Trading terminal · candles"
-        AppTheme.Modo.SYNTHWAVE -> "Retro magenta"
-        AppTheme.Modo.AUTO -> "Follows system · dark at night"
-        else -> null
+        AppTheme.Modo.OSCURO -> "Dark slate · Bitcoin gold"
+        AppTheme.Modo.CLARO -> "Light version for daytime"
     }
     fila(app, R.drawable.ic_gear, "Appearance", null, nombreModo(AppTheme.modo)) {
         val cont = LinearLayout(this).apply {
@@ -392,16 +380,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
             }
-            val preview: android.view.View = if (m == AppTheme.Modo.EXCHANGE) {
-                val mu = AppTheme.muestra(AppTheme.Modo.EXCHANGE)
-                // Se anima también en la miniatura; al cerrar el diálogo la vista
-                // se desengancha y la animación se para sola.
-                Velas(this).apply { colores(mu.bg, mu.accent, AppTheme.RED); animar(true) }
-            } else MuestraTema(this).apply {
-                if (m == AppTheme.Modo.AUTO)
-                    partida(AppTheme.muestra(AppTheme.Modo.CLARO), AppTheme.muestra(AppTheme.Modo.OSCURO))
-                else individual(AppTheme.muestra(m))
-            }
+            val preview: android.view.View = MuestraTema(this).apply { individual(AppTheme.muestra(m)) }
             preview.layoutParams = LinearLayout.LayoutParams(dp(54), dp(38)).apply { marginEnd = dp(14) }
             fila.addView(preview)
             val col = LinearLayout(this).apply {
@@ -413,7 +392,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
                 setTextColor(if (sel) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 typeface = AppTheme.bold(context)
             })
-            subModo(m)?.let { s -> col.addView(TextView(this).apply {
+            subModo(m).let { s -> col.addView(TextView(this).apply {
                 text = s; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
                 typeface = AppTheme.body(context); setPadding(0, dp(2), 0, 0)
             }) }

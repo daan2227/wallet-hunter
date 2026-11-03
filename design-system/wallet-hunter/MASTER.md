@@ -32,8 +32,12 @@ From `"fintech crypto" --domain color` (Fintech/Crypto: "gold trust + purple tec
 | OK | `#4ADE80` | `#15803D` | "this is fine" (security score). Not the accent |
 
 Rule kept from before: **one accent, one meaning** (action / positive / running).
-Other themes (Mint = previous default, Midnight, Neon, Exchange, Synthwave) keep their colors; their muted
-text was raised to ≥ 4.5:1 on inputs.
+
+**Only two themes:** Vault Gold (dark, `Modo.OSCURO`) and **Vault Gold · Day** (light, `Modo.CLARO`).
+Mint, Midnight, Neon, Exchange, Synthwave and Auto were removed; a saved one maps to Vault Gold.
+The skill has no light palette for Fintech/Crypto (it marks light as not recommended for that style), so the
+day version follows its light-mode rules instead (`"light mode contrast surface" --domain ux`): dark text on
+light, ≥ 4.5:1, no gray-on-gray, visible borders; and the same gold, darkened to #B45309 for contrast.
 
 ## Typography
 `"fintech banking trust" --domain typography` → **Financial Trust: IBM Plex Sans** (SIL OFL 1.1).

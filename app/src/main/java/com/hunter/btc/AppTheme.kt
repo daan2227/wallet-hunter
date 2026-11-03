@@ -24,37 +24,31 @@ import android.graphics.Color
 object AppTheme {
 
     /**
-     * Los temas disponibles. OSCURO y CLARO son los de siempre; MEDIANOCHE es
-     * un azul-tinta nuevo; AUTO es el híbrido día/noche: claro de día, oscuro
-     * de noche, según la hora del móvil.
+     * Los dos temas: OSCURO es "Vault Gold" y CLARO su versión de día. Los demás (Mint,
+     * Midnight, Neon, Exchange, Synthwave y Auto) se quitaron: quien tuviera uno guardado pasa
+     * a Vault Gold (ver [leerModo]).
      */
-    enum class Modo { OSCURO, CLARO, MENTA, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO }
+    enum class Modo { OSCURO, CLARO }
 
-    /** El modo elegido por el usuario. AUTO no es una paleta en sí: se resuelve
-     *  a clara u oscura al arrancar cada pantalla. */
+    /** El tema elegido por el usuario. */
     @Volatile var modo: Modo = Modo.OSCURO
         private set
 
-    /** Una paleta concreta. Las superficies y el texto cambian siempre; el
-     *  acento lo lleva cada tema (el verde de siempre, o uno futurista) pero
-     *  SIGUE siendo un solo acento con un solo significado. Los otros
-     *  semánticos (rojo, naranja, azul) son fijos. */
+    /** Una paleta concreta. El acento sigue siendo uno solo con un solo significado
+     *  (acción, saldo, corriendo); cada tema trae sus semánticos. */
     private class Paleta(
         val bgDeep: Int, val bgPanel: Int, val bgCard: Int, val bgElev: Int, val bgKey: Int,
         val border: Int, val txtPri: Int, val txtSec: Int, val txtMuted: Int, val bgStop: Int,
         val accent: Int, val onAccent: Int, val oscuro: Boolean,
         // Semánticos por tema: los de antes eran fijos y en claro no se leían (el rojo #F04040
-        // sobre blanco da 3,7:1; el ámbar #FFB454, 1,8:1). Los oscuros valen para todos los
-        // temas oscuros; el claro trae los suyos, más oscuros.
+        // sobre blanco da 3,7:1; el ámbar #FFB454, 1,8:1). Por defecto, los del oscuro; el
+        // claro trae los suyos, más oscuros.
         val red: Int = 0xFFF87171.toInt(), val warn: Int = 0xFFFB923C.toInt(),
         val blue: Int = 0xFF60A5FA.toInt(), val ok: Int = 0xFF4ADE80.toInt(),
         val accent2: Int = 0xFFA78BFA.toInt()
     )
 
     private fun c(hex: String) = Color.parseColor(hex)
-
-    private const val VERDE = 0xFF00C896.toInt()        // el acento histórico
-    private const val SOBRE_VERDE = 0xFF0F1210.toInt()
 
     /*
      * VAULT GOLD — el tema por defecto desde el rediseño (skill ui-ux-pro-max, perfil
@@ -73,9 +67,12 @@ object AppTheme {
         bgStop = c("#3A1F2A"), accent = c("#F59E0B"), onAccent = c("#0F172A"), oscuro = true)
 
     /*
-     * Claro: pizarra clara con el oro oscurecido (#B45309), porque el oro del oscuro sobre
-     * blanco da 2,1:1. Secundario 7,6:1 y atenuado 5,9:1 sobre blanco (antes #909090, 3,2:1);
-     * el verde de antes como texto daba 2,2:1. Semánticos propios, también oscurecidos.
+     * VERSIÓN DE DÍA de Vault Gold. La skill no trae paleta clara para Fintech/Crypto (marca el
+     * claro como "no recomendado" para ese estilo), pero sí sus reglas, que esta cumple: texto
+     * oscuro sobre claro (pizarra-900 sobre blanco, 17,9:1), nada de gris sobre gris
+     * (secundario 7,6:1, atenuado 5,9:1; antes #909090, 3,2:1), bordes visibles y el mismo oro
+     * oscurecido (#B45309, 5:1) porque el del oscuro sobre blanco da 2,1:1. Semánticos propios,
+     * también oscurecidos (≥ 4,8:1 sobre blanco).
      */
     private val CLARA = Paleta(
         bgDeep = c("#F8FAFC"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
@@ -85,103 +82,19 @@ object AppTheme {
         red = c("#B91C1C"), warn = c("#C2410C"), blue = c("#2563EB"), ok = c("#15803D"),
         accent2 = c("#7C3AED"))
 
-    // Propuesta B ("Soft dashboard"), el oscuro de antes del rediseño: verde menta sobre
-    // azul-carbón. Se queda como tema "Mint" para quien lo prefiera.
-    private const val MENTA = 0xFF2DE3A6.toInt()
-    private const val SOBRE_MENTA = 0xFF06231A.toInt()
-    private val MENTA_P = Paleta(
-        bgDeep = c("#101317"), bgPanel = c("#181C22"), bgCard = c("#181C22"),
-        bgElev = c("#1E232B"), bgKey = c("#1A1F27"), border = c("#272D36"),
-        txtPri = c("#F4F6F8"), txtSec = c("#9AA6B2"), txtMuted = c("#808C98"),
-        bgStop = c("#2E1A1E"), accent = MENTA, onAccent = SOBRE_MENTA, oscuro = true,
-        accent2 = c("#5B8CFF"))
-
-    /**
-     * MEDIANOCHE: azul-tinta profundo. Mantiene los mismos escalones de
-     * elevación que el oscuro (unos diez valores por nivel) pero con tinte frío
-     * y textos en blanco azulado. El acento verde resalta más sobre azul que
-     * sobre gris, así que el tema se siente distinto sin tocar la semántica.
-     */
-    private val MEDIANOCHE = Paleta(
-        bgDeep = c("#10131A"), bgPanel = c("#181D27"), bgCard = c("#181D27"),
-        bgElev = c("#232A39"), bgKey = c("#1E2430"), border = c("#2C3444"),
-        txtPri = c("#ECEFF6"), txtSec = c("#9AA6BD"), txtMuted = c("#8893AB"),
-        bgStop = c("#3A1E26"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = true)
-
-    /**
-     * NEON: cibernético. Negro violáceo con textos en lavanda y un acento cian
-     * eléctrico. El acento sí cambia aquí —es el punto del tema— pero sigue
-     * marcando lo mismo: acción, positivo, corriendo.
-     */
-    private val NEON = Paleta(
-        bgDeep = c("#0B0712"), bgPanel = c("#140C20"), bgCard = c("#140C20"),
-        bgElev = c("#1F1433"), bgKey = c("#190F2A"), border = c("#2E1F48"),
-        txtPri = c("#ECE6FF"), txtSec = c("#A79AC8"), txtMuted = c("#8A7CAA"),
-        bgStop = c("#36132A"), accent = c("#1FE3FF"), onAccent = c("#05141A"), oscuro = true)
-
-    /**
-     * EXCHANGE: terminal de trading. Carbón muy oscuro, texto claro frío y el
-     * verde "vela" de los exchanges. Es el tema que va con el gráfico de velas.
-     */
-    private val EXCHANGE = Paleta(
-        bgDeep = c("#0B0E11"), bgPanel = c("#161A1E"), bgCard = c("#161A1E"),
-        bgElev = c("#1E2329"), bgKey = c("#1B2026"), border = c("#2B3139"),
-        txtPri = c("#EAECEF"), txtSec = c("#9AA3AF"), txtMuted = c("#828B97"),
-        bgStop = c("#2A1518"), accent = c("#0ECB81"), onAccent = c("#06130D"), oscuro = true)
-
-    /**
-     * SYNTHWAVE: retro-ochentero. Noche índigo-púrpura, texto en lavanda cálido
-     * y un acento magenta de neón. Primo del NEON pero cálido donde aquél es
-     * frío. Sigue siendo un solo acento con un solo significado.
-     */
-    private val SYNTHWAVE = Paleta(
-        bgDeep = c("#160E26"), bgPanel = c("#221539"), bgCard = c("#221539"),
-        bgElev = c("#301E50"), bgKey = c("#281747"), border = c("#3E2A63"),
-        txtPri = c("#F6E9FF"), txtSec = c("#B59BD6"), txtMuted = c("#9B84BE"),
-        bgStop = c("#3A1230"), accent = c("#FF2E88"), onAccent = c("#1A0612"), oscuro = true)
-
     @Volatile private var activa: Paleta = OSCURA
 
     /** ¿La paleta activa es oscura? Lo usan los diálogos XML y el teclado PIN. */
     val isDark get() = activa.oscuro
 
-    /** Día = 07:00–19:59 locales. Simple y predecible. */
-    private fun esDeDia(): Boolean =
-        java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY) in 7..19
-
-    /** ¿El sistema está en modo oscuro? (Ajuste de tema del móvil.) */
-    private fun sistemaOscuro(ctx: Context): Boolean {
-        val f = ctx.resources.configuration.uiMode and
-                android.content.res.Configuration.UI_MODE_NIGHT_MASK
-        return f == android.content.res.Configuration.UI_MODE_NIGHT_YES
-    }
-
-    /** La paleta de un modo CONCRETO (no AUTO). */
-    private fun paletaFija(m: Modo): Paleta = when (m) {
-        Modo.CLARO -> CLARA
-        Modo.MENTA -> MENTA_P
-        Modo.MEDIANOCHE -> MEDIANOCHE
-        Modo.NEON -> NEON
-        Modo.EXCHANGE -> EXCHANGE
-        Modo.SYNTHWAVE -> SYNTHWAVE
-        else -> OSCURA
-    }
+    private fun paleta(m: Modo): Paleta = if (m == Modo.CLARO) CLARA else OSCURA
 
     /**
-     * Resuelve el modo a una paleta. AUTO sigue al sistema Y además a la hora:
-     * claro sólo si el sistema está en claro y es de día; oscuro si el sistema
-     * ya está en oscuro, o si es de noche aunque el sistema esté en claro. Así
-     * respeta el ajuste del móvil y encima baja la luz por la noche.
+     * El tema guardado. Sólo "CLARO" es la versión de día; cualquier otro nombre (los temas que
+     * se quitaron: MENTA, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO) pasa a Vault Gold.
      */
-    private fun resolver(ctx: Context, m: Modo): Paleta =
-        if (m == Modo.AUTO) {
-            if (sistemaOscuro(ctx) || !esDeDia()) OSCURA else CLARA
-        } else paletaFija(m)
-
     private fun leerModo(p: android.content.SharedPreferences): Modo {
-        p.getString("theme_mode", null)?.let { s ->
-            try { return Modo.valueOf(s) } catch (e: Exception) {}
-        }
+        p.getString("theme_mode", null)?.let { s -> return if (s == Modo.CLARO.name) Modo.CLARO else Modo.OSCURO }
         // Compatibilidad con el ajuste booleano antiguo (dark_mode).
         return if (p.getBoolean("dark_mode", true)) Modo.OSCURO else Modo.CLARO
     }
@@ -189,9 +102,7 @@ object AppTheme {
     fun init(ctx: Context) {
         val p = ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
         modo = leerModo(p)
-        // AUTO se resuelve aquí: una vez por pantalla, igual que el tema XML de
-        // los diálogos, así toda la pantalla usa la misma paleta.
-        activa = resolver(ctx, modo)
+        activa = paleta(modo)
     }
 
     /**
@@ -206,11 +117,10 @@ object AppTheme {
     }
 
     /** Colores de muestra para la vista previa del selector de tema: el fondo,
-     *  una tarjeta encima, el acento y el color del texto. AUTO no se pide aquí
-     *  (no es una paleta): el selector dibuja su muestra con CLARO + OSCURO. */
+     *  una tarjeta encima, el acento y el color del texto. */
     class Muestra(val bg: Int, val card: Int, val accent: Int, val texto: Int, val oscuro: Boolean)
 
-    fun muestra(m: Modo): Muestra = paletaFija(m).let {
+    fun muestra(m: Modo): Muestra = paleta(m).let {
         Muestra(it.bgDeep, it.bgCard, it.accent, it.txtPri, it.oscuro)
     }
 
@@ -218,7 +128,7 @@ object AppTheme {
      *  (los colores se leen al construir cada vista). */
     fun ponerModo(ctx: Context, m: Modo) {
         modo = m
-        activa = resolver(ctx, m)
+        activa = paleta(m)
         ctx.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
             .edit().putString("theme_mode", m.name).apply()
     }
