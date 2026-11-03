@@ -410,6 +410,16 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     }
     page.addView(tvBalResult)
 
+    // Una sola línea de importe: antes salían "Puzzle #140 — 14.00001 BTC" (el premio de la tabla,
+    // redondeado) y debajo "14.0000224 BTC available" (el saldo real), dos cifras que no
+    // coincidían. Con el saldo consultado, la línea del puzzle pasa a decir ESE saldo y la de
+    // debajo se oculta; sin consulta (o sin red) se queda el de la tabla y el aviso.
+    fun ponerSaldoPuzzle(num: Int, bal: Long) {
+        val btc = java.math.BigDecimal.valueOf(bal, 8).stripTrailingZeros().toPlainString()
+        tvPuzzleStatus?.let { Fiat.poner(it, "Puzzle #$num — $btc BTC", bal) }
+        tvBalResult.visibility = android.view.View.GONE
+    }
+
     // ── ¿TIENE ATAJO ESTE PUZZLE? ─────────────────────────────────────
     //
     // Es la información que decide si merece la pena dejar el móvil
@@ -1222,6 +1232,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             tvCheckpointLive?.visibility = android.view.View.GONE
         }
         puzzleSeleccionado = p.num
+        tvBalResult.visibility = android.view.View.VISIBLE
         tvBalResult.text = "Checking the balance of #${p.num}…"
         comprobarAtajo(p)
         checkPuzzleBalance(p.addr) { bal ->
@@ -1229,8 +1240,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 when {
                     bal > 0L -> {
                         if (puzzleSeleccionado != p.num) return@runOnUiThread
-                        Fiat.poner(tvBalResult, "${bal / 100_000_000.0} BTC available", bal)
-                        tvBalResult.setTextColor(AppTheme.ACCENT)
+                        ponerSaldoPuzzle(p.num, bal)
                     }
                     bal == 0L -> {
                         // La marca se pone siempre: es un hecho sobre el
@@ -1399,8 +1409,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 if (puzzleSeleccionado != defaultPuzzle.num) return@runOnUiThread
                 if (puzzleFullStart != defaultPuzzle.start) return@runOnUiThread
                 if (bal > 0) {
-                    Fiat.poner(tvBalResult, "${bal / 100_000_000.0} BTC available", bal)
-                    tvBalResult.setTextColor(ACCENT)
+                    ponerSaldoPuzzle(defaultPuzzle.num, bal)
                 } else {
                     // Antes ponía "Buscando puzzle con fondos..." y llamaba a
                     // autoSelectPuzzle(), que no busca nada: la autoselección
