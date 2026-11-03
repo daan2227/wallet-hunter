@@ -192,12 +192,14 @@ object WeakController {
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
         })
-        root.addView(Ui.chipEstado(a, "Hunting").apply {
+        // El chip "Hunting" ya no se enseña: la cifra con el rosetón girando arriba dice lo mismo.
+        // Se crea igual para que el resto del código que lo muestra/oculta no cambie.
+        Ui.chipEstado(a, "Hunting").apply {
             visibility = if (corriendo) android.view.View.VISIBLE else android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
             chipHunting = this
-        })
+        }
         root.addView(TextView(a).apply {
             text = "Kangaroo over a small range for public keys that have spent. " +
                    "Finds only keys generated with too little entropy (a private key " +
@@ -456,7 +458,7 @@ object WeakController {
         // El anillo de progreso (propuesta B) ya no se enseña: el avance lo dicen la fila
         // "Key budget" y la barra de abajo. Se sigue actualizando, sin estar en pantalla.
         vStats.addView(Ui.heroe(a, Roseton(a) { corriendo }, colVel, alto = 210))
-        vStats.addView(Ui.microimpresion(a, "pollard kangaroo  ·  secp256k1 arm64 asm  ·  ${bits} bit range"))
+        vStats.addView(Ui.microimpresion(a, "pollard kangaroo  ·  secp256k1 arm64 asm  ·  bsgs  ·  public keys that have spent"))
         val vChart = SpeedChartView(a).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110))
                 .apply { topMargin = dp(8) }
@@ -1541,8 +1543,11 @@ object WeakController {
         }
         val pct = if (presuActual > 0) (100 * ops / presuActual).toInt() else 0
         refresco(ops, pct)
-        aviso("Key ${indice + 1}/${claves.size} · $bits-bit range · $pct % of its budget" +
-              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s" else "") + desglose() +
+        // Clave nº y % del presupuesto ya están en las filas de arriba ("Keys · found", "Key
+        // budget"): aquí sólo lo que no sale en otro sitio. Repetirlos daba dos cifras distintas
+        // a la vez (se refrescaban en momentos distintos).
+        aviso("$bits-bit range" +
+              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s on this key" else "") + desglose() +
               (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
         programarTick()
     }

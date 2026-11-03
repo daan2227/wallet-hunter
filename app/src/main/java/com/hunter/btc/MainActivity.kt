@@ -2980,7 +2980,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             ultimoGuardadoKg = ahora
             Thread { try { HunterEngine.kangarooSave() } catch (e: Throwable) {} }.start()
         }
-        tv.text = "Searching with Kangaroo · ${numberFmt.format(ops)} operations" +
+        // Las operaciones ya salen en la fila "Operations" de abajo: aquí sólo el estado.
+        tv.text = "Searching with Kangaroo" +
                   (if (kangarooReinicios > 0) " · $kangarooReinicios restarts" else "")
     }
 
