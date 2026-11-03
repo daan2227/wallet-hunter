@@ -266,10 +266,9 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         // siempre llena independientemente del valor. El drawable de
         // progreso tiene que ir envuelto en ClipDrawable dentro de un
         // LayerDrawable con los ids que ProgressBar espera.
-        val fill = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-            intArrayOf(ACCENT2, ACCENT)
-        ).apply { cornerRadius = dp(4).toFloat() }
+        val fill = android.graphics.drawable.GradientDrawable().apply {
+            setColor(ACCENT); cornerRadius = dp(4).toFloat()   // oro liso, sin degradado azul
+        }
         val track = android.graphics.drawable.GradientDrawable().apply {
             setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
         }
@@ -599,7 +598,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             })
         })
         // Auto-avance: partes y presupuesto, con lo que se arriesga a la vista.
-        val swAuto = android.widget.Switch(this@buildPuzzleTab).apply {
+        val swAuto = android.widget.Switch(this@buildPuzzleTab).apply { Ui.tintarInterruptor(this);
             text = "Auto-advance through parts"; textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.body(context)
             isChecked = prefs.getBoolean("kg_custom_auto", false)
@@ -838,12 +837,12 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // Hidden sliders (kept for logic compatibility)
     tvThreadsPuzzle = TextView(this).apply { visibility = android.view.View.GONE }
     tvCpuPuzzle     = TextView(this).apply { visibility = android.view.View.GONE }
-    sbThreadsPuzzle = SeekBar(this).apply {
+    sbThreadsPuzzle = SeekBar(this).apply { Ui.tintarDeslizador(this);
         visibility = android.view.View.GONE; max = 7
         progress = prefs.getInt("puzzle_threads", 3)
         setOnSeekBarChangeListener(mkSbl { updatePuzzleLabels() })
     }
-    sbCpuPuzzle = SeekBar(this).apply {
+    sbCpuPuzzle = SeekBar(this).apply { Ui.tintarDeslizador(this);
         visibility = android.view.View.GONE; max = 90
         progress = prefs.getInt("puzzle_cpu", 70)
         setOnSeekBarChangeListener(mkSbl { updatePuzzleLabels() })
@@ -1078,7 +1077,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     batchHeaderRow.addView(tvBatchVal)
     tuningCard.addView(batchHeaderRow)
 
-    val sbBatch = SeekBar(this).apply {
+    val sbBatch = SeekBar(this).apply { Ui.tintarDeslizador(this);
         max = batchLabels.size - 1
         progress = 2
         layoutParams = LinearLayout.LayoutParams(

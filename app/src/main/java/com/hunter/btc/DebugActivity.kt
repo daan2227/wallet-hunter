@@ -40,12 +40,12 @@ class DebugActivity : AppCompatActivity() {
         PantallaSegura.aplicar(this)
 
         val ACCENT  = AppTheme.ACCENT
-        val ACCENT2 = AppTheme.BLUE
+        val ACCENT2 = AppTheme.BG_KEY   // botones secundarios: neutros, no azules (Security print)
         val BG      = AppTheme.BG_DEEP
         val SURFACE = AppTheme.BG_CARD
         val TXT     = AppTheme.TXT_PRI
         val MUTED   = AppTheme.TXT_SEC
-        val RED     = AppTheme.WARN
+        val RED     = AppTheme.RED
 
         fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
@@ -140,7 +140,9 @@ class DebugActivity : AppCompatActivity() {
             this.text = text; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
             typeface = AppTheme.medium(context)
             isAllCaps = false
-            setTextColor(AppTheme.ON_ACCENT)
+            // Texto según el fondo: oscuro sobre el oro, el del tema sobre los neutros y el rojo.
+            setTextColor(if (color == AppTheme.ACCENT) AppTheme.ON_ACCENT
+                         else if (color == AppTheme.RED) android.graphics.Color.WHITE else AppTheme.TXT_PRI)
             background = GradientDrawable().apply {
                 setColor(color); cornerRadius = dp(8).toFloat()
             }
@@ -153,7 +155,7 @@ class DebugActivity : AppCompatActivity() {
         logBtnRow.addView(actionBtn("Refresh", ACCENT) {
             startLogRefresh()
         })
-        logBtnRow.addView(actionBtn("Stop", AppTheme.TXT_SEC) {
+        logBtnRow.addView(actionBtn("Stop", ACCENT2) {
             stopLogRefresh()
         })
         logBtnRow.addView(actionBtn("Copy", ACCENT2) {
@@ -176,7 +178,7 @@ class DebugActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(6) }
         }
-        histBtnRow.addView(actionBtn("History", AppTheme.TXT_SEC) { mostrarHistorial() })
+        histBtnRow.addView(actionBtn("History", ACCENT2) { mostrarHistorial() })
         liveCard.addView(histBtnRow)
         liveCard.addView(TextView(this).apply {
             text = "History: the dated copies that \"Archive\" leaves behind (the last 3 of each), " +
@@ -191,7 +193,7 @@ class DebugActivity : AppCompatActivity() {
         })
         liveCard.addView(TextView(this).apply {
             text = "Check app"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
-            typeface = AppTheme.title(context); setTextColor(AppTheme.ON_ACCENT)
+            typeface = AppTheme.title(context); setTextColor(AppTheme.TXT_PRI)
             background = GradientDrawable().apply { setColor(ACCENT2); cornerRadius = dp(8).toFloat() }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(6) }
@@ -310,7 +312,7 @@ class DebugActivity : AppCompatActivity() {
             row.addView(TextView(this).apply {
                 text = f.name; textSize = AppTheme.SP_BODY
                 setTextColor(if (exists) TXT else MUTED)
-                typeface = Typeface.create("monospace", Typeface.NORMAL)
+                typeface = AppTheme.mono(context)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             if (exists) {

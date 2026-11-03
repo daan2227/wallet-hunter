@@ -670,6 +670,8 @@ object Ui {
     /** Interruptor en el oro del tema (sin esto salía el verde azulado de serie de Android). */
     fun tintarInterruptor(sw: android.widget.CompoundButton) {
         val estados = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+        if (sw is android.widget.CheckBox || sw is android.widget.RadioButton)
+            sw.buttonTintList = android.content.res.ColorStateList(estados, intArrayOf(AppTheme.ACCENT, AppTheme.TXT_MUTED))
         if (sw is android.widget.Switch) {
             sw.thumbTintList = android.content.res.ColorStateList(estados, intArrayOf(AppTheme.ACCENT, AppTheme.TXT_MUTED))
             sw.trackTintList = android.content.res.ColorStateList(estados,

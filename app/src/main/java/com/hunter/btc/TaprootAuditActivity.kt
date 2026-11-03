@@ -162,7 +162,7 @@ class TaprootAuditActivity : AppCompatActivity() {
         }
         filaBits.addView(tvBits)
         cRango.addView(filaBits)
-        sbBits = SeekBar(this).apply {
+        sbBits = SeekBar(this).apply { Ui.tintarDeslizador(this);
             max = BITS_MAX - BITS_MIN; progress = 24 - BITS_MIN
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
@@ -200,7 +200,7 @@ class TaprootAuditActivity : AppCompatActivity() {
         }
         filaHilos.addView(tvHilos)
         cRango.addView(filaHilos)
-        sbHilos = SeekBar(this).apply {
+        sbHilos = SeekBar(this).apply { Ui.tintarDeslizador(this);
             max = (NUCLEOS - 1).coerceAtLeast(0); progress = NUCLEOS - 1
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
             setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {

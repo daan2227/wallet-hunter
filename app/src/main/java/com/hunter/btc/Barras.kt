@@ -22,7 +22,9 @@ object Barras {
         val acc = AppTheme.ACCENT   // cambia con el tema, así que entra en la clave
         val c = cache
         if (c != null && cacheW == w && cacheAccent == acc) return c
-        val g = LinearGradient(0f, 0f, w, 0f, AppTheme.BLUE, acc, Shader.TileMode.CLAMP)
+        // Oro liso (Security print): el degradado azul→oro era decoración. Se mantiene como
+        // LinearGradient de un solo color para no tocar a quien lo usa.
+        val g = LinearGradient(0f, 0f, w, 0f, acc, acc, Shader.TileMode.CLAMP)
         cache = g; cacheW = w; cacheAccent = acc
         return g
     }

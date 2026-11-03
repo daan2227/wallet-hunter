@@ -79,7 +79,7 @@ object HerramientasNodo {
         val campos = h.campos.map { nombre ->
             EditText(act).apply {
                 hint = nombre
-                typeface = android.graphics.Typeface.MONOSPACE; textSize = 12f
+                typeface = AppTheme.mono(context); textSize = 12f
                 if (h.multilinea) { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE; minLines = 4; maxLines = 8 }
                 else { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS; setSingleLine() }
             }.also { caja.addView(it) }
@@ -124,7 +124,7 @@ object HerramientasNodo {
     private fun resultado(act: Activity, titulo: String, texto: String) {
         val p = (16 * act.resources.displayMetrics.density).toInt()
         val tv = TextView(act).apply {
-            text = texto; typeface = android.graphics.Typeface.MONOSPACE; textSize = 12f
+            text = texto; typeface = AppTheme.mono(context); textSize = 12f
             setTextIsSelectable(true); setPadding(p, p, p, p)
         }
         AlertDialog.Builder(act).setTitle(titulo).setView(ScrollView(act).apply { addView(tv) })

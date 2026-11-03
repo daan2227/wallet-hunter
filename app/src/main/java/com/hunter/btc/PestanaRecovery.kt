@@ -358,10 +358,9 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                     setColor(AppTheme.BG_ELEV); cornerRadius = dp(4).toFloat()
                 },
                 android.graphics.drawable.ClipDrawable(
-                    android.graphics.drawable.GradientDrawable(
-                        android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
-                        intArrayOf(ACCENT2, ACCENT)
-                    ).apply { cornerRadius = dp(4).toFloat() },
+                    android.graphics.drawable.GradientDrawable().apply {
+                        setColor(ACCENT); cornerRadius = dp(4).toFloat()   // oro liso
+                    },
                     Gravity.START,
                     android.graphics.drawable.ClipDrawable.HORIZONTAL)
             )

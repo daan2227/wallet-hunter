@@ -28,6 +28,16 @@
         <item name="android:windowNoTitle">true</item>
         <item name="alertDialogTheme">@style/WhDialogo</item>
         <item name="android:alertDialogTheme">@style/WhDialogoSistema</item>
+        <!-- Controles sin teñir en código (casillas, interruptores, deslizadores, barras, el
+             subrayado y el cursor de los campos): en el oro del tema, no el verde azulado de
+             AppCompat. -->
+        <item name="colorAccent">#F59E0B</item>
+        <item name="colorControlActivated">#F59E0B</item>
+        <item name="colorControlNormal">#8D9BB0</item>
+        <item name="android:textColorPrimary">#F8FAFC</item>
+        <item name="android:textColorSecondary">#B0BBCC</item>
+        <item name="android:textColorHint">#8D9BB0</item>
+        <item name="android:statusBarColor">#0F172A</item>
     </style>
 
     <!-- El mismo en claro. Hereda del oscuro a propósito: los controles que el
@@ -40,6 +50,18 @@
         <item name="android:colorBackground">#F8FAFC</item>
         <item name="alertDialogTheme">@style/WhDialogoClaro</item>
         <item name="android:alertDialogTheme">@style/WhDialogoSistemaClaro</item>
+        <!-- Hereda del oscuro: sin esto, un campo o una casilla sin color propio salía con texto
+             blanco sobre el fondo claro. El oro oscuro (#B45309) da 5:1 sobre blanco. -->
+        <item name="colorAccent">#B45309</item>
+        <item name="colorControlActivated">#B45309</item>
+        <item name="colorControlNormal">#56657A</item>
+        <item name="android:textColorPrimary">#0F172A</item>
+        <item name="android:textColorSecondary">#475569</item>
+        <item name="android:textColorHint">#56657A</item>
+        <!-- Barra de estado del color del fondo, con iconos oscuros (en todas las pantallas,
+             no sólo en la principal, que lo hace en código). -->
+        <item name="android:statusBarColor">#F8FAFC</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
     <!-- WalletActivity se declaraba con Theme.DeviceDefault.Dialog, así que

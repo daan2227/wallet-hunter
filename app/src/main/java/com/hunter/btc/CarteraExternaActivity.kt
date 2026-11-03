@@ -200,7 +200,7 @@ class CarteraExternaActivity : AppCompatActivity() {
         val etFee = Ui.input(this, "Fee rate (sat/vB)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etTo); addView(etAmt); addView(etFee) }
         val her = motor as? MotorHerencia
-        val cbHeredero = her?.let { h -> android.widget.CheckBox(this).apply {
+        val cbHeredero = her?.let { h -> android.widget.CheckBox(this).apply { Ui.tintarInterruptor(this);
             text = "Spend as the heir (only works for coins unmoved for ${h.bloques} blocks)"
             setTextColor(AppTheme.TXT_PRI); isChecked = h.modoHeredero
             v.addView(this)

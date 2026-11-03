@@ -351,7 +351,7 @@ class MineroActivity : AppCompatActivity() {
         // Con la GPU encendida se puede bajar a 0 hilos: mina sólo la GPU (para medirla sin que la CPU le quite potencia).
         caja.addView(fila(tvHilos, { if (!minando && nHilos > (if (gpuLista) 0 else 1)) { nHilos--; pintarHilos() } },
             { if (!minando && nHilos < max) { nHilos++; pintarHilos() } }))
-        caja.addView(android.widget.CheckBox(this).apply {
+        caja.addView(android.widget.CheckBox(this).apply { Ui.tintarInterruptor(this);
             text = "Only while charging"; setTextColor(AppTheme.TXT_PRI); isChecked = soloCargando
             setOnCheckedChangeListener { _, v -> soloCargando = v; prefs().edit().putBoolean("solo_cargando", v).apply() }
         })

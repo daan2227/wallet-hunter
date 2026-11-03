@@ -912,7 +912,7 @@ object WeakController {
             this.hint = hint; setText(ini)
             if (numero) inputType = android.text.InputType.TYPE_CLASS_NUMBER
             else { setHorizontallyScrolling(false); maxLines = 4 }
-            textSize = AppTheme.SP_CAPTION; typeface = android.graphics.Typeface.MONOSPACE
+            textSize = AppTheme.SP_CAPTION; typeface = AppTheme.mono(context)
             setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
         }
         val etX = campo("xpub… / ypub… / zpub…", false, "")

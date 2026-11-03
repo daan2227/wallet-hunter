@@ -153,7 +153,7 @@ class LightningActivity : AppCompatActivity() {
         val m = Ln.motor ?: return
         val etSat = Ui.input(this, "Amount in sat (empty = any)").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
         val etDesc = Ui.input(this, "Description")
-        val cbUnif = android.widget.CheckBox(this).apply { text = "Unified QR (on-chain or Lightning; needs an amount)"; setTextColor(AppTheme.TXT_PRI) }
+        val cbUnif = android.widget.CheckBox(this).apply { Ui.tintarInterruptor(this); text = "Unified QR (on-chain or Lightning; needs an amount)"; setTextColor(AppTheme.TXT_PRI) }
         val v = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), 0); addView(etSat); addView(etDesc); addView(cbUnif) }
         AlertDialog.Builder(this).setTitle("Receive").setView(v).setNegativeButton("Cancel", null)
             .setNeutralButton("Reusable offer") { _, _ -> ofertaReutilizable(m, etSat.text.toString().toLongOrNull()?.takeIf { it > 0 }, etDesc.text.toString()) }

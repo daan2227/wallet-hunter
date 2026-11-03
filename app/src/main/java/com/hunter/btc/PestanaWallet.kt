@@ -434,7 +434,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     page.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(0x12FF6B35); cornerRadius = dp(AppTheme.R_CARD).toFloat()
+            setColor((AppTheme.WARN and 0x00FFFFFF) or (0x24 shl 24)); cornerRadius = dp(AppTheme.R_CARD).toFloat()
         }
         setPadding(dp(18), dp(16), dp(18), dp(16))
         layoutParams = LinearLayout.LayoutParams(

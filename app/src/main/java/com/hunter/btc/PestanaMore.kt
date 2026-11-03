@@ -145,7 +145,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { marginStart = dp(16) }
         })
-        val sw = android.widget.Switch(this).apply {
+        val sw = android.widget.Switch(this).apply { Ui.tintarInterruptor(this);
             isChecked = inicial
             val on = AppTheme.ACCENT; val off = AppTheme.TXT_MUTED
             thumbTintList = android.content.res.ColorStateList(
@@ -237,7 +237,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
         typeface = AppTheme.bold(context)
     }
-    val sbTecho = android.widget.SeekBar(this).apply {
+    val sbTecho = android.widget.SeekBar(this).apply { Ui.tintarDeslizador(this);
         max = PASOS.size - 1; progress = idx0
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)

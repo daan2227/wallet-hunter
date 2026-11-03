@@ -39,7 +39,7 @@ object FiltroUtxoDialogo {
 
         titulo("Wallet type")
         val tipos = FiltroUtxo.TIPOS.map { t ->
-            CheckBox(act).apply {
+            CheckBox(act).apply { Ui.tintarInterruptor(this);
                 text = t; isChecked = t in actual.tipos; setTextColor(AppTheme.TXT_SEC)
             }.also { caja.addView(it) }
         }

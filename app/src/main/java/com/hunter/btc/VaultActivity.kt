@@ -320,7 +320,7 @@ class VaultActivity : AppCompatActivity() {
         col.addView(texto("Each new find also appears in Wallet as a WIF key",
                           AppTheme.SP_CAPTION, AppTheme.TXT_SEC).apply { setPadding(0, dp(2), dp(8), 0) })
         fila.addView(col)
-        val sw = android.widget.Switch(this).apply {
+        val sw = android.widget.Switch(this).apply { Ui.tintarInterruptor(this);
             isChecked = MatchVault.autoCartera(this@VaultActivity)
             val estados = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
             thumbTintList = android.content.res.ColorStateList(estados,

@@ -4051,12 +4051,12 @@ class WalletActivity : FragmentActivity() {
             background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             setPadding(dp(14), dp(14), dp(14), dp(14)); textSize = AppTheme.SP_BODY
             minHeight = dp(48)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            typeface = AppTheme.mono(context)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
         }
         sheet.addView(etWif)
         // Sólo para una clave en hex: la WIF ya dice si es comprimida o no.
-        val cbSinComprimir = android.widget.CheckBox(this).apply {
+        val cbSinComprimir = android.widget.CheckBox(this).apply { Ui.tintarInterruptor(this);
             text = "Uncompressed (only for a hex key)"
             setTextColor(TXT_SEC); textSize = AppTheme.SP_CAPTION
             setPadding(0, dp(8), 0, dp(4))
@@ -4654,7 +4654,7 @@ class WalletActivity : FragmentActivity() {
 
         hoja.addView(etNombre)
 
-        val chk = android.widget.CheckBox(this).apply {
+        val chk = android.widget.CheckBox(this).apply { Ui.tintarInterruptor(this);
             text = "I have written them down"
             textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
             typeface = AppTheme.body(context)
@@ -4785,7 +4785,7 @@ class WalletActivity : FragmentActivity() {
             }
             setPadding(dp(14), dp(14), dp(14), dp(14)); textSize = AppTheme.SP_BODY; minLines = 3; maxLines = 6
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            typeface = AppTheme.mono(context)
         }
         layout.addView(etSeed)
         val suggestScroll = android.widget.HorizontalScrollView(this).apply {
@@ -4808,7 +4808,7 @@ class WalletActivity : FragmentActivity() {
             bip39.filter { it.startsWith(cur) }.take(7).forEach { word ->
                 suggestInner.addView(Button(this@WalletActivity).apply {
                     text = word; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
-                    typeface = Typeface.create("monospace", Typeface.NORMAL)
+                    typeface = AppTheme.mono(context)
                     background = GradientDrawable().apply {
                         setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
                     }
@@ -4841,7 +4841,7 @@ class WalletActivity : FragmentActivity() {
         layout.addView(TextView(this).apply {
             text = "Seed encrypted with Android Keystore"
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            typeface = AppTheme.mono(context)
             setPadding(0, dp(16), 0, dp(4))
         })
         val btnRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, 0) }
@@ -4953,7 +4953,7 @@ class WalletActivity : FragmentActivity() {
             background = GradientDrawable().apply { setColor(BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
             setPadding(dp(14), dp(14), dp(14), dp(14)); textSize = AppTheme.SP_BODY
             minHeight = dp(48)
-            typeface = Typeface.create("monospace", Typeface.NORMAL)
+            typeface = AppTheme.mono(context)
         }
         val etLabel = EditText(this).apply {
             hint = "Label (e.g. Puzzle #71)"; setTextColor(TXT_PRI); setHintTextColor(TXT_MUTED)

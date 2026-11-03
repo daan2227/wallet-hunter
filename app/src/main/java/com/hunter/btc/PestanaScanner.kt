@@ -324,7 +324,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             typeface = AppTheme.medium(context)
         }
         addView(tvThreads)
-        sbThreads = SeekBar(this@buildScanTab).apply {
+        sbThreads = SeekBar(this@buildScanTab).apply { Ui.tintarDeslizador(this);
             max = 7; progress = prefs.getInt("threads", 3)
             setOnSeekBarChangeListener(mkSbl { updateLabels() })
         }
@@ -341,7 +341,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             typeface = AppTheme.medium(context)
         }
         addView(tvCpu)
-        sbCpu = SeekBar(this@buildScanTab).apply {
+        sbCpu = SeekBar(this@buildScanTab).apply { Ui.tintarDeslizador(this);
             max = 90; progress = prefs.getInt("cpu", 70)
             setOnSeekBarChangeListener(mkSbl {
                 updateLabels()
@@ -385,7 +385,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             Triple(1, "BIP44 (1…)", "44"), Triple(2, "BIP84 (bc1q…)", "84"),
             Triple(4, "BIP49 (3…)", "49"), Triple(8, "BIP86 (bc1p…)", "86"))
         val casillas = rutas.map { (bit, texto, _) ->
-            android.widget.CheckBox(this@buildScanTab).apply {
+            android.widget.CheckBox(this@buildScanTab).apply { Ui.tintarInterruptor(this);
                 text = texto; textSize = AppTheme.SP_BODY
                 setTextColor(AppTheme.TXT_PRI)
                 typeface = AppTheme.body(context)
