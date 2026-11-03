@@ -57,7 +57,7 @@ class SeguridadActivity : AppCompatActivity() {
     }
 
     private fun texto(t: String, tam: Float, color: Int, negrita: Boolean = false) = TextView(this).apply {
-        text = t; textSize = tam; setTextColor(color); typeface = if (negrita) AppTheme.bold(context) else AppTheme.body(context); setPadding(0, dp(3), 0, dp(3)) }
+        text = IconosTexto.en(context, t, tam); textSize = tam; setTextColor(color); typeface = if (negrita) AppTheme.bold(context) else AppTheme.body(context); setPadding(0, dp(3), 0, dp(3)) }
 
     private fun pintar() {
         caja.removeAllViews()

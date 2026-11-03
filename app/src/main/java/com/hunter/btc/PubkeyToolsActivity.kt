@@ -488,12 +488,13 @@ class PubkeyToolsActivity : Activity() {
             setOnClickListener { copiar(valor) }
         }
         col.addView(TextView(this@PubkeyToolsActivity).apply {
-            text = etiqueta; textSize = AppTheme.SP_CAPTION
+            // ✓ ✗ ⚠ → iconos del tema (IconosTexto); copiar sigue dando el texto de siempre.
+            text = IconosTexto.en(context, etiqueta, AppTheme.SP_CAPTION); textSize = AppTheme.SP_CAPTION
             setTextColor(if (destacado) AppTheme.ACCENT else AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
         })
         col.addView(TextView(this@PubkeyToolsActivity).apply {
-            text = valor; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI)
+            text = IconosTexto.en(context, valor, AppTheme.SP_CAPTION); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.mono(context); setPadding(0, dp(3), 0, 0)
         })
         return col
@@ -1428,11 +1429,11 @@ class PubkeyToolsActivity : Activity() {
                                     val r = ChainApi.broadcast(raw)
                                     runOnUiThread {
                                         if (isFinishing || isDestroyed) return@runOnUiThread
-                                        tvEstado.text = when (r) {
+                                        tvEstado.text = IconosTexto.en(this@PubkeyToolsActivity, when (r) {
                                             is ChainApi.Envio.Ok -> "✓ Sent · txid ${r.txid.take(20)}…"
                                             is ChainApi.Envio.Rechazada -> "Rejected: ${r.motivo}"
                                             else -> "No response — try again."
-                                        }
+                                        })
                                     }
                                 }.apply { isDaemon = true; start() }
                             }.show()
@@ -2218,11 +2219,11 @@ class PubkeyToolsActivity : Activity() {
             Thread {
                 val r = ChainApi.broadcast(raw)
                 runOnUiThread { bcCorriendo = false
-                    tv.text = when (r) {
+                    tv.text = IconosTexto.en(this@PubkeyToolsActivity, when (r) {
                         is ChainApi.Envio.Ok -> "✓ Sent · txid ${r.txid}"
                         is ChainApi.Envio.Rechazada -> "Rejected: ${r.motivo}"
                         else -> "No response — try again."
-                    } }
+                    }) }
             }.apply { isDaemon = true; start() }
         }
         root.addView(tv)
@@ -2338,7 +2339,7 @@ class PubkeyToolsActivity : Activity() {
             }
             androidx.appcompat.app.AlertDialog.Builder(this)
                 .setTitle("Sign this PSBT?")
-                .setMessage(texto)
+                .setMessage(IconosTexto.en(this@PubkeyToolsActivity, texto))
                 .setNegativeButton("Cancel", null)
                 .setPositiveButton("Sign") { _, _ ->
                     val n = try { Psbt.sign(d, hx) } catch (e: Throwable) { -1 }
@@ -2404,7 +2405,7 @@ class PubkeyToolsActivity : Activity() {
                 val bits = EntropiaFisica.bits(txt)
                 tv.text = if (txt.any { it.isDigit() } && bits == 0.0)
                     "Use only dice (1-6) or only coins (0/1), not both"
-                else "≈ ${bits.toInt()} bits of entropy" + (if (bits < 128) " — roll more (aim for 128+)" else " ✓")
+                else IconosTexto.en(this@PubkeyToolsActivity, "≈ ${bits.toInt()} bits of entropy" + (if (bits < 128) " — roll more (aim for 128+)" else " ✓"))
             }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -2950,7 +2951,7 @@ class PubkeyToolsActivity : Activity() {
                     nonceCorriendo = false; btn.text = "Scan signatures"
                     if (latPriv != null) {
                         val wif = try { HunterEngine.wifDeHex(latPriv!!).substringBefore("|") } catch (e: Throwable) { "" }
-                        tvEstado.text = "⚠ Weak nonces (lattice) · $fin tx · $sigs sig · key recovered"
+                        tvEstado.text = IconosTexto.en(this@PubkeyToolsActivity, "⚠ Weak nonces (lattice) · $fin tx · $sigs sig · key recovered")
                         salida.addView(filaResultado("RECOVERED PRIVATE KEY (lattice)",
                             "priv $latPriv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + "\npubkey ${latPub?.take(16)}…", true))
                         salida.addView(filaResultado("Finds vault", guardarEnBaul(latPriv!!, "Lattice nonce recovery")))
@@ -2964,7 +2965,7 @@ class PubkeyToolsActivity : Activity() {
                         !red -> tvEstado.text = "No network, or address not found / never spent."
                         reusos.isNotEmpty() -> {
                             val rec = reusos.count { it[4] != null }
-                            tvEstado.text = "⚠ Reused nonce · $fin tx · $sigs sig · $rec key(s) recovered"
+                            tvEstado.text = IconosTexto.en(this@PubkeyToolsActivity, "⚠ Reused nonce · $fin tx · $sigs sig · $rec key(s) recovered")
                             for (x in reusos) {
                                 val pub = x[0] ?: ""; val r = x[1] ?: ""; val t1 = x[2] ?: ""; val t2 = x[3] ?: ""; val priv = x[4]
                                 if (priv != null) {

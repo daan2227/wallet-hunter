@@ -55,7 +55,7 @@ class CarteraExternaActivity : AppCompatActivity() {
 
     private fun texto(t: String, tam: Float = AppTheme.SP_BODY, color: Int = AppTheme.TXT_PRI, negrita: Boolean = false) =
         TextView(this).apply {
-            text = t; textSize = tam; setTextColor(color)
+            text = IconosTexto.en(context, t, tam); textSize = tam; setTextColor(color)
             typeface = if (negrita) AppTheme.bold(context) else AppTheme.body(context)
             setPadding(0, dp(4), 0, dp(4))
         }

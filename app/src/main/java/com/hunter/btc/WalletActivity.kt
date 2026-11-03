@@ -1217,7 +1217,7 @@ class WalletActivity : FragmentActivity() {
                     append("\nEvery send counts as a sale and every receipt as a purchase. Moving coins between your own wallets is not a sale: " +
                         "remove those rows in the CSV. This is a helper, not tax advice: check your country's rules.")
                 }
-                AlertDialog.Builder(this).setTitle("Tax report · $moneda").setMessage(txt)
+                AlertDialog.Builder(this).setTitle("Tax report · $moneda").setMessage(IconosTexto.en(this, txt))
                     .setNegativeButton("Close", null)
                     .setPositiveButton("Share CSV") { _, _ -> compartirTexto(InformeFiscal.csv(r, moneda), "informe_fifo_${System.currentTimeMillis()}.csv", "Share tax report") }
                     .show()
@@ -2469,7 +2469,7 @@ class WalletActivity : FragmentActivity() {
                         if (plan.dejar.isNotEmpty()) appendLine("\n%d tiny coin(s) are left out: they are worth less than spending them costs.".format(plan.dejar.size))
                         append("\nThe coins stay on this same address; you review the send before it goes out.")
                     }
-                    AlertDialog.Builder(this).setTitle("Consolidate coins").setMessage(msg)
+                    AlertDialog.Builder(this).setTitle("Consolidate coins").setMessage(IconosTexto.en(this, msg))
                         .setNegativeButton("Cancel", null)
                         .setPositiveButton("Prepare the send") { _, _ ->
                             val elegidas = monedas.filter { it.optLong("value") in plan.usar }
@@ -2510,13 +2510,14 @@ class WalletActivity : FragmentActivity() {
                     runOnUiThread {
                         tvStatus.text = ""
                         val congeladas = MonedasCongeladas.congeladas(this, isTestnet).toMutableSet()
-                        fun etiqueta(u: org.json.JSONObject): String {
+                        fun etiqueta(u: org.json.JSONObject): CharSequence {
                             val v = u.getLong("value")
-                            return (if (MonedasCongeladas.clave(u) in congeladas) "❄ " else "") +
+                            // ❄ → icono de congelada (IconosTexto); el lector de pantalla sigue diciéndolo.
+                            return IconosTexto.en(this, (if (MonedasCongeladas.clave(u) in congeladas) "❄ " else "") +
                                 "${Privacidad.monto(this, "%.8f BTC".format(v / 1e8) + fiatEntre(v))} · ${u.getString("txid").take(12)}…" +
-                                (if (v <= MonedasCongeladas.POLVO) " · tiny (possible dust)" else "")
+                                (if (v <= MonedasCongeladas.POLVO) " · tiny (possible dust)" else ""))
                         }
-                        val items = Array(utxos.length()) { i -> etiqueta(utxos.getJSONObject(i)) }
+                        val items: Array<CharSequence> = Array(utxos.length()) { i -> etiqueta(utxos.getJSONObject(i)) }
                         // Las congeladas empiezan sin marcar: se pueden elegir a mano, pero no se cuelan.
                         val checked = BooleanArray(items.size) { MonedasCongeladas.clave(utxos.getJSONObject(it)) !in congeladas }
                         // La selección se edita en una copia y sólo pasa a
@@ -2996,8 +2997,8 @@ class WalletActivity : FragmentActivity() {
                         if (isFinishing || isDestroyed) { seguir.offer(false); return@runOnUiThread }
                         AlertDialog.Builder(this)
                             .setTitle(if (exportarPsbt) "Export as PSBT" else "Review the send")
-                            .setMessage(if (exportarPsbt) resumen + "\n\nThe PSBT is not signed: another device " +
-                                        "(with the key) signs it, then it is broadcast." else resumen)
+                            .setMessage(IconosTexto.en(this, if (exportarPsbt) resumen + "\n\nThe PSBT is not signed: another device " +
+                                        "(with the key) signs it, then it is broadcast." else resumen))
                             .setCancelable(false)
                             .setNegativeButton("Cancel") { _, _ -> seguir.offer(false) }
                             .setPositiveButton(if (exportarPsbt) "Export" else "Send") { _, _ -> seguir.offer(true) }

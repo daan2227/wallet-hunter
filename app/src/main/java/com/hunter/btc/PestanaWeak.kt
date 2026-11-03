@@ -801,7 +801,8 @@ object WeakController {
         val fecha = if (t > 0) fmt.format(java.util.Date(t)) else "--/-- --:--"
         val prog = if (total > 0) "${"%,d".format(rev)}/${"%,d".format(total)}" else "%,d".format(rev)
         val faltanTxt = if (total > 0) "  ${"%,d".format(faltan)} left" else ""
-        val hitTxt = if (found > 0) "  ✓ $found found" else "  · no finds"
+        // Registro de terminal (texto plano, monoespaciado): sin emoji, la palabra basta.
+        val hitTxt = if (found > 0) "  FOUND $found" else "  · no finds"
         val estTxt = if (estado.isNotBlank()) "  [$estado]" else ""
         return "$fecha  $fuente  $prog$faltanTxt$hitTxt$estTxt"
     }

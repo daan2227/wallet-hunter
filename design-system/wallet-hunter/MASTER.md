@@ -54,7 +54,22 @@ Cards get a 1 px border of TXT_PRI at 8 % in dark themes (glass hint for OLED).
   segmented options announce checked state.
 - Security audit colors come from tokens (OK/WARN/RED), never hardcoded; severity is also written.
 
-## Pending (not done in this pass)
-- ~40 emoji/symbols used inline in texts (⚠ 🔒 ✓ …): fine as text, but structural ones should become
-  vector icons from the app's stroke set.
+## Status symbols → vector icons
+`IconosTexto.en(ctx, text)` draws ✓ ✗ ⚠ 🔒 🔓 ❄ as icons from the app's stroke set (24 grid, 1.8 stroke,
+round caps), tinted with their semantic token and centered on the line. New icons: `ic_check`, `ic_x`,
+`ic_unlock`, `ic_snow` (with the existing `ic_warning`, `ic_lock`).
+
+| Symbol | Icon | Tint |
+|---|---|---|
+| ✓ | ic_check | OK |
+| ✗ | ic_x | RED |
+| ⚠ | ic_warning | WARN |
+| 🔒 / 🔓 | ic_lock / ic_unlock | WARN / OK |
+| ❄ | ic_snow | BLUE |
+
+The character stays under the icon, so TalkBack still reads it and copying gives the same text. Used by
+Tools result rows, wallet dialogs (send review, tax report, consolidation, coin control), external wallet,
+security audit, Core and recovery. Plain-text logs (Weak terminal, miner) use words instead.
+
+## Pending
 - Visual check on device in both themes, smallest phone and landscape, largest font size.

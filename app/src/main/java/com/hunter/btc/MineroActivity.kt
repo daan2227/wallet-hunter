@@ -80,7 +80,7 @@ class Stratum(private val host: String, private val puerto: Int, val usuario: St
             2 -> if (o.optBoolean("result")) { autorizado = true; ev("Authorized as ${usuario.take(14)}…") } else ev("The pool rejected the address: ${o.opt("error")}")
             -1, 3 -> {}
             else -> if (id >= 10) {
-                if (o.optBoolean("result")) { aceptadas++; ev("Share accepted ✓") } else { rechazadas++; ev("Share rejected: ${o.opt("error")}") }
+                if (o.optBoolean("result")) { aceptadas++; ev("Share accepted") } else { rechazadas++; ev("Share rejected: ${o.opt("error")}") }
             }
         }
     }

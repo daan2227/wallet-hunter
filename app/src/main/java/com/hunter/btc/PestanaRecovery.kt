@@ -476,7 +476,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                 tvRecoveryStatus.visibility = android.view.View.GONE
                 btnCancelRecovery.visibility = android.view.View.GONE
                 btnStartRecovery.visibility = android.view.View.VISIBLE
-                tvRecoveryResult.text = "✓ FOUND\n\n$mnemonic"
+                tvRecoveryResult.text = IconosTexto.en(tvRecoveryResult.context, "✓ FOUND\n\n$mnemonic", tvRecoveryResult.textSize / tvRecoveryResult.resources.displayMetrics.scaledDensity)
                 tvRecoveryResult.visibility = android.view.View.VISIBLE
                 btnSaveWallet.tag = mnemonic
                 btnSaveWallet.visibility = android.view.View.VISIBLE
