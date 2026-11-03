@@ -55,12 +55,15 @@ object AuditoriaSeguridad {
     fun nota(hallazgos: List<Hallazgo>): Int =
         (100 - hallazgos.sumOf { it.gravedad.penaliza }).coerceIn(0, 100)
 
-    /** De la nota a una palabra y un color (ARGB) para la pantalla. */
-    fun veredicto(nota: Int): Pair<String, Int> = when {
-        nota >= 90 -> "Strong" to AppTheme.OK
-        nota >= 70 -> "Good" to AppTheme.OK
-        nota >= 45 -> "Needs attention" to AppTheme.WARN
-        else -> "At risk" to AppTheme.RED
+    /** El tono de un veredicto; el color lo pone la pantalla con el tema (aquí no hay Android: se prueba en la JVM). */
+    enum class Tono { BIEN, AVISO, MAL }
+
+    /** De la nota a una palabra y un tono para la pantalla. */
+    fun veredicto(nota: Int): Pair<String, Tono> = when {
+        nota >= 90 -> "Strong" to Tono.BIEN
+        nota >= 70 -> "Good" to Tono.BIEN
+        nota >= 45 -> "Needs attention" to Tono.AVISO
+        else -> "At risk" to Tono.MAL
     }
 
     // ── Análisis de la frase (puro, sin red) ───────────────────────────────────────────────────────

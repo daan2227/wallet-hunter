@@ -68,7 +68,12 @@ class SeguridadActivity : AppCompatActivity() {
         }
         val hallazgos = AuditoriaSeguridad.revisar(ajustes, carteras)
         val nota = AuditoriaSeguridad.nota(hallazgos)
-        val (palabra, color) = AuditoriaSeguridad.veredicto(nota)
+        val (palabra, tono) = AuditoriaSeguridad.veredicto(nota)
+        val color = when (tono) {
+            AuditoriaSeguridad.Tono.BIEN -> AppTheme.OK
+            AuditoriaSeguridad.Tono.AVISO -> AppTheme.WARN
+            AuditoriaSeguridad.Tono.MAL -> AppTheme.RED
+        }
 
         // Nota grande.
         caja.addView(LinearLayout(this).apply {
