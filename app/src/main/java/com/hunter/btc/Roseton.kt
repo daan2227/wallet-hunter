@@ -24,7 +24,8 @@ import android.view.View
  */
 class Roseton(ctx: Context, private val activo: () -> Boolean = { false }) : View(ctx) {
 
-    private data class Capa(val R: Int, val r: Int, val d: Int, val escala: Float, val color: Int, val alfa: Int)
+    // "grande" y "chico", no R y r: en la JVM los dos darían getR() y no compila.
+    private data class Capa(val grande: Int, val chico: Int, val d: Int, val escala: Float, val color: Int, val alfa: Int)
 
     private val capas: List<Capa>
         get() = listOf(
@@ -50,13 +51,14 @@ class Roseton(ctx: Context, private val activo: () -> Boolean = { false }) : Vie
     /** Una hipotrocoide cerrada, en un radio unidad de 170: se escala al tamaño de la vista. */
     private fun curva(c: Capa, radio: Float): Path {
         val p = Path()
-        val vueltas = c.r / mcd(c.R, c.r)
+        val R = c.grande; val r = c.chico
+        val vueltas = r / mcd(R, r)
         val pasos = 120 * vueltas
         val k = radio / 170f * c.escala
         for (i in 0..pasos) {
             val t = i.toDouble() / pasos * Math.PI * 2 * vueltas
-            val x = ((c.R - c.r) * Math.cos(t) + c.d * Math.cos((c.R - c.r).toDouble() / c.r * t)) * k
-            val y = ((c.R - c.r) * Math.sin(t) - c.d * Math.sin((c.R - c.r).toDouble() / c.r * t)) * k
+            val x = ((R - r) * Math.cos(t) + c.d * Math.cos((R - r).toDouble() / r * t)) * k
+            val y = ((R - r) * Math.sin(t) - c.d * Math.sin((R - r).toDouble() / r * t)) * k
             if (i == 0) p.moveTo(x.toFloat(), y.toFloat()) else p.lineTo(x.toFloat(), y.toFloat())
         }
         return p
