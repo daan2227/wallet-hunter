@@ -79,9 +79,42 @@ class WalletActivity : FragmentActivity() {
             "Could not connect. Check your connection."
         else -> e.message ?: e.javaClass.simpleName
     }
-    private fun cardBg() = GradientDrawable().apply {
-        setColor(BG_CARD)
-        cornerRadius = dp(AppTheme.R_CARD).toFloat()
+    // Todas las tarjetas de la pantalla con el filo "glass" del rediseño en oscuro.
+    private fun cardBg() = Ui.cardBg(AppTheme.R_CARD, BG_CARD, this, borde = true)
+
+    /** Tarjeta del rediseño (skill ui-ux-pro-max): la del tema con su filo "glass" en oscuro. */
+    private fun tarjeta() = Ui.cardBg(AppTheme.R_CARD, BG_CARD, this, borde = true)
+
+    /**
+     * Icono pulsable de la cabecera: 48 dp de toque y nombre para TalkBack. Los de antes eran
+     * imágenes de 20 dp sin margen —por debajo del mínimo de Android— y sin descripción.
+     */
+    private fun iconoBoton(res: Int, desc: String, onClick: () -> Unit) = FrameLayout(this).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
+        isClickable = true; isFocusable = true; foreground = Ui.toque(); contentDescription = desc
+        setOnClickListener { onClick() }
+        addView(android.widget.ImageView(context).apply {
+            setImageResource(res); setColorFilter(AppTheme.TXT_SEC)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
+        })
+    }
+
+    /** Aviso en línea, con su icono (⚠ → IconosTexto) y anunciado por TalkBack al aparecer. */
+    private fun aviso(texto: String, color: Int = AppTheme.WARN) = TextView(this).apply {
+        text = IconosTexto.en(this@WalletActivity, texto, AppTheme.SP_CAPTION)
+        textSize = AppTheme.SP_CAPTION; setTextColor(color); typeface = AppTheme.body(context)
+        setLineSpacing(0f, 1.35f); setPadding(dp(4), dp(10), dp(4), 0)
+        accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+    }
+
+    /** Enlace de texto con 48 dp de toque (los de antes medían unos 30). */
+    private fun enlace(texto: String, onClick: () -> Unit) = TextView(this).apply {
+        text = texto; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.ACCENT)
+        typeface = AppTheme.medium(context); gravity = Gravity.CENTER
+        minimumHeight = dp(48); setPadding(dp(12), 0, dp(12), 0)
+        isClickable = true; isFocusable = true; foreground = Ui.toque()
+        setOnClickListener { onClick() }
     }
 
     private var mnemonic = ""
@@ -556,16 +589,12 @@ class WalletActivity : FragmentActivity() {
         // franja de 60dp, y el título gritando en el color del acento.
         val header = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), dp(16), dp(AppTheme.PAD_SIDE), dp(14))
+            // Los iconos ya traen 48 dp de toque: el margen lateral se queda en lo que falta.
+            setPadding(dp(AppTheme.PAD_SIDE - 14), dp(8), dp(AppTheme.PAD_SIDE - 14), dp(8))
             gravity = Gravity.CENTER_VERTICAL
         }
-        header.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_back)
-            setColorFilter(AppTheme.TXT_SEC)
-            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(14) }
-            isClickable = true; isFocusable = true
-            setOnClickListener { finish() }
-        })
+        header.addView(iconoBoton(R.drawable.ic_back, "Back") { finish() }
+            .apply { (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(4) })
         header.addView(TextView(this).apply {
             text = currentWalletName.ifEmpty { "Wallet" }
             textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_PRI)
@@ -573,12 +602,18 @@ class WalletActivity : FragmentActivity() {
             letterSpacing = -0.01f
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
-        header.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_scan)
-            setColorFilter(AppTheme.TXT_SEC)
-            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20)).apply { marginEnd = dp(18) }
-            isClickable = true; isFocusable = true
-            setOnClickListener {
+        // Red de pruebas: que se vea siempre, no sólo en el menú.
+        if (isTestnet) header.addView(TextView(this).apply {
+            text = "Testnet"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+            typeface = AppTheme.bold(context)
+            background = GradientDrawable().apply {
+                setColor((AppTheme.WARN and 0x00FFFFFF) or (0x24 shl 24)); cornerRadius = dp(999).toFloat()
+            }
+            setPadding(dp(10), dp(4), dp(10), dp(4))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(4) }
+        })
+        header.addView(iconoBoton(R.drawable.ic_scan, "Open the scanner") {
                 // Sin banderas esto creaba una SEGUNDA MainActivity encima de
                 // la que ya había debajo —singleTop sólo evita el duplicado si
                 // la de debajo está arriba del todo, y aquí arriba estaba esta—.
@@ -588,60 +623,47 @@ class WalletActivity : FragmentActivity() {
                     .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                     .putExtra(BottomBar.EXTRA_TAB, BottomBar.SCANNER))
                 finish()
-            }
         })
-        header.addView(android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_more)
-            setColorFilter(AppTheme.TXT_SEC)
-            setPadding(dp(10), dp(10), dp(10), dp(10))
-            isClickable = true; isFocusable = true
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-            setOnClickListener { showMenu() }
-        })
+        header.addView(iconoBoton(R.drawable.ic_more, "More options") { showMenu() })
         root.addView(header)
 
-        // Las pestañas eran botones a ras, distinguidos sólo por un cambio de
-        // fondo casi invisible entre #161616 y #1D1D1D. Ahora la activa se
-        // rellena con el acento, que es lo que hace el sistema en el resto.
+        // Pestañas como control segmentado (rediseño con la skill ui-ux-pro-max): una pista
+        // elevada y la activa en relieve, con el texto en negrita. El oro queda para las
+        // acciones; la pestaña es "dónde estás", no "qué haces". Cada una mide 48 dp de alto
+        // (antes 38, por debajo del mínimo de Android) y TalkBack dice cuál está elegida.
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), dp(18))
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, this@WalletActivity)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(16)) }
+        }
+        fun pintarPestana(b: Button, on: Boolean) {
+            b.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+            b.typeface = if (on) AppTheme.bold(b.context) else AppTheme.medium(b.context)
+            // La activa, una tarjeta metida 4 dp dentro de su celda: se ve más pequeña que el toque.
+            b.background = if (on) android.graphics.drawable.InsetDrawable(
+                Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_CARD, b.context, borde = true), dp(4)) else null
+            b.isSelected = on
         }
         val tabBtns = mutableListOf<Button>()
         listOf("Balance","History","Send","Receive").forEachIndexed { i, name ->
             val btn = Button(this).apply {
                 text = name; textSize = AppTheme.SP_CAPTION + 1f
                 isAllCaps = false
-                typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
-                setTextColor(if (i == 0) AppTheme.BG_DEEP else AppTheme.TXT_SEC)
-                background = GradientDrawable().apply {
-                    setColor(if (i == 0) AppTheme.ACCENT else AppTheme.BG_KEY)
-                    cornerRadius = dp(AppTheme.R_CHIP).toFloat()
-                }
                 stateListAnimator = null
+                foreground = Ui.toque()
                 setPadding(0, 0, 0, 0)
-                layoutParams = LinearLayout.LayoutParams(0, dp(38), 1f).apply {
-                    if (i < 3) marginEnd = dp(6)
-                }
+                minHeight = 0; minimumHeight = 0
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
             }
+            pintarPestana(btn, i == 0)
             tabBtns.add(btn); tabs.addView(btn)
         }
         botonesPestana = tabBtns
         tabBtns.forEachIndexed { i, btn ->
             btn.setOnClickListener {
-                tabBtns.forEach { b ->
-                    b.setTextColor(AppTheme.TXT_SEC)
-                    b.typeface = AppTheme.medium(b.context)
-                    b.background = GradientDrawable().apply {
-                        setColor(AppTheme.BG_KEY); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
-                    }
-                }
-                btn.setTextColor(AppTheme.ON_ACCENT)
-                btn.typeface = AppTheme.bold(btn.context)
-                btn.background = GradientDrawable().apply {
-                    setColor(AppTheme.ACCENT); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
-                }
+                tabBtns.forEach { b -> pintarPestana(b, b === btn) }
                 tabContent.removeAllViews()
                 actionBar?.visibility = if (i >= 2) View.GONE else View.VISIBLE
                 when (i) { 0 -> loadBalanceTab(); 1 -> loadHistoryTab(); 2 -> loadSendTab(); 3 -> loadReceiveTab() }
@@ -658,25 +680,25 @@ class WalletActivity : FragmentActivity() {
             LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(if (primary) AppTheme.ACCENT else AppTheme.BG_KEY)
-                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
-                }
-                isClickable = true; isFocusable = true
+                // ON_ACCENT, no BG_DEEP: en el tema de día BG_DEEP es casi blanco sobre el oro.
+                background = if (primary) Ui.botonAccento(context, AppTheme.R_KEY)
+                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context, borde = true)
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply {
                     if (!last) marginEnd = dp(AppTheme.GAP)
                 }
                 addView(android.widget.ImageView(context).apply {
                     setImageResource(iconRes)
-                    setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
-                    layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply {
-                        marginEnd = dp(9)
+                    setColorFilter(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply {
+                        marginEnd = dp(8)
                     }
                 })
                 addView(TextView(context).apply {
                     text = label
-                    textSize = AppTheme.SP_BODY + 1f
-                    setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    textSize = AppTheme.SP_BODY
+                    setTextColor(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
                     typeface = if (primary) AppTheme.bold(context) else AppTheme.medium(context)
                 })
             }
@@ -684,7 +706,7 @@ class WalletActivity : FragmentActivity() {
         actionBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setBackgroundColor(AppTheme.BG_DEEP)
-            setPadding(dp(AppTheme.PAD_SIDE), dp(18), dp(AppTheme.PAD_SIDE), dp(26))
+            setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(20))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -705,40 +727,66 @@ class WalletActivity : FragmentActivity() {
     /* -- BALANCE -- */
     private fun loadBalanceTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
-        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(8), dp(16), dp(16)) }
-        // Centrado y en verde fijo, igual que el saldo de la pestaña Cartera
-        // antes del rediseño: el acento pintaba también un cero.
+        val ll = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(24))
+        }
         montos.clear()
+        // Tarjeta protagonista (skill: la cifra es lo primero que se lee). El tamaño se ajusta
+        // solo: un saldo de 8 decimales a 44 sp no cabía en un móvil estrecho.
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; background = tarjeta()
+            setPadding(dp(20), dp(18), dp(12), dp(18))
+        }
+        hero.addView(TextView(this).apply {
+            text = if (isTestnet) "Total balance · testnet" else "Total balance"
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.medium(context)
+        })
         val tvTotal = TextView(this).apply {
             text = "—"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
-            letterSpacing = -0.04f
-            setPadding(0, dp(12), 0, dp(6))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            letterSpacing = -0.03f; maxLines = 1
+            setAutoSizeTextTypeUniformWithConfiguration(20, 40, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
+            gravity = Gravity.CENTER_VERTICAL
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         val tvFiat = TextView(this).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            text = ""; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.medium(context)
-            setPadding(0, 0, 0, dp(20))
         }
         // El ojo, al lado de la cifra: tapa el total, el equivalente en
         // dólares y el saldo de cada dirección. Queda guardado.
         val filaTotal = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(6), 0, dp(2))
         }
         filaTotal.addView(tvTotal)
         filaTotal.addView(Privacidad.ojo(this) { repintarMontos() })
-        ll.addView(filaTotal); ll.addView(tvFiat)
+        hero.addView(filaTotal); hero.addView(tvFiat)
+        // Mientras se consulta la cadena: un indicador en vez de un "—" mudo.
+        val cargando = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(12), 0, 0)
+            addView(android.widget.ProgressBar(context).apply {
+                isIndeterminate = true
+                indeterminateTintList = android.content.res.ColorStateList.valueOf(AppTheme.ACCENT)
+                layoutParams = LinearLayout.LayoutParams(dp(16), dp(16)).apply { marginEnd = dp(10) }
+            })
+            addView(TextView(context).apply {
+                text = "Checking the chain…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(TXT_SEC); typeface = AppTheme.body(context)
+            })
+        }
+        hero.addView(cargando)
+        ll.addView(hero)
         // Volver a buscar direcciones: si la primera búsqueda se hizo sin red o no
         // llegó a una dirección usada, aquí se repite sin cerrar la pantalla.
-        ll.addView(TextView(this).apply {
-            text = "Search for addresses again"
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
-            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
-            setPadding(0, dp(6), 0, dp(10))
-            isClickable = true; isFocusable = true
-            setOnClickListener { tabContent.removeAllViews(); loadBalanceTab() }
+        ll.addView(enlace("Search for addresses again") { tabContent.removeAllViews(); loadBalanceTab() }.apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4)
+            }
         })
         scroll.addView(ll); tabContent.addView(scroll)
 
@@ -896,62 +944,94 @@ class WalletActivity : FragmentActivity() {
                 monto(tvTotal, btcText)
                 tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
                 if (pr > 0) monto(tvFiat, fiatText)
-                // Lightning: siempre a la vista. Con el nodo en marcha, su saldo; si no, cómo encenderlo.
-                ll.addView(tarjetaLightning())
-                if (pend != 0L) ll.addView(TextView(this).apply {
+                hero.removeView(cargando)
+                if (pend != 0L) hero.addView(TextView(this).apply {
                     text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8) + fiatEntre(pend)
                     textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
                     typeface = AppTheme.body(context)
-                    setPadding(0, 0, 0, dp(12))
+                    setPadding(0, dp(10), 0, 0)
                 })
                 // Un fallo de red se decía antes fila a fila ("no answer"
                 // doce veces) sin explicar nunca que el problema era el mismo.
                 if (huboFallo) {
-                    ll.addView(TextView(this).apply {
-                        text = "Could not query the chain. What you see may be " +
-                               "out of date; come back when you have a connection."
-                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
-                        typeface = AppTheme.body(context)
-                        setLineSpacing(0f, 1.4f)
-                        setPadding(0, dp(10), 0, 0)
-                    })
+                    ll.addView(aviso("⚠ Could not query the chain. What you see may be " +
+                                     "out of date; come back when you have a connection."), 2)
                 } else if (usedFallback) {
-                    ll.addView(TextView(this).apply {
-                        text = "The web APIs did not answer; the balance comes from Electrum"
-                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-                        typeface = AppTheme.body(context)
-                        setPadding(0, dp(10), 0, 0)
-                    })
+                    ll.addView(aviso("The web APIs did not answer; the balance comes from Electrum",
+                                     AppTheme.TXT_SEC), 2)
                 }
-                rows.forEach { (lbl, addr, bal, src) ->
-                    val card = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL; background = cardBg()
-                        setPadding(dp(16), dp(14), dp(16), dp(14))
-                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(AppTheme.GAP) }
+                // Lightning: siempre a la vista. Con el nodo en marcha, su saldo; si no, cómo encenderlo.
+                ll.addView(tarjetaLightning().apply {
+                    (layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(AppTheme.GAP)
+                })
+                if (rows.isEmpty()) return@runOnUiThread
+                // Todas las direcciones en una sola tarjeta, fila a fila: antes
+                // era una tarjeta por dirección y doce tarjetas apiladas se leían
+                // como doce cosas distintas.
+                ll.addView(Ui.sectionLabel(this, "Addresses", topGap = 24))
+                val lista = LinearLayout(this).apply {
+                    orientation = LinearLayout.VERTICAL; background = tarjeta()
+                    setPadding(0, dp(4), 0, dp(4))
+                }
+                rows.forEachIndexed { n, (lbl, addr, bal, src) ->
+                    if (n > 0) lista.addView(View(this).apply {
+                        setBackgroundColor((TXT_PRI and 0x00FFFFFF) or (0x14 shl 24))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                            marginStart = dp(16); marginEnd = dp(16)
+                        }
+                    })
+                    val fila = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                        minimumHeight = dp(64)
+                        setPadding(dp(16), dp(12), dp(16), dp(12))
+                        if (lbl != "Error" && addr.isNotEmpty()) {   // la fila de error no lleva dirección
+                            isClickable = true; isFocusable = true; foreground = Ui.toque()
+                            contentDescription = "$lbl, $addr. Double tap to copy"
+                            setOnClickListener {
+                                val cm = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
+                                cm.setPrimaryClip(ClipData.newPlainText("address", addr))
+                                Toast.makeText(this@WalletActivity, "Address copied", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
-                    card.addView(TextView(this).apply {
-                        text = lbl; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
-                        typeface = AppTheme.medium(context)
+                    val izq = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL
+                        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) }
+                    }
+                    izq.addView(TextView(this).apply {
+                        text = lbl; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+                        typeface = AppTheme.medium(context); maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
                     })
-                    card.addView(TextView(this).apply {
+                    // Dirección con elipsis en medio: el principio y el final son lo
+                    // que se compara a ojo.
+                    izq.addView(TextView(this).apply {
                         text = addr; textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
-                        typeface = AppTheme.mono(context)
-                        setPadding(0, dp(3), 0, dp(7))
+                        typeface = AppTheme.mono(context); maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                        setPadding(0, dp(2), 0, 0)
                     })
-                    card.addView(TextView(this).apply {
-                        val real = (if (bal < 0) "no answer" else "%.8f BTC".format(bal / 1e8)) +
-                                   (if (src == "electrum") "  · electrum" else "")
+                    fila.addView(izq)
+                    val der = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL; gravity = Gravity.END
+                    }
+                    der.addView(TextView(this).apply {
+                        val real = if (bal < 0) "no answer" else "%.8f".format(bal / 1e8)
                         if (bal < 0) text = real else monto(this, real)
                         textSize = AppTheme.SP_BODY
                         setTextColor(when { bal > 0 -> GREEN; bal == 0L -> TXT_SEC; else -> RED })
-                        typeface = AppTheme.bold(context)
+                        typeface = if (bal > 0) AppTheme.bold(context) else AppTheme.medium(context)
+                        gravity = Gravity.END
                     })
-                    if (bal > 0) card.addView(TextView(this).apply {
+                    if (bal > 0 || src == "electrum") der.addView(TextView(this).apply {
                         textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
-                        ponerFiat(this, bal)
+                        gravity = Gravity.END
+                        if (bal > 0) ponerFiat(this, bal) else text = "electrum"
                     })
-                    ll.addView(card)
+                    fila.addView(der)
+                    lista.addView(fila)
                 }
+                ll.addView(lista)
             }
         }.start()
     }
@@ -997,11 +1077,17 @@ class WalletActivity : FragmentActivity() {
      */
     private fun loadHistoryTab() {
         val scroll = ScrollView(this).apply { setBackgroundColor(BG_DEEP) }
-        val ll = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16),dp(8),dp(16),dp(16)) }
+        val ll = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(24))
+        }
+        // Resumen y estado de la carga, anunciado por TalkBack cuando cambia.
         val tvHead = TextView(this).apply {
-            text = "Loading…"; textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
-            typeface = AppTheme.body(context)
-            setPadding(0, dp(12), 0, dp(8))
+            text = "Loading…"; textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
+            typeface = AppTheme.medium(context)
+            setLineSpacing(0f, 1.3f)
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         ll.addView(tvHead); scroll.addView(ll); tabContent.addView(scroll)
 
@@ -1096,80 +1182,103 @@ class WalletActivity : FragmentActivity() {
                         (if (buscando || descubriendo) " · still searching addresses" else "")
                     if (faltan > 0 || buscando || descubriendo) tvHead.setTextColor(AppTheme.WARN)
                     if (movs.isEmpty()) {
-                        ll.addView(TextView(this).apply {
-                            text = "No transactions yet"
-                            setTextColor(TXT_SEC); textSize = AppTheme.SP_BODY
-                            typeface = AppTheme.body(context)
-                        })
+                        // Estado vacío con su acción (skill: nunca una pantalla muda).
+                        ll.addView(Ui.estadoVacio(this, R.drawable.ic_clock, "No transactions yet",
+                            "Received and sent payments of every address in this wallet will show up here."))
+                        ll.addView(enlace("Receive bitcoin") { botonesPestana.getOrNull(3)?.performClick() })
                         return@runOnUiThread
                     }
-                    if (!isTestnet) ll.addView(TextView(this).apply {
-                        text = "Tax report (FIFO)"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
-                        typeface = AppTheme.medium(context); gravity = Gravity.CENTER
-                        setPadding(0, dp(6), 0, dp(4))
-                        isClickable = true; isFocusable = true
-                        setOnClickListener { informeFiscal(movs, faltan > 0 || buscando || descubriendo) }
-                    })
-                    if (avanzado()) ll.addView(TextView(this).apply {
-                        text = "Export as CSV"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
-                        typeface = AppTheme.medium(context); gravity = Gravity.CENTER
-                        setPadding(0, dp(6), 0, dp(10))
-                        isClickable = true; isFocusable = true
-                        setOnClickListener { exportarCsv(movs) }
-                    })
-                    val fmt = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
+                    // Acciones del historial en una fila, como enlaces de 48 dp.
+                    val acciones = LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_HORIZONTAL
+                    }
+                    if (!isTestnet) acciones.addView(enlace("Tax report (FIFO)") {
+                        informeFiscal(movs, faltan > 0 || buscando || descubriendo) })
+                    if (avanzado()) acciones.addView(enlace("Export as CSV") { exportarCsv(movs) })
+                    if (acciones.childCount > 0) ll.addView(acciones)
+                    val fmt = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.getDefault())
                     fun tanda(desde: Int) {
                     val hasta = minOf(desde + 50, movs.size)
-                    for (m in movs.subList(desde, hasta)) {
-                        val card = LinearLayout(this).apply {
-                            orientation = LinearLayout.VERTICAL; background = cardBg()
-                            setPadding(dp(16),dp(14),dp(16),dp(14))
-                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(AppTheme.GAP) }
-                            isClickable = true; foreground = Ui.toque()
-                        }
-                        val arriba = LinearLayout(this).apply {
-                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                        }
-                        arriba.addView(TextView(this).apply {
-                            text = Etiquetas.deTx(context, m.txid) ?: when { m.neto > 0 -> "Received"; m.neto < 0 -> "Sent"; else -> "Moved" }
-                            textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI); typeface = AppTheme.medium(context)
-                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    // Cada tanda, una tarjeta con las filas separadas por una línea fina.
+                    val lista = LinearLayout(this).apply {
+                        orientation = LinearLayout.VERTICAL; background = tarjeta()
+                        setPadding(0, dp(4), 0, dp(4))
+                        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(AppTheme.GAP) }
+                    }
+                    for ((n, m) in movs.subList(desde, hasta).withIndex()) {
+                        if (n > 0) lista.addView(View(this).apply {
+                            setBackgroundColor((TXT_PRI and 0x00FFFFFF) or (0x14 shl 24))
+                            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1).apply {
+                                marginStart = dp(68); marginEnd = dp(16)
+                            }
                         })
-                        arriba.addView(TextView(this).apply {
+                        val entra = m.neto > 0
+                        val titulo = Etiquetas.deTx(this, m.txid)
+                            ?: when { m.neto > 0 -> "Received"; m.neto < 0 -> "Sent"; else -> "Moved" }
+                        val fila = LinearLayout(this).apply {
+                            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                            minimumHeight = dp(68)
+                            setPadding(dp(16), dp(12), dp(16), dp(12))
+                            isClickable = true; isFocusable = true; foreground = Ui.toque()
+                        }
+                        // Insignia redonda: flecha de entrada en verde, de salida neutra.
+                        val tinte = when { !m.confirmado -> AppTheme.WARN; entra -> GREEN; else -> TXT_SEC }
+                        fila.addView(FrameLayout(this).apply {
+                            background = GradientDrawable().apply {
+                                shape = GradientDrawable.OVAL
+                                setColor((tinte and 0x00FFFFFF) or (0x24 shl 24))
+                            }
+                            layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginEnd = dp(12) }
+                            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                            addView(android.widget.ImageView(context).apply {
+                                setImageResource(if (!m.confirmado) R.drawable.ic_clock
+                                                 else if (entra) R.drawable.ic_receive else R.drawable.ic_send)
+                                setColorFilter(tinte)
+                                layoutParams = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+                            })
+                        })
+                        val izq = LinearLayout(this).apply {
+                            orientation = LinearLayout.VERTICAL
+                            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginEnd = dp(12) }
+                        }
+                        izq.addView(TextView(this).apply {
+                            text = titulo; textSize = AppTheme.SP_BODY; setTextColor(TXT_PRI)
+                            typeface = AppTheme.medium(context); maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                        })
+                        izq.addView(TextView(this).apply {
+                            val fecha = if (m.tiempo > 0) fmt.format(java.util.Date(m.tiempo * 1000)) else ""
+                            text = if (!m.confirmado) "Pending" else fecha.ifEmpty { "Confirmed" }
+                            textSize = AppTheme.SP_CAPTION
+                            setTextColor(if (m.confirmado) TXT_SEC else AppTheme.WARN)
+                            typeface = AppTheme.body(context); setPadding(0, dp(2), 0, 0)
+                        })
+                        fila.addView(izq)
+                        val der = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
+                        der.addView(TextView(this).apply {
                             val real = (if (m.neto > 0) "+" else if (m.neto < 0) "−" else "") +
-                                       "%.8f BTC".format(Math.abs(m.neto) / 1e8)
+                                       "%.8f".format(Math.abs(m.neto) / 1e8)
                             text = Privacidad.monto(context, real)
                             textSize = AppTheme.SP_BODY; typeface = AppTheme.bold(context)
-                            setTextColor(if (m.neto > 0) GREEN else TXT_PRI)
+                            setTextColor(if (entra) GREEN else TXT_PRI); gravity = Gravity.END
                         })
-                        card.addView(arriba)
-                        if (m.neto != 0L) card.addView(TextView(this).apply {
+                        if (m.neto != 0L) der.addView(TextView(this).apply {
                             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
                             gravity = Gravity.END; setPadding(0, dp(2), 0, 0)
                             ponerFiat(this, m.neto)
                         })
-                        card.addView(TextView(this).apply {
-                            val fecha = if (m.tiempo > 0) fmt.format(java.util.Date(m.tiempo * 1000)) else ""
-                            text = (if (m.confirmado) "Confirmed" else "Pending") +
-                                   (if (fecha.isNotEmpty()) " · $fecha" else "") + " · " + m.txid.take(12) + "…"
-                            textSize = AppTheme.SP_CAPTION
-                            setTextColor(if (m.confirmado) TXT_SEC else AppTheme.WARN)
-                            typeface = AppTheme.body(context)
-                            setPadding(0, dp(4), 0, 0)
-                        })
-                        card.setOnClickListener { detalleTx(m, propias, cambio) }
-                        ll.addView(card)
+                        fila.addView(der)
+                        fila.contentDescription = "$titulo, " +
+                            (if (m.confirmado) "confirmed" else "pending") + ". Double tap for details"
+                        fila.setOnClickListener { detalleTx(m, propias, cambio) }
+                        lista.addView(fila)
                     }
+                    ll.addView(lista)
                     if (hasta < movs.size) {
                         val resto = movs.size - hasta
-                        val btn = TextView(this).apply {
-                            text = "Show ${minOf(50, resto)} more (${resto} left)"
-                            textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
-                            typeface = AppTheme.medium(context); setTextColor(AppTheme.ACCENT)
-                            setPadding(0, dp(14), 0, dp(14))
-                            isClickable = true; isFocusable = true
-                        }
-                        btn.setOnClickListener { ll.removeView(btn); tanda(hasta) }
+                        lateinit var btn: View
+                        btn = enlace("Show ${minOf(50, resto)} more (${resto} left)") { ll.removeView(btn); tanda(hasta) }
                         ll.addView(btn)
                     }
                     }
@@ -1797,8 +1906,10 @@ class WalletActivity : FragmentActivity() {
             background = GradientDrawable().apply {
                 setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_CHIP).toFloat()
             }
-            setPadding(dp(14), dp(8), dp(14), dp(8))
-            isClickable = true; isFocusable = true
+            setPadding(dp(18), 0, dp(18), 0)
+            gravity = Gravity.CENTER; minimumHeight = dp(48)   // 48 dp de toque (skill)
+            isClickable = true; isFocusable = true; foreground = Ui.toque()
+            contentDescription = "Send all the balance"
         }
         underAmount.addView(tvFromBal); underAmount.addView(chipMax)
         amountBlock.addView(underAmount)
@@ -2051,10 +2162,13 @@ class WalletActivity : FragmentActivity() {
             tvMedida.typeface = if (medida) AppTheme.bold(this) else AppTheme.medium(this)
             feePills.forEachIndexed { i, pill ->
                 val on = i == feeSel && feeRate <= 0
+                // La elegida, con filo de acento: sólo el cambio de fondo no se distinguía.
                 pill.background = GradientDrawable().apply {
                     setColor(if (on) AppTheme.BG_ELEV else AppTheme.BG_CARD)
                     cornerRadius = dp(AppTheme.R_INNER).toFloat()
+                    if (on) setStroke(dp(1), AppTheme.ACCENT)
                 }
+                pill.isSelected = on
                 (pill.getChildAt(0) as TextView).apply {
                     setTextColor(if (on) AppTheme.ACCENT else TXT_SEC)
                     typeface = if (on) AppTheme.bold(context) else AppTheme.medium(context)
@@ -2068,7 +2182,8 @@ class WalletActivity : FragmentActivity() {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(10), dp(12), dp(10), dp(12))
-                isClickable = true; isFocusable = true
+                minimumHeight = dp(56)
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                     .apply { if (i < feeNames.size) marginEnd = dp(8) }
             }
@@ -3191,11 +3306,8 @@ class WalletActivity : FragmentActivity() {
 
         val keys = addresses.keys.toList()
         if (keys.isEmpty()) {
-            ll.addView(side(TextView(this).apply {
-                text = "There are no addresses to show yet."
-                textSize = AppTheme.SP_BODY; setTextColor(TXT_SEC)
-                typeface = AppTheme.body(context)
-            }, top = 24))
+            ll.addView(side(Ui.estadoVacio(this, R.drawable.ic_receive, "No addresses yet",
+                "Addresses appear here once the wallet has been loaded."), top = 8))
             scroll.addView(ll); tabContent.addView(scroll); return
         }
 
@@ -3225,13 +3337,17 @@ class WalletActivity : FragmentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
-                setColor(AppTheme.TXT_PRI)   // el QR necesita claro, sea cual sea el tema
-                cornerRadius = dp(18).toFloat()
+                // Blanco puro en los dos temas: con TXT_PRI el QR quedaba sobre
+                // azul marino en el tema de día y muchos lectores no lo leían.
+                setColor(Color.WHITE)
+                cornerRadius = dp(AppTheme.R_CARD).toFloat()
+                if (!AppTheme.isDark) setStroke(dp(1), (AppTheme.TXT_PRI and 0x00FFFFFF) or (0x1F shl 24))
             }
             setPadding(dp(16), dp(16), dp(16), dp(16))
         }
         val ivQr = android.widget.ImageView(this).apply {
             layoutParams = LinearLayout.LayoutParams(dp(216), dp(216))
+            contentDescription = "QR code of the address"
         }
         qrWrap.addView(ivQr)
         val qrCenter = LinearLayout(this).apply {
@@ -3243,8 +3359,8 @@ class WalletActivity : FragmentActivity() {
         /* ── LA DIRECCIÓN ──────────────────────────────────────────────── */
         val addrCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBg()
-            setPadding(dp(19), dp(17), dp(19), dp(17))
+            background = tarjeta()
+            setPadding(dp(18), dp(16), dp(18), dp(12))
         }
         val addrHead = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -3252,14 +3368,15 @@ class WalletActivity : FragmentActivity() {
         }
         addrHead.addView(TextView(this).apply {
             text = "Your address"
-            textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.medium(context)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         val tvEstreno = TextView(this).apply {
             text = "checking…"
-            textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.bold(context)
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         addrHead.addView(tvEstreno)
         addrCard.addView(addrHead)
@@ -3269,7 +3386,8 @@ class WalletActivity : FragmentActivity() {
             typeface = AppTheme.display(context)
             letterSpacing = 0.02f
             setLineSpacing(0f, 1.75f)
-            setPadding(0, dp(10), 0, 0)
+            setPadding(0, dp(10), 0, dp(12))
+            contentDescription = null
         }
         addrCard.addView(tvAddr)
         // Importe opcional: va en el QR como bitcoin:dirección?amount=… (BIP21).
@@ -3279,22 +3397,23 @@ class WalletActivity : FragmentActivity() {
                         android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
             isSingleLine = true; textSize = AppTheme.SP_BODY
             setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context)
+            // Campo con fondo propio y 48 dp: sin fondo se veía como texto suelto.
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            minimumHeight = dp(48)
             setPadding(dp(14), dp(10), dp(14), dp(10))
         }
         addrCard.addView(etMonto)
         // Lo que vale ese importe en dinero normal, para saber cuánto se está pidiendo.
         val tvFiatMonto = TextView(this).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.body(context)
-            setPadding(dp(14), 0, dp(14), dp(4))
+            setPadding(dp(14), dp(6), dp(14), 0)
         }
         addrCard.addView(tvFiatMonto)
         // Otra dirección nueva de este mismo tipo, sin usar.
-        val btnNueva = TextView(this).apply {
-            text = "New address"
-            textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
-            typeface = AppTheme.medium(context); setTextColor(AppTheme.ACCENT)
-            setPadding(0, dp(12), 0, dp(4))
-            isClickable = true; isFocusable = true
+        val btnNueva = enlace("New address") {}.apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(4) }
         }
         addrCard.addView(btnNueva)
 
@@ -3303,23 +3422,22 @@ class WalletActivity : FragmentActivity() {
             LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
-                background = GradientDrawable().apply {
-                    setColor(if (primary) AppTheme.ACCENT else AppTheme.BG_KEY)
-                    cornerRadius = dp(AppTheme.R_CARD).toFloat()
-                }
-                isClickable = true; isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(0, dp(50), 1f).apply {
+                background = if (primary) Ui.botonAccento(context, AppTheme.R_KEY)
+                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context, borde = true)
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
+                layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
                     if (!last) marginEnd = dp(AppTheme.GAP)
                 }
                 addView(android.widget.ImageView(context).apply {
                     setImageResource(iconRes)
-                    setColorFilter(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
-                    layoutParams = LinearLayout.LayoutParams(dp(17), dp(17)).apply { marginEnd = dp(9) }
+                    setColorFilter(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                    layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(9) }
                 })
                 addView(TextView(context).apply {
                     text = label
                     textSize = AppTheme.SP_BODY
-                    setTextColor(if (primary) AppTheme.BG_DEEP else AppTheme.TXT_PRI)
+                    setTextColor(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
                     typeface = if (primary) AppTheme.bold(context) else AppTheme.medium(context)
                 })
             }
@@ -3333,12 +3451,13 @@ class WalletActivity : FragmentActivity() {
         /* ── POR QUÉ CAMBIA ────────────────────────────────────────────── */
         val notaCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = cardBg()
+            background = tarjeta()
             setPadding(dp(18), dp(16), dp(18), dp(16))
         }
         notaCard.addView(android.widget.ImageView(this).apply {
             setImageResource(R.drawable.ic_refresh)
-            setColorFilter(TXT_SEC)
+            setColorFilter(AppTheme.ACCENT)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             layoutParams = LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(12) }
         })
         val notaCol = LinearLayout(this).apply {
@@ -3353,7 +3472,7 @@ class WalletActivity : FragmentActivity() {
         notaCol.addView(TextView(this).apply {
             text = "The previous ones are still yours and show up in Balance. " +
                    "Reusing one leaves your history in plain sight."
-            textSize = AppTheme.SP_MICRO; setTextColor(TXT_SEC)
+            textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC)
             typeface = AppTheme.body(context)
             setLineSpacing(0f, 1.55f)
             setPadding(0, dp(3), 0, 0)
@@ -3521,11 +3640,10 @@ class WalletActivity : FragmentActivity() {
         fun pintarTipos() {
             tipoPills.forEachIndexed { i, p ->
                 val on = i == tipoSel
-                p.background = GradientDrawable().apply {
-                    setColor(if (on) AppTheme.ACCENT else AppTheme.BG_KEY)
-                    cornerRadius = dp(AppTheme.R_CHIP).toFloat()
-                }
-                p.setTextColor(if (on) AppTheme.BG_DEEP else TXT_SEC)
+                p.background = if (on) Ui.botonAccento(p.context, AppTheme.R_CHIP)
+                               else Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, p.context, borde = true)
+                p.setTextColor(if (on) AppTheme.ON_ACCENT else TXT_SEC)
+                p.isSelected = on
                 p.typeface = if (on) AppTheme.bold(p.context) else AppTheme.medium(p.context)
             }
         }
@@ -3534,9 +3652,9 @@ class WalletActivity : FragmentActivity() {
                 text = g.etiqueta
                 textSize = AppTheme.SP_CAPTION
                 gravity = Gravity.CENTER
-                setPadding(0, dp(9), 0, dp(9))
-                isClickable = true; isFocusable = true
-                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
+                contentDescription = "Address type ${g.etiqueta}"
+                layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f)
                     .apply { if (i < efectivos.size - 1) marginEnd = dp(7) }
                 setOnClickListener {
                     tipoSel = i; pintarTipos(); mostrar(addresses[k] ?: return@setOnClickListener)
