@@ -22,3 +22,6 @@ design/*.html
 !design/*.dc.html
 tools/ec-harness/semilla
 app/src/main/jniLibs/
+
+# Capturas para la revisión de impeccable: pueden mostrar semillas y direcciones. Nunca al repo.
+.impeccable/review/
