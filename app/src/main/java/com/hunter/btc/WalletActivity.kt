@@ -734,26 +734,28 @@ class WalletActivity : FragmentActivity() {
         montos.clear()
         // Tarjeta protagonista (skill: la cifra es lo primero que se lee). El tamaño se ajusta
         // solo: un saldo de 8 decimales a 44 sp no cabía en un móvil estrecho.
+        // "Security print": sin caja. La cifra centrada sobre el rosetón de guilloche, que gira
+        // mientras se consulta la cadena y se para cuando el saldo ya es el de verdad.
         val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; background = tarjeta()
-            setPadding(dp(20), dp(18), dp(12), dp(18))
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
         }
         hero.addView(TextView(this).apply {
             text = if (isTestnet) "Total balance · testnet" else "Total balance"
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.medium(context)
+            gravity = Gravity.CENTER
         })
         val tvTotal = TextView(this).apply {
             text = "—"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
             letterSpacing = -0.03f; maxLines = 1
-            setAutoSizeTextTypeUniformWithConfiguration(20, 40, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
-            layoutParams = LinearLayout.LayoutParams(0, dp(56), 1f)
-            gravity = Gravity.CENTER_VERTICAL
+            setAutoSizeTextTypeUniformWithConfiguration(20, 52, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            layoutParams = LinearLayout.LayoutParams(0, dp(64), 1f)
+            gravity = Gravity.CENTER
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
         }
         val tvFiat = TextView(this).apply {
             text = ""; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
+            typeface = AppTheme.medium(context); gravity = Gravity.CENTER
         }
         // El ojo, al lado de la cifra: tapa el total, el equivalente en
         // dólares y el saldo de cada dirección. Queda guardado.
@@ -762,12 +764,14 @@ class WalletActivity : FragmentActivity() {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(0, dp(6), 0, dp(2))
         }
+        // Un hueco del ancho del ojo a la izquierda: así la cifra queda centrada de verdad.
+        filaTotal.addView(View(this), LinearLayout.LayoutParams(dp(48), 1))
         filaTotal.addView(tvTotal)
         filaTotal.addView(Privacidad.ojo(this) { repintarMontos() })
         hero.addView(filaTotal); hero.addView(tvFiat)
         // Mientras se consulta la cadena: un indicador en vez de un "—" mudo.
         val cargando = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, 0)
             addView(android.widget.ProgressBar(context).apply {
                 isIndeterminate = true
@@ -780,7 +784,17 @@ class WalletActivity : FragmentActivity() {
             })
         }
         hero.addView(cargando)
-        ll.addView(hero)
+        val heroe = Ui.heroe(this, Roseton(this) { cargando.parent != null }, hero, alto = 250)
+        hero.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+            FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        ll.addView(heroe)
+        // Microimpresión: de dónde sale la cifra (rutas, cuántas direcciones, la fuente).
+        ll.addView(Ui.microimpresion(this, listOf(
+            if (isWifMode) "wif" else "m/44' · m/49' · m/84' · m/86'",
+            "${addresses.size} addresses",
+            if (isTestnet) "testnet" else "mainnet",
+            "mempool.space · electrum"
+        ).joinToString("  ·  ")))
         // Volver a buscar direcciones: si la primera búsqueda se hizo sin red o no
         // llegó a una dirección usada, aquí se repite sin cerrar la pantalla.
         ll.addView(enlace("Search for addresses again") { tabContent.removeAllViews(); loadBalanceTab() }.apply {
@@ -948,17 +962,17 @@ class WalletActivity : FragmentActivity() {
                 if (pend != 0L) hero.addView(TextView(this).apply {
                     text = "of which pending (unconfirmed): %.8f BTC".format(pend / 1e8) + fiatEntre(pend)
                     textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
-                    typeface = AppTheme.body(context)
+                    typeface = AppTheme.body(context); gravity = Gravity.CENTER
                     setPadding(0, dp(10), 0, 0)
                 })
                 // Un fallo de red se decía antes fila a fila ("no answer"
                 // doce veces) sin explicar nunca que el problema era el mismo.
                 if (huboFallo) {
                     ll.addView(aviso("⚠ Could not query the chain. What you see may be " +
-                                     "out of date; come back when you have a connection."), 2)
+                                     "out of date; come back when you have a connection."), 3)
                 } else if (usedFallback) {
                     ll.addView(aviso("The web APIs did not answer; the balance comes from Electrum",
-                                     AppTheme.TXT_SEC), 2)
+                                     AppTheme.TXT_SEC), 3)
                 }
                 // Lightning: siempre a la vista. Con el nodo en marcha, su saldo; si no, cómo encenderlo.
                 ll.addView(tarjetaLightning().apply {

@@ -56,57 +56,18 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         }
     }
 
-    // ── ESTADO ────────────────────────────────────────────────────────
+    // ── CIFRA PRINCIPAL SOBRE EL ROSETÓN ("Security print") ──────────
     //
-    // El estado vivía en un punto gris de 8dp en la cabecera, sin texto:
-    // había que saberse que el punto significaba algo. Aquí es una frase
-    // con el tiempo que lleva corriendo, que es lo primero que quieres
-    // saber al abrir la app.
-    val statusRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-    }
-    val statusDot = android.view.View(this).apply {
-        background = android.graphics.drawable.GradientDrawable().apply {
-            shape = android.graphics.drawable.GradientDrawable.OVAL
-            setColor(AppTheme.TXT_MUTED)
-        }
-        layoutParams = LinearLayout.LayoutParams(dp(7), dp(7)).apply { marginEnd = dp(9) }
-    }
-    val stateLabel = TextView(this).apply {
-        text = "Idle"
-        textSize = AppTheme.SP_CAPTION
-        setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.medium(context)
-    }
-    tvScanState = stateLabel
-    scanStateDot = statusDot
-    statusRow.addView(statusDot); statusRow.addView(stateLabel)
-    // El título lo decía la cabecera, que ya no existe: ahora lo dice la
-    // página, como todas.
-    page.addView(LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
-        setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0)
-        addView(Ui.pageTitle(this@buildScanTab, "Scanner", lados = false).apply {
-            (layoutParams as LinearLayout.LayoutParams).let { it.width = 0; it.weight = 1f }
-        })
-        addView(Ui.avatarMark(this@buildScanTab).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
-        })
-    })
-    page.addView(side(statusRow, top = 0, bottom = 18))
-
-    // ── CIFRA PRINCIPAL ───────────────────────────────────────────────
-    val speedRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        isBaselineAligned = true
-    }
+    // El título y las pestañas los pone la cabecera de Hunt. Aquí va lo que se mira desde lejos:
+    // la velocidad, en oro, centrada sobre el rosetón de guilloche, que gira mientras el motor
+    // corre y se para con él; debajo, la media y el estado.
     val wpsFigure = TextView(this).apply {
         text = "0,0"
-        textSize = AppTheme.SP_HERO
-        setTextColor(AppTheme.TXT_PRI)
+        textSize = 76f
+        setTextColor(AppTheme.ACCENT)
         typeface = AppTheme.display(context)
-        letterSpacing = -0.045f
+        letterSpacing = -0.04f
+        includeFontPadding = false
     }
     tvWps = wpsFigure
     // La unidad era el literal fijo "K KEYS / SEG" sobre una cifra que
@@ -115,73 +76,76 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     val wpsUnit = TextView(this).apply {
         text = "K/s"
         textSize = AppTheme.SP_FIGURE
-        setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.body(context)
+        setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.title(context)
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { marginStart = dp(8) }
     }
     tvSpeedUnitScan = wpsUnit
-    speedRow.addView(wpsFigure); speedRow.addView(wpsUnit)
-    page.addView(side(speedRow))
-
-    // Pico y media: una sola línea. Antes el pico iba alineado a la derecha
-    // y la media al centro, ambos a 9sp.
+    val speedRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        isBaselineAligned = true
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(wpsFigure); addView(wpsUnit)
+    }
+    // Pico y media: una sola línea, bajo la cifra.
     val peakLine = TextView(this).apply {
-        text = ""
-        textSize = AppTheme.SP_CAPTION
+        text = "keys per second"
+        textSize = AppTheme.SP_BODY
         setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.medium(context)
+        typeface = AppTheme.body(context)
+        gravity = Gravity.CENTER
+        setPadding(0, dp(10), 0, 0)
     }
     tvPeakWps = peakLine
     val avgHidden = TextView(this).apply { visibility = android.view.View.GONE }
-    page.addView(side(peakLine, top = 12, bottom = 24))
+    // Estado: punto y frase con el tiempo que lleva ("Searching · 12 h 04 m").
+    val (statusDot, stateLabel) = Ui.puntoEstado(this)
+    stateLabel.text = "Idle"
+    stateLabel.setTextColor(AppTheme.TXT_SEC)
+    tvScanState = stateLabel
+    scanStateDot = statusDot
+    val statusRow = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        setPadding(0, dp(14), 0, 0)
+        addView(statusDot); addView(stateLabel)
+    }
+    val heroCol = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        addView(speedRow); addView(peakLine); addView(statusRow)
+    }
+    val roseton = Roseton(this) { try { HunterEngine.isRunning() && !puzzleMode } catch (e: Throwable) { false } }
+    page.addView(Ui.heroe(this, roseton, heroCol, alto = 250))
     page.addView(avgHidden)
 
-    // ── DOS TARJETAS, NO CUATRO ───────────────────────────────────────
+    // ── MICROIMPRESIÓN Y FILAS ────────────────────────────────────────
     //
-    // Eran cuatro: TOTAL KEYS, RITMO, DATASET y TIEMPO, en una rejilla 2x2
-    // con cuatro tratamientos de color distintos. De esas cuatro, el ritmo
-    // se entiende mucho mejor dicho en una frase (abajo) y el tiempo ya
-    // está en la línea de estado. Quedan las dos que son cifras de verdad.
-    fun statCard(label: String, accent: Boolean, last: Boolean = false):
-            Pair<LinearLayout, TextView> {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = Ui.cardBg(ctx = this@buildScanTab)
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                .apply { if (!last) marginEnd = dp(AppTheme.GAP) }
-        }
-        card.addView(TextView(this).apply {
-            text = label
-            textSize = AppTheme.SP_MICRO
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-        })
-        val value = TextView(this).apply {
-            text = "0"
-            textSize = 24f
-            setTextColor(if (accent) AppTheme.ACCENT else AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context)
-            letterSpacing = -0.02f
-            maxLines = 1
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(7) }
-        }
-        card.addView(value)
-        return card to value
-    }
+    // Eran dos tarjetas ("Keys checked", "List loaded") y una tercera con el ritmo. Ahora son filas
+    // bajo una franja de microimpresión con los parámetros del motor: se leen como una ficha, no
+    // como tres cajas sueltas.
+    val csvFile = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
+    page.addView(side(Ui.microimpresion(this, listOfNotNull(
+        csvFile?.takeIf { it.exists() }?.name,
+        if (selectedScanMode == 2) "direct key" else "bip39",
+        "secp256k1 arm64 asm", "neon hash160x4"
+    ).joinToString("  ·  "))))
 
-    val (cardKeys, vKeys) = statCard("Keys checked", accent = false)
-    val (cardList, vList) = statCard("List loaded", accent = true, last = true)
+    val datos = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val (filaKeys, vKeys) = Ui.filaDato(this, "Keys checked")
+    val (filaList, vList) = Ui.filaDato(this, "Addresses loaded")
+    val (filaRate, tvRate) = Ui.filaDato(this, "At this rate", ultima = true)
+    vKeys.text = "0"
+    tvRate.setTextColor(AppTheme.TXT_SEC)
+    tvRate.typeface = AppTheme.body(this)
     tvCount = vKeys
     tvDatasetStat = vList
+    tvBinInfoRef = tvRate
     vList.text = run {
-        val f = if (csvPath.isNotEmpty()) java.io.File(csvPath) else null
+        val f = csvFile
         if (f != null && f.exists()) {
             // Lo que el motor tiene cargado; si aún no, una estimación por el
             // tamaño: 9 bytes por dirección en el índice nuevo, 20 en el viejo.
@@ -192,11 +156,8 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             if (h >= 1_000_000) "%.1f M".format(h / 1e6) else "${h / 1000} K"
         } else "—"
     }
-    val statRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        addView(cardKeys); addView(cardList)
-    }
-    page.addView(side(statRow, bottom = 14))
+    datos.addView(filaKeys); datos.addView(filaList); datos.addView(filaRate)
+    page.addView(side(datos, top = 6, bottom = 14))
 
     // Estado vacío: sin lista cargada el motor no puede encontrar nada, así que
     // en vez de dejar la cifra en 0 muda, se dice qué falta y se ofrece cargar.
@@ -208,42 +169,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     vacio.visibility = if (HunterEngine.isCsvLoaded()) android.view.View.GONE
                        else android.view.View.VISIBLE
     vacioScan = vacio
-    page.addView(side(vacio, bottom = 14))
-
-    // ── RITMO, EN LENGUAJE LLANO ──────────────────────────────────────
-    //
-    // Decía "159B/día" bajo un rótulo que ponía "SESIÓN". Ni era de la
-    // sesión ni hay forma de leer "159B" sin pararse a pensar.
-    val rateCard = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        background = Ui.cardBg(ctx = this@buildScanTab)
-        setPadding(dp(18), dp(16), dp(18), dp(16))
-    }
-    rateCard.addView(Ui.icon(this, R.drawable.ic_play, 20).apply {
-        (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(12)
-    })
-    val rateCol = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-    }
-    rateCol.addView(TextView(this).apply {
-        text = "At this rate"
-        textSize = AppTheme.SP_BODY
-        setTextColor(AppTheme.TXT_PRI)
-        typeface = AppTheme.body(context)
-    })
-    val tvRate = TextView(this).apply {
-        text = "—"
-        textSize = AppTheme.SP_CAPTION
-        setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.body(context)
-        setPadding(0, dp(2), 0, 0)
-    }
-    tvBinInfoRef = tvRate
-    rateCol.addView(tvRate)
-    rateCard.addView(rateCol)
-    page.addView(side(rateCard, bottom = 22))
+    page.addView(side(vacio, bottom = 22))
 
     // Vistas que el motor sigue actualizando pero que ya no se enseñan:
     // el tiempo está en la línea de estado y el resto nunca se leía.

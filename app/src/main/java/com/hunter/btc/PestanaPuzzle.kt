@@ -84,15 +84,9 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         Ui.section(this, icon, title, build)
 
     // ── CABECERA ──────────────────────────────────────────────────────
-    page.addView(LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER_VERTICAL
-        setPadding(dp(AppTheme.PAD_SIDE), 0, dp(AppTheme.PAD_SIDE), 0)
-        addView(Ui.pageTitle(this@buildPuzzleTab, "Puzzle", lados = false).apply {
-            (layoutParams as LinearLayout.LayoutParams).let { it.width = 0; it.weight = 1f }
-        })
-        addView(Ui.avatarMark(this@buildPuzzleTab).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
-        })
+    // El título y las pestañas los pone la cabecera de Hunt.
+    page.addView(android.view.View(this).apply {
+        layoutParams = LinearLayout.LayoutParams(1, dp(12))
     })
     // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
     // lista de puzzles lo que hace la lista de puzzles.
@@ -683,48 +677,54 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     page.addView(tvCheckpointLive)
 
     // ── STATS ─────────────────────────────────────────────────────────
+    // "Security print": sin caja. La velocidad, en oro, sobre el rosetón (que gira mientras el
+    // escaneo o el Kangaroo del puzzle corren); debajo, la gráfica y las cifras en filas.
     val statsCard = pCard()
-    statsCard.addView(sectionLabel("Performance"))
+    statsCard.background = null
     val speedRow = LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(14) }
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+        isBaselineAligned = true
     }
     // Misma corrección que en el escáner: la unidad iba apilada en dos
     // líneas ("Keys" sobre "por seg") a un lado de la cifra, y el pico
     // flotaba abajo a la derecha a 9sp. Ahora la unidad va junto a la
     // cifra y el pico baja a su propia línea.
     val tvWpsP = TextView(this).apply {
-        text = "0"; textSize = AppTheme.SP_DISPLAY
-        setTextColor(AppTheme.TXT_PRI)
+        text = "0"; textSize = 64f
+        setTextColor(AppTheme.ACCENT)
         typeface = AppTheme.display(context)
         letterSpacing = -0.04f
+        includeFontPadding = false
     }
     tvWpsPuzzle = tvWpsP
     speedRow.addView(tvWpsP)
     // getWps() devuelve claves/s directas; la etiqueta decía "kKeys", lo que
     // multiplicaba por mil la lectura. La unidad la fija el escalado.
     tvSpeedUnitPuzzle = TextView(this).apply {
-        text = "Keys/s"; textSize = AppTheme.SP_TITLE
-        setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.body(context)
+        text = "Keys/s"; textSize = AppTheme.SP_FIGURE
+        setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.title(context)
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { marginStart = dp(8) }
     }
     speedRow.addView(tvSpeedUnitPuzzle)
-    statsCard.addView(speedRow)
 
     tvPeakWpsPuzzle = TextView(this).apply {
-        text = ""; textSize = AppTheme.SP_CAPTION
+        text = "keys per second"; textSize = AppTheme.SP_BODY
         setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.medium(context)
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(10) }
+        typeface = AppTheme.body(context)
+        gravity = Gravity.CENTER
+        setPadding(0, dp(10), 0, 0)
     }
-    statsCard.addView(tvPeakWpsPuzzle)
+    val heroPuzzle = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+        addView(speedRow); addView(tvPeakWpsPuzzle)
+    }
+    statsCard.addView(Ui.heroe(this, Roseton(this) {
+        try { (HunterEngine.isRunning() && puzzleMode) || HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
+    }, heroPuzzle, alto = 210))
 
     // Gráfica de velocidad: una muestra cada 10 s, la última hora.
     //
@@ -758,16 +758,19 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
 
     fun miniStat(label: String, tv: TextView, guardarEtiqueta: ((TextView)->Unit)? = null):
             LinearLayout = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-        background = android.graphics.drawable.GradientDrawable().apply {
-            setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat()
-        }
-        setPadding(dp(14), dp(14), dp(14), dp(14))
+        // Fila de dato, no cajita (Security print): etiqueta a la izquierda, cifra a la derecha,
+        // filete debajo.
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER_VERTICAL
+        minimumHeight = dp(54)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
+        isFocusable = true
         addView(TextView(this@buildPuzzleTab).apply {
-            text = label; textSize = AppTheme.SP_CAPTION
+            text = label; textSize = AppTheme.SP_BODY
             setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
+            typeface = AppTheme.body(context)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             guardarEtiqueta?.invoke(this)
         })
         addView(tv)
@@ -776,14 +779,14 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     // Eran 16sp blanco, 16sp blanco, 13sp azul y 13sp blanco: cuatro datos
     // del mismo rango con tres tratamientos. Uno solo.
     fun miniValue(initial: String) = TextView(this).apply {
-        text = initial; textSize = AppTheme.SP_FIGURE
+        text = initial; textSize = AppTheme.SP_BODY
         setTextColor(AppTheme.TXT_PRI)
         typeface = AppTheme.title(context)
-        letterSpacing = -0.02f
+        gravity = Gravity.END
         layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(6) }
+        )
     }
     val tvCntP = miniValue("0")
     val tvTmP  = miniValue("00:00:00")
@@ -791,14 +794,13 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     tvPctPuzzle = miniValue("—")
     tvBlockProgress = miniValue("—")
 
-    val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
-    val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
-    miniRow1.addView(miniStat("Scanned", tvCntP) { lblEscaneadas = it }
-        .also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+    val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
+    val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
+    miniRow1.addView(miniStat("Scanned", tvCntP) { lblEscaneadas = it })
     miniRow1.addView(miniStat("Time", tvTmP))
     val pctLocal = tvPctPuzzle!!
     val blkLocal = tvBlockProgress!!
-    miniRow2.addView(miniStat("Progress", pctLocal).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+    miniRow2.addView(miniStat("Progress", pctLocal))
     // Lo que enseña es el tiempo del puzzle ENTERO a este ritmo, no cuántos
     // bloques quedan: el rótulo decía otra cosa.
     miniRow2.addView(miniStat("Whole puzzle", blkLocal) { lblRestantes = it })

@@ -526,4 +526,142 @@ object Ui {
             LinearLayout.LayoutParams.MATCH_PARENT, 1
         ).apply { topMargin = dp(ctx, gap); bottomMargin = dp(ctx, gap) }
     }
+
+    // ── "Security print" (rediseño con impeccable + ui-ux-pro-max) ─────────────
+    //
+    // La cifra que importa, grande y sola, sobre un rosetón de guilloche; debajo, una franja de
+    // microimpresión entre dos filetes de oro con los parámetros reales; y los datos en filas
+    // separadas por un filete, no en tarjetas apiladas. Ver .impeccable/surfaces/ y DESIGN.md.
+
+    /**
+     * Filetes de [grosor] px arriba y/o abajo sobre fondo transparente (deja ver el fondo de la
+     * pantalla, sea liso o degradado).
+     */
+    fun lineas(color: Int, arriba: Boolean, abajo: Boolean, grosor: Int = 1): android.graphics.drawable.Drawable {
+        val capas = mutableListOf<android.graphics.drawable.Drawable>()
+        if (arriba) capas += android.graphics.drawable.ColorDrawable(color)
+        if (abajo) capas += android.graphics.drawable.ColorDrawable(color)
+        if (capas.isEmpty()) return android.graphics.drawable.ColorDrawable(android.graphics.Color.TRANSPARENT)
+        return android.graphics.drawable.LayerDrawable(capas.toTypedArray()).apply {
+            var i = 0
+            if (arriba) { setLayerGravity(i, Gravity.TOP or Gravity.FILL_HORIZONTAL); setLayerHeight(i, grosor); i++ }
+            if (abajo) { setLayerGravity(i, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(i, grosor) }
+        }
+    }
+
+    /** Filete: el oro al 35 % (o el texto al 7 % si [oro] es false). */
+    fun filete(oro: Boolean = true): Int =
+        if (oro) (AppTheme.ACCENT and 0x00FFFFFF) or (0x59 shl 24)
+        else (AppTheme.TXT_PRI and 0x00FFFFFF) or (0x12 shl 24)
+
+    /**
+     * Zona protagonista: el [roseton] centrado detrás y [contenido] delante, centrado. [alto] en dp.
+     * El rosetón se sale un poco por arriba y por abajo (clipChildren false) como en el mockup.
+     */
+    fun heroe(ctx: Context, roseton: Roseton, contenido: View, alto: Int = 240): android.widget.FrameLayout =
+        android.widget.FrameLayout(ctx).apply {
+            clipChildren = false
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(ctx, alto))
+            addView(roseton, android.widget.FrameLayout.LayoutParams(dp(ctx, 320), dp(ctx, 320), Gravity.CENTER))
+            addView(contenido, android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        }
+
+    /**
+     * Franja de microimpresión: una línea en mono de 9 sp, en mayúsculas y espaciada, entre dos
+     * filetes de oro. Lleva datos reales (dataset, pool, rutas) repetidos como textura; por eso
+     * TalkBack la ignora: lo mismo está dicho en las filas de debajo.
+     */
+    fun microimpresion(ctx: Context, texto: String): TextView = TextView(ctx).apply {
+        val t = texto.uppercase()
+        text = "$t  ·  $t  ·  $t"
+        textSize = 9f
+        letterSpacing = 0.12f
+        setTextColor(AppTheme.TXT_MUTED)
+        typeface = AppTheme.mono(ctx)
+        setSingleLine(true)
+        ellipsize = null
+        setHorizontallyScrolling(true)
+        setPadding(0, dp(ctx, 3), 0, dp(ctx, 3))
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        background = lineas(filete(), arriba = true, abajo = true)
+    }
+
+    /**
+     * Una fila de dato: etiqueta a la izquierda en el gris secundario, valor a la derecha en
+     * semibold, 54 dp de alto y un filete debajo (salvo [ultima]). Devuelve la fila y el valor.
+     */
+    fun filaDato(ctx: Context, etiqueta: String, ultima: Boolean = false): Pair<LinearLayout, TextView> {
+        val valor = TextView(ctx).apply {
+            text = "—"
+            textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(ctx)
+            gravity = Gravity.END
+            maxLines = 2
+        }
+        val fila = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(ctx, 54)
+            addView(TextView(ctx).apply {
+                text = etiqueta
+                textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_SEC)
+                typeface = AppTheme.body(ctx)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                    .apply { marginEnd = dp(ctx, 12) }
+            })
+            addView(valor)
+            if (!ultima) background = lineas(filete(oro = false), arriba = false, abajo = true)
+            // La fila se lee entera: "Keys checked, 3 814 220 516".
+            isFocusable = true
+        }
+        return fila to valor
+    }
+
+    /**
+     * Pestañas de sección (las de Hunt): texto, 48 dp, la activa en negrita con una raya de oro de
+     * 2 dp debajo. [alTocar] recibe el índice.
+     */
+    fun subpestanas(ctx: Context, nombres: List<String>, activa: Int, alTocar: (Int) -> Unit): LinearLayout {
+        val fila = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL
+            background = lineas(filete(oro = false), arriba = false, abajo = true)
+        }
+        nombres.forEachIndexed { i, n ->
+            val on = i == activa
+            fila.addView(TextView(ctx).apply {
+                text = n
+                textSize = AppTheme.SP_BODY - 1f
+                gravity = Gravity.CENTER
+                setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+                typeface = if (on) AppTheme.title(ctx) else AppTheme.medium(ctx)
+                isClickable = true; isFocusable = true
+                foreground = toque()
+                isSelected = on
+                contentDescription = n
+                if (on) background = lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(ctx, 2))
+                setOnClickListener { alTocar(i) }
+                layoutParams = LinearLayout.LayoutParams(0, dp(ctx, 48), 1f)
+            })
+        }
+        return fila
+    }
+
+    /** Punto de estado (verde corriendo, gris parado) con su texto, para debajo de la cifra. */
+    fun puntoEstado(ctx: Context): Pair<View, TextView> {
+        val punto = View(ctx).apply {
+            background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(AppTheme.TXT_MUTED) }
+            layoutParams = LinearLayout.LayoutParams(dp(ctx, 8), dp(ctx, 8)).apply { marginEnd = dp(ctx, 8) }
+        }
+        val texto = TextView(ctx).apply {
+            textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.medium(ctx)
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        return punto to texto
+    }
 }

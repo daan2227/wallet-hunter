@@ -233,8 +233,95 @@ class MineroActivity : AppCompatActivity() {
         addView(boton("+") { mas() }, LinearLayout.LayoutParams(dp(56), dp(44)).apply { marginStart = dp(8) })
     }
 
+    // "Security print": la cifra que se mira de lejos (los hashes por segundo) sobre el rosetón,
+    // que gira mientras se mina; debajo, la microimpresión del motor y las filas de datos.
+    private lateinit var tvHr: TextView
+    private lateinit var tvHrSub: TextView
+    private lateinit var tvUnidad: TextView
+    private lateinit var tvPunto: TextView
+    private lateinit var puntoEstado: android.view.View
+    private lateinit var vCpu: TextView
+    private lateinit var vGpu: TextView
+    private lateinit var vShares: TextView
+    private lateinit var vMejor: TextView
+
+    private fun construirHeroe() {
+        tvHr = TextView(this).apply {
+            text = "0"; textSize = 76f; setTextColor(AppTheme.ACCENT)
+            typeface = AppTheme.display(context); letterSpacing = -0.04f; includeFontPadding = false
+        }
+        tvUnidad = TextView(this).apply {
+            text = "H/s"; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
+            layoutParams = LinearLayout.LayoutParams(-2, -2).apply { marginStart = dp(8) }
+        }
+        tvHrSub = TextView(this).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0)
+        }
+        val (punto, txt) = Ui.puntoEstado(this)
+        puntoEstado = punto; tvPunto = txt
+        val col = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; isBaselineAligned = true; gravity = Gravity.CENTER
+                addView(tvHr); addView(tvUnidad)
+            })
+            addView(tvHrSub)
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+                setPadding(0, dp(14), 0, 0)
+                addView(punto); addView(txt)
+            })
+        }
+        caja.addView(Ui.heroe(this, Roseton(this) { minando }, col, alto = 240))
+        caja.addView(Ui.microimpresion(this, "stratum v1  ·  sha-256d  ·  armv8 sha  ·  vulkan compute"))
+        val (f1, v1) = Ui.filaDato(this, "CPU")
+        val (f2, v2) = Ui.filaDato(this, "GPU")
+        val (f3, v3) = Ui.filaDato(this, "Shares")
+        val (f4, v4) = Ui.filaDato(this, "Best difficulty", ultima = true)
+        vCpu = v1; vGpu = v2; vShares = v3; vMejor = v4
+        caja.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(6), 0, dp(8))
+            addView(f1); addView(f2); addView(f3); addView(f4)
+        })
+    }
+
+    private fun pintarHeroe(hr: Double, seg: Double) {
+        if (!::tvHr.isInitialized) return
+        // corto() da "62.9 M": la cifra grande y el prefijo con la unidad ("MH/s").
+        val partes = Minero.corto(if (minando) hr else 0.0).split(' ')
+        tvHr.text = partes[0]
+        tvUnidad.text = (partes.getOrNull(1) ?: "") + "H/s"
+        tvHrSub.text = when {
+            !minando -> "hashes per second"
+            gpuLista -> "CPU and GPU together"
+            else -> "on the CPU"
+        }
+        tvPunto.text = when {
+            minando && caliente -> "Warm: slowed down"
+            minando -> (if (modo == "solo") "Solo mining · " else "Practice · ") + Minero.escala(seg)
+            else -> "Idle"
+        }
+        tvPunto.setTextColor(if (minando) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+        (puntoEstado.background as? GradientDrawable)?.setColor(when {
+            minando && caliente -> AppTheme.WARN
+            minando -> AppTheme.OK
+            else -> AppTheme.TXT_MUTED
+        })
+        val gpuHr = if (minando && gpuLista) hashesGpu.get() / seg else 0.0
+        vCpu.text = if (minando) "${Minero.corto(hr - gpuHr)}H/s · $hilosActivos threads" else "$nHilos threads"
+        vGpu.text = if (!gpuLista) "off" else if (minando) "${Minero.corto(gpuHr)}H/s · $gpuNombre" else gpuNombre
+        val st = stratum
+        vShares.text = if (st == null) "—" else "${st.aceptadas} accepted" + if (st.rechazadas > 0) " · ${st.rechazadas} rejected" else ""
+        vShares.setTextColor(if (st != null && st.rechazadas > 0) AppTheme.WARN else AppTheme.TXT_PRI)
+        vMejor.text = if (mejorDif > 0) Minero.corto(mejorDif) else "—"
+    }
+
     private fun construir() {
-        caja.addView(Ui.pageTitle(this, "Block miner", lados = false))
+        caja.addView(Ui.pageTitle(this, "Miner", lados = false))
+        construirHeroe()
         caja.addView(texto("Mining is guessing: change a number (the nonce) in a block header until its double SHA-256 starts with " +
             "enough zeros. This phone does millions of guesses per second; the whole network does hundreds of " +
             "billions of billions. It only runs with this screen open, slows down when the phone gets warm and stops " +
@@ -548,6 +635,7 @@ class MineroActivity : AppCompatActivity() {
         val seg = ((System.currentTimeMillis() - inicio) / 1000.0).coerceAtLeast(0.001)
         val hr = if (minando) hashes.get() / seg else 0.0
         val st = stratum
+        pintarHeroe(hr, seg)
         tvEstado.text = buildString {
             append(if (minando) (if (modo == "solo") "Solo mining" else "Practice") else "Idle")
             append(" · engine: $motorTexto\n")

@@ -60,6 +60,40 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     /** Qué hacer con el fichero de snapshot que elija el usuario (lo pone la pestaña Core). */
     internal var alElegirSnapshot: ((android.net.Uri) -> Unit)? = null
     internal var paginaActual = PAG_SCANNER
+    /** Cabecera de Hunt (título y las pestañas Scanner · Puzzle · Weak · Recovery). */
+    internal var cabeceraHunt: LinearLayout? = null
+    /** Las cuatro páginas de Hunt, en el orden de sus pestañas. */
+    internal val paginasHunt get() = listOf(PAG_SCANNER, PAG_PUZZLE, PAG_WEAK, PAG_RECOVERY)
+
+    /**
+     * Monta (o rehace) la cabecera de Hunt con la pestaña de [pagina] marcada. Se rehace entera al
+     * cambiar: son cuatro textos, y así el estado de selección no puede desincronizarse.
+     */
+    internal fun pintarCabeceraHunt(pagina: Int) {
+        val cab = cabeceraHunt ?: return
+        val enHunt = pagina in paginasHunt
+        cab.visibility = if (enHunt) android.view.View.VISIBLE else android.view.View.GONE
+        if (!enHunt) return
+        cab.removeAllViews()
+        cab.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(AppTheme.PAD_SIDE), dp(20), dp(8), 0)
+            addView(TextView(this@MainActivity).apply {
+                text = "Hunt"; textSize = 22f
+                setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context)
+                isFocusable = true
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(Ui.avatarMark(this@MainActivity).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(12) }
+            })
+        })
+        cab.addView(Ui.subpestanas(this, listOf("Scanner", "Puzzle", "Weak", "Recovery"),
+            paginasHunt.indexOf(pagina)) { i -> goTab(paginasHunt[i]) }.apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        })
+    }
     /** Vuelve a leer el baúl y los totales de la pestaña Cartera. */
     internal var refrescoCartera: (() -> Unit)? = null
 
@@ -80,6 +114,9 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             } else v?.visibility = android.view.View.GONE
         }
         paginaActual = idx
+        pintarCabeceraHunt(idx)
+        // La última herramienta de Hunt: tocar Hunt en la barra vuelve a ella.
+        if (idx in paginasHunt) prefs.edit().putInt("ultima_hunt", idx).apply()
         if (idx == PAG_WALLET) try { refrescoCartera?.invoke() } catch (e: Exception) {}
         // Recovery ya tiene su propia pestaña en la barra; Weak-key no es una
         // página (abre su Activity), así que no aparece aquí.
@@ -102,6 +139,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     internal fun pestana(tab: Int) {
         when (tab) {
+            BottomBar.HUNT    -> goTab(prefs.getInt("ultima_hunt", PAG_SCANNER).takeIf { it in paginasHunt } ?: PAG_SCANNER)
+            BottomBar.MINER   -> startActivity(Intent(this, MineroActivity::class.java))
             BottomBar.SCANNER -> goTab(PAG_SCANNER)
             BottomBar.PUZZLE  -> goTab(PAG_PUZZLE)
             BottomBar.WALLET  -> {
@@ -727,6 +766,14 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Las siete secciones vivían detrás de ese icono: no se veía dónde
         // estabas hasta abrirlo y cambiar costaba dos toques. Ahora el título
         // lo pone cada página y la navegación va abajo, siempre a la vista.
+        // Hunt agrupa Scanner, Puzzle, Weak y Recovery (rediseño "Security print"): su cabecera
+        // con las cuatro pestañas va encima de las páginas y sólo se ve en ellas.
+        cabeceraHunt = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(AppTheme.BG_DEEP)
+        }
+        root.addView(cabeceraHunt, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         root.addView(cf, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))

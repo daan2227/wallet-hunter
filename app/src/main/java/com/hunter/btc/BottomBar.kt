@@ -23,6 +23,9 @@ import android.widget.TextView
 class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (Int) -> Unit) {
 
     companion object {
+        // Destinos lógicos: los que piden las pantallas (EXTRA_TAB) y los que recibe alTocar.
+        // Scanner, Puzzle, Recovery y Weak ya no tienen hueco propio en la barra: viven dentro de
+        // Hunt, con sus pestañas arriba. Los valores no cambian para no romper EXTRA_TAB.
         const val SCANNER  = 0
         const val PUZZLE   = 1
         const val WALLET   = 2
@@ -30,21 +33,26 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         const val WEAK     = 4
         const val CORE     = 5
         const val MORE     = 6
+        const val MINER    = 7
+        /** La pestaña Hunt de la barra: quien la recibe abre la última de sus cuatro herramientas. */
+        const val HUNT     = 8
 
         /** Qué pestaña pedir al volver a MainActivity desde otra pantalla. */
         const val EXTRA_TAB = "com.hunter.btc.TAB"
+
+        fun esHunt(tab: Int) = tab == SCANNER || tab == PUZZLE || tab == RECOVERY || tab == WEAK || tab == HUNT
     }
 
-    private data class Item(val icono: Int, val rotulo: String)
+    private data class Item(val icono: Int, val rotulo: String, val destino: Int)
 
+    // Cinco, no siete (rediseño "Security print"): Material pide 3–5 en la barra, y con siete los
+    // rótulos se quedaban en 12 sp apretados y las píldoras a 40 dp.
     private val items = listOf(
-        Item(R.drawable.ic_scan,     "Scanner"),
-        Item(R.drawable.ic_puzzle,   "Puzzle"),
-        Item(R.drawable.ic_wallet,   "Wallet"),
-        Item(R.drawable.ic_recovery, "Recovery"),
-        Item(R.drawable.ic_target,   "Weak"),
-        Item(R.drawable.ic_core,     "Core"),
-        Item(R.drawable.ic_more,     "More")
+        Item(R.drawable.ic_search,   "Hunt",   HUNT),
+        Item(R.drawable.ic_wallet,   "Wallet", WALLET),
+        Item(R.drawable.ic_chip,     "Miner",  MINER),
+        Item(R.drawable.ic_core,     "Core",   CORE),
+        Item(R.drawable.ic_more,     "More",   MORE)
     )
 
     private val pildoras = mutableListOf<FrameLayout>()
@@ -52,48 +60,42 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
     private val rotulos  = mutableListOf<TextView>()
     private val celdas   = mutableListOf<LinearLayout>()
 
-    /** El acento con un 14 % de alpha: la píldora detrás del icono activo. */
-    private val acentoSuave get() = (AppTheme.ACCENT and 0x00FFFFFF) or (0x24 shl 24)
+    /** El acento al 18 %: la píldora detrás del icono activo. */
+    private val acentoSuave get() = (AppTheme.ACCENT and 0x00FFFFFF) or (0x2E shl 24)
 
     private fun dp(v: Int) = Ui.dp(ctx, v)
 
     /**
-     * La barra, con su filo de arriba. Se añade al final de la pantalla con
-     * MATCH_PARENT de ancho y WRAP_CONTENT de alto.
+     * La barra, de borde a borde, con un filete arriba (Material 3: barra de navegación, no una
+     * píldora flotante). Se añade al final de la pantalla con MATCH_PARENT × WRAP_CONTENT.
      */
-    // Transparente: el fondo con degradado de la pantalla se ve alrededor de la
-    // píldora flotante (propuesta B).
     val vista: LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
     }
 
     init {
-        // Barra tipo PÍLDORA FLOTANTE: panel casi opaco (efecto vidrio), muy
-        // redondeado, con un borde tenue y márgenes para que flote sobre el fondo.
         val fila = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
-            setPadding(dp(4), dp(6), dp(4), dp(6))
-            background = GradientDrawable().apply {
-                setColor((AppTheme.BG_PANEL and 0x00FFFFFF) or (0xF0 shl 24))
-                cornerRadius = dp(26).toFloat()
-                setStroke(dp(1), (AppTheme.TXT_MUTED and 0x00FFFFFF) or (0x33 shl 24))
-            }
+            setPadding(0, dp(10), 0, dp(12))
+            background = android.graphics.drawable.LayerDrawable(arrayOf(
+                android.graphics.drawable.ColorDrawable(Ui.filete(oro = false)),
+                android.graphics.drawable.ColorDrawable(AppTheme.BG_PANEL)
+            )).apply { setLayerInset(1, 0, 1, 0, 0) }
         }
         items.forEachIndexed { i, item -> fila.addView(celda(i, item)) }
         vista.addView(fila, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-            setMargins(dp(14), dp(6), dp(14), dp(12))
-        })
+            LinearLayout.LayoutParams.WRAP_CONTENT))
         seleccionar(seleccion)
     }
 
     private fun celda(i: Int, item: Item): LinearLayout {
         val pildora = FrameLayout(ctx).apply {
-            layoutParams = LinearLayout.LayoutParams(dp(if (items.size > 6) 40 else 52), dp(30))
+            layoutParams = LinearLayout.LayoutParams(dp(56), dp(32))
         }
         val icono = ImageView(ctx).apply {
             setImageResource(item.icono)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             layoutParams = FrameLayout.LayoutParams(dp(22), dp(22), Gravity.CENTER)
         }
         pildora.addView(icono)
@@ -101,6 +103,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
             text = item.rotulo
             textSize = AppTheme.SP_MICRO
             maxLines = 1
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -109,14 +112,11 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         val c = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            // 56dp de alto: por encima de los 48 de blanco de toque mínimo,
-            // que con icono y rótulo apilados se queda justo.
             minimumHeight = dp(56)
-            setPadding(0, dp(2), 0, 0)
             isClickable = true; isFocusable = true
             foreground = Ui.toque()
             contentDescription = item.rotulo
-            setOnClickListener { alTocar(i) }
+            setOnClickListener { alTocar(item.destino) }
             addView(pildora); addView(rotulo)
             layoutParams = LinearLayout.LayoutParams(0,
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
@@ -126,21 +126,20 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
     }
 
     /**
-     * Marca una pestaña como la activa. No navega: eso lo hace quien tiene la
-     * barra, que es quien sabe si la pestaña es una página o otra pantalla.
+     * Marca como activa la pestaña que contiene el destino [tab] (Scanner, Puzzle, Recovery y Weak
+     * marcan Hunt). No navega: eso lo hace quien tiene la barra.
      */
-    fun seleccionar(i: Int) {
+    fun seleccionar(tab: Int) {
+        val slot = items.indexOfFirst { it.destino == tab || (it.destino == HUNT && esHunt(tab)) }
         for (k in items.indices) {
-            val activa = k == i
-            pildoras[k].background = if (activa) GradientDrawable(
-                GradientDrawable.Orientation.LEFT_RIGHT,
-                intArrayOf(acentoSuave, (AppTheme.ACCENT2 and 0x00FFFFFF) or (0x22 shl 24))
-            ).apply { cornerRadius = dp(15).toFloat() } else null
+            val activa = k == slot
+            pildoras[k].background = if (activa) GradientDrawable().apply {
+                setColor(acentoSuave); cornerRadius = dp(16).toFloat()
+            } else null
             iconos[k].setColorFilter(if (activa) AppTheme.ACCENT else AppTheme.TXT_SEC)
-            rotulos[k].setTextColor(if (activa) AppTheme.ACCENT else AppTheme.TXT_SEC)
+            rotulos[k].setTextColor(if (activa) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
             rotulos[k].typeface = if (activa) AppTheme.bold(ctx) else AppTheme.medium(ctx)
-            // Lo que TalkBack dice: "Puzzle, seleccionado". Sin esto el color
-            // era la única pista de cuál está activa.
+            // Lo que TalkBack dice: "Hunt, seleccionado".
             celdas[k].isSelected = activa
         }
     }
