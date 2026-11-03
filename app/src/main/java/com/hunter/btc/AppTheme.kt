@@ -200,18 +200,10 @@ object AppTheme {
 
     /** Fondo de pantalla con un degradado radial muy sutil arriba (propuesta B).
      *  En temas claros es un degradado igual de leve hacia el blanco. */
-    fun fondoApp(): android.graphics.drawable.Drawable {
-        // Glow superior más marcado (como el mockup de la propuesta B).
-        val top = if (activa.oscuro) mezcla(activa.bgDeep, mezcla(Color.parseColor("#1E293B"), activa.accent2, 0.18f), 0.92f)
-                  else mezcla(activa.bgDeep, Color.WHITE, 0.72f)
-        val g = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
-            intArrayOf(top, activa.bgDeep, activa.bgDeep))
-        g.gradientType = android.graphics.drawable.GradientDrawable.RADIAL_GRADIENT
-        g.gradientRadius = 1500f
-        g.setGradientCenter(0.5f, -0.06f)
-        return g
-    }
+    fun fondoApp(): android.graphics.drawable.Drawable =
+        // Security print: el fondo es liso. El resplandor de arriba (propuesta B) dejaba un panel
+        // más claro con un corte recto bajo las pestañas de Hunt.
+        android.graphics.drawable.ColorDrawable(activa.bgDeep)
     /** Mezcla lineal de dos colores (t=0 → a, t=1 → b). */
     private fun mezcla(a: Int, b: Int, t: Float): Int {
         val r = (Color.red(a) * (1 - t) + Color.red(b) * t).toInt()

@@ -56,39 +56,40 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     // rompía la columna de lectura con todo lo de abajo alineado a la
     // izquierda. Aquí la cifra va suelta sobre el fondo, como en el resto
     // del sistema.
+    // Security print: la cifra centrada, en oro, sobre el rosetón (que gira mientras se consultan
+    // los saldos); lo que es la cifra va debajo, no como rótulo encima.
     val heroCard = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { bottomMargin = dp(26) }
+        gravity = Gravity.CENTER_HORIZONTAL
     }
+    var consultando = false
 
     // El total real, para destaparlo con el ojo sin volver a leer el baúl.
-    var totalReal = "0,00000000"
+    var totalReal = "0.00000000"
     var totalSat = 0L
     val filaRotulo = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
+        gravity = Gravity.CENTER
     }
     filaRotulo.addView(TextView(this).apply {
         text = "Balance in finds"
         textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.medium(context)
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     })
-    heroCard.addView(filaRotulo)
     // El verde estaba fijo, así que un saldo de cero se pintaba igual que
     // uno con fondos. Ahora el acento significa "hay algo"; lo pone
     // refreshWallet según el total.
     val tvTotalBtc = TextView(this).apply {
-        text = "0,00000000"
-        textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
+        text = "0.00000000"
+        textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.ACCENT)
         typeface = AppTheme.display(context)
         letterSpacing = -0.04f
+        fontFeatureSettings = "tnum"
+        gravity = Gravity.CENTER
+        maxLines = 1
+        setAutoSizeTextTypeUniformWithConfiguration(20, 44, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
         layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(58)
         )
     }
     val tvTotalUsd = TextView(this).apply {
@@ -110,10 +111,18 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = dp(2) }
     }
+    tvTotalFiat.gravity = Gravity.CENTER
+    tvTotalUsd.gravity = Gravity.CENTER
     heroCard.addView(tvTotalBtc)
     heroCard.addView(tvTotalFiat)
     heroCard.addView(tvTotalUsd)
-    page.addView(heroCard)
+    heroCard.addView(filaRotulo)
+    page.addView(Ui.heroe(this, Roseton(this) { consultando }, heroCard, alto = 250).apply {
+        (layoutParams as LinearLayout.LayoutParams).bottomMargin = dp(8)
+    })
+    heroCard.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+    page.addView(Ui.microimpresion(this, "finds vault  ·  aes-gcm  ·  encrypted on this phone  ·  mempool.space"))
     // Ocultar saldos: el mismo ajuste que en la cartera. Dentro del baúl
     // no se aplica —ver Privacidad—.
     filaRotulo.addView(Privacidad.ojo(this) {
@@ -153,6 +162,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     }
 
     fun refreshWallet(consultarRed: Boolean = false) {
+        if (consultarRed) consultando = true
         Thread {
             val (total, matches) = loadCoincidencias(consultarRed)
             val pendientes = MatchVault.pendingBalance(this@buildWalletTab)
@@ -162,12 +172,12 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             val sinRed = consultarRed && pendientes > 0
             val cerrado = MatchVault.bloqueado(this@buildWalletTab)
             runOnUiThread {
-                totalReal = "%.8f".format(total).replace('.', ',')
+                totalReal = "%.8f".format(java.util.Locale.US, total)
                 tvTotalBtc.text = Privacidad.monto(this@buildWalletTab, totalReal)
                 // El acento sólo cuando de verdad hay saldo. Pintar de verde
                 // un cero es lo mismo que no pintar nada.
-                tvTotalBtc.setTextColor(
-                    if (total > 0.0) AppTheme.ACCENT else AppTheme.TXT_PRI)
+                tvTotalBtc.setTextColor(AppTheme.ACCENT)
+                consultando = false
                 tvTotalUsd.text = when {
                     cerrado            -> "Finds locked · enter your code to see them"
                     matches.isEmpty()  -> "No key found yet"

@@ -119,6 +119,8 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         addView(speedRow); addView(peakLine); addView(statusRow)
     }
     val roseton = Roseton(this) { try { HunterEngine.isRunning() && !puzzleMode } catch (e: Throwable) { false } }
+        // Más deprisa cuanto más rápido va el motor (escala logarítmica: 1 k/s ≈ 0,75; 1 M/s ≈ 1,5).
+        .apply { ritmo = { (Math.log10(HunterEngine.getWps().coerceAtLeast(1.0)) / 4.0).toFloat() } }
     page.addView(Ui.heroe(this, roseton, heroCol, alto = 250))
     page.addView(avgHidden)
 
@@ -139,8 +141,6 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     val (filaList, vList) = Ui.filaDato(this, "Addresses loaded")
     val (filaRate, tvRate) = Ui.filaDato(this, "At this rate", ultima = true)
     vKeys.text = "0"
-    tvRate.setTextColor(AppTheme.TXT_SEC)
-    tvRate.typeface = AppTheme.body(this)
     tvCount = vKeys
     tvDatasetStat = vList
     tvBinInfoRef = tvRate
@@ -158,6 +158,9 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     }
     datos.addView(filaKeys); datos.addView(filaList); datos.addView(filaRate)
     page.addView(side(datos, top = 6, bottom = 14))
+    // Aquí va el botón de arrancar/parar (se crea abajo): en la primera pantalla, bajo las filas,
+    // y no al final de la página tras los ajustes.
+    val sitioBoton = page.childCount
 
     // Estado vacío: sin lista cargada el motor no puede encontrar nada, así que
     // en vez de dejar la cifra en 0 muda, se dice qué falta y se ofrece cargar.
@@ -193,7 +196,8 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     // el motor sin tener que abrir nada.
     val settingsCard = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = Ui.cardBg(ctx = this@buildScanTab)
+        // Sin caja (Security print): un filete arriba y otro abajo.
+        background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
     }
     fun settingRow(icon: Int, title: String, primero: Boolean,
                    build: LinearLayout.() -> Unit): TextView {
@@ -201,12 +205,12 @@ internal fun MainActivity.buildScanTab(): ScrollView {
             setBackgroundColor(AppTheme.BORDER_C)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
-            ).apply { marginStart = dp(18); marginEnd = dp(18) }
+            ).apply { marginStart = 0; marginEnd = 0 }
         })
         val head = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(15), dp(18), dp(15))
+            setPadding(0, dp(15), 0, dp(15))
             isClickable = true; isFocusable = true
         }
         head.addView(Ui.icon(this, icon, 19).apply {
@@ -236,7 +240,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         val body = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             visibility = android.view.View.GONE
-            setPadding(dp(18), 0, dp(18), dp(18))
+            setPadding(0, 0, 0, dp(18))
         }
         body.build()
         settingsCard.addView(body)
@@ -467,11 +471,13 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     fun paintModes(sel: Int) {
         modeCards.forEachIndexed { i, c ->
             val on = i == sel
+            // Sin relleno: sólo el contorno, de oro el elegido y un filete el otro.
             c.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(if (on) AppTheme.BG_ELEV else AppTheme.BG_CARD)
+                setColor(android.graphics.Color.TRANSPARENT)
                 cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                if (on) setStroke(dp(2), AppTheme.ACCENT)
+                if (on) setStroke(dp(2), AppTheme.ACCENT) else setStroke(dp(1), AppTheme.BORDER_C)
             }
+            c.isSelected = on
             (c.getChildAt(0) as TextView).apply {
                 setTextColor(if (on) AppTheme.ACCENT else AppTheme.TXT_SEC)
                 typeface = if (on) AppTheme.bold(context) else AppTheme.medium(context)
@@ -549,7 +555,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(54)
         ).apply {
-            setMargins(dp(AppTheme.PAD_SIDE), dp(18), dp(AppTheme.PAD_SIDE), dp(8))
+            setMargins(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(22))
         }
         setOnClickListener {
             Ui.pulso(this)
@@ -559,7 +565,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
         }
     }
     btnToggle?.tag = arrayOf(startBg, stopRed)
-    page.addView(btnToggle)
+    page.addView(btnToggle, sitioBoton)
 
     // Mientras escanea, estos parámetros quedan bloqueados (hasta pulsar Stop).
     scannerConfigViews = listOf(settingsCard, modeRow)

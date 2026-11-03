@@ -274,7 +274,14 @@ class MineroActivity : AppCompatActivity() {
                 addView(punto); addView(txt)
             })
         }
-        caja.addView(Ui.heroe(this, Roseton(this) { minando }, col, alto = 240))
+        val roseton = Roseton(this) { minando }.apply {
+            // Más deprisa cuanto más hashes por segundo (escala logarítmica: 50 MH/s ≈ 1,5).
+            ritmo = {
+                val seg = ((System.currentTimeMillis() - inicio) / 1000.0).coerceAtLeast(1.0)
+                (Math.log10((hashes.get() / seg).coerceAtLeast(1.0)) / 5.0).toFloat()
+            }
+        }
+        caja.addView(Ui.heroe(this, roseton, col, alto = 240))
         caja.addView(Ui.microimpresion(this, "stratum v1  ·  sha-256d  ·  armv8 sha  ·  vulkan compute"))
         val (f1, v1) = Ui.filaDato(this, "CPU")
         val (f2, v2) = Ui.filaDato(this, "GPU")
@@ -338,9 +345,17 @@ class MineroActivity : AppCompatActivity() {
             text = "Only while charging"; setTextColor(AppTheme.TXT_PRI); isChecked = soloCargando
             setOnCheckedChangeListener { _, v -> soloCargando = v; prefs().edit().putBoolean("solo_cargando", v).apply() }
         })
-        btGpu = boton("GPU: off") {
-            if (minando) Toast.makeText(this, "Stop mining first.", Toast.LENGTH_SHORT).show()
-            else if (gpuLista) apagarGpu() else encenderGpu(true)
+        // Interruptor (Material), no un botón con el estado escrito dentro.
+        btGpu = android.widget.Switch(this).apply {
+            text = "GPU: off"; textSize = AppTheme.SP_BODY
+            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.body(context)
+            minimumHeight = dp(48)
+            isChecked = gpuLista
+            setOnClickListener {
+                if (minando) Toast.makeText(this@MineroActivity, "Stop mining first.", Toast.LENGTH_SHORT).show()
+                else if (gpuLista) apagarGpu() else encenderGpu(true)
+                isChecked = gpuLista
+            }
         }
         caja.addView(btGpu)
         caja.addView(texto("Experimental: also mine on the graphics chip (Vulkan). It is checked with block 1 before use; it heats " +
@@ -355,7 +370,7 @@ class MineroActivity : AppCompatActivity() {
         pintarCeros()
         caja.addView(fila(tvCeros, { if (!minando && objetivoCeros > 12) { objetivoCeros -= 2; pintarCeros() } },
             { if (!minando && objetivoCeros < 32) { objetivoCeros += 2; pintarCeros() } }))
-        btPractica = boton("Mine a practice block", principal = true) { if (minando) parar("Stopped") else practicar() }
+        btPractica = boton("Mine a practice block") { if (minando) parar("Stopped") else practicar() }
         caja.addView(btPractica)
 
         // ── Lotería en solitario ──
@@ -375,7 +390,8 @@ class MineroActivity : AppCompatActivity() {
             }
         })
         caja.addView(etDir)
-        btSolo = boton("Start solo mining") {
+        // La acción principal es la lotería real (la que se usa); la práctica queda secundaria.
+        btSolo = boton("Start solo mining", principal = true) {
             if (minando) parar("Stopped") else solo(etPool.text.toString().trim(), etDir.text.toString().trim())
         }
         caja.addView(btSolo)
@@ -398,6 +414,7 @@ class MineroActivity : AppCompatActivity() {
         // Sin GPU no se puede minar con 0 hilos.
         if (!gpuLista && nHilos == 0) { nHilos = 1; pintarHilos() }
         btGpu.text = if (gpuLista) "GPU: on · $gpuNombre" else "GPU: off"
+        (btGpu as? android.widget.CompoundButton)?.isChecked = gpuLista
     }
 
     private fun encenderGpu(avisar: Boolean) {

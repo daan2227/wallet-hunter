@@ -367,9 +367,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     }
 
     internal fun scaleSpeed(keysPerSec: Double): Pair<String, String> = when {
-        keysPerSec >= 1e9 -> "%.2f".format(keysPerSec / 1e9) to "GKeys"
-        keysPerSec >= 1e6 -> "%.2f".format(keysPerSec / 1e6) to "MKeys"
-        keysPerSec >= 1e3 -> "%.1f".format(keysPerSec / 1e3) to "kKeys"
+        // Locale.US: con el móvil en español salía "7,4" junto a "Peak 7.4". Un solo separador.
+        keysPerSec >= 1e9 -> "%.2f".format(java.util.Locale.US, keysPerSec / 1e9) to "GKeys"
+        keysPerSec >= 1e6 -> "%.2f".format(java.util.Locale.US, keysPerSec / 1e6) to "MKeys"
+        keysPerSec >= 1e3 -> "%.1f".format(java.util.Locale.US, keysPerSec / 1e3) to "kKeys"
         else              -> numberFmt.format(keysPerSec.toLong()) to "Keys"
     }
 
@@ -1065,10 +1066,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      * iguales durante horas y parece que no avanza.
      */
     internal fun formatCorto(v: Long): String = when {
-        v >= 1_000_000_000_000_000L -> "%.1f P".format(v / 1e15).replace('.', ',')
-        v >= 1_000_000_000_000L     -> "%.1f T".format(v / 1e12).replace('.', ',')
-        v >= 1_000_000_000L         -> "%.1f G".format(v / 1e9).replace('.', ',')
-        v >= 1_000_000L             -> "%.1f M".format(v / 1e6).replace('.', ',')
+        v >= 1_000_000_000_000_000L -> "%.1f P".format(java.util.Locale.US, v / 1e15)
+        v >= 1_000_000_000_000L     -> "%.1f T".format(java.util.Locale.US, v / 1e12)
+        v >= 1_000_000_000L         -> "%.1f G".format(java.util.Locale.US, v / 1e9)
+        v >= 1_000_000L             -> "%.1f M".format(java.util.Locale.US, v / 1e6)
         else                        -> numberFmt.format(v)
     }
 
@@ -1284,10 +1285,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             hallado -> "KEY FOUND! — see it in the vault"
             else    -> "Idle"
         }
-        tvScanState?.setTextColor(
-            if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_SEC)
+        // Verde = corre (como en el minero); el oro queda para la cifra y la acción.
+        tvScanState?.setTextColor(when { hallado -> AppTheme.ACCENT; running -> AppTheme.TXT_PRI; else -> AppTheme.TXT_SEC })
         (scanStateDot?.background as? android.graphics.drawable.GradientDrawable)
-            ?.setColor(if (running || hallado) AppTheme.ACCENT else AppTheme.TXT_MUTED)
+            ?.setColor(when { hallado -> AppTheme.ACCENT; running -> AppTheme.OK; else -> AppTheme.TXT_MUTED })
         refrescarBloqueos()
     }
 
@@ -1385,7 +1386,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
                 if (puzzleMode) {
                     val (spdTxt, spdUnit) = scaleSpeed(wps)
-                    tvWpsPuzzle?.text = spdTxt.replace('.', ',')
+                    tvWpsPuzzle?.text = spdTxt
                     tvSpeedUnitPuzzle?.text = "$spdUnit/s"
                     val scannedNow = HunterEngine.getCount() + cuentaBloquesPrevios
                     cifraAnimada(tvCountPuzzle, scannedNow) { formatCount(it) }
@@ -1445,7 +1446,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     }
                 } else {
                     val (sv, su) = scaleSpeed(wps)
-                    tvWps?.text = sv.replace('.', ',')
+                    tvWps?.text = sv
                     // "MKeys/s" y no "MKEYS / SEG": la unidad va junto a la
                     // cifra, no de rótulo debajo, así que se lee como una frase.
                     tvSpeedUnitScan?.text = "$su/s"
@@ -1597,10 +1598,10 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             val total = HunterEngine.getCsvCount()
             if (total > 0) {
-                val fmt = if (total >= 1_000_000) "${"%.1f".format(total/1e6)}M"
-                          else "${total/1000}K"
+                val fmt = if (total >= 1_000_000) "${"%.1f".format(java.util.Locale.US, total/1e6)} M"
+                          else "${total/1000} K"
                 tvDatasetStat?.text = fmt
-                tvDatasetStat?.textSize = AppTheme.SP_FIGURE  // vuelve de "not loaded"
+                tvDatasetStat?.textSize = AppTheme.SP_BODY  // el mismo cuerpo que las demás filas
                 tvDatasetStat?.setTextColor(AppTheme.TXT_PRI)
             }
         } else {
@@ -1646,7 +1647,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         if (bg.size > 1) btn.background = if (running) bg[1] else bg[0]
         // Los dos fondos son sólidos, así que el texto tiene que cambiar con
         // ellos: antes se quedaba en gris claro y sobre el verde no se leía.
-        btn.setTextColor(if (running) AppTheme.RED else AppTheme.BG_DEEP)
+        btn.setTextColor(if (running) AppTheme.RED else AppTheme.ON_ACCENT)
     }
 
     /** Dirección objetivo del puzzle, tal y como está en el campo. */
@@ -1717,6 +1718,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                     val bg = btn.tag as? Array<*>
                     btn.text = if (puzzleMode) "Start puzzle" else s.start
                     btn.background = bg?.get(0) as? GradientDrawable
+                    btn.setTextColor(AppTheme.ON_ACCENT)
                 }
                 activeToggleBtn = null
             } else {
@@ -1853,6 +1855,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 val bg2 = callerBtn?.tag as? Array<GradientDrawable>
                 callerBtn?.text = s.stop
                 if (bg2 != null && bg2.size > 1) callerBtn?.background = bg2[1]
+                // Rojo sobre el fondo de parar: con el texto oscuro del botón de arrancar no se leía.
+                callerBtn?.setTextColor(AppTheme.RED)
                 refrescarBloqueos()   // bloquea la config nada más arrancar
 
                 try {

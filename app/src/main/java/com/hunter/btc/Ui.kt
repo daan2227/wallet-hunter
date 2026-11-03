@@ -164,20 +164,22 @@ object Ui {
     // (acento verde, rojo de parar…): el texto ON_ACCENT sigue legible encima.
     fun botonAccento(ctx: Context, radius: Int = AppTheme.R_KEY, base: Int = AppTheme.ACCENT):
             GradientDrawable =
-        GradientDrawable(GradientDrawable.Orientation.TL_BR,
-            intArrayOf(aclarar(base, 0.12f), oscurecer(base, 0.20f))).apply {
+        // Oro liso (Security print): el degradado era decoración y no decía nada.
+        GradientDrawable().apply {
+            setColor(base)
             cornerRadius = dp(ctx, radius).toFloat()
         }
 
     /** Marca/avatar con degradado (propuesta B): cuadro redondeado acento→azul
      *  con un pequeño icono encima. El llamante le pone el tamaño por layoutParams. */
     fun avatarMark(ctx: Context, icon: Int = R.drawable.ic_incognito): android.widget.FrameLayout {
+        // Sin cuadro degradado (Security print): sólo el icono, en el gris secundario. El violeta
+        // queda para el rosetón.
         val fl = android.widget.FrameLayout(ctx).apply {
-            background = GradientDrawable(GradientDrawable.Orientation.TL_BR,
-                intArrayOf(AppTheme.ACCENT, AppTheme.ACCENT2)).apply { cornerRadius = dp(ctx, 13).toFloat() }
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         fl.addView(android.widget.ImageView(ctx).apply {
-            setImageResource(icon); setColorFilter(AppTheme.ON_ACCENT)
+            setImageResource(icon); setColorFilter(AppTheme.TXT_SEC)
             layoutParams = android.widget.FrameLayout.LayoutParams(dp(ctx, 20), dp(ctx, 20),
                 android.view.Gravity.CENTER)
         })

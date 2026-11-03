@@ -633,17 +633,17 @@ class WalletActivity : FragmentActivity() {
         // (antes 38, por debajo del mínimo de Android) y TalkBack dice cuál está elegida.
         val tabs = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, this@WalletActivity)
+            // Las mismas pestañas de texto que Hunt (Security print): un filete debajo y la activa
+            // con su raya de oro. Antes era un control segmentado en caja, otra gramática distinta.
+            background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(16)) }
+            ).apply { setMargins(0, dp(4), 0, dp(8)) }
         }
         fun pintarPestana(b: Button, on: Boolean) {
             b.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
             b.typeface = if (on) AppTheme.bold(b.context) else AppTheme.medium(b.context)
-            // La activa, una tarjeta metida 4 dp dentro de su celda: se ve más pequeña que el toque.
-            b.background = if (on) android.graphics.drawable.InsetDrawable(
-                Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_CARD, b.context, borde = true), dp(4)) else null
+            b.background = if (on) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2)) else null
             b.isSelected = on
         }
         val tabBtns = mutableListOf<Button>()
@@ -739,16 +739,19 @@ class WalletActivity : FragmentActivity() {
         val hero = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
         }
-        hero.addView(TextView(this).apply {
+        // "Total balance" va debajo de la cifra, como el calificativo del Scanner y del minero:
+        // encima era el rótulo-sobre-cifra de siempre.
+        val tvQue = TextView(this).apply {
             text = if (isTestnet) "Total balance · testnet" else "Total balance"
             textSize = AppTheme.SP_CAPTION; setTextColor(TXT_SEC); typeface = AppTheme.medium(context)
-            gravity = Gravity.CENTER
-        })
+            gravity = Gravity.CENTER; setPadding(0, dp(4), 0, 0)
+        }
         val tvTotal = TextView(this).apply {
             text = "—"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
             typeface = AppTheme.display(context)
             letterSpacing = -0.03f; maxLines = 1
-            setAutoSizeTextTypeUniformWithConfiguration(20, 52, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            setAutoSizeTextTypeUniformWithConfiguration(20, 46, 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+            fontFeatureSettings = "tnum"
             layoutParams = LinearLayout.LayoutParams(0, dp(64), 1f)
             gravity = Gravity.CENTER
             accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
@@ -768,7 +771,7 @@ class WalletActivity : FragmentActivity() {
         filaTotal.addView(View(this), LinearLayout.LayoutParams(dp(48), 1))
         filaTotal.addView(tvTotal)
         filaTotal.addView(Privacidad.ojo(this) { repintarMontos() })
-        hero.addView(filaTotal); hero.addView(tvFiat)
+        hero.addView(filaTotal); hero.addView(tvFiat); hero.addView(tvQue)
         // Mientras se consulta la cadena: un indicador en vez de un "—" mudo.
         val cargando = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
@@ -953,10 +956,10 @@ class WalletActivity : FragmentActivity() {
             if (gen == generacion) ultimoSaldoSat = if (huboFallo) -1L else tot
             runOnUiThread {
                 if (gen != generacion) return@runOnUiThread
-                val btcText = "%.8f".format(tot / 1e8).replace('.', ',')
+                val btcText = "%.8f".format(java.util.Locale.US, tot / 1e8)
                 val fiatText = if (pr > 0) "BTC  ·  ≈ ${"%,.2f".format(tot / 1e8 * pr)} ${fiatCode()}" else "BTC"
                 monto(tvTotal, btcText)
-                tvTotal.setTextColor(if (tot > 0) AppTheme.ACCENT else AppTheme.TXT_PRI)
+                tvTotal.setTextColor(AppTheme.ACCENT)
                 if (pr > 0) monto(tvFiat, fiatText)
                 hero.removeView(cargando)
                 if (pend != 0L) hero.addView(TextView(this).apply {

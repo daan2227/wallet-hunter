@@ -31,7 +31,8 @@ class Roseton(ctx: Context, private val activo: () -> Boolean = { false }) : Vie
         get() = listOf(
             Capa(96, 36, 62, 1.00f, AppTheme.ACCENT, if (AppTheme.isDark) 0x38 else 0x30),
             Capa(100, 28, 70, 0.88f, AppTheme.ACCENT, if (AppTheme.isDark) 0x24 else 0x20),
-            Capa(90, 42, 48, 1.20f, AppTheme.ACCENT2, if (AppTheme.isDark) 0x1A else 0x18)
+            // El violeta, más alto que antes (0x1A no se veía en el móvil: el rosetón salía de un solo color).
+            Capa(90, 42, 48, 1.20f, AppTheme.ACCENT2, if (AppTheme.isDark) 0x30 else 0x28)
         )
 
     private val pincel = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -39,6 +40,13 @@ class Roseton(ctx: Context, private val activo: () -> Boolean = { false }) : Vie
         strokeWidth = resources.displayMetrics.density * 0.6f
     }
     private var trazos: List<Pair<Path, Capa>> = emptyList()
+
+    /**
+     * Cuánto más deprisa gira según el ritmo del trabajo (1 = una vuelta cada 90 s). Lo pone quien
+     * lo usa, con .apply { ritmo = { … } }; es una propiedad y no otro parámetro del constructor
+     * porque todos los sitios pasan [activo] como lambda final.
+     */
+    var ritmo: () -> Float = { 1f }
     private var anguloGrados = 0f
     private var ultimoFrame = 0L
 
@@ -79,7 +87,8 @@ class Roseton(ctx: Context, private val activo: () -> Boolean = { false }) : Vie
         val ahora = System.nanoTime()
         if (corre && ultimoFrame != 0L) {
             // Una vuelta cada 90 s: se nota que se mueve, no distrae.
-            anguloGrados = (anguloGrados + (ahora - ultimoFrame) / 1e9f * 4f) % 360f
+            val factor = try { ritmo().coerceIn(0.25f, 4f) } catch (e: Throwable) { 1f }
+            anguloGrados = (anguloGrados + (ahora - ultimoFrame) / 1e9f * 4f * factor) % 360f
         }
         ultimoFrame = if (corre) ahora else 0L
 

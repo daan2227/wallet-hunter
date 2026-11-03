@@ -246,7 +246,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                 sp.setSpan(android.text.style.AbsoluteSizeSpan(
                     (11 * resources.displayMetrics.scaledDensity).toInt()),
                     0, sp.length, android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                sp.append(if (hueco) "falta" else w)
+                sp.append(if (hueco) "missing" else w)
                 text = sp
                 textSize = AppTheme.SP_BODY
                 gravity = Gravity.CENTER
@@ -270,7 +270,7 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     // Selector de 12 o 24 palabras. Antes se deducía de cuántas escribías,
     // así que una frase de 24 a medio poner se trataba como de 12.
     val largoRow = Ui.segmented(this,
-        listOf("12 palabras" to null, "24 palabras" to null), initial = 0) { idx ->
+        listOf("12 words" to null, "24 words" to null), initial = 0) { idx ->
         val nuevo = if (idx == 0) 12 else 24
         while (palabras.size < nuevo) palabras.add("")
         while (palabras.size > nuevo) palabras.removeAt(palabras.size - 1)

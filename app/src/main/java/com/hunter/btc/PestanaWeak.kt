@@ -191,9 +191,6 @@ object WeakController {
                 typeface = AppTheme.title(context)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
-            addView(Ui.avatarMark(a).apply {
-                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
-            })
         })
         root.addView(Ui.chipEstado(a, "Hunting").apply {
             visibility = if (corriendo) android.view.View.VISIBLE else android.view.View.GONE
@@ -411,45 +408,40 @@ object WeakController {
 
         val vStats = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
-            setPadding(dp(18), dp(18), dp(18), dp(18))
+            // Sin caja (Security print): cifra sobre el rosetón, la gráfica y las filas.
             visibility = if (corriendo) android.view.View.VISIBLE else android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
         }
         statsCard = vStats
-        vStats.addView(TextView(a).apply {
-            text = "Performance"; textSize = AppTheme.SP_CAPTION
-            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
-            setPadding(0, 0, 0, dp(12))
-        })
         val filaVel = LinearLayout(a).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER
+            isBaselineAligned = true
         }
         val vSpeed = TextView(a).apply {
-            text = "0"; textSize = AppTheme.SP_DISPLAY; setTextColor(AppTheme.TXT_PRI)
+            text = "0"; textSize = 64f; setTextColor(AppTheme.ACCENT)
             typeface = AppTheme.display(context); letterSpacing = -0.04f
+            includeFontPadding = false; fontFeatureSettings = "tnum"
         }
         tvSpeed = vSpeed
         filaVel.addView(vSpeed)
         val vSpeedU = TextView(a).apply {
-            text = "keys/s"; textSize = AppTheme.SP_TITLE; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
+            text = "keys/s"; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8); bottomMargin = dp(4) }
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8) }
         }
         tvSpeedU = vSpeedU
         filaVel.addView(vSpeedU)
         val vPeak = TextView(a).apply {
-            text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.medium(context)
-            setPadding(0, dp(10), 0, dp(4))
+            text = ""; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); gravity = Gravity.CENTER
+            setPadding(0, dp(10), 0, 0)
         }
         tvPeak = vPeak
         // Cifra grande + peak a la izquierda, anillo de progreso a la derecha (B).
         val colVel = LinearLayout(a).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
             addView(filaVel); addView(vPeak)
         }
         val vAnillo = AnilloProgreso(a).apply {
@@ -457,10 +449,10 @@ object WeakController {
         }
         anilloCard = vAnillo
         if (corriendo) vAnillo.set(actualizarBarraFrac())
-        vStats.addView(LinearLayout(a).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            addView(colVel); addView(vAnillo)
-        })
+        // El anillo de progreso (propuesta B) ya no se enseña: el avance lo dicen la fila
+        // "Key budget" y la barra de abajo. Se sigue actualizando, sin estar en pantalla.
+        vStats.addView(Ui.heroe(a, Roseton(a) { corriendo }, colVel, alto = 210))
+        vStats.addView(Ui.microimpresion(a, "pollard kangaroo  ·  secp256k1 arm64 asm  ·  ${bits} bit range"))
         val vChart = SpeedChartView(a).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(110))
                 .apply { topMargin = dp(8) }
@@ -469,37 +461,38 @@ object WeakController {
         vStats.addView(vChart)
 
         fun mini(label: String, tv: TextView) = LinearLayout(a).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_CARD).toFloat()   // pills (B)
-            }
-            setPadding(dp(14), dp(14), dp(14), dp(14))
+            // Fila de dato (Security print), no pastilla.
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(54)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+            background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
+            isFocusable = true
             addView(TextView(a).apply {
-                text = label; textSize = AppTheme.SP_CAPTION
-                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context)
+                text = label; textSize = AppTheme.SP_BODY
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             })
             addView(tv)
         }
         fun valor(ini: String) = TextView(a).apply {
-            text = ini; textSize = AppTheme.SP_FIGURE; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context); letterSpacing = -0.02f
-            setPadding(0, dp(6), 0, 0)
+            text = ini; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.title(context); gravity = Gravity.END
         }
         val vOps = valor("0"); tvOps = vOps
         val vTime = valor("00:00:00"); tvTime = vTime
         val vProg = valor("—"); tvProg = vProg
         val vKeys = valor("—"); tvKeys = vKeys
         if (corriendo) vKeys.text = cuentaTexto()
-        val r1 = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL
+        val r1 = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) } }
-        val r2 = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL
+        val r2 = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
-        r1.addView(mini("Operations", vOps).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+                ViewGroup.LayoutParams.WRAP_CONTENT) }
+        r1.addView(mini("Operations", vOps))
         r1.addView(mini("Time", vTime))
-        r2.addView(mini("Key budget", vProg).also { (it.layoutParams as LinearLayout.LayoutParams).marginEnd = dp(8) })
+        r2.addView(mini("Key budget", vProg))
         r2.addView(mini("Keys · found", vKeys))
         vStats.addView(r1); vStats.addView(r2)
         // Barra de progreso general: claves hechas / total. Sólo tiene sentido

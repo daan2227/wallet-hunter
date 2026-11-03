@@ -84,10 +84,16 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         Ui.section(this, icon, title, build)
 
     // ── CABECERA ──────────────────────────────────────────────────────
-    // El título y las pestañas los pone la cabecera de Hunt.
-    page.addView(android.view.View(this).apply {
-        layoutParams = LinearLayout.LayoutParams(1, dp(12))
-    })
+    // El título y las pestañas los pone la cabecera de Hunt. Lo primero de la página es la cifra
+    // sobre el rosetón y la microimpresión (se rellena más abajo, donde se crean sus vistas).
+    val cabezaPuzzle = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            setMargins(dp(AppTheme.PAD_SIDE), dp(4), dp(AppTheme.PAD_SIDE), dp(8))
+        }
+    }
+    page.addView(cabezaPuzzle)
     // "Selecciona el puzzle objetivo" explicaba a quien ya está mirando la
     // lista de puzzles lo que hace la lista de puzzles.
 
@@ -722,9 +728,12 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL
         addView(speedRow); addView(tvPeakWpsPuzzle)
     }
-    statsCard.addView(Ui.heroe(this, Roseton(this) {
+    cabezaPuzzle.addView(Ui.heroe(this, Roseton(this) {
         try { (HunterEngine.isRunning() && puzzleMode) || HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-    }, heroPuzzle, alto = 210))
+    }.apply { ritmo = { (Math.log10((if (kgOpsSeg > 0) kgOpsSeg else HunterEngine.getWps()).coerceAtLeast(1.0)) / 4.0).toFloat() } },
+        heroPuzzle, alto = 210))
+    cabezaPuzzle.addView(Ui.microimpresion(this,
+        "bitcoin puzzle  ·  sequential scan  ·  pollard kangaroo  ·  secp256k1 arm64 asm"))
 
     // Gráfica de velocidad: una muestra cada 10 s, la última hora.
     //
