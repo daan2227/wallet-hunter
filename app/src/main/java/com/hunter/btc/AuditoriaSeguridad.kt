@@ -57,10 +57,10 @@ object AuditoriaSeguridad {
 
     /** De la nota a una palabra y un color (ARGB) para la pantalla. */
     fun veredicto(nota: Int): Pair<String, Int> = when {
-        nota >= 90 -> "Strong" to 0xFF2ECC71.toInt()
-        nota >= 70 -> "Good" to 0xFF8BC34A.toInt()
-        nota >= 45 -> "Needs attention" to 0xFFF1C40F.toInt()
-        else -> "At risk" to 0xFFE74C3C.toInt()
+        nota >= 90 -> "Strong" to AppTheme.OK
+        nota >= 70 -> "Good" to AppTheme.OK
+        nota >= 45 -> "Needs attention" to AppTheme.WARN
+        else -> "At risk" to AppTheme.RED
     }
 
     // ── Análisis de la frase (puro, sin red) ───────────────────────────────────────────────────────

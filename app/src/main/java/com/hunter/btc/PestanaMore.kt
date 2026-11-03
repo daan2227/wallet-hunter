@@ -348,8 +348,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
      * están puestas no cambian solas. La página se conserva por
      * onSaveInstanceState, así que se vuelve a More. */
     fun nombreModo(m: AppTheme.Modo) = when (m) {
-        AppTheme.Modo.OSCURO -> "Dark"
+        AppTheme.Modo.OSCURO -> "Vault Gold"
         AppTheme.Modo.CLARO -> "Light"
+        AppTheme.Modo.MENTA -> "Mint"
         AppTheme.Modo.MEDIANOCHE -> "Midnight"
         AppTheme.Modo.NEON -> "Neon"
         AppTheme.Modo.EXCHANGE -> "Exchange"
@@ -357,6 +358,8 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         AppTheme.Modo.AUTO -> "Auto · day / night"
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
+        AppTheme.Modo.OSCURO -> "Dark slate · Bitcoin gold (default)"
+        AppTheme.Modo.MENTA -> "The previous dark theme · mint"
         AppTheme.Modo.MEDIANOCHE -> "Deep ink blue"
         AppTheme.Modo.NEON -> "Cyberpunk cyan"
         AppTheme.Modo.EXCHANGE -> "Trading terminal · candles"

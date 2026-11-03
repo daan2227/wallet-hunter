@@ -28,7 +28,7 @@ object AppTheme {
      * un azul-tinta nuevo; AUTO es el híbrido día/noche: claro de día, oscuro
      * de noche, según la hora del móvil.
      */
-    enum class Modo { OSCURO, CLARO, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO }
+    enum class Modo { OSCURO, CLARO, MENTA, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO }
 
     /** El modo elegido por el usuario. AUTO no es una paleta en sí: se resuelve
      *  a clara u oscura al arrancar cada pantalla. */
@@ -42,7 +42,13 @@ object AppTheme {
     private class Paleta(
         val bgDeep: Int, val bgPanel: Int, val bgCard: Int, val bgElev: Int, val bgKey: Int,
         val border: Int, val txtPri: Int, val txtSec: Int, val txtMuted: Int, val bgStop: Int,
-        val accent: Int, val onAccent: Int, val oscuro: Boolean
+        val accent: Int, val onAccent: Int, val oscuro: Boolean,
+        // Semánticos por tema: los de antes eran fijos y en claro no se leían (el rojo #F04040
+        // sobre blanco da 3,7:1; el ámbar #FFB454, 1,8:1). Los oscuros valen para todos los
+        // temas oscuros; el claro trae los suyos, más oscuros.
+        val red: Int = 0xFFF87171.toInt(), val warn: Int = 0xFFFB923C.toInt(),
+        val blue: Int = 0xFF60A5FA.toInt(), val ok: Int = 0xFF4ADE80.toInt(),
+        val accent2: Int = 0xFFA78BFA.toInt()
     )
 
     private fun c(hex: String) = Color.parseColor(hex)
@@ -50,22 +56,45 @@ object AppTheme {
     private const val VERDE = 0xFF00C896.toInt()        // el acento histórico
     private const val SOBRE_VERDE = 0xFF0F1210.toInt()
 
-    // Propuesta B ("Soft dashboard"): verde menta sobre azul-carbón frío, con un
-    // azul secundario para degradados. Es el tema por defecto de la app.
+    /*
+     * VAULT GOLD — el tema por defecto desde el rediseño (skill ui-ux-pro-max, perfil
+     * "Fintech/Crypto": oscuro tipo OLED, oro de confianza y violeta técnico; MASTER.md en
+     * design-system/wallet-hunter). El oro es el color de Bitcoin y es el ACENTO: acción
+     * principal, saldo y "corriendo", como siempre. El violeta sólo acompaña (degradados).
+     *
+     * Contrastes medidos (WCAG) sobre la tarjeta #222735: texto 14,2:1, secundario 5,8:1,
+     * atenuado 5,3:1 (antes 3,2:1, por debajo del mínimo), acento como texto 6,9:1, y el
+     * texto oscuro sobre el botón de oro 8,3:1.
+     */
+    private val OSCURA = Paleta(
+        bgDeep = c("#0F172A"), bgPanel = c("#222735"), bgCard = c("#222735"),
+        bgElev = c("#272F42"), bgKey = c("#252B3B"), border = c("#334155"),
+        txtPri = c("#F8FAFC"), txtSec = c("#B0BBCC"), txtMuted = c("#8D9BB0"),
+        bgStop = c("#3A1F2A"), accent = c("#F59E0B"), onAccent = c("#0F172A"), oscuro = true)
+
+    /*
+     * Claro: pizarra clara con el oro oscurecido (#B45309), porque el oro del oscuro sobre
+     * blanco da 2,1:1. Secundario 7,6:1 y atenuado 5,9:1 sobre blanco (antes #909090, 3,2:1);
+     * el verde de antes como texto daba 2,2:1. Semánticos propios, también oscurecidos.
+     */
+    private val CLARA = Paleta(
+        bgDeep = c("#F8FAFC"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
+        bgElev = c("#F1F5F9"), bgKey = c("#E2E8F0"), border = c("#CBD5E1"),
+        txtPri = c("#0F172A"), txtSec = c("#475569"), txtMuted = c("#56657A"),
+        bgStop = c("#FEE2E2"), accent = c("#B45309"), onAccent = c("#FFFFFF"), oscuro = false,
+        red = c("#B91C1C"), warn = c("#C2410C"), blue = c("#2563EB"), ok = c("#15803D"),
+        accent2 = c("#7C3AED"))
+
+    // Propuesta B ("Soft dashboard"), el oscuro de antes del rediseño: verde menta sobre
+    // azul-carbón. Se queda como tema "Mint" para quien lo prefiera.
     private const val MENTA = 0xFF2DE3A6.toInt()
     private const val SOBRE_MENTA = 0xFF06231A.toInt()
-
-    private val OSCURA = Paleta(
+    private val MENTA_P = Paleta(
         bgDeep = c("#101317"), bgPanel = c("#181C22"), bgCard = c("#181C22"),
         bgElev = c("#1E232B"), bgKey = c("#1A1F27"), border = c("#272D36"),
-        txtPri = c("#F4F6F8"), txtSec = c("#9AA6B2"), txtMuted = c("#616C78"),
-        bgStop = c("#2E1A1E"), accent = MENTA, onAccent = SOBRE_MENTA, oscuro = true)
-
-    private val CLARA = Paleta(
-        bgDeep = c("#F4F4F4"), bgPanel = c("#FFFFFF"), bgCard = c("#FFFFFF"),
-        bgElev = c("#E8E8E8"), bgKey = c("#EDEDED"), border = c("#E0E0E0"),
-        txtPri = c("#0A0A0A"), txtSec = c("#444444"), txtMuted = c("#909090"),
-        bgStop = c("#FBE3E3"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = false)
+        txtPri = c("#F4F6F8"), txtSec = c("#9AA6B2"), txtMuted = c("#808C98"),
+        bgStop = c("#2E1A1E"), accent = MENTA, onAccent = SOBRE_MENTA, oscuro = true,
+        accent2 = c("#5B8CFF"))
 
     /**
      * MEDIANOCHE: azul-tinta profundo. Mantiene los mismos escalones de
@@ -76,7 +105,7 @@ object AppTheme {
     private val MEDIANOCHE = Paleta(
         bgDeep = c("#10131A"), bgPanel = c("#181D27"), bgCard = c("#181D27"),
         bgElev = c("#232A39"), bgKey = c("#1E2430"), border = c("#2C3444"),
-        txtPri = c("#ECEFF6"), txtSec = c("#9AA6BD"), txtMuted = c("#5E6880"),
+        txtPri = c("#ECEFF6"), txtSec = c("#9AA6BD"), txtMuted = c("#8893AB"),
         bgStop = c("#3A1E26"), accent = VERDE, onAccent = SOBRE_VERDE, oscuro = true)
 
     /**
@@ -87,7 +116,7 @@ object AppTheme {
     private val NEON = Paleta(
         bgDeep = c("#0B0712"), bgPanel = c("#140C20"), bgCard = c("#140C20"),
         bgElev = c("#1F1433"), bgKey = c("#190F2A"), border = c("#2E1F48"),
-        txtPri = c("#ECE6FF"), txtSec = c("#A79AC8"), txtMuted = c("#6C5E8C"),
+        txtPri = c("#ECE6FF"), txtSec = c("#A79AC8"), txtMuted = c("#8A7CAA"),
         bgStop = c("#36132A"), accent = c("#1FE3FF"), onAccent = c("#05141A"), oscuro = true)
 
     /**
@@ -97,7 +126,7 @@ object AppTheme {
     private val EXCHANGE = Paleta(
         bgDeep = c("#0B0E11"), bgPanel = c("#161A1E"), bgCard = c("#161A1E"),
         bgElev = c("#1E2329"), bgKey = c("#1B2026"), border = c("#2B3139"),
-        txtPri = c("#EAECEF"), txtSec = c("#9AA3AF"), txtMuted = c("#5E6673"),
+        txtPri = c("#EAECEF"), txtSec = c("#9AA3AF"), txtMuted = c("#828B97"),
         bgStop = c("#2A1518"), accent = c("#0ECB81"), onAccent = c("#06130D"), oscuro = true)
 
     /**
@@ -108,7 +137,7 @@ object AppTheme {
     private val SYNTHWAVE = Paleta(
         bgDeep = c("#160E26"), bgPanel = c("#221539"), bgCard = c("#221539"),
         bgElev = c("#301E50"), bgKey = c("#281747"), border = c("#3E2A63"),
-        txtPri = c("#F6E9FF"), txtSec = c("#B59BD6"), txtMuted = c("#74619A"),
+        txtPri = c("#F6E9FF"), txtSec = c("#B59BD6"), txtMuted = c("#9B84BE"),
         bgStop = c("#3A1230"), accent = c("#FF2E88"), onAccent = c("#1A0612"), oscuro = true)
 
     @Volatile private var activa: Paleta = OSCURA
@@ -130,6 +159,7 @@ object AppTheme {
     /** La paleta de un modo CONCRETO (no AUTO). */
     private fun paletaFija(m: Modo): Paleta = when (m) {
         Modo.CLARO -> CLARA
+        Modo.MENTA -> MENTA_P
         Modo.MEDIANOCHE -> MEDIANOCHE
         Modo.NEON -> NEON
         Modo.EXCHANGE -> EXCHANGE
@@ -181,7 +211,7 @@ object AppTheme {
     class Muestra(val bg: Int, val card: Int, val accent: Int, val texto: Int, val oscuro: Boolean)
 
     fun muestra(m: Modo): Muestra = paletaFija(m).let {
-        Muestra(it.bgDeep, it.bgCard, ACCENT, it.txtPri, it.oscuro)
+        Muestra(it.bgDeep, it.bgCard, it.accent, it.txtPri, it.oscuro)
     }
 
     /** Guarda el tema elegido. Quien llama recrea la pantalla para repintarla
@@ -247,18 +277,22 @@ object AppTheme {
      * legible encima.
      */
     val ON_ACCENT get() = activa.onAccent
-    val RED    get() = Color.parseColor("#F04040")   // destructivo / error
-    val WARN   get() = Color.parseColor("#FFB454")   // aviso, no error (ámbar suave, propuesta B)
-    val BLUE   get() = Color.parseColor("#6EA8FE")   // informativo
+    val RED    get() = activa.red    // destructivo / error
+    /** Aviso, no error. Naranja, distinto del oro del acento (con el texto "⚠", nunca sólo el color). */
+    val WARN   get() = activa.warn
+    val BLUE   get() = activa.blue   // informativo
+    /** Correcto / seguro (p. ej. la nota de la auditoría de seguridad). No es el acento: el acento
+     *  es "acción"; esto es "está bien". */
+    val OK     get() = activa.ok
     /** Acento secundario: sólo para degradados/realces (avatar, botón principal,
      *  punto de pestaña activa). No tiene significado semántico propio. */
-    val ACCENT2 get() = if (activa.oscuro) Color.parseColor("#5B8CFF") else Color.parseColor("#3A6DF0")
+    val ACCENT2 get() = activa.accent2
 
     /** Fondo de pantalla con un degradado radial muy sutil arriba (propuesta B).
      *  En temas claros es un degradado igual de leve hacia el blanco. */
     fun fondoApp(): android.graphics.drawable.Drawable {
         // Glow superior más marcado (como el mockup de la propuesta B).
-        val top = if (activa.oscuro) mezcla(activa.bgDeep, Color.parseColor("#2A3B57"), 0.92f)
+        val top = if (activa.oscuro) mezcla(activa.bgDeep, mezcla(Color.parseColor("#1E293B"), activa.accent2, 0.18f), 0.92f)
                   else mezcla(activa.bgDeep, Color.WHITE, 0.72f)
         val g = android.graphics.drawable.GradientDrawable(
             android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
@@ -308,9 +342,11 @@ object AppTheme {
      */
     const val SP_PAGE    = 28f
     const val SP_TITLE   = 17f   // título de sección
-    const val SP_BODY    = 14f   // texto normal, etiquetas de fila
-    const val SP_CAPTION = 12f   // secundario, unidades, pies
-    const val SP_MICRO   = 11f   // sólo para datos densos: direcciones, hex
+    // Rediseño: un punto más. 11sp quedaba por debajo del mínimo legible (12) y la skill pide
+    // un cuerpo de 15-16; 16 rompía las filas densas, 15 no.
+    const val SP_BODY    = 15f   // texto normal, etiquetas de fila
+    const val SP_CAPTION = 13f   // secundario, unidades, pies
+    const val SP_MICRO   = 12f   // sólo para datos densos: direcciones, hex
 
     /* ── Radios y espaciado ──────────────────────────────────────────────
        Antes convivían 8, 10, 12, 14, 16 y 18 sin criterio.
@@ -319,18 +355,21 @@ object AppTheme {
        final para cornerRadius. Declararlos Float obligaba a recordar el orden
        exacto de las conversiones en cada uso, y bastaba equivocarse una vez
        para no compilar. */
-    // Propuesta B: esquinas más redondeadas en todas las superficies.
-    const val R_CARD   = 20
-    const val R_INNER  = 15
-    const val R_CHIP   = 12
-    const val R_KEY    = 18
+    // Rediseño: todo en la rejilla de 4/8 dp (22, 18 y 15 no lo estaban) y esquinas algo
+    // más contenidas, más "financiero" que "juguete".
+    const val R_CARD   = 16
+    const val R_INNER  = 12
+    const val R_CHIP   = 8
+    const val R_KEY    = 16
 
-    const val PAD_SIDE = 22   // margen lateral de pantalla
-    const val PAD_CARD = 18   // interior de tarjeta
+    const val PAD_SIDE = 20   // margen lateral de pantalla
+    const val PAD_CARD = 16   // interior de tarjeta
     const val GAP      = 12   // entre tarjetas hermanas
 
     /* ── Tipografías ──────────────────────────────────────────────────────
-       Dos familias y nada más. La app usaba las del sistema:
+       Dos familias y nada más: IBM Plex Sans (la pareja "Financial Trust" de la skill
+       ui-ux-pro-max) y JetBrains Mono para los datos. Antes eran Sora + Public Sans, y antes
+       de eso las del sistema:
        "sans-serif-black" para las cifras grandes, "sans-serif" para los
        títulos y "monospace" para todo lo demás, incluidas etiquetas que no
        son datos.
@@ -360,29 +399,30 @@ object AppTheme {
             android.graphics.Typeface.create(fallback, weight)
         }
 
-    /** Sora Bold — la cifra protagonista. */
+    /** IBM Plex Sans Bold — la cifra protagonista. Sus cifras son de ancho fijo sin pedirlo
+     *  (todas miden 600 unidades), así que una cantidad no baila al cambiar. */
     fun display(ctx: Context) = fDisplay
-        ?: load(ctx, R.font.sora_bold, "sans-serif-black", android.graphics.Typeface.BOLD)
+        ?: load(ctx, R.font.ibm_plex_sans_bold, "sans-serif-black", android.graphics.Typeface.BOLD)
             .also { fDisplay = it }
 
-    /** Sora SemiBold — títulos de pantalla y cifras de apoyo. */
+    /** IBM Plex Sans SemiBold — títulos de pantalla y cifras de apoyo. */
     fun title(ctx: Context) = fTitle
-        ?: load(ctx, R.font.sora_semibold, "sans-serif", android.graphics.Typeface.BOLD)
+        ?: load(ctx, R.font.ibm_plex_sans_semibold, "sans-serif", android.graphics.Typeface.BOLD)
             .also { fTitle = it }
 
-    /** Public Sans Regular — texto normal. */
+    /** IBM Plex Sans Regular — texto normal. */
     fun body(ctx: Context) = fBody
-        ?: load(ctx, R.font.public_sans_regular, "sans-serif", android.graphics.Typeface.NORMAL)
+        ?: load(ctx, R.font.ibm_plex_sans_regular, "sans-serif", android.graphics.Typeface.NORMAL)
             .also { fBody = it }
 
-    /** Public Sans Medium — etiquetas y secundarios. */
+    /** IBM Plex Sans Medium — etiquetas y secundarios. */
     fun medium(ctx: Context) = fMedium
-        ?: load(ctx, R.font.public_sans_medium, "sans-serif-medium", android.graphics.Typeface.NORMAL)
+        ?: load(ctx, R.font.ibm_plex_sans_medium, "sans-serif-medium", android.graphics.Typeface.NORMAL)
             .also { fMedium = it }
 
-    /** Public Sans SemiBold — botones y valores destacados. */
+    /** IBM Plex Sans SemiBold — botones y valores destacados. */
     fun bold(ctx: Context) = fBold
-        ?: load(ctx, R.font.public_sans_semibold, "sans-serif", android.graphics.Typeface.BOLD)
+        ?: load(ctx, R.font.ibm_plex_sans_semibold, "sans-serif", android.graphics.Typeface.BOLD)
             .also { fBold = it }
 
     /**

@@ -43,18 +43,26 @@ object Ui {
 
     fun dp(ctx: Context, v: Int) = (v * ctx.resources.displayMetrics.density).toInt()
 
-    /** Fondo de tarjeta. Sin `setStroke`: el tono ya separa. */
-    fun cardBg(radius: Int = AppTheme.R_CARD, color: Int = AppTheme.BG_CARD, ctx: Context) =
+    /**
+     * Fondo de tarjeta. El tono separa; con [borde], además, un filo de 1 px del texto al 8 %
+     * en los temas oscuros (el toque "glass" del estilo Fintech/Crypto del rediseño): en una
+     * pantalla OLED a media luz, la tarjeta y el fondo se distinguen sin mirar fijamente.
+     */
+    fun cardBg(radius: Int = AppTheme.R_CARD, color: Int = AppTheme.BG_CARD, ctx: Context, borde: Boolean = false) =
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(ctx, radius).toFloat()
+            if (borde && AppTheme.isDark) setStroke(1, (AppTheme.TXT_PRI and 0x00FFFFFF) or (0x14 shl 24))
         }
+
+    /** ¿Hay que animar? No, si el usuario quitó las animaciones del sistema (accesibilidad). */
+    fun animar() = android.animation.ValueAnimator.areAnimatorsEnabled()
 
     /** Tarjeta contenedora con el margen lateral de pantalla. */
     fun card(ctx: Context, topGap: Int = AppTheme.GAP, pad: Int = AppTheme.PAD_CARD):
             LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        background = cardBg(ctx = ctx)
+        background = cardBg(ctx = ctx, borde = true)
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -198,7 +206,8 @@ object Ui {
             repeatCount = android.animation.ValueAnimator.INFINITE
         }
         dot.addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
-            override fun onViewAttachedToWindow(v: View) { anim.start() }
+            // Sin animaciones del sistema, el punto se queda fijo (el texto ya dice el estado).
+            override fun onViewAttachedToWindow(v: View) { if (animar()) anim.start() }
             override fun onViewDetachedFromWindow(v: View) { anim.cancel() }
         })
         row.addView(dot)
@@ -216,6 +225,7 @@ object Ui {
      */
     fun pulso(v: View) {
         try { v.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY) } catch (e: Throwable) {}
+        if (!animar()) return
         v.animate().cancel()
         v.scaleX = 0.96f; v.scaleY = 0.96f
         v.animate().scaleX(1f).scaleY(1f).setDuration(180)
@@ -241,11 +251,12 @@ object Ui {
         LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER_HORIZONTAL
-            background = cardBg(ctx = ctx)
-            setPadding(dp(ctx, 24), dp(ctx, 30), dp(ctx, 24), dp(ctx, 30))
+            background = cardBg(ctx = ctx, borde = true)
+            setPadding(dp(ctx, 24), dp(ctx, 32), dp(ctx, 24), dp(ctx, 32))
             addView(ImageView(ctx).apply {
                 setImageResource(iconRes); setColorFilter(AppTheme.TXT_MUTED)
                 alpha = 0.7f
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO   // decorativo: el título lo dice
                 layoutParams = LinearLayout.LayoutParams(dp(ctx, 40), dp(ctx, 40))
             })
             addView(TextView(ctx).apply {
@@ -275,7 +286,7 @@ object Ui {
                 build: LinearLayout.() -> Unit): LinearLayout {
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBg(ctx = ctx)
+            background = cardBg(ctx = ctx, borde = true)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -292,7 +303,8 @@ object Ui {
             isClickable = true; isFocusable = true
         }
         header.addView(icon(ctx, iconRes).apply {
-            (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(ctx, 14)
+            (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(ctx, 12)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO   // decorativo: va junto al título
         })
         header.addView(TextView(ctx).apply {
             text = title
@@ -303,7 +315,13 @@ object Ui {
                 0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
         val chevron = icon(ctx, R.drawable.ic_chevron, 18, AppTheme.TXT_MUTED)
+            .apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
         header.addView(chevron)
+        // El lector de pantalla anuncia si la sección está abierta o cerrada (no sólo la flecha).
+        fun estado(abierta: Boolean) {
+            if (android.os.Build.VERSION.SDK_INT >= 30) header.stateDescription = if (abierta) "Expanded" else "Collapsed"
+        }
+        estado(false)
         container.addView(header)
 
         val body = LinearLayout(ctx).apply {
@@ -322,13 +340,15 @@ object Ui {
             // ya está enganchado, para que lo que queda debajo se recoloque
             // deslizándose en vez de dar un salto.
             val raiz = (container.parent as? android.view.ViewGroup) ?: container
-            android.transition.TransitionManager.beginDelayedTransition(raiz,
+            if (animar()) android.transition.TransitionManager.beginDelayedTransition(raiz,
                 android.transition.AutoTransition().apply {
                     duration = 180
                     interpolator = android.view.animation.DecelerateInterpolator()
                 })
             body.visibility = if (opening) View.VISIBLE else View.GONE
-            chevron.animate().rotation(if (opening) 90f else 0f).setDuration(180).start()
+            if (animar()) chevron.animate().rotation(if (opening) 90f else 0f).setDuration(180).start()
+            else chevron.rotation = if (opening) 90f else 0f
+            estado(opening)
         }
         return container
     }
@@ -349,6 +369,7 @@ object Ui {
         gravity = Gravity.CENTER
         background = cardBg(AppTheme.R_KEY, AppTheme.ACCENT, ctx)
         isClickable = true; isFocusable = true
+        foreground = toque()
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, dp(ctx, height)
         ).apply {
@@ -367,6 +388,7 @@ object Ui {
             gravity = Gravity.CENTER
             background = cardBg(AppTheme.R_INNER, AppTheme.BG_KEY, ctx)
             isClickable = true; isFocusable = true
+            foreground = toque()   // respuesta al toque, como el resto de controles
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(ctx, height))
         }
@@ -413,9 +435,11 @@ object Ui {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
                 setPadding(dp(ctx, 8), dp(ctx, 10), dp(ctx, 8), dp(ctx, 10))
+                minimumHeight = dp(ctx, 48)   // toque mínimo de Android (antes ~40 dp con una línea)
                 layoutParams = LinearLayout.LayoutParams(
                     0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 isClickable = true; isFocusable = true
+                foreground = toque()
             }
             pill.addView(TextView(ctx).apply {
                 text = label
@@ -433,6 +457,13 @@ object Ui {
                 ).apply { topMargin = dp(ctx, 2) }
             })
             pill.setOnClickListener { paint(idx); onPick(idx) }
+            // El lector de pantalla dice cuál está elegida, no sólo el color.
+            pill.accessibilityDelegate = object : View.AccessibilityDelegate() {
+                override fun onInitializeAccessibilityNodeInfo(v: View, info: android.view.accessibility.AccessibilityNodeInfo) {
+                    super.onInitializeAccessibilityNodeInfo(v, info)
+                    info.isCheckable = true; info.isChecked = v.background != null
+                }
+            }
             pills.add(pill)
             track.addView(pill)
         }
@@ -448,7 +479,8 @@ object Ui {
         setHintTextColor(AppTheme.TXT_MUTED)
         typeface = if (mono) AppTheme.mono(ctx) else AppTheme.body(ctx)
         background = cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, ctx)
-        setPadding(dp(ctx, 14), dp(ctx, 13), dp(ctx, 14), dp(ctx, 13))
+        setPadding(dp(ctx, 16), dp(ctx, 12), dp(ctx, 16), dp(ctx, 12))
+        minimumHeight = dp(ctx, 48)   // toque mínimo de Android
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT)

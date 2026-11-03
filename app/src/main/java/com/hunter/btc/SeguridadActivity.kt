@@ -85,7 +85,7 @@ class SeguridadActivity : AppCompatActivity() {
         if (!profundo) caja.addView(botonAccion(if (ocupado) "Checking the chain…" else "Deep check (uses the network)") { if (!ocupado) revisarRed() })
 
         if (hallazgos.isEmpty()) {
-            caja.addView(texto("✓ Nothing to fix. Keep your backup safe and off any phone or cloud.", AppTheme.SP_BODY, 0xFF2ECC71.toInt(), true))
+            caja.addView(texto("✓ Nothing to fix. Keep your backup safe and off any phone or cloud.", AppTheme.SP_BODY, AppTheme.OK, true))
         } else {
             for (h in hallazgos) caja.addView(tarjeta(h))
         }
@@ -94,8 +94,10 @@ class SeguridadActivity : AppCompatActivity() {
     }
 
     private fun colorDe(g: AuditoriaSeguridad.Gravedad) = when (g) {
-        AuditoriaSeguridad.Gravedad.CRITICO -> 0xFFE74C3C.toInt(); AuditoriaSeguridad.Gravedad.ALTO -> 0xFFE67E22.toInt()
-        AuditoriaSeguridad.Gravedad.MEDIO -> 0xFFF1C40F.toInt(); AuditoriaSeguridad.Gravedad.BAJO -> 0xFF8BC34A.toInt()
+        // Del tema: los de antes eran fijos y en claro el amarillo #F1C40F daba 1,7:1. La gravedad
+        // va también escrita en cada aviso, así que el color no es lo único que la dice.
+        AuditoriaSeguridad.Gravedad.CRITICO -> AppTheme.RED; AuditoriaSeguridad.Gravedad.ALTO -> AppTheme.WARN
+        AuditoriaSeguridad.Gravedad.MEDIO -> AppTheme.WARN; AuditoriaSeguridad.Gravedad.BAJO -> AppTheme.TXT_SEC
         AuditoriaSeguridad.Gravedad.INFO -> AppTheme.TXT_SEC
     }
 
