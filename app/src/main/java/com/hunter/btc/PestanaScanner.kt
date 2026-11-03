@@ -471,12 +471,10 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     fun paintModes(sel: Int) {
         modeCards.forEachIndexed { i, c ->
             val on = i == sel
-            // Sin relleno: sólo el contorno, de oro el elegido y un filete el otro.
-            c.background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.TRANSPARENT)
-                cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                if (on) setStroke(dp(2), AppTheme.ACCENT) else setStroke(dp(1), AppTheme.BORDER_C)
-            }
+            // Sin recuadros (Security print): el elegido, subrayado en oro como una pestaña; el otro,
+            // con el filete fino.
+            c.background = if (on) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2))
+                           else Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
             c.isSelected = on
             (c.getChildAt(0) as TextView).apply {
                 setTextColor(if (on) AppTheme.ACCENT else AppTheme.TXT_SEC)

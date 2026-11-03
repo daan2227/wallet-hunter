@@ -244,6 +244,8 @@ class MineroActivity : AppCompatActivity() {
     private lateinit var vGpu: TextView
     private lateinit var vShares: TextView
     private lateinit var vMejor: TextView
+    /** "Start solo mining" bajo las filas, en la primera pantalla (usa el pool y la dirección guardados). */
+    private lateinit var btSoloArriba: TextView
 
     private fun construirHeroe() {
         tvHr = TextView(this).apply {
@@ -293,6 +295,14 @@ class MineroActivity : AppCompatActivity() {
             setPadding(0, dp(6), 0, dp(8))
             addView(f1); addView(f2); addView(f3); addView(f4)
         })
+        btSoloArriba = boton("Start solo mining", principal = true) {}
+        caja.addView(btSoloArriba)
+    }
+
+    /** "23.5 MH/s" / "0.00 H/s": corto() da "23.5 M" o "0.00"; el prefijo va pegado a la unidad. */
+    private fun hs(x: Double): String {
+        val p = Minero.corto(x).split(' ')
+        return p[0] + " " + (p.getOrNull(1) ?: "") + "H/s"
     }
 
     private fun pintarHeroe(hr: Double, seg: Double) {
@@ -318,8 +328,8 @@ class MineroActivity : AppCompatActivity() {
             else -> AppTheme.TXT_MUTED
         })
         val gpuHr = if (minando && gpuLista) hashesGpu.get() / seg else 0.0
-        vCpu.text = if (minando) "${Minero.corto(hr - gpuHr)}H/s · $hilosActivos threads" else "$nHilos threads"
-        vGpu.text = if (!gpuLista) "off" else if (minando) "${Minero.corto(gpuHr)}H/s · $gpuNombre" else gpuNombre
+        vCpu.text = if (minando) "${hs(hr - gpuHr)} · $hilosActivos threads" else "$nHilos threads"
+        vGpu.text = if (!gpuLista) "off" else if (minando) "${hs(gpuHr)} · $gpuNombre" else gpuNombre
         val st = stratum
         vShares.text = if (st == null) "—" else "${st.aceptadas} accepted" + if (st.rechazadas > 0) " · ${st.rechazadas} rejected" else ""
         vShares.setTextColor(if (st != null && st.rechazadas > 0) AppTheme.WARN else AppTheme.TXT_PRI)
@@ -396,6 +406,12 @@ class MineroActivity : AppCompatActivity() {
             if (minando) parar("Stopped") else solo(etPool.text.toString().trim(), etDir.text.toString().trim())
         }
         caja.addView(btSolo)
+        // El de arriba hace lo mismo que éste; el de abajo queda secundario (un solo oro a la vista).
+        btSoloArriba.setOnClickListener {
+            if (minando) parar("Stopped") else solo(etPool.text.toString().trim(), etDir.text.toString().trim())
+        }
+        btSolo.background = GradientDrawable().apply { setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
+        btSolo.setTextColor(AppTheme.TXT_PRI)
 
         caja.addView(Ui.sectionLabel(this, "Status", topGap = dp(20)))
         tvEstado = texto("Idle", AppTheme.SP_CAPTION, AppTheme.TXT_PRI, mono = true)
@@ -416,6 +432,8 @@ class MineroActivity : AppCompatActivity() {
         if (!gpuLista && nHilos == 0) { nHilos = 1; pintarHilos() }
         btGpu.text = if (gpuLista) "GPU: on · $gpuNombre" else "GPU: off"
         (btGpu as? android.widget.CompoundButton)?.isChecked = gpuLista
+        // La fila "GPU" de arriba, al día con el interruptor (salía "off" con la GPU encendida).
+        if (::vGpu.isInitialized) pintarEstado()
     }
 
     private fun encenderGpu(avisar: Boolean) {
@@ -539,7 +557,7 @@ class MineroActivity : AppCompatActivity() {
         prefs().edit().putString("pool", pool).putString("direccion", dir).apply()
         val hr = estimacion()
         val calc = if (dificultadRed > 0) {
-            "\n\nAt ~${Minero.corto(hr)}H/s, with today's difficulty, you would find a block once every %s on average; the chance in a whole day is about 1 in %s."
+            "\n\nAt ~${hs(hr)}, with today's difficulty, you would find a block once every %s on average; the chance in a whole day is about 1 in %s."
                 .format(java.util.Locale.US, Minero.escala(Minero.segundosPorBloque(hr, dificultadRed)),
                     Minero.corto(1 / Minero.probabilidad(hr, dificultadRed, 86_400.0)))
         } else ""
@@ -619,6 +637,7 @@ class MineroActivity : AppCompatActivity() {
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btPractica.text = if (m == "practica") "Stop" else "Mine a practice block"
         btSolo.text = if (m == "solo") "Stop" else "Start solo mining"
+        btSoloArriba.text = if (m == "solo") "Stop" else "Start solo mining"
         h.post(tic)
     }
 
@@ -635,6 +654,7 @@ class MineroActivity : AppCompatActivity() {
         h.removeCallbacksAndMessages(null)
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btPractica.text = "Mine a practice block"; btSolo.text = "Start solo mining"
+        btSoloArriba.text = "Start solo mining"
         anotar(motivo)
         pintarEstado()
     }
@@ -658,8 +678,8 @@ class MineroActivity : AppCompatActivity() {
             append(if (minando) (if (modo == "solo") "Solo mining" else "Practice") else "Idle")
             append(" · engine: $motorTexto\n")
             if (minando || hashes.get() > 0) {
-                append("${Minero.corto(hr)}H/s · ${Minero.corto(hashes.get().toDouble())} hashes · %.0f s".format(java.util.Locale.US, seg))
-                if (gpuLista) append("\nGPU: ${Minero.corto(hashesGpu.get() / seg)}H/s of that")
+                append("${hs(hr)} · ${Minero.corto(hashes.get().toDouble())} hashes · %.0f s".format(java.util.Locale.US, seg))
+                if (gpuLista) append("\nGPU: ${hs(hashesGpu.get() / seg)} of that")
                 if (caliente) append(" · warm: $hilosActivos of $nHilos threads" + if (gpuLista) ", GPU paused" else "")
                 append("\nBest hash this run: $mejor zero bits")
                 if (mejorDif > 0) append(" (difficulty ${Minero.corto(mejorDif)})")

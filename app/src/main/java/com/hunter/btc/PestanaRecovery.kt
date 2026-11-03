@@ -157,14 +157,17 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
         val puestas = palabras.size - huecos
         when {
             huecos == 0 && puestas == palabras.size -> {
-                tvRecoveryInfo.text = "None missing"
-                tvRecoveryEta.text = "—"
+                // La cifra dice cuántas faltan (cero), no una raya.
+                tvRecoveryInfo.text = "words missing"
+                tvRecoveryEta.text = "0"
+                tvRecoveryEta.setTextColor(AppTheme.ACCENT)
                 tvRecoveryCombos.text = "With no gaps there is nothing to try: " +
                                         "mark the ones you do not remember."
             }
             huecos == palabras.size -> {
-                tvRecoveryInfo.text = "Tap a box to type it"
-                tvRecoveryEta.text = "—"
+                tvRecoveryInfo.text = "words to fill in · tap a box to type it"
+                tvRecoveryEta.text = "${palabras.size}"
+                tvRecoveryEta.setTextColor(AppTheme.ACCENT)
                 tvRecoveryCombos.text = "Type at least the ones you remember."
             }
             else -> {
@@ -284,13 +287,19 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
 
     // Selector de 12 o 24 palabras. Antes se deducía de cuántas escribías,
     // así que una frase de 24 a medio poner se trataba como de 12.
-    val largoRow = Ui.segmented(this,
-        listOf("12 words" to null, "24 words" to null), initial = 0) { idx ->
-        val nuevo = if (idx == 0) 12 else 24
-        while (palabras.size < nuevo) palabras.add("")
-        while (palabras.size > nuevo) palabras.removeAt(palabras.size - 1)
-        pintarPalabras(); refrescarCoste()
+    // Pestañas de texto, como las de Hunt (antes un control segmentado en caja).
+    val largoRow = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    fun pintarLargo(sel: Int) {
+        largoRow.removeAllViews()
+        largoRow.addView(Ui.subpestanas(this, listOf("12 words", "24 words"), sel) { idx ->
+            val nuevo = if (idx == 0) 12 else 24
+            while (palabras.size < nuevo) palabras.add("")
+            while (palabras.size > nuevo) palabras.removeAt(palabras.size - 1)
+            pintarLargo(idx)
+            pintarPalabras(); refrescarCoste()
+        })
     }
+    pintarLargo(0)
     recoveryPage.addView(largoRow.apply {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -308,11 +317,13 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
     }
     refrescarCoste()
     var probando = false
-    cabezaRecovery.addView(Ui.heroe(this, Roseton(this) { probando }, costeCol, alto = 210))
+    // 170 y no 210: con más alto, "Start recovery" se salía de la primera pantalla.
+    cabezaRecovery.addView(Ui.heroe(this, Roseton(this) { probando }, costeCol, alto = 170))
     cabezaRecovery.addView(Ui.microimpresion(this, "bip39  ·  2048 words  ·  checksum filter  ·  pbkdf2-hmac-sha512"))
 
     // ── TARGET ADDRESS CARD ───────────────────────────────────────────
-    val targetCard = rCard()
+    // Sin tarjeta alrededor: el campo ya tiene su fondo.
+    val targetCard = rCard().apply { background = null; setPadding(0, 0, 0, 0) }
     targetCard.addView(fieldLabel("Known address · optional"))
     val etTarget = android.widget.EditText(this).apply {
         hint = "1A2B3C... o bc1q..."
