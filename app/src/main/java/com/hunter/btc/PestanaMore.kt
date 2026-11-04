@@ -62,14 +62,12 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { setMargins(dp(4), dp(6), 0, dp(8)) }
+            ).apply { setMargins(0, dp(6), 0, dp(8)) }
         })
         val caja = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = Ui.cardBg(AppTheme.R_CARD + 2, AppTheme.BG_CARD, context)
-            // Para que el toque de la primera y la última fila no se salga
-            // de las esquinas redondeadas.
-            clipToOutline = true
+            // Security print: el grupo va entre dos filetes, sin caja.
+            background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -82,16 +80,16 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     fun fila(caja: LinearLayout, icono: Int, titulo: String, detalle: String?,
              valor: String?, accion: () -> Unit) {
         if (caja.childCount > 0) caja.addView(android.view.View(this).apply {
-            setBackgroundColor(AppTheme.BG_ELEV)
+            setBackgroundColor(Ui.filete(oro = false))
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
-            ).apply { marginStart = dp(70) }
+            ).apply { marginStart = dp(54) }
         })
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(64)
-            setPadding(dp(16), dp(12), dp(14), dp(12))
+            setPadding(0, dp(12), 0, dp(12))
             isClickable = true; isFocusable = true
             foreground = Ui.toque()
             contentDescription = if (detalle != null) "$titulo. $detalle" else titulo
@@ -141,9 +139,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     fun filaSwitch(caja: LinearLayout, titulo: String, detalle: String?,
                    inicial: Boolean, onChange: (Boolean) -> Unit) {
         if (caja.childCount > 0) caja.addView(android.view.View(this).apply {
-            setBackgroundColor(AppTheme.BG_ELEV)
+            setBackgroundColor(Ui.filete(oro = false))
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { marginStart = dp(16) }
+                LinearLayout.LayoutParams.MATCH_PARENT, 1).apply { marginStart = 0 }
         })
         val sw = android.widget.Switch(this).apply { Ui.tintarInterruptor(this);
             isChecked = inicial
@@ -160,7 +158,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             minimumHeight = dp(64)
-            setPadding(dp(16), dp(12), dp(14), dp(12))
+            setPadding(0, dp(12), 0, dp(12))
             isClickable = true; isFocusable = true
             foreground = Ui.toque()
             contentDescription = if (detalle != null) "$titulo. $detalle" else titulo
