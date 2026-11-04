@@ -1,67 +1,68 @@
 # Wallet screen (`WalletActivity`)
 
-This page overrides `../MASTER.md` only where it says so. Everything else (tokens, type, icons, the two themes) comes from the master file.
+This page overrides `../MASTER.md` only where it says so. Everything else (tokens, type, icons, the two themes, the Security print grammar) comes from the master file.
 
 ## Structure
 
-1. **Header**:
-   - back, wallet name, a `Testnet` chip on testnet, scanner, and "more";
-   - every icon is a 48 dp target with a `contentDescription`.
-2. **Tabs**:
-   - a segmented control on `BG_ELEV`;
-   - the active tab is a `BG_CARD` card inset 4 dp, in bold `TXT_PRI`, with `isSelected`;
-   - each tab is 48 dp tall;
-   - gold is kept for actions, not for "where you are".
-3. **Content** with the side margin `PAD_SIDE`.
+1. **Header**: back, wallet name, a `Testnet` chip on testnet, scanner, and "more". Every icon is a 48 dp target with a `contentDescription`.
+2. **Tabs**: Balance, History, Send and Receive are **underlined text tabs**, the same as Hunt's:
+   - a hairline under the row;
+   - the active tab has a 2 dp gold underline and bold `TXT_PRI` text;
+   - each tab is 48 dp tall.
+3. **Content** uses the side margin `PAD_SIDE`.
 4. **Action bar** (only on Balance and History):
-   - Send and Lightning are secondary, on `BG_KEY` with an edge;
-   - Receive is primary, on gold with `ON_ACCENT` text;
+   - Send and Lightning are secondary, on `BG_KEY`;
+   - Receive is primary, in solid gold with `ON_ACCENT` text;
    - buttons are 54 dp tall.
 
 ## Balance
 
-- **Hero card**:
-  - "Total balance" label;
-  - the figure auto-sizes from 20 to 40 sp, on one line;
-  - the privacy eye sits next to it;
-  - the fiat value goes below;
-  - while the chain is queried, a spinner and "Checking the chain…"; pending funds show in `WARN`.
+- **Hero** (`Ui.heroe` + `Roseton`):
+  - the figure is centred in gold and auto-sizes from 20 to 46 sp on one line, with tabular figures and a decimal point;
+  - the fiat value is below the figure, and "Total balance" is the qualifier under that;
+  - the privacy eye has its own 48 dp slot, with a matching spacer on the left so the figure stays centred;
+  - the rosette turns while the chain is being queried ("Checking the chain…") and stops when the balance is real.
+- **Microprint**: the paths, the number of addresses, the network and the sources.
 - "Search for addresses again" is a 48 dp link.
 - Notices use `aviso()`: an icon and a polite live region.
-- **Addresses**:
-  - all of them in ONE card, as rows split by a hairline;
-  - each row has the label, the address with a middle ellipsis, the amount on the right, and the fiat value;
-  - tapping a row copies the address.
+- **Lightning** is a row between two hairlines, not a card.
+- **Addresses** are rows split by hairlines, with no card. Each row shows:
+  - the label;
+  - the address, with a middle ellipsis;
+  - the amount and its fiat value on the right.
+
+  Tapping a row copies the address.
 
 ## History
 
 - A summary/status line that is a live region.
-- "Tax report" and "CSV" appear as links in one row.
-- **Rows**, inside cards of up to 50 rows:
-  - a 40 dp round badge: `ic_receive` in green when incoming, `ic_send` neutral when outgoing, `ic_clock` in `WARN` when pending;
-  - the title (tx label or Received/Sent);
+- "Tax report" and "CSV" are links in one row.
+- **Each row shows:**
+  - a 40 dp round badge: `ic_receive` in green for incoming, `ic_send` in a neutral colour for outgoing, `ic_clock` in `WARN` while pending;
+  - the title;
   - the date, or "Pending";
-  - the amount and fiat on the right.
-- **Empty state**: `Ui.estadoVacio` plus a "Receive bitcoin" action.
+  - the amount and its fiat value on the right.
+- **Empty state:** `Ui.estadoVacio` plus a "Receive bitcoin" action.
 
 ## Receive
 
-- The QR always sits on **pure white**, in both themes. In the day theme, `TXT_PRI` is navy and many readers failed to scan it.
-- Address-type pills are 48 dp. The active one uses `botonAccento` with `ON_ACCENT` text; the others use `BG_KEY` with an edge.
+- The QR always sits on **pure white**, in both themes.
+- Address-type pills are 48 dp tall. The active pill is solid gold with `ON_ACCENT` text.
 - **Amount field**:
-  - background `BG_ELEV`, minimum height 48;
-  - decimal number keyboard;
-  - the fiat equivalent below.
-- Copy is primary (gold) and Share is secondary; both are 52 dp tall.
-- Captions use `SP_CAPTION`. `SP_MICRO` is only for dense data such as addresses and hex.
+  - background `BG_ELEV`, minimum height 48 dp;
+  - decimal keyboard;
+  - the fiat value is shown below.
+- Copy is the primary button (gold) and Share is secondary.
 
 ## Send
 
-- The "All" chip and the fee pills are at least 48 dp and 56 dp tall.
-- The chosen fee gets an `ACCENT` edge as well as the background change.
+- The "All" chip is at least 48 dp tall and the fee pills at least 56 dp.
+- The chosen fee has an `ACCENT` edge.
+- Every field in a dialog (custom fee, name an address, add output) uses `Ui.input`.
 
 ## Rules that must not be broken
 
-- Never use `BG_DEEP` as a text color on gold. It must be `ON_ACCENT`, because in the day theme `BG_DEEP` is nearly white.
-- No touch target under 48 dp.
-- Status changes (loading, errors, "unused/used") are announced through a live region.
+- Text on gold is always `ON_ACCENT`.
+- No touch target is under 48 dp.
+- Status changes are announced through a live region.
+- One decimal separator, the point (`Locale.US`), for every figure.

@@ -46,6 +46,33 @@ light, ≥ 4.5:1, no gray-on-gray, visible borders; and the same gold, darkened 
 - Scale (sp): Hero 58 · Display 44 · Page 28 · Figure 22 · Title 17 · **Body 15** · Caption 13 · Micro 12
   (body/caption/micro +1; micro was 11, below the 12sp minimum).
 
+## Visual direction: "Security print" (impeccable redesign)
+
+Chosen by the owner from three directions on the design canvas. The contract is in `.impeccable/surfaces/` and the product truth in `PRODUCT.md`. In short: fine work exists to prove a figure is genuine, the way guilloche does on a banknote. Instead of stacked cards, each screen has one figure that matters, and hairlines carry the rest.
+
+**Grammar (every main screen):**
+1. **Hero** (`Ui.heroe`):
+   - the one figure that matters, in gold, Plex Bold, 56 to 76 sp, tabular, with a point as the decimal separator;
+   - centred over the **guilloche rosette** (`Roseton`: Canvas hypotrochoids, 0.6 dp stroke, gold plus one violet layer);
+   - a qualifier line under the figure, and a status dot (`Ui.puntoEstado`: green while running, grey when idle, amber when hot).
+2. **Microprint band** (`Ui.microimpresion`): 9 sp mono uppercase between two gold hairlines, printing real, *fixed* parameters. Never a value that changes after the screen is built.
+3. **Data rows** (`Ui.filaDato`): label on the left, semibold value on the right, 54 dp tall, a hairline below. A row never repeats a figure that is already in the hero or in another row.
+4. **One gold primary button** in the first viewport. Secondary buttons are `BG_KEY` or outlined. Only one gold button is visible at a time.
+5. **Groups** (`Ui.card`, `Ui.section`, the groups in More): content between two hairlines (`Ui.lineas` + `Ui.filete`), aligned to the screen margin. No filled rounded cards, and no gradients.
+
+**Signature interaction:** the rosette turns only while a job runs, at a speed that follows the work rate (`ritmo`: keys/s, op/s, H/s on a log scale). It stops dead when idle and stays still when the system "remove animations" setting is on. TalkBack skips it.
+
+**Navigation:**
+- a 5-item bottom bar: Hunt · Wallet · Miner · Core · More, with a gold pill on the active icon;
+- Hunt groups Scanner / Puzzle / Weak / Recovery under underlined text tabs, the same kind of tabs Wallet uses.
+
+**Controls:**
+- every Switch, CheckBox and SeekBar is tinted gold (`Ui.tintarInterruptor`, `Ui.tintarDeslizador`, plus `colorAccent`/`colorControl*` in `styles.xml` for any control left untinted);
+- progress bars are solid gold;
+- selection is shown with a 2 dp gold underline, not a filled chip.
+
+**Day theme:** the same grammar, using the darker gold `#B45309`. The status bar uses the ground colour with dark icons.
+
 ## Shape & spacing (4/8 dp rhythm)
 R_CARD 16 · R_INNER 12 · R_CHIP 8 · R_KEY 16 · PAD_SIDE 20 · PAD_CARD 16 · GAP 12.
 Cards get a 1 px border of TXT_PRI at 8 % in dark themes (glass hint for OLED).
