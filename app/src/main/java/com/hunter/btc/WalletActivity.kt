@@ -682,7 +682,7 @@ class WalletActivity : FragmentActivity() {
                 gravity = Gravity.CENTER
                 // ON_ACCENT, no BG_DEEP: en el tema de día BG_DEEP es casi blanco sobre el oro.
                 background = if (primary) Ui.botonAccento(context, AppTheme.R_KEY)
-                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context, borde = true)
+                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context)
                 isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, dp(54), 1f).apply {
                     if (!last) marginEnd = dp(AppTheme.GAP)
@@ -1880,7 +1880,9 @@ class WalletActivity : FragmentActivity() {
         val etAmt = EditText(this).apply {
             hint = "0.00000000"
             textSize = 40f
-            setTextColor(TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
+            // El importe en oro, como las demás cifras principales; vacío, el gris de la pista.
+            setTextColor(AppTheme.ACCENT); setHintTextColor(AppTheme.TXT_MUTED)
+            fontFeatureSettings = "tnum"
             typeface = AppTheme.display(context)
             letterSpacing = -0.04f
             background = null
@@ -2181,12 +2183,10 @@ class WalletActivity : FragmentActivity() {
             tvMedida.typeface = if (medida) AppTheme.bold(this) else AppTheme.medium(this)
             feePills.forEachIndexed { i, pill ->
                 val on = i == feeSel && feeRate <= 0
-                // La elegida, con filo de acento: sólo el cambio de fondo no se distinguía.
-                pill.background = GradientDrawable().apply {
-                    setColor(if (on) AppTheme.BG_ELEV else AppTheme.BG_CARD)
-                    cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                    if (on) setStroke(dp(1), AppTheme.ACCENT)
-                }
+                // Opciones subrayadas, como los modos del Scanner (Security print): la elegida con la
+                // raya de oro, las otras con el filete fino. Sin tarjetas.
+                pill.background = if (on) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2))
+                                  else Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
                 pill.isSelected = on
                 (pill.getChildAt(0) as TextView).apply {
                     setTextColor(if (on) AppTheme.ACCENT else TXT_SEC)
@@ -3441,7 +3441,7 @@ class WalletActivity : FragmentActivity() {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
                 background = if (primary) Ui.botonAccento(context, AppTheme.R_KEY)
-                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context, borde = true)
+                             else Ui.cardBg(AppTheme.R_KEY, AppTheme.BG_KEY, context)
                 isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
                     if (!last) marginEnd = dp(AppTheme.GAP)
@@ -3657,7 +3657,7 @@ class WalletActivity : FragmentActivity() {
             tipoPills.forEachIndexed { i, p ->
                 val on = i == tipoSel
                 p.background = if (on) Ui.botonAccento(p.context, AppTheme.R_CHIP)
-                               else Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, p.context, borde = true)
+                               else Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, p.context)
                 p.setTextColor(if (on) AppTheme.ON_ACCENT else TXT_SEC)
                 p.isSelected = on
                 p.typeface = if (on) AppTheme.bold(p.context) else AppTheme.medium(p.context)

@@ -414,8 +414,9 @@ object WeakController {
 
         val vStats = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
-            // Sin caja (Security print): cifra sobre el rosetón, la gráfica y las filas.
-            visibility = if (corriendo) android.view.View.VISIBLE else android.view.View.GONE
+            // Sin caja (Security print): cifra sobre el rosetón, la gráfica y las filas. También en
+            // pausa (una auditoría a medias): arriba se ve dónde se quedó, no sólo el formulario.
+            visibility = if (corriendo || indice > 0) android.view.View.VISIBLE else android.view.View.GONE
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
         }
@@ -524,7 +525,8 @@ object WeakController {
             "file. Then press Start audit.").apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(20) }
-            visibility = if (corriendo) android.view.View.GONE else android.view.View.VISIBLE
+            // Sólo cuando de verdad no hay nada: con una auditoría en pausa ya se ven sus cifras arriba.
+            visibility = if (corriendo || indice > 0) android.view.View.GONE else android.view.View.VISIBLE
         }
         vacioWeak = vVacio
         root.addView(vVacio)

@@ -229,8 +229,8 @@ class MineroActivity : AppCompatActivity() {
     private fun fila(etiqueta: TextView, menos: () -> Unit, mas: () -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         addView(etiqueta, LinearLayout.LayoutParams(0, -2, 1f))
-        addView(boton("−") { menos() }, LinearLayout.LayoutParams(dp(56), dp(44)))
-        addView(boton("+") { mas() }, LinearLayout.LayoutParams(dp(56), dp(44)).apply { marginStart = dp(8) })
+        addView(boton("−") { menos() }, LinearLayout.LayoutParams(dp(56), dp(48)))
+        addView(boton("+") { mas() }, LinearLayout.LayoutParams(dp(56), dp(48)).apply { marginStart = dp(8) })
     }
 
     // "Security print": la cifra que se mira de lejos (los hashes por segundo) sobre el rosetón,

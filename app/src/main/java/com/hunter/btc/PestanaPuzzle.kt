@@ -1180,7 +1180,10 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
 
     // ── START BUTTON ──────────────────────────────────────────────────
     val startBg = Ui.botonAccento(this, AppTheme.R_KEY, AppTheme.ACCENT)
-    val stopRed = Ui.botonAccento(this, AppTheme.R_KEY, AppTheme.RED)
+    // Parar como en el Scanner: fondo tenue con texto rojo (no un bloque rojo lleno).
+    val stopRed = GradientDrawable().apply {
+        setColor(AppTheme.BG_STOP); cornerRadius = dp(AppTheme.R_KEY).toFloat()
+    }
     btnPuzzleToggle = Button(this).apply {
         text = "Start puzzle"
         textSize = AppTheme.SP_TITLE
