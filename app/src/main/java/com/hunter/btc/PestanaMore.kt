@@ -96,7 +96,7 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
             setOnClickListener { accion() }
         }
         row.addView(FrameLayout(this).apply {
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            // Icono suelto, sin baldosa (Security print).
             layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
             addView(android.widget.ImageView(this@buildMoreTab).apply {
                 setImageResource(icono)
