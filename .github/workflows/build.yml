@@ -10,6 +10,12 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Una ejecución por rama a la vez: si llega un push nuevo mientras otra compila, espera en
+    # cola (y una más antigua aún en cola se sustituye por la nueva). Sin esto dos compilaciones
+    # publicaban a la vez en la misma release y una podía pisar a la otra.
+    concurrency:
+      group: build-${{ github.ref }}
+      cancel-in-progress: false
     steps:
     - uses: actions/checkout@v4
       with:
@@ -303,6 +309,19 @@ jobs:
         gh release edit "$TAG" \
           --title "$TITLE $(date +%Y-%m-%d)" \
           --notes "Auto-build from commit ${{ github.sha }} (${{ github.ref_name }}). Full app including hunting features — NOT the Play Store build."
+
+        # Varias ejecuciones de la misma rama corren a la vez (un push tras otro) y terminan en
+        # cualquier orden: la última en subir ganaba aunque fuese la MÁS VIEJA. Así quedó publicada
+        # la 1190 después de la 1194, y el actualizador decía "estás al día". Antes de subir nada se
+        # mira qué número hay publicado; si es igual o mayor que éste, esta ejecución no publica.
+        if [ "$TAG" = "latest-build-main" ]; then
+          PUBLICADA=$(gh release download "$TAG" -p version.json -O - 2>/dev/null \
+            | sed -n 's/.*"versionCode":\([0-9]*\).*/\1/p')
+          if [ -n "$PUBLICADA" ] && [ "$PUBLICADA" -ge "${{ github.run_number }}" ]; then
+            echo "Publicada ya la $PUBLICADA (>= ${{ github.run_number }}): no se sobrescribe."
+            exit 0
+          fi
+        fi
 
         # --clobber reemplaza el APK anterior conservando el release y el tag.
         gh release upload "$TAG" app/build/outputs/apk/release/*.apk --clobber
