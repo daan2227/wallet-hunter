@@ -1218,8 +1218,9 @@ class WalletActivity : FragmentActivity() {
                     val hasta = minOf(desde + 50, movs.size)
                     // Cada tanda, una tarjeta con las filas separadas por una línea fina.
                     val lista = LinearLayout(this).apply {
-                        orientation = LinearLayout.VERTICAL; background = tarjeta()
-                        setPadding(0, dp(4), 0, dp(4))
+                        // Sin tarjeta (Security print): las filas ya llevan su filete.
+                        orientation = LinearLayout.VERTICAL
+                        background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
                         layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                             LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(AppTheme.GAP) }
                     }
@@ -1936,9 +1937,10 @@ class WalletActivity : FragmentActivity() {
         val fromCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = cardBg()
-            setPadding(dp(17), dp(15), dp(17), dp(15))
-            isClickable = true; isFocusable = true
+            // Fila con filetes, no tarjeta (Security print).
+            background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
+            setPadding(0, dp(15), 0, dp(15))
+            isClickable = true; isFocusable = true; foreground = Ui.toque()
         }
         val tvFromType = TextView(this).apply {
             textSize = AppTheme.SP_MICRO - 1f; setTextColor(AppTheme.ACCENT)
@@ -1972,8 +1974,8 @@ class WalletActivity : FragmentActivity() {
         /* ── VA A ──────────────────────────────────────────────────────── */
         val toCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBg()
-            setPadding(dp(17), dp(15), dp(17), dp(15))
+            background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
+            setPadding(0, dp(15), 0, dp(15))
         }
         val toHead = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -2255,13 +2257,13 @@ class WalletActivity : FragmentActivity() {
         /* ── LO QUE VA A PASAR ─────────────────────────────────────────── */
         val infoCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBg()
+            background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
         }
         fun infoRow(iconRes: Int, tint: Int, title: String, sub: String?, right: View?): LinearLayout {
             val r = LinearLayout(this).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(17), dp(14), dp(17), dp(14))
+                setPadding(0, dp(14), 0, dp(14))   // alineada al margen, sin caja alrededor
             }
             r.addView(android.widget.ImageView(this).apply {
                 setImageResource(iconRes); setColorFilter(tint)
