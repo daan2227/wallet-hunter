@@ -218,7 +218,7 @@ object WeakController {
             textSize = AppTheme.SP_CAPTION
             setTextColor(AppTheme.TXT_PRI); setHintTextColor(AppTheme.TXT_MUTED)
             typeface = AppTheme.mono(context)
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)   // como Ui.input
             setPadding(dp(14), dp(12), dp(14), dp(12))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)

@@ -215,8 +215,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         textSize = AppTheme.SP_BODY
         typeface = AppTheme.medium(context)
         setTextColor(AppTheme.TXT_SEC)
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-        setPadding(dp(16), dp(14), dp(16), dp(14))
+        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)   // franja con filete, no caja
+        setPadding(0, dp(14), 0, dp(14))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
@@ -398,8 +398,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         textSize = AppTheme.SP_CAPTION
         setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-        setPadding(dp(16), dp(12), dp(16), dp(12))
+        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)   // franja con filete, no caja
+        setPadding(0, dp(12), 0, dp(12))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -436,8 +436,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)
         setLineSpacing(0f, 1.4f)
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-        setPadding(dp(16), dp(14), dp(16), dp(14))
+        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)   // franja con filete, no caja
+        setPadding(0, dp(14), 0, dp(14))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ).apply {
@@ -677,8 +677,8 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         textSize = AppTheme.SP_CAPTION
         setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.body(context)
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-        setPadding(dp(16), dp(12), dp(16), dp(12))
+        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)   // franja con filete, no caja
+        setPadding(0, dp(12), 0, dp(12))
         // Sin checkpoint el texto queda vacío, pero el fondo, el borde y el
         // padding seguían dibujándose: un rectángulo hueco de ~40dp bajo
         // "Rango Hex". Se oculta mientras no tenga contenido.
@@ -1292,15 +1292,16 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             val chip = TextView(this).apply {
                 text = "#${p.num}"
                 textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
-                typeface = if (i == 0) AppTheme.bold(context) else AppTheme.medium(context)
-                background = Ui.cardBg(AppTheme.R_CHIP,
-                    if (i == 0) AppTheme.TXT_PRI else AppTheme.BG_CARD, context)
+                // Número de serie en mono, como en un billete (Security print); el elegido, subrayado
+                // en oro como una pestaña, no un recuadro blanco.
+                typeface = AppTheme.mono(context)
+                background = if (i == 0) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2)) else null
                 // El numero del puzzle viaja en el tag para que al repintar
                 // se pueda saber cual de ellos esta vacio. Sin esto, el
                 // primer clic borraba la marca de todos los demas.
                 tag = p.num
                 setTextColor(when {
-                    i == 0            -> AppTheme.BG_DEEP
+                    i == 0            -> AppTheme.TXT_PRI
                     sinFondos(p.num)  -> AppTheme.WARN
                     else              -> AppTheme.TXT_SEC
                 })
@@ -1309,16 +1310,14 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 setOnClickListener {
                     for (j in 0 until indivRow.childCount) {
                         val c = indivRow.getChildAt(j) as? TextView ?: continue
-                        c.background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_CARD, context)
+                        c.background = null
                         val n = c.tag as? Int
                         c.setTextColor(
                             if (n != null && sinFondos(n)) AppTheme.WARN
                             else AppTheme.TXT_SEC)
-                        c.typeface = AppTheme.medium(context)
                     }
-                    background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.TXT_PRI, context)
-                    setTextColor(AppTheme.BG_DEEP)
-                    typeface = AppTheme.bold(context)
+                    background = Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2))
+                    setTextColor(AppTheme.TXT_PRI)
                     applyPuzzleAndCheckBalance(p, this)
                 }
             }
@@ -1338,8 +1337,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                 text = "$first–$last"
                 textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
                 typeface = if (idx == 0) AppTheme.bold(context) else AppTheme.medium(context)
-                background = Ui.cardBg(AppTheme.R_CHIP,
-                    if (idx == 0) AppTheme.BG_ELEV else AppTheme.BG_CARD, context)
+                background = if (idx == 0) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2)) else null
                 setTextColor(if (idx == 0) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT, dp(36)
@@ -1350,8 +1348,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
                     activeGroupIdx = idx
                     groupChips.forEachIndexed { i, c ->
                         val active = i == idx
-                        c.background = Ui.cardBg(AppTheme.R_CHIP,
-                            if (active) AppTheme.BG_ELEV else AppTheme.BG_CARD, context)
+                        c.background = if (active) Ui.lineas(AppTheme.ACCENT, arriba = false, abajo = true, grosor = dp(2)) else null
                         c.setTextColor(if (active) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
                         c.typeface = if (active) AppTheme.bold(context) else AppTheme.medium(context)
                     }

@@ -62,7 +62,9 @@ object Ui {
     fun card(ctx: Context, topGap: Int = AppTheme.GAP, pad: Int = AppTheme.PAD_CARD):
             LinearLayout = LinearLayout(ctx).apply {
         orientation = LinearLayout.VERTICAL
-        background = cardBg(ctx = ctx, borde = true)
+        // Security print: un grupo entre dos filetes, no una caja. Vale para todas las pantallas que
+        // usan Ui.card (Core, Puzzle, Vault, Taproot): el contenido queda alineado con el margen.
+        background = lineas(filete(oro = false), arriba = true, abajo = true)
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -70,7 +72,7 @@ object Ui {
             setMargins(dp(ctx, AppTheme.PAD_SIDE), dp(ctx, topGap),
                        dp(ctx, AppTheme.PAD_SIDE), 0)
         }
-        setPadding(dp(ctx, pad), dp(ctx, pad), dp(ctx, pad), dp(ctx, pad))
+        setPadding(0, dp(ctx, pad), 0, dp(ctx, pad))
     }
 
     /**
@@ -288,7 +290,8 @@ object Ui {
                 build: LinearLayout.() -> Unit): LinearLayout {
         val container = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
-            background = cardBg(ctx = ctx, borde = true)
+            // Fila plegable con filetes (Security print), no tarjeta.
+            background = lineas(filete(oro = false), arriba = true, abajo = true)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
@@ -300,9 +303,8 @@ object Ui {
         val header = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(ctx, AppTheme.PAD_CARD), dp(ctx, 16),
-                       dp(ctx, AppTheme.PAD_CARD), dp(ctx, 16))
-            isClickable = true; isFocusable = true
+            setPadding(0, dp(ctx, 16), 0, dp(ctx, 16))
+            isClickable = true; isFocusable = true; foreground = toque()
         }
         header.addView(icon(ctx, iconRes).apply {
             (layoutParams as LinearLayout.LayoutParams).marginEnd = dp(ctx, 12)
@@ -329,8 +331,7 @@ object Ui {
         val body = LinearLayout(ctx).apply {
             orientation = LinearLayout.VERTICAL
             visibility = View.GONE
-            setPadding(dp(ctx, AppTheme.PAD_CARD), 0,
-                       dp(ctx, AppTheme.PAD_CARD), dp(ctx, AppTheme.PAD_CARD))
+            setPadding(0, 0, 0, dp(ctx, AppTheme.PAD_CARD))
         }
         body.build()
         container.addView(body)

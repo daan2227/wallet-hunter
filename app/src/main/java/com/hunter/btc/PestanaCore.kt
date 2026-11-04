@@ -76,7 +76,7 @@ internal fun MainActivity.buildCoreTab(): ScrollView {
                 }, dp(5))
             val icono = TextView(act).apply {
                 text = "i"; gravity = android.view.Gravity.CENTER; textSize = 14f
-                typeface = android.graphics.Typeface.create(android.graphics.Typeface.SERIF, android.graphics.Typeface.BOLD_ITALIC)
+                typeface = AppTheme.bold(context)   // la del tema, no la serif del sistema
                 setTextColor(AppTheme.TXT_SEC); background = circulo(android.graphics.Color.TRANSPARENT, AppTheme.TXT_SEC)
                 contentDescription = "More information"
                 isClickable = true; isFocusable = true; foreground = Ui.toque()
