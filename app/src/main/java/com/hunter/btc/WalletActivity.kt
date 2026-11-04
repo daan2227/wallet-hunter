@@ -2221,10 +2221,9 @@ class WalletActivity : FragmentActivity() {
         }
         // Tarifa a medida: pide sat/vB entre 1 y el tope de seguridad.
         fun pedirTarifa() {
-            val et = EditText(this).apply {
-                hint = "sat/vB, 1 to ${ChainInfo.TARIFA_MAX}"
+            // Campo con el tema (Ui.input): sin fondo ni color, en el tema de día salía blanco.
+            val et = Ui.input(this, "sat/vB, 1 to ${ChainInfo.TARIFA_MAX}").apply {
                 inputType = android.text.InputType.TYPE_CLASS_NUMBER
-                setPadding(dp(16), dp(12), dp(16), dp(12))
             }
             AlertDialog.Builder(this)
                 .setTitle("Custom fee rate")
@@ -3599,10 +3598,8 @@ class WalletActivity : FragmentActivity() {
         tvAddr.setOnLongClickListener {
             val a = addrActual
             if (a.isNotEmpty()) {
-                val et = EditText(this).apply {
+                val et = Ui.input(this, "Name for this address").apply {
                     setText(etiquetaDeDireccion(a) ?: "")
-                    hint = "Name for this address"
-                    setPadding(dp(16), dp(12), dp(16), dp(12))
                 }
                 AlertDialog.Builder(this).setTitle("Name this address").setView(et)
                     .setPositiveButton("Save") { _, _ ->
@@ -3703,12 +3700,12 @@ class WalletActivity : FragmentActivity() {
     /** Pide una salida extra: a una dirección con importe, o un OP_RETURN en hex. */
     private fun dialogoSalidaExtra(alGuardar: () -> Unit) {
         val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(18), dp(8), dp(18), dp(8)) }
-        val etDir = EditText(this).apply { hint = "Recipient address (or leave empty for OP_RETURN)" }
-        val etMonto = EditText(this).apply {
-            hint = "Amount in BTC"
+        val etDir = Ui.input(this, "Recipient address (or leave empty for OP_RETURN)", mono = true)
+        val etMonto = Ui.input(this, "Amount in BTC").apply {
             inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
         }
-        val etDatos = EditText(this).apply { hint = "OP_RETURN data in hex (up to 80 bytes)" }
+        val etDatos = Ui.input(this, "OP_RETURN data in hex (up to 80 bytes)", mono = true)
+        listOf(etMonto, etDatos).forEach { (it.layoutParams as LinearLayout.LayoutParams).topMargin = dp(10) }
         caja.addView(etDir); caja.addView(etMonto); caja.addView(etDatos)
         AlertDialog.Builder(this).setTitle("Add output").setView(caja)
             .setPositiveButton("Add") { _, _ ->

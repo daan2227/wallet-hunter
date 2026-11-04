@@ -216,9 +216,20 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                         android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             // Las 2048 del diccionario: teclear una que no esté hace que la
             // búsqueda no pueda encontrar nada, y antes no avisaba nadie.
-            setAdapter(android.widget.ArrayAdapter(
-                this@buildRecoveryTab, android.R.layout.simple_list_item_1,
-                Bip39Words.WORDS))
+            // Las sugerencias con el tema: la lista de serie de Android salía con texto blanco
+            // sobre el fondo claro en el tema de día.
+            setAdapter(object : android.widget.ArrayAdapter<String>(
+                this@buildRecoveryTab, android.R.layout.simple_list_item_1, Bip39Words.WORDS) {
+                override fun getView(pos: Int, convertView: android.view.View?,
+                                     parent: android.view.ViewGroup): android.view.View {
+                    val v = super.getView(pos, convertView, parent) as TextView
+                    v.setTextColor(AppTheme.TXT_PRI); v.typeface = AppTheme.body(v.context)
+                    v.textSize = AppTheme.SP_BODY
+                    v.setBackgroundColor(AppTheme.BG_ELEV)
+                    return v
+                }
+            })
+            setDropDownBackgroundDrawable(android.graphics.drawable.ColorDrawable(AppTheme.BG_ELEV))
             threshold = 1
             setSelection(text.length)
         }
@@ -257,6 +268,9 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                 wordGrid.addView(fila)
             }
             val hueco = w.isEmpty()
+            // Con todas vacías no hay huecos que señalar: el oro sólo cuando ya hay palabras puestas
+            // y éstas son las que faltan. Si no, la rejilla entera salía en oro.
+            val marcar = hueco && palabras.any { it.isNotEmpty() }
             val chip = TextView(this).apply {
                 val sp = android.text.SpannableStringBuilder("${i + 1}  ")
                 sp.setSpan(android.text.style.ForegroundColorSpan(AppTheme.TXT_MUTED),
@@ -268,13 +282,16 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
                 text = sp
                 textSize = AppTheme.SP_BODY
                 gravity = Gravity.CENTER
-                setTextColor(if (hueco) AppTheme.ACCENT else AppTheme.TXT_PRI)
-                typeface = if (hueco) AppTheme.bold(context) else AppTheme.body(context)
+                setTextColor(when { marcar -> AppTheme.ACCENT; hueco -> AppTheme.TXT_SEC; else -> AppTheme.TXT_PRI })
+                typeface = if (marcar) AppTheme.bold(context) else AppTheme.body(context)
+                // Sin relleno: un filete fino; en oro los huecos de verdad. Las puestas, en el gris de tecla.
                 background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(if (hueco) AppTheme.BG_ELEV else AppTheme.BG_KEY)
+                    setColor(if (hueco) android.graphics.Color.TRANSPARENT else AppTheme.BG_KEY)
                     cornerRadius = dp(AppTheme.R_INNER).toFloat()
-                    if (hueco) setStroke(dp(2), AppTheme.ACCENT)
+                    if (marcar) setStroke(dp(1), AppTheme.ACCENT)
+                    else if (hueco) setStroke(dp(1), AppTheme.BORDER_C)
                 }
+                foreground = Ui.toque()
                 setPadding(dp(6), dp(14), dp(6), dp(14))
                 isClickable = true; isFocusable = true
                 setOnClickListener { pedirPalabra(i) }
@@ -397,8 +414,18 @@ internal fun MainActivity.buildRecoveryTab(): ScrollView {
         // Un resultado encontrado SÍ merece el acento: es el hallazgo.
         text = ""; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT)
         typeface = AppTheme.mono(context)   // lleva la seed entera
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
-        setPadding(dp(16), dp(16), dp(16), dp(16))
+        // Enmarcado como un título (Security print): doble filete de oro, el de fuera más grueso.
+        background = android.graphics.drawable.LayerDrawable(arrayOf(
+            android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.TRANSPARENT); cornerRadius = dp(6).toFloat()
+                setStroke(dp(2), AppTheme.ACCENT)
+            },
+            android.graphics.drawable.GradientDrawable().apply {
+                setColor((AppTheme.ACCENT and 0x00FFFFFF) or (0x10 shl 24)); cornerRadius = dp(3).toFloat()
+                setStroke(dp(1), (AppTheme.ACCENT and 0x00FFFFFF) or (0x80 shl 24))
+            }
+        )).apply { setLayerInset(1, dp(5), dp(5), dp(5), dp(5)) }
+        setPadding(dp(22), dp(22), dp(22), dp(22))
         setLineSpacing(0f, 1.35f)
         visibility = android.view.View.GONE
         layoutParams = LinearLayout.LayoutParams(

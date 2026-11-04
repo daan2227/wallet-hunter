@@ -213,17 +213,20 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     // rellena con el acento porque es la que abres el 90 % de las veces.
     fun bigCard(icon: Int, label: String, sub: String, primary: Boolean,
                 last: Boolean, click: () -> Unit) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
+        // Botón de una línea (icono y texto), 52 dp: antes era una baldosa alta con subtítulo.
+        orientation = LinearLayout.HORIZONTAL
+        gravity = Gravity.CENTER
+        contentDescription = "$label. $sub"
         // Botón grande, no tarjeta: oro liso la principal, contorno fino la otra (Security print).
         background = android.graphics.drawable.GradientDrawable().apply {
             setColor(if (primary) AppTheme.ACCENT else android.graphics.Color.TRANSPARENT)
             cornerRadius = dp(AppTheme.R_KEY).toFloat()
             if (!primary) setStroke(dp(1), AppTheme.BORDER_C)
         }
-        setPadding(dp(18), dp(14), dp(18), dp(14))
+        setPadding(dp(12), 0, dp(12), 0)
         isClickable = true; isFocusable = true; foreground = Ui.toque()
         setOnClickListener { click() }
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f)
             .apply { if (!last) marginEnd = dp(AppTheme.GAP) }
         addView(android.widget.ImageView(context).apply {
             setImageResource(icon)
@@ -236,11 +239,12 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             setTextColor(if (primary) AppTheme.ON_ACCENT else AppTheme.TXT_PRI)
             typeface = AppTheme.bold(context)
             layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(12) }
+            ).apply { marginStart = dp(8) }
         })
         addView(TextView(context).apply {
+            visibility = android.view.View.GONE   // el subtítulo va en contentDescription
             text = sub
             textSize = AppTheme.SP_MICRO
             // ON_ACCENT, no negro al 66 %: marrón sobre oro no se leía en el tema de día.
@@ -328,7 +332,8 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
 
     val guardCard = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        background = Ui.cardBg(ctx = this@buildWalletTab)
+        // Sin caja (Security print): un filete arriba y abajo, y las filas separadas por el suyo.
+        background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = true)
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -340,13 +345,13 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             setBackgroundColor(AppTheme.BORDER_C)
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 1
-            ).apply { marginStart = dp(18); marginEnd = dp(18) }
+            ).apply { marginStart = dp(34); marginEnd = 0 }
         })
         val r = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(16))
-            isClickable = true; isFocusable = true
+            setPadding(0, dp(16), 0, dp(16))
+            isClickable = true; isFocusable = true; foreground = Ui.toque()
             setOnClickListener { click() }
         }
         r.addView(Ui.icon(this, icon, 20).apply {
@@ -361,7 +366,7 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
             typeface = AppTheme.body(context)
         })
         val subTv = TextView(this).apply {
-            text = sub; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            text = sub; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
             typeface = AppTheme.body(context)
             setPadding(0, dp(2), 0, 0)
         }
@@ -432,11 +437,9 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
 
     // ── POR QUÉ NO SE CONSULTAN SOLOS ─────────────────────────────────
     page.addView(LinearLayout(this).apply {
+        // Aviso en línea, sin caja de color: el icono ámbar ya marca que es un aviso.
         orientation = LinearLayout.HORIZONTAL
-        background = android.graphics.drawable.GradientDrawable().apply {
-            setColor((AppTheme.WARN and 0x00FFFFFF) or (0x24 shl 24)); cornerRadius = dp(AppTheme.R_CARD).toFloat()
-        }
-        setPadding(dp(18), dp(16), dp(18), dp(16))
+        setPadding(0, dp(4), 0, dp(4))
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
@@ -468,10 +471,14 @@ internal fun MainActivity.buildWalletTab(): ScrollView {
     page.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER
-        background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_KEY, context)
-        isClickable = true; isFocusable = true
+        // Botón secundario con contorno, como "Add" (el oro es "View wallet").
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(android.graphics.Color.TRANSPARENT)
+            cornerRadius = dp(AppTheme.R_KEY).toFloat(); setStroke(dp(1), AppTheme.BORDER_C)
+        }
+        isClickable = true; isFocusable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(50)
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(52)
         ).apply { topMargin = dp(18) }
         setOnClickListener {
             refreshWallet(consultarRed = true)
