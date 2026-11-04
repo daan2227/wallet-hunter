@@ -410,8 +410,9 @@ class MineroActivity : AppCompatActivity() {
         btSoloArriba.setOnClickListener {
             if (minando) parar("Stopped") else solo(etPool.text.toString().trim(), etDir.text.toString().trim())
         }
-        btSolo.background = GradientDrawable().apply { setColor(AppTheme.BG_ELEV); cornerRadius = dp(AppTheme.R_INNER).toFloat() }
-        btSolo.setTextColor(AppTheme.TXT_PRI)
+        // El de abajo repetía el de arriba ("Start solo mining" dos veces): se oculta siempre.
+        // Arranca con el pool y la dirección de estos campos igual.
+        btSolo.visibility = android.view.View.GONE
 
         caja.addView(Ui.sectionLabel(this, "Status", topGap = dp(20)))
         tvEstado = texto("Idle", AppTheme.SP_CAPTION, AppTheme.TXT_PRI, mono = true)
@@ -639,7 +640,6 @@ class MineroActivity : AppCompatActivity() {
         btSolo.text = if (m == "solo") "Stop" else "Start solo mining"
         btSoloArriba.text = if (m == "solo") "Stop" else "Start solo mining"
         // Un solo "Stop" a la vista: el de arriba. El de la lotería, abajo, se oculta mientras mina.
-        btSolo.visibility = if (m == "solo") android.view.View.GONE else android.view.View.VISIBLE
         h.post(tic)
     }
 
@@ -657,7 +657,6 @@ class MineroActivity : AppCompatActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         btPractica.text = "Mine a practice block"; btSolo.text = "Start solo mining"
         btSoloArriba.text = "Start solo mining"
-        btSolo.visibility = android.view.View.VISIBLE
         anotar(motivo)
         pintarEstado()
     }

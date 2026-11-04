@@ -573,6 +573,11 @@ object WeakController {
                     else etClaves?.setText(items.joinToString("\n"))
                     tvEstado?.text = "Paused audit: $ckIdx/$ckTot checked. Press Start audit to resume " +
                                      "from key ${ckIdx + 1}, or clear the list to start over."
+                    // En pausa, la cifra y las filas arriba con dónde se quedó (antes sólo el formulario).
+                    statsCard?.visibility = android.view.View.VISIBLE
+                    vacioWeak?.visibility = android.view.View.GONE
+                    tvSpeed?.text = "0"; tvPeak?.text = "paused"
+                    tvKeys?.text = "$ckIdx/$ckTot"
                 }
             }
         }

@@ -62,7 +62,7 @@ internal fun MainActivity.buildScanTab(): ScrollView {
     // la velocidad, en oro, centrada sobre el rosetón de guilloche, que gira mientras el motor
     // corre y se para con él; debajo, la media y el estado.
     val wpsFigure = TextView(this).apply {
-        text = "0,0"
+        text = "0.0"   // punto, como todas las cifras (Locale.US)
         textSize = 76f
         setTextColor(AppTheme.ACCENT)
         typeface = AppTheme.display(context)
