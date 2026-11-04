@@ -1,0 +1,571 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-04T09:47:10+00:00",
+  "title": "Design System: Hunter Suite",
+  "extensions": {
+    "colorMeta": {
+      "vault-gold": {
+        "role": "primary",
+        "displayName": "Vault Gold",
+        "canonical": "oklch(76.9% 0.165 70)",
+        "tonalRamp": [
+          "#1B0400",
+          "#441400",
+          "#732800",
+          "#994900",
+          "#BF6B00",
+          "#E39000",
+          "#F8BC76",
+          "#FFE8C1"
+        ]
+      },
+      "day-gold": {
+        "role": "primary",
+        "displayName": "Vault Gold · Day",
+        "canonical": "oklch(55.5% 0.146 49)",
+        "tonalRamp": [
+          "#1C0300",
+          "#480E00",
+          "#781E00",
+          "#9F4000",
+          "#C56323",
+          "#EA884F",
+          "#FEB690",
+          "#FFE4CE"
+        ]
+      },
+      "rosette-violet": {
+        "role": "secondary",
+        "displayName": "Rosette Violet",
+        "canonical": "oklch(70.9% 0.159 294)",
+        "tonalRamp": [
+          "#0D0422",
+          "#2A1453",
+          "#49278A",
+          "#6849B1",
+          "#896BD7",
+          "#AA90FB",
+          "#CCBCFF",
+          "#F0E8FF"
+        ]
+      },
+      "day-rosette-violet": {
+        "role": "secondary",
+        "displayName": "Rosette Violet · Day",
+        "canonical": "oklch(54.1% 0.247 293)",
+        "tonalRamp": [
+          "#10002E",
+          "#2F006B",
+          "#5100B0",
+          "#6F25DC",
+          "#8E53FF",
+          "#AF7DFF",
+          "#CEB3FF",
+          "#F0E3FF"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "Slate Ground",
+        "canonical": "oklch(20.8% 0.040 266)",
+        "tonalRamp": [
+          "#080B12",
+          "#1F2532",
+          "#384257",
+          "#566178",
+          "#77829B",
+          "#9AA5BE",
+          "#C1C9DB",
+          "#EAEFF9"
+        ]
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Surface",
+        "canonical": "oklch(27.4% 0.027 269)",
+        "tonalRamp": [
+          "#090B10",
+          "#21252E",
+          "#3C4250",
+          "#5B6171",
+          "#7C8293",
+          "#9EA5B6",
+          "#C4C9D5",
+          "#EBEEF6"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "oklch(98.4% 0.003 248)",
+        "tonalRamp": [
+          "#0B0B0C",
+          "#242526",
+          "#414244",
+          "#606163",
+          "#818284",
+          "#A3A5A7",
+          "#C8C9CA",
+          "#EEEEEF"
+        ]
+      },
+      "ink-secondary": {
+        "role": "neutral",
+        "displayName": "Ink Secondary",
+        "canonical": "oklch(78.9% 0.027 259)",
+        "tonalRamp": [
+          "#090B10",
+          "#20252E",
+          "#3A4350",
+          "#586271",
+          "#798393",
+          "#9BA6B6",
+          "#C2CAD5",
+          "#EAEFF6"
+        ]
+      },
+      "day-ground": {
+        "role": "neutral",
+        "displayName": "Day Ground",
+        "canonical": "oklch(98.4% 0.003 248)",
+        "tonalRamp": [
+          "#0B0B0C",
+          "#242526",
+          "#414244",
+          "#606163",
+          "#818284",
+          "#A3A5A7",
+          "#C8C9CA",
+          "#EEEEEF"
+        ]
+      },
+      "day-ink": {
+        "role": "neutral",
+        "displayName": "Day Ink",
+        "canonical": "oklch(20.8% 0.040 266)",
+        "tonalRamp": [
+          "#080B12",
+          "#1F2532",
+          "#384257",
+          "#566178",
+          "#77829B",
+          "#9AA5BE",
+          "#C1C9DB",
+          "#EAEFF9"
+        ]
+      },
+      "state-ok": {
+        "role": "tertiary",
+        "displayName": "State OK",
+        "canonical": "oklch(80.0% 0.182 152)",
+        "tonalRamp": [
+          "#001200",
+          "#003300",
+          "#005800",
+          "#007B21",
+          "#009F45",
+          "#2FC36A",
+          "#89E0A1",
+          "#CDFDD8"
+        ]
+      },
+      "state-red": {
+        "role": "tertiary",
+        "displayName": "State Red",
+        "canonical": "oklch(71.1% 0.166 22)",
+        "tonalRamp": [
+          "#1F0002",
+          "#4E0008",
+          "#820015",
+          "#AC2933",
+          "#D35053",
+          "#F97776",
+          "#FFACA8",
+          "#FFDFDB"
+        ]
+      },
+      "state-warn": {
+        "role": "tertiary",
+        "displayName": "State Warn",
+        "canonical": "oklch(75.8% 0.159 56)",
+        "tonalRamp": [
+          "#1D0200",
+          "#490D00",
+          "#7A1D00",
+          "#A13F00",
+          "#C76300",
+          "#EC8835",
+          "#FFB784",
+          "#FFE5C8"
+        ]
+      },
+      "state-info": {
+        "role": "tertiary",
+        "displayName": "State Info",
+        "canonical": "oklch(71.4% 0.143 255)",
+        "tonalRamp": [
+          "#000A21",
+          "#002352",
+          "#003F88",
+          "#1961B0",
+          "#3F83D6",
+          "#65A8FA",
+          "#9ECDFF",
+          "#D6F1FF"
+        ]
+      },
+      "day-state-ok": {
+        "role": "tertiary",
+        "displayName": "State OK · Day",
+        "canonical": "oklch(52.7% 0.137 150)",
+        "tonalRamp": [
+          "#001101",
+          "#003008",
+          "#005414",
+          "#007633",
+          "#379954",
+          "#61BC78",
+          "#9EDBAA",
+          "#D7F9DC"
+        ]
+      },
+      "day-state-red": {
+        "role": "tertiary",
+        "displayName": "State Red · Day",
+        "canonical": "oklch(50.5% 0.190 28)",
+        "tonalRamp": [
+          "#220000",
+          "#530000",
+          "#8A0000",
+          "#B51517",
+          "#DD453C",
+          "#FF6F62",
+          "#FFA89B",
+          "#FFDDD4"
+        ]
+      },
+      "day-state-warn": {
+        "role": "tertiary",
+        "displayName": "State Warn · Day",
+        "canonical": "oklch(55.3% 0.174 38)",
+        "tonalRamp": [
+          "#200000",
+          "#4F0000",
+          "#840000",
+          "#AD2C00",
+          "#D55325",
+          "#FB7A50",
+          "#FFAE91",
+          "#FFE0CF"
+        ]
+      },
+      "day-state-info": {
+        "role": "tertiary",
+        "displayName": "State Info · Day",
+        "canonical": "oklch(54.6% 0.215 263)",
+        "tonalRamp": [
+          "#00052D",
+          "#001769",
+          "#002CAD",
+          "#1451D8",
+          "#3777FF",
+          "#5C9DFF",
+          "#97C8FF",
+          "#D2EFFF"
+        ]
+      },
+      "hairline-gold": {
+        "role": "primary",
+        "displayName": "Gold Hairline",
+        "canonical": "#F59E0B59",
+        "note": "vault-gold at 35 % (Ui.filete(oro = true)); microprint band only"
+      },
+      "hairline": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "canonical": "#F8FAFC12",
+        "note": "ink at 7 % (Ui.filete(oro = false)); groups, rows, tab baseline, nav top"
+      },
+      "day-hairline-gold": {
+        "role": "primary",
+        "displayName": "Gold Hairline · Day",
+        "canonical": "#B4530959"
+      },
+      "day-hairline": {
+        "role": "neutral",
+        "displayName": "Hairline · Day",
+        "canonical": "#0F172A12"
+      }
+    },
+    "typographyMeta": {
+      "hero-figure": {
+        "displayName": "Hero Figure",
+        "purpose": "The one figure on Scanner and Miner, centred over the rosette."
+      },
+      "hero-figure-compact": {
+        "displayName": "Hero Figure Compact",
+        "purpose": "The hero figure on Puzzle and Weak."
+      },
+      "display": {
+        "displayName": "Display",
+        "purpose": "Wallet balance figure; autosizes 20-46 sp."
+      },
+      "page": {
+        "displayName": "Page",
+        "purpose": "Page titles."
+      },
+      "figure": {
+        "displayName": "Figure",
+        "purpose": "Unit beside the hero figure; Hunt header title."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Primary button labels, section titles."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Row labels, normal text."
+      },
+      "data-value": {
+        "displayName": "Data Value",
+        "purpose": "Right-hand value in a data row."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Group labels, status text, qualifier under a figure."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Bottom-bar labels; 12 sp is the floor for readable text."
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "Keys, addresses, hashes."
+      },
+      "microprint": {
+        "displayName": "Microprint",
+        "purpose": "Microprint band only; decorative, hidden from TalkBack."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "rosette-turn",
+        "value": "4deg/s x clamp(ritmo, 0.25, 4); odd layers -0.6x",
+        "purpose": "Rosette rotation while a job runs; one turn per 90 s at ritmo 1."
+      },
+      {
+        "name": "rosette-ritmo-keys",
+        "value": "log10(keys_per_s) / 4",
+        "purpose": "Scanner and Puzzle rate factor."
+      },
+      {
+        "name": "rosette-ritmo-hash",
+        "value": "log10(hashes_per_s) / 5",
+        "purpose": "Miner rate factor."
+      },
+      {
+        "name": "rosette-idle-poll",
+        "value": "500ms",
+        "purpose": "Idle rosette is static; re-checks the job every 500 ms."
+      },
+      {
+        "name": "reduced-motion",
+        "value": "ValueAnimator.areAnimatorsEnabled() == false",
+        "purpose": "Rosette never turns; pulse, section transition, chevron and status-chip pulse are skipped."
+      },
+      {
+        "name": "press-pulse",
+        "value": "scale 0.96 -> 1, 180ms, OvershootInterpolator(2)",
+        "purpose": "Haptic + pulse on Start/Stop."
+      },
+      {
+        "name": "section-expand",
+        "value": "180ms, DecelerateInterpolator",
+        "purpose": "Collapsible group open/close; chevron rotates 90deg."
+      },
+      {
+        "name": "page-fade",
+        "value": "alpha 0 -> 1, 150ms",
+        "purpose": "Switching pages."
+      },
+      {
+        "name": "status-chip-pulse",
+        "value": "alpha 1 -> 0.3, 700ms, reverse, infinite",
+        "purpose": "Dot in the status chip."
+      }
+    ],
+    "breakpoints": [],
+    "knownGaps": [
+      "The dark theme has not been recaptured since build 1174. The Day theme was verified at 1196/1198.",
+      "Send's fee options (Slow / Normal / Fast) are still filled cards with a gold stroke when selected. The Send Amount figure is ink (slate), not gold.",
+      "Weak has no hero while idle. Its hero and microprint appear only once a run starts."
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one gold action per viewport; flat, full width.",
+      "html": "<button class=\"ds-btn-primary\">Start scanning</button>",
+      "css": ".ds-btn-primary{font-family:'IBM Plex Sans',sans-serif;background:#F59E0B;color:#0F172A;font-weight:600;font-size:17px;height:54px;width:100%;border:none;border-radius:16px;box-shadow:none;transition:transform .18s cubic-bezier(.34,1.56,.64,1);} .ds-btn-primary:hover{background:#F7AE33;} .ds-btn-primary:focus-visible{outline:2px solid #F8FAFC;outline-offset:2px;} .ds-btn-primary:active{transform:scale(.96);}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Every action that is not the viewport's single gold primary.",
+      "html": "<button class=\"ds-btn-secondary\">Run BSGS</button>",
+      "css": ".ds-btn-secondary{font-family:'IBM Plex Sans',sans-serif;background:#252B3B;color:#F8FAFC;font-weight:500;font-size:15px;height:48px;width:100%;border:none;border-radius:12px;} .ds-btn-secondary:hover{background:#2E3547;} .ds-btn-secondary:focus-visible{outline:2px solid #F59E0B;outline-offset:2px;} .ds-btn-secondary:active{background:#353D52;}"
+    },
+    {
+      "name": "Stop Button",
+      "kind": "button",
+      "refersTo": "button-stop",
+      "description": "Destructive stop: red label on a pale wash, never a solid red block.",
+      "html": "<button class=\"ds-btn-stop\">Stop</button>",
+      "css": ".ds-btn-stop{font-family:'IBM Plex Sans',sans-serif;background:#3A1F2A;color:#F87171;font-weight:600;font-size:16px;height:54px;width:100%;border:none;border-radius:16px;} .ds-btn-stop:hover{background:#452533;} .ds-btn-stop:focus-visible{outline:2px solid #F87171;outline-offset:2px;}"
+    },
+    {
+      "name": "Hero over the Rosette",
+      "kind": "custom",
+      "refersTo": "hero-figure",
+      "description": "The one figure, gold, over three counter-rotating hypotrochoids; turns only while a job runs.",
+      "html": "<div class=\"ds-hero\"><svg class=\"ds-rosette\" viewBox=\"-170 -170 340 340\" aria-hidden=\"true\"><g fill=\"none\" stroke-width=\"0.6\"><circle r=\"98\" stroke=\"#F59E0B\" stroke-opacity=\".22\"/><circle r=\"122\" stroke=\"#F59E0B\" stroke-opacity=\".14\" stroke-dasharray=\"2 3\"/><circle r=\"74\" stroke=\"#A78BFA\" stroke-opacity=\".19\" stroke-dasharray=\"1 2\"/></g></svg><div class=\"ds-hero-col\"><div class=\"ds-hero-row\"><span class=\"ds-hero-fig\">184.2</span><span class=\"ds-hero-unit\">K/s</span></div><div class=\"ds-hero-qual\">keys per second</div><div class=\"ds-hero-state\"><i></i><span>Searching · 12 h 04 m</span></div></div></div>",
+      "css": ".ds-hero{position:relative;height:250px;display:flex;align-items:center;justify-content:center;background:#0F172A;overflow:visible;font-family:'IBM Plex Sans',sans-serif;} .ds-rosette{position:absolute;width:320px;height:320px;} .ds-hero-col{position:relative;text-align:center;} .ds-hero-row{display:flex;align-items:baseline;justify-content:center;gap:8px;} .ds-hero-fig{font-weight:700;font-size:76px;line-height:1;letter-spacing:-.04em;color:#F59E0B;font-variant-numeric:tabular-nums;} .ds-hero-unit{font-weight:600;font-size:22px;color:#F8FAFC;} .ds-hero-qual{font-size:15px;color:#B0BBCC;padding-top:10px;} .ds-hero-state{display:flex;align-items:center;justify-content:center;gap:8px;padding-top:14px;font-weight:500;font-size:13px;color:#F8FAFC;} .ds-hero-state i{width:8px;height:8px;border-radius:50%;background:#4ADE80;} @media (prefers-reduced-motion:no-preference){.ds-hero:hover .ds-rosette{animation:ds-turn 90s linear infinite;}} @keyframes ds-turn{to{transform:rotate(360deg);}}"
+    },
+    {
+      "name": "Microprint Band",
+      "kind": "custom",
+      "refersTo": "microprint-band",
+      "description": "9 sp mono uppercase between two gold hairlines; fixed facts only, repeated as texture.",
+      "html": "<div class=\"ds-micro\" aria-hidden=\"true\">STRATUM V1 · SHA-256D · ARMV8 SHA  ·  STRATUM V1 · SHA-256D · ARMV8 SHA  ·  STRATUM V1 · SHA-256D · ARMV8 SHA</div>",
+      "css": ".ds-micro{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.12em;color:#8D9BB0;white-space:nowrap;overflow:hidden;padding:3px 0;border-top:1px solid #F59E0B59;border-bottom:1px solid #F59E0B59;background:#0F172A;}"
+    },
+    {
+      "name": "Data Row",
+      "kind": "custom",
+      "refersTo": "data-row",
+      "description": "54 dp hairline row: label left, semibold value right; never repeats a figure.",
+      "html": "<div class=\"ds-rows\"><div class=\"ds-row\" tabindex=\"0\"><span>Keys checked</span><b>3 814 220 516</b></div><div class=\"ds-row\" tabindex=\"0\"><span>Addresses loaded</span><b>48.2 M</b></div><div class=\"ds-row ds-row-last\" tabindex=\"0\"><span>At this rate</span><b>—</b></div></div>",
+      "css": ".ds-rows{background:#0F172A;padding:0 20px;font-family:'IBM Plex Sans',sans-serif;} .ds-row{display:flex;align-items:center;min-height:54px;border-bottom:1px solid #F8FAFC12;font-size:15px;} .ds-row span{flex:1;color:#B0BBCC;margin-right:12px;} .ds-row b{font-weight:600;color:#F8FAFC;text-align:right;} .ds-row-last{border-bottom:none;} .ds-row:focus-visible{outline:2px solid #F59E0B;outline-offset:-2px;}"
+    },
+    {
+      "name": "Underlined Tabs",
+      "kind": "nav",
+      "refersTo": "tab-active",
+      "description": "Equal-width text tabs, 48 dp, active in semibold ink with a 2 dp gold underline.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\"><button class=\"ds-tab ds-tab-on\" role=\"tab\" aria-selected=\"true\">Scanner</button><button class=\"ds-tab\" role=\"tab\">Puzzle</button><button class=\"ds-tab\" role=\"tab\">Weak</button><button class=\"ds-tab\" role=\"tab\">Recovery</button></div>",
+      "css": ".ds-tabs{display:flex;border-bottom:1px solid #F8FAFC12;background:#0F172A;} .ds-tab{font-family:'IBM Plex Sans',sans-serif;flex:1;height:48px;background:none;border:none;border-bottom:2px solid transparent;color:#B0BBCC;font-weight:500;font-size:14px;} .ds-tab:hover{color:#F8FAFC;background:#F8FAFC0A;} .ds-tab:focus-visible{outline:2px solid #F59E0B;outline-offset:-2px;} .ds-tab-on{color:#F8FAFC;font-weight:600;border-bottom-color:#F59E0B;}"
+    },
+    {
+      "name": "Bottom Bar",
+      "kind": "nav",
+      "refersTo": "nav-bar",
+      "description": "Five items, edge to edge, hairline on top; active icon in a gold-18% pill.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-i ds-nav-on\" aria-current=\"page\"><span class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"11\" cy=\"11\" r=\"7\"/><path d=\"M20 20l-4-4\"/></svg></span>Hunt</a><a class=\"ds-nav-i\"><span class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"3\" y=\"6\" width=\"18\" height=\"13\" rx=\"2\"/><path d=\"M16 12h2\"/></svg></span>Wallet</a><a class=\"ds-nav-i\"><span class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"6\" y=\"6\" width=\"12\" height=\"12\" rx=\"1\"/><path d=\"M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4\"/></svg></span>Miner</a><a class=\"ds-nav-i\"><span class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><ellipse cx=\"12\" cy=\"6\" rx=\"8\" ry=\"3\"/><path d=\"M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6\"/></svg></span>Core</a><a class=\"ds-nav-i\"><span class=\"ds-pill\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" fill=\"currentColor\"><circle cx=\"5\" cy=\"12\" r=\"2\"/><circle cx=\"12\" cy=\"12\" r=\"2\"/><circle cx=\"19\" cy=\"12\" r=\"2\"/></svg></span>More</a></nav>",
+      "css": ".ds-nav{display:flex;background:#222735;border-top:1px solid #F8FAFC12;padding:10px 0 12px;font-family:'IBM Plex Sans',sans-serif;} .ds-nav-i{flex:1;display:flex;flex-direction:column;align-items:center;min-height:56px;color:#B0BBCC;font-weight:500;font-size:12px;text-decoration:none;cursor:pointer;} .ds-pill{width:56px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:16px;margin-bottom:4px;} .ds-nav-i:hover .ds-pill{background:#F8FAFC1F;} .ds-nav-i:focus-visible{outline:2px solid #F59E0B;} .ds-nav-on{color:#F8FAFC;font-weight:600;} .ds-nav-on .ds-pill{background:#F59E0B2E;color:#F59E0B;}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Raised surface, no stroke, 12 dp radius, 48 dp minimum.",
+      "html": "<input class=\"ds-input\" placeholder=\"Known address · optional\">",
+      "css": ".ds-input{font-family:'IBM Plex Sans',sans-serif;background:#272F42;color:#F8FAFC;font-size:15px;min-height:48px;padding:12px 16px;border:none;border-radius:12px;width:100%;} .ds-input::placeholder{color:#8D9BB0;} .ds-input:hover{background:#2C3549;} .ds-input:focus-visible{outline:2px solid #F59E0B;outline-offset:0;}"
+    },
+    {
+      "name": "Gold Switch",
+      "kind": "chip",
+      "refersTo": "vault-gold",
+      "description": "Every Switch/CheckBox/SeekBar tinted gold when on, muted when off.",
+      "html": "<label class=\"ds-switch\"><input type=\"checkbox\" checked><span></span>Auto-advance</label>",
+      "css": ".ds-switch{font-family:'IBM Plex Sans',sans-serif;display:flex;align-items:center;gap:12px;min-height:48px;color:#F8FAFC;font-size:15px;} .ds-switch input{position:absolute;opacity:0;} .ds-switch span{width:36px;height:14px;border-radius:7px;background:#8D9BB055;position:relative;transition:background .18s;} .ds-switch span::after{content:'';position:absolute;top:-3px;left:0;width:20px;height:20px;border-radius:50%;background:#8D9BB0;transition:transform .18s,background .18s;} .ds-switch input:checked+span{background:#F59E0B66;} .ds-switch input:checked+span::after{transform:translateX(16px);background:#F59E0B;} .ds-switch input:focus-visible+span{outline:2px solid #F59E0B;outline-offset:4px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Security Print",
+    "overview": "Hunter Suite is printed like a banknote or a share certificate, where the fine work exists to prove that a figure is genuine. Each main screen gives one measured figure (keys per second, hashrate, balance, recovery cost) at display size, centred over a guilloche rosette drawn on the phone. Under it, a microprint band of gold hairlines records the fixed parameters the figure was measured with. Then come hairline-divided rows of provenance and a single gold action. The user reads the figure from arm's length, checks that it is running, and acts.\n\nThe ground is flat slate with no gradients and no glow. Separation comes from hairlines, not boxes: groups sit between two hairlines and line up with the 20 dp screen margin. Gold means the figure, the primary action and the current selection. Violet appears only inside the rosette. Green, amber and red appear only as states. The system ships in two themes, Vault Gold (dark, the default) and Vault Gold · Day. Both use the same grammar. Day swaps to a darker gold (`day-gold`) and darker state colours so that each one still reads on white.\n\nThe build rejects the category default of stacked same-size cards with a small figure in each. The code records this refusal wherever it replaced a card (`Ui.card`, `Ui.section`, the Scanner settings, Weak's mini stats, Send's From row).",
+    "keyCharacteristics": [
+      "One figure per screen, in gold Plex Sans Bold with tabular numerals, at 76 sp (Scanner, Miner) or 64 sp (Puzzle, Weak), centred over the rosette.",
+      "The guilloche rosette turns only while a job runs, at a log-scaled rate. It is still when idle and when system animations are off.",
+      "Microprint band: 9 sp JetBrains Mono, uppercase, between two gold hairlines. It carries fixed facts only.",
+      "Hairline data rows, 54 dp tall, with the label left and the semibold value right. A row never repeats a figure shown elsewhere on screen.",
+      "One gold primary per viewport. Every other button is secondary.",
+      "Underlined text tabs, controls tinted gold, a flat ground, and no shadows."
+    ],
+    "rules": [
+      {
+        "name": "The One Gold Rule",
+        "body": "Gold means one of four things: the figure, the action, the current selection, or \"found\". If gold appears anywhere else on a screen, it is a defect.",
+        "section": "colors"
+      },
+      {
+        "name": "The Violet-In-The-Rosette Rule",
+        "body": "Violet is drawn only by the rosette. It never colours text, buttons, gradients or icons.",
+        "section": "colors"
+      },
+      {
+        "name": "The States Are Not Decoration Rule",
+        "body": "Green, amber and red mean running, warning and error. A running job shows a green dot, not gold. Gold is kept for the figure and the action.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Figure Rule",
+        "body": "Each screen has one figure at hero or display size. Everything else drops to Body or Caption.",
+        "section": "typography"
+      },
+      {
+        "name": "The Qualifier-Below Rule",
+        "body": "The words that name a figure (\"keys per second\", \"Total balance\") sit under the figure in ink-secondary. They never sit above it as a label.",
+        "section": "typography"
+      },
+      {
+        "name": "The Microprint Rule",
+        "body": "Microprint is the only text allowed below 12 sp. It prints facts that are fixed when the screen is built (dataset, derivation paths, engine, pool, network), repeated three times as texture. It never carries a value that changes, and it is never the only place a fact the user needs appears.",
+        "section": "typography"
+      },
+      {
+        "name": "The Hairline-Not-Box Rule",
+        "body": "A group is content between two hairlines (`hairline`, 1 px), aligned to the screen margin, with no fill, no radius and no shadow. `Ui.card` and `Ui.section` both draw this way.",
+        "section": "elevation"
+      },
+      {
+        "name": "The Flat Ground Rule",
+        "body": "No gradients anywhere: not on the ground, not on buttons, not on avatars.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Gold Primary Rule",
+        "body": "Exactly one gold button is visible per viewport. When a second job takes over, for example Kangaroo running, its Stop replaces the Start and does not appear next to it.",
+        "section": "components"
+      },
+      {
+        "name": "The Gold Controls Rule",
+        "body": "Every Switch, CheckBox, RadioButton and SeekBar is tinted: Ui.tintarInterruptor gives a gold thumb when checked and muted when not, with gold at 40 % / muted at 33 % for the track; Ui.tintarDeslizador gives gold progress and thumb on a muted track. colorControlActivated (gold) and colorControlNormal (muted) in styles.xml cover any control left untinted. Indeterminate progress spinners are gold.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do put the screen's one figure in the hero, in gold Plex Bold at 76 sp (64 sp in compact heroes), with the unit on its baseline and the qualifier below.",
+      "Do drive the rosette from a real \"job running\" signal and a log-scaled rate. Leave it still otherwise.",
+      "Do frame fixed parameters in a microprint band directly under the hero.",
+      "Do lay provenance out as 54 dp hairline rows, label left and value right.",
+      "Do group content between two hairlines aligned to the 20 dp margin.",
+      "Do place the single gold primary in the first viewport, under the rows.",
+      "Do use underlined text tabs for sections and tint every control gold.",
+      "Do pair every state colour with words, and give every target at least 48 dp.",
+      "Do use the `day-` tokens as a set in the Day theme. Never mix a dark-theme gold or state colour onto white."
+    ],
+    "donts": [
+      "Don't stack filled, rounded cards each holding a small figure. That is the category default this system replaces.",
+      "Don't show a second gold button in the same viewport.",
+      "Don't repeat a figure in a row, a chart or a ring when the hero or another row already shows it.",
+      "Don't put a changing value into microprint, or set any user-facing text below 12 sp.",
+      "Don't use violet outside the rosette, or gold for running state. Running is green.",
+      "Don't add gradients, glows or shadows to the ground or to buttons.",
+      "Don't spin the rosette as an idle ornament, or ignore the system remove-animations setting."
+    ]
+  }
+}
