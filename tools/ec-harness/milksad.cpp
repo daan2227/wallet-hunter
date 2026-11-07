@@ -25,6 +25,22 @@ int main() {
     debe(milksad::buscar(objetivo, 24, 123000, 124000, &cancel, &hechas) == 123456, "buscar encuentra una semilla concreta (24B)");
     uint8_t ajena[16]; for (int i=0;i<16;i++) ajena[i] = (uint8_t)(i*17+1);
     debe(milksad::buscar(ajena, 16, 0, 2000000, &cancel, &hechas) == -1, "una entropia ajena no aparece");
+
+    /* ── Trust Wallet 2022 (modo 1: byte = rng()&0xFF, los 8 bits BAJOS) ──
+       Fuente: commit d3c2eee de trustwallet/wallet-core (wasm/src/Random.cpp):
+       std::generate_n(buf,len,[&rng]{ return rng()&0x000000ff; }) sobre std::mt19937. */
+    for (uint32_t s : {0u,1u,42u,2022u,123456789u,0xDEADBEEFu}) {
+        std::mt19937 tw(s); milksad::Mt g; g.seed(s);
+        bool ok = true; for (long i=0;i<2000000;i++) if ((uint8_t)(tw() & 0xFF) != (uint8_t)milksad::byte_de(g, 1)) { ok=false; break; }
+        debe(ok, "modo 1 byte == mt19937()&0xFF (Trust Wallet)");
+    }
+    /* El modo 1 NO coincide con el modo 0 para una semilla cualquiera (son bits distintos). */
+    { uint8_t a0[16], a1[16]; milksad::entropia(2022, a0, 16, 0); milksad::entropia(2022, a1, 16, 1);
+      debe(memcmp(a0, a1, 16) != 0, "modo 0 y modo 1 difieren"); }
+    /* buscar en modo 1 encuentra una semilla concreta y la rechaza en modo 0. */
+    { uint8_t obj[16]; milksad::entropia(987654, obj, 16, 1);
+      debe(milksad::buscar(obj, 16, 987000, 988000, &cancel, &hechas, 1) == 987654, "buscar modo 1 encuentra la semilla");
+      debe(milksad::buscar(obj, 16, 987000, 988000, &cancel, &hechas, 0) == -1, "esa entropia no sale en modo 0"); }
     printf(fallos ? "\nHAY FALLOS: %d\n" : "\nTodas las pruebas correctas.\n", fallos);
     return fallos ? 1 : 0;
 }

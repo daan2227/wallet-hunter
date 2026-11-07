@@ -9,6 +9,13 @@
  * MT, verificado contra la implementación real de libbitcoin (libstdc++): seed 0 / 128 bits da la frase que
  * empieza por "milk sad" (de ahí el nombre). Ver tools/ec-harness/milksad.cpp.
  *
+ * Variante Trust Wallet (extensión de navegador, CVE-2023-31290): el build WASM de wallet-core usaba
+ * std::mt19937 sembrado con 32 bits y sacaba cada byte con `rng() & 0xFF` (los 8 bits BAJOS), no los
+ * altos como bx. Fuente: el commit del arreglo d3c2eee de trustwallet/wallet-core (wasm/src/Random.cpp,
+ * quitó `std::generate_n(buf,len,[&]{return rng()&0x000000ff;})`). Mismo MT, sólo cambia el byte, así que
+ * se cubre con un [modo]: 0 = bx (>>24), 1 = Trust Wallet (&0xFF). Trust Wallet sólo hacía frases de 12
+ * palabras (16 bytes) y la semilla no es una hora conocida: se barre todo 2^32.
+ *
  * Sin estado global ni JNI: se prueba en el escritorio y el motor sólo lo envuelve.
  */
 #include <cstdint>
@@ -34,14 +41,16 @@ struct Mt {
 };
 
 /* Un byte de entropía de bx = los 8 bits altos de la siguiente palabra del MT (== uniform_int_distribution<uint16_t>(0,255) de libstdc++). */
-inline void entropia(uint32_t sem, uint8_t *out, int n) { Mt g; g.seed(sem); for (int k = 0; k < n; k++) out[k] = (uint8_t)(g.next() >> 24); }
+inline uint8_t byte_de(Mt &g, int modo) { uint32_t w = g.next(); return (uint8_t)(modo == 1 ? (w & 0xFF) : (w >> 24)); }
+
+inline void entropia(uint32_t sem, uint8_t *out, int n, int modo = 0) { Mt g; g.seed(sem); for (int k = 0; k < n; k++) out[k] = byte_de(g, modo); }
 
 /*
  * Busca en [ini, fin) una semilla de 32 bits cuya entropía de [n] bytes sea [objetivo]. Devuelve la semilla
  * (como int64) o -1 si no la encuentra. [cancel] corta, [hechas] lleva la cuenta para la pantalla.
  */
 inline int64_t buscar(const uint8_t *objetivo, int n, uint64_t ini, uint64_t fin,
-                      std::atomic<bool> *cancel, std::atomic<uint64_t> *hechas) {
+                      std::atomic<bool> *cancel, std::atomic<uint64_t> *hechas, int modo = 0) {
     if (n < 16 || n > 32) return -1;
     uint8_t buf[32];
     uint64_t lote = 0;
@@ -49,7 +58,7 @@ inline int64_t buscar(const uint8_t *objetivo, int n, uint64_t ini, uint64_t fin
         if ((++lote & 0x3FFFF) == 0) { if (hechas) hechas->fetch_add(0x40000); if (cancel && cancel->load()) return -1; }
         Mt g; g.seed((uint32_t)s);
         bool ok = true;
-        for (int k = 0; k < n; k++) { buf[k] = (uint8_t)(g.next() >> 24); if (buf[k] != objetivo[k]) { ok = false; break; } }
+        for (int k = 0; k < n; k++) { buf[k] = byte_de(g, modo); if (buf[k] != objetivo[k]) { ok = false; break; } }
         if (ok) { if (hechas) hechas->fetch_add(lote & 0x3FFFF); return (int64_t)s; }
     }
     if (hechas) hechas->fetch_add(lote & 0x3FFFF);

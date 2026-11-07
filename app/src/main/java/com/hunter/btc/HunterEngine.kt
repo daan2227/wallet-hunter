@@ -128,6 +128,11 @@ object HunterEngine {
     external fun milksadResultado(): Long
     external fun milksadEntropia(semilla: Long, n: Int): String
 
+    // Auditoria Trust Wallet 2022 (CVE-2023-31290): mismo MT que Milk Sad, byte = rng()&0xFF. Comparte el
+    // estado con las funciones milksad* de arriba (Detener/Corriendo/Hechas/Total/Resultado).
+    external fun trustBuscar(entHex: String, ini: Long, fin: Long, hilos: Int): String
+    external fun trustEntropia(semilla: Long, n: Int): String
+
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
      * "ckd", "priv_sum", "sp_send", "xonly", "schnorr", "schnorr_ok", "ecdsa_ok", "ecdh_x".

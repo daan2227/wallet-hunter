@@ -123,6 +123,7 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_edit, "Brainwallet check", "Is a passphrase key already known?") { construirBrainwallet() }
         reg(A, R.drawable.ic_recovery, "Phrase strength", "Red flags of a hand-made phrase", "mnemonic strength") { construirMnemonicStrength() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Milk Sad)", "Did your phrase come from a broken generator?", "milk sad bx") { construirMilkSad() }
+        reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet 2022)", "Made with the vulnerable browser extension?", "trust wallet") { construirTrustWallet() }
         reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm and the 2013 Android bug", "randstorm android") { construirLegacyRng() }
         reg(A, R.drawable.ic_eye, "Entropy checker", "How random is a value?", "entropy") { construirEntropia() }
         reg(A, R.drawable.ic_clock, "Brute-force time", "How long to search a range of bits", "difficulty time") { construirDificultad() }
@@ -1810,6 +1811,54 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tvProg)
         nota(AppTheme.TXT_MUTED, "This only rules out the 'bx seed' / Milk Sad generator. Scanning all seeds can take a while; " +
              "it runs on this phone and nothing is sent anywhere.")
+    }
+
+    // ── Weak RNG check (Trust Wallet browser extension, CVE-2023-31290) ─────
+    private fun construirTrustWallet() {
+        desc("Checks whether YOUR seed phrase could have come from the Trust Wallet BROWSER EXTENSION " +
+             "(versions 0.0.172–0.0.182, Nov 2022–Apr 2023, CVE-2023-31290). Its WebAssembly build seeded a " +
+             "Mersenne Twister with only 32 bits, so there are about four billion possible phrases and anyone " +
+             "can rebuild those keys. It only affected the browser extension's 12-word phrases; the mobile app " +
+             "was NOT affected. Your phrase stays on-device.")
+        val et = entrada("Your 12-word phrase (extension only)", varias = true)
+        val salida = salidaBox()
+        val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (msCorriendo) { HunterEngine.milksadDetener(); return@boton }
+            salida.removeAllViews()
+            val ent = Bip39.entropia(et.text.toString())
+            if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            if (ent.size != 16) {
+                val bits = ent.size * 8
+                salida.addView(filaResultado("Only 12-word phrases", "The vulnerable extension only produced 12-word phrases (128-bit). A $bits-bit phrase did not come from it."))
+                return@boton
+            }
+            val hex = ent.joinToString("") { "%02x".format(it) }
+            // Toda la semilla de 32 bits: a diferencia de un generador sembrado con la hora, aquí no hay ventana.
+            val err = HunterEngine.trustBuscar(hex, 0L, 0x100000000L, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
+            msCorriendo = true; btn.text = "Stop"
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            h.post(object : Runnable {
+                override fun run() {
+                    val corre = HunterEngine.milksadCorriendo()
+                    val hechas = HunterEngine.milksadHechas(); val total = HunterEngine.milksadTotal().coerceAtLeast(1)
+                    tvProg.text = "Scanned %,d of %,d seeds (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
+                    if (corre) { h.postDelayed(this, 500); return }
+                    msCorriendo = false; btn.text = "Check"
+                    val sem = HunterEngine.milksadResultado()
+                    if (sem >= 0) {
+                        salida.addView(filaResultado("⚠ VULNERABLE — Trust Wallet extension", "Your phrase comes from the broken 32-bit generator (seed $sem). Anyone can rebuild its keys.", true))
+                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                    } else {
+                        salida.addView(filaResultado("✓ Not found", "Your phrase was not produced by this broken generator across all 2^32 seeds.", true))
+                    }
+                }
+            })
+        }
+        root.addView(tvProg)
+        nota(AppTheme.TXT_MUTED, "This only rules out the Trust Wallet browser-extension generator. It runs on this phone and nothing is sent anywhere.")
     }
 
     // ── Legacy weak wallets: Randstorm & the 2013 Android SecureRandom bug ──
