@@ -124,7 +124,10 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_recovery, "Phrase strength", "Red flags of a hand-made phrase", "mnemonic strength") { construirMnemonicStrength() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Milk Sad)", "Did your phrase come from a broken generator?", "milk sad bx") { construirMilkSad() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet 2022)", "Made with the vulnerable browser extension?", "trust wallet") { construirTrustWallet() }
-        reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008", "randstorm android debian openssl") { construirLegacyRng() }
+        reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008, Coldcard 2021", "randstorm android debian openssl coldcard") { construirLegacyRng() }
+        reg(A, R.drawable.ic_eye, "Public-key exposure", "Addresses that already revealed their public key (quantum / privacy)", "quantum exposure pubkey reuse p2tr p2pk") { construirExposicion() }
+        reg(A, R.drawable.ic_warning, "Polynonce (nonce recurrence)", "Keys exposed by polynomially-related nonces (incl. half-half)", "polynonce recurrence nonce half-half kudelski") { construirPolynonce() }
+        reg(A, R.drawable.ic_warning, "Reused nonce across a wallet", "Scan an xpub or addresses for any repeated signature r", "reused r nonce wallet xpub scan") { construirRscanWallet() }
         reg(A, R.drawable.ic_eye, "Entropy checker", "How random is a value?", "entropy") { construirEntropia() }
         reg(A, R.drawable.ic_clock, "Brute-force time", "How long to search a range of bits", "difficulty time") { construirDificultad() }
 
@@ -1929,6 +1932,19 @@ class PubkeyToolsActivity : Activity() {
             "coins to a wallet made here. The 'Weak-key audit' (Hunt → Weak) catches a key whose PRIVATE value " +
             "landed in a tiny range, which also covers the most exposed outcome of this bug.")
 
+        root.addView(filaResultado("Coldcard seed RNG (firmware from March 2021)",
+            "A build-flag mistake in Coldcard firmware (an #ifndef that tested whether a macro was DEFINED, not " +
+            "whether it was non-zero) routed seed generation to a deterministic software PRNG instead of the chip's " +
+            "hardware RNG. Seeds MADE ON that firmware have far less entropy than a real 12/24-word phrase " +
+            "(Coinkite's own estimate: roughly 40 bits on the Mk3, about 72 bits on the Mk4/Mk5/Q). Updating the " +
+            "firmware does NOT fix a seed already made; restoring that seed carries the weakness forward. There is no " +
+            "honest seed-by-seed sweep here: the key stream depends on the device UID, timer state and the order of RNG " +
+            "calls, which aren't on the phone.", true))
+        nota(AppTheme.WARN, "What to do: if you created a seed on a Coldcard and have NOT confirmed your firmware is at or " +
+            "above the fixed version (Mk4/Mk5 5.6.0, Q 1.5.0Q, or the matching Edge build; Mk2/Mk3 are end-of-life), treat " +
+            "that seed as at risk. Generate a NEW phrase (here, or on patched firmware / 50+ dice rolls) and move ALL funds " +
+            "to it. Check Coinkite's official advisory for the exact affected versions.")
+
         nota(AppTheme.TXT_MUTED, "Nothing here leaves the phone. For a full self-check of your seeds and wallets, use " +
             "'Security check' in More → it bundles these warnings with the on-chain nonce and address-reuse checks.")
     }
@@ -2998,6 +3014,256 @@ class PubkeyToolsActivity : Activity() {
         }
         return null
     }
+    // ── Exposición de clave pública (cuántico / privacidad) ────────────────
+    @Volatile private var expoCorriendo = false
+    private fun tipoDireccion(a: String): String {
+        val s = a.trim()
+        return when {
+            s.startsWith("bc1p") || s.startsWith("tb1p") -> "P2TR"
+            (s.startsWith("bc1q") || s.startsWith("tb1q")) && s.length <= 44 -> "P2WPKH"
+            (s.startsWith("bc1q") || s.startsWith("tb1q")) -> "P2WSH"
+            s.startsWith("bc1") || s.startsWith("tb1") -> "bech32"
+            s.startsWith("1") || s.startsWith("m") || s.startsWith("n") -> "P2PKH"
+            s.startsWith("3") || s.startsWith("2") -> "P2SH"
+            else -> "?"
+        }
+    }
+    private fun construirExposicion() {
+        desc("Which of your addresses have already PUBLISHED their public key on-chain. Spending from an " +
+             "address reveals its key forever; Taproot (bc1p) carries the key in the output from the start; " +
+             "reusing an address leaves funds sitting behind an exposed key. Read-only, from a public explorer. " +
+             "No address is breakable today — this is forward-looking (quantum) and a privacy check.")
+        val et = entrada("addresses (one per line) or an xpub/ypub/zpub", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(10), 0, 0) }
+        val salida = salidaBox()
+        lateinit var btn: Button
+        btn = boton("Check exposure") {
+            if (expoCorriendo) { expoCorriendo = false; return@boton }
+            val texto = et.text.toString().trim()
+            if (texto.isEmpty()) { Toast.makeText(this, "Enter addresses or an xpub", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews(); expoCorriendo = true; btn.text = "Stop"; tv.text = "Resolving addresses…"
+            Thread {
+                val dirs = ArrayList<String>()
+                for (lin in texto.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+                    val low = lin.lowercase()
+                    if (low.startsWith("xpub") || low.startsWith("ypub") || low.startsWith("zpub") ||
+                        low.startsWith("vpub") || low.startsWith("upub") || low.startsWith("tpub")) {
+                        val der = try { HunterEngine.xpubDirecciones(lin, 20) } catch (e: Throwable) { "" }
+                        der.trim().split('\n').forEach { l -> val i = l.indexOf('='); if (i > 0) dirs.add(l.substring(i + 1).trim()) }
+                    } else dirs.add(lin)
+                }
+                val filas = ArrayList<Array<Any>>()   // addr, verdict, warn(bool), hasFunds(bool)
+                var red = true; var i = 0
+                for (addr in dirs.distinct()) {
+                    if (!expoCorriendo) break
+                    i++; val ii = i; val tot = dirs.distinct().size
+                    runOnUiThread { if (expoCorriendo) tv.text = "Checking $ii / $tot…" }
+                    val info = ChainApi.get("/address/$addr") ?: run { if (filas.isEmpty()) red = false; null } ?: continue
+                    try {
+                        val o = org.json.JSONObject(info); val cs = o.getJSONObject("chain_stats")
+                        val fundados = cs.getInt("funded_txo_count"); val gastados = cs.getInt("spent_txo_count")
+                        val saldo = cs.getLong("funded_txo_sum") - cs.getLong("spent_txo_sum")
+                        val tipo = tipoDireccion(addr); val conFondos = saldo > 0
+                        var expuesta = false; val linea: String
+                        when {
+                            tipo == "P2TR" -> { expuesta = true
+                                linea = "Taproot — the public key is in the output from creation." }
+                            gastados > 0 -> { expuesta = true
+                                linea = "Public key REVEALED when you spent from it." +
+                                    (if (fundados > 1) " Address reused ($fundados receipts)." else "") }
+                            fundados > 1 -> linea = "Reused ($fundados receipts) but never spent: the key is still hidden, " +
+                                "yet the first spend will expose it for ALL of them."
+                            tipo == "P2SH" -> linea = "Not yet exposed. (P2SH: if it wraps segwit or multisig, a spend reveals the keys.)"
+                            fundados == 0 -> linea = "Never used — nothing on-chain."
+                            else -> linea = "Not exposed: the public key is still hidden behind the hash."
+                        }
+                        filas.add(arrayOf<Any>(addr, "$tipo · $linea" + (if (conFondos) "\nBalance " + satsABtc(saldo) else ""),
+                            expuesta && conFondos, conFondos))
+                    } catch (e: Throwable) {}
+                }
+                val expuestasConFondos = filas.count { it[2] as Boolean }
+                val expuestasTotal = filas.count { (it[1] as String).contains("REVEALED") || (it[1] as String).contains("Taproot") }
+                runOnUiThread {
+                    expoCorriendo = false; btn.text = "Check exposure"
+                    if (!red && filas.isEmpty()) { tv.text = "No network, or no address found."; return@runOnUiThread }
+                    tv.text = if (expuestasConFondos > 0)
+                        IconosTexto.en(this@PubkeyToolsActivity, "⚠ $expuestasConFondos address(es) with funds behind an exposed key")
+                        else "$expuestasTotal exposed · ${filas.size} checked · no funds sitting on an exposed key"
+                    for (f in filas) salida.addView(filaResultado((f[0] as String).let { if (it.length > 20) it.take(10) + "…" + it.takeLast(6) else it },
+                        f[1] as String, f[2] as Boolean))
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+        nota(AppTheme.BLUE, "No Bitcoin is breakable by a quantum computer today; this is about reducing future risk and " +
+             "keeping privacy. What to do: don't reuse addresses, and for coins sitting on an exposed key (reused or " +
+             "Taproot with a balance) move them to a fresh address you haven't spent from.")
+    }
+
+    // ── Polynonce (recurrencia de nonces) ──────────────────────────────────
+    @Volatile private var polyCorriendo = false
+    private fun construirPolynonce() {
+        desc("The Polynonce attack (Kudelski, 2023). If a wallet's random k values follow a hidden polynomial " +
+             "recurrence (k→k→k…), the private key drops out of a few signatures of the SAME key — even when no " +
+             "two signatures share the same r. Paste signatures as 'r,s,z' (hex) one per line: 4 for a linear " +
+             "relation, 5 for quadratic, 6 for cubic. The 'half-half' case is covered by the same engine. " +
+             "Everything stays on-device; this audits YOUR OWN signatures.")
+        val et = entrada("r,s,z  (hex) — one signature per line", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(10), 0, 0) }
+        val salida = salidaBox()
+        lateinit var btn: Button
+        btn = boton("Recover") {
+            if (polyCorriendo) { polyCorriendo = false; return@boton }
+            val firmas = ArrayList<Polynonce.Firma>()
+            for (lin in et.text.toString().split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+                val p = lin.split(',', ';', ' ', '\t').map { it.trim().removePrefix("0x").removePrefix("0X") }.filter { it.isNotEmpty() }
+                if (p.size < 3) continue
+                try { firmas.add(Polynonce.Firma(java.math.BigInteger(p[0], 16), java.math.BigInteger(p[1], 16), java.math.BigInteger(p[2], 16))) }
+                catch (e: Throwable) {}
+            }
+            if (firmas.size < 4) { Toast.makeText(this, "Need at least 4 valid 'r,s,z' lines", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews(); polyCorriendo = true; btn.text = "Stop"; tv.text = "Searching for a nonce recurrence…"
+            Thread {
+                val xkg: (java.math.BigInteger) -> java.math.BigInteger? = { k ->
+                    try { val pub = HunterEngine.pubDeHex(k.toString(16).padStart(64, '0'))
+                        if (pub.length >= 66) java.math.BigInteger(pub.substring(2, 66), 16).mod(Polynonce.N) else null
+                    } catch (e: Throwable) { null } }
+                val d = try { Polynonce.recuperar(firmas, maxGrado = 3, cancel = { !polyCorriendo }) { cand ->
+                    Polynonce.confirma(cand, firmas, xkg) } } catch (e: Throwable) { null }
+                runOnUiThread {
+                    val parado = !polyCorriendo; polyCorriendo = false; btn.text = "Recover"
+                    if (d != null) {
+                        val dh = d.toString(16).padStart(64, '0')
+                        val wif = try { HunterEngine.wifDeHex(dh).substringBefore("|") } catch (e: Throwable) { "" }
+                        val pub = try { HunterEngine.pubDeHex(dh) } catch (e: Throwable) { "" }
+                        tv.text = IconosTexto.en(this@PubkeyToolsActivity, "⚠ Nonces follow a polynomial recurrence — key recovered")
+                        salida.addView(filaResultado("RECOVERED PRIVATE KEY",
+                            "priv $dh" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + (if (pub.isNotEmpty()) "\npubkey ${pub.take(16)}…" else ""), true))
+                        salida.addView(filaResultado("Finds vault", guardarEnBaul(dh, "Polynonce recovery")))
+                        salida.addView(TextView(this).apply {
+                            text = "This key's signing nonces were not independent. The wallet that made them is broken — move ALL funds to a new wallet."
+                            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                            typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
+                    } else tv.text = if (parado) "Stopped — nothing found in what was checked."
+                        else "No polynomial recurrence found (degrees 1–3). These signatures look clean."
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+        nota(AppTheme.TXT_MUTED, "Tip: on this phone, 'Sign message (classic)' and your transaction history produce real " +
+             "signatures you can test here. A clean result means no polynomial nonce leak up to degree 3.")
+    }
+
+    // ── Nonce reutilizado en toda una cartera (xpub / varias direcciones) ──
+    @Volatile private var rscanCorriendo = false
+    private fun construirRscanWallet() {
+        desc("Scans a whole wallet for a repeated signature r (a reused nonce). Give an xpub/ypub/zpub (first 20 " +
+             "receiving addresses) or paste addresses, one per line. If the SAME key signed twice with the same r, " +
+             "its private key is recovered. If DIFFERENT keys share an r, that is a system-wide RNG failure. " +
+             "Read-only, on-device.")
+        val et = entrada("xpub/ypub/zpub, or addresses one per line", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(10), 0, 0) }
+        val salida = salidaBox()
+        lateinit var btn: Button
+        btn = boton("Scan wallet") {
+            if (rscanCorriendo) { rscanCorriendo = false; return@boton }
+            val texto = et.text.toString().trim()
+            if (texto.isEmpty()) { Toast.makeText(this, "Enter an xpub or addresses", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews(); rscanCorriendo = true; btn.text = "Stop"; tv.text = "Resolving addresses…"
+            Thread {
+                val dirs = ArrayList<String>()
+                for (lin in texto.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+                    val low = lin.lowercase()
+                    if (low.startsWith("xpub") || low.startsWith("ypub") || low.startsWith("zpub") ||
+                        low.startsWith("vpub") || low.startsWith("upub") || low.startsWith("tpub")) {
+                        val der = try { HunterEngine.xpubDirecciones(lin, 20) } catch (e: Throwable) { "" }
+                        der.trim().split('\n').forEach { l -> val i = l.indexOf('='); if (i > 0) dirs.add(l.substring(i + 1).trim()) }
+                    } else dirs.add(lin)
+                }
+                // Mapa global r → (pub, RegFirma) de TODA la cartera.
+                val porR = HashMap<String, ArrayList<Pair<String, RegFirma>>>()
+                val hallazgos = ArrayList<Array<String?>>()   // tipo, pub, r, priv/null, extra
+                val yaVisto = HashSet<String>()
+                var firmas = 0; var txs = 0; var red = true; var di = 0
+                val unicas = dirs.distinct()
+                bucleDir@ for (addr in unicas) {
+                    if (!rscanCorriendo) break
+                    di++; val dd = di
+                    var ultimo = ""; var paginas = 0
+                    while (rscanCorriendo && paginas < 3) {
+                        val ruta = "/address/$addr/txs" + (if (ultimo.isEmpty()) "" else "/chain/$ultimo")
+                        val cuerpo = ChainApi.get(ruta) ?: run { if (firmas == 0) red = false; null } ?: break
+                        paginas++
+                        val arr = try { org.json.JSONArray(cuerpo) } catch (e: Throwable) { break }
+                        if (arr.length() == 0) break
+                        for (ti in 0 until arr.length()) {
+                            if (!rscanCorriendo) break@bucleDir
+                            val tx = arr.optJSONObject(ti) ?: continue
+                            val txid = tx.optString("txid", ""); ultimo = txid
+                            val vins = tx.optJSONArray("vin") ?: continue
+                            for (vi in 0 until vins.length()) {
+                                val f = firmaDe(vins.optJSONObject(vi) ?: continue) ?: continue
+                                firmas++
+                                val lista = porR.getOrPut(f.r) { ArrayList() }
+                                // ¿choca con alguna r ya vista?
+                                for ((pub0, reg0) in lista) {
+                                    if (reg0.tx.optString("txid") + "#" + reg0.vin == txid + "#" + vi) continue
+                                    val clave = f.r + ":" + minOf(pub0, f.pub) + ":" + maxOf(pub0, f.pub)
+                                    if (!yaVisto.add(clave)) continue
+                                    if (pub0 == f.pub) {
+                                        val priv = recuperar(f.pub, f.r, reg0, tx, vi, f.s, f.htype)
+                                        hallazgos.add(arrayOf("reuse", f.pub, f.r, priv, null))
+                                    } else hallazgos.add(arrayOf("cross", f.pub, f.r, null, pub0))
+                                }
+                                lista.add(f.pub to RegFirma(tx, vi, f.s, f.htype))
+                            }
+                            txs++
+                        }
+                        val htxs = txs; val hf = firmas; val hd = dd; val tt = unicas.size
+                        runOnUiThread { if (rscanCorriendo) tv.text = "Addr $hd/$tt · $htxs tx · $hf signatures" }
+                        if (arr.length() < 25) break
+                    }
+                }
+                val fin = txs; val sigs = firmas; val parado = !rscanCorriendo
+                runOnUiThread {
+                    rscanCorriendo = false; btn.text = "Scan wallet"
+                    if (!red && sigs == 0) { tv.text = "No network, or addresses not found / never spent."; return@runOnUiThread }
+                    if (hallazgos.isEmpty()) {
+                        tv.text = if (parado) "Stopped · $fin tx · $sigs signatures · no reuse in them"
+                            else "Clean · ${unicas.size} addresses · $fin tx · $sigs signatures · no repeated r"
+                        return@runOnUiThread
+                    }
+                    val rec = hallazgos.count { it[3] != null }
+                    tv.text = IconosTexto.en(this@PubkeyToolsActivity, "⚠ Repeated nonce · $sigs sig · $rec key(s) recovered")
+                    for (h in hallazgos) {
+                        val tipo = h[0]; val pub = h[1] ?: ""; val r = h[2] ?: ""; val priv = h[3]; val pub2 = h[4]
+                        when {
+                            tipo == "reuse" && priv != null -> {
+                                val wif = try { HunterEngine.wifDeHex(priv).substringBefore("|") } catch (e: Throwable) { "" }
+                                salida.addView(filaResultado("RECOVERED PRIVATE KEY",
+                                    "priv $priv" + (if (wif.isNotEmpty()) "\nWIF  $wif" else "") + "\npubkey ${pub.take(16)}…", true))
+                                salida.addView(filaResultado("Finds vault", guardarEnBaul(priv, "Wallet nonce reuse")))
+                            }
+                            tipo == "reuse" -> salida.addView(filaResultado("VULNERABLE · reused r (recovery n/a)",
+                                "pubkey ${pub.take(16)}…\nr ${r.take(20)}…", true))
+                            else -> salida.addView(filaResultado("SHARED NONCE across two keys",
+                                "r ${r.take(20)}…\nkey A ${pub.take(16)}…\nkey B ${(pub2 ?: "").take(16)}…\n" +
+                                "Two different keys used the same nonce — a broken generator. Move funds off BOTH.", true))
+                        }
+                    }
+                    salida.addView(TextView(this).apply {
+                        text = "A repeated r means a repeated nonce. Any wallet here is compromised — move its coins now."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                        typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+    }
+
     private fun construirNonce() {
         desc("If an address signs with the same random k (nonce) twice, its private key " +
              "falls out of the two signatures. Scans a spent address and recovers the key " +
@@ -3134,6 +3400,7 @@ class PubkeyToolsActivity : Activity() {
         bsgsCorriendo = false
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; latCorriendo = false
         balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
+        expoCorriendo = false; polyCorriendo = false; rscanCorriendo = false
         super.onDestroy()
     }
 }
