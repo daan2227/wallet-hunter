@@ -120,11 +120,11 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_warning, "Nonce leak (lattice)", "Recover a key from biased nonces", "lattice hnp") { construirLattice() }
         reg(A, R.drawable.ic_finger, "RFC6979 check", "Are the signatures deterministic?", "rfc6979 nonce") { construirRfc6979() }
         reg(A, R.drawable.ic_search, "Low-S / malleability", "Check a signature's form", "signature malleability low-s") { construirMalleability() }
-        reg(A, R.drawable.ic_edit, "Brainwallet check", "Is a passphrase key already known?") { construirBrainwallet() }
+        reg(A, R.drawable.ic_edit, "Brainwallet check", "Is a passphrase key already known? Dictionary + mutations") { construirBrainwallet() }
         reg(A, R.drawable.ic_recovery, "Phrase strength", "Red flags of a hand-made phrase", "mnemonic strength") { construirMnemonicStrength() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Milk Sad)", "Did your phrase come from a broken generator?", "milk sad bx") { construirMilkSad() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet 2022)", "Made with the vulnerable browser extension?", "trust wallet") { construirTrustWallet() }
-        reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm and the 2013 Android bug", "randstorm android") { construirLegacyRng() }
+        reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008", "randstorm android debian openssl") { construirLegacyRng() }
         reg(A, R.drawable.ic_eye, "Entropy checker", "How random is a value?", "entropy") { construirEntropia() }
         reg(A, R.drawable.ic_clock, "Brute-force time", "How long to search a range of bits", "difficulty time") { construirDificultad() }
 
@@ -1871,7 +1871,7 @@ class PubkeyToolsActivity : Activity() {
      * los fondos, no prometer un barrido que no existe.
      */
     private fun construirLegacyRng() {
-        desc("Two famous weak random-number bugs hit old wallets. Neither can be scanned seed-by-seed like " +
+        desc("Famous weak random-number bugs that hit old wallets. None can be scanned seed-by-seed like " +
              "Milk Sad, so this is guidance, not a brute-force — it never promises a sweep it can't do.")
 
         root.addView(filaResultado("Android 2013 SecureRandom bug",
@@ -1888,6 +1888,18 @@ class PubkeyToolsActivity : Activity() {
         nota(AppTheme.TXT_SEC, "What to do: if you ever generated a wallet in a web browser between 2011 and 2015, treat it " +
             "as at risk. Create a NEW wallet here with a freshly generated phrase and move ALL funds to it. Don't wait " +
             "for a scan that can't be made.")
+
+        root.addView(filaResultado("Debian / Ubuntu OpenSSL, 2008 (CVE-2008-0166)",
+            "A Debian patch broke OpenSSL's random generator from Sept 2006 to May 2008: it was seeded only " +
+            "by the process id, so there are about 32,768 possible keys per architecture. In practice this barely " +
+            "touches Bitcoin: Bitcoin launched in January 2009, AFTER the fix, so a key is only at risk if it was " +
+            "made on a machine still running the unpatched OpenSSL in 2009 or later — rare. The exact key stream " +
+            "also depends on the OpenSSL version, the CPU architecture and how the app used the generator, so " +
+            "there is no single honest sweep to offer here.", true))
+        nota(AppTheme.TXT_SEC, "What to do: if a key might have been generated on an old, unpatched Debian or " +
+            "Ubuntu system (2006-2008, or a machine never updated after that), treat it as at risk and move its " +
+            "coins to a wallet made here. The 'Weak-key audit' (Hunt → Weak) catches a key whose PRIVATE value " +
+            "landed in a tiny range, which also covers the most exposed outcome of this bug.")
 
         nota(AppTheme.TXT_MUTED, "Nothing here leaves the phone. For a full self-check of your seeds and wallets, use " +
             "'Security check' in More → it bundles these warnings with the on-chain nonce and address-reuse checks.")
@@ -2772,6 +2784,21 @@ class PubkeyToolsActivity : Activity() {
         val d = java.security.MessageDigest.getInstance("SHA-256").digest(s.toByteArray(Charsets.UTF_8))
         val sb = StringBuilder(64); for (b in d) sb.append("%02x".format(b.toInt() and 0xFF)); return sb.toString()
     }
+    // Frases de brainwallet clásicas que históricamente se vaciaron (dominio público; aparecen en casi
+    // cualquier lista de "weak brainwallets"). No es exhaustiva: es para probar al instante.
+    private val FRASES_DEBILES = listOf(
+        "correct horse battery staple", "password", "123456", "123456789", "qwerty", "letmein",
+        "bitcoin", "bitcoin is awesome", "satoshi", "satoshi nakamoto", "test", "hello", "hello world",
+        "secret", "private", "wallet", "money", "blockchain", "abc123", "iloveyou", "admin", "root",
+        "the quick brown fox jumps over the lazy dog", "to be or not to be",
+        "all your base are belong to us", "i am satoshi", "satoshi loves you",
+        "when in the course of human events", "a a a a a a a a a a a a", "0", "1", "123",
+        "god", "love", "sex", "money honey", "dragon", "monkey", "master", "superman", "trustno1",
+        "welcome", "ninja", "football", "baseball", "shadow", "michael", "jennifer", "hunter",
+        "the times 03 jan 2009 chancellor on brink of second bailout for banks",
+        "chancellor on the brink of second bailout for banks",
+        "brain wallet", "brainwallet", "my bitcoin wallet", "do not use this", "this is not a test")
+
     // Expansión de variaciones (estilo BTCRecover/brainflayer): a partir de una
     // frase base genera un conjunto ACOTADO de candidatos comunes.
     private fun variaciones(f: String): List<String> {
@@ -2789,11 +2816,38 @@ class PubkeyToolsActivity : Activity() {
     private fun construirBrainwallet() {
         desc("Tests phrases (private key = SHA-256 of the phrase) against target " +
              "address(es)/public key(s). Leave the targets empty to just LIST the address " +
-             "each phrase maps to. Audits whether an address came from a guessable phrase.")
+             "each phrase maps to. Type phrases, load a list from a file, or use the built-in " +
+             "classic weak list; 'Variations' also tries common mutations (year, caps, l33t, " +
+             "suffixes). It sweeps only the phrases you give it, never 'all phrases'. Audits " +
+             "whether an address came from a guessable phrase.")
         root.addView(rotulo("Targets (one per line) — empty = list addresses"))
         val etTarget = entrada("1…/3…/bc1… or 02…/03…/04…, one per line", varias = true)
         root.addView(rotulo("Phrases to try (one per line)"))
         val etFrases = entrada("correct horse battery staple\npassword\n…", varias = true)
+        // Cargar una lista de frases desde un archivo (una por línea): un diccionario propio de contraseñas,
+        // frases filtradas, etc. Acotado a las primeras 200.000 líneas para no agotar la memoria.
+        boton("Load phrase list…") {
+            if (bwCorriendo) return@boton
+            elegirArchivo { uri ->
+                Thread {
+                    val txt = try { contentResolver.openInputStream(uri)?.bufferedReader()?.use { br ->
+                        val sb = StringBuilder(); var n = 0
+                        br.lineSequence().forEach { if (n < 200000) { sb.append(it).append('\n'); n++ } }; sb.toString()
+                    } ?: "" } catch (e: Throwable) { "" }
+                    val cuenta = txt.count { it == '\n' }
+                    runOnUiThread {
+                        if (txt.isBlank()) Toast.makeText(this, "Could not read the file", Toast.LENGTH_SHORT).show()
+                        else { etFrases.setText(txt); Toast.makeText(this, "Loaded %,d phrases".format(cuenta), Toast.LENGTH_SHORT).show() }
+                    }
+                }.apply { isDaemon = true; start() }
+            }
+        }
+        // Un puñado de las frases de brainwallet clásicas que se vaciaron: para probar al instante sin escribir.
+        boton("Use the classic weak list") {
+            if (bwCorriendo) return@boton
+            etFrases.setText(FRASES_DEBILES.joinToString("\n"))
+            Toast.makeText(this, "%,d known-weak phrases".format(FRASES_DEBILES.size), Toast.LENGTH_SHORT).show()
+        }
         lateinit var btnVar: Button
         btnVar = boton("Variations: off") {
             if (bwCorriendo) return@boton
