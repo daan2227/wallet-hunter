@@ -203,6 +203,15 @@ class PubkeyToolsActivity : Activity() {
     private fun anotarReciente(t: String) =
         prefs().edit().putString("recientes", (listOf(t) + recientes().filter { it != t }).take(4).joinToString("\n")).apply()
 
+    // Favoritos: títulos marcados con la estrella, que suben arriba del todo de Tools.
+    private fun favoritos(): List<String> = prefs().getString("favoritos", "")!!.split('\n').filter { it.isNotEmpty() }
+    private fun esFav(t: String) = favoritos().contains(t)
+    private fun alternarFav(t: String) {
+        val f = favoritos().toMutableList()
+        if (!f.remove(t)) f.add(t)   // quita si estaba, añade si no
+        prefs().edit().putString("favoritos", f.joinToString("\n")).apply()
+    }
+
     private fun pintarRejilla() {
         rejilla.removeAllViews()
         val q = busqueda.trim().lowercase()
@@ -217,7 +226,9 @@ class PubkeyToolsActivity : Activity() {
             return
         }
         if (catSel == null && q.isEmpty()) {
-            val rec = recientes().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }
+            val fav = favoritos().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }
+            if (fav.isNotEmpty()) { etiqueta("Favorites"); cuadricula(fav) }
+            val rec = recientes().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }.filter { !esFav(it.titulo) }
             if (rec.isNotEmpty()) { etiqueta("Recent"); cuadricula(rec) }
         }
         val grupos = if (catSel != null) listOf(catSel!! to visibles)
@@ -249,11 +260,28 @@ class PubkeyToolsActivity : Activity() {
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) }
         isClickable = true; isFocusable = true; foreground = Ui.toque()
         contentDescription = h.titulo
-        addView(android.widget.FrameLayout(context).apply {
-            background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, context)
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
-            addView(Ui.icon(this@PubkeyToolsActivity, h.icono, 20, AppTheme.TXT_PRI).apply {
-                layoutParams = android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            addView(android.widget.FrameLayout(context).apply {
+                background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, context)
+                layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
+                addView(Ui.icon(this@PubkeyToolsActivity, h.icono, 20, AppTheme.TXT_PRI).apply {
+                    layoutParams = android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+                })
+            })
+            addView(android.view.View(context), LinearLayout.LayoutParams(0, 1, 1f))
+            // La estrella: fija/quita de favoritos sin abrir la herramienta.
+            val fav = esFav(h.titulo)
+            addView(android.widget.FrameLayout(context).apply {
+                layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                isClickable = true; isFocusable = true; foreground = Ui.toque()
+                contentDescription = (if (fav) "Remove " else "Add ") + h.titulo + " to favorites"
+                addView(Ui.icon(this@PubkeyToolsActivity, if (fav) R.drawable.ic_star_filled else R.drawable.ic_star,
+                        20, if (fav) AppTheme.ACCENT else AppTheme.TXT_MUTED).apply {
+                    layoutParams = android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
+                })
+                setOnClickListener { Ui.pulso(this); alternarFav(h.titulo); pintarRejilla() }
             })
         })
         addView(TextView(context).apply {
