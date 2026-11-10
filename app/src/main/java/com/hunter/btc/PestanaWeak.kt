@@ -1472,12 +1472,15 @@ object WeakController {
             bits <= 52 -> 256
             else       -> 1024
         }
-        // Ruta vacía: el motor NO carga ni guarda la tabla en disco. El weak no
-        // reanuda clave a clave (cada una es independiente y rápida), así que
-        // ese I/O por clave era pura sobrecarga.
+        // Ruta normal vacía: no se reanuda clave a clave (cada objetivo es
+        // independiente). Pero sí se comparte una tabla SOLO DE MANSOS por rango:
+        // los mansos (d·G) no dependen del objetivo, así que se acumulan en disco
+        // y se reusan en todas las claves del mismo rango — cada clave nueva choca
+        // antes contra una nube de mansos ya densa. Ver dp_*_mansos en kangaroo.h.
+        val rutaMansos = try { java.io.File(ctx.filesDir, "weak_mansos_$bits.tbl").absolutePath } catch (e: Throwable) { "" }
         val ok = try {
             HunterEngine.kangarooStart(pub, ini.toString(16), fin.toString(16),
-                nucleos, porHilo, "", HunterEngine.topeTablaBits(ctx))
+                nucleos, porHilo, "", HunterEngine.topeTablaBits(ctx), rutaMansos)
         } catch (e: Throwable) { false }
         if (!ok) { indice++; siguiente(); return }
         // El weak arranca Kangaroo de cero por cada clave. Si el modo de segundo

@@ -109,6 +109,50 @@ int main(){
         }
     }
 
+    /* Tabla COMPARTIDA de mansos (auditoría Weak): resolver un objetivo, guardar
+       sólo los mansos, y reusarlos para OTRO objetivo del MISMO rango. La clave
+       del segundo tiene que salir BIEN: si el reuso estuviera mal, saldría otra. */
+    printf("\nReuso de tabla de mansos (28 bits):\n");
+    {
+        unsigned long long a=134217728ULL,b=268435455ULL,k1=200000000ULL,k2=180000000ULL;
+        const char *ruta="/tmp/kg_mansos_test.tbl";
+        remove(ruta);
+        uint8_t pub1[33],pub2[33],ini[32],fin[32];
+        pub_de(k1,pub1); pub_de(k2,pub2); be_from_u64(ini,a); be_from_u64(fin,b);
+        int dbits=8;
+        /* 1) resolver k1 y guardar sus mansos */
+        KangarooCtx c1;
+        if(kg_setup(&c1,pub1,ini,fin,dbits,18)){
+            kg_run(&c1,256,0x111);
+            int ok1=c1.encontrado.load() && u64_from_sc(c1.k)==k1;
+            int gm=dp_save_mansos(&c1.tabla,ruta,ini,fin,dbits);
+            printf("  %s  k1=%llu resuelta, mansos guardados=%d\n", (ok1&&gm)?"OK ":"MAL", k1, gm);
+            f += !ok1; f += !gm;
+            kg_free(&c1);
+        } else { printf("  MAL  setup k1\n"); f++; }
+        /* 2) resolver k2 (otro objetivo) cargando los mansos de k1 */
+        KangarooCtx c2;
+        if(kg_setup(&c2,pub2,ini,fin,dbits,18)){
+            uint64_t nm=dp_load_mansos(&c2.tabla,ruta,ini,fin,dbits);
+            kg_run(&c2,256,0x222);
+            int ok2=c2.encontrado.load() && u64_from_sc(c2.k)==k2 && !c2.k[1] && !c2.k[2] && !c2.k[3];
+            printf("  %s  k2=%llu con mansos reusados (cargados=%llu, %lld saltos)\n",
+                   (ok2&&nm>0)?"OK ":"MAL", k2, (unsigned long long)nm, (long long)c2.saltos.load());
+            f += !ok2; f += (nm==0);
+            kg_free(&c2);
+        } else { printf("  MAL  setup k2\n"); f++; }
+        /* 3) una tabla de OTRO rango no se carga (no corrompe la búsqueda) */
+        KangarooCtx c3;
+        uint8_t ini2[32]; be_from_u64(ini2,a+1);
+        if(kg_setup(&c3,pub2,ini2,fin,dbits,18)){
+            uint64_t nm=dp_load_mansos(&c3.tabla,ruta,ini2,fin,dbits);
+            printf("  %s  rango distinto no se carga (cargados=%llu, debe ser 0)\n", nm==0?"OK ":"MAL", (unsigned long long)nm);
+            f += (nm!=0);
+            kg_free(&c3);
+        } else { printf("  MAL  setup rango distinto\n"); f++; }
+        remove(ruta);
+    }
+
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");
     return f;
 }

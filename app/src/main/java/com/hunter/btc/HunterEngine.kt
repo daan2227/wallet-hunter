@@ -222,9 +222,11 @@ object HunterEngine {
      *   entre esto y lo que pida el tamaño del rango: para un puzzle pequeño no
      *   tiene sentido reservar cientos de megas.
      */
+    // rutaMansos: tabla COMPARTIDA de mansos para auditar muchas claves del mismo rango (Weak).
+    // "" la desactiva (puzzle / resume normal). Ver dp_save_mansos/dp_load_mansos en kangaroo.h.
     external fun kangarooStart(pubHex: String, iniHex: String, finHex: String,
                                hilos: Int, canguresPorHilo: Int,
-                               rutaEstado: String, topeTablaBits: Int): Boolean
+                               rutaEstado: String, topeTablaBits: Int, rutaMansos: String = ""): Boolean
     external fun kangarooStop()
 
 

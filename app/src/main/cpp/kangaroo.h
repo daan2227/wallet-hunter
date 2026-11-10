@@ -583,6 +583,71 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
     return leidas;
 }
 
+/* ---------- Tabla COMPARTIDA solo de MANSOS ----------
+ *
+ * Un manso esta en d*G y su distancia guardada ES su logaritmo (absoluto, no
+ * relativo al objetivo): por eso vale para CUALQUIER objetivo del mismo rango
+ * (lo dice el comentario de la version 4). La auditoria Weak resuelve miles de
+ * claves publicas sobre el MISMO rango [1,2^bits): si cada una rehace los mansos
+ * desde cero, se tira ~N veces ese trabajo. Con esta tabla los mansos se
+ * acumulan en disco y se reusan en todas; cada clave nueva choca antes contra
+ * una nube de mansos ya densa.
+ *
+ * La cabecera NO lleva pubkey (los mansos no dependen del objetivo), solo el
+ * rango y dbits. Un magic distinto evita confundirla con la tabla normal. Solo
+ * se mezclan mansos: dp_insert ya ignora manso-manso, asi que nunca dan una
+ * clave falsa. */
+#define KG_MAGIC_MANSOS 0x534D474BU   /* "KGMS" */
+typedef struct { uint32_t magic, ver; uint8_t ini[32], fin[32]; uint32_t dbits; uint64_t n; } KgCabM;
+
+static int dp_save_mansos(DPTable *t,const char *ruta,const uint8_t *ini,const uint8_t *fin,int dbits){
+    if(!ruta||!ruta[0]) return 0;
+    char tmp[1024]; snprintf(tmp,sizeof(tmp),"%s.tmp",ruta);
+    FILE *f=fopen(tmp,"wb"); if(!f) return 0;
+    pthread_mutex_lock(&t->mtx);
+    uint64_t nm=0;
+    for(uint64_t i=0;i<=t->mask;i++) if(t->slots[i].usado && t->slots[i].manso) nm++;
+    KgCabM c; memset(&c,0,sizeof(c));
+    c.magic=KG_MAGIC_MANSOS; c.ver=kg_negacion?KG_VER_GS:KG_VER_SIN_CENTRAR;
+    c.dbits=(uint32_t)dbits; memcpy(c.ini,ini,32); memcpy(c.fin,fin,32); c.n=nm;
+    int ok=(fwrite(&c,sizeof(c),1,f)==1);
+    uint64_t escritas=0;
+    if(ok) for(uint64_t i=0;i<=t->mask;i++){
+        DP *sl=&t->slots[i];
+        if(!sl->usado || !sl->manso) continue;
+        if(fwrite(sl->kx,8,2,f)!=2){ ok=0; break; }
+        if(fwrite(sl->dist,8,4,f)!=4){ ok=0; break; }
+        escritas++;
+    }
+    pthread_mutex_unlock(&t->mtx);
+    if(ok && fflush(f)!=0) ok=0;
+    if(fclose(f)!=0) ok=0;
+    if(!ok||escritas!=nm){ remove(tmp); return 0; }
+    if(rename(tmp,ruta)!=0){ remove(tmp); return 0; }
+    return 1;
+}
+/* @return cuantos mansos se cargaron, 0 si el fichero no sirve para este rango. */
+static uint64_t dp_load_mansos(DPTable *t,const char *ruta,const uint8_t *ini,const uint8_t *fin,int dbits){
+    if(!ruta||!ruta[0]) return 0;
+    FILE *f=fopen(ruta,"rb"); if(!f) return 0;
+    KgCabM c;
+    if(fread(&c,sizeof(c),1,f)!=1){ fclose(f); return 0; }
+    int es_gs=(c.ver==KG_VER_GS);
+    if(c.magic!=KG_MAGIC_MANSOS || es_gs!=(kg_negacion?1:0) || c.dbits!=(uint32_t)dbits ||
+       memcmp(c.ini,ini,32)!=0 || memcmp(c.fin,fin,32)!=0){ fclose(f); return 0; }
+    uint64_t leidas=0;
+    for(uint64_t i=0;i<c.n;i++){
+        uint64_t kx[2]; sc_t d;
+        if(fread(kx,8,2,f)!=2) break;
+        if(fread(d,8,4,f)!=4) break;
+        sc_t basura; int bm;
+        dp_insert(t,kx,d,1,basura,&bm,NULL);   /* todos mansos (manso=1) */
+        leidas++;
+    }
+    fclose(f);
+    return leidas;
+}
+
 /* Pasa un hex a 32 bytes big-endian, alineado a la derecha.
  *
  * OJO CON LA LONGITUD IMPAR. Un numero en hexadecimal no tiene por que tener un

@@ -3093,6 +3093,7 @@ static KangarooCtx g_kg;
 static bool        g_kg_vivo=false;
 /* Lo que hace falta para volver a guardar sin que Kotlin lo repita. */
 static char        g_kg_ruta[1024]={0};
+static char        g_kg_ruta_mansos[1024]={0};   /* tabla compartida de mansos (auditoría Weak) */
 static uint8_t     g_kg_pub[33], g_kg_ini[32], g_kg_fin[32];
 static int         g_kg_dbits=0;
 /* Operaciones de sesiones anteriores, para que el contador no se reinicie. */
@@ -3172,7 +3173,7 @@ static int hex2bin(const char *h,uint8_t *out,int max){
 extern "C" JNIEXPORT jboolean JNICALL
 Java_com_hunter_btc_HunterEngine_kangarooStart(
         JNIEnv *env, jobject, jstring jpub, jstring jini, jstring jfin,
-        jint hilos, jint por_hilo, jstring jruta, jint tope_tabla_bits){
+        jint hilos, jint por_hilo, jstring jruta, jint tope_tabla_bits, jstring jmansos){
     std::lock_guard<std::mutex> lk(g_kg_mtx);
     if(g_kg_vivo) return JNI_FALSE;
 
@@ -3298,6 +3299,15 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
         uint64_t n=dp_load(&g_kg.tabla,g_kg_ruta,pub,ini,fin,dbits,&ops_ant);
         if(n) g_kg_ops_previas=ops_ant;
     }
+    /* Tabla COMPARTIDA de mansos (Weak): se reusa entre todas las claves del mismo
+       rango. Va aparte de la tabla normal (que aquí está vacía). */
+    memset(g_kg_ruta_mansos,0,sizeof(g_kg_ruta_mansos));
+    if(jmansos){
+        const char *cm=env->GetStringUTFChars(jmansos,0);
+        if(cm){ if(cm[0]) snprintf(g_kg_ruta_mansos,sizeof(g_kg_ruta_mansos),"%s",cm);
+                env->ReleaseStringUTFChars(jmansos,cm); }
+    }
+    if(g_kg_ruta_mansos[0]) dp_load_mansos(&g_kg.tabla,g_kg_ruta_mansos,ini,fin,dbits);
 
     /* La potencia y el tamano de lote los elige el usuario y hasta ahora
        Kangaroo los ignoraba: los hilos iban fijos y el lote a 512. */
@@ -3355,6 +3365,9 @@ Java_com_hunter_btc_HunterEngine_kangarooStop(JNIEnv *, jobject){
     if(g_kg_ruta[0])
         dp_save(&g_kg.tabla,g_kg_ruta,g_kg_pub,g_kg_ini,g_kg_fin,g_kg_dbits,
                 g_kg_ops_previas+(uint64_t)g_kg.saltos.load());
+    /* Guarda la tabla compartida de mansos (Weak), acumulada entre claves. */
+    if(g_kg_ruta_mansos[0])
+        dp_save_mansos(&g_kg.tabla,g_kg_ruta_mansos,g_kg_ini,g_kg_fin,g_kg_dbits);
     kg_free(&g_kg);
     g_kg_vivo=false;
 }
