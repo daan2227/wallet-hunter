@@ -128,6 +128,8 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_eye, "Public-key exposure", "Addresses that already revealed their public key (quantum / privacy)", "quantum exposure pubkey reuse p2tr p2pk") { construirExposicion() }
         reg(A, R.drawable.ic_warning, "Polynonce (nonce recurrence)", "Keys exposed by polynomially-related nonces (incl. half-half)", "polynonce recurrence nonce half-half kudelski") { construirPolynonce() }
         reg(A, R.drawable.ic_warning, "Reused nonce across a wallet", "Scan an xpub or addresses for any repeated signature r", "reused r nonce wallet xpub scan") { construirRscanWallet() }
+        reg(A, R.drawable.ic_warning, "Address poisoning", "Look-alike addresses in your history (same first/last 4)", "address poisoning dust lookalike") { construirEnvenenamiento() }
+        reg(A, R.drawable.ic_warning, "xpub + child key leak", "Why an xpub plus one non-hardened child key exposes the parent", "bip32 xpub child leak non-hardened") { construirFugaXpub() }
         reg(A, R.drawable.ic_eye, "Entropy checker", "How random is a value?", "entropy") { construirEntropia() }
         reg(A, R.drawable.ic_clock, "Brute-force time", "How long to search a range of bits", "difficulty time") { construirDificultad() }
 
@@ -1945,6 +1947,32 @@ class PubkeyToolsActivity : Activity() {
             "that seed as at risk. Generate a NEW phrase (here, or on patched firmware / 50+ dice rolls) and move ALL funds " +
             "to it. Check Coinkite's official advisory for the exact affected versions.")
 
+        root.addView(filaResultado("CryptoJS weak RNG (CVE-2026-71851)",
+            "Wallet apps that built BIP39 phrases with CryptoJS's WordArray.random() before version 4.0.0 got a " +
+            "non-cryptographic generator seeded from Math.random(), so the phrase has far less entropy than it looks. " +
+            "Named affected apps include RRWallet, Bexo, NanChat, Bitcoin Libre and Milo. There is no single honest " +
+            "seed-by-seed sweep (the exact stream depends on the JS engine and the app), so this is guidance.", true))
+        nota(AppTheme.WARN, "What to do: if your phrase was created in one of those apps (or any web/JS wallet of that era), " +
+            "treat it as at risk. Make a NEW phrase here and move ALL funds to it. Updating the app does not fix a phrase " +
+            "already generated.")
+
+        root.addView(filaResultado("Cake Wallet (Electrum seed, insecure Random())",
+            "Some Cake Wallet versions drew the master key from Dart's non-secure Random() instead of a secure " +
+            "generator. Those wallets used Electrum-style seeds (not BIP39) and are at risk of total loss. The " +
+            "researchers gave the vendor a hashed list of weak seeds so the app itself can warn users; there is no " +
+            "public deterministic stream to offer an honest sweep here.", true))
+        nota(AppTheme.TXT_SEC, "What to do: update Cake Wallet and heed its own in-app warning; if in doubt, create a new " +
+            "wallet and move funds. This is guidance, not a scan.")
+
+        root.addView(filaResultado("Trust Wallet iOS 2018 (CVE-2024-23660)",
+            "The 2018 Trust Wallet iOS app misused a trezor-crypto test generator so the device time was effectively the " +
+            "only entropy (~31 bits) — brute-forceable. It was patched in July 2018. We do NOT offer a sweep for it here: " +
+            "the exact byte derivation isn't verified against the primary source, and a sweep with the wrong formula would " +
+            "falsely clear a weak wallet. The honest catch is still the 'Nonce reuse' and 'Weak-key audit' tools on your " +
+            "own transactions.", true))
+        nota(AppTheme.TXT_SEC, "What to do: if you made a wallet in the Trust Wallet iOS app in 2018, treat it as at risk and " +
+            "move funds to a wallet created here. A clean 'Nonce reuse' result does not by itself prove the key is safe.")
+
         nota(AppTheme.TXT_MUTED, "Nothing here leaves the phone. For a full self-check of your seeds and wallets, use " +
             "'Security check' in More → it bundles these warnings with the on-chain nonce and address-reuse checks.")
     }
@@ -3264,6 +3292,185 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tv)
     }
 
+    // ── Fuga xpub + clave hija (BIP32) ─────────────────────────────────────
+    @Volatile private var fugaCorriendo = false
+    private fun privDeTexto(t: String): java.math.BigInteger? {
+        val s = t.trim()
+        if (s.length == 64 && s.all { it in '0'..'9' || it in 'a'..'f' || it in 'A'..'F' })
+            return try { java.math.BigInteger(s, 16) } catch (e: Throwable) { null }
+        val raw = try { Descriptor.b58check(s) } catch (e: Throwable) { null } ?: return null
+        if (raw.size < 33) return null                       // WIF: versión(1) + 32 [+ 0x01]
+        return try { java.math.BigInteger(1, raw.copyOfRange(1, 33)) } catch (e: Throwable) { null }
+    }
+    private fun construirFugaXpub() {
+        desc("A classic BIP32 footgun: an extended PUBLIC key (xpub/ypub/zpub) plus a single NON-hardened " +
+             "child PRIVATE key is enough to recover the PARENT private key — and from it, the whole wallet. " +
+             "This proves it with your own data so you never share an xpub next to a child key. All on-device, " +
+             "no network. (Hardened paths, index ≥ 2³¹, are immune.)")
+        val etX = entrada("parent xpub / ypub / zpub", varias = true)
+        val etK = entrada("one non-hardened child private key (hex or WIF)")
+        root.addView(rotulo("Child index (blank = search 0…5000)"))
+        val etI = EditText(this).apply {
+            hint = "e.g. 0"; inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.mono(context)
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_ELEV, context)
+            setPadding(dp(14), dp(10), dp(14), dp(10))
+            layoutParams = LinearLayout.LayoutParams(dp(120), ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        root.addView(etI)
+        val salida = salidaBox()
+        lateinit var btn: Button
+        btn = boton("Show the leak") {
+            if (fugaCorriendo) { fugaCorriendo = false; return@boton }
+            val xpub = etX.text.toString().trim()
+            val hija = privDeTexto(etK.text.toString())
+            if (Bip32Fuga.parse(xpub) == null) { Toast.makeText(this, "Not a valid xpub/ypub/zpub", Toast.LENGTH_SHORT).show(); return@boton }
+            if (hija == null) { Toast.makeText(this, "Enter a child key (hex or WIF)", Toast.LENGTH_SHORT).show(); return@boton }
+            val idxFijo = etI.text.toString().trim().toIntOrNull()
+            salida.removeAllViews(); fugaCorriendo = true; btn.text = "Stop"
+            salida.addView(TextView(this).apply { text = "Computing…"; textSize = AppTheme.SP_CAPTION
+                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context) })
+            Thread {
+                val pubDe: (String) -> String? = { h -> try { HunterEngine.pubDeHex(h) } catch (e: Throwable) { null } }
+                val res = try {
+                    if (idxFijo != null) {
+                        val (c, p) = Bip32Fuga.parse(xpub)!!
+                        val madre = hija.subtract(Bip32Fuga.tweak(c, p, idxFijo.toLong())).mod(Bip32Fuga.N)
+                        val objetivo = p.joinToString("") { "%02x".format(it) }
+                        val ok = madre.signum() != 0 &&
+                            (try { HunterEngine.pubDeHex(madre.toString(16).padStart(64, '0')) } catch (e: Throwable) { null })?.lowercase() == objetivo
+                        if (ok) idxFijo.toLong() to madre else null
+                    } else Bip32Fuga.recupera(xpub, hija, cancel = { !fugaCorriendo }, pubDe = pubDe)
+                } catch (e: Throwable) { null }
+                runOnUiThread {
+                    val parado = !fugaCorriendo; fugaCorriendo = false; btn.text = "Show the leak"; salida.removeAllViews()
+                    if (res != null) {
+                        val madreHex = res.second.toString(16).padStart(64, '0')
+                        val wif = try { HunterEngine.wifDeHex(madreHex).substringBefore("|") } catch (e: Throwable) { "" }
+                        salida.addView(filaResultado("RECOVERED PARENT PRIVATE KEY (from index ${res.first})",
+                            "priv $madreHex" + (if (wif.isNotEmpty()) "\nWIF  $wif" else ""), true))
+                        salida.addView(filaResultado("Finds vault", guardarEnBaul(madreHex, "BIP32 xpub+child leak")))
+                        salida.addView(TextView(this).apply {
+                            text = "The parent key controls every address under this xpub. Never publish an xpub together with a " +
+                                "non-hardened child private key, and keep account keys on hardened paths."
+                            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                            typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
+                    } else salida.addView(filaResultado(if (parado) "Stopped" else "No match",
+                        if (parado) "Stopped before finding an index." else
+                        "That child key doesn't derive from this xpub on a non-hardened index in range (try the exact index, " +
+                        "or it may be hardened — which is the safe case)."))
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        nota(AppTheme.TXT_MUTED, "Why it works: a non-hardened child is parent + IL, where IL = HMAC-SHA512(chain code, " +
+             "parent pubkey ‖ index). The xpub carries the chain code and the parent pubkey, so IL — and the parent key — " +
+             "are computable without any secret.")
+    }
+
+    // ── Address poisoning (direcciones que imitan a las tuyas) ─────────────
+    @Volatile private var envCorriendo = false
+    private fun construirEnvenenamiento() {
+        desc("Address-poisoning check. An attacker sends you dust from an address crafted to share the first and " +
+             "last characters of one you really use, hoping you later copy theirs from your history. This scans your " +
+             "history and flags look-alikes (same first 4 and last 4 characters, same length) that are NOT yours. " +
+             "Read-only, on-device. Always copy a payment address from the source, never from your history.")
+        val et = entrada("your addresses (one per line) or an xpub/ypub/zpub", varias = true)
+        val tv = TextView(this).apply { text = ""; textSize = AppTheme.SP_CAPTION
+            setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(dp(2), dp(10), 0, 0) }
+        val salida = salidaBox()
+        lateinit var btn: Button
+        btn = boton("Scan history") {
+            if (envCorriendo) { envCorriendo = false; return@boton }
+            val texto = et.text.toString().trim()
+            if (texto.isEmpty()) { Toast.makeText(this, "Enter addresses or an xpub", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.removeAllViews(); envCorriendo = true; btn.text = "Stop"; tv.text = "Resolving addresses…"
+            Thread {
+                val propias = LinkedHashSet<String>()
+                for (lin in texto.split('\n').map { it.trim() }.filter { it.isNotEmpty() }) {
+                    val low = lin.lowercase()
+                    if (low.startsWith("xpub") || low.startsWith("ypub") || low.startsWith("zpub") ||
+                        low.startsWith("vpub") || low.startsWith("upub") || low.startsWith("tpub")) {
+                        val der = try { HunterEngine.xpubDirecciones(lin, 20) } catch (e: Throwable) { "" }
+                        der.trim().split('\n').forEach { l -> val i = l.indexOf('='); if (i > 0) propias.add(l.substring(i + 1).trim()) }
+                    } else propias.add(lin)
+                }
+                fun firma(a: String) = if (a.length >= 8) a.length.toString() + ":" + a.take(4) + a.takeLast(4) else ""
+                val contraparte = HashMap<String, Long>()    // dirección de contraparte vista → sats movidos hacia ella (aprox)
+                var red = true; var di = 0; var txs = 0
+                val unicas = propias.toList()
+                bucle@ for (addr in unicas) {
+                    if (!envCorriendo) break
+                    di++; var paginas = 0; var ultimo = ""
+                    while (envCorriendo && paginas < 3) {
+                        val ruta = "/address/$addr/txs" + (if (ultimo.isEmpty()) "" else "/chain/$ultimo")
+                        val cuerpo = ChainApi.get(ruta) ?: run { if (txs == 0) red = false; null } ?: break
+                        paginas++
+                        val arr = try { org.json.JSONArray(cuerpo) } catch (e: Throwable) { break }
+                        if (arr.length() == 0) break
+                        for (ti in 0 until arr.length()) {
+                            if (!envCorriendo) break@bucle
+                            val tx = arr.optJSONObject(ti) ?: continue; ultimo = tx.optString("txid", "")
+                            val vin = tx.optJSONArray("vin")
+                            if (vin != null) for (i in 0 until vin.length()) {
+                                val pre = vin.optJSONObject(i)?.optJSONObject("prevout") ?: continue
+                                val a = pre.optString("scriptpubkey_address", ""); if (a.isEmpty() || a in propias) continue
+                                contraparte[a] = (contraparte[a] ?: 0L)
+                            }
+                            val vout = tx.optJSONArray("vout")
+                            if (vout != null) for (i in 0 until vout.length()) {
+                                val vo = vout.optJSONObject(i) ?: continue
+                                val a = vo.optString("scriptpubkey_address", ""); if (a.isEmpty() || a in propias) continue
+                                // valor que ESTA salida mueve (si el input era tuyo, es un envío tuyo a 'a')
+                                contraparte[a] = (contraparte[a] ?: 0L) + vo.optLong("value", 0)
+                            }
+                            txs++
+                        }
+                        val d2 = di; val t2 = txs; val n2 = unicas.size
+                        runOnUiThread { if (envCorriendo) tv.text = "Addr $d2/$n2 · $t2 tx · ${contraparte.size} seen" }
+                        if (arr.length() < 25) break
+                    }
+                }
+                // Agrupa TODO (tuyas + contrapartes) por firma: un grupo con ≥2 direcciones distintas es un
+                // choque de look-alike. Marca las que no son tuyas, diciendo a quién imitan (una tuya, o la de más valor).
+                val porFirma = HashMap<String, LinkedHashSet<String>>()
+                for (a in propias) { val f = firma(a); if (f.isNotEmpty()) porFirma.getOrPut(f) { LinkedHashSet() }.add(a) }
+                for ((a, _) in contraparte) { val f = firma(a); if (f.isNotEmpty()) porFirma.getOrPut(f) { LinkedHashSet() }.add(a) }
+                val avisos = ArrayList<Array<String>>()
+                for ((_, grupo) in porFirma) {
+                    if (grupo.size < 2) continue
+                    val propiaEnGrupo = grupo.firstOrNull { it in propias }
+                    for (a in grupo) {
+                        if (a in propias) continue
+                        val gemela = propiaEnGrupo
+                            ?: grupo.firstOrNull { it != a && (contraparte[it] ?: 0L) > (contraparte[a] ?: 0L) }
+                            ?: grupo.first { it != a }
+                        avisos.add(arrayOf(a, gemela, if (gemela in propias) "yours" else "paid"))
+                    }
+                }
+                val parado = !envCorriendo
+                runOnUiThread {
+                    envCorriendo = false; btn.text = "Scan history"; salida.removeAllViews()
+                    if (!red && txs == 0) { tv.text = "No network, or addresses not found."; return@runOnUiThread }
+                    if (avisos.isEmpty()) {
+                        tv.text = if (parado) "Stopped · $txs tx checked" else
+                            "Clean · ${unicas.size} addresses · $txs tx · ${contraparte.size} counterparties · no look-alikes"
+                        return@runOnUiThread
+                    }
+                    tv.text = IconosTexto.en(this@PubkeyToolsActivity, "⚠ ${avisos.size} possible poisoning look-alike(s)")
+                    for (av in avisos) salida.addView(filaResultado("LOOK-ALIKE in your history",
+                        "seen: ${av[0]}\nmimics ${if (av[2] == "yours") "YOUR address" else "an address you paid"}: ${av[1]}\n" +
+                        "Same length and first/last 4 — do NOT copy the first one. Verify the full address.", true))
+                    salida.addView(TextView(this).apply {
+                        text = "These are different addresses dressed to look like yours. Never reuse an address from your history as a " +
+                            "payment destination; get it from the payee each time."
+                        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
+                        typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f); setPadding(dp(2), dp(10), 0, 0) })
+                }
+            }.apply { isDaemon = true; start() }
+        }
+        root.addView(tv)
+    }
+
     private fun construirNonce() {
         desc("If an address signs with the same random k (nonce) twice, its private key " +
              "falls out of the two signatures. Scans a spent address and recovers the key " +
@@ -3401,6 +3608,7 @@ class PubkeyToolsActivity : Activity() {
         bwCorriendo = false; nonceCorriendo = false; vanCorriendo = false; latCorriendo = false
         balCorriendo = false; sweepCorriendo = false; watchCorriendo = false; bcCorriendo = false; bip38Corriendo = false
         expoCorriendo = false; polyCorriendo = false; rscanCorriendo = false
+        fugaCorriendo = false; envCorriendo = false
         super.onDestroy()
     }
 }
