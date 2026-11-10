@@ -41,6 +41,29 @@ int main() {
     { uint8_t obj[16]; milksad::entropia(987654, obj, 16, 1);
       debe(milksad::buscar(obj, 16, 987000, 988000, &cancel, &hechas, 1) == 987654, "buscar modo 1 encuentra la semilla");
       debe(milksad::buscar(obj, 16, 987000, 988000, &cancel, &hechas, 0) == -1, "esa entropia no sale en modo 0"); }
+    /* ── Trust Wallet iOS 2018 (MINSTD_RAND0 crudo, sembrado con la hora) ──
+       Fuente: rand.c de trezor-crypto (commits 2e528be variante A / 009850 variante B): random32()
+       empaqueta cuatro rand() y random_buffer() saca un byte por rand(); rand() = MINSTD_RAND0. */
+    for (uint32_t s : {1u,42u,1000u,1546300800u,2024u}) {
+        std::minstd_rand0 ref(s); milksad::Minstd g; g.seed(s);
+        bool ok = true; for (int i=0;i<10000;i++) if ((uint32_t)ref() != g.next()) { ok=false; break; }
+        debe(ok, "Minstd == std::minstd_rand0 (semilla != 0)");
+    }
+    /* Ancla publicada (milksad test_keys): la semilla 0 da la clave todo-ceros en ambas variantes,
+       que es la frase BIP39 'abandon abandon … about'. */
+    { uint8_t z[16]; uint8_t cero[16] = {0};
+      milksad::entropia_ios(0, z, 16, 0); debe(memcmp(z, cero, 16) == 0, "iOS semilla 0 variante A == todo-ceros");
+      milksad::entropia_ios(0, z, 16, 1); debe(memcmp(z, cero, 16) == 0, "iOS semilla 0 variante B == todo-ceros"); }
+    /* Las variantes A (% 0xFF) y B (& 0xFF) difieren para una hora real. */
+    { uint8_t a[16], b[16]; milksad::entropia_ios(1546300800u, a, 16, 0); milksad::entropia_ios(1546300800u, b, 16, 1);
+      debe(memcmp(a, b, 16) != 0, "iOS variante A y B difieren"); }
+    /* Round-trip: buscar_ios encuentra una hora concreta en su variante y no la cruza. */
+    { uint8_t obj[16]; milksad::entropia_ios(1546300800u, obj, 16, 0);
+      debe(milksad::buscar_ios(obj, 16, 1546295000u, 1546305000u, &cancel, &hechas, 0) == 1546300800, "iOS buscar variante A encuentra la hora");
+      debe(milksad::buscar_ios(obj, 16, 1546295000u, 1546305000u, &cancel, &hechas, 1) == -1, "esa entropia no sale en variante B"); }
+    { uint8_t obj[16]; milksad::entropia_ios(1546300800u, obj, 16, 1);
+      debe(milksad::buscar_ios(obj, 16, 1546295000u, 1546305000u, &cancel, &hechas, 1) == 1546300800, "iOS buscar variante B encuentra la hora"); }
+
     printf(fallos ? "\nHAY FALLOS: %d\n" : "\nTodas las pruebas correctas.\n", fallos);
     return fallos ? 1 : 0;
 }

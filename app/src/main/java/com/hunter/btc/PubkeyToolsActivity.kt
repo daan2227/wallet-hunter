@@ -124,6 +124,7 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_recovery, "Phrase strength", "Red flags of a hand-made phrase", "mnemonic strength") { construirMnemonicStrength() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Milk Sad)", "Did your phrase come from a broken generator?", "milk sad bx") { construirMilkSad() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet 2022)", "Made with the vulnerable browser extension?", "trust wallet") { construirTrustWallet() }
+        reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet iOS 2018)", "Made with the 2018 iOS app (clock-seeded)?", "trust wallet ios 2018 cve-2024-23660") { construirTrustIos() }
         reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008, Coldcard 2021", "randstorm android debian openssl coldcard") { construirLegacyRng() }
         reg(A, R.drawable.ic_eye, "Public-key exposure", "Addresses that already revealed their public key (quantum / privacy)", "quantum exposure pubkey reuse p2tr p2pk") { construirExposicion() }
         reg(A, R.drawable.ic_warning, "Polynonce (nonce recurrence)", "Keys exposed by polynomially-related nonces (incl. half-half)", "polynonce recurrence nonce half-half kudelski") { construirPolynonce() }
@@ -1894,6 +1895,76 @@ class PubkeyToolsActivity : Activity() {
         nota(AppTheme.TXT_MUTED, "This only rules out the Trust Wallet browser-extension generator. It runs on this phone and nothing is sent anywhere.")
     }
 
+    // ── Weak RNG check (Trust Wallet iOS 2018, CVE-2024-23660) ─────────────
+    @Volatile private var iosParar = false
+    private fun construirTrustIos() {
+        desc("Checks whether YOUR 12-word phrase could have come from the Trust Wallet iOS app of 2018 " +
+             "(CVE-2024-23660). That build used trezor-crypto functions meant only for testing, seeded just with " +
+             "the device CLOCK (srand(time)) and a weak MINSTD generator, so the whole key depends on the second " +
+             "it was created and can be rebuilt. It only made 12-word phrases; most affected wallets are from " +
+             "2018–2019. Verified against the real trezor-crypto source (commits 2e528be / 009850). On-device.")
+        val et = entrada("Your 12-word phrase", varias = true)
+        root.addView(rotulo("Creation date window (it was seeded with the clock)"))
+        val etDesde = entrada("From (YYYY-MM-DD)").apply { setText("2016-01-01") }
+        val etHasta = entrada("To (YYYY-MM-DD)").apply { setText("2022-01-01") }
+        val salida = salidaBox()
+        val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        fun diaASeg(t: String): Long? = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd").apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.trim())?.time?.div(1000)
+        } catch (e: Exception) { null }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (msCorriendo) { iosParar = true; HunterEngine.milksadDetener(); return@boton }
+            salida.removeAllViews()
+            val ent = Bip39.entropia(et.text.toString())
+            if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            if (ent.size != 16) {
+                val bits = ent.size * 8
+                salida.addView(filaResultado("Only 12-word phrases", "This bug only produced 12-word phrases (128-bit). A $bits-bit phrase did not come from it."))
+                return@boton
+            }
+            val d = diaASeg(etDesde.text.toString()); val h0 = diaASeg(etHasta.text.toString())
+            if (d == null || h0 == null || h0 <= d) { salida.addView(filaResultado("Bad dates", "Use YYYY-MM-DD, and 'to' after 'from'.")); return@boton }
+            val ini = d.coerceAtLeast(0L); val fin = (h0 + 86400).coerceAtMost(0x100000000L)
+            val hex = ent.joinToString("") { "%02x".format(it) }
+            val hilos = maxOf(1, Runtime.getRuntime().availableProcessors() - 1)
+            var variante = 0; iosParar = false
+            val err = HunterEngine.iosBuscar(hex, ini, fin, hilos, variante)
+            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
+            msCorriendo = true; btn.text = "Stop"
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            h.post(object : Runnable {
+                override fun run() {
+                    val corre = HunterEngine.milksadCorriendo()
+                    val hechas = HunterEngine.milksadHechas(); val total = HunterEngine.milksadTotal().coerceAtLeast(1)
+                    tvProg.text = "Variant ${if (variante == 0) "A" else "B"} · scanned %,d of %,d seconds (%.1f %%)".format(hechas, total, hechas * 100.0 / total)
+                    if (corre) { h.postDelayed(this, 500); return }
+                    val sem = HunterEngine.milksadResultado()
+                    if (sem >= 0) {
+                        msCorriendo = false; btn.text = "Check"
+                        val fecha = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss 'UTC'").apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.format(java.util.Date(sem * 1000))
+                        salida.addView(filaResultado("⚠ VULNERABLE — Trust Wallet iOS 2018",
+                            "Your phrase was generated at $fecha (Unix $sem), variant ${if (variante == 0) "A" else "B"}. Anyone can rebuild its keys.", true))
+                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                        return
+                    }
+                    if (!iosParar && variante == 0) {   // probar la variante B antes de dar "limpio"
+                        variante = 1
+                        val e2 = HunterEngine.iosBuscar(hex, ini, fin, hilos, variante)
+                        if (e2.isEmpty()) { h.postDelayed(this, 300); return }
+                    }
+                    msCorriendo = false; btn.text = "Check"
+                    salida.addView(filaResultado(if (iosParar) "Stopped" else "✓ Not found",
+                        if (iosParar) "Stopped before covering the window." else
+                        "Not produced by the Trust Wallet iOS 2018 generator (variants A and B) in that date window. Widen the dates to be thorough.", true))
+                }
+            })
+        }
+        root.addView(tvProg)
+        nota(AppTheme.TXT_MUTED, "Time-seeded: it sweeps creation seconds in the range, trying both byte variants (A uses rand() mod 255, " +
+             "B uses rand() and 0xFF). Runs on this phone; nothing is sent. A clean result only covers the dates you searched.")
+    }
+
     // ── Legacy weak wallets: Randstorm & the 2013 Android SecureRandom bug ──
     /*
      * Honesto a propósito: NO finge escanear. Estos dos fallos no se pueden
@@ -1965,13 +2036,11 @@ class PubkeyToolsActivity : Activity() {
             "wallet and move funds. This is guidance, not a scan.")
 
         root.addView(filaResultado("Trust Wallet iOS 2018 (CVE-2024-23660)",
-            "The 2018 Trust Wallet iOS app misused a trezor-crypto test generator so the device time was effectively the " +
-            "only entropy (~31 bits) — brute-forceable. It was patched in July 2018. We do NOT offer a sweep for it here: " +
-            "the exact byte derivation isn't verified against the primary source, and a sweep with the wrong formula would " +
-            "falsely clear a weak wallet. The honest catch is still the 'Nonce reuse' and 'Weak-key audit' tools on your " +
-            "own transactions.", true))
-        nota(AppTheme.TXT_SEC, "What to do: if you made a wallet in the Trust Wallet iOS app in 2018, treat it as at risk and " +
-            "move funds to a wallet created here. A clean 'Nonce reuse' result does not by itself prove the key is safe.")
+            "The 2018 Trust Wallet iOS app seeded a weak MINSTD generator with just the device clock (~31 bits). This one " +
+            "IS brute-forceable, so it has its own tool: see 'Weak RNG (Trust Wallet iOS 2018)' in Audit, which sweeps the " +
+            "creation-second window and checks your own 12-word phrase against both byte variants.", true))
+        nota(AppTheme.TXT_SEC, "What to do: if you made a wallet in the Trust Wallet iOS app around 2018, run that audit; if it " +
+            "matches, move funds to a wallet created here now.")
 
         nota(AppTheme.TXT_MUTED, "Nothing here leaves the phone. For a full self-check of your seeds and wallets, use " +
             "'Security check' in More → it bundles these warnings with the on-chain nonce and address-reuse checks.")

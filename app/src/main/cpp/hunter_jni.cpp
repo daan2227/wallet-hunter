@@ -4115,4 +4115,44 @@ Java_com_hunter_btc_HunterEngine_trustEntropia(JNIEnv *env, jobject, jlong jsem,
     return env->NewStringUTF(a_hex(out, n).c_str());
 }
 
+/* ── Trust Wallet iOS 2018 (CVE-2024-23660): MINSTD_RAND0 sembrado con la hora. [jvar] 0=variante A (% 0xFF),
+ * 1=variante B (& 0xFF). [jini,jfin) es una ventana de horas Unix. Reutiliza el MISMO estado global. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_iosBuscar(JNIEnv *env, jobject, jstring jent, jlong jini, jlong jfin, jint jhilos, jint jvar) {
+    if (g_ms_corriendo.load()) return env->NewStringUTF("already running");
+    const char *e = jent ? env->GetStringUTFChars(jent, nullptr) : nullptr;
+    std::string eh = e ? e : ""; if (e) env->ReleaseStringUTFChars(jent, e);
+    std::vector<uint8_t> ent;
+    if (!de_hex(eh, ent) || (ent.size() != 16 && ent.size() != 24 && ent.size() != 32)) return env->NewStringUTF("entropy must be 16/24/32 bytes");
+    uint64_t ini = (uint64_t)jini, fin = (uint64_t)jfin;
+    if (fin > 0x100000000ULL) fin = 0x100000000ULL;
+    if (ini >= fin) return env->NewStringUTF("empty range");
+    int n = jhilos > 0 ? (jhilos < 32 ? jhilos : 32) : 1;
+    int var = (int)jvar;
+    g_ms_cancel.store(false); g_ms_hechas.store(0); g_ms_resultado.store(-1);
+    g_ms_total.store(fin - ini); g_ms_corriendo.store(true);
+    auto objetivo = std::make_shared<std::vector<uint8_t>>(ent);
+    std::thread([objetivo, ini, fin, n, var]{
+        std::vector<std::thread> ts;
+        uint64_t paso = (fin - ini + n - 1) / n;
+        for (int t = 0; t < n; t++) {
+            uint64_t a = ini + (uint64_t)t * paso, b = std::min(fin, a + paso);
+            if (a >= b) break;
+            ts.emplace_back([objetivo, a, b, var]{
+                int64_t r = milksad::buscar_ios(objetivo->data(), (int)objetivo->size(), a, b, &g_ms_cancel, &g_ms_hechas, var);
+                if (r >= 0) { g_ms_resultado.store(r); g_ms_cancel.store(true); }
+            });
+        }
+        for (auto &th : ts) th.join();
+        g_ms_corriendo.store(false);
+    }).detach();
+    return env->NewStringUTF("");
+}
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_iosEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jvar){
+    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
+    uint8_t out[32]; milksad::entropia_ios((uint32_t)jsem, out, n, (int)jvar);
+    return env->NewStringUTF(a_hex(out, n).c_str());
+}
+
 }

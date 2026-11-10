@@ -133,6 +133,11 @@ object HunterEngine {
     external fun trustBuscar(entHex: String, ini: Long, fin: Long, hilos: Int): String
     external fun trustEntropia(semilla: Long, n: Int): String
 
+    // Auditoria Trust Wallet iOS 2018 (CVE-2024-23660): MINSTD_RAND0 sembrado con la hora. variante 0=A (%0xFF),
+    // 1=B (&0xFF). [ini,fin) es una ventana de horas Unix. Comparte el estado con las funciones milksad* de arriba.
+    external fun iosBuscar(entHex: String, ini: Long, fin: Long, hilos: Int, variante: Int): String
+    external fun iosEntropia(semilla: Long, n: Int, variante: Int): String
+
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
      * "ckd", "priv_sum", "sp_send", "xonly", "schnorr", "schnorr_ok", "ecdsa_ok", "ecdh_x".

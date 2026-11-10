@@ -37,7 +37,8 @@ cd "$(dirname "$0")"
 # rutas    - rutas BIP32 estrictas: lo que no es una ruta valida se rechaza
 # destinos - direccion de destino -> script: vectores BIP350, checksum base58
 # constante- cuantas raices de W cuesta Kangaroo, que es LA cifra del motor
-PRUEBAS="campo vectores prim hex persist kang semilla direcciones opreturn frase bip158 cadena p2p almacen bloque sincro difusion coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma"
+# milksad   - el RNG roto de bx/Trust Wallet (MT) y Trust iOS 2018 (MINSTD), contra las implementaciones reales
+PRUEBAS="campo vectores prim hex persist kang semilla direcciones opreturn frase bip158 cadena p2p almacen bloque sincro difusion coste reparto lote constante saltos orden ciclos velocidad resueltos coincidencias pbkdf2 hash160x4 indice9 destinos listabip39 rutas restasuma milksad"
 
 # reparto mide PBKDF2, que lo pone OpenSSL; los demas no lo necesitan.
 flags_de() {
@@ -52,6 +53,7 @@ flags_de() {
         bloque)      echo "-I../../app/src/main/cpp -lcrypto -Wno-deprecated-declarations" ;;
         sincro)      echo "-I../../app/src/main/cpp -lcrypto -Wno-deprecated-declarations" ;;
         difusion)    echo "-I../../app/src/main/cpp -lcrypto -Wno-deprecated-declarations" ;;
+        milksad)     echo "-std=c++17 -I../../app/src/main/cpp -lpthread" ;;
         frase)       echo "-DSHA512_CON_OPENSSL -I../../app/src/main/cpp ../../app/src/main/cpp/sha512.cpp -lcrypto -Wno-deprecated-declarations" ;;
         resueltos)   echo "-lpthread -lcrypto -Wno-deprecated-declarations" ;;
         listabip39)  echo "-lcrypto -Wno-deprecated-declarations" ;;
