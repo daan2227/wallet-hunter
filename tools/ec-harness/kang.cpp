@@ -153,6 +153,42 @@ int main(){
         remove(ruta);
     }
 
+    /* Multiobjetivo: varias claves públicas del MISMO rango resueltas en UNA
+       sola pasada, contra un único rebaño de mansos. Cada clave tiene que salir
+       exacta; si el despacho por objetivo estuviera mal, alguna no saldría. */
+    printf("\nMultiobjetivo: varios objetivos en una pasada (28 bits):\n");
+    {
+        unsigned long long a=134217728ULL,b=268435455ULL;
+        const int M=5;
+        unsigned long long ks[M]={200000000ULL,180000000ULL,150000000ULL,260000000ULL,140000000ULL};
+        uint8_t pubs[33*M], ini[32],fin[32];
+        for(int j=0;j<M;j++) pub_de(ks[j],pubs+33*j);
+        be_from_u64(ini,a); be_from_u64(fin,b);
+        static KangarooCtx c;
+        if(!kg_setup_multi(&c,pubs,M,ini,fin,8,20)){ printf("  MAL  setup_multi\n"); f++; }
+        else{
+            struct Arg{ KangarooCtx*c; uint64_t s; };
+            static Arg args[4]; pthread_t th[4];
+            clock_t t0=clock();
+            for(int i=0;i<4;i++){ args[i].c=&c; args[i].s=0x55AAULL*(i+1);
+                pthread_create(&th[i],NULL,[](void*p)->void*{
+                    Arg*x=(Arg*)p; kg_run(x->c,256,x->s); return NULL; },&args[i]); }
+            for(int i=0;i<4;i++) pthread_join(th[i],NULL);
+            double seg=(double)(clock()-t0)/CLOCKS_PER_SEC;
+            int malas=0;
+            for(int j=0;j<M;j++){
+                int ok=c.encontrado_obj[j].load() && u64_from_sc(c.k_obj[j])==ks[j]
+                       && !c.k_obj[j][1] && !c.k_obj[j][2] && !c.k_obj[j][3];
+                if(!ok){ malas++; printf("    MAL obj %d k=%llu hallada=%llu\n",
+                         j, ks[j], (unsigned long long)u64_from_sc(c.k_obj[j])); }
+            }
+            printf("  %s  %d de %d objetivos en una pasada (%lld saltos, %.1fs cpu)\n",
+                   malas?"MAL":"OK ", M-malas, M, (long long)c.saltos.load(), seg);
+            f+=malas;
+            kg_free(&c);
+        }
+    }
+
     printf("\n%s\n", f?"HAY FALLOS":"TODO CORRECTO");
     return f;
 }

@@ -243,6 +243,7 @@ typedef struct {
     sc_t     dist;
     uint8_t  manso;   /* 1 manso, 0 salvaje */
     uint8_t  usado;
+    uint16_t obj;     /* índice del objetivo (solo salvajes; multiobjetivo). Cabe en el relleno. */
 } DP;
 
 /* El tamano de este struct decide cuanta RAM reserva la tabla, y quien hace esa
@@ -290,8 +291,12 @@ static void dp_free(DPTable *t){
  * gastando su parte del lote sin aportar una sola huella nueva, y sin dejar
  * rastro en ningun contador: la UI seguia sumando saltos igual. Quien lo avisa
  * es la tabla, que es el unico sitio donde se ve que el punto ya estaba. */
-static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
-                     sc_t otro,int *otro_manso,int *mismo){
+/* [obj] es el índice de objetivo del canguro que inserta (solo cuenta para los
+ * salvajes). En una colisión útil, [otro_obj] (puede ser NULL) sale con el
+ * objetivo del DP que ya estaba — así quien resuelve sabe de qué objetivo es la
+ * clave cuando es un manso el que choca contra un salvaje guardado. */
+static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,int obj,
+                     sc_t otro,int *otro_manso,int *otro_obj,int *mismo){
     if(mismo) *mismo=0;
     pthread_mutex_lock(&t->mtx);
     uint64_t h=(kx[0]^(kx[1]*0x9E3779B97F4A7C15ULL))&t->mask;
@@ -305,15 +310,18 @@ static int dp_insert(DPTable *t,const uint64_t *kx,const sc_t dist,int manso,
             if(t->guardados*10 < (t->mask+1)*9){
                 s->kx[0]=kx[0]; s->kx[1]=kx[1];
                 sc_copy(s->dist,dist); s->manso=(uint8_t)manso; s->usado=1;
+                s->obj=(uint16_t)obj;
                 t->guardados++;
             }
             break;
         }
         if(s->kx[0]==kx[0] && s->kx[1]==kx[1]){
             /* Mismo punto. Solo sirve si son de rebanos distintos: dos mansos
-               que se juntan no dicen nada de k. */
+               que se juntan no dicen nada de k. Entre dos salvajes tampoco, ni
+               siquiera de objetivos distintos: relacionaria dos incognitas. */
             if(s->manso!=(uint8_t)manso){
-                sc_copy(otro,s->dist); *otro_manso=s->manso; res=1;
+                sc_copy(otro,s->dist); *otro_manso=s->manso;
+                if(otro_obj) *otro_obj=(int)s->obj; res=1;
             }else{
                 if(mismo) *mismo=1;
             }
@@ -574,8 +582,10 @@ static uint64_t dp_load(DPTable *t,const char *ruta,const uint8_t *pub,
         }
         sc_t basura; int bm;
         /* NULL: aqui no hay canguro al que volver a soltar, se esta leyendo un
-           fichero. Repetido solo significa que ya estaba. */
-        dp_insert(t,kx,d,manso,basura,&bm,NULL);
+           fichero. Repetido solo significa que ya estaba. obj=0: una tabla
+           guardada es de un solo objetivo (resume) o de mansos; el objetivo de
+           los salvajes de otra sesion no sirve aqui. */
+        dp_insert(t,kx,d,manso,0,basura,&bm,NULL,NULL);
         leidas++;
     }
     fclose(f);
@@ -641,7 +651,7 @@ static uint64_t dp_load_mansos(DPTable *t,const char *ruta,const uint8_t *ini,co
         if(fread(kx,8,2,f)!=2) break;
         if(fread(d,8,4,f)!=4) break;
         sc_t basura; int bm;
-        dp_insert(t,kx,d,1,basura,&bm,NULL);   /* todos mansos (manso=1) */
+        dp_insert(t,kx,d,1,0,basura,&bm,NULL,NULL);   /* todos mansos (manso=1) */
         leidas++;
     }
     fclose(f);
@@ -693,6 +703,10 @@ static int kg_hex_a_be32(const char *h, uint8_t *out32){
  * 128 llega hasta rangos de 245 bits, que es mas de lo que hay. Cuesta 12 KB
  * por contexto, uno por movil. */
 #define KG_MAX_JUMPS 128
+/* Cuántos objetivos se pueden auditar a la vez en una pasada (multiobjetivo).
+ * Los salvajes se reparten entre ellos contra un único rebaño de mansos. Weak
+ * trocea su lista en tandas de este tamaño. */
+#define KG_MAX_OBJ 64
 
 /* Como se construye la tabla de saltos. 0 = potencias de dos (lo de siempre),
  * 1 = longitudes al azar sacadas de la clave publica.
@@ -717,10 +731,16 @@ static int kg_politica_saltos = 0;
 
 
 typedef struct {
-    /* Objetivo, ya trasladado a [0,W]: P' = P - a*G */
-    JP       objetivo;
-    fe_t     obj_x, obj_y;   /* el mismo punto en afin, que es como anda el bucle */
+    /* Objetivo(s), ya trasladados a [0,W]: P' = P - a*G. En multiobjetivo hay
+     * hasta KG_MAX_OBJ, todos del MISMO rango (comparten rango_ini, ancho, desp,
+     * saltos y mansos); lo único propio de cada uno es su punto. */
+    JP       objetivo[KG_MAX_OBJ];
+    fe_t     obj_x[KG_MAX_OBJ], obj_y[KG_MAX_OBJ];   /* el mismo punto en afin, que es como anda el bucle */
+    int      n_obj;                       /* 1 = single (idéntico a antes), >1 = multiobjetivo */
     int      objetivo_ok;
+    std::atomic<int> encontrado_obj[KG_MAX_OBJ];  /* 1 cuando ese objetivo ya tiene clave */
+    sc_t     k_obj[KG_MAX_OBJ];           /* la clave de cada objetivo */
+    std::atomic<int> n_encontrados;       /* cuántos objetivos resueltos ya */
     sc_t     rango_ini;      /* a */
     sc_t     ancho;          /* W = b - a */
     int      bits;           /* log2(W), para dimensionar */
@@ -922,18 +942,25 @@ static void kg_normalize(const JP *P,fe_t x,fe_t y){
  * @param ini,fin  extremos del intervalo, big-endian de 32 bytes
  * @return 1 si todo bien, 0 si la clave publica no es valida
  */
-static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
+/* [saltos_rango]: de qué sale la tabla de saltos. 0 = de la clave pública (puzzle:
+ * una tabla guardada se reanuda con la MISMA pubkey, así que cuadra). 1 = del RANGO
+ * (auditoría Weak / multiobjetivo): hace falta que TODOS los objetivos y los mansos
+ * compartidos caminen con los MISMOS saltos, o un manso de una clave no se cruza
+ * nunca con el salvaje de otra y la nube compartida no sirve de nada. */
+static int kg_setup_full(KangarooCtx *c,const uint8_t *pubs33,int n_obj,int saltos_rango,
                     const uint8_t *ini,const uint8_t *fin,int dp_bits,int tabla_bits){
+    if(n_obj<1 || n_obj>KG_MAX_OBJ) return 0;
     /* No se puede memset un struct con std::atomic dentro. */
-    c->objetivo_ok=0; c->njumps=0; c->dbits=0; c->dmask=0;
-    memset(&c->objetivo,0,sizeof(c->objetivo));
+    c->objetivo_ok=0; c->njumps=0; c->dbits=0; c->dmask=0; c->n_obj=n_obj;
+    memset(c->objetivo,0,sizeof(c->objetivo));
     memset(c->jx,0,sizeof(c->jx)); memset(c->jy,0,sizeof(c->jy));
     memset(c->jlen,0,sizeof(c->jlen));
     memset(&c->tabla,0,sizeof(c->tabla));
     sc_zero(c->rango_ini); sc_zero(c->ancho); sc_zero(c->k); c->bits=0;
     sc_zero(c->desp); sc_zero(c->medio); c->negacion=0;
-    fe_t px,py;
-    if(!kg_decompress(pub33,px,py)) return 0;
+    for(int j=0;j<n_obj;j++){ c->encontrado_obj[j].store(0); sc_zero(c->k_obj[j]);
+                              memset(c->obj_x[j],0,32); memset(c->obj_y[j],0,32); }
+    c->n_encontrados.store(0);
 
     sc_from_be32(c->rango_ini,ini);
     sc_t b; sc_from_be32(b,fin);
@@ -949,47 +976,38 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->negacion = kg_negacion ? 1 : 0;
     /* Cuanto se traslada el objetivo, y por tanto cuanto hay que volver a sumar
        al final. Sin mapa de negacion, el inicio del rango: la incognita queda en
-       [0,W]. Con el, el CENTRO del intervalo: queda en [-W/2, W/2], que es lo
-       que permite que identificar d con -d parta el problema por la mitad.
-       a + W/2 no puede desbordar: a cabe de sobra en 161 bits en los puzzles que
-       existen, y aqui hay 256. */
+       [0,W]. Con el, el CENTRO del intervalo: queda en [-W/2, W/2]. Es el MISMO
+       para todos los objetivos (mismo rango). */
     if(c->negacion) sc_add(c->desp,c->rango_ini,c->medio);
     else            sc_copy(c->desp,c->rango_ini);
 
-    /* P'' = P - desp*G, para que la incognita sea pequena y las distancias
-       tambien. */
-    JP P; memcpy(P.x,px,32); memcpy(P.y,py,32); memset(P.z,0,32); P.z[0]=1;
-    int es_cero=1;
-    for(int i=0;i<4;i++) if(c->desp[i]) es_cero=0;
-    if(es_cero){
-        c->objetivo=P;
-    }else{
+    /* -desp*G, una sola vez: cada objetivo es P''_j = P_j - desp*G. */
+    int tiene_desp=0; for(int i=0;i<4;i++) if(c->desp[i]) tiene_desp=1;
+    fe_t ax,ay,nay;
+    if(tiene_desp){
         JP aG; kg_scalar_mul(&aG,c->desp,FIELD_GX,FIELD_GY);
-        fe_t ax,ay; kg_normalize(&aG,ax,ay);
-        fe_t cero,nay; memset(cero,0,32); fe_sub(nay,cero,ay);   /* -desp*G */
-        jp_add_affine(&c->objetivo,&P,ax,nay);
-        /* Si la clave es EXACTAMENTE el punto de traslado, P'' sale el punto en
-           el infinito y el rebano salvaje nace muerto. Pasa una vez entre 2^69,
-           pero devolver "no encontrada" ahi seria mentir: la respuesta es desp. */
-        int inf=1; for(int i=0;i<4;i++) if(c->objetivo.z[i]) inf=0;
-        if(inf){
-            sc_copy(c->k,c->desp);
-            c->objetivo_ok=1;
-            c->dbits=dp_bits; c->dmask=0;
-            if(!dp_init(&c->tabla,4)) return 0;
-            c->encontrado.store(1); c->saltos.store(0); c->pegados.store(0);
-            c->rescatados.store(0);
-            c->escapes.store(0); c->escapes_repe.store(0);
-            c->parar.store(0);
-            c->cpu_limite.store(100);
-            /* Aunque ya este resuelto, kg_run puede llamarse igual y suelta el
-               rebano ANTES de mirar si hay que parar. Si estos campos se quedan
-               sin poner, lee basura: un salvaje_shift negativo sale del array
-               en sc_shr. Salir por la puerta de atras no exime de dejar el
-               struct entero. */
-            c->politica_salida=0; c->salvaje_shift=0; c->soltar_muertos=1;
-            return 1;
+        kg_normalize(&aG,ax,ay);
+        fe_t cero; memset(cero,0,32); fe_sub(nay,cero,ay);
+    }
+    for(int j=0;j<n_obj;j++){
+        fe_t px,py;
+        if(!kg_decompress(pubs33+33*j,px,py)) return 0;
+        JP P; memcpy(P.x,px,32); memcpy(P.y,py,32); memset(P.z,0,32); P.z[0]=1;
+        if(!tiene_desp){
+            c->objetivo[j]=P;
+        }else{
+            jp_add_affine(&c->objetivo[j],&P,ax,nay);
+            /* Si la clave es EXACTAMENTE desp, P'' es el infinito y el rebano
+               salvaje nace muerto: la respuesta es desp. Ese objetivo queda
+               resuelto y no se le sueltan salvajes; los demas siguen. */
+            int inf=1; for(int i=0;i<4;i++) if(c->objetivo[j].z[i]) inf=0;
+            if(inf){
+                sc_copy(c->k_obj[j],c->desp); sc_copy(c->k,c->desp);
+                if(c->encontrado_obj[j].exchange(1)==0) c->n_encontrados.fetch_add(1);
+                continue;   /* obj_x/obj_y quedan a cero: nadie los mira */
+            }
         }
+        kg_normalize(&c->objetivo[j],c->obj_x[j],c->obj_y[j]);
     }
     c->objetivo_ok=1;
 
@@ -1033,7 +1051,9 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         c->njumps=n;
         c->nesc=KG_MAX_JUMPS-n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
-        for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
+        if(saltos_rango){ for(int i=0;i<4;i++) s=s*0x100000001B3ULL ^ c->ancho[i];
+                          s=s*0x100000001B3ULL ^ (uint64_t)dp_bits; }
+        else            { for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pubs33[i]; }
         /* +11 y no +8: barrido con un banco de 2.400 claves (28-30 bits,
            dbits 5), saltos 8 veces mas largos bajan el coste de 1,47 a 1,43
            raices de W: el paseo se pisa todavia menos. Mas no mejora. */
@@ -1064,7 +1084,9 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
         int n=32; if(n>KG_MAX_JUMPS-1) n=KG_MAX_JUMPS-1;
         c->njumps=n;
         uint64_t s=0xA5A5A5A5DEADBEEFULL;
-        for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pub33[i];
+        if(saltos_rango){ for(int i=0;i<4;i++) s=s*0x100000001B3ULL ^ c->ancho[i];
+                          s=s*0x100000001B3ULL ^ (uint64_t)dp_bits; }
+        else            { for(int i=0;i<33;i++) s=s*0x100000001B3ULL ^ (uint64_t)pubs33[i]; }
         int lb=c->bits/2; if(lb<2) lb=2; if(lb>250) lb=250;
         for(int i=0;i<n;i++){
             sc_zero(c->jlen[i]);
@@ -1146,7 +1168,9 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
 
     c->dbits=dp_bits; c->dmask=(dp_bits>=64)?~0ULL:((1ULL<<dp_bits)-1);
     if(!dp_init(&c->tabla,tabla_bits)) return 0;
-    c->encontrado.store(0);
+    /* Si TODOS los objetivos ya salieron resueltos en la construcción (nace
+       muerto), kg_run no tiene nada que hacer. */
+    c->encontrado.store(c->n_encontrados.load()>=c->n_obj ? 1 : 0);
     c->saltos.store(0);
     c->pegados.store(0);
     c->rescatados.store(0);
@@ -1156,8 +1180,20 @@ static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
     c->politica_salida=2;
     c->salvaje_shift=3;
     c->soltar_muertos=1;
-    kg_normalize(&c->objetivo,c->obj_x,c->obj_y);
     return 1;
+}
+
+/* Un solo objetivo con la tabla de saltos sacada de SU clave pública: el puzzle,
+ * reanudable con la tabla guardada. Idéntico al comportamiento anterior. */
+static int kg_setup(KangarooCtx *c,const uint8_t *pub33,
+                    const uint8_t *ini,const uint8_t *fin,int dp_bits,int tabla_bits){
+    return kg_setup_full(c,pub33,1,0,ini,fin,dp_bits,tabla_bits);
+}
+/* Varios objetivos del MISMO rango con saltos sacados del rango (auditoría Weak).
+ * pubs33 son n_obj claves públicas comprimidas pegadas (33 bytes cada una). */
+static int kg_setup_multi(KangarooCtx *c,const uint8_t *pubs33,int n_obj,
+                          const uint8_t *ini,const uint8_t *fin,int dp_bits,int tabla_bits){
+    return kg_setup_full(c,pubs33,n_obj,1,ini,fin,dp_bits,tabla_bits);
 }
 
 static void kg_free(KangarooCtx *c){ dp_free(&c->tabla); }
@@ -1186,30 +1222,38 @@ static void kg_free(KangarooCtx *c){ dp_free(&c->tabla); }
  *   - la clave resultante tiene que caer dentro de [a,b]. Esto si los
  *     distingue, y es lo que descarta las restas que se fueron en negativo.
  */
-static int kg_resolver_uno(KangarooCtx *c,const sc_t kp){
+static int kg_resolver_uno(KangarooCtx *c,const sc_t kp,int obj){
     JP chk; kg_scalar_mul(&chk,kp,FIELD_GX,FIELD_GY);
     int inf=1; for(int z=0;z<4;z++) if(chk.z[z]) inf=0;
     if(inf) return 0;
     fe_t cx,cy; kg_normalize(&chk,cx,cy);
-    if(memcmp(cx,c->obj_x,32)!=0 || memcmp(cy,c->obj_y,32)!=0) return 0;
+    if(memcmp(cx,c->obj_x[obj],32)!=0 || memcmp(cy,c->obj_y[obj],32)!=0) return 0;
     sc_t kfinal; sc_add_n(kfinal,kp,c->desp);
     sc_t rel;
     if(!sc_sub(rel,kfinal,c->rango_ini)) return 0;   /* por debajo de a */
     if(sc_cmp(rel,c->ancho)>0) return 0;             /* por encima de b */
-    sc_copy(c->k,kfinal);
-    c->encontrado.store(1);
+    /* La clave es la misma la calcule quien la calcule: escribirla dos veces (si
+       dos hilos resuelven el mismo objetivo a la vez) no hace daño. El contador
+       sí se protege con un CAS para no pasarse de n_obj y cantar el final antes
+       de tiempo. */
+    sc_copy(c->k_obj[obj],kfinal);
+    sc_copy(c->k,kfinal);                            /* compat single: última clave hallada */
+    int esperado=0;
+    if(c->encontrado_obj[obj].compare_exchange_strong(esperado,1)){
+        if(c->n_encontrados.fetch_add(1)+1 >= c->n_obj) c->encontrado.store(1);
+    }
     return 1;
 }
 
 static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
-                       const sc_t d_otro){
+                       const sc_t d_otro,int obj){
     sc_t manso,salvaje;
     if(manso_mio){ sc_copy(manso,d_mio); sc_copy(salvaje,d_otro); }
     else         { sc_copy(manso,d_otro); sc_copy(salvaje,d_mio); }
 
     sc_t kp;
     sc_sub_n(kp,manso,salvaje);
-    if(kg_resolver_uno(c,kp)) return 1;
+    if(kg_resolver_uno(c,kp,obj)) return 1;
 
     /* Con mapa de negacion, ninguno de los dos guarda si esta en su punto o en
      * el opuesto: no hace falta. El manso esta en e_m*d_m*G y el salvaje en
@@ -1224,7 +1268,7 @@ static int kg_resolver(KangarooCtx *c,const sc_t d_mio,int manso_mio,
     if(c->negacion){
         sc_t nm; sc_neg_n(nm,manso);
         sc_sub_n(kp,nm,salvaje);
-        if(kg_resolver_uno(c,kp)) return 1;
+        if(kg_resolver_uno(c,kp,obj)) return 1;
     }
     return 0;
 }
@@ -1298,6 +1342,7 @@ typedef struct {
     fe_t x, y;
     sc_t dist;
     int  manso;
+    int  obj;     /* índice de objetivo del salvaje (multiobjetivo); 0 para mansos */
     /* ---- Solo con mapa de negacion ----
      *
      * La invariante deja de ser "el canguro esta en base + dist*G" y pasa a ser
@@ -1494,9 +1539,9 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
         std::vector<uint8_t> ok(KG_RESERVA);
         auto punto=[&](const sc_t d,JP *R)->int{
             int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
-            if(cero){ if(manso) return 0; *R=c->objetivo; return 1; }
+            if(cero){ if(manso) return 0; *R=c->objetivo[0]; return 1; }   /* reserva de salvajes: solo con 1 objetivo */
             JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
-            if(!manso){ fe_t ax,ay; kg_normalize(&dG,ax,ay); jp_add_affine(R,&c->objetivo,ax,ay); }
+            if(!manso){ fe_t ax,ay; kg_normalize(&dG,ax,ay); jp_add_affine(R,&c->objetivo[0],ax,ay); }
             else *R=dG;
             int inf=1; for(int j=0;j<4;j++) if(R->z[j]) inf=0;
             return !inf;
@@ -1532,10 +1577,26 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
     };
 
     auto soltar=[&](int i,int manso){
+        /* Multiobjetivo: cada salvaje lleva un objetivo. Si el suyo ya salió,
+           pasa al siguiente sin resolver; si no queda ninguno, ayuda de manso. */
+        if(!manso && c->n_obj>1){
+            int t=K[i].obj; if(t<0||t>=c->n_obj) t=0;
+            if(c->encontrado_obj[t].load()){
+                int nuevo=-1;
+                for(int s=1;s<=c->n_obj;s++){ int cand=(t+s)%c->n_obj;
+                    if(!c->encontrado_obj[cand].load()){ nuevo=cand; break; } }
+                if(nuevo<0) manso=1; else t=nuevo;
+            }
+            K[i].obj=t;
+        }
         sc_t d; sc_zero(d);
         if(c->negacion){
+            /* La reserva batcheada de salvajes cuelga de UN objetivo: solo se usa
+               con uno. Con varios, el salvaje sale por el camino escalar de abajo
+               (los mansos sí usan su reserva siempre: no dependen del objetivo). */
+            int usa_reserva = manso || c->n_obj==1;
             Reserva &r=reserva[manso?1:0];
-            if(r.n>0 || rellenar(manso)){
+            if(usa_reserva && (r.n>0 || rellenar(manso))){
                 r.n--;
                 K[i].manso=manso;
                 memcpy(K[i].dist,&r.d[4*r.n],32);
@@ -1612,9 +1673,10 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             kg_normalize(&dG,K[i].x,K[i].y);           /* manso: sale de d*G */
         }else{
             fe_t dx,dy; kg_normalize(&dG,dx,dy);
-            JP w2; jp_add_affine(&w2,&c->objetivo,dx,dy);  /* salvaje: P'' + d*G */
+            int ob=K[i].obj;                                /* su objetivo (0 si single) */
+            JP w2; jp_add_affine(&w2,&c->objetivo[ob],dx,dy);  /* salvaje: P''_obj + d*G */
             int inf=1; for(int j=0;j<4;j++) if(w2.z[j]) inf=0;
-            if(inf){ memcpy(K[i].x,c->obj_x,32); memcpy(K[i].y,c->obj_y,32); sc_zero(K[i].dist); }
+            if(inf){ memcpy(K[i].x,c->obj_x[ob],32); memcpy(K[i].y,c->obj_y[ob],32); sc_zero(K[i].dist); }
             else kg_normalize(&w2,K[i].x,K[i].y);
         }
         /* Salir ya canonizado. Si no, el primer paso lo haria y el canguro
@@ -1624,7 +1686,9 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             K[i].eps=-1;
         }
     };
-    for(int i=0;i<n_kang;i++) soltar(i,i&1);   /* mitad mansos, mitad salvajes */
+    /* Mitad mansos (i impar), mitad salvajes (i par). Los salvajes se reparten
+       entre los objetivos: salvaje i/2 → objetivo (i/2) % n_obj. */
+    for(int i=0;i<n_kang;i++){ K[i].obj=(c->n_obj>1)?((i>>1)%c->n_obj):0; soltar(i,i&1); }
 
     while(!c->parar.load() && !c->encontrado.load()){
         auto t_ini=std::chrono::steady_clock::now();
@@ -1724,10 +1788,12 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
 
             if((K[i].x[0]&c->dmask)==0){
                 K[i].pasos_sin_dp=0;
-                sc_t otro; int otro_manso, mismo=0;
-                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,
-                             otro,&otro_manso,&mismo))
-                    kg_resolver(c,K[i].dist,K[i].manso,otro);
+                sc_t otro; int otro_manso, otro_obj=0, mismo=0;
+                if(dp_insert(&c->tabla,K[i].x,K[i].dist,K[i].manso,K[i].obj,
+                             otro,&otro_manso,&otro_obj,&mismo))
+                    /* Si soy manso, el objetivo de la clave es el del salvaje que ya
+                       estaba (otro_obj); si soy salvaje, el mío. */
+                    kg_resolver(c,K[i].dist,K[i].manso,otro, K[i].manso?otro_obj:K[i].obj);
                 /* Gaudry-Schost: el camino acaba en su distinguido y se
                    empieza otro desde un sitio nuevo. */
                 if(c->negacion){ soltar(i,K[i].manso); continue; }

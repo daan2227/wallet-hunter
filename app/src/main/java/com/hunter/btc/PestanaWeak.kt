@@ -1281,6 +1281,7 @@ object WeakController {
 
     private fun resetContadores(desdeIndice: Int = 0, desdeHallados: Int = 0) {
         indice = desdeIndice; hallados = desdeHallados; corriendo = true
+        streamTermino = false; guardadasLote.clear()
         conPubkey.set(0); sinPubkey.set(0); fallosRed.set(0)
         noResueltas.clear(); sinClave.clear()
         inicioMs = System.currentTimeMillis()
@@ -1417,83 +1418,93 @@ object WeakController {
         // Se procesan como mucho unos cuantos saltos por llamada y luego se cede
         // el hilo de pantalla (h.post): si no, con un fichero lleno de líneas que
         // no dan clave el bucle no soltaba nunca el hilo y la app se congelaba.
+        // Fin del streaming: una tanda anterior vio el centinela FIN. Se procesó
+        // esa tanda; ahora sí se termina.
+        if (streamMode && streamTermino && colaStream.isEmpty()) {
+            parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return
+        }
+        // Reúne una TANDA de hasta WEAK_MULTI pubkeys y las audita a la vez
+        // (kangaroo multiobjetivo). 'consumidas' cuenta también las líneas vacías,
+        // para avanzar el índice en el mismo tramo.
         var procesados = 0
-        while (true) {
-            if (!streamMode && indice >= claves.size) {   // fin de la lista
-                parar("Done: ${claves.size} key(s) checked.", terminado = true); return
-            }
-            val pub: String? = if (streamMode) colaStream.poll() else resueltas[indice]
+        val chunk = ArrayList<String>(WEAK_MULTI)
+        var consumidas = 0
+        while (chunk.size < WEAK_MULTI) {
+            if (!streamMode && indice + consumidas >= claves.size) break
+            val pub: String? = if (streamMode) colaStream.poll() else resueltas[indice + consumidas]
             if (pub == null) {
-                // En streaming, si el productor ya terminó y la cola está vacía,
-                // hemos acabado; si no, es que va por detrás: reintentar.
+                if (chunk.isNotEmpty()) break   // lanzar lo reunido; el resto, en la próxima
                 if (streamMode && !productorVivo.get() && colaStream.isEmpty()) {
                     parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return
                 }
                 val msg = if (streamMode) "Streaming from disk… ${"%,d".format(indice)} checked"
                           else "Key ${indice + 1}/${claves.size}: looking up its public key…"
-                aviso(msg + desglose() +
-                      (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
+                aviso(msg + desglose() + (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
                 tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                 h.postDelayed({ recoger() }, if (streamMode) 40 else 80)
                 return
             }
-            if (streamMode && pub == FIN) { parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return }
+            if (streamMode && pub == FIN) {
+                if (chunk.isEmpty()) { parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return }
+                streamTermino = true; break   // procesar la tanda; terminar en la próxima vuelta
+            }
+            consumidas++
             if (pub.isEmpty()) {   // esta línea no da clave: saltar
-                indice++
-                if (++procesados >= 512) {   // ceder el hilo y continuar
-                    tvKeys?.text = cuentaTexto()
-                    actualizarBarra()
+                if (++procesados >= 512 && chunk.isEmpty()) {   // solo vacías: ceder el hilo y seguir
+                    indice += consumidas
+                    tvKeys?.text = cuentaTexto(); actualizarBarra()
                     tvTime?.text = reloj((System.currentTimeMillis() - inicioMs) / 1000)
                     h.post { recoger() }; return
                 }
                 continue
             }
-            tvKeys?.text = cuentaTexto()
-            actualizarBarra()
-            lanzar(pub)
-            return
+            chunk.add(pub)
         }
+        if (chunk.isEmpty()) {
+            indice += consumidas
+            if (!streamMode && indice >= claves.size) { parar("Done: ${claves.size} key(s) checked.", terminado = true); return }
+            h.post { recoger() }; return
+        }
+        tvKeys?.text = cuentaTexto()
+        actualizarBarra()
+        lanzarMulti(chunk, consumidas)
     }
 
-    private fun lanzar(pub: String) {
+    // Kangaroo MULTIOBJETIVO: se auditan hasta WEAK_MULTI pubkeys del mismo rango en
+    // una sola pasada, contra un rebaño de mansos compartido. Resolver M objetivos
+    // cuesta ~√(M·W) en vez de M·√W: los mansos (la parte cara) se comparten.
+    private val WEAK_MULTI = 16
+    private var loteConsumidas = 0            // cuántos índices gasta la tanda en curso
+    private var lotePubs: List<String> = emptyList()
+    private val guardadasLote = HashSet<String>()   // claves de esta tanda ya guardadas (reintento de baúl)
+    @Volatile private var streamTermino = false
+
+    private fun lanzarMulti(pubs: List<String>, consumidas: Int) {
         val ctx = appCtx ?: return
+        loteConsumidas = consumidas; lotePubs = pubs; guardadasLote.clear()
         val fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
         val ini = BigInteger.ONE
         try { if (HunterEngine.kangarooRunning()) HunterEngine.kangarooStop() } catch (e: Throwable) {}
         val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
-        // Canguros por hilo según el rango: cada canguro cuesta una
-        // multiplicación EC de arranque (~75 µs). En rangos pequeños la búsqueda
-        // es cortísima, así que 1024 (≈8192 canguros) hacía que el arranque
-        // costara más que la búsqueda entera. Se escala al rango (el motor
-        // clampa a ≥16). Menos canguros también mejoran la detección de colisión.
         val porHilo = when {
             bits <= 36 -> 16
             bits <= 44 -> 64
             bits <= 52 -> 256
             else       -> 1024
         }
-        // Ruta normal vacía: no se reanuda clave a clave (cada objetivo es
-        // independiente). Pero sí se comparte una tabla SOLO DE MANSOS por rango:
-        // los mansos (d·G) no dependen del objetivo, así que se acumulan en disco
-        // y se reusan en todas las claves del mismo rango — cada clave nueva choca
-        // antes contra una nube de mansos ya densa. Ver dp_*_mansos en kangaroo.h.
+        // Tabla de mansos compartida por rango (saltos del rango, no de la pubkey):
+        // es lo que hace que los objetivos y los mansos caminen igual y se crucen.
         val rutaMansos = try { java.io.File(ctx.filesDir, "weak_mansos_$bits.tbl").absolutePath } catch (e: Throwable) { "" }
-        val ok = try {
-            HunterEngine.kangarooStart(pub, ini.toString(16), fin.toString(16),
-                nucleos, porHilo, "", HunterEngine.topeTablaBits(ctx), rutaMansos)
-        } catch (e: Throwable) { false }
-        if (!ok) { indice++; siguiente(); return }
-        // El weak arranca Kangaroo de cero por cada clave. Si el modo de segundo
-        // plano está puesto (o el calor ya está recortando), se aplica el techo
-        // de CPU en el acto; si no, se deja al ritmo normal.
+        val err = try {
+            HunterEngine.kangarooMultiStart(pubs.joinToString("\n"), ini.toString(16), fin.toString(16),
+                nucleos, porHilo, HunterEngine.topeTablaBits(ctx), rutaMansos)
+        } catch (e: Throwable) { "engine" }
+        if (err.isNotEmpty()) { indice += consumidas; siguiente(); return }
         if (Termico.ahorro || Termico.limitando)
             try { HunterEngine.kangarooSetCpu(Termico.efectivo().coerceAtLeast(1)) } catch (e: Throwable) {}
-        presuActual = presupuesto * Math.sqrt(Math.pow(2.0, bits.toDouble()))
+        // Presupuesto de la tanda: ~√M veces el de una clave sola.
+        presuActual = presupuesto * Math.sqrt(pubs.size.toDouble()) * Math.sqrt(Math.pow(2.0, bits.toDouble()))
         claveInicioMs = System.currentTimeMillis()
-        // Ritmo de sondeo adaptado a lo que se espera que tarde la clave: en
-        // rangos bajos termina en milisegundos, así que un tick fijo de 1 s
-        // hacía que cada clave costara 1 s (y el lote, horas). ~4 sondeos por
-        // clave, entre 50 ms y 1 s.
         intervaloTick = ((presuActual / ritmoDisp) * 250.0).toLong().coerceIn(50L, 1000L)
         programarTick()
     }
@@ -1515,49 +1526,34 @@ object WeakController {
                 return
             }
         }
-        var clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
         val ops = try { HunterEngine.kangarooOps().toDouble() } catch (e: Throwable) { 0.0 }
-        if (clave.length == 64) {
-            // Si no cabe en el baúl, el motor sigue con la clave y se reintenta: parar la perdería.
-            if (!guardar(clave)) { programarTick(); return }   // reintento: el motor sigue con la clave
-            hallados++
-            opsPrevias += ops
-            try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-            refresco(0.0, 100)
-            indice++; siguiente(); return
-        }
+        val corre = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
         val segClave = (System.currentTimeMillis() - claveInicioMs) / 1000.0
         val topeAlcanzado = topeSeg > 0 && segClave >= topeSeg
-        val corre = try { HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
-        if (!corre) {
-            // Se leyó el resultado ANTES de ver que había parado: si la clave salió
-            // justo entre las dos lecturas, se daba por "no encontrada". Se mira otra vez.
-            clave = try { HunterEngine.kangarooResult() } catch (e: Throwable) { "" }
-            if (clave.length == 64) {
-                if (!guardar(clave)) { programarTick(); return }
-                hallados++
-                opsPrevias += ops
-                try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-                refresco(0.0, 100)
-                indice++; siguiente(); return
-            }
-        }
+        // Fin de la tanda: todos resueltos (corre == false), o se agotó el
+        // presupuesto o el tope de tiempo. kangarooMultiResult sigue valiendo tras
+        // parar: los resultados viven en el motor hasta el siguiente arranque.
         if (!corre || ops >= presuActual || topeAlcanzado) {
-            // Refresca ANTES de pasar: en claves rápidas (rango bajo) el
-            // presupuesto se agota en el primer sondeo y sin esto la tarjeta se
-            // quedaba en 0 aunque el motor sí estuviera trabajando.
+            val res = try { HunterEngine.kangarooMultiResult() } catch (e: Throwable) { "" }
+            var fallo = false
+            for (ln in res.split('\n')) {
+                val t = ln.indexOf('\t'); if (t <= 0) continue
+                val priv = ln.substring(t + 1).trim()
+                if (priv.length != 64 || priv in guardadasLote) continue
+                // Si el baúl no admite la clave aún, el motor la conserva y se reintenta: parar la perdería.
+                if (guardar(priv)) { guardadasLote.add(priv); hallados++ } else fallo = true
+            }
+            if (fallo) { programarTick(); return }
             refresco(ops, 100)
             opsPrevias += ops
             try { HunterEngine.kangarooStop() } catch (e: Throwable) {}
-            indice++; siguiente(); return
+            indice += loteConsumidas
+            siguiente(); return
         }
         val pct = if (presuActual > 0) (100 * ops / presuActual).toInt() else 0
         refresco(ops, pct)
-        // Clave nº y % del presupuesto ya están en las filas de arriba ("Keys · found", "Key
-        // budget"): aquí sólo lo que no sale en otro sitio. Repetirlos daba dos cifras distintas
-        // a la vez (se refrescaban en momentos distintos).
-        aviso("$bits-bit range" +
-              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s on this key" else "") + desglose() +
+        aviso("$bits-bit range · ${lotePubs.size} keys in this pass" +
+              (if (topeSeg > 0) " · ${segClave.toInt()}/${topeSeg.toInt()} s" else "") + desglose() +
               (if (hallados > 0) "\n$hallados weak key(s) found so far" else ""))
         programarTick()
     }

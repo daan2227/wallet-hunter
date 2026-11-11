@@ -3094,6 +3094,7 @@ static bool        g_kg_vivo=false;
 /* Lo que hace falta para volver a guardar sin que Kotlin lo repita. */
 static char        g_kg_ruta[1024]={0};
 static char        g_kg_ruta_mansos[1024]={0};   /* tabla compartida de mansos (auditoría Weak) */
+static std::vector<std::string> g_kg_multi_pub_hex;  /* pub hex por índice de objetivo (multiobjetivo) */
 static uint8_t     g_kg_pub[33], g_kg_ini[32], g_kg_fin[32];
 static int         g_kg_dbits=0;
 /* Operaciones de sesiones anteriores, para que el contador no se reinicie. */
@@ -3717,6 +3718,85 @@ Java_com_hunter_btc_HunterEngine_kangarooResult(JNIEnv *env, jobject){
     for(int i=0;i<32;i++) sprintf(hex+i*2,"%02x",be[i]);
     hex[64]=0;
     return env->NewStringUTF(hex);
+}
+
+/* ── Kangaroo MULTIOBJETIVO (auditoría Weak) ───────────────────────────────
+ * Varias pubkeys del MISMO rango en una pasada, contra un único rebaño de mansos.
+ * [jpubs] = pubkeys hex de 66 separadas por '\n' (hasta KG_MAX_OBJ). Saltos del
+ * rango y tabla de mansos compartida (ambos imprescindibles para que los objetivos
+ * y los mansos caminen igual y se crucen). Solo CPU: la GPU es de un objetivo.
+ * Reutiliza el estado y las funciones de parada/estado (kangarooStop/Ops/Running). */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooMultiStart(
+        JNIEnv *env, jobject, jstring jpubs, jstring jini, jstring jfin,
+        jint hilos, jint por_hilo, jint tope_tabla_bits, jstring jmansos){
+    std::lock_guard<std::mutex> lk(g_kg_mtx);
+    if(g_kg_vivo) return env->NewStringUTF("already running");
+    std::vector<uint8_t> pubs; g_kg_multi_pub_hex.clear();
+    { const char *cp=jpubs?env->GetStringUTFChars(jpubs,0):nullptr;
+      std::string s=cp?cp:""; if(cp) env->ReleaseStringUTFChars(jpubs,cp);
+      size_t p=0;
+      while(p<=s.size() && (int)g_kg_multi_pub_hex.size()<KG_MAX_OBJ){
+        size_t nl=s.find('\n',p);
+        std::string line=s.substr(p, nl==std::string::npos?std::string::npos:nl-p);
+        size_t b=line.find_first_not_of(" \t\r"); size_t e=line.find_last_not_of(" \t\r");
+        if(b!=std::string::npos) line=line.substr(b,e-b+1); else line.clear();
+        if(line.size()==66){ uint8_t pb[33]; if(hex2bin(line.c_str(),pb,33)==33){
+            pubs.insert(pubs.end(),pb,pb+33); g_kg_multi_pub_hex.push_back(line); } }
+        if(nl==std::string::npos) break; p=nl+1;
+      }
+    }
+    int n_obj=(int)g_kg_multi_pub_hex.size();
+    if(n_obj<1) return env->NewStringUTF("no valid pubkeys");
+    const char *ci=jini?env->GetStringUTFChars(jini,0):nullptr;
+    const char *cf=jfin?env->GetStringUTFChars(jfin,0):nullptr;
+    uint8_t ini[32],fin[32]; memset(ini,0,32); memset(fin,0,32);
+    bool oki=ci&&kg_hex_a_be32(ci,ini), okf=cf&&kg_hex_a_be32(cf,fin);
+    if(ci) env->ReleaseStringUTFChars(jini,ci);
+    if(cf) env->ReleaseStringUTFChars(jfin,cf);
+    if(!oki||!okf) return env->NewStringUTF("bad range");
+    int bits=0;
+    for(int i=0;i<32;i++){ uint8_t v=fin[i]; if(v){ bits=(31-i)*8; for(int b2=7;b2>=0;b2--) if(v&(1<<b2)){ bits+=b2+1; break; } break; } }
+    if(bits<8) return env->NewStringUTF("range too small");
+    { sc_t a,b,w; sc_from_be32(a,ini); sc_from_be32(b,fin); if(!sc_sub(w,b,a)) return env->NewStringUTF("From>To");
+      int bw=sc_bits(w)+1; if(bw<bits) bits=bw<8?8:bw; }
+    int dbits=bits/4+4; { int lim=bits/2-4-14; if(dbits>lim) dbits=lim; } if(dbits<6) dbits=6; if(dbits>28) dbits=28;
+    if(tope_tabla_bits<14) tope_tabla_bits=14; if(tope_tabla_bits>24) tope_tabla_bits=24;
+    int tbits=bits/2+2-dbits; if(tbits<14) tbits=14;
+    if(tbits>tope_tabla_bits){ tbits=tope_tabla_bits; int minimo=bits/2+2-tope_tabla_bits; if(dbits<minimo) dbits=minimo>28?28:minimo; }
+    if(!kg_setup_multi(&g_kg,pubs.data(),n_obj,ini,fin,dbits,tbits)) return env->NewStringUTF("setup failed");
+    memset(g_kg_ruta,0,sizeof(g_kg_ruta));                       /* multi no usa tabla de resume por pubkey */
+    memcpy(g_kg_ini,ini,32); memcpy(g_kg_fin,fin,32); g_kg_dbits=dbits; g_kg_ops_previas=0;
+    memset(g_kg_ruta_mansos,0,sizeof(g_kg_ruta_mansos));
+    if(jmansos){ const char *cm=env->GetStringUTFChars(jmansos,0);
+        if(cm){ if(cm[0]) snprintf(g_kg_ruta_mansos,sizeof(g_kg_ruta_mansos),"%s",cm);
+                env->ReleaseStringUTFChars(jmansos,cm); } }
+    if(g_kg_ruta_mansos[0]) dp_load_mansos(&g_kg.tabla,g_kg_ruta_mansos,ini,fin,dbits);
+    g_kg.cpu_limite.store(g_cpu_limit.load());
+    if(hilos<1) hilos=1; if(hilos>16) hilos=16;
+    if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
+    g_gpu_hilo_vivo=false;                                        /* multiobjetivo: solo CPU */
+    g_kg_args.assign(hilos,KgArg{});
+    g_kg_hilos.assign(hilos,pthread_t{});
+    for(int i=0;i<hilos;i++){ g_kg_args[i].n_kang=por_hilo;
+        g_kg_args[i].semilla=kg_semilla((uint64_t)(i+1));
+        pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]); }
+    g_kg_vivo=true;
+    return env->NewStringUTF("");
+}
+/* Por cada objetivo YA resuelto, una línea "pubhex\tprivhex". Vale durante y tras
+ * la pasada (hasta el siguiente arranque): los resultados viven en g_kg. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_kangarooMultiResult(JNIEnv *env, jobject){
+    std::string r;
+    int n=(int)g_kg_multi_pub_hex.size(); if(n>g_kg.n_obj) n=g_kg.n_obj;
+    for(int j=0;j<n;j++){
+        if(!g_kg.encontrado_obj[j].load()) continue;
+        uint8_t be[32]; sc_to_be32(g_kg.k_obj[j],be);
+        char hx[65]; for(int i=0;i<32;i++) sprintf(hx+i*2,"%02x",be[i]); hx[64]=0;
+        r += g_kg_multi_pub_hex[j]; r += '\t'; r += hx; r += '\n';
+    }
+    return env->NewStringUTF(r.c_str());
 }
 
 /* =========================================================

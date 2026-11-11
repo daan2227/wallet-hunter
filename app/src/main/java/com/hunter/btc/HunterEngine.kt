@@ -227,6 +227,14 @@ object HunterEngine {
     external fun kangarooStart(pubHex: String, iniHex: String, finHex: String,
                                hilos: Int, canguresPorHilo: Int,
                                rutaEstado: String, topeTablaBits: Int, rutaMansos: String = ""): Boolean
+
+    // MULTIOBJETIVO (auditoría Weak): varias pubkeys del MISMO rango en una pasada contra un rebaño de
+    // mansos compartido. pubsHex = pubkeys de 66 hex separadas por '\n' (hasta 64). Devuelve "" si arrancó,
+    // o un motivo. Comparte parada/estado con kangarooStop / kangarooRunning / kangarooOps. Ver kangaroo.h.
+    external fun kangarooMultiStart(pubsHex: String, iniHex: String, finHex: String,
+                                    hilos: Int, canguresPorHilo: Int, topeTablaBits: Int, rutaMansos: String): String
+    // Por cada objetivo resuelto, una línea "pubhex\tprivhex".
+    external fun kangarooMultiResult(): String
     external fun kangarooStop()
 
 
