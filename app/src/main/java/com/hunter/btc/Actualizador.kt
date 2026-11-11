@@ -45,7 +45,12 @@ object Actualizador {
     private const val K_ANUNCIADA = "anunciada"
     private const val CADA_MS = 12L * 3600 * 1000
 
-    fun autoOn(ctx: Context) = prefs(ctx).getBoolean(K_AUTO, true)
+    // Por defecto APAGADO: la app NO comprueba ni instala sola al abrir. La
+    // actualización va detrás de un botón (More → Updates → "Check for updates"),
+    // que es también una señal menos para Google Play Protect (un APK de fuera de
+    // Play que se auto-instala es justo lo que su heurística penaliza). Quien
+    // quiera, lo enciende en ese mismo sitio.
+    fun autoOn(ctx: Context) = prefs(ctx).getBoolean(K_AUTO, false)
     fun setAuto(ctx: Context, on: Boolean) = prefs(ctx).edit().putBoolean(K_AUTO, on).apply()
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
