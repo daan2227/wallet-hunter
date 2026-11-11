@@ -359,7 +359,7 @@ object WeakController {
 
         val topeProg0 = if (corriendo && topeSeg > 0)
             TOPES.indexOfFirst { it.toDouble() >= topeSeg }.let { if (it < 0) TOPES.size - 1 else it } else 0
-        val (vSbTope, vTvTope) = bloqueSlider("Max seconds per key", TOPES.size - 1, topeProg0, "no limit", "${TOPES.last()} s")
+        val (vSbTope, vTvTope) = bloqueSlider("Max seconds per pass", TOPES.size - 1, topeProg0, "no limit", "${TOPES.last()} s")
         sbTope = vSbTope; tvTope = vTvTope
 
         // Claves por pasada (kangaroo multiobjetivo): varias a la vez comparten el
@@ -370,7 +370,7 @@ object WeakController {
         sbTam = vSbTam; tvTam = vTvTam
         tvTam?.text = "${TAMS[tamProg0]}"
         vSbTam.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { tvTam?.text = "${TAMS[p.coerceIn(0, TAMS.size - 1)]}" }
+            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { tvTam?.text = "${TAMS[p.coerceIn(0, TAMS.size - 1)]}"; estimar() }
             override fun onStartTrackingTouch(s: SeekBar?) {}
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
@@ -657,18 +657,27 @@ object WeakController {
         }
         val tope = topeActual()
         tvTope?.text = if (tope <= 0) "no limit" else "${tope.toInt()} s"
-        val porClave = if (tope > 0) Math.min(seg, tope) else seg
         val (rv, ru) = escala(ritmoDisp)
         var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~$rv $ru/s.\n" +
             "Only finds keys whose private value is below 2^$b."
-        val n = contarClaves()
+        // Claves a buscar: en marcha, las que ya se vio que TIENEN pubkey (las que
+        // de verdad entran al kangaroo); antes de arrancar, las cargadas.
+        val n = if (corriendo && conPubkey.get() > 0) conPubkey.get() else contarClaves()
         if (n > 1) {
-            // Cada clave tiene un suelo de ~50 ms de sondeo aunque el crackeo sea
-            // instantáneo; en lotes grandes de rango bajo eso es lo que manda.
-            val porClaveReal = Math.max(porClave, 0.05)
-            txt += "\nBatch: ${"%,d".format(n)} keys" +
-                (if (tope > 0) " · ${tope.toInt()} s cap each" else "") +
-                " ≈ ${tiempo(porClaveReal * n)} total."
+            // Multiobjetivo: cada pasada audita 'm' claves a la vez contra un rebaño
+            // de mansos compartido, así que una pasada cuesta ~√m veces una clave
+            // sola, y el lote entero sale ~√m veces más rápido que una a una.
+            val m = tamActual().coerceIn(1, 64)
+            val pasadas = Math.ceil(n.toDouble() / m).toInt()
+            val segPasada = seg * Math.sqrt(m.toDouble())
+            val porPasada = (if (tope > 0) Math.min(segPasada, tope) else segPasada).coerceAtLeast(0.05)
+            val total = porPasada * pasadas
+            txt += "\nBatch: ${"%,d".format(n)} keys"
+            if (m > 1) txt += ", $m per pass"
+            if (tope > 0) txt += " · ${tope.toInt()} s cap/pass"
+            txt += " ≈ ${tiempo(total)} total"
+            if (m > 1) txt += " (≈ ${"%.0f".format(Math.sqrt(m.toDouble()))}× faster in bulk)"
+            txt += "."
         }
         tvEstim?.text = txt
     }
