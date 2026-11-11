@@ -303,10 +303,30 @@ object WeakController {
         })
         root.addView(ejes)
 
+        // Estimación en un panel con tinte naranja tenue y un filo de acento a la
+        // izquierda, para que se lea como un aviso y no como texto suelto. El filo
+        // se pinta con un LayerDrawable (relleno metido 3dp a la derecha deja ver
+        // la franja) en vez de una vista hija, que en un LinearLayout horizontal a
+        // veces se colapsa a 0 de alto.
         val vEstim = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
-            typeface = AppTheme.body(context); setLineSpacing(0f, 1.3f)
-            setPadding(0, dp(10), 0, 0)
+            typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
+            val r = dp(AppTheme.R_INNER).toFloat()
+            val franja = android.graphics.drawable.GradientDrawable().apply {
+                setColor(AppTheme.WARN); cornerRadius = r
+            }
+            val relleno = android.graphics.drawable.GradientDrawable().apply {
+                cornerRadius = r
+                setColor((AppTheme.WARN and 0x00FFFFFF) or 0x1A000000)        // ~10 % naranja
+                setStroke(dp(1), (AppTheme.WARN and 0x00FFFFFF) or 0x4D000000)  // borde ~30 %
+            }
+            background = android.graphics.drawable.LayerDrawable(arrayOf(franja, relleno)).apply {
+                setLayerInset(1, dp(3), 0, 0, 0)
+            }
+            setPadding(dp(14), dp(11), dp(13), dp(11))
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = dp(10) }
         }
         tvEstim = vEstim
         root.addView(vEstim)
@@ -658,11 +678,28 @@ object WeakController {
         val tope = topeActual()
         tvTope?.text = if (tope <= 0) "no limit" else "${tope.toInt()} s"
         val (rv, ru) = escala(ritmoDisp)
-        var txt = "≈ ${log2(ops)} operations per key · ${tiempo(seg)} at ~$rv $ru/s.\n" +
-            "Only finds keys whose private value is below 2^$b."
+
+        // Dos niveles de lectura: un titular brillante con el número que de verdad
+        // importa (el tiempo), y debajo, en gris, el detalle técnico separado por
+        // puntos. Antes eran tres líneas del mismo naranja que se leían como un
+        // muro. El "×N faster in bulk" va en ámbar (ACCENT) porque es el gancho.
+        val sp = android.text.SpannableStringBuilder()
+        fun add(s: String, vararg estilos: Any) {
+            val ini = sp.length; sp.append(s)
+            for (e in estilos) sp.setSpan(e, ini, sp.length,
+                android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        fun gris() = android.text.style.ForegroundColorSpan(AppTheme.TXT_MUTED)
+        fun acento() = android.text.style.ForegroundColorSpan(AppTheme.ACCENT)
+        fun negrita() = android.text.style.StyleSpan(android.graphics.Typeface.BOLD)
+        fun grande() = android.text.style.RelativeSizeSpan(1.22f)
+
         // Claves a buscar: en marcha, las que ya se vio que TIENEN pubkey (las que
         // de verdad entran al kangaroo); antes de arrancar, las cargadas.
         val n = if (corriendo && conPubkey.get() > 0) conPubkey.get() else contarClaves()
+        val detalle = StringBuilder()
+        fun det(s: String) { if (detalle.isNotEmpty()) detalle.append("  ·  "); detalle.append(s) }
+
         if (n > 1) {
             // Multiobjetivo: cada pasada audita 'm' claves a la vez contra un rebaño
             // de mansos compartido, así que una pasada cuesta ~√m veces una clave
@@ -672,14 +709,27 @@ object WeakController {
             val segPasada = seg * Math.sqrt(m.toDouble())
             val porPasada = (if (tope > 0) Math.min(segPasada, tope) else segPasada).coerceAtLeast(0.05)
             val total = porPasada * pasadas
-            txt += "\nBatch: ${"%,d".format(n)} keys"
-            if (m > 1) txt += ", $m per pass"
-            if (tope > 0) txt += " · ${tope.toInt()} s cap/pass"
-            txt += " ≈ ${tiempo(total)} total"
-            if (m > 1) txt += " (≈ ${"%.0f".format(Math.sqrt(m.toDouble()))}× faster in bulk)"
-            txt += "."
+            // Titular: tiempo total (grande, negrita, naranja) + "for N keys".
+            add("≈ ${tiempo(total)}", grande(), negrita())
+            add("  for ${"%,d".format(n)} keys")
+            if (m > 1) add("   ${"%.0f".format(Math.sqrt(m.toDouble()))}× faster in bulk", acento(), negrita())
+            // Detalle en gris.
+            if (m > 1) det("$m per pass")
+            det("${log2(ops)} ops/key")
+            det("finds keys below 2^$b")
+            if (tope > 0) det("${tope.toInt()} s cap/pass")
+            det("$rv $ru/s")
+        } else {
+            // Una sola clave (o lista vacía): titular = tiempo por clave.
+            add("${tiempo(seg)}", grande(), negrita())
+            add("  per key")
+            det("${log2(ops)} ops")
+            det("finds keys below 2^$b")
+            det("$rv $ru/s")
         }
-        tvEstim?.text = txt
+        add("\n")
+        add(detalle.toString(), gris())
+        tvEstim?.text = sp
     }
 
     private fun contarClaves(): Int {
