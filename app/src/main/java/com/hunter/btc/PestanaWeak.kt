@@ -124,6 +124,12 @@ object WeakController {
     private var tvPresu: TextView? = null
     private var sbTope: SeekBar? = null
     private var tvTope: TextView? = null
+    private var sbTam: SeekBar? = null
+    private var tvTam: TextView? = null
+    // Tamaños de tanda del kangaroo multiobjetivo (claves por pasada). 1 = una a una.
+    private val TAMS = intArrayOf(1, 8, 16, 32, 64)
+    private var tamTanda = 16
+    private fun tamActual(): Int = TAMS[(sbTam?.progress ?: TAMS.indexOf(16)).coerceIn(0, TAMS.size - 1)]
     private var tvEstado: TextView? = null
     private var btnCsv: android.view.View? = null
     private var barraProg: BarraProgreso? = null
@@ -355,6 +361,19 @@ object WeakController {
             TOPES.indexOfFirst { it.toDouble() >= topeSeg }.let { if (it < 0) TOPES.size - 1 else it } else 0
         val (vSbTope, vTvTope) = bloqueSlider("Max seconds per key", TOPES.size - 1, topeProg0, "no limit", "${TOPES.last()} s")
         sbTope = vSbTope; tvTope = vTvTope
+
+        // Claves por pasada (kangaroo multiobjetivo): varias a la vez comparten el
+        // rebaño de mansos, así que el conjunto cuesta ~√(claves) en vez de ×claves.
+        // 1 = una a una. Más alto ayuda sobre todo con listas largas.
+        val tamProg0 = TAMS.indexOf(tamTanda).let { if (it < 0) 2 else it }
+        val (vSbTam, vTvTam) = bloqueSlider("Keys per pass (faster in bulk →)", TAMS.size - 1, tamProg0, "1", "${TAMS.last()}")
+        sbTam = vSbTam; tvTam = vTvTam
+        tvTam?.text = "${TAMS[tamProg0]}"
+        vSbTam.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { tvTam?.text = "${TAMS[p.coerceIn(0, TAMS.size - 1)]}" }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        })
 
         val alEscribir = object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { estimar() }
@@ -592,7 +611,7 @@ object WeakController {
         if (act !== a) return
         act = null
         etClaves = null; tvCargadas = null; sbBits = null; tvBits = null; tvEstim = null
-        sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; tvEstado = null; btn = null
+        sbPresu = null; tvPresu = null; sbTope = null; tvTope = null; sbTam = null; tvTam = null; tvEstado = null; btn = null
         btnCsv = null; barraProg = null; vacioWeak = null; resultadosBox = null; logBox = null; btnBsgs = null
         anilloCard = null; chipHunting = null
         statsCard = null; tvSpeed = null; tvSpeedU = null; tvPeak = null; chart = null
@@ -1056,6 +1075,7 @@ object WeakController {
         etClaves?.isEnabled = activo
         sbBits?.isEnabled = activo
         sbPresu?.isEnabled = activo
+        sbTam?.isEnabled = activo
         sbTope?.isEnabled = activo
         btnCsv?.isEnabled = activo
         btnCsv?.alpha = if (activo) 1f else 0.4f
@@ -1241,6 +1261,7 @@ object WeakController {
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
         presupuesto = budgetActual()
+        tamTanda = tamActual()
         topeSeg = topeActual()
         if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
         if (streamMode && streamUri != null) {
@@ -1423,13 +1444,14 @@ object WeakController {
         if (streamMode && streamTermino && colaStream.isEmpty()) {
             parar("Done: ${"%,d".format(indice)} key(s) checked.", terminado = true); return
         }
-        // Reúne una TANDA de hasta WEAK_MULTI pubkeys y las audita a la vez
+        // Reúne una TANDA de hasta tamTanda pubkeys y las audita a la vez
         // (kangaroo multiobjetivo). 'consumidas' cuenta también las líneas vacías,
         // para avanzar el índice en el mismo tramo.
         var procesados = 0
-        val chunk = ArrayList<String>(WEAK_MULTI)
+        val tam = tamTanda.coerceIn(1, 64)
+        val chunk = ArrayList<String>(tam)
         var consumidas = 0
-        while (chunk.size < WEAK_MULTI) {
+        while (chunk.size < tam) {
             if (!streamMode && indice + consumidas >= claves.size) break
             val pub: String? = if (streamMode) colaStream.poll() else resueltas[indice + consumidas]
             if (pub == null) {
@@ -1470,10 +1492,9 @@ object WeakController {
         lanzarMulti(chunk, consumidas)
     }
 
-    // Kangaroo MULTIOBJETIVO: se auditan hasta WEAK_MULTI pubkeys del mismo rango en
+    // Kangaroo MULTIOBJETIVO: se auditan hasta tamTanda pubkeys del mismo rango en
     // una sola pasada, contra un rebaño de mansos compartido. Resolver M objetivos
     // cuesta ~√(M·W) en vez de M·√W: los mansos (la parte cara) se comparten.
-    private val WEAK_MULTI = 16
     private var loteConsumidas = 0            // cuántos índices gasta la tanda en curso
     private var lotePubs: List<String> = emptyList()
     private val guardadasLote = HashSet<String>()   // claves de esta tanda ya guardadas (reintento de baúl)
