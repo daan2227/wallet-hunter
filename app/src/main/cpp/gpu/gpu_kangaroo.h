@@ -86,7 +86,7 @@ static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso){
     if(manso) kg_normalize(&dG,x,y);
     else{
         fe_t dx,dy; kg_normalize(&dG,dx,dy);
-        JP w2; jp_add_affine(&w2,&c->objetivo,dx,dy);
+        JP w2; jp_add_affine(&w2,&c->objetivo[0],dx,dy);
         int inf=1; for(int j=0;j<4;j++) if(w2.z[j]) inf=0;
         if(inf){ memcpy(x,c->obj_x,32); memcpy(y,c->obj_y,32); sc_zero(d); }
         else kg_normalize(&w2,x,y);
@@ -108,9 +108,9 @@ static void gk_div(sc_t r,const sc_t a,uint32_t m){
  * objetivo + d*G (salvaje). Devuelve 0 si sale el infinito. */
 static int gk_punto(KangarooCtx *c,const sc_t d,int manso,JP *R){
     int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
-    if(cero){ if(manso) return 0; *R=c->objetivo; return 1; }
+    if(cero){ if(manso) return 0; *R=c->objetivo[0]; return 1; }
     JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
-    if(!manso){ fe_t dx,dy; kg_normalize(&dG,dx,dy); jp_add_affine(R,&c->objetivo,dx,dy); }
+    if(!manso){ fe_t dx,dy; kg_normalize(&dG,dx,dy); jp_add_affine(R,&c->objetivo[0],dx,dy); }
     else *R=dG;
     int inf=1; for(int j=0;j<4;j++) if(R->z[j]) inf=0;
     return !inf;
@@ -307,8 +307,9 @@ static double gpu_kg_tanda(GpuKg *g,KangarooCtx *c,uint32_t pasos){
         uint64_t kx[2]={(uint64_t)o[0]|((uint64_t)o[1]<<32),(uint64_t)o[2]|((uint64_t)o[3]<<32)};
         sc_t d; gk_get(d,o+4);
         int manso=(int)o[12];
-        sc_t otro; int om=0, mismo=0;
-        if(dp_insert(&c->tabla,kx,d,manso,otro,&om,&mismo)) kg_resolver(c,d,manso,otro);
+        sc_t otro; int om=0, oo=0, mismo=0;
+        /* La GPU es de un solo objetivo (el multiobjetivo corre solo en CPU): obj 0. */
+        if(dp_insert(&c->tabla,kx,d,manso,0,otro,&om,&oo,&mismo)) kg_resolver(c,d,manso,otro,0);
         else if(mismo) c->pegados.fetch_add(1);
     }
     const uint32_t *R=S+4+(size_t)g->maxdp*GK_REC;
