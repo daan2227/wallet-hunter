@@ -143,7 +143,8 @@ object WeakController {
     private var btnBsgs: Button? = null
     private var anilloCard: AnilloProgreso? = null   // anillo de progreso (propuesta B)
     private var chipHunting: android.view.View? = null
-    private const val BSGS_LABEL = "Solve with BSGS (small range)"
+    // Etiqueta en dos líneas del botón 50/50 "otros motores".
+    private const val BSGS_CORTO = "Solve BSGS\nsmall range"
     private const val LOG_RECIENTES = 10       // líneas visibles sin desplegar
     private const val LOG_CAP = 50             // cuántas auditorías se recuerdan
     private var btn: Button? = null
@@ -421,35 +422,54 @@ object WeakController {
         btn = vBtn
         root.addView(vBtn)
 
-        // Mismo estilo que "Start audit" (acento), debajo. Resuelve de forma
-        // determinista todas las claves públicas cargadas en rangos pequeños.
-        val vBsgs = Button(a).apply {
-            text = if (bsgsBatchOn) "Stop BSGS" else BSGS_LABEL; textSize = AppTheme.SP_BODY
-            // Secundario: un solo botón de oro por pantalla (el de la auditoría, encima).
+        // Los dos motores alternativos van juntos, 50/50 y bajo un rótulo, en vez
+        // de dos botones a todo ancho con el mismo peso que el principal: así se
+        // lee que arriba está LA acción (oro) y aquí "otras formas". Un solo botón
+        // de oro por pantalla. BSGS resuelve de forma determinista en rangos
+        // pequeños; Taproot es su propia pantalla (ni Kangaroo ni BSGS sirven
+        // contra una clave Taproot tweakeada, ver TaprootAuditActivity).
+        fun botonDoble(etiqueta: String) = Button(a).apply {
+            text = etiqueta; textSize = 14f
             setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context)
             isAllCaps = false; stateListAnimator = null
+            maxLines = 2; gravity = Gravity.CENTER; setLineSpacing(0f, 1.05f)
+            setPadding(dp(6), dp(6), dp(6), dp(6))
             background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_KEY, context)
             foreground = Ui.toque()
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52))
-                .apply { topMargin = dp(10) }
+        }
+        val vBsgs = botonDoble(if (bsgsBatchOn) "Stop BSGS" else BSGS_CORTO).apply {
             setOnClickListener { Ui.pulso(this); solveBsgsBatch() }
         }
         btnBsgs = vBsgs
-        root.addView(vBsgs)
-
-        // Aparte, no un tercer motor aquí: ni Kangaroo ni BSGS sirven contra una clave Taproot
-        // tweakeada (ver TaprootAuditActivity), así que es una pantalla propia, no un botón más
-        // en una pestaña que ya tiene bastante.
-        val vTrAudit = Button(a).apply {
-            text = "Taproot audit (your own addresses)…"; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context)
-            isAllCaps = false; stateListAnimator = null
-            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_KEY, context)
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(48))
-                .apply { topMargin = dp(10) }
+        val vTrAudit = botonDoble("Taproot\nyour addresses…").apply {
             setOnClickListener { Ui.pulso(this); a.startActivity(Intent(a, TaprootAuditActivity::class.java)) }
         }
-        root.addView(vTrAudit)
+        // Rótulo de grupo: "OTHER ENGINES" entre dos filetes.
+        val grupoMotores = LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16); bottomMargin = dp(10) }
+        }
+        fun fileteGrupo() = android.view.View(a).apply {
+            setBackgroundColor(Ui.filete(oro = false))
+            layoutParams = LinearLayout.LayoutParams(0, dp(1), 1f)
+        }
+        grupoMotores.addView(fileteGrupo())
+        grupoMotores.addView(TextView(a).apply {
+            text = "OTHER ENGINES"; textSize = 11f; setTextColor(AppTheme.TXT_MUTED)
+            typeface = AppTheme.body(context); letterSpacing = 0.12f
+            setPadding(dp(10), 0, dp(10), 0)
+        })
+        grupoMotores.addView(fileteGrupo())
+        root.addView(grupoMotores)
+        val parMotores = LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT)
+        }
+        parMotores.addView(vBsgs, LinearLayout.LayoutParams(0, dp(58), 1f))
+        parMotores.addView(vTrAudit, LinearLayout.LayoutParams(0, dp(58), 1f).apply { marginStart = dp(10) })
+        root.addView(parMotores)
 
         val vStats = LinearLayout(a).apply {
             orientation = LinearLayout.VERTICAL
@@ -508,41 +528,53 @@ object WeakController {
         // La gráfica sigue recibiendo puntos pero no se enseña: la cifra y su pico ya lo dicen.
         vChart.visibility = android.view.View.GONE
 
-        fun mini(label: String, tv: TextView) = LinearLayout(a).apply {
-            // Fila de dato (Security print), no pastilla.
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(54)
+        // Rejilla 2×2 "grabada" (Security print): el valor manda —grande, arriba—
+        // y la etiqueta pasa a micro-rótulo gris debajo; las celdas se separan con
+        // filetes finos, sin cajas. Antes eran cuatro filas etiqueta-izquierda /
+        // valor-derecha, que se leían como una lista, no como un panel.
+        fun celdaValor(ini: String) = TextView(a).apply {
+            text = ini; textSize = 22f; setTextColor(AppTheme.TXT_PRI)
+            typeface = AppTheme.display(context); letterSpacing = -0.01f
+            includeFontPadding = false; fontFeatureSettings = "tnum"; maxLines = 1
+        }
+        fun celda(label: String, tv: TextView, izquierda: Boolean) = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(if (izquierda) 0 else dp(18), dp(16), if (izquierda) dp(18) else 0, dp(15))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(tv)
+            addView(TextView(a).apply {
+                text = label.uppercase(); textSize = 11f; setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.body(context); letterSpacing = 0.1f
+                setPadding(0, dp(7), 0, 0)
+            })
+        }
+        // Filete vertical entre columnas (con margen para que no toque los bordes).
+        fun fileteVert() = android.view.View(a).apply {
+            setBackgroundColor(Ui.filete(oro = false))
+            layoutParams = LinearLayout.LayoutParams(dp(1), ViewGroup.LayoutParams.MATCH_PARENT)
+                .apply { topMargin = dp(14); bottomMargin = dp(14) }
+        }
+        fun fila2(c1: android.view.View, c2: android.view.View) = LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL
+            // Filete superior en cada fila (como las reglas de un impreso).
+            background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = false)
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
                 ViewGroup.LayoutParams.WRAP_CONTENT)
-            background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
-            isFocusable = true
-            addView(TextView(a).apply {
-                text = label; textSize = AppTheme.SP_BODY
-                setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
-                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-            })
-            addView(tv)
+            addView(c1); addView(fileteVert()); addView(c2)
         }
-        fun valor(ini: String) = TextView(a).apply {
-            text = ini; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI)
-            typeface = AppTheme.title(context); gravity = Gravity.END
-        }
-        val vOps = valor("0"); tvOps = vOps
-        val vTime = valor("00:00:00"); tvTime = vTime
-        val vProg = valor("—"); tvProg = vProg
-        val vKeys = valor("—"); tvKeys = vKeys
+        val vOps = celdaValor("0"); tvOps = vOps
+        val vTime = celdaValor("00:00:00"); tvTime = vTime
+        val vProg = celdaValor("—"); tvProg = vProg
+        val vKeys = celdaValor("—"); tvKeys = vKeys
         if (corriendo) vKeys.text = cuentaTexto()
-        val r1 = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL
+        val rejilla = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) } }
-        val r2 = LinearLayout(a).apply { orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT) }
-        r1.addView(mini("Operations", vOps))
-        r1.addView(mini("Time", vTime))
-        r2.addView(mini("Key budget", vProg))
-        r2.addView(mini("Keys · found", vKeys))
-        vStats.addView(r1); vStats.addView(r2)
+                ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
+        }
+        rejilla.addView(fila2(celda("Operations", vOps, true), celda("Time", vTime, false)))
+        rejilla.addView(fila2(celda("Key budget", vProg, true), celda("Keys · found", vKeys, false)))
+        vStats.addView(rejilla)
         // Barra de progreso general: claves hechas / total. Sólo tiene sentido
         // aquí, donde hay un total real (una lista finita).
         val vBarra = BarraProgreso(a).apply {
@@ -1205,7 +1237,7 @@ object WeakController {
     private fun solveBsgsBatch() {
         if (corriendo) { aviso("Stop the audit first."); return }
         if (bsgsBatchOn) { bsgsBatchOn = false; try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs()
-            bloquear(false); btnBsgs?.text = BSGS_LABEL; chipHunting?.visibility = android.view.View.GONE
+            bloquear(false); btnBsgs?.text = BSGS_CORTO; chipHunting?.visibility = android.view.View.GONE
             aviso("BSGS stopped."); return }
         val b = (sbBits?.progress ?: 0) + BITS_MIN
         if (b > 44) { aviso("Range too big for BSGS ($b bits). Use Start audit (Kangaroo)."); return }
@@ -1248,7 +1280,7 @@ object WeakController {
                     // Hasta 8 hilos a tope sin freno: se para guardando el progreso.
                     bsgsBatchOn = false
                     try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}
-                    persistirBsgs(); bloquear(false); btnBsgs?.text = BSGS_LABEL
+                    persistirBsgs(); bloquear(false); btnBsgs?.text = BSGS_CORTO
                     chipHunting?.visibility = android.view.View.GONE
                     aviso(if (Termico.parado) "BSGS paused: the phone is too hot. Run it again to continue."
                           else "BSGS paused: battery below 15 %. Run it again to continue.")
@@ -1286,7 +1318,7 @@ object WeakController {
             barraProg?.set(if (total > 0) hechas.toFloat() / total else 0f)
             if (estado == "running") { h.postDelayed(tick, 400) }
             else {
-                bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_LABEL
+                bsgsBatchOn = false; bloquear(false); btnBsgs?.text = BSGS_CORTO
                 chipHunting?.visibility = android.view.View.GONE
                 if (estado == "done") BsgsCheckpoint.borrar(appCtx, campana)
                 else BsgsCheckpoint.guardarDesdeInforme(appCtx, campana, info)
@@ -1316,7 +1348,7 @@ object WeakController {
             return
         }
         KangarooDueno.actual = KangarooDueno.WEAK
-        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs(); bsgsBatchOn = false; btnBsgs?.text = BSGS_LABEL
+        try { HunterEngine.bsgsMultiStop() } catch (e: Throwable) {}; persistirBsgs(); bsgsBatchOn = false; btnBsgs?.text = BSGS_CORTO
         val sb = sbBits ?: return
         bits = sb.progress + BITS_MIN
         presupuesto = budgetActual()
@@ -1661,11 +1693,21 @@ object WeakController {
 
     /** Texto del contador de claves. En streaming no hay lista en RAM, así que
      *  mostramos las procesadas frente al total aproximado (si se pudo estimar). */
-    private fun cuentaTexto(): String = if (streamMode) {
-        val tot = if (streamTotal > 0) "~${"%,d".format(streamTotal)}" else "?"
-        "${"%,d".format(indice)}/$tot · $hallados"
-    } else {
-        "${(indice + 1).coerceAtMost(claves.size)}/${claves.size} · $hallados"
+    /** Valor de "Keys · found": el recuento en blanco y los hallados (· N) en oro,
+     *  para que la celda diga de un vistazo cuántas han caído. */
+    private fun cuentaTexto(): CharSequence {
+        val izq = if (streamMode) {
+            val tot = if (streamTotal > 0) "~${"%,d".format(streamTotal)}" else "?"
+            "${"%,d".format(indice)}/$tot"
+        } else {
+            "${(indice + 1).coerceAtMost(claves.size)}/${claves.size}"
+        }
+        val sp = android.text.SpannableStringBuilder(izq)
+        val ini = sp.length
+        sp.append(" · $hallados")
+        sp.setSpan(android.text.style.ForegroundColorSpan(AppTheme.ACCENT), ini, sp.length,
+            android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return sp
     }
 
     /** Fracción de progreso: claves hechas / total (aprox. en streaming). */
