@@ -103,7 +103,7 @@ static void prueba(int bits,const char *et){
             int cero=1; for(int z=0;z<4;z++) if(P.z[z]) cero=0;
             if(cero){ salvajes++; continue; }       /* dist=0: el propio P' */
             kg_normalize(&P,dx,dy);
-            JP W; jp_add_affine(&W,&c.objetivo,dx,dy);
+            JP W; jp_add_affine(&W,&c.objetivo[0],dx,dy);
             P=W;
         }
         int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
@@ -249,18 +249,18 @@ static void prueba_resolver_grande(void){
     {
         JP S; kg_scalar_mul(&S,d_s,FIELD_GX,FIELD_GY);
         fe_t sx,sy; kg_normalize(&S,sx,sy);
-        JP W; jp_add_affine(&W,&c.objetivo,sx,sy);
+        JP W; jp_add_affine(&W,&c.objetivo[0],sx,sy);
         fe_t x,y; kg_normalize(&W,x,y); kx_s[0]=x[0]; kx_s[1]=x[1];
     }
     OK(kx_m[0]==kx_s[0] && kx_m[1]==kx_s[1],
        "el manso y el salvaje caen en el mismo punto (la colision existe)");
 
     /* Se meten como los mete kg_run. El segundo encuentra al primero. */
-    sc_t otro; int otro_manso, mismo=0;
-    dp_insert(&c.tabla,kx_m,d_m,1,otro,&otro_manso,&mismo);
-    int hay=dp_insert(&c.tabla,kx_s,d_s,0,otro,&otro_manso,&mismo);
+    sc_t otro; int otro_manso, otro_obj=0, mismo=0;
+    dp_insert(&c.tabla,kx_m,d_m,1,0,otro,&otro_manso,&otro_obj,&mismo);
+    int hay=dp_insert(&c.tabla,kx_s,d_s,0,0,otro,&otro_manso,&otro_obj,&mismo);
     OK(hay==1, "la tabla ve la colision");
-    if(hay) kg_resolver(&c,d_s,0,otro);
+    if(hay) kg_resolver(&c,d_s,0,otro,0);
 
     OK(c.encontrado.load()==1, "kg_resolver saca la clave");
     OK(memcmp(c.k,k_sc,32)==0, "y es exactamente la que se puso");

@@ -39,7 +39,7 @@ int main(){
                 DP *sl=&c.tabla.slots[i]; if(!sl->usado) continue;
                 JP P; kg_scalar_mul(&P,sl->dist,FIELD_GX,FIELD_GY);
                 int inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
-                if(!sl->manso){ if(inf) continue; fe_t dx,dy; kg_normalize(&P,dx,dy); JP W2; jp_add_affine(&W2,&c.objetivo,dx,dy); P=W2; }
+                if(!sl->manso){ if(inf) continue; fe_t dx,dy; kg_normalize(&P,dx,dy); JP W2; jp_add_affine(&W2,&c.objetivo[0],dx,dy); P=W2; }
                 fe_t x,y; kg_normalize(&P,x,y);
                 vistos++; if(x[0]!=sl->kx[0]||x[1]!=sl->kx[1]) malos++;
             }

@@ -200,7 +200,7 @@ int main(){
             if(!sl->manso){
                 if(inf){ sal++; continue; }
                 fe_t dx,dy; kg_normalize(&P,dx,dy);
-                JP W2; jp_add_affine(&W2,&cl.objetivo,dx,dy); P=W2;
+                JP W2; jp_add_affine(&W2,&cl.objetivo[0],dx,dy); P=W2;
                 inf=1; for(int z=0;z<4;z++) if(P.z[z]) inf=0;
             }
             if(inf){ if(sl->manso) man++; else sal++; continue; }
