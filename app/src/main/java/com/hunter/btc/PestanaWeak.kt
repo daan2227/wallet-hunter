@@ -304,27 +304,37 @@ object WeakController {
         })
         root.addView(ejes)
 
-        // Estimación en un panel con tinte naranja tenue y un filo de acento a la
-        // izquierda, para que se lea como un aviso y no como texto suelto. El filo
-        // se pinta con un LayerDrawable (relleno metido 3dp a la derecha deja ver
-        // la franja) en vez de una vista hija, que en un LinearLayout horizontal a
-        // veces se colapsa a 0 de alto.
+        // Estimación en un panel con un filo de acento a la izquierda, para que se
+        // lea como un aviso y no como texto suelto. Dos capas: debajo, una franja
+        // naranja a tamaño completo; encima, el relleno OPACO (panel oscuro con un
+        // pelín de tinte cálido) metido 3dp por la izquierda, que tapa la franja
+        // salvo esos 3dp — así queda el filo. El relleno tiene que ser opaco: si es
+        // translúcido, el naranja de debajo se ve entero (el panel salía todo
+        // naranja y el texto no se leía). Va por capas y no por una vista hija
+        // porque un alto MATCH_PARENT en un LinearLayout horizontal a veces colapsa.
         val vEstim = TextView(a).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.WARN)
             typeface = AppTheme.body(context); setLineSpacing(0f, 1.35f)
             val r = dp(AppTheme.R_INNER).toFloat()
+            // Relleno = BG_ELEV mezclado un 14 % hacia el naranja (según el tema).
+            fun comp(canal: (Int) -> Int, f: Float) =
+                (canal(AppTheme.BG_ELEV) * (1 - f) + canal(AppTheme.WARN) * f).toInt().coerceIn(0, 255)
+            val fill = android.graphics.Color.rgb(
+                comp({ android.graphics.Color.red(it) }, 0.14f),
+                comp({ android.graphics.Color.green(it) }, 0.14f),
+                comp({ android.graphics.Color.blue(it) }, 0.14f))
             val franja = android.graphics.drawable.GradientDrawable().apply {
                 setColor(AppTheme.WARN); cornerRadius = r
             }
             val relleno = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = r
-                setColor((AppTheme.WARN and 0x00FFFFFF) or 0x1A000000)        // ~10 % naranja
-                setStroke(dp(1), (AppTheme.WARN and 0x00FFFFFF) or 0x4D000000)  // borde ~30 %
+                setColor(fill)                                                  // opaco
+                setStroke(dp(1), (AppTheme.WARN and 0x00FFFFFF) or 0x4D000000)  // borde naranja ~30 %
             }
             background = android.graphics.drawable.LayerDrawable(arrayOf(franja, relleno)).apply {
                 setLayerInset(1, dp(3), 0, 0, 0)
             }
-            setPadding(dp(14), dp(11), dp(13), dp(11))
+            setPadding(dp(16), dp(11), dp(13), dp(11))
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
             ).apply { topMargin = dp(10) }
@@ -721,7 +731,7 @@ object WeakController {
             for (e in estilos) sp.setSpan(e, ini, sp.length,
                 android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        fun gris() = android.text.style.ForegroundColorSpan(AppTheme.TXT_MUTED)
+        fun gris() = android.text.style.ForegroundColorSpan(AppTheme.TXT_SEC)
         fun acento() = android.text.style.ForegroundColorSpan(AppTheme.ACCENT)
         fun negrita() = android.text.style.StyleSpan(android.graphics.Typeface.BOLD)
         fun grande() = android.text.style.RelativeSizeSpan(1.22f)
