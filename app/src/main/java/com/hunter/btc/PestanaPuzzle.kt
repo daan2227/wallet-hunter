@@ -740,7 +740,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     cabezaPuzzle.addView(Ui.heroe(this, Roseton(this) {
         try { (HunterEngine.isRunning() && puzzleMode) || HunterEngine.kangarooRunning() } catch (e: Throwable) { false }
     }.apply { ritmo = { (Math.log10((if (kgOpsSeg > 0) kgOpsSeg else HunterEngine.getWps()).coerceAtLeast(1.0)) / 4.0).toFloat() } },
-        heroPuzzle, alto = 210))
+        heroPuzzle, alto = 170))
     cabezaPuzzle.addView(Ui.microimpresion(this,
         "bitcoin puzzle  ·  sequential scan  ·  pollard kangaroo  ·  secp256k1 arm64 asm"))
 
@@ -762,7 +762,7 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         layoutParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = dp(16) }
+        ).apply { topMargin = dp(10) }
     }
     statsCard.addView(tvMediaPuzzle)
     chartView = SpeedChartView(this).apply {
@@ -774,55 +774,54 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
     }
     statsCard.addView(chartView)
 
-    fun miniStat(label: String, tv: TextView, guardarEtiqueta: ((TextView)->Unit)? = null):
-            LinearLayout = LinearLayout(this).apply {
-        // Fila de dato, no cajita (Security print): etiqueta a la izquierda, cifra a la derecha,
-        // filete debajo.
-        orientation = LinearLayout.HORIZONTAL
-        gravity = Gravity.CENTER_VERTICAL
-        minimumHeight = dp(54)
-        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-        background = Ui.lineas(Ui.filete(oro = false), arriba = false, abajo = true)
-        isFocusable = true
-        addView(TextView(this@buildPuzzleTab).apply {
-            text = label; textSize = AppTheme.SP_BODY
-            setTextColor(AppTheme.TXT_SEC)
-            typeface = AppTheme.body(context)
+    // Rejilla 2×2 "grabada" (Security print), igual que en Weak: el valor manda
+    // —grande, arriba— y la etiqueta pasa a micro-rótulo gris debajo, separada
+    // por filetes finos. Antes eran cuatro filas de 54 dp apiladas, que estiraban
+    // la pantalla sin aportar nada.
+    fun celdaValor(initial: String) = TextView(this).apply {
+        text = initial; textSize = 22f; setTextColor(AppTheme.TXT_PRI)
+        typeface = AppTheme.display(context); letterSpacing = -0.01f
+        includeFontPadding = false; fontFeatureSettings = "tnum"; maxLines = 1
+    }
+    fun celda(label: String, tv: TextView, izquierda: Boolean, guardarEtiqueta: ((TextView)->Unit)? = null) =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(if (izquierda) 0 else dp(18), dp(14), if (izquierda) dp(18) else 0, dp(13))
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            guardarEtiqueta?.invoke(this)
-        })
-        addView(tv)
+            addView(tv)
+            addView(TextView(this@buildPuzzleTab).apply {
+                text = label.uppercase(); textSize = 11f; setTextColor(AppTheme.TXT_MUTED)
+                typeface = AppTheme.body(context); letterSpacing = 0.1f
+                setPadding(0, dp(6), 0, 0)
+                guardarEtiqueta?.invoke(this)
+            })
+        }
+    fun fileteVertP() = android.view.View(this).apply {
+        setBackgroundColor(Ui.filete(oro = false))
+        layoutParams = LinearLayout.LayoutParams(dp(1), LinearLayout.LayoutParams.MATCH_PARENT)
+            .apply { topMargin = dp(12); bottomMargin = dp(12) }
     }
-
-    // Eran 16sp blanco, 16sp blanco, 13sp azul y 13sp blanco: cuatro datos
-    // del mismo rango con tres tratamientos. Uno solo.
-    fun miniValue(initial: String) = TextView(this).apply {
-        text = initial; textSize = AppTheme.SP_BODY
-        setTextColor(AppTheme.TXT_PRI)
-        typeface = AppTheme.title(context)
-        gravity = Gravity.END
-        layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        )
+    fun fila2P(c1: android.view.View, c2: android.view.View) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        background = Ui.lineas(Ui.filete(oro = false), arriba = true, abajo = false)
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        addView(c1); addView(fileteVertP()); addView(c2)
     }
-    val tvCntP = miniValue("0")
-    val tvTmP  = miniValue("00:00:00")
+    val tvCntP = celdaValor("0")
+    val tvTmP  = celdaValor("00:00:00")
     tvCountPuzzle = tvCntP; tvTimePuzzle = tvTmP
-    tvPctPuzzle = miniValue("—")
-    tvBlockProgress = miniValue("—")
-
-    val miniRow1 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) } }
-    val miniRow2 = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
-    miniRow1.addView(miniStat("Scanned", tvCntP) { lblEscaneadas = it })
-    miniRow1.addView(miniStat("Time", tvTmP))
-    val pctLocal = tvPctPuzzle!!
-    val blkLocal = tvBlockProgress!!
-    miniRow2.addView(miniStat("Progress", pctLocal))
-    // Lo que enseña es el tiempo del puzzle ENTERO a este ritmo, no cuántos
-    // bloques quedan: el rótulo decía otra cosa.
-    miniRow2.addView(miniStat("Whole puzzle", blkLocal) { lblRestantes = it })
-    statsCard.addView(miniRow1); statsCard.addView(miniRow2)
+    tvPctPuzzle = celdaValor("—")
+    tvBlockProgress = celdaValor("—")
+    val gridP = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(14) }
+    }
+    gridP.addView(fila2P(celda("Scanned", tvCntP, true) { lblEscaneadas = it }, celda("Time", tvTmP, false)))
+    // "Whole puzzle" = el tiempo del puzzle ENTERO a este ritmo, no cuántos bloques quedan.
+    gridP.addView(fila2P(celda("Progress", tvPctPuzzle!!, true),
+                         celda("Whole puzzle", tvBlockProgress!!, false) { lblRestantes = it }))
+    statsCard.addView(gridP)
     page.addView(statsCard)
 
     // ── POTENCIA: LOW / MEDIUM / HIGH ─────────────────────────────────
