@@ -801,6 +801,32 @@ object WalletManager {
         return true
     }
 
+    /**
+     * Empezar SIN código desde el primer arranque (todavía no hay datos). Crea la
+     * clave de datos (DEK) sellada con una clave de puro Keystore —la misma vía
+     * que usa quitarPin()— y marca el "sin código a propósito", para que el baúl y
+     * los WIF tengan con qué cifrarse y la app abra directa en los arranques
+     * siguientes (entrarSinPin). No hace nada si ya hay un código puesto: para
+     * quitar uno existente está quitarPin(), que resella sin perder los datos.
+     */
+    @Synchronized
+    fun empezarSinPin(ctx: Context): Boolean {
+        if (hasPin(ctx)) return false
+        val nueva = getOrCreateKey(ALIAS_SIN_PIN)
+        // Sin código previo no hay clave con la que abrir un DEK anterior, y sin
+        // código tampoco había datos cifrados: se crea uno nuevo, como savePin.
+        val dek = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        val (e2, i2) = SeedEnvelope.sellar(nueva, dek)
+        val ok = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(PREF_DEK, b64e(e2)).putString(PREF_DEK_IV, b64e(i2))
+            .putBoolean(PREF_SIN_PIN, true)
+            .commit()
+        if (!ok) return false
+        claveSemilla = nueva
+        claveBoveda = SecretKeySpec(dek, "AES")
+        return true
+    }
+
 
     fun loadAddresses(ctx: Context): String? =
         ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(PREF_ADDRS, null)

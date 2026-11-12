@@ -218,6 +218,36 @@ class WelcomeActivity : androidx.appcompat.app.AppCompatActivity() {
             }
         })
 
+        // Sin código: para quien prefiera que la única barrera sea el bloqueo del
+        // propio teléfono (la app abre directa, como en "entornos seguros"). Se
+        // puede poner un código luego desde Profile. Va en segundo plano respecto
+        // al botón de oro, y con un segundo paso para que no sea un descuido.
+        root.addView(TextView(this).apply {
+            text = "Continue without a code"
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.medium(context)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(20), 0, dp(8))
+            isClickable = true; isFocusable = true
+            setOnClickListener {
+                androidx.appcompat.app.AlertDialog.Builder(this@WelcomeActivity)
+                    .setTitle("Continue without a code?")
+                    .setMessage("Anyone who unlocks this phone can open the app and see your keys and finds. " +
+                                "You can set a code later from Profile.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Without a code") { _, _ ->
+                        if (WalletManager.empezarSinPin(this@WelcomeActivity)) {
+                            PinAuthHelper.markAuthenticated()
+                            goMain()
+                        } else {
+                            android.widget.Toast.makeText(this@WelcomeActivity,
+                                "Could not continue", android.widget.Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    .show()
+            }
+        })
+
         setContentView(root)
         root.alpha = 0f
         root.animate().alpha(1f).setDuration(400).setStartDelay(100).start()
