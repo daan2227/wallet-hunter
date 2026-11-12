@@ -293,39 +293,6 @@ class VaultActivity : AppCompatActivity() {
         })
         val fmt = java.text.SimpleDateFormat("dd MMM yyyy · HH:mm", java.util.Locale.US)
         entradas.forEach { e -> contenido.addView(fila(e, fmt, MatchVault.enCartera(e, wifs, seeds))) }
-
-        // ── Borrar todo (sin vuelta atrás) ─────────────────────────────────
-        contenido.addView(Ui.ghost(this, "Delete all finds", AppTheme.RED).apply {
-            (layoutParams as LinearLayout.LayoutParams).apply {
-                marginStart = dp(AppTheme.PAD_SIDE); marginEnd = dp(AppTheme.PAD_SIDE); topMargin = dp(26)
-            }
-            setOnClickListener { confirmarBorrarTodo(entradas.size) }
-        })
-        contenido.addView(texto(
-            "Erases every key in this vault, for good. Back up first if you want to keep them.",
-            AppTheme.SP_MICRO, AppTheme.TXT_MUTED).apply {
-            setPadding(dp(AppTheme.PAD_SIDE), dp(8), dp(AppTheme.PAD_SIDE), 0)
-        })
-    }
-
-    /** Confirmación antes de vaciar el baúl entero. Es irreversible y puede
-     *  llevarse claves con valor real, así que avisa claro de cuántas se van. */
-    private fun confirmarBorrarTodo(n: Int) {
-        val cuantas = if (n > 0) "$n find${if (n == 1) "" else "s"}" else "everything"
-        AlertDialog.Builder(this)
-            .setTitle("Delete all finds?")
-            .setMessage("This erases $cuantas from this vault — the keys, their balances and anything still " +
-                        "pending — permanently. It cannot be undone, and if you have not backed them up, they are gone.\n\n" +
-                        "The keys in your Wallet are stored separately and are NOT touched.")
-            .setNegativeButton("Cancel", null)
-            .setPositiveButton("Delete all") { _, _ ->
-                val ok = try { MatchVault.borrarTodo(this); true } catch (e: Throwable) { false }
-                android.widget.Toast.makeText(this,
-                    if (ok) "Vault emptied" else "Could not empty the vault",
-                    android.widget.Toast.LENGTH_SHORT).show()
-                if (ok) mostrar()
-            }
-            .show()
     }
 
     /**

@@ -425,6 +425,42 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     fila(app, R.drawable.ic_debug, "Debug", "Engine log and files", null) {
         startActivity(Intent(this, DebugActivity::class.java))
     }
+    // Un solo sitio para borrar, con un segundo paso que confirma. Antes no
+    // había forma de vaciar nada desde ajustes.
+    fun confirmarWipe(titulo: String, msg: String, hacer: () -> Unit) {
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle(titulo).setMessage(msg)
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Delete") { _, _ ->
+                try { hacer() } catch (e: Throwable) {
+                    Toast.makeText(this, "Could not complete", Toast.LENGTH_SHORT).show()
+                }
+            }.show()
+    }
+    fila(app, R.drawable.ic_warning, "Wipe data", "Erase finds, wallet, or everything", null) {
+        val op = arrayOf("Finds vault", "Wallet (keys, wallets, watch-only)", "Everything — reset the app")
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("Wipe data")
+            .setItems(op) { _, which -> when (which) {
+                0 -> confirmarWipe("Delete the finds vault?",
+                        "Erases every found key, its balance and anything still pending. Permanent and cannot " +
+                        "be undone. Your wallet is not touched.") {
+                    MatchVault.borrarTodo(this); Toast.makeText(this, "Finds vault erased", Toast.LENGTH_SHORT).show()
+                }
+                1 -> confirmarWipe("Delete the wallet?",
+                        "Erases your seed, every wallet, your WIF keys and watch-only addresses. Permanent and " +
+                        "cannot be undone. Your PIN and your finds vault stay.") {
+                    WalletManager.borrarCartera(this); Toast.makeText(this, "Wallet erased", Toast.LENGTH_SHORT).show()
+                }
+                2 -> confirmarWipe("Reset the whole app?",
+                        "Erases EVERYTHING on this phone — wallet, keys, finds, PIN, settings and logs — and " +
+                        "restarts the app. There is no undo, and no backup is made first.") {
+                    getSystemService(ActivityManager::class.java)?.clearApplicationUserData()
+                }
+            } }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
 
     page.addView(TextView(this).apply {
         // La versión de verdad, la que pone la CI (1.0.<compilación>).

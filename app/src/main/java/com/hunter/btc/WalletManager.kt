@@ -1051,6 +1051,25 @@ object WalletManager {
         try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(KEY_ALIAS) } catch(e: Exception) {}
     }
 
+    /**
+     * Borra la CARTERA entera: la semilla principal, todas las carteras
+     * secundarias, los WIF y las direcciones vigiladas. NO toca el PIN ni el DEK
+     * (que cifra también el baúl de hallazgos), así que el baúl sigue legible y
+     * la app sigue pidiendo código. Sin vuelta atrás.
+     *
+     * Se apoya en las primitivas que ya existen (deleteWallet, clearSeedOnly) en
+     * vez de un prefs.clear() a lo bruto, que es el pie de plomo que se retiró.
+     */
+    @Synchronized
+    fun borrarCartera(ctx: Context) {
+        for ((id, _) in listWallets(ctx)) deleteWallet(ctx, id)      // carteras secundarias
+        clearSeedOnly(ctx)                                           // principal (deja PIN y DEK)
+        ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().remove(PREF_ADDRS).commit()
+        ctx.getSharedPreferences(WIF_PREFS, Context.MODE_PRIVATE).edit().clear().commit()      // WIF
+        ctx.getSharedPreferences("wallet_watch", Context.MODE_PRIVATE).edit().clear().commit() // vigiladas
+        try { KeyStore.getInstance("AndroidKeyStore").also{it.load(null)}.deleteEntry(WIF_KEY_ALIAS) } catch(e: Exception) {}
+    }
+
     // ── Backup cifrado de wallets ─────────────────────────────────────────────
     /**
      * Exporta TODO lo que el usuario tiene guardado.
