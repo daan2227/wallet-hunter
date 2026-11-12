@@ -1690,6 +1690,16 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
        entre los objetivos: salvaje i/2 → objetivo (i/2) % n_obj. */
     for(int i=0;i<n_kang;i++){ K[i].obj=(c->n_obj>1)?((i>>1)%c->n_obj):0; soltar(i,i&1); }
 
+    /* Selector de salto: h = x[0] mod njumps. njumps es casi siempre 64 (politica
+       de saltos por rango) o 32: potencias de 2. El % con un valor que el
+       compilador no conoce es una division de verdad en cada paso de cada
+       canguro; si njumps es potencia de 2 vale un AND. Se calcula una vez. */
+    const uint64_t jmask = (c->njumps>0 && (c->njumps&(c->njumps-1))==0)
+                           ? (uint64_t)(c->njumps-1) : 0;
+    auto elige_salto=[&](uint64_t x)->int{
+        return jmask ? (int)(x&jmask) : (int)(x%(uint64_t)c->njumps);
+    };
+
     while(!c->parar.load() && !c->encontrado.load()){
         auto t_ini=std::chrono::steady_clock::now();
 
@@ -1697,7 +1707,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
               El salto depende SOLO de donde esta: por eso dos canguros que
               coinciden se quedan pegados a partir de ahi. */
         for(int i=0;i<n_kang;i++){
-            int h=(int)(K[i].x[0]%(uint64_t)c->njumps);
+            int h=elige_salto(K[i].x[0]);
             /* Escape de un ciclo esteril: solo al pasar por el punto elegido
                del ciclo, y con el salto reservado, que no esta en la tabla.
                Ver el comentario de Kangaroo.ventana y el de kg_setup. */
@@ -1718,7 +1728,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
                     int visto=0;
                     for(int q=0;q<4;q++) if(K[i].gs_esc[q][0]==K[i].x[0] && K[i].gs_esc[q][1]==K[i].x[1]) visto=1;
                     if(visto){ c->escapes_repe.fetch_add(1); soltar(i,K[i].manso);
-                               h=(int)(K[i].x[0]%(uint64_t)c->njumps); jmp[i]=h;
+                               h=elige_salto(K[i].x[0]); jmp[i]=h;
                                fe_sub(den[i],c->jx[h],K[i].x); mal[i]=0;
                                int z0=1; for(int j=0;j<4;j++) if(den[i][j]) z0=0;
                                if(z0){ den[i][0]=1; den[i][1]=den[i][2]=den[i][3]=0; mal[i]=1; }
@@ -1743,7 +1753,7 @@ static void kg_run(KangarooCtx *c,int n_kang,uint64_t semilla){
             mal[i]=0;
             int z=1; for(int j=0;j<4;j++) if(den[i][j]) z=0;
             if(z){ soltar(i,K[i].manso);
-                   h=(int)(K[i].x[0]%(uint64_t)c->njumps); jmp[i]=h;
+                   h=elige_salto(K[i].x[0]); jmp[i]=h;
                    fe_sub(den[i],c->jx[h],K[i].x);
                    int z2=1; for(int j=0;j<4;j++) if(den[i][j]) z2=0;
                    /* Dos veces seguidas cayendo justo encima del punto de salto
