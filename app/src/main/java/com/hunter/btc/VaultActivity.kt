@@ -283,6 +283,17 @@ class VaultActivity : AppCompatActivity() {
         })
         resumen.addView(Ui.divider(this, 16))
         resumen.addView(interruptorCartera(entradas, wifs, seeds))
+        // Botón directo para meter TODOS los hallazgos con clave en la cartera de
+        // una vez, sin tener que encender el interruptor. Solo si hay alguno con
+        // clave que no esté ya en la cartera (si no, no haría nada).
+        val porAnadir = entradas.count { e ->
+            !MatchVault.enCartera(e, wifs, seeds) &&
+            (e.wif.isNotEmpty() || e.privHex.length == 64 || MatchVault.seedDe(e).isNotEmpty())
+        }
+        if (porAnadir > 0) resumen.addView(Ui.ghost(this, "Add all to wallet ($porAnadir)", AppTheme.ACCENT).apply {
+            (layoutParams as LinearLayout.LayoutParams).topMargin = dp(12)
+            setOnClickListener { anadirTodos() }
+        })
         contenido.addView(resumen)
 
         // ── Lista ─────────────────────────────────────────────────────────
