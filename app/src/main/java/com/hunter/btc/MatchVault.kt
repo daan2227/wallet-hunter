@@ -448,6 +448,28 @@ object MatchVault {
         return true
     }
 
+    /**
+     * Borra TODO el baúl, sin vuelta atrás: el almacén principal, el buzón de
+     * hallazgos pendientes de integrar y las copias apartadas que no se pudieron
+     * descifrar. write(emptyList) a propósito NO se lleva el buzón ni las
+     * apartadas (ver write), así que aquí se quitan a mano.
+     *
+     * @return cuántos hallazgos había en el almacén principal (0 si está
+     *   bloqueado o vacío; el borrado se hace igual, no necesita descifrar).
+     */
+    @Synchronized
+    fun borrarTodo(ctx: Context): Int {
+        val n = (leer(ctx) ?: emptyList()).size
+        write(ctx, emptyList())                               // almacén principal
+        val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val ed = prefs.edit()
+        ed.remove(BUZON_ITEMS)                                // pendientes sin integrar
+        for (k in prefs.all.keys.toList())                   // copias apartadas (ilegibles)
+            if (k.startsWith(PREF_ENC_PERDIDO) || k.startsWith(PREF_IV_PERDIDO)) ed.remove(k)
+        ed.commit()
+        return n
+    }
+
     fun count(ctx: Context): Int = list(ctx).size
 
     /** Hallazgos cuyo saldo aún no se ha consultado en la cadena. */
