@@ -406,6 +406,59 @@ object WeakController {
             override fun onStopTrackingTouch(s: SeekBar?) {}
         })
 
+        // GPU (Vulkan) como rebaño EXTRA de MANSOS sobre la misma tabla: un manso
+        // no depende de ningún objetivo, así que suma también en multiobjetivo (el
+        // salvaje de cada clave lo lleva la CPU; una colisión GPU-CPU resuelve esa
+        // clave). Solo ayuda en rangos grandes: arrancar 65.536 canguros no
+        // compensa en los pequeños (el motor lo salta solo). Comparte la pref
+        // "usar_gpu" con Puzzle; el flag nativo g_usar_gpu es uno para todo.
+        val prefsGpu = a.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
+        val filaGpu = LinearLayout(a).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(18), 0, dp(2))
+        }
+        val colGpu = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        colGpu.addView(rotulo("Use GPU (extra tame kangaroos)"))
+        val tvGpu = TextView(a).apply {
+            text = "Checking the GPU…"; textSize = AppTheme.SP_MICRO
+            setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context)
+            setPadding(0, dp(2), dp(8), 0)
+        }
+        colGpu.addView(tvGpu)
+        filaGpu.addView(colGpu)
+        val swGpu = android.widget.Switch(a).apply {
+            isChecked = prefsGpu.getBoolean("usar_gpu", false)
+            isEnabled = false
+            Ui.tintarInterruptor(this)
+        }
+        filaGpu.addView(swGpu)
+        root.addView(filaGpu)
+        HunterEngine.setUsarGpu(swGpu.isChecked)
+        swGpu.setOnCheckedChangeListener { _, on ->
+            prefsGpu.edit().putBoolean("usar_gpu", on).apply()
+            HunterEngine.setUsarGpu(on)
+            aviso(if (on) "GPU on: applies when the audit (re)starts."
+                  else   "GPU off: applies when the audit (re)starts.")
+        }
+        Thread {
+            val info = try { HunterEngine.gpuInfo() } catch (e: Throwable) { "" }
+            val p = info.split("|")
+            val ok = p.size >= 5 && p[0].isNotBlank()
+            a.runOnUiThread {
+                if (ok) {
+                    tvGpu.text = "${p[0]} · ${p[4]} MB · joins as a tame herd (helps on big ranges)"
+                    swGpu.isEnabled = true
+                } else {
+                    tvGpu.text = "No Vulkan GPU on this phone."
+                    swGpu.isChecked = false; swGpu.isEnabled = false
+                    HunterEngine.setUsarGpu(false)
+                }
+            }
+        }.start()
+
         val alEscribir = object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { estimar() }
             override fun beforeTextChanged(s: CharSequence?, a2: Int, b: Int, c: Int) {}

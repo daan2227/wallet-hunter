@@ -28,6 +28,11 @@ struct GpuKg {
     std::string nombre;
     uint64_t rng=0x9E3779B97F4A7C15ULL;
     long long saltos=0;          /* los de esta GPU, para enseñarlos aparte */
+    /* Modo solo-mansos: la GPU suelta TODO mansos (d*G, sin objetivo). Sirve en
+     * multiobjetivo, donde los salvajes —uno por objetivo— los lleva la CPU: los
+     * mansos de la GPU alimentan la MISMA tabla y una colision con cualquier
+     * salvaje resuelve su objetivo. Un manso no depende de ningun objetivo. */
+    bool solo_mansos=false;
 };
 
 static const uint32_t GK_ST=72, GK_REC=13;
@@ -202,9 +207,11 @@ static bool gk_buffer(GpuKg *g,int i,VkDeviceSize bytes,std::string &err){
 
 /* Prepara la GPU para el contexto c (ya pasado por kg_setup). */
 static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
-                           uint32_t n_inv,uint32_t kpi,uint64_t semilla,std::string &err){
+                           uint32_t n_inv,uint32_t kpi,uint64_t semilla,std::string &err,
+                           bool solo_mansos=false){
     if(!c->negacion){ err="the GPU only runs the negation-map engine"; return NULL; }
     GpuKg *g=new GpuKg(); g->rng=semilla?semilla:0x9E3779B97F4A7C15ULL;
+    g->solo_mansos=solo_mansos;
     g->n_inv=n_inv; g->kpi=kpi; g->total=n_inv*kpi; g->maxdp=g->total;
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO}; app.pApplicationName="WalletHunter"; app.apiVersion=VK_API_VERSION_1_0;
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO}; ici.pApplicationInfo=&app;
@@ -244,7 +251,9 @@ static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
                 err="stopped before starting"; gpu_kg_destruir(g); return NULL;
             }
             uint32_t n=g->total-k0<TROZO?g->total-k0:TROZO;
-            for(uint32_t i=0;i<n;i++){ kids[i]=k0+i; mansos[i]=(uint8_t)((k0+i)&1); }
+            /* solo_mansos: todos mansos. El flag queda en st[24] (bit 2), asi que
+               las re-sueltas de gpu_kg_tanda ya salen mansas sin tocar nada. */
+            for(uint32_t i=0;i<n;i++){ kids[i]=k0+i; mansos[i]=g->solo_mansos?1:(uint8_t)((k0+i)&1); }
             gk_soltar_lote(g,c,kids.data(),mansos.data(),n);
         }
     }
@@ -308,8 +317,12 @@ static double gpu_kg_tanda(GpuKg *g,KangarooCtx *c,uint32_t pasos){
         sc_t d; gk_get(d,o+4);
         int manso=(int)o[12];
         sc_t otro; int om=0, oo=0, mismo=0;
-        /* La GPU es de un solo objetivo (el multiobjetivo corre solo en CPU): obj 0. */
-        if(dp_insert(&c->tabla,kx,d,manso,0,otro,&om,&oo,&mismo)) kg_resolver(c,d,manso,otro,0);
+        /* Un manso de la GPU que choca con un salvaje resuelve el objetivo de ESE
+           salvaje (otro_obj), no el 0. En single-target oo siempre es 0, asi que
+           no cambia nada; en multiobjetivo (modo solo_mansos) es lo que hace que
+           la GPU sirva para varias claves a la vez. Si la GPU trae un salvaje
+           (single-target), su objetivo es el suyo, que es 0. */
+        if(dp_insert(&c->tabla,kx,d,manso,0,otro,&om,&oo,&mismo)) kg_resolver(c,d,manso,otro, manso?oo:0);
         else if(mismo) c->pegados.fetch_add(1);
     }
     const uint32_t *R=S+4+(size_t)g->maxdp*GK_REC;
