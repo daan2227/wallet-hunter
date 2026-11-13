@@ -1670,6 +1670,10 @@ object WeakController {
         // Tabla de mansos compartida por rango (saltos del rango, no de la pubkey):
         // es lo que hace que los objetivos y los mansos caminen igual y se crucen.
         val rutaMansos = try { java.io.File(ctx.filesDir, "weak_mansos_$bits.tbl").absolutePath } catch (e: Throwable) { "" }
+        // Afinidad: clava los hilos a los núcleos rápidos si caben (ahora kg_thread
+        // lo respeta). Con todos los núcleos no cabe y deja al planificador, igual
+        // que antes; en móviles donde todos los núcleos son rápidos, los fija.
+        try { Hardware.aplicarAfinidad(nucleos) } catch (e: Throwable) {}
         val err = try {
             HunterEngine.kangarooMultiStart(pubs.joinToString("\n"), ini.toString(16), fin.toString(16),
                 nucleos, porHilo, HunterEngine.topeTablaBits(ctx), rutaMansos)

@@ -2424,6 +2424,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         btnKangaroo?.isEnabled = false
         tvPuzzleAtajo?.text = "Starting Kangaroo… loading the saved work"
         tvPuzzleAtajo?.setTextColor(AppTheme.TXT_SEC)
+        // Afinidad con el nº de hilos REAL del kangaroo: si caben en los núcleos
+        // rápidos los clava ahí (ahora kg_thread lo respeta), si no deja al
+        // planificador. Antes solo lo fijaba el selector de Power, que podía no
+        // haberse tocado.
+        aplicarAfinidad(hilos)
         Thread {
             val ok = try {
                 HunterEngine.kangarooStart(puzzlePubHex, puzzleIniHex, puzzleFinHex,

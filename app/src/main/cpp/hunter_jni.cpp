@@ -3102,11 +3102,18 @@ static uint64_t    g_kg_ops_previas=0;
 static std::vector<pthread_t> g_kg_hilos;
 static std::mutex  g_kg_mtx;
 
-struct KgArg { int n_kang; uint64_t semilla; };
+struct KgArg { int n_kang; uint64_t semilla; int idx; };
 static std::vector<KgArg> g_kg_args;
 
 static void *kg_thread(void *p){
     KgArg *a=(KgArg*)p;
+    /* Clavar a los núcleos rápidos igual que el escáner. set_thread_affinity solo
+       actúa si la app activó la afinidad (Hardware.aplicarAfinidad: lo hace solo
+       cuando los hilos CABEN en los núcleos rápidos; si no, es un no-op y manda el
+       planificador). Antes el kangaroo no lo llamaba y se quedaba suelto aunque el
+       escáner sí se clavara: en una búsqueda larga, los núcleos lentos frenan y
+       calientan, y el calor tira del reloj de los rápidos hacia abajo. */
+    set_thread_affinity(a->idx);
     kg_run(&g_kg,a->n_kang,a->semilla);
     return NULL;
 }
@@ -3322,7 +3329,7 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
     g_kg_args.assign(hilos,KgArg{});
     g_kg_hilos.assign(hilos,pthread_t{});
     for(int i=0;i<hilos;i++){
-        g_kg_args[i].n_kang=por_hilo;
+        g_kg_args[i].n_kang=por_hilo; g_kg_args[i].idx=i;
         /* Entropia de verdad por hilo. Con la version anterior —el numero de
            hilo revuelto con time(NULL), que va en segundos— dos moviles que
            arrancaran en el mismo segundo soltaban sus canguros en los mismos
@@ -3782,7 +3789,7 @@ Java_com_hunter_btc_HunterEngine_kangarooMultiStart(
     if(por_hilo<16) por_hilo=16; if(por_hilo>4096) por_hilo=4096;
     g_kg_args.assign(hilos,KgArg{});
     g_kg_hilos.assign(hilos,pthread_t{});
-    for(int i=0;i<hilos;i++){ g_kg_args[i].n_kang=por_hilo;
+    for(int i=0;i<hilos;i++){ g_kg_args[i].n_kang=por_hilo; g_kg_args[i].idx=i;
         g_kg_args[i].semilla=kg_semilla((uint64_t)(i+1));
         pthread_create(&g_kg_hilos[i],NULL,kg_thread,&g_kg_args[i]); }
     /* La GPU, si el usuario la activó, entra como rebaño de MANSOS a la misma
