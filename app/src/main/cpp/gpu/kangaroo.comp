@@ -8,7 +8,10 @@ layout(std430, binding = 2) buffer Salida { uint S[]; };    // [0] nDP, [1] nRes
 layout(std430, binding = 3) buffer Pfx { uint PF[]; };      // productos parciales, 8 por canguro
 layout(push_constant) uniform Params { uint kpi; uint pasos; uint dmlo; uint dmhi; uint tope; uint maxdp; uint total; } pc;
 const uint ST = 72u;
-const uint REC = 13u;
+// REC: kx(4) + dist(8) + manso(1) + obj(1) = 14. El obj es el objetivo del
+// salvaje (palabra 70 del estado, que la pone la CPU al soltar); deja que la
+// GPU sirva a varias pubkeys a la vez (Weak multiobjetivo).
+const uint REC = 14u;
 #define MA(x,y) { uint hi_, lo_, k_; umulExtended(x, y, hi_, lo_); c0 = uaddCarry(c0, lo_, k_); hi_ += k_; c1 = uaddCarry(c1, hi_, k_); c2 += k_; }
 
 F f_mul(F a, F b) {
@@ -397,6 +400,7 @@ void main() {
                     S[o]=x.lo.x; S[o+1u]=x.lo.y; S[o+2u]=x.lo.z; S[o+3u]=x.lo.w;
                     for (uint q = 0u; q < 8u; q++) S[o+4u+q] = K[b+16u+q];
                     S[o+12u] = ((fl & FL_MANSO) != 0u) ? 1u : 0u;
+                    S[o+13u] = K[b+70u];   // objetivo del salvaje (0 si manso)
                 }
                 aparcar(kid, b);
                 continue;

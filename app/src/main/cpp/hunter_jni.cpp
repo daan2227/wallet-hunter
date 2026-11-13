@@ -3126,9 +3126,6 @@ static void *kg_thread(void *p){
  * otras tantas multiplicaciones escalares, un par de segundos en un movil, y
  * kangarooStart no debe tardar eso. */
 static std::atomic<int> g_usar_gpu(0);
-/* La GPU suelta solo mansos (para multiobjetivo): no dependen del objetivo y
-   alimentan la tabla compartida; los salvajes por objetivo los lleva la CPU. */
-static std::atomic<int> g_gpu_solo_mansos(0);
 static pthread_t   g_gpu_hilo;
 static bool        g_gpu_hilo_vivo=false;
 static std::mutex  g_gpu_estado_mtx;
@@ -3142,8 +3139,7 @@ static void *gpu_thread(void *){
     g_gpu_saltos.store(0);
     gpu_estado("starting");
     std::string err;
-    GpuKg *g=gpu_kg_crear(&g_kg,KANGAROO_SPV,sizeof(KANGAROO_SPV),1024,64,kg_semilla(0x6770),err,
-                          g_gpu_solo_mansos.load()!=0);
+    GpuKg *g=gpu_kg_crear(&g_kg,KANGAROO_SPV,sizeof(KANGAROO_SPV),1024,64,kg_semilla(0x6770),err);
     if(!g){ gpu_estado(err=="stopped before starting" ? "stopped (the search ended before the GPU started)"
                                                          : "error: "+err); return NULL; }
     gpu_estado("running on "+g->nombre);
@@ -3348,7 +3344,6 @@ Java_com_hunter_btc_HunterEngine_kangarooStart(
      * le quita potencia a la CPU (comparten limite de consumo y temperatura).
      * Medido en el A56 con el #60: 14,96 M/s con GPU frente a 16,93 sin ella.
      * En esos rangos no se usa. */
-    g_gpu_solo_mansos.store(0);   /* single-target: rebaño mixto (mansos y salvajes) */
     bool gpu_sirve=true;
     if(g_usar_gpu.load() && hilos>0 && g_kg.negacion){
         double arranque=65536.0*ldexp(1.0,g_kg.dbits);
@@ -3805,7 +3800,6 @@ Java_com_hunter_btc_HunterEngine_kangarooMultiStart(
         if(arranque>trabajo/20.0) gpu_sirve=false;
     }
     if(g_usar_gpu.load() && g_kg.negacion && gpu_sirve){
-        g_gpu_solo_mansos.store(1);
         if(pthread_create(&g_gpu_hilo,NULL,gpu_thread,NULL)==0) g_gpu_hilo_vivo=true;
     }else gpu_estado(g_usar_gpu.load()?"not used (range too small, or no negation)":"off");
     g_kg_vivo=true;

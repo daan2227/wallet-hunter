@@ -421,7 +421,7 @@ object WeakController {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        colGpu.addView(rotulo("Use GPU (extra tame kangaroos)"))
+        colGpu.addView(rotulo("Use GPU (extra kangaroos)"))
         val tvGpu = TextView(a).apply {
             text = "Checking the GPU…"; textSize = AppTheme.SP_MICRO
             setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context)
@@ -449,7 +449,7 @@ object WeakController {
             val ok = p.size >= 5 && p[0].isNotBlank()
             a.runOnUiThread {
                 if (ok) {
-                    tvGpu.text = "${p[0]} · ${p[4]} MB · joins as a tame herd (helps on big ranges)"
+                    tvGpu.text = "${p[0]} · ${p[4]} MB · adds a full herd (helps on big ranges)"
                     swGpu.isEnabled = true
                 } else {
                     tvGpu.text = "No Vulkan GPU on this phone."

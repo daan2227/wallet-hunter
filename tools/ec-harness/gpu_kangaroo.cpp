@@ -72,10 +72,11 @@ int main(){
         fallos+=!ok;
         gpu_kg_destruir(g); kg_free(&c);
     }
-    /* 3) Multiobjetivo con la GPU en modo SOLO-MANSOS: la GPU suelta solo mansos
-     *    (no dependen de ningun objetivo) y los salvajes —uno por objetivo— los
-     *    llevan hilos de CPU. Una colision manso-GPU / salvaje-CPU resuelve el
-     *    objetivo de ese salvaje. Se comprueba que caen TODAS las claves. */
+    /* 3) Multiobjetivo con la GPU en rebaño MIXTO por objetivo: la GPU suelta
+     *    mansos Y salvajes, cada salvaje a su objetivo (kid/2)%N, igual que la
+     *    CPU. El salvaje lleva su objetivo en el registro del punto distinguido,
+     *    así que una colisión resuelve la pubkey correcta. Con hilos de CPU
+     *    además. Se comprueba que caen TODAS las claves. */
     {
         int bits=30, dbits=9, N=4;
         unsigned long long a=1ULL<<(bits-1);
@@ -90,7 +91,7 @@ int main(){
         int tbits=bits/2+2-dbits; if(tbits<14) tbits=14;
         if(!kg_setup_multi(&c,pubs.data(),N,ini,fin,dbits,tbits)){ printf("MAL  setup multi\n"); return 1; }
         std::string err;
-        GpuKg *g=gpu_kg_crear(&c,KANGAROO_SPV,sizeof(KANGAROO_SPV),256,8,0xBEEF,err,/*solo_mansos=*/true);
+        GpuKg *g=gpu_kg_crear(&c,KANGAROO_SPV,sizeof(KANGAROO_SPV),256,8,0xBEEF,err);
         if(!g){ printf("MAL  GPU multi: %s\n",err.c_str()); return 1; }
         auto t0=std::chrono::steady_clock::now();
         std::thread gpu([&]{ gpu_kg_correr(g,&c); });
@@ -105,7 +106,7 @@ int main(){
             sc_t kk; sc_set_u64(kk,ks[j]);
             if(c.encontrado_obj[j].load() && sc_cmp(c.k_obj[j],kk)==0) caidas++;
         }
-        printf("%s  GPU mansos + CPU salvajes: %d de %d objetivos (%.1f s, GPU %lld saltos)\n",
+        printf("%s  GPU (mixto por objetivo) + CPU: %d de %d objetivos (%.1f s, GPU %lld saltos)\n",
                caidas==N?"OK ":"MAL", caidas, N,
                std::chrono::duration<double>(std::chrono::steady_clock::now()-t0).count(), g->saltos);
         fallos+=(caidas!=N);

@@ -28,14 +28,11 @@ struct GpuKg {
     std::string nombre;
     uint64_t rng=0x9E3779B97F4A7C15ULL;
     long long saltos=0;          /* los de esta GPU, para enseñarlos aparte */
-    /* Modo solo-mansos: la GPU suelta TODO mansos (d*G, sin objetivo). Sirve en
-     * multiobjetivo, donde los salvajes —uno por objetivo— los lleva la CPU: los
-     * mansos de la GPU alimentan la MISMA tabla y una colision con cualquier
-     * salvaje resuelve su objetivo. Un manso no depende de ningun objetivo. */
-    bool solo_mansos=false;
 };
 
-static const uint32_t GK_ST=72, GK_REC=13;
+/* GK_REC=14: kx(4)+dist(8)+manso(1)+obj(1). El salvaje lleva su objetivo, así
+ * que la GPU sirve a varias pubkeys a la vez (Weak multiobjetivo). */
+static const uint32_t GK_ST=72, GK_REC=14;
 
 static void gpu_kg_destruir(GpuKg *g){
     if(!g) return;
@@ -73,8 +70,10 @@ static void gk_azar(GpuKg *g,sc_t out,const sc_t lim){
 static void gk_put(uint32_t *d,const uint64_t *v){ for(int i=0;i<4;i++){ d[2*i]=(uint32_t)v[i]; d[2*i+1]=(uint32_t)(v[i]>>32); } }
 static void gk_get(uint64_t *v,const uint32_t *d){ for(int i=0;i<4;i++) v[i]=(uint64_t)d[2*i]|((uint64_t)d[2*i+1]<<32); }
 
-/* Suelta un canguro: lo mismo que soltar() de kg_run con negacion. */
-static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso){
+/* Suelta un canguro: lo mismo que soltar() de kg_run con negacion. [obj] es el
+ * objetivo del salvaje (ignorado para mansos); se guarda en st[70] para que el
+ * shader lo copie al registro del punto distinguido. */
+static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso,int obj){
     uint32_t *st=(uint32_t*)g->map[0]+(size_t)kid*GK_ST;
     sc_t d;
     if(manso) gk_azar(g,d,c->medio);
@@ -91,9 +90,9 @@ static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso){
     if(manso) kg_normalize(&dG,x,y);
     else{
         fe_t dx,dy; kg_normalize(&dG,dx,dy);
-        JP w2; jp_add_affine(&w2,&c->objetivo[0],dx,dy);
+        JP w2; jp_add_affine(&w2,&c->objetivo[obj],dx,dy);
         int inf=1; for(int j=0;j<4;j++) if(w2.z[j]) inf=0;
-        if(inf){ memcpy(x,c->obj_x,32); memcpy(y,c->obj_y,32); sc_zero(d); }
+        if(inf){ memcpy(x,c->obj_x[obj],32); memcpy(y,c->obj_y[obj],32); sc_zero(d); }
         else kg_normalize(&w2,x,y);
     }
     uint32_t fl=manso?2u:0u;
@@ -101,6 +100,7 @@ static void gk_soltar(GpuKg *g,KangarooCtx *c,uint32_t kid,int manso){
     memset(st,0,GK_ST*4);
     gk_put(st,x); gk_put(st+8,y); gk_put(st+16,d);
     st[24]=fl;
+    st[70]=(uint32_t)(manso?0:obj);
 }
 
 /* a / m, con m pequeno. */
@@ -111,11 +111,11 @@ static void gk_div(sc_t r,const sc_t a,uint32_t m){
 
 /* El punto de salida de la distancia d, en Jacobiano: d*G (manso) u
  * objetivo + d*G (salvaje). Devuelve 0 si sale el infinito. */
-static int gk_punto(KangarooCtx *c,const sc_t d,int manso,JP *R){
+static int gk_punto(KangarooCtx *c,const sc_t d,int manso,int obj,JP *R){
     int cero=1; for(int j=0;j<4;j++) if(d[j]) cero=0;
-    if(cero){ if(manso) return 0; *R=c->objetivo[0]; return 1; }
+    if(cero){ if(manso) return 0; *R=c->objetivo[obj]; return 1; }
     JP dG; kg_scalar_mul(&dG,d,FIELD_GX,FIELD_GY);
-    if(!manso){ fe_t dx,dy; kg_normalize(&dG,dx,dy); jp_add_affine(R,&c->objetivo[0],dx,dy); }
+    if(!manso){ fe_t dx,dy; kg_normalize(&dG,dx,dy); jp_add_affine(R,&c->objetivo[obj],dx,dy); }
     else *R=dG;
     int inf=1; for(int j=0;j<4;j++) if(R->z[j]) inf=0;
     return !inf;
@@ -128,7 +128,7 @@ static int gk_punto(KangarooCtx *c,const sc_t d,int manso,JP *R){
  * una sola inversion (el truco de Montgomery) los pasa todos a afin. De paso
  * quedan repartidos por igual por su zona, que para Gaudry-Schost es tan
  * bueno como al azar. */
-static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t n,int manso){
+static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t n,int manso,int obj){
     sc_t ini,ancho;
     if(manso){ sc_zero(ini); sc_copy(ancho,c->medio); }
     else{
@@ -137,14 +137,14 @@ static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t
         sc_shr(dieci,ancho,1); sc_neg_n(ini,dieci);
     }
     sc_t D; gk_div(D,ancho,n?n:1);
-    if(n<16 || sc_bits(D)==0){ for(uint32_t i=0;i<n;i++) gk_soltar(g,c,kids[i],manso); return; }
+    if(n<16 || sc_bits(D)==0){ for(uint32_t i=0;i<n;i++) gk_soltar(g,c,kids[i],manso,obj); return; }
     sc_t off,d; gk_azar(g,off,D); sc_add_n(d,ini,off);
     JP DGj; kg_scalar_mul(&DGj,D,FIELD_GX,FIELD_GY);
     fe_t Dx,Dy; kg_normalize(&DGj,Dx,Dy);
 
     std::vector<JP> P(n); std::vector<uint64_t> dv((size_t)n*4), pv((size_t)n*4); std::vector<uint8_t> ok(n);
     uint64_t *dist=dv.data(), *pfx=pv.data();
-    int valido=gk_punto(c,d,manso,&P[0]);
+    int valido=gk_punto(c,d,manso,obj,&P[0]);
     for(uint32_t i=0;i<n;i++){
         if(i){
             sc_add_n(d,d,D);
@@ -154,7 +154,7 @@ static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t
             /* Infinito: o el punto lo es de verdad (el objetivo menos su
                propia clave), o la suma mixta cayo en el doblado. Se rehace
                entera; si sigue siendo el infinito, ese canguro va aparte. */
-            if(!valido) valido=gk_punto(c,d,manso,&P[i]);
+            if(!valido) valido=gk_punto(c,d,manso,obj,&P[i]);
         }
         sc_copy(dist+4*(size_t)i,d); ok[i]=(uint8_t)valido;
     }
@@ -164,7 +164,7 @@ static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t
     fe_t inv; fe_inv(inv,acc);
     for(uint32_t k=n;k-- >0;){
         uint32_t *st=(uint32_t*)g->map[0]+(size_t)kids[k]*GK_ST;
-        if(!ok[k]){ gk_soltar(g,c,kids[k],manso); continue; }
+        if(!ok[k]){ gk_soltar(g,c,kids[k],manso,obj); continue; }
         fe_t zi,z2,z3,x,y;
         if(k){ fe_mul(zi,inv,pfx+4*(size_t)(k-1)); fe_mul(inv,inv,P[k].z); }
         else memcpy(zi,inv,32);
@@ -175,15 +175,23 @@ static void gk_soltar_tipo(GpuKg *g,KangarooCtx *c,const uint32_t *kids,uint32_t
         memset(st,0,GK_ST*4);
         gk_put(st,x); gk_put(st+8,y); gk_put(st+16,dist+4*(size_t)k);
         st[24]=fl;
+        st[70]=(uint32_t)(manso?0:obj);
     }
 }
 
-/* Suelta una lista de canguros, separando mansos y salvajes. */
+/* Suelta una lista: mansos juntos; salvajes agrupados POR OBJETIVO (cada salvaje
+ * kid va al objetivo (kid/2)%n_obj, el mismo reparto que la CPU). Así cada grupo
+ * se suelta en progresión desde su objetivo. */
 static void gk_soltar_lote(GpuKg *g,KangarooCtx *c,const uint32_t *kids,const uint8_t *mansos,uint32_t n){
-    std::vector<uint32_t> m,s; m.reserve(n); s.reserve(n);
-    for(uint32_t i=0;i<n;i++) (mansos[i]?m:s).push_back(kids[i]);
-    if(!m.empty()) gk_soltar_tipo(g,c,m.data(),(uint32_t)m.size(),1);
-    if(!s.empty()) gk_soltar_tipo(g,c,s.data(),(uint32_t)s.size(),0);
+    int nobj=c->n_obj>0?c->n_obj:1;
+    std::vector<uint32_t> m; m.reserve(n);
+    std::vector<std::vector<uint32_t>> s(nobj);
+    for(uint32_t i=0;i<n;i++){
+        if(mansos[i]) m.push_back(kids[i]);
+        else s[(kids[i]/2u)%(uint32_t)nobj].push_back(kids[i]);
+    }
+    if(!m.empty()) gk_soltar_tipo(g,c,m.data(),(uint32_t)m.size(),1,0);
+    for(int o=0;o<nobj;o++) if(!s[o].empty()) gk_soltar_tipo(g,c,s[o].data(),(uint32_t)s[o].size(),0,o);
 }
 
 static bool gk_buffer(GpuKg *g,int i,VkDeviceSize bytes,std::string &err){
@@ -207,11 +215,9 @@ static bool gk_buffer(GpuKg *g,int i,VkDeviceSize bytes,std::string &err){
 
 /* Prepara la GPU para el contexto c (ya pasado por kg_setup). */
 static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
-                           uint32_t n_inv,uint32_t kpi,uint64_t semilla,std::string &err,
-                           bool solo_mansos=false){
+                           uint32_t n_inv,uint32_t kpi,uint64_t semilla,std::string &err){
     if(!c->negacion){ err="the GPU only runs the negation-map engine"; return NULL; }
     GpuKg *g=new GpuKg(); g->rng=semilla?semilla:0x9E3779B97F4A7C15ULL;
-    g->solo_mansos=solo_mansos;
     g->n_inv=n_inv; g->kpi=kpi; g->total=n_inv*kpi; g->maxdp=g->total;
     VkApplicationInfo app{VK_STRUCTURE_TYPE_APPLICATION_INFO}; app.pApplicationName="WalletHunter"; app.apiVersion=VK_API_VERSION_1_0;
     VkInstanceCreateInfo ici{VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO}; ici.pApplicationInfo=&app;
@@ -251,9 +257,8 @@ static GpuKg *gpu_kg_crear(KangarooCtx *c,const uint32_t *spv,size_t spv_bytes,
                 err="stopped before starting"; gpu_kg_destruir(g); return NULL;
             }
             uint32_t n=g->total-k0<TROZO?g->total-k0:TROZO;
-            /* solo_mansos: todos mansos. El flag queda en st[24] (bit 2), asi que
-               las re-sueltas de gpu_kg_tanda ya salen mansas sin tocar nada. */
-            for(uint32_t i=0;i<n;i++){ kids[i]=k0+i; mansos[i]=g->solo_mansos?1:(uint8_t)((k0+i)&1); }
+            /* Rebaño mixto: par = salvaje (a su objetivo), impar = manso. */
+            for(uint32_t i=0;i<n;i++){ kids[i]=k0+i; mansos[i]=(uint8_t)((k0+i)&1); }
             gk_soltar_lote(g,c,kids.data(),mansos.data(),n);
         }
     }
@@ -316,13 +321,13 @@ static double gpu_kg_tanda(GpuKg *g,KangarooCtx *c,uint32_t pasos){
         uint64_t kx[2]={(uint64_t)o[0]|((uint64_t)o[1]<<32),(uint64_t)o[2]|((uint64_t)o[3]<<32)};
         sc_t d; gk_get(d,o+4);
         int manso=(int)o[12];
+        int ogpu=(int)o[13];                       /* objetivo del salvaje (0 si manso) */
         sc_t otro; int om=0, oo=0, mismo=0;
-        /* Un manso de la GPU que choca con un salvaje resuelve el objetivo de ESE
-           salvaje (otro_obj), no el 0. En single-target oo siempre es 0, asi que
-           no cambia nada; en multiobjetivo (modo solo_mansos) es lo que hace que
-           la GPU sirva para varias claves a la vez. Si la GPU trae un salvaje
-           (single-target), su objetivo es el suyo, que es 0. */
-        if(dp_insert(&c->tabla,kx,d,manso,0,otro,&om,&oo,&mismo)) kg_resolver(c,d,manso,otro, manso?oo:0);
+        /* Se inserta con el objetivo del canguro (el salvaje el suyo; el manso 0,
+           que se ignora). Al resolver: un salvaje usa su propio objetivo; un manso
+           usa el del salvaje con el que choca (otro_obj). Así la GPU resuelve la
+           pubkey correcta con varios objetivos a la vez. */
+        if(dp_insert(&c->tabla,kx,d,manso,ogpu,otro,&om,&oo,&mismo)) kg_resolver(c,d,manso,otro, manso?oo:ogpu);
         else if(mismo) c->pegados.fetch_add(1);
     }
     const uint32_t *R=S+4+(size_t)g->maxdp*GK_REC;
