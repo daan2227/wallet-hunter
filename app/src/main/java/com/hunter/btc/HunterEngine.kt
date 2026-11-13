@@ -278,6 +278,9 @@ object HunterEngine {
     external fun gpuEstado(): String
     /** Saltos hechos por la GPU en esta búsqueda (ya van en el total). */
     external fun gpuSaltos(): Long
+    /** Banco A/B: multiplicación de cuerpo escalar (umulh) vs NEON de 2 vías.
+     *  Devuelve las dos tasas y el factor. Correr con el motor parado. */
+    external fun benchFeMul(): String
     /** Kangaroo en la GPU, medido con varios repartos. Unos 15 s; motor parado. */
 
     /**
