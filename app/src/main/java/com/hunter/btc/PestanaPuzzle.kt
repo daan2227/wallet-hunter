@@ -573,30 +573,83 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             })
         })
 
-        // Partir el rango en K trozos iguales y quedarse con el i-ésimo: para
-        // repartir un puzzle entre móviles sin echar cuentas en hexadecimal.
-        val etK = styledInput("2").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        val etI = styledInput("1").apply { inputType = android.text.InputType.TYPE_CLASS_NUMBER }
-        addView(LinearLayout(this@buildPuzzleTab).apply {
-            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
-            setPadding(0, 0, 0, dp(12))
-            addView(col("Split into", etK, false))
-            addView(col("Take part", etI, true))
-            addView(botonito("Split") {
-                val a = hexDe(etDesde.text.toString()); val b = hexDe(etHasta.text.toString())
-                val k = etK.text.toString().toIntOrNull(); val i = etI.text.toString().toIntOrNull()
-                when {
-                    a == null || b == null || a >= b -> avisoCorto("Fill a valid From and To first")
-                    k == null || k !in 2..1_000_000 -> avisoCorto("Split into 2 or more parts")
-                    i == null || i !in 1..k -> avisoCorto("Part must be between 1 and $k")
-                    else -> {
-                        val (pi, pf) = KgAuto.trozo(a, b, k, i - 1)
-                        etDesde.setText(pi.toString(16)); etHasta.setText(pf.toString(16))
-                        avisoCorto("Part $i of $k: ${pf.subtract(pi).add(java.math.BigInteger.ONE).bitLength()} bits")
-                    }
-                }
-            })
+        // Partir el rango en N partes iguales con DESLIZADORES (más fácil que
+        // teclear hex): mueves "Parts" y "Part" y el From/To de arriba se rellena
+        // solo con ese trozo, listo para buscar. Para repartir un puzzle entre
+        // móviles sin echar cuentas. La base = lo último que el usuario puso en
+        // From/To (no lo que escribe el propio split).
+        val unoBI = java.math.BigInteger.ONE
+        var baseA = hexDe(etDesde.text.toString())
+        var baseB = hexDe(etHasta.text.toString())
+        var splitEscribe = false
+        val capturaBase = object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                if (splitEscribe) return
+                val x = hexDe(etDesde.text.toString()); val y = hexDe(etHasta.text.toString())
+                if (x != null && y != null && x < y) { baseA = x; baseB = y }
+            }
+            override fun beforeTextChanged(s: CharSequence?, a2: Int, b2: Int, c2: Int) {}
+            override fun onTextChanged(s: CharSequence?, a2: Int, b2: Int, c2: Int) {}
+        }
+        etDesde.addTextChangedListener(capturaBase); etHasta.addTextChangedListener(capturaBase)
+
+        val tvSplit = TextView(this@buildPuzzleTab).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(0, dp(4), 0, dp(8))
+            text = "Divide the range above into equal parts"
+        }
+        fun valor() = TextView(this@buildPuzzleTab).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+        }
+        val tvNParts = valor(); val tvKPart = valor()
+        val sbParts = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 31; progress = 0 }
+        val sbPart  = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 0; progress = 0 }
+        fun filaSlider(rotulo: String, valorTv: TextView, sb: SeekBar) = LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.VERTICAL
+            val cab = LinearLayout(this@buildPuzzleTab).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(this@buildPuzzleTab).apply {
+                    text = rotulo; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                    typeface = AppTheme.medium(context)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(valorTv)
+            }
+            addView(cab); addView(sb)
+        }
+        var aplicando = false
+        fun aplicarSplit() {
+            if (aplicando) return
+            aplicando = true
+            val n = sbParts.progress + 1
+            tvNParts.text = "$n"
+            sbPart.max = (n - 1).coerceAtLeast(0)
+            val k = (sbPart.progress + 1).coerceIn(1, n)
+            tvKPart.text = "$k"
+            val a = baseA; val b = baseB
+            if (a == null || b == null || a >= b) { tvSplit.text = "Fill a valid From / To above first"; aplicando = false; return }
+            splitEscribe = true
+            val (pi, pf) = if (n == 1) a to b else KgAuto.trozo(a, b, n, k - 1)
+            etDesde.setText(pi.toString(16)); etHasta.setText(pf.toString(16))
+            splitEscribe = false
+            val bits = pf.subtract(pi).add(unoBI).bitLength()
+            tvSplit.text = if (n == 1) "Whole range · $bits bits"
+                           else "Part $k of $n · $bits bits · searches only this slice"
+            aplicando = false
+        }
+        val seek = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { aplicarSplit() }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        }
+        sbParts.setOnSeekBarChangeListener(seek); sbPart.setOnSeekBarChangeListener(seek)
+        addView(tvSplit)
+        addView(filaSlider("Parts", tvNParts, sbParts))
+        addView(filaSlider("Part", tvKPart, sbPart).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8); bottomMargin = dp(12) }
         })
+        aplicarSplit()
         // Auto-avance: partes y presupuesto, con lo que se arriesga a la vista.
         val swAuto = android.widget.Switch(this@buildPuzzleTab).apply { Ui.tintarInterruptor(this);
             text = "Auto-advance through parts"; textSize = AppTheme.SP_BODY
