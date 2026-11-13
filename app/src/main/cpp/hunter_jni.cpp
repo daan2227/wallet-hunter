@@ -41,7 +41,6 @@
 #include "milksad.h"   /* auditoría del RNG roto de bx (Milk Sad) */
 #include "kangaroo.h"
 #include "fe_arm64.h"
-#include "fe_neon.h"   // fe_mul2 (NEON) para el banco A/B
 #include "gpu/gpu_kangaroo.h"
 #include "gpu/kangaroo_spv.h"
 #include "coincidencias.h"
@@ -3393,43 +3392,6 @@ Java_com_hunter_btc_HunterEngine_setUsarGpu(JNIEnv *, jobject, jboolean v){ g_us
 /* Saltos hechos por la GPU en esta busqueda (ya incluidos en el total). */
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_gpuSaltos(JNIEnv *, jobject){ return (jlong)g_gpu_saltos.load(); }
-
-/* Banco A/B: multiplicacion de cuerpo escalar (umulh, lo que usa el motor)
- * frente a NEON de 2 vias (fe_mul2). Mismo numero total de productos. Devuelve
- * las dos tasas y el factor. Correr con el motor parado. Solo ARM64. */
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_benchFeMul(JNIEnv *env, jobject){
-#if defined(__aarch64__)
-    using rel=std::chrono::duration<double>;
-    fe_t a={0x0123456789ABCDEFULL,0xFEDCBA9876543210ULL,0x1111222233334444ULL,0x5555666677778888ULL};
-    fe_t b={0x9E3779B97F4A7C15ULL,0xC2B2AE3D27D4EB4FULL,0x165667B19E3779F9ULL,0x85EBCA77C2B2AE63ULL};
-    const long M=4000000;                 /* 2 productos por vuelta -> 8M productos */
-    fe_t s0,s1; memcpy(s0,a,32); memcpy(s1,b,32);
-    volatile uint64_t sink=0;
-    /* calentar */
-    for(int w=0;w<10000;w++){ fe_mul(s0,s0,b); fe_mul(s1,s1,a); }
-    auto t0=std::chrono::steady_clock::now();
-    for(long i=0;i<M;i++){ fe_mul(s0,s0,b); fe_mul(s1,s1,a); }
-    double tsc=rel(std::chrono::steady_clock::now()-t0).count();
-    sink^=s0[0]^s1[0];
-    fe_t n0,n1; memcpy(n0,a,32); memcpy(n1,b,32);
-    for(int w=0;w<10000;w++) fe_mul2(n0,n0,b, n1,n1,a);
-    auto t1=std::chrono::steady_clock::now();
-    for(long i=0;i<M;i++) fe_mul2(n0,n0,b, n1,n1,a);
-    double tne=rel(std::chrono::steady_clock::now()-t1).count();
-    sink^=n0[0]^n1[0];
-    double prod=2.0*(double)M;
-    double scm=(tsc>0)?prod/tsc/1e6:0, nem=(tne>0)?prod/tne/1e6:0;
-    char buf[200];
-    snprintf(buf,sizeof(buf),
-        "scalar (umulh)  %.1f M mul/s\nNEON x2         %.1f M mul/s\n\nNEON is %.2fx the scalar%s  [%llx]",
-        scm, nem, (scm>0)?nem/scm:0.0, (nem>scm)?"  (faster)":"  (slower)",
-        (unsigned long long)sink);
-    return env->NewStringUTF(buf);
-#else
-    (void)env; return env->NewStringUTF("Only on ARM64 devices.");
-#endif
-}
 
 /* Que esta haciendo la GPU: "off", "starting", "running on X", "error: ..." */
 extern "C" JNIEXPORT jstring JNICALL

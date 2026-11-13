@@ -200,35 +200,6 @@ class DebugActivity : AppCompatActivity() {
             isClickable = true; isFocusable = true
             setOnClickListener { ejecutarComprobacion() }
         })
-        liveCard.addView(TextView(this).apply {
-            text = "Benchmark: field multiply (umulh) vs NEON 2-wide, on the big cores. " +
-                "Experimental — tells us if NEON would speed up the kangaroo. Stop the engine first."
-            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED)
-            typeface = AppTheme.body(context); setPadding(0, dp(10), 0, 0)
-        })
-        liveCard.addView(TextView(this).apply {
-            text = "Run CPU benchmark"; textSize = AppTheme.SP_BODY; gravity = Gravity.CENTER
-            typeface = AppTheme.title(context); setTextColor(AppTheme.TXT_PRI)
-            background = GradientDrawable().apply { setColor(ACCENT2); cornerRadius = dp(8).toFloat() }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(36)).apply { topMargin = dp(6) }
-            isClickable = true; isFocusable = true
-            setOnClickListener {
-                val btn = this
-                val old = btn.text
-                btn.isEnabled = false; btn.text = "Measuring…"
-                Thread {
-                    val res = try { HunterEngine.benchFeMul() } catch (e: Throwable) { "error: ${e.message}" }
-                    runOnUiThread {
-                        btn.isEnabled = true; btn.text = old
-                        androidx.appcompat.app.AlertDialog.Builder(this@DebugActivity)
-                            .setTitle("Field multiply · NEON vs scalar")
-                            .setMessage(res)
-                            .setPositiveButton("OK", null).show()
-                    }
-                }.start()
-            }
-        })
         root.addView(liveCard)
 
         // ── ENGINE STATS ──────────────────────────────────────────────────
