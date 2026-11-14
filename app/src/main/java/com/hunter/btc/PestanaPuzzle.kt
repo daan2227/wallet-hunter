@@ -602,8 +602,10 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
             textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
         }
         val tvNParts = valor(); val tvKPart = valor()
-        val sbParts = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 31; progress = 0 }
-        val sbPart  = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 0; progress = 0 }
+        fun sliderAncho() = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+        val sbParts = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 31; progress = 0; layoutParams = sliderAncho() }
+        val sbPart  = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 1;  progress = 0; layoutParams = sliderAncho() }
         fun filaSlider(rotulo: String, valorTv: TextView, sb: SeekBar) = LinearLayout(this@buildPuzzleTab).apply {
             orientation = LinearLayout.VERTICAL
             val cab = LinearLayout(this@buildPuzzleTab).apply {
