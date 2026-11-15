@@ -194,7 +194,25 @@ class MineroActivity : AppCompatActivity() {
         soloCargando = prefs().getBoolean("solo_cargando", false)
         val scroll = ScrollView(this).apply { setBackgroundColor(AppTheme.BG_DEEP); isFillViewport = true }
         caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(40)) }
-        scroll.addView(caja); setContentView(scroll)
+        scroll.addView(caja)
+        // La misma barra inferior que el resto, con Miner marcado: así ya no tapa
+        // los tabs. Al tocar otra pestaña se vuelve a MainActivity en ella,
+        // reusando la que ya hay debajo (REORDER_TO_FRONT, sin crear otra) para
+        // que onNewIntent cambie de pestaña.
+        val raiz = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(AppTheme.BG_DEEP) }
+        raiz.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val bb = BottomBar(this, BottomBar.MINER) { tab ->
+            if (tab != BottomBar.MINER) {
+                startActivity(Intent(this, MainActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                    putExtra(BottomBar.EXTRA_TAB, tab)
+                })
+                finish()
+            }
+        }
+        raiz.addView(bb.vista, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        setContentView(raiz)
         construir()
         if (prefs().getBoolean("gpu", false)) encenderGpu(false)
         Thread {
