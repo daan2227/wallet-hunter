@@ -28,7 +28,7 @@ object AppTheme {
      * Midnight, Neon, Exchange, Synthwave y Auto) se quitaron: quien tuviera uno guardado pasa
      * a Vault Gold (ver [leerModo]).
      */
-    enum class Modo { OSCURO, CLARO }
+    enum class Modo { OSCURO, CLARO, ESPACIAL }
 
     /** El tema elegido por el usuario. */
     @Volatile var modo: Modo = Modo.OSCURO
@@ -82,19 +82,44 @@ object AppTheme {
         red = c("#B91C1C"), warn = c("#C2410C"), blue = c("#2563EB"), ok = c("#15803D"),
         accent2 = c("#7C3AED"))
 
+    /*
+     * SPATIAL — tercer tema, inspirado en los paneles "spatial UI" (navy profundo tipo cristal y
+     * azul eléctrico, como en los dashboards de domótica). El acento deja de ser oro y pasa a azul
+     * (#2F6BFF): acción principal, saldo y "corriendo". No es cristal esmerilado de verdad (la app
+     * no tiene fondo con foto + blur), pero sí su lenguaje de color. Base slate + azul respaldada
+     * por la skill (colors.csv filas 6/24/96). Contrastes sobre la tarjeta #161C2C: texto 15:1,
+     * secundario 6,4:1, atenuado 4,6:1, azul como texto 3,8:1 (cifra grande, AA-grande), y blanco
+     * sobre el botón azul 4,5:1.
+     */
+    private val SPATIAL = Paleta(
+        bgDeep = c("#0B0F1A"), bgPanel = c("#151B2B"), bgCard = c("#161C2C"),
+        bgElev = c("#1E2638"), bgKey = c("#1A2130"), border = c("#2E3A54"),
+        txtPri = c("#F6F9FF"), txtSec = c("#AAB4C8"), txtMuted = c("#7C879B"),
+        bgStop = c("#3A2030"), accent = c("#2F6BFF"), onAccent = c("#FFFFFF"), oscuro = true,
+        red = c("#F87171"), warn = c("#FB923C"), blue = c("#60A5FA"), ok = c("#4ADE80"),
+        accent2 = c("#38BDF8"))
+
     @Volatile private var activa: Paleta = OSCURA
 
     /** ¿La paleta activa es oscura? Lo usan los diálogos XML y el teclado PIN. */
     val isDark get() = activa.oscuro
 
-    private fun paleta(m: Modo): Paleta = if (m == Modo.CLARO) CLARA else OSCURA
+    private fun paleta(m: Modo): Paleta = when (m) {
+        Modo.CLARO -> CLARA
+        Modo.ESPACIAL -> SPATIAL
+        else -> OSCURA
+    }
 
     /**
      * El tema guardado. Sólo "CLARO" es la versión de día; cualquier otro nombre (los temas que
      * se quitaron: MENTA, MEDIANOCHE, NEON, EXCHANGE, SYNTHWAVE, AUTO) pasa a Vault Gold.
      */
     private fun leerModo(p: android.content.SharedPreferences): Modo {
-        p.getString("theme_mode", null)?.let { s -> return if (s == Modo.CLARO.name) Modo.CLARO else Modo.OSCURO }
+        p.getString("theme_mode", null)?.let { s -> return when (s) {
+            Modo.CLARO.name -> Modo.CLARO
+            Modo.ESPACIAL.name -> Modo.ESPACIAL
+            else -> Modo.OSCURO
+        } }
         // Compatibilidad con el ajuste booleano antiguo (dark_mode).
         return if (p.getBoolean("dark_mode", true)) Modo.OSCURO else Modo.CLARO
     }

@@ -348,10 +348,12 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
     fun nombreModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.OSCURO -> "Vault Gold"
         AppTheme.Modo.CLARO -> "Vault Gold · Day"
+        AppTheme.Modo.ESPACIAL -> "Spatial"
     }
     fun subModo(m: AppTheme.Modo) = when (m) {
         AppTheme.Modo.OSCURO -> "Dark slate · Bitcoin gold"
         AppTheme.Modo.CLARO -> "Light version for daytime"
+        AppTheme.Modo.ESPACIAL -> "Deep navy · electric blue"
     }
     fila(app, R.drawable.ic_gear, "Appearance", null, nombreModo(AppTheme.modo)) {
         val cont = LinearLayout(this).apply {
