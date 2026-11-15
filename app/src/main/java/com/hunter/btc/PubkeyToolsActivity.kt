@@ -127,6 +127,7 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet iOS 2018)", "Made with the 2018 iOS app (clock-seeded)?", "trust wallet ios 2018 cve-2024-23660") { construirTrustIos() }
         reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008, Coldcard 2021", "randstorm android debian openssl coldcard") { construirLegacyRng() }
         reg(A, R.drawable.ic_warning, "Degenerate entropy", "Seed built from a trivial pattern: repeated, counting, or a small number", "degenerate entropy repeated sequential integer zero null") { construirEntropiaDebil() }
+        reg(A, R.drawable.ic_warning, "Weak RNG (PHP mt_rand)", "Made by an old PHP web wallet generator (incl. the pre-7.1 bug)?", "php mt_rand web wallet mersenne twister 7.1 legacy") { construirPhpMt() }
         reg(A, R.drawable.ic_eye, "Public-key exposure", "Addresses that already revealed their public key (quantum / privacy)", "quantum exposure pubkey reuse p2tr p2pk") { construirExposicion() }
         reg(A, R.drawable.ic_warning, "Polynonce (nonce recurrence)", "Keys exposed by polynomially-related nonces (incl. half-half)", "polynonce recurrence nonce half-half kudelski") { construirPolynonce() }
         reg(A, R.drawable.ic_warning, "Reused nonce across a wallet", "Scan an xpub or addresses for any repeated signature r", "reused r nonce wallet xpub scan") { construirRscanWallet() }
@@ -1784,6 +1785,7 @@ class PubkeyToolsActivity : Activity() {
     // ── Weak RNG check (Milk Sad, CVE-2023-39910) ───────────────────────────
     @Volatile private var msCorriendo = false
     @Volatile private var edCorriendo = false
+    @Volatile private var pmCorriendo = false
     private fun construirMilkSad() {
         desc("Checks whether YOUR seed phrase could have come from the broken \"bx seed\" generator " +
              "(Milk Sad, CVE-2023-39910): it seeded a random generator with only 32 bits, so the whole key " +
@@ -1904,6 +1906,74 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tvProg)
         nota(AppTheme.TXT_MUTED, "Repeated and counting checks are instant; the small-integer scan can take a moment. " +
              "It runs on this phone and nothing is sent anywhere. (0x00 repeated is the famous 'abandon abandon … about' seed.)")
+    }
+
+    // ── Weak RNG check (PHP mt_rand web wallet) ────────────────────────────
+    private fun construirPhpMt() {
+        desc("Checks whether YOUR seed phrase could have come from an old PHP web wallet / paper-wallet " +
+             "generator that used mt_rand() instead of a secure random source. PHP's mt_rand() is a Mersenne " +
+             "Twister, so if it was seeded with the time or a small number the whole key space is tiny. This also " +
+             "covers the pre-PHP-7.1 generator bug (a different sequence the Milk Sad check does not), using the " +
+             "common 'one mt_rand() per byte' pattern. Your phrase stays on-device.")
+        val et = entrada("Your 12 / 24-word phrase", varias = true)
+        var modo = 0   // 0 = PHP >= 7.1 (MT19937), 1 = legacy PHP < 7.1
+        val segModo = Ui.segmented(this, listOf("PHP ≥ 7.1" to null, "PHP < 7.1 (legacy)" to null)) { modo = it }
+        root.addView(segModo)
+        var modoFechas = false
+        var etDesde: EditText? = null
+        var etHasta: EditText? = null
+        val seg = Ui.segmented(this, listOf("All 2^32 seeds" to null, "Date window (time-seeded)" to null)) {
+            modoFechas = it == 1
+            val vis = if (modoFechas) android.view.View.VISIBLE else android.view.View.GONE
+            etDesde?.visibility = vis; etHasta?.visibility = vis
+        }
+        root.addView(seg)
+        etDesde = entrada("From date (YYYY-MM-DD, e.g. 2012-01-01)").apply { visibility = android.view.View.GONE }
+        etHasta = entrada("To date (YYYY-MM-DD, e.g. 2018-01-01)").apply { visibility = android.view.View.GONE }
+        val salida = salidaBox()
+        val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        fun diaASeg(t: String): Long? = try {
+            java.text.SimpleDateFormat("yyyy-MM-dd").apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.trim())?.time?.div(1000)
+        } catch (e: Exception) { null }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (pmCorriendo) { HunterEngine.phpmtDetener(); return@boton }
+            salida.removeAllViews()
+            val ent = Bip39.entropia(et.text.toString())
+            if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            var ini = 0L; var fin = 0x100000000L
+            if (modoFechas) {
+                val d = diaASeg(etDesde!!.text.toString()); val h0 = diaASeg(etHasta!!.text.toString())
+                if (d == null || h0 == null || h0 <= d) { salida.addView(filaResultado("Bad dates", "Use YYYY-MM-DD, and 'to' after 'from'.")); return@boton }
+                ini = d; fin = (h0 + 86400).coerceAtMost(0x100000000L)
+            }
+            val hex = ent.joinToString("") { "%02x".format(it) }
+            val m = modo
+            val err = HunterEngine.phpmtBuscar(hex, m, ini, fin, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
+            pmCorriendo = true; btn.text = "Stop"
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            h.post(object : Runnable {
+                override fun run() {
+                    val corre = HunterEngine.phpmtCorriendo()
+                    val hechas = HunterEngine.phpmtHechas(); val total = HunterEngine.phpmtTotal().coerceAtLeast(1)
+                    tvProg.text = "Scanned %,d of %,d seeds (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
+                    if (corre) { h.postDelayed(this, 500); return }
+                    pmCorriendo = false; btn.text = "Check"
+                    val sem = HunterEngine.phpmtResultado()
+                    if (sem >= 0) {
+                        val cual = if (m == 1) "PHP < 7.1 (legacy mt_rand)" else "PHP ≥ 7.1 mt_rand"
+                        salida.addView(filaResultado("⚠ VULNERABLE — $cual", "Your phrase comes from a PHP mt_rand() generator (32-bit seed $sem). Anyone can rebuild its keys.", true))
+                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                    } else {
+                        salida.addView(filaResultado("✓ Not found", if (modoFechas) "Not produced by this PHP generator in that date window." else "Your phrase was not produced by this PHP mt_rand() pattern across all 2^32 seeds.", true))
+                    }
+                }
+            })
+        }
+        root.addView(tvProg)
+        nota(AppTheme.TXT_MUTED, "Covers the common 'mt_rand() per byte' pattern; a site that derived bytes differently " +
+             "would not match. Runs on this phone and nothing is sent anywhere.")
     }
 
     // ── Weak RNG check (Trust Wallet browser extension, CVE-2023-31290) ─────

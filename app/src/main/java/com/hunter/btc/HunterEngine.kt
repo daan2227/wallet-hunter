@@ -149,6 +149,16 @@ object HunterEngine {
     external fun entdebilResultado(): Long
     external fun entdebilEntropia(semilla: Long, n: Int, modo: Int): String
 
+    // Auditoria de carteras web hechas con mt_rand() de PHP (ver php_mtrand.h): modo 0=MT19937 (PHP>=7.1),
+    // 1=legacy MT_RAND_PHP (<7.1). [ini,fin) es el rango de semillas. Estado propio.
+    external fun phpmtBuscar(entHex: String, modo: Int, ini: Long, fin: Long, hilos: Int): String
+    external fun phpmtDetener()
+    external fun phpmtCorriendo(): Boolean
+    external fun phpmtHechas(): Long
+    external fun phpmtTotal(): Long
+    external fun phpmtResultado(): Long
+    external fun phpmtEntropia(semilla: Long, n: Int, modo: Int): String
+
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
      * "ckd", "priv_sum", "sp_send", "xonly", "schnorr", "schnorr_ok", "ecdsa_ok", "ecdh_x".
