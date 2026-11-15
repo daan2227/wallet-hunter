@@ -1786,6 +1786,7 @@ class PubkeyToolsActivity : Activity() {
     @Volatile private var msCorriendo = false
     @Volatile private var edCorriendo = false
     @Volatile private var pmCorriendo = false
+    @Volatile private var pmCancelado = false
     private fun construirMilkSad() {
         desc("Checks whether YOUR seed phrase could have come from the broken \"bx seed\" generator " +
              "(Milk Sad, CVE-2023-39910): it seeded a random generator with only 32 bits, so the whole key " +
@@ -1912,13 +1913,18 @@ class PubkeyToolsActivity : Activity() {
     private fun construirPhpMt() {
         desc("Checks whether YOUR seed phrase could have come from an old PHP web wallet / paper-wallet " +
              "generator that used mt_rand() instead of a secure random source. PHP's mt_rand() is a Mersenne " +
-             "Twister, so if it was seeded with the time or a small number the whole key space is tiny. This also " +
-             "covers the pre-PHP-7.1 generator bug (a different sequence the Milk Sad check does not), using the " +
-             "common 'one mt_rand() per byte' pattern. Your phrase stays on-device.")
+             "Twister, so if it was seeded with the time or a small number the whole key space is tiny. It covers " +
+             "both the modern (≥7.1) and the buggy pre-7.1 sequence (which Milk Sad does not), and the common ways " +
+             "sites turned mt_rand() into bytes. Your phrase stays on-device.")
         val et = entrada("Your 12 / 24-word phrase", varias = true)
         var modo = 0   // 0 = PHP >= 7.1 (MT19937), 1 = legacy PHP < 7.1
         val segModo = Ui.segmented(this, listOf("PHP ≥ 7.1" to null, "PHP < 7.1 (legacy)" to null)) { modo = it }
         root.addView(segModo)
+        // Patrón de derivación de bytes. 0 = probar todos; 1..3 = uno concreto (patron 0/1/2).
+        var patronSel = 0
+        val segPat = Ui.segmented(this, listOf(
+            "Try all" to null, "rand()&255" to null, "rand(0,255)" to null, "hex" to null)) { patronSel = it }
+        root.addView(segPat)
         var modoFechas = false
         var etDesde: EditText? = null
         var etHasta: EditText? = null
@@ -1935,9 +1941,10 @@ class PubkeyToolsActivity : Activity() {
         fun diaASeg(t: String): Long? = try {
             java.text.SimpleDateFormat("yyyy-MM-dd").apply { timeZone = java.util.TimeZone.getTimeZone("UTC") }.parse(t.trim())?.time?.div(1000)
         } catch (e: Exception) { null }
+        fun nomPat(p: Int) = when (p) { 0 -> "mt_rand() & 255"; 1 -> "mt_rand(0,255)"; else -> "hex string" }
         lateinit var btn: Button
         btn = boton("Check") {
-            if (pmCorriendo) { HunterEngine.phpmtDetener(); return@boton }
+            if (pmCorriendo) { pmCancelado = true; HunterEngine.phpmtDetener(); return@boton }
             salida.removeAllViews()
             val ent = Bip39.entropia(et.text.toString())
             if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
@@ -1949,31 +1956,44 @@ class PubkeyToolsActivity : Activity() {
             }
             val hex = ent.joinToString("") { "%02x".format(it) }
             val m = modo
-            val err = HunterEngine.phpmtBuscar(hex, m, ini, fin, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
-            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
-            pmCorriendo = true; btn.text = "Stop"
+            val patrones = if (patronSel == 0) listOf(0, 1, 2) else listOf(patronSel - 1)
+            val hilos = maxOf(1, Runtime.getRuntime().availableProcessors() - 1)
+            pmCancelado = false; pmCorriendo = true; btn.text = "Stop"
             val h = android.os.Handler(android.os.Looper.getMainLooper())
-            h.post(object : Runnable {
-                override fun run() {
-                    val corre = HunterEngine.phpmtCorriendo()
-                    val hechas = HunterEngine.phpmtHechas(); val total = HunterEngine.phpmtTotal().coerceAtLeast(1)
-                    tvProg.text = "Scanned %,d of %,d seeds (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
-                    if (corre) { h.postDelayed(this, 500); return }
-                    pmCorriendo = false; btn.text = "Check"
-                    val sem = HunterEngine.phpmtResultado()
-                    if (sem >= 0) {
-                        val cual = if (m == 1) "PHP < 7.1 (legacy mt_rand)" else "PHP ≥ 7.1 mt_rand"
-                        salida.addView(filaResultado("⚠ VULNERABLE — $cual", "Your phrase comes from a PHP mt_rand() generator (32-bit seed $sem). Anyone can rebuild its keys.", true))
-                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
-                    } else {
-                        salida.addView(filaResultado("✓ Not found", if (modoFechas) "Not produced by this PHP generator in that date window." else "Your phrase was not produced by this PHP mt_rand() pattern across all 2^32 seeds.", true))
+            // Lanza el patrón patrones[idx]; al terminar sin hallazgo pasa al siguiente.
+            fun lanzar(idx: Int) {
+                val patron = patrones[idx]
+                val err = HunterEngine.phpmtBuscar(hex, m, patron, ini, fin, hilos)
+                if (err.isNotEmpty()) { pmCorriendo = false; btn.text = "Check"; salida.addView(filaResultado("Could not start", err)); return }
+                h.post(object : Runnable {
+                    override fun run() {
+                        val corre = HunterEngine.phpmtCorriendo()
+                        val hechas = HunterEngine.phpmtHechas(); val total = HunterEngine.phpmtTotal().coerceAtLeast(1)
+                        val etq = if (patrones.size > 1) "Pattern ${idx + 1}/${patrones.size} (${nomPat(patron)}) · " else ""
+                        tvProg.text = etq + "scanned %,d of %,d seeds (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
+                        if (corre) { h.postDelayed(this, 500); return }
+                        val sem = HunterEngine.phpmtResultado()
+                        if (sem >= 0) {
+                            pmCorriendo = false; btn.text = "Check"
+                            val cual = if (m == 1) "PHP < 7.1 (legacy)" else "PHP ≥ 7.1"
+                            salida.addView(filaResultado("⚠ VULNERABLE — $cual mt_rand", "Your phrase comes from a PHP mt_rand() generator — seed $sem, byte pattern “${nomPat(patron)}”. Anyone can rebuild its keys.", true))
+                            salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                            return
+                        }
+                        if (pmCancelado) { pmCorriendo = false; btn.text = "Check"; salida.addView(filaResultado("Stopped", "Scan cancelled.")); return }
+                        if (idx + 1 < patrones.size) { lanzar(idx + 1); return }
+                        pmCorriendo = false; btn.text = "Check"
+                        val alcance = if (patrones.size > 1) "any of these PHP mt_rand() byte patterns" else "the “${nomPat(patrones[0])}” pattern"
+                        salida.addView(filaResultado("✓ Not found", if (modoFechas) "Not produced by $alcance in that date window." else "Your phrase was not produced by $alcance across all 2^32 seeds.", true))
                     }
-                }
-            })
+                })
+            }
+            lanzar(0)
         }
         root.addView(tvProg)
-        nota(AppTheme.TXT_MUTED, "Covers the common 'mt_rand() per byte' pattern; a site that derived bytes differently " +
-             "would not match. Runs on this phone and nothing is sent anywhere.")
+        nota(AppTheme.TXT_MUTED, "Byte patterns: mt_rand()&255 (==%256), mt_rand(0,255), and a hex string of mt_rand(0,15) " +
+             "nibbles — all verified against real PHP. “Try all” checks the three in turn. A site that derived bytes " +
+             "another way would not match. Runs on this phone; nothing is sent anywhere.")
     }
 
     // ── Weak RNG check (Trust Wallet browser extension, CVE-2023-31290) ─────
