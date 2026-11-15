@@ -126,6 +126,7 @@ class PubkeyToolsActivity : Activity() {
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet 2022)", "Made with the vulnerable browser extension?", "trust wallet") { construirTrustWallet() }
         reg(A, R.drawable.ic_warning, "Weak RNG (Trust Wallet iOS 2018)", "Made with the 2018 iOS app (clock-seeded)?", "trust wallet ios 2018 cve-2024-23660") { construirTrustIos() }
         reg(A, R.drawable.ic_warning, "Legacy weak wallets", "Randstorm, Android 2013, Debian OpenSSL 2008, Coldcard 2021", "randstorm android debian openssl coldcard") { construirLegacyRng() }
+        reg(A, R.drawable.ic_warning, "Degenerate entropy", "Seed built from a trivial pattern: repeated, counting, or a small number", "degenerate entropy repeated sequential integer zero null") { construirEntropiaDebil() }
         reg(A, R.drawable.ic_eye, "Public-key exposure", "Addresses that already revealed their public key (quantum / privacy)", "quantum exposure pubkey reuse p2tr p2pk") { construirExposicion() }
         reg(A, R.drawable.ic_warning, "Polynonce (nonce recurrence)", "Keys exposed by polynomially-related nonces (incl. half-half)", "polynonce recurrence nonce half-half kudelski") { construirPolynonce() }
         reg(A, R.drawable.ic_warning, "Reused nonce across a wallet", "Scan an xpub or addresses for any repeated signature r", "reused r nonce wallet xpub scan") { construirRscanWallet() }
@@ -1782,6 +1783,7 @@ class PubkeyToolsActivity : Activity() {
 
     // ── Weak RNG check (Milk Sad, CVE-2023-39910) ───────────────────────────
     @Volatile private var msCorriendo = false
+    @Volatile private var edCorriendo = false
     private fun construirMilkSad() {
         desc("Checks whether YOUR seed phrase could have come from the broken \"bx seed\" generator " +
              "(Milk Sad, CVE-2023-39910): it seeded a random generator with only 32 bits, so the whole key " +
@@ -1845,6 +1847,63 @@ class PubkeyToolsActivity : Activity() {
         root.addView(tvProg)
         nota(AppTheme.TXT_MUTED, "This only rules out the 'bx seed' / Milk Sad generator. Scanning all seeds can take a while; " +
              "it runs on this phone and nothing is sent anywhere.")
+    }
+
+    // ── Degenerate entropy (repeated / sequential / small integer) ─────────
+    private fun construirEntropiaDebil() {
+        desc("Checks whether YOUR seed phrase was built from a trivial, non-random entropy pattern instead of a " +
+             "real generator. Some wallets, test fixtures left in production, or hand-made \"brain\" seeds end up " +
+             "with entropy that is just one byte repeated, a counting sequence, or a small whole number. If yours " +
+             "matches, anyone can rebuild the key in seconds. Paste your phrase; it stays on-device.")
+        val et = entrada("Your 12 / 24-word phrase", varias = true)
+        // 0 repetido · 1 secuencial · 2 entero pequeño (little-endian). Los dos primeros son instantáneos
+        // (sólo 256 valores de byte); el entero barre hasta 2^32.
+        var modo = 0
+        val seg = Ui.segmented(this, listOf(
+            "Repeated byte" to null, "Counting" to null, "Small integer" to null)) { modo = it }
+        root.addView(seg)
+        val salida = salidaBox()
+        val tvProg = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(8), 0, 0) }
+        lateinit var btn: Button
+        btn = boton("Check") {
+            if (edCorriendo) { HunterEngine.entdebilDetener(); return@boton }
+            salida.removeAllViews()
+            val ent = Bip39.entropia(et.text.toString())
+            if (ent == null) { salida.addView(filaResultado("Not a valid phrase", "Enter a complete, valid BIP39 phrase.")); return@boton }
+            val hex = ent.joinToString("") { "%02x".format(it) }
+            // modos 0/1: rango implícito (0..256). modo 2 (entero): 0..2^32.
+            val ini = 0L; val fin = if (modo < 2) 256L else 0x100000000L
+            val err = HunterEngine.entdebilBuscar(hex, modo, ini, fin, maxOf(1, Runtime.getRuntime().availableProcessors() - 1))
+            if (err.isNotEmpty()) { salida.addView(filaResultado("Could not start", err)); return@boton }
+            edCorriendo = true; btn.text = "Stop"
+            val m = modo
+            val h = android.os.Handler(android.os.Looper.getMainLooper())
+            h.post(object : Runnable {
+                override fun run() {
+                    val corre = HunterEngine.entdebilCorriendo()
+                    val hechas = HunterEngine.entdebilHechas(); val total = HunterEngine.entdebilTotal().coerceAtLeast(1)
+                    tvProg.text = "Tested %,d of %,d patterns (%.2f %%)".format(hechas, total, hechas * 100.0 / total)
+                    if (corre) { h.postDelayed(this, 500); return }
+                    edCorriendo = false; btn.text = "Check"
+                    val sem = HunterEngine.entdebilResultado()
+                    if (sem >= 0) {
+                        val patron = when (m) {
+                            0 -> "every byte is 0x%02X".format(sem)
+                            1 -> "bytes count up from 0x%02X".format(sem)
+                            else -> "the entropy is just the number $sem"
+                        }
+                        salida.addView(filaResultado("⚠ VULNERABLE — degenerate entropy", "Your seed's entropy is not random: $patron. Anyone can rebuild its keys instantly.", true))
+                        salida.addView(filaResultado("What to do", "Create a NEW wallet with a freshly generated phrase and move ALL your coins to it now."))
+                    } else {
+                        val cual = when (m) { 0 -> "a single repeated byte"; 1 -> "a counting sequence"; else -> "a small integer (up to 2^32)" }
+                        salida.addView(filaResultado("✓ Not found", "Your entropy does not match $cual.", true))
+                    }
+                }
+            })
+        }
+        root.addView(tvProg)
+        nota(AppTheme.TXT_MUTED, "Repeated and counting checks are instant; the small-integer scan can take a moment. " +
+             "It runs on this phone and nothing is sent anywhere. (0x00 repeated is the famous 'abandon abandon … about' seed.)")
     }
 
     // ── Weak RNG check (Trust Wallet browser extension, CVE-2023-31290) ─────

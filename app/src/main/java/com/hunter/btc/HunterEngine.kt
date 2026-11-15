@@ -138,6 +138,17 @@ object HunterEngine {
     external fun iosBuscar(entHex: String, ini: Long, fin: Long, hilos: Int, variante: Int): String
     external fun iosEntropia(semilla: Long, n: Int, variante: Int): String
 
+    // Auditoria de ENTROPIA DEGENERADA (ver entropia_debil.h): modo 0=repetido, 1=secuencial,
+    // 2=entero LE, 3=entero BE. Para 0/1 el rango es implicito (0..256); para 2/3 se usa [ini,fin).
+    // Estado propio (corre un barrido a la vez, aparte de milksad*).
+    external fun entdebilBuscar(entHex: String, modo: Int, ini: Long, fin: Long, hilos: Int): String
+    external fun entdebilDetener()
+    external fun entdebilCorriendo(): Boolean
+    external fun entdebilHechas(): Long
+    external fun entdebilTotal(): Long
+    external fun entdebilResultado(): Long
+    external fun entdebilEntropia(semilla: Long, n: Int, modo: Int): String
+
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
      * "ckd", "priv_sum", "sp_send", "xonly", "schnorr", "schnorr_ok", "ecdsa_ok", "ecdh_x".

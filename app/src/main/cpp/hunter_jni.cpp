@@ -39,6 +39,7 @@
 #include "jac_batch.h"
 #include "ec_ops.h"
 #include "milksad.h"   /* auditoría del RNG roto de bx (Milk Sad) */
+#include "entropia_debil.h"   /* auditoría de entropía degenerada (repetida/secuencial/entero) */
 #include "kangaroo.h"
 #include "fe_arm64.h"
 #include "gpu/gpu_kangaroo.h"
@@ -4266,6 +4267,65 @@ extern "C" JNIEXPORT jstring JNICALL
 Java_com_hunter_btc_HunterEngine_iosEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jvar){
     int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
     uint8_t out[32]; milksad::entropia_ios((uint32_t)jsem, out, n, (int)jvar);
+    return env->NewStringUTF(a_hex(out, n).c_str());
+}
+
+/* ── Entropía degenerada: estado propio (corre un barrido a la vez, aparte de milksad). */
+static std::atomic<bool>     g_ed_corriendo(false);
+static std::atomic<bool>     g_ed_cancel(false);
+static std::atomic<uint64_t> g_ed_hechas(0);
+static std::atomic<int64_t>  g_ed_resultado(-1);
+static std::atomic<uint64_t> g_ed_total(0);
+/* Arranca el barrido de [ini,fin) del modelo [modo] (0 repetido, 1 secuencial, 2 entero LE, 3 entero BE)
+ * contra la entropía [ent] (hex de 16/24/32 bytes), con [hilos] hilos. "" si arrancó, o un motivo. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilBuscar(JNIEnv *env, jobject, jstring jent, jint jmodo, jlong jini, jlong jfin, jint jhilos) {
+    if (g_ed_corriendo.load()) return env->NewStringUTF("already running");
+    const char *e = jent ? env->GetStringUTFChars(jent, nullptr) : nullptr;
+    std::string eh = e ? e : ""; if (e) env->ReleaseStringUTFChars(jent, e);
+    std::vector<uint8_t> ent;
+    if (!de_hex(eh, ent) || (ent.size() != 16 && ent.size() != 24 && ent.size() != 32)) return env->NewStringUTF("entropy must be 16/24/32 bytes");
+    int modo = (int)jmodo; if (modo < 0 || modo > 3) return env->NewStringUTF("bad mode");
+    uint64_t ini = (uint64_t)jini, fin = (uint64_t)jfin;
+    /* modos repetido/secuencial sólo tienen 256 valores de byte de salida */
+    if (modo == 0 || modo == 1) { ini = 0; fin = 256; }
+    if (fin > 0x100000000ULL) fin = 0x100000000ULL;
+    if (ini >= fin) return env->NewStringUTF("empty range");
+    int n = jhilos > 0 ? (jhilos < 32 ? jhilos : 32) : 1;
+    g_ed_cancel.store(false); g_ed_hechas.store(0); g_ed_resultado.store(-1);
+    g_ed_total.store(fin - ini); g_ed_corriendo.store(true);
+    auto objetivo = std::make_shared<std::vector<uint8_t>>(ent);
+    std::thread([objetivo, ini, fin, n, modo]{
+        std::vector<std::thread> ts;
+        uint64_t paso = (fin - ini + n - 1) / n;
+        for (int t = 0; t < n; t++) {
+            uint64_t a = ini + (uint64_t)t * paso, b = std::min(fin, a + paso);
+            if (a >= b) break;
+            ts.emplace_back([objetivo, a, b, modo]{
+                int64_t r = entdebil::buscar(objetivo->data(), (int)objetivo->size(), a, b, &g_ed_cancel, &g_ed_hechas, modo);
+                if (r >= 0) { g_ed_resultado.store(r); g_ed_cancel.store(true); }
+            });
+        }
+        for (auto &th : ts) th.join();
+        g_ed_corriendo.store(false);
+    }).detach();
+    return env->NewStringUTF("");
+}
+extern "C" JNIEXPORT void JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilDetener(JNIEnv*, jobject){ g_ed_cancel.store(true); }
+extern "C" JNIEXPORT jboolean JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilCorriendo(JNIEnv*, jobject){ return g_ed_corriendo.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilHechas(JNIEnv*, jobject){ return (jlong)g_ed_hechas.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilTotal(JNIEnv*, jobject){ return (jlong)g_ed_total.load(); }
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilResultado(JNIEnv*, jobject){ return (jlong)g_ed_resultado.load(); }
+/* La entropia (hex) de una semilla/modelo concretos: para enseñar el patrón hallado. */
+extern "C" JNIEXPORT jstring JNICALL
+Java_com_hunter_btc_HunterEngine_entdebilEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jmodo){
+    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
+    uint8_t out[32]; entdebil::entropia((uint64_t)jsem, out, n, (int)jmodo);
     return env->NewStringUTF(a_hex(out, n).c_str());
 }
 
