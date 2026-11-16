@@ -147,6 +147,9 @@ object Minero {
     /** Nonce para mining.submit: el entero en hexadecimal big-endian (en la cabecera va al revés). */
     fun nonceTexto(n: Int) = "%08x".format(n)
 
+    // Usada por las pruebas (MineroTest): escribe el nonce en la cabecera de 80 bytes.
+    fun cabeceraCon(c: ByteArray, nonce: Int) = c.copyOf(76) + le32(nonce.toLong() and 0xffffffffL)
+
     // ── Tandas de nonces (nativo o Kotlin) ──
 
     /**
