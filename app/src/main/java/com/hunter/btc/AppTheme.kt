@@ -229,13 +229,6 @@ object AppTheme {
         // Security print: el fondo es liso. El resplandor de arriba (propuesta B) dejaba un panel
         // más claro con un corte recto bajo las pestañas de Hunt.
         android.graphics.drawable.ColorDrawable(activa.bgDeep)
-    /** Mezcla lineal de dos colores (t=0 → a, t=1 → b). */
-    private fun mezcla(a: Int, b: Int, t: Float): Int {
-        val r = (Color.red(a) * (1 - t) + Color.red(b) * t).toInt()
-        val g = (Color.green(a) * (1 - t) + Color.green(b) * t).toInt()
-        val bl = (Color.blue(a) * (1 - t) + Color.blue(b) * t).toInt()
-        return Color.rgb(r, g, bl)
-    }
     /**
      * Fondo tenue del botón de parar.
      *

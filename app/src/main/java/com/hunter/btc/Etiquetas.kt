@@ -26,8 +26,6 @@ object Etiquetas {
         e.apply()
     }
 
-    fun deMoneda(ctx: Context, outpoint: String): String? = p(ctx, OUT).getString(outpoint, null)?.takeIf { it.isNotBlank() }
-
     /** Todas, en BIP329. [origen] (p. ej. "wpkh([huella/84'/0'/0'])") se pone a las de dirección y transacción si se sabe. */
     fun exportar(ctx: Context, origen: String? = null): String {
         val l = ArrayList<Bip329.Etiqueta>()

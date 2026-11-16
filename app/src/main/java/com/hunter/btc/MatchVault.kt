@@ -838,9 +838,6 @@ object MatchVault {
         }
     }
 
-    /** Añade a la cartera todos los hallazgos que tengan clave. @return cuántos. */
-    fun todosACartera(ctx: Context): Int = todosACarteraResumen(ctx).first
-
     /** (los que quedan en la cartera, los que no se pudieron añadir). */
     fun todosACarteraResumen(ctx: Context): Pair<Int, Int> {
         var ok = 0; var mal = 0

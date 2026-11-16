@@ -61,15 +61,9 @@ inline bool pub_sumar(const secp256k1_context *ctx, const std::vector<std::vecto
     secp256k1_pubkey r; if (!secp256k1_ec_pubkey_combine(ctx, &r, pv.data(), pv.size())) return false;
     pub_ser(ctx, &r, o33); return true;
 }
-/* (a + b) mod n, (a·b) mod n, −a mod n */
-inline bool priv_add(const secp256k1_context *ctx, const uint8_t a[32], const uint8_t b[32], uint8_t o[32]) {
-    memcpy(o, a, 32); return secp256k1_ec_seckey_tweak_add(ctx, o, b) == 1;
-}
+/* (a·b) mod n */
 inline bool priv_mul(const secp256k1_context *ctx, const uint8_t a[32], const uint8_t b[32], uint8_t o[32]) {
     memcpy(o, a, 32); return secp256k1_ec_seckey_tweak_mul(ctx, o, b) == 1;
-}
-inline bool priv_neg(const secp256k1_context *ctx, const uint8_t a[32], uint8_t o[32]) {
-    memcpy(o, a, 32); return secp256k1_ec_seckey_negate(ctx, o) == 1;
 }
 
 /* Σ k_i mod n admitiendo sumas intermedias nulas (con tweak_add, a + (−a) falla aunque luego se sume

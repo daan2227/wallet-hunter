@@ -57,9 +57,6 @@
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO,  TAG, __VA_ARGS__)
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, TAG, __VA_ARGS__)
 
-#define LOG_FILE "/data/data/com.hunter.btc/files/puz_debug.txt"
-#define FPLOG(fmt, ...) do {     FILE *_f = fopen(LOG_FILE, "a");     if(_f){ fprintf(_f, fmt "\n", ##__VA_ARGS__); fclose(_f); } } while(0)
-
 #include <signal.h>
 
 static void crash_handler(int sig) {

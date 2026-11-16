@@ -257,9 +257,6 @@ object WalletManager {
         return p.contains(PREF_WIF_ENC_P) || p.contains(PREF_WIF_ENC) || (p.getString(PREF_WIF_PLAIN, "") ?: "").isNotEmpty()
     }
 
-    /** La lista de WIF está cerrada: hay WIF y falta la sesión del código para abrirla. */
-    fun wifsBloqueadas(ctx: Context): Boolean = dekExiste(ctx) && claveBoveda == null && hayWifs(ctx)
-
     /**
      * Al abrir la sesión: si la lista de WIF aún estaba sólo bajo el Keystore (instalación anterior a este sobre), se
      * pasa al sobre. Primero se escribe la nueva SIN borrar la vieja, se vuelve a leer y se compara; sólo si coincide se

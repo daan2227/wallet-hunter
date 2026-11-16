@@ -199,7 +199,6 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var sessionStartTime = 0L
     internal var sessionStartCount = 0L
     internal var batteryReceiver: android.content.BroadcastReceiver? = null
-    internal val NOTIF_ID = 42
     internal val handler = Handler(Looper.getMainLooper())
     internal var tvStatus: TextView? = null
     internal var tvCsvName: TextView? = null

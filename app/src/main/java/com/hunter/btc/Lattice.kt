@@ -52,10 +52,6 @@ object Lattice {
         }
     }
 
-    private fun dot(u: Array<BigInteger>, v: Array<BigInteger>): BigInteger {
-        var s = BigInteger.ZERO; for (i in u.indices) s += u[i] * v[i]; return s
-    }
-
     /** LLL (Cohen 2.6.3, incremental) sobre una base entera. Modifica y devuelve B. */
     private fun lll(B: Array<Array<BigInteger>>) {
         val nn = B.size; val dim = B[0].size

@@ -79,7 +79,6 @@ public:
 
     uint32_t altura() const { return (uint32_t)principal_.size() - 1; }
     Hash32 hash_en(uint32_t h) const { return hash_de(principal_.at(h)); }
-    const Cab80 &cabecera_en(uint32_t h) const { return principal_.at(h); }
     Hash32 punta() const { return hash_en(altura()); }
     uint32_t bits_punta() const { return parsear_cabecera(principal_.back().data(), 80).bits; }
 

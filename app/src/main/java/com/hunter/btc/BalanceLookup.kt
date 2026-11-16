@@ -23,15 +23,6 @@ object BalanceLookup {
     /** [pendiente]: lo que aún no está confirmado (sólo lo sabe la API web). */
     data class Result(val sat: Long, val source: String, val pendiente: Long = 0L)
 
-    /**
-     * Saldo por la API web (mempool.space o blockstream.info, lo que responda).
-     * Lanza si no responde ninguna o si el JSON no se entiende.
-     */
-    fun fromMempool(addr: String, testnet: Boolean = false): Long {
-        val (confirmado, pendiente) = fromMempoolDetalle(addr, testnet)
-        return confirmado + pendiente
-    }
-
     /** Saldo confirmado y el de la mempool (pendiente), por separado. */
     fun fromMempoolDetalle(addr: String, testnet: Boolean = false): Pair<Long, Long> {
         val js = jsonDeDireccion(addr, testnet)

@@ -133,34 +133,6 @@ object Ui {
             android.graphics.drawable.ColorDrawable(android.graphics.Color.WHITE))
     }
 
-    /** Aclara un color mezclándolo con blanco [f] (0..1). */
-    private fun aclarar(color: Int, f: Float): Int {
-        val r = android.graphics.Color.red(color)
-        val g = android.graphics.Color.green(color)
-        val b = android.graphics.Color.blue(color)
-        return android.graphics.Color.rgb(
-            (r + (255 - r) * f).toInt().coerceIn(0, 255),
-            (g + (255 - g) * f).toInt().coerceIn(0, 255),
-            (b + (255 - b) * f).toInt().coerceIn(0, 255))
-    }
-
-    /**
-     * Fondo de un botón principal: un degradado vertical MUY sutil, un punto
-     * más claro arriba que abajo. Da algo de relieve al único botón que pone la
-     * app en marcha sin romper el plano del resto —no es un color nuevo, es el
-     * mismo acento con una luz suave encima—.
-     */
-    /** Oscurece un color mezclándolo hacia negro (f=0 → igual, f=1 → negro). */
-    private fun oscurecer(color: Int, f: Float): Int {
-        val r = android.graphics.Color.red(color)
-        val g = android.graphics.Color.green(color)
-        val b = android.graphics.Color.blue(color)
-        return android.graphics.Color.rgb(
-            (r * (1 - f)).toInt().coerceIn(0, 255),
-            (g * (1 - f)).toInt().coerceIn(0, 255),
-            (b * (1 - f)).toInt().coerceIn(0, 255))
-    }
-
     // Botón de acción: degradado DIAGONAL de dos tonos (propuesta B) — más claro
     // arriba-izquierda, más oscuro abajo-derecha. Vale para cualquier base
     // (acento verde, rojo de parar…): el texto ON_ACCENT sigue legible encima.
