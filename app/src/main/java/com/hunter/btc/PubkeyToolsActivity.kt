@@ -84,6 +84,10 @@ class PubkeyToolsActivity : Activity() {
         reg(K, R.drawable.ic_recovery, "Child seeds (BIP85)", "Independent seeds, keys and passwords from one", "bip85") { construirBip85() }
         reg(K, R.drawable.ic_recovery, "Derivation path", "The key at an exact BIP32 path", "custom derivation bip32") { construirDerivacion() }
         reg(K, R.drawable.ic_recovery, "xpub → addresses", "Addresses of an extended public key", "xpub zpub ypub") { construirXpub() }
+        reg(K, R.drawable.ic_copy, "Extended key version", "xpub ↔ ypub ↔ zpub (SLIP-132): same key, different prefix", "slip132 xpub ypub zpub xprv yprv zprv tpub prefix convert") { construirSlip132() }
+        reg(K, R.drawable.ic_copy, "Mini key (Casascius)", "Decode an S… mini private key from a physical coin", "casascius minikey mini key physical coin") { construirMiniKey() }
+        reg(K, R.drawable.ic_copy, "Entropy ↔ mnemonic", "BIP39 raw entropy (hex) ↔ the word phrase, both ways", "entropy mnemonic bip39 hex words convert") { construirEntropiaMnemonico() }
+        reg(K, R.drawable.ic_copy, "Address ↔ script", "Address ↔ scriptPubKey, hash and witness program", "scriptpubkey script address hash160 witness program") { construirDireccionScript() }
 
         reg(F, R.drawable.ic_finger, "Sign message", "Sign and verify with 1… keys (classic)", "sign verify message legacy") { construirFirma() }
         reg(F, R.drawable.ic_finger, "Sign message (BIP322)", "Sign and verify with bc1q, bc1p and 3…", "bip322 sign verify") { construirBip322() }
@@ -582,6 +586,157 @@ class PubkeyToolsActivity : Activity() {
                 val h = try { HunterEngine.hexDeWif(txt) } catch (e: Throwable) { "" }
                 if (h.isBlank()) Toast.makeText(this, "Not a valid WIF or 64-hex key", Toast.LENGTH_SHORT).show()
                 else salida.addView(filaResultado("Private key (hex)", h, true))
+            }
+        }
+    }
+
+    // Base58Check genérico (sin el tope de 100 chars de BtcAddress: una xpub mide 111).
+    private val B58_ALFA = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
+    private fun sha256d(b: ByteArray): ByteArray {
+        val md = java.security.MessageDigest.getInstance("SHA-256"); return md.digest(md.digest(b))
+    }
+    private fun b58cDecode(s: String): ByteArray? {
+        if (s.isEmpty() || s.length > 200) return null
+        val bytes = ArrayList<Int>(); bytes.add(0)
+        for (ch in s) {
+            val idx = B58_ALFA.indexOf(ch); if (idx < 0) return null
+            var carry = idx
+            for (i in bytes.indices.reversed()) { carry += 58 * bytes[i]; bytes[i] = carry and 0xff; carry = carry shr 8 }
+            while (carry > 0) { bytes.add(0, carry and 0xff); carry = carry shr 8 }
+        }
+        var leading = 0; for (ch in s) { if (ch == '1') leading++ else break }
+        val trimmed = bytes.map { it.toByte() }.toByteArray().dropWhile { it.toInt() == 0 }.toByteArray()
+        val full = ByteArray(leading) { 0 } + trimmed
+        if (full.size < 5) return null
+        val payload = full.copyOfRange(0, full.size - 4)
+        val check = full.copyOfRange(full.size - 4, full.size)
+        if (!java.security.MessageDigest.isEqual(check, sha256d(payload).copyOfRange(0, 4))) return null
+        return payload
+    }
+    private fun b58cEncode(payload: ByteArray): String {
+        val full = payload + sha256d(payload).copyOfRange(0, 4)
+        var zeros = 0; while (zeros < full.size && full[zeros].toInt() == 0) zeros++
+        val buf = IntArray(full.size) { full[it].toInt() and 0xff }
+        val sb = StringBuilder(); var start = zeros
+        while (start < buf.size) {
+            var rem = 0
+            for (i in start until buf.size) { val acc = rem * 256 + buf[i]; buf[i] = acc / 58; rem = acc % 58 }
+            sb.append(B58_ALFA[rem])
+            if (buf[start] == 0) start++
+        }
+        repeat(zeros) { sb.append('1') }
+        return sb.reverse().toString()
+    }
+
+    // ── Versión de clave extendida (SLIP-132) ─────────────────────────────
+    private fun construirSlip132() {
+        desc("Change the version prefix of an extended key (SLIP-132) so another wallet accepts it: " +
+             "xpub ↔ ypub ↔ zpub (and testnet tpub/upub/vpub), and the same for private xprv/yprv/zprv. " +
+             "It only swaps the 4 version bytes — the key material is identical.")
+        val et = entrada("xpub / ypub / zpub / xprv… (or tpub/upub/vpub…)", varias = true)
+        val salida = salidaBox()
+        boton("Convert") {
+            salida.removeAllViews()
+            val txt = et.text.toString().trim()
+            val payload = try { b58cDecode(txt) } catch (e: Throwable) { null }
+            if (payload == null || payload.size != 78) { Toast.makeText(this, "Not a valid extended key (xpub/zpub/xprv…)", Toast.LENGTH_SHORT).show(); return@boton }
+            data class V(val n: String, val v: Long, val prv: Boolean, val tn: Boolean)
+            val tabla = listOf(
+                V("xpub", 0x0488b21eL, false, false), V("ypub", 0x049d7cb2L, false, false), V("zpub", 0x04b24746L, false, false),
+                V("xprv", 0x0488ade4L, true,  false), V("yprv", 0x049d7878L, true,  false), V("zprv", 0x04b2430cL, true,  false),
+                V("tpub", 0x043587cfL, false, true),  V("upub", 0x044a5262L, false, true),  V("vpub", 0x045f1cf6L, false, true),
+                V("tprv", 0x04358394L, true,  true),  V("uprv", 0x044a4e28L, true,  true),  V("vprv", 0x045f18bcL, true,  true))
+            val ver = ((payload[0].toLong() and 0xff) shl 24) or ((payload[1].toLong() and 0xff) shl 16) or
+                      ((payload[2].toLong() and 0xff) shl 8) or (payload[3].toLong() and 0xff)
+            val actual = tabla.firstOrNull { it.v == ver }
+            if (actual == null) { Toast.makeText(this, "Unknown extended-key version", Toast.LENGTH_SHORT).show(); return@boton }
+            salida.addView(filaResultado("Detected", "${actual.n} · ${if (actual.prv) "private" else "public"}${if (actual.tn) " · testnet" else ""}"))
+            for (t in tabla) {
+                if (t.prv != actual.prv || t.tn != actual.tn || t.n == actual.n) continue
+                val np = payload.copyOf()
+                np[0] = ((t.v ushr 24) and 0xff).toByte(); np[1] = ((t.v ushr 16) and 0xff).toByte()
+                np[2] = ((t.v ushr 8) and 0xff).toByte(); np[3] = (t.v and 0xff).toByte()
+                salida.addView(filaResultado(t.n, b58cEncode(np), true))
+            }
+        }
+        nota(AppTheme.TXT_MUTED, "Same account, different prefix. Private→public (xprv→xpub) is a different operation and is not done here.")
+    }
+
+    // ── Mini-clave Casascius ──────────────────────────────────────────────
+    private fun construirMiniKey() {
+        desc("Decode a Casascius mini private key (the short S… key printed on physical coins) into its " +
+             "hex key, WIF and addresses. A valid mini key is 22 or 30 characters starting with S, and " +
+             "SHA256(key + \"?\") must start with 0x00.")
+        val et = entrada("Mini key, e.g. S6c56bnXQiBjk9mqSYE7ykVQ7NzrRy")
+        val salida = salidaBox()
+        boton("Decode") {
+            salida.removeAllViews()
+            val mk = et.text.toString().trim()
+            if ((mk.length != 22 && mk.length != 30) || !mk.startsWith("S")) {
+                Toast.makeText(this, "A mini key is 22 or 30 characters starting with S", Toast.LENGTH_SHORT).show(); return@boton
+            }
+            val md = java.security.MessageDigest.getInstance("SHA-256")
+            if (md.digest((mk + "?").toByteArray(Charsets.US_ASCII))[0].toInt() != 0) {
+                salida.addView(filaResultado("Not a valid mini key", "SHA256(key + \"?\") does not start with 0x00 — check for typos.")); return@boton
+            }
+            val hex = java.security.MessageDigest.getInstance("SHA-256").digest(mk.toByteArray(Charsets.US_ASCII)).joinToString("") { "%02x".format(it) }
+            salida.addView(filaResultado("Private key (hex)", hex, true))
+            val w = try { HunterEngine.wifDeHex(hex) } catch (e: Throwable) { "" }
+            if (w.isNotBlank()) { val p = w.split('|'); salida.addView(filaResultado("WIF (uncompressed)", p.getOrElse(1) { p.getOrElse(0) { "" } }, true)) }
+            val dirs = try { HunterEngine.direccionesDe(hex) } catch (e: Throwable) { "" }
+            dirs.trim().split('\n').forEach { l -> val i = l.indexOf('='); if (i > 0) salida.addView(filaResultado(l.substring(0, i), l.substring(i + 1))) }
+        }
+        nota(AppTheme.TXT_MUTED, "Casascius coins use the UNCOMPRESSED key, so its address is the uncompressed P2PKH (1…).")
+    }
+
+    // ── Entropía ↔ mnemónico ──────────────────────────────────────────────
+    private fun construirEntropiaMnemonico() {
+        desc("Convert between BIP39 raw entropy (hex) and the word phrase, both ways. Paste hex " +
+             "(16/20/24/28/32 bytes) to get the words, or paste a phrase to get its entropy.")
+        val et = entrada("Entropy hex, or a 12/15/18/21/24-word phrase", varias = true)
+        val salida = salidaBox()
+        boton("Convert") {
+            salida.removeAllViews()
+            val txt = et.text.toString().trim()
+            val hx = txt.removePrefix("0x").replace(" ", "").replace("\n", "")
+            val esHex = hx.length in intArrayOf(32, 40, 48, 56, 64) && hx.all { it.isDigit() || it.lowercaseChar() in 'a'..'f' }
+            if (esHex) {
+                val bytes = ByteArray(hx.length / 2) { ((Character.digit(hx[it * 2], 16) shl 4) or Character.digit(hx[it * 2 + 1], 16)).toByte() }
+                val frase = try { Bip39.deEntropia(bytes) } catch (e: Throwable) { "" }
+                if (frase.isBlank()) Toast.makeText(this, "Could not build a phrase", Toast.LENGTH_SHORT).show()
+                else salida.addView(filaResultado("${frase.trim().split(' ').size}-word phrase", frase, true))
+            } else {
+                val ent = Bip39.entropia(txt)
+                if (ent == null) Toast.makeText(this, "Not valid hex entropy or a BIP39 phrase", Toast.LENGTH_SHORT).show()
+                else salida.addView(filaResultado("Entropy (hex)", ent.joinToString("") { "%02x".format(it) }, true))
+            }
+        }
+        nota(AppTheme.TXT_MUTED, "16 bytes = 12 words, 24 = 18, 32 = 24. The phrase carries the BIP39 checksum.")
+    }
+
+    // ── Dirección ↔ scriptPubKey ──────────────────────────────────────────
+    private fun construirDireccionScript() {
+        desc("Convert between a Bitcoin address and its scriptPubKey. Paste an address to see its " +
+             "scriptPubKey, hash/witness program and type; or paste a scriptPubKey (hex) to get the address.")
+        val et = entrada("An address, or a scriptPubKey in hex", varias = true)
+        val salida = salidaBox()
+        boton("Convert") {
+            salida.removeAllViews()
+            val txt = et.text.toString().trim()
+            val hx = txt.removePrefix("0x").lowercase()
+            val esHex = hx.length in 4..142 && hx.length % 2 == 0 && hx.all { it.isDigit() || it in 'a'..'f' }
+            if (esHex) {
+                val spk = ByteArray(hx.length / 2) { ((Character.digit(hx[it * 2], 16) shl 4) or Character.digit(hx[it * 2 + 1], 16)).toByte() }
+                val addr = SpkDireccion.de(spk, false) ?: SpkDireccion.de(spk, true)
+                if (addr == null) Toast.makeText(this, "Not a standard scriptPubKey", Toast.LENGTH_SHORT).show()
+                else salida.addView(filaResultado("Address", addr, true))
+            } else {
+                val r = BtcAddress.validate(txt, false).let { if (it is BtcAddress.Result.Valid) it else BtcAddress.validate(txt, true) }
+                if (r !is BtcAddress.Result.Valid) { Toast.makeText(this, "Not a valid address or scriptPubKey hex", Toast.LENGTH_SHORT).show(); return@boton }
+                val info = r.info
+                salida.addView(filaResultado("Type", info.type.name + (if (info.testnet) " · testnet" else "")))
+                salida.addView(filaResultado("scriptPubKey (hex)", BtcAddress.scriptPubKey(info).joinToString("") { "%02x".format(it) }, true))
+                salida.addView(filaResultado("Hash / witness program", info.program.joinToString("") { "%02x".format(it) }, true))
             }
         }
     }
