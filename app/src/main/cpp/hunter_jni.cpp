@@ -4184,13 +4184,6 @@ Java_com_hunter_btc_HunterEngine_milksadTotal(JNIEnv*, jobject){ return (jlong)g
 /* La semilla hallada (>=0), -1 si aún nada / terminó sin encontrarla. */
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_milksadResultado(JNIEnv*, jobject){ return (jlong)g_ms_resultado.load(); }
-/* La entropia (hex) de una semilla concreta y un tamaño: para enseñar la frase hallada. */
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_milksadEntropia(JNIEnv *env, jobject, jlong jsem, jint jn){
-    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
-    uint8_t out[32]; milksad::entropia((uint32_t)jsem, out, n);
-    return env->NewStringUTF(a_hex(out, n).c_str());
-}
 
 /* ── Trust Wallet 2022 (CVE-2023-31290): mismo MT que Milk Sad pero byte = rng()&0xFF (modo 1). Reutiliza
  * el MISMO estado global (sólo corre un barrido a la vez) y las mismas funciones de estado/Detener. */
@@ -4223,12 +4216,6 @@ Java_com_hunter_btc_HunterEngine_trustBuscar(JNIEnv *env, jobject, jstring jent,
         g_ms_corriendo.store(false);
     }).detach();
     return env->NewStringUTF("");
-}
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_trustEntropia(JNIEnv *env, jobject, jlong jsem, jint jn){
-    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
-    uint8_t out[32]; milksad::entropia((uint32_t)jsem, out, n, 1);
-    return env->NewStringUTF(a_hex(out, n).c_str());
 }
 
 /* ── Trust Wallet iOS 2018 (CVE-2024-23660): MINSTD_RAND0 sembrado con la hora. [jvar] 0=variante A (% 0xFF),
@@ -4263,12 +4250,6 @@ Java_com_hunter_btc_HunterEngine_iosBuscar(JNIEnv *env, jobject, jstring jent, j
         g_ms_corriendo.store(false);
     }).detach();
     return env->NewStringUTF("");
-}
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_iosEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jvar){
-    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
-    uint8_t out[32]; milksad::entropia_ios((uint32_t)jsem, out, n, (int)jvar);
-    return env->NewStringUTF(a_hex(out, n).c_str());
 }
 
 /* ── Entropía degenerada: estado propio (corre un barrido a la vez, aparte de milksad). */
@@ -4322,13 +4303,6 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_entdebilTotal(JNIEnv*, jobject){ return (jlong)g_ed_total.load(); }
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_entdebilResultado(JNIEnv*, jobject){ return (jlong)g_ed_resultado.load(); }
-/* La entropia (hex) de una semilla/modelo concretos: para enseñar el patrón hallado. */
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_entdebilEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jmodo){
-    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
-    uint8_t out[32]; entdebil::entropia((uint64_t)jsem, out, n, (int)jmodo);
-    return env->NewStringUTF(a_hex(out, n).c_str());
-}
 
 /* ── mt_rand() de PHP: estado propio (corre un barrido a la vez, aparte de milksad/entdebil). */
 static std::atomic<bool>     g_pm_corriendo(false);
@@ -4380,11 +4354,5 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_phpmtTotal(JNIEnv*, jobject){ return (jlong)g_pm_total.load(); }
 extern "C" JNIEXPORT jlong JNICALL
 Java_com_hunter_btc_HunterEngine_phpmtResultado(JNIEnv*, jobject){ return (jlong)g_pm_resultado.load(); }
-extern "C" JNIEXPORT jstring JNICALL
-Java_com_hunter_btc_HunterEngine_phpmtEntropia(JNIEnv *env, jobject, jlong jsem, jint jn, jint jmodo, jint jpatron){
-    int n = (int)jn; if (n != 16 && n != 24 && n != 32) return env->NewStringUTF("");
-    uint8_t out[32]; phpmt::entropia((uint32_t)jsem, out, n, (int)jmodo, (int)jpatron);
-    return env->NewStringUTF(a_hex(out, n).c_str());
-}
 
 }

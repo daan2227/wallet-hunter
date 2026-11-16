@@ -126,17 +126,14 @@ object HunterEngine {
     external fun milksadHechas(): Long
     external fun milksadTotal(): Long
     external fun milksadResultado(): Long
-    external fun milksadEntropia(semilla: Long, n: Int): String
 
     // Auditoria Trust Wallet 2022 (CVE-2023-31290): mismo MT que Milk Sad, byte = rng()&0xFF. Comparte el
     // estado con las funciones milksad* de arriba (Detener/Corriendo/Hechas/Total/Resultado).
     external fun trustBuscar(entHex: String, ini: Long, fin: Long, hilos: Int): String
-    external fun trustEntropia(semilla: Long, n: Int): String
 
     // Auditoria Trust Wallet iOS 2018 (CVE-2024-23660): MINSTD_RAND0 sembrado con la hora. variante 0=A (%0xFF),
     // 1=B (&0xFF). [ini,fin) es una ventana de horas Unix. Comparte el estado con las funciones milksad* de arriba.
     external fun iosBuscar(entHex: String, ini: Long, fin: Long, hilos: Int, variante: Int): String
-    external fun iosEntropia(semilla: Long, n: Int, variante: Int): String
 
     // Auditoria de ENTROPIA DEGENERADA (ver entropia_debil.h): modo 0=repetido, 1=secuencial,
     // 2=entero LE, 3=entero BE. Para 0/1 el rango es implicito (0..256); para 2/3 se usa [ini,fin).
@@ -147,7 +144,6 @@ object HunterEngine {
     external fun entdebilHechas(): Long
     external fun entdebilTotal(): Long
     external fun entdebilResultado(): Long
-    external fun entdebilEntropia(semilla: Long, n: Int, modo: Int): String
 
     // Auditoria de carteras web hechas con mt_rand() de PHP (ver php_mtrand.h): modo 0=MT19937 (PHP>=7.1),
     // 1=legacy MT_RAND_PHP (<7.1). [ini,fin) es el rango de semillas. Estado propio.
@@ -158,7 +154,6 @@ object HunterEngine {
     external fun phpmtHechas(): Long
     external fun phpmtTotal(): Long
     external fun phpmtResultado(): Long
-    external fun phpmtEntropia(semilla: Long, n: Int, modo: Int, patron: Int): String
 
     /**
      * Operaciones de curva sueltas (ver ec_ops.h): "pub", "pub_mul", "pub_tweak", "pub_sum", "tr",
