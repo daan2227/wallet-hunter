@@ -34,7 +34,7 @@ internal fun MainActivity.buildWeakTab(): ScrollView = WeakController.construir(
 object WeakController {
 
     private const val BITS_MIN = 20
-    private const val BITS_MAX = 80
+    private const val BITS_MAX = 256   // tope teórico: una privada es un número de 256 bits (justo por debajo de n).
     private const val BITS_SUG = 50
     private const val OPS_POR_SEG = 7_000_000.0
     private const val UMBRAL_LISTA = 2000
