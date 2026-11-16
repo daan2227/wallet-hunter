@@ -208,6 +208,9 @@ class MineroActivity : AppCompatActivity() {
                     putExtra(BottomBar.EXTRA_TAB, tab)
                 })
                 finish()
+                // Sin animación de Activity: que entrar/salir del Miner se sienta
+                // igual que cambiar entre las otras pestañas (cambio instantáneo).
+                overridePendingTransition(0, 0)
             }
         }
         raiz.addView(bb.vista, LinearLayout.LayoutParams(

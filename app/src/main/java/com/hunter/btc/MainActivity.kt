@@ -140,7 +140,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal fun pestana(tab: Int) {
         when (tab) {
             BottomBar.HUNT    -> goTab(prefs.getInt("ultima_hunt", PAG_SCANNER).takeIf { it in paginasHunt } ?: PAG_SCANNER)
-            BottomBar.MINER   -> startActivity(Intent(this, MineroActivity::class.java))
+            BottomBar.MINER   -> { startActivity(Intent(this, MineroActivity::class.java)); overridePendingTransition(0, 0) }
             BottomBar.SCANNER -> goTab(PAG_SCANNER)
             BottomBar.PUZZLE  -> goTab(PAG_PUZZLE)
             BottomBar.WALLET  -> {
