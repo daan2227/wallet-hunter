@@ -234,6 +234,22 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal var puzzlePubHex: String = ""
     internal var puzzleIniHex: String = ""
     internal var puzzleFinHex: String = ""
+    /** División del rango del puzzle en partes iguales, para repartir entre dispositivos:
+     *  1 = rango completo. Lo mueve el deslizador de la tarjeta "Hex range". El trozo se
+     *  aplica tanto a la fuerza bruta (lee etRangeStart/etRangeEnd) como al Kangaroo
+     *  (lee puzzleIniHex/puzzleFinHex). */
+    internal var splitParts = 1
+    internal var splitPart = 1               // 1..splitParts
+    internal var splitResetUi: (() -> Unit)? = null
+    /** Estrecha [iniHex, finHex] al trozo elegido. Sin división (splitParts<=1) devuelve igual. */
+    internal fun aplicarTrozo(iniHex: String, finHex: String): Pair<String, String> {
+        if (splitParts <= 1) return iniHex to finHex
+        val a = iniHex.removePrefix("0x").trim().toBigIntegerOrNull(16) ?: return iniHex to finHex
+        val b = finHex.removePrefix("0x").trim().toBigIntegerOrNull(16) ?: return iniHex to finHex
+        if (a >= b) return iniHex to finHex
+        val (pi, pf) = KgAuto.trozo(a, b, splitParts, (splitPart - 1).coerceIn(0, splitParts - 1))
+        return pi.toString(16) to pf.toString(16)
+    }
     internal var ultimoGuardadoKg = 0L
     internal var kangarooReinicios = 0
     /** A qué puzzle pertenece la respuesta que estamos esperando. */
@@ -2132,7 +2148,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                  * notaba porque antes TODAS las consultas iban por la red y
                  * tardaban parecido. */
                 if (puzzleSeleccionado != p.num) return@runOnUiThread
-                puzzleIniHex = p.start; puzzleFinHex = p.end
+                val (trIni, trFin) = aplicarTrozo(p.start, p.end); puzzleIniHex = trIni; puzzleFinHex = trFin
                 puzzlePubHex = (r as? PubKeyFinder.Resultado.Encontrada)?.pubHex ?: ""
                 // A preferencias EN CUANTO se sabe, no sólo al arrancar
                 // Kangaroo: si sólo se escribía al arrancar, otra pantalla que
@@ -3011,6 +3027,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         MatchVault.guardarClave(this, claveHex, "kangaroo", deDonde)
 
     internal fun applyPuzzle(p: PuzzleInfo) {
+        // Cambiar de puzzle vuelve al rango completo: la división anterior era de otro rango.
+        splitParts = 1; splitPart = 1; splitResetUi?.invoke()
         etRangeStart?.setText(p.start)
         etRangeEnd?.setText(p.end)
         currentRangeStart = p.start

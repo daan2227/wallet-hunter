@@ -500,6 +500,81 @@ internal fun MainActivity.buildPuzzleTab(): ScrollView {
         addView(TextView(this@buildPuzzleTab).apply { text = "Target address"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.medium(context); setPadding(0,0,0,dp(6)) })
         etTarget = campoFijo("1A2B3C…")
         addView(etTarget)
+
+        // ── Dividir el rango en partes iguales (repartir entre dispositivos) ──
+        // Mueve "Parts"/"Part" y el From/To de arriba se estrecha a ese trozo. Lo
+        // respetan IGUAL la fuerza bruta (lee etRangeStart/etRangeEnd) y el Kangaroo
+        // (lee puzzleIniHex/puzzleFinHex): los dos se fijan aquí. Base = el rango del
+        // puzzle elegido, 2^(N-1)..2^N-1.
+        val tvSplitP = TextView(this@buildPuzzleTab).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(0, dp(14), 0, dp(6))
+            text = "Split range into equal parts"
+        }
+        addView(tvSplitP)
+        fun valSplit() = TextView(this@buildPuzzleTab).apply {
+            textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context)
+        }
+        val tvNP = valSplit(); val tvKP = valSplit()
+        val sbNP = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 31; progress = 0
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
+        val sbKP = SeekBar(this@buildPuzzleTab).apply { Ui.tintarDeslizador(this); max = 0; progress = 0
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT) }
+        fun filaSp(rot: String, v: TextView, sb: SeekBar) = LinearLayout(this@buildPuzzleTab).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(LinearLayout(this@buildPuzzleTab).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(this@buildPuzzleTab).apply {
+                    text = rot; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                    typeface = AppTheme.medium(context)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(v)
+            })
+            addView(sb)
+        }
+        var aplicandoSp = false
+        fun aplicarSplitPuzzle() {
+            if (aplicandoSp) return
+            aplicandoSp = true
+            val n = sbNP.progress + 1
+            tvNP.text = "$n"
+            sbKP.max = (n - 1).coerceAtLeast(0)
+            val kk = (sbKP.progress + 1).coerceIn(1, n)
+            tvKP.text = "$kk"
+            splitParts = n; splitPart = kk
+            val num = currentPuzzleNum()
+            if (num >= 1) {
+                val uno = java.math.BigInteger.ONE
+                val baseA = uno.shiftLeft(num - 1); val baseB = uno.shiftLeft(num).subtract(uno)
+                val (pi, pf) = if (n == 1) baseA to baseB else KgAuto.trozo(baseA, baseB, n, kk - 1)
+                etRangeStart?.setText(pi.toString(16)); etRangeEnd?.setText(pf.toString(16))
+                puzzleIniHex = pi.toString(16); puzzleFinHex = pf.toString(16)
+                val bitsT = pf.subtract(pi).add(uno).bitLength()
+                tvSplitP.text = if (n == 1) "Split range into equal parts · whole range"
+                                else "Part $kk of $n · $bitsT bits · this device scans only this slice"
+            }
+            aplicandoSp = false
+        }
+        val seekSp = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(s: SeekBar?, p: Int, u: Boolean) { if (u) aplicarSplitPuzzle() }
+            override fun onStartTrackingTouch(s: SeekBar?) {}
+            override fun onStopTrackingTouch(s: SeekBar?) {}
+        }
+        sbNP.setOnSeekBarChangeListener(seekSp); sbKP.setOnSeekBarChangeListener(seekSp)
+        addView(filaSp("Parts", tvNP, sbNP))
+        addView(filaSp("Part", tvKP, sbKP).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
+        })
+        tvNP.text = "1"; tvKP.text = "1"
+        // Al cambiar de puzzle, applyPuzzle llama aquí para volver a 1 parte.
+        splitResetUi = {
+            aplicandoSp = true
+            sbNP.progress = 0; sbKP.max = 0; sbKP.progress = 0
+            tvNP.text = "1"; tvKP.text = "1"; tvSplitP.text = "Split range into equal parts"
+            aplicandoSp = false
+        }
     })
 
     // ── KANGAROO PERSONALIZADO ────────────────────────────────────────

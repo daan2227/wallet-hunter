@@ -59,6 +59,9 @@ object WeakController {
     private var claves: List<String> = emptyList()
     private var indice = 0
     private var bits = 64
+    // División del rango [1, 2^bits) en partes iguales (repartir entre dispositivos). 1 = todo.
+    private var wSplitParts = 1
+    private var wSplitPart = 1
     private var presupuesto = 2.0
     private var topeSeg = 0.0
     private var claveInicioMs = 0L
@@ -303,6 +306,57 @@ object WeakController {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         })
         root.addView(ejes)
+
+        // ── Dividir [1, 2^bits) en partes iguales (repartir entre dispositivos) ──
+        // Lo aplica lanzarMulti() al rango justo antes de arrancar el Kangaroo.
+        val tvWS = TextView(a).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.body(context); setPadding(0, dp(14), 0, dp(6))
+            text = "Split range into equal parts"
+        }
+        root.addView(tvWS)
+        fun valWS() = TextView(a).apply { textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context) }
+        val tvWN = valWS(); val tvWK = valWS()
+        val sbWN = SeekBar(a).apply { Ui.tintarDeslizador(this); max = 31; progress = (wSplitParts - 1).coerceIn(0, 31)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
+        val sbWK = SeekBar(a).apply { Ui.tintarDeslizador(this); max = (wSplitParts - 1).coerceAtLeast(0); progress = (wSplitPart - 1).coerceAtLeast(0)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }
+        fun filaWS(rot: String, v: TextView, sb: SeekBar) = LinearLayout(a).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(LinearLayout(a).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(a).apply {
+                    text = rot; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+                    typeface = AppTheme.medium(context)
+                    layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                addView(v)
+            })
+            addView(sb)
+        }
+        var aplicandoWS = false
+        fun aplicarWS() {
+            if (aplicandoWS) return
+            aplicandoWS = true
+            val n = sbWN.progress + 1
+            tvWN.text = "$n"
+            sbWK.max = (n - 1).coerceAtLeast(0)
+            val kk = (sbWK.progress + 1).coerceIn(1, n)
+            tvWK.text = "$kk"
+            wSplitParts = n; wSplitPart = kk
+            tvWS.text = if (n == 1) "Split range into equal parts"
+                        else "Part $kk of $n · this device scans only this slice of [1, 2^bits)"
+            aplicandoWS = false
+        }
+        val seekWS = object : SeekBar.OnSeekBarChangeListener {
+            override fun onProgressChanged(sb: SeekBar?, p: Int, u: Boolean) { if (u) aplicarWS() }
+            override fun onStartTrackingTouch(sb: SeekBar?) {}
+            override fun onStopTrackingTouch(sb: SeekBar?) {}
+        }
+        sbWN.setOnSeekBarChangeListener(seekWS); sbWK.setOnSeekBarChangeListener(seekWS)
+        root.addView(filaWS("Parts", tvWN, sbWN))
+        root.addView(filaWS("Part", tvWK, sbWK))
+        tvWN.text = "$wSplitParts"; tvWK.text = "$wSplitPart"
 
         // Estimación en un panel con un filo de acento a la izquierda, para que se
         // lea como un aviso y no como texto suelto. Dos capas: debajo, una franja
@@ -1310,12 +1364,19 @@ object WeakController {
         for (l in cargadas) comprimida(l)?.let { pubs.add(it) }
         if (pubs.isEmpty()) { aviso("BSGS needs public keys (02/03/04 or x-only), not addresses."); return }
         bits = b
-        val fin = BigInteger.ONE.shiftLeft(b).subtract(BigInteger.ONE).toString(16)
+        // Mismo rango [1, 2^b) y la misma división en partes que el Kangaroo.
+        var iniBI = BigInteger.ONE
+        var finBI = BigInteger.ONE.shiftLeft(b).subtract(BigInteger.ONE)
+        if (wSplitParts > 1) {
+            val (pi, pf) = KgAuto.trozo(iniBI, finBI, wSplitParts, (wSplitPart - 1).coerceIn(0, wSplitParts - 1))
+            iniBI = pi; finBI = pf
+        }
+        val iniHex = iniBI.toString(16); val fin = finBI.toString(16)
         val pubsStr = pubs.joinToString("\n")
-        val campana = BsgsCheckpoint.campana(pubsStr, "1", fin, 21)
+        val campana = BsgsCheckpoint.campana(pubsStr, iniHex, fin, 21)
         bsgsCampana = campana
         bsgsBatchOn = true
-        try { HunterEngine.bsgsMultiStart(pubsStr, "1", fin, 21, BsgsCheckpoint.cargar(appCtx, campana)) }
+        try { HunterEngine.bsgsMultiStart(pubsStr, iniHex, fin, 21, BsgsCheckpoint.cargar(appCtx, campana)) }
         catch (e: Throwable) { bsgsBatchOn = false; aviso("Engine error."); return }
         btnBsgs?.text = "Stop BSGS"
         // Mismo cuadro de mando que una auditoría: tarjeta de rendimiento, cifra
@@ -1657,8 +1718,13 @@ object WeakController {
     private fun lanzarMulti(pubs: List<String>, consumidas: Int) {
         val ctx = appCtx ?: return
         loteConsumidas = consumidas; lotePubs = pubs; guardadasLote.clear()
-        val fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
-        val ini = BigInteger.ONE
+        var fin = BigInteger.ONE.shiftLeft(bits).subtract(BigInteger.ONE)
+        var ini = BigInteger.ONE
+        // División del rango: este dispositivo barre solo su trozo de [1, 2^bits).
+        if (wSplitParts > 1) {
+            val (pi, pf) = KgAuto.trozo(ini, fin, wSplitParts, (wSplitPart - 1).coerceIn(0, wSplitParts - 1))
+            ini = pi; fin = pf
+        }
         try { if (HunterEngine.kangarooRunning()) HunterEngine.kangarooStop() } catch (e: Throwable) {}
         val nucleos = Runtime.getRuntime().availableProcessors().coerceAtLeast(1)
         val porHilo = when {
