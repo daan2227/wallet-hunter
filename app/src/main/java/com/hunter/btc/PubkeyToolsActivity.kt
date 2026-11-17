@@ -54,10 +54,10 @@ class PubkeyToolsActivity : Activity() {
     override fun onCreate(s: Bundle?) {
         setTheme(AppTheme.estilo(this))
         super.onCreate(s)
+        // Captura de pantalla según el ajuste general (More › Privacy). Solo el baúl y
+        // los diálogos que muestran la semilla/WIF fuerzan el bloqueo; aquí se respeta
+        // el ajuste (el usuario puede querer capturar un conversor, una tarifa, etc.).
         PantallaSegura.aplicar(this)
-        // Esta pantalla enseña claves privadas, WIF y partes de Shamir: sin capturas ni vista previa en
-        // recientes, tenga o no activado el ajuste general.
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
         Fiat.cargar(this) { }   // el precio, para enseñar el valor junto a los importes
         AppTheme.init(this)
         AppLock.init(this)

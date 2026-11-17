@@ -75,8 +75,9 @@ object QrAnimado {
             }
             h.post(paso)
         }
-        // Ni capturas: una PSBT sin firmar no es secreta, pero dice qué monedas tienes.
-        dlg.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // Captura según el ajuste general: una PSBT/descriptor no es la semilla (dice qué
+        // monedas tienes, pero no la recuperación), así que respeta More › Privacy.
+        PantallaSegura.aplicarDialogo(dlg, act)
         dlg.show()
     }
 }

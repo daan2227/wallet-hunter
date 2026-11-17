@@ -36,7 +36,9 @@ class LightningActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         AppTheme.init(this); AppLock.init(this)
         Fiat.cargar(this) { }   // el precio, para el valor junto a los importes
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        // Captura según el ajuste general: esta pantalla muestra facturas/canales, no la
+        // semilla. El diálogo "Lightning node words" (que sí la enseña) la fuerza aparte.
+        PantallaSegura.aplicar(this)
         testnet = intent.getBooleanExtra(EXTRA_TESTNET, false)
         val scroll = ScrollView(this).apply { setBackgroundColor(AppTheme.BG_DEEP); isFillViewport = true }
         caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(40)) }
@@ -129,6 +131,7 @@ class LightningActivity : AppCompatActivity() {
         caja.addView(boton("Show the node's 24 words") {
             PinAuthHelper.show(this, autoBiometric = false) { ok -> if (ok) {
                 val d = AlertDialog.Builder(this).setTitle("Lightning node words").setMessage(Ln.frase(this) ?: "?").setPositiveButton("OK", null).create()
+                // Muestra la semilla del nodo: bloqueo de captura SIEMPRE, como el baúl y Show seed.
                 d.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE); d.show() } }
         })
         caja.addView(boton("Stop the node") { Ln.parar(); pintar() })

@@ -52,7 +52,7 @@ class NwcActivity : AppCompatActivity() {
         setTheme(AppTheme.estilo(this)); super.onCreate(savedInstanceState)
         AppTheme.init(this); AppLock.init(this)
         Fiat.cargar(this) { }   // el precio, para el valor junto a los importes
-        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+        PantallaSegura.aplicar(this)   // captura según el ajuste general (no es pantalla de semilla)
         val scroll = ScrollView(this).apply { setBackgroundColor(AppTheme.BG_DEEP); isFillViewport = true }
         caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(AppTheme.PAD_SIDE), dp(12), dp(AppTheme.PAD_SIDE), dp(40)) }
         scroll.addView(caja); setContentView(scroll)

@@ -14,9 +14,10 @@ import android.view.WindowManager
  * la galería y de ahí en la nube.
  *
  * Va con interruptor porque también tapa las capturas de las estadísticas del
- * escáner, que alguien puede querer compartir. Las pantallas que enseñan una
- * semilla o un WIF (el diálogo "Show seed / WIF" y el baúl) llevan su propia
- * marca fija y NO dependen de este ajuste.
+ * escáner, los conversores, las facturas, etc., que alguien puede querer
+ * compartir. Solo las pantallas que enseñan la SEMILLA o un WIF llevan su marca
+ * fija y NO dependen de este ajuste: el baúl (VaultActivity), el diálogo
+ * "Show seed", la pantalla Security y el diálogo "Lightning node words".
  */
 object PantallaSegura {
     private const val PREFS = "ui_seguridad"
