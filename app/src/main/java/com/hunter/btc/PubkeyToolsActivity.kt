@@ -31,7 +31,7 @@ class PubkeyToolsActivity : Activity() {
     //
     // Era una lista de 45 secciones plegables bajo siete cabeceras: todas con el mismo peso, y para saber
     // qué hacía cada una había que desplegarla. Ahora es una cuadrícula de tarjetas (icono, nombre y para qué
-    // sirve) con buscador, chips de categoría y las recientes arriba; cada herramienta se abre a pantalla
+    // sirve) con buscador, chips de categoría y los favoritos arriba; cada herramienta se abre a pantalla
     // completa. Se construye la primera vez que se abre y se conserva: un barrido en marcha sigue ahí al volver.
     private class Herr(val cat: String, val icono: Int, val titulo: String, val sub: String,
                        val claves: String, val build: () -> Unit) {
@@ -161,7 +161,7 @@ class PubkeyToolsActivity : Activity() {
         reg(U, R.drawable.ic_copy, "BTC ↔ sat", "Convert units") { construirUnidades() }
     }
 
-    // ── Inicio: buscador, categorías, recientes y cuadrícula ──
+    // ── Inicio: buscador, categorías, favoritos y cuadrícula ──
 
     private fun construirInicio() {
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(24), 0, dp(32)) }
@@ -229,9 +229,6 @@ class PubkeyToolsActivity : Activity() {
     }
 
     private fun prefs() = getSharedPreferences("herramientas", MODE_PRIVATE)
-    private fun recientes(): List<String> = prefs().getString("recientes", "")!!.split('\n').filter { it.isNotEmpty() }
-    private fun anotarReciente(t: String) =
-        prefs().edit().putString("recientes", (listOf(t) + recientes().filter { it != t }).take(4).joinToString("\n")).apply()
 
     // Favoritos: títulos marcados con la estrella, que suben arriba del todo de Tools.
     // La lista vive en memoria como fuente de verdad (se carga de prefs la primera vez
@@ -264,14 +261,15 @@ class PubkeyToolsActivity : Activity() {
             })
             return
         }
+        // En la vista "All" los favoritos se suben a su propia sección y SE QUITAN de
+        // la categoría de abajo (no se duplican). En una categoría concreta o en una
+        // búsqueda se muestran todos los que coincidan (si no, un favorito desaparecería).
         if (catSel == null && q.isEmpty()) {
             val fav = favoritos().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }
             if (fav.isNotEmpty()) { etiqueta("Favorites"); cuadricula(fav) }
-            val rec = recientes().mapNotNull { t -> herrs.firstOrNull { it.titulo == t } }.filter { !esFav(it.titulo) }
-            if (rec.isNotEmpty()) { etiqueta("Recent"); cuadricula(rec) }
         }
         val grupos = if (catSel != null) listOf(catSel!! to visibles)
-                     else CATS.map { c -> c to visibles.filter { it.cat == c } }.filter { it.second.isNotEmpty() }
+                     else CATS.map { c -> c to visibles.filter { it.cat == c && !esFav(it.titulo) } }.filter { it.second.isNotEmpty() }
         for ((c, hs) in grupos) { etiqueta(c); cuadricula(hs) }
     }
 
@@ -352,7 +350,7 @@ class PubkeyToolsActivity : Activity() {
     // ── Una herramienta a pantalla completa ──
 
     private fun abrir(h: Herr) {
-        abierta = h; anotarReciente(h.titulo)
+        abierta = h
         val page = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(12), 0, dp(32)) }
         page.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
