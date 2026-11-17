@@ -88,8 +88,13 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
                 layoutParams = LinearLayout.LayoutParams(dp(38), dp(38)).apply { marginEnd = dp(12) }
             })
         })
-        cab.addView(Ui.subpestanas(this, listOf("Scanner", "Puzzle", "Weak", "Recovery"),
-            paginasHunt.indexOf(pagina)) { i -> goTab(paginasHunt[i]) }.apply {
+        cab.addView(Ui.subpestanas(this, listOf("Scanner", "Puzzle", "Weak", "Recovery", "Tools"),
+            paginasHunt.indexOf(pagina)) { i ->
+                // Las 4 primeras son páginas; "Tools" abre su pantalla al instante (sin
+                // animación de Activity, como el resto de cambios de pestaña).
+                if (i < paginasHunt.size) goTab(paginasHunt[i])
+                else { startActivity(Intent(this@MainActivity, PubkeyToolsActivity::class.java)); overridePendingTransition(0, 0) }
+            }.apply {
             layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) }
         })
