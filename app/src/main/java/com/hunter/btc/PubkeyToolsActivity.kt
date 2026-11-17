@@ -66,7 +66,25 @@ class PubkeyToolsActivity : Activity() {
         inicio = ScrollView(this).apply { isFillViewport = true }
         detalle = ScrollView(this).apply { isFillViewport = true; visibility = android.view.View.GONE }
         marco.addView(inicio); marco.addView(detalle)
-        setContentView(marco)
+        // La misma barra inferior que el resto, para que al abrir Tools los tabs
+        // sigan abajo. Tools vive bajo Hunt, así que Hunt queda marcado; tocar un
+        // tab vuelve a MainActivity en él (REORDER_TO_FRONT, sin crear otra), sin
+        // animación de Activity.
+        val raiz = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL; setBackgroundColor(AppTheme.BG_DEEP)
+        }
+        raiz.addView(marco, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val bb = BottomBar(this, BottomBar.HUNT) { tab ->
+            startActivity(android.content.Intent(this, MainActivity::class.java).apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                putExtra(BottomBar.EXTRA_TAB, tab)
+            })
+            finish()
+            overridePendingTransition(0, 0)
+        }
+        raiz.addView(bb.vista, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        setContentView(raiz)
         registrar()
         construirInicio()
     }

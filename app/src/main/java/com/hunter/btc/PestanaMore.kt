@@ -282,11 +282,9 @@ internal fun MainActivity.buildMoreTab(): ScrollView {
         startActivity(Intent(this, SeguridadActivity::class.java))
     }
 
-    val claves = grupo("Tools")
-    fila(claves, R.drawable.ic_search, "Tools",
-         "Addresses, Hex↔WIF, sign/verify, xpub, inspector, balance, sweep, vanity, split, QR, brainwallet, nonce", null) {
-        startActivity(Intent(this, PubkeyToolsActivity::class.java))
-    }
+    // "Tools" ya es una pestaña propia arriba (en Hunt); aquí quedan las funciones
+    // avanzadas de red/nodo, así que el grupo se llama "Advanced".
+    val claves = grupo("Advanced")
     fila(claves, R.drawable.ic_wallet, "Lightning (experimental)", "Own LDK node: invoices, payments, channels",
          if (Ln.motor != null) "On" else null) {
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Lightning network")
