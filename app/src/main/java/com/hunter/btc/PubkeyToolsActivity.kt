@@ -234,10 +234,19 @@ class PubkeyToolsActivity : Activity() {
         prefs().edit().putString("recientes", (listOf(t) + recientes().filter { it != t }).take(4).joinToString("\n")).apply()
 
     // Favoritos: títulos marcados con la estrella, que suben arriba del todo de Tools.
-    private fun favoritos(): List<String> = prefs().getString("favoritos", "")!!.split('\n').filter { it.isNotEmpty() }
+    // La lista vive en memoria como fuente de verdad (se carga de prefs la primera vez
+    // y se persiste en cada cambio): así pintarRejilla() siempre ve el estado actual y
+    // la estrella se refleja al instante, sin depender de cuándo apply() llega a disco.
+    private var favsMem: MutableList<String>? = null
+    private fun favoritos(): MutableList<String> {
+        favsMem?.let { return it }
+        val l = prefs().getString("favoritos", "")!!.split('\n').filter { it.isNotEmpty() }.toMutableList()
+        favsMem = l
+        return l
+    }
     private fun esFav(t: String) = favoritos().contains(t)
     private fun alternarFav(t: String) {
-        val f = favoritos().toMutableList()
+        val f = favoritos()
         if (!f.remove(t)) f.add(t)   // quita si estaba, añade si no
         prefs().edit().putString("favoritos", f.joinToString("\n")).apply()
     }
