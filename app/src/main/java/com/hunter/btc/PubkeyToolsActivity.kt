@@ -286,7 +286,16 @@ class PubkeyToolsActivity : Activity() {
         for (par in hs.chunked(2)) {
             val fila = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
             for (h in par) fila.addView(tarjeta(h))
-            if (par.size == 1) fila.addView(android.view.View(this), LinearLayout.LayoutParams(0, 0, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) })
+            if (par.size == 1) {
+                // El hueco de la fila impar lleva los mismos LayoutParams que una tarjeta
+                // (altura MATCH_PARENT), y la fila una altura mínima de tarjeta: con el
+                // hueco de altura 0 anterior la fila se colapsaba a 0 y la ÚNICA tarjeta
+                // (p. ej. un solo favorito) quedaba INVISIBLE — por eso los favoritos en
+                // número impar no aparecían.
+                fila.minimumHeight = dp(124 + 10)
+                fila.addView(android.view.View(this),
+                    LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) })
+            }
             rejilla.addView(fila)
         }
     }
