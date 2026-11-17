@@ -1478,7 +1478,7 @@ object WeakController {
         presupuesto = budgetActual()
         tamTanda = tamActual()
         topeSeg = topeActual()
-        if (bits !in 8..80) { aviso("Range bits: between 8 and 80."); return }
+        if (bits !in 8..BITS_MAX) { aviso("Range bits: between 8 and $BITS_MAX."); return }
         if (streamMode && streamUri != null) {
             // Fichero enorme: las claves se leen del disco, no hay lista en RAM.
             claves = emptyList()
