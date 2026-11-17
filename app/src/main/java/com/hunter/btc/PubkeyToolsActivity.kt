@@ -320,7 +320,13 @@ class PubkeyToolsActivity : Activity() {
                         20, if (fav) AppTheme.ACCENT else AppTheme.TXT_MUTED).apply {
                     layoutParams = android.widget.FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER)
                 })
-                setOnClickListener { Ui.pulso(this); alternarFav(h.titulo); pintarRejilla() }
+                setOnClickListener {
+                    Ui.pulso(this); alternarFav(h.titulo)
+                    // Reconstruir en el siguiente frame: hacerlo dentro del propio toque
+                    // (con removeAllViews sobre la tarjeta que se está animando) dejaba el
+                    // re-layout pendiente, y el favorito no aparecía hasta el toque siguiente.
+                    rejilla.post { pintarRejilla() }
+                }
             })
         })
         addView(TextView(context).apply {
