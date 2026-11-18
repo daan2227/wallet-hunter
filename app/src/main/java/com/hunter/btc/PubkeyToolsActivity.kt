@@ -871,7 +871,7 @@ class PubkeyToolsActivity : Activity() {
         val token = ++velasToken
         tvCambio.text = "Loading candles…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
         Thread {
-            val v = velasExchange(intervalo)
+            val v = Mercado.velasBtc(intervalo)
             runOnUiThread {
                 if (token != velasToken) return@runOnUiThread
                 if (v.isEmpty()) { tvCambio.text = "Candles unavailable (exchange unreachable)."; tvCambio.setTextColor(AppTheme.TXT_SEC); return@runOnUiThread }
@@ -885,50 +885,6 @@ class PubkeyToolsActivity : Activity() {
         }.start()
     }
 
-    /** GET simple por el proxy de la app, acotado. null si falla o no es 200. */
-    private fun httpGet(url: String): String? = try {
-        val conn = RedPrivada.abrir(url)
-        conn.connectTimeout = 4000; conn.readTimeout = 9000
-        conn.setRequestProperty("User-Agent", "hunter")
-        try {
-            if (conn.responseCode != 200) null
-            else {
-                val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(16 * 1024)
-                conn.inputStream.use { while (true) { val n = it.read(buf); if (n < 0) break; if (out.size() + n > 4 * 1024 * 1024) break; out.write(buf, 0, n) } }
-                out.toString("UTF-8")
-            }
-        } finally { conn.disconnect() }
-    } catch (e: Throwable) { null }
-
-    /** Velas OHLC en USD: Binance (klines) y, si falla, Bitstamp. intervalo: "1m"/"1h"/"1d". */
-    private fun velasExchange(intervalo: String): List<GraficoPrecio.Vela> {
-        // Binance
-        try {
-            val js = httpGet("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=$intervalo&limit=180")
-            if (js != null && js.trimStart().startsWith("[")) {
-                val arr = org.json.JSONArray(js); val out = ArrayList<GraficoPrecio.Vela>()
-                for (i in 0 until arr.length()) {
-                    val k = arr.getJSONArray(i)
-                    out.add(GraficoPrecio.Vela(k.getLong(0) / 1000, k.getString(1).toFloat(), k.getString(2).toFloat(), k.getString(3).toFloat(), k.getString(4).toFloat()))
-                }
-                if (out.isNotEmpty()) return out
-            }
-        } catch (e: Throwable) { }
-        // Bitstamp (step en segundos)
-        try {
-            val step = when (intervalo) { "1m" -> 60; "1h" -> 3600; else -> 86400 }
-            val js = httpGet("https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=$step&limit=180")
-            if (js != null) {
-                val ohlc = org.json.JSONObject(js).getJSONObject("data").getJSONArray("ohlc"); val out = ArrayList<GraficoPrecio.Vela>()
-                for (i in 0 until ohlc.length()) {
-                    val o = ohlc.getJSONObject(i)
-                    out.add(GraficoPrecio.Vela(o.getString("timestamp").toLong(), o.getString("open").toFloat(), o.getString("high").toFloat(), o.getString("low").toFloat(), o.getString("close").toFloat()))
-                }
-                if (out.isNotEmpty()) return out
-            }
-        } catch (e: Throwable) { }
-        return emptyList()
-    }
 
     // ── Sign & verify message ─────────────────────────────────────────────
     /**
