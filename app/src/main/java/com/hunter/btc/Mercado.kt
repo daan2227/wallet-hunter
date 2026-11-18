@@ -156,6 +156,53 @@ object Mercado {
         }
     }
 
+    // ── Libro de órdenes y operaciones en vivo (solo cripto; la bolsa no los publica gratis) ──
+    /** Niveles (precio, cantidad): bids de mayor a menor, asks de menor a mayor. */
+    class Libro(val bids: List<Pair<Double, Double>>, val asks: List<Pair<Double, Double>>, val fuente: String)
+    /** Operación ejecutada: [t] en ms, [compra] = el que tomó liquidez compró. */
+    class Trade(val t: Long, val precio: Double, val qty: Double, val compra: Boolean)
+
+    private fun niveles(a: org.json.JSONArray?, max: Int): List<Pair<Double, Double>> {
+        if (a == null) return emptyList()
+        val out = ArrayList<Pair<Double, Double>>()
+        for (i in 0 until minOf(a.length(), max)) { val l = a.getJSONArray(i)
+            val p = l.getString(0).toDoubleOrNull() ?: continue; val q = l.getString(1).toDoubleOrNull() ?: continue
+            if (q > 0) out.add(p to q) }
+        return out
+    }
+
+    fun libro(a: Activo, limite: Int = 100): Libro? {
+        if (a.tipo != Tipo.CRYPTO) return null
+        try {
+            val js = httpGet("https://api.binance.com/api/v3/depth?symbol=${a.simbolo.uppercase()}USDT&limit=$limite")
+            if (js != null && js.trimStart().startsWith("{")) { val o = org.json.JSONObject(js)
+                if (o.has("bids")) return Libro(niveles(o.optJSONArray("bids"), limite), niveles(o.optJSONArray("asks"), limite), "Binance") }
+        } catch (e: Throwable) { }
+        if (a.simbolo.equals("BTC", true)) try {
+            val js = httpGet("https://www.bitstamp.net/api/v2/order_book/btcusd/")
+            if (js != null) { val o = org.json.JSONObject(js)
+                return Libro(niveles(o.optJSONArray("bids"), limite), niveles(o.optJSONArray("asks"), limite), "Bitstamp") }
+        } catch (e: Throwable) { }
+        return null
+    }
+
+    fun trades(a: Activo, n: Int = 40): List<Trade> {
+        if (a.tipo != Tipo.CRYPTO) return emptyList()
+        try {
+            val js = httpGet("https://api.binance.com/api/v3/trades?symbol=${a.simbolo.uppercase()}USDT&limit=$n")
+            if (js != null && js.trimStart().startsWith("[")) { val arr = org.json.JSONArray(js)
+                return List(arr.length()) { i -> val o = arr.getJSONObject(i)
+                    Trade(o.getLong("time"), o.getString("price").toDouble(), o.getString("qty").toDouble(), !o.getBoolean("isBuyerMaker")) }.reversed() }
+        } catch (e: Throwable) { }
+        if (a.simbolo.equals("BTC", true)) try {
+            val js = httpGet("https://www.bitstamp.net/api/v2/transactions/btcusd/?time=minute")
+            if (js != null && js.trimStart().startsWith("[")) { val arr = org.json.JSONArray(js)
+                return List(minOf(arr.length(), n)) { i -> val o = arr.getJSONObject(i)
+                    Trade(o.getString("date").toLong() * 1000, o.getString("price").toDouble(), o.getString("amount").toDouble(), o.getString("type") == "0") } }
+        } catch (e: Throwable) { }
+        return emptyList()
+    }
+
     /** Compatibilidad con el tool de precio: velas de BTC. */
     fun velasBtc(intervalo: String, limite: Int = 180): List<GraficoPrecio.Vela> = velas(BTC, intervalo, limite)
 

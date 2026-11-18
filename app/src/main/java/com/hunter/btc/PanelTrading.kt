@@ -198,6 +198,13 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             .setNegativeButton("Cancel", null).show()
     }
 
+    /** Precio elegido en el libro de órdenes: pasa a orden límite con ese precio. */
+    fun ponerPrecioLimite(p: Double) {
+        limite = true
+        etPrecio.setText(if (p >= 1) "%.2f".format(java.util.Locale.US, p) else "%.8f".format(java.util.Locale.US, p).trimEnd('0').trimEnd('.'))
+        refrescarFormulario(); aviso("Limit price set to ${fmtSim(p)}")
+    }
+
     /** El gráfico cambió de activo: rótulos del formulario y líneas. */
     fun alCambiarActivo() { refrescarFormulario(); refrescar() }
 

@@ -91,6 +91,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
     }
     var panel: PanelTrading? = null
+    var libroPanel: PanelLibro? = null
     val tok = AtomicInteger(0)
     fun cargar() {
         val myTok = tok.incrementAndGet()
@@ -113,7 +114,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
         tvPar.text = a.par; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
-        chart.poner(emptyList()); panel?.alCambiarActivo(); cargar()
+        chart.poner(emptyList()); panel?.alCambiarActivo(); libroPanel?.alCambiarActivo(); cargar()
     }
 
     // Fila de chips de selección única.
@@ -233,6 +234,10 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Simulador de trading (Spot / Futuros) ──
     val pt = PanelTrading(this, { activo }, { chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
     panel = pt
+    // ── Libro de órdenes y trades en vivo (tocar un precio → precio límite del simulador) ──
+    val pl = PanelLibro(this, { activo }) { p -> pt.ponerPrecioLimite(p) }
+    libroPanel = pl
+    page.addView(pl.vista)
     page.addView(pt.vista)
     val hVigia = android.os.Handler(android.os.Looper.getMainLooper())
     hVigia.postDelayed(object : Runnable {
