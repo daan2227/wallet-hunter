@@ -127,6 +127,7 @@ class PubkeyToolsActivity : Activity() {
         reg(T, R.drawable.ic_import, "PSBT", "Decode and sign partially signed transactions", "psbt decode sign") { construirPsbt() }
         reg(T, R.drawable.ic_search, "Script decoder", "Read a Bitcoin script", "script asm") { construirScript() }
 
+        reg(E, R.drawable.ic_chart, "Bitcoin price", "Current price and its trend (native chart)", "price chart btc usd market tradingview trend") { construirPrecio() }
         reg(E, R.drawable.ic_clock, "Network now", "Mempool, next blocks, halving, difficulty", "mempool fees halving difficulty") { construirRed() }
         reg(E, R.drawable.ic_export, "Recent blocks", "The latest blocks mined") { construirBloques() }
         reg(E, R.drawable.ic_search, "Look up", "A transaction, block or address", "tx block address explorer search txid") { construirBuscar() }
@@ -779,6 +780,70 @@ class PubkeyToolsActivity : Activity() {
                 salida.addView(filaResultado("Hash / witness program", info.program.joinToString("") { "%02x".format(it) }, true))
             }
         }
+    }
+
+    // ── Precio de BTC (gráfico nativo) ────────────────────────────────────
+    private var precioSerie: List<Pair<Long, Float>> = emptyList()   // (time unix, precio)
+    private fun construirPrecio() {
+        val cod = Fiat.codigo(this)
+        desc("The current BTC price and its trend, in $cod, from mempool.space (the same source the app uses for " +
+             "fiat values). Drawn natively on this phone — no TradingView/WebView and no third-party trackers.")
+        val tvPrecio = TextView(this).apply {
+            textSize = 30f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…"
+        }
+        root.addView(tvPrecio)
+        val tvCambio = TextView(this).apply {
+            textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
+            setPadding(0, dp(2), 0, dp(12))
+        }
+        root.addView(tvCambio)
+        val chart = GraficoPrecio(this).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190))
+        }
+        var dias = 90
+        root.addView(Ui.segmented(this, listOf("30D" to null, "90D" to null, "1Y" to null, "All" to null), initial = 1) { i ->
+            dias = when (i) { 0 -> 30; 1 -> 90; 2 -> 365; else -> 0 }
+            redibujarPrecio(chart, tvCambio, dias, cod)
+        })
+        root.addView(chart)
+        nota(AppTheme.TXT_MUTED, "History is mempool.space's periodic price series; the last point is the live price. " +
+             "A dropped reading just shortens the line — nothing is sent anywhere.")
+        Thread {
+            val actualJs = try { ChainApi.get("/v1/prices") } catch (e: Throwable) { null }
+            val actual = if (actualJs != null) try { org.json.JSONObject(actualJs).optDouble(cod, 0.0) } catch (e: Exception) { 0.0 } else 0.0
+            val histJs = try { ChainApi.get("/v1/historical-price?currency=$cod") } catch (e: Throwable) { null }
+            val serie = ArrayList<Pair<Long, Float>>()
+            if (histJs != null) try {
+                val arr = org.json.JSONObject(histJs).getJSONArray("prices")
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    val t = o.optLong("time", 0L); val p = o.optDouble(cod, 0.0)
+                    if (t > 0 && p > 0 && p.isFinite()) serie.add(t to p.toFloat())
+                }
+            } catch (e: Exception) { }
+            serie.sortBy { it.first }
+            if (actual > 0) serie.add((System.currentTimeMillis() / 1000) to actual.toFloat())
+            precioSerie = serie
+            runOnUiThread {
+                tvPrecio.text = if (actual > 0) "%,.2f %s".format(actual, cod)
+                                else if (serie.isNotEmpty()) "%,.2f %s".format(serie.last().second, cod)
+                                else "price unavailable"
+                redibujarPrecio(chart, tvCambio, dias, cod)
+            }
+        }.start()
+    }
+
+    private fun redibujarPrecio(chart: GraficoPrecio, tvCambio: TextView, dias: Int, cod: String) {
+        val ahora = System.currentTimeMillis() / 1000
+        val desde = if (dias == 0) 0L else ahora - dias.toLong() * 86_400L
+        val sub = precioSerie.filter { it.first >= desde }.map { it.second }
+        chart.poner(sub)
+        if (sub.size >= 2) {
+            val ini = sub.first(); val fin = sub.last()
+            val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
+            tvCambio.text = "%s%.1f%% · min %,.0f · max %,.0f %s".format(if (pct >= 0) "+" else "", pct, sub.min(), sub.max(), cod)
+            tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
+        } else { tvCambio.text = "Not enough history for this range."; tvCambio.setTextColor(AppTheme.TXT_SEC) }
     }
 
     // ── Sign & verify message ─────────────────────────────────────────────
