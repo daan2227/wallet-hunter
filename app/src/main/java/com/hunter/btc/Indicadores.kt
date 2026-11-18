@@ -68,4 +68,18 @@ object Indicadores {
         val h = FloatArray(v.size) { i -> if (m[i].isNaN() || sig[i].isNaN()) Float.NaN else m[i] - sig[i] }
         return Macd(m, sig, h)
     }
+
+    /** Bandas de Bollinger: media SMA(n) y ±[k] desviaciones típicas. */
+    data class Bollinger(val media: FloatArray, val alta: FloatArray, val baja: FloatArray)
+    fun bollinger(v: FloatArray, n: Int = 20, k: Float = 2f): Bollinger {
+        val mid = sma(v, n)
+        val alta = FloatArray(v.size) { Float.NaN }; val baja = FloatArray(v.size) { Float.NaN }
+        if (v.size >= n) for (i in n - 1 until v.size) {
+            val m = mid[i]; if (m.isNaN()) continue
+            var s = 0f; for (j in i - n + 1..i) { val dd = v[j] - m; s += dd * dd }
+            val sd = Math.sqrt((s / n).toDouble()).toFloat()
+            alta[i] = m + k * sd; baja[i] = m - k * sd
+        }
+        return Bollinger(mid, alta, baja)
+    }
 }

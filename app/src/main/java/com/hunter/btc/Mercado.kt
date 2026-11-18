@@ -29,10 +29,11 @@ object Mercado {
         } finally { conn.disconnect() }
     } catch (e: Throwable) { null }
 
-    /** Velas OHLC+volumen en USD. intervalo: "1m"/"1h"/"1d". */
-    fun velasBtc(intervalo: String): List<GraficoPrecio.Vela> {
+    /** Velas OHLC+volumen en USD. intervalo: p.ej. "1s"/"1m"/"1h"/"4h"/"1d"/"1w"/"1M". */
+    fun velasBtc(intervalo: String, limite: Int = 180): List<GraficoPrecio.Vela> {
+        val lim = limite.coerceIn(10, 1000)
         try {
-            val js = httpGet("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=$intervalo&limit=180")
+            val js = httpGet("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=$intervalo&limit=$lim")
             if (js != null && js.trimStart().startsWith("[")) {
                 val arr = org.json.JSONArray(js); val out = ArrayList<GraficoPrecio.Vela>()
                 for (i in 0 until arr.length()) {
@@ -44,8 +45,12 @@ object Mercado {
             }
         } catch (e: Throwable) { }
         try {
-            val step = when (intervalo) { "1m" -> 60; "1h" -> 3600; else -> 86400 }
-            val js = httpGet("https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=$step&limit=180")
+            val step = when (intervalo) {
+                "1s" -> 60; "1m" -> 60; "3m" -> 180; "5m" -> 300; "15m" -> 900; "30m" -> 1800
+                "1h" -> 3600; "2h" -> 7200; "4h" -> 14400; "6h" -> 21600; "12h" -> 43200
+                "3d" -> 259200; "1w" -> 259200; "1M" -> 259200; else -> 86400
+            }
+            val js = httpGet("https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=$step&limit=${lim.coerceAtMost(1000)}")
             if (js != null) {
                 val ohlc = org.json.JSONObject(js).getJSONObject("data").getJSONArray("ohlc"); val out = ArrayList<GraficoPrecio.Vela>()
                 for (i in 0 until ohlc.length()) {

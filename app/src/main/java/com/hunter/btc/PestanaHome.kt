@@ -32,13 +32,13 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     // ── Controles del gráfico ──
     var intervalo = "1h"
-    val chart = GraficoTA(this).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(330)) }
+    val chart = GraficoTA(this).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360)); intervaloSeg = 3600L }
     val tok = AtomicInteger(0)
     fun cargar() {
         val myTok = tok.incrementAndGet()
         tvCambio.text = "Loading…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
         Thread {
-            val v = Mercado.velasBtc(intervalo)
+            val v = Mercado.velasBtc(intervalo, 500)
             runOnUiThread {
                 if (myTok != tok.get()) return@runOnUiThread
                 if (v.isEmpty()) { tvCambio.text = "Chart unavailable (exchange unreachable)"; return@runOnUiThread }
@@ -46,49 +46,78 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                 val fin = v.last().c; val ini = v.first().o
                 val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
                 tvPrecio.text = "%,.2f USD".format(fin)
-                tvCambio.text = "%s%.2f%% · %s window".format(if (pct >= 0) "+" else "", pct, intervalo)
+                tvCambio.text = "%s%.2f%% · drag to pan, pinch to zoom".format(if (pct >= 0) "+" else "", pct)
                 tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
             }
         }.start()
     }
 
-    page.addView(Ui.segmented(this, listOf("1m" to null, "1h" to null, "1D" to null), initial = 1) { i ->
-        intervalo = when (i) { 0 -> "1m"; 1 -> "1h"; else -> "1d" }; cargar()
-    }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) } })
-
-    // Media móvil: Off / MA / EMA
-    page.addView(Ui.segmented(this, listOf("MA off" to null, "MA" to null, "EMA" to null), initial = 1) { i ->
-        chart.modoMedia = i; chart.invalidate()
-    }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) } })
-
-    // Chips Vol / RSI / MACD
-    fun chip(txt: String, on: Boolean, onTap: (Boolean) -> Unit): TextView {
-        val c = TextView(this)
-        var estado = on
-        fun pintar() {
-            c.background = Ui.cardBg(AppTheme.R_CHIP, if (estado) AppTheme.BG_KEY else AppTheme.BG_CARD, this)
-            c.setTextColor(if (estado) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
-            c.typeface = if (estado) AppTheme.bold(this) else AppTheme.medium(this)
+    // ── Intervalos (fila desplazable) ──
+    val intervalos = listOf(
+        Triple("1s", "1s", 1L), Triple("1m", "1m", 60L), Triple("1h", "1h", 3600L),
+        Triple("4h", "4h", 14400L), Triple("12h", "12h", 43200L), Triple("1D", "1d", 86400L),
+        Triple("3D", "3d", 259200L), Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
+    val chipsInt = ArrayList<TextView>()
+    fun pintarInt(sel: Int) {
+        for ((k, c) in chipsInt.withIndex()) {
+            val on = k == sel
+            c.background = Ui.cardBg(AppTheme.R_CHIP, if (on) AppTheme.BG_KEY else AppTheme.BG_CARD, this)
+            c.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+            c.typeface = if (on) AppTheme.bold(this) else AppTheme.medium(this)
         }
-        c.apply {
-            text = txt; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
+    }
+    val filaInt = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+    for ((idx, tr) in intervalos.withIndex()) {
+        val (lab, code, seg) = tr
+        val c = TextView(this).apply {
+            text = lab; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
             setPadding(dp(14), dp(7), dp(14), dp(7)); isClickable = true; foreground = Ui.toque()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
-            setOnClickListener { estado = !estado; pintar(); onTap(estado) }
+            setOnClickListener { intervalo = code; chart.intervaloSeg = seg; pintarInt(idx); cargar() }
         }
-        pintar(); return c
+        chipsInt.add(c); filaInt.addView(c)
+    }
+    page.addView(HorizontalScrollView(this).apply {
+        isHorizontalScrollBarEnabled = false; addView(filaInt)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+    })
+    pintarInt(2)   // 1h por defecto
+
+    // ── Ajustes de indicadores (modificar / añadir) ──
+    fun abrirAjustes() {
+        val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(10), dp(20), dp(4)) }
+        fun titulo(t: String) = caja.addView(TextView(this).apply { text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, dp(6)) })
+        fun check(t: String, ini: Boolean, set: (Boolean) -> Unit) = caja.addView(android.widget.CheckBox(this).apply { text = t; isChecked = ini; setTextColor(AppTheme.TXT_PRI); setOnCheckedChangeListener { _, b -> set(b) } })
+        titulo("Moving average")
+        caja.addView(Ui.segmented(this, listOf("Off" to null, "MA" to null, "EMA" to null), initial = chart.modoMedia) { chart.modoMedia = it })
+        val filaP = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
+        val e1 = EditText(this).apply { setText(chart.maP1.toString()); hint = "fast"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(AppTheme.TXT_PRI); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+        val e2 = EditText(this).apply { setText(chart.maP2.toString()); hint = "slow"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(AppTheme.TXT_PRI); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
+        filaP.addView(e1); filaP.addView(e2); caja.addView(filaP)
+        titulo("Overlays & panels")
+        check("Bollinger Bands (20, 2)", chart.showBB) { chart.showBB = it }
+        check("Volume", chart.showVol) { chart.showVol = it }
+        check("RSI (14)", chart.showRsi) { chart.showRsi = it }
+        check("MACD (12, 26, 9)", chart.showMacd) { chart.showMacd = it }
+        android.app.AlertDialog.Builder(this).setTitle("Chart settings").setView(caja)
+            .setPositiveButton("Apply") { _, _ ->
+                chart.maP1 = e1.text.toString().toIntOrNull()?.coerceIn(2, 400) ?: chart.maP1
+                chart.maP2 = e2.text.toString().toIntOrNull()?.coerceIn(2, 400) ?: chart.maP2
+                chart.invalidate()
+            }.setNegativeButton("Close", null).show()
     }
     page.addView(LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; setPadding(0, 0, 0, dp(8))
-        addView(chip("Volume", true) { chart.showVol = it; chart.invalidate() })
-        addView(chip("RSI", true) { chart.showRsi = it; chart.invalidate() })
-        addView(chip("MACD", true) { chart.showMacd = it; chart.invalidate() })
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, dp(8))
+        addView(TextView(this@buildHomeTab).apply {
+            text = "drag to pan · pinch to zoom"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        addView(TextView(this@buildHomeTab).apply {
+            text = "⚙ Indicators"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT); typeface = AppTheme.bold(context)
+            setPadding(dp(10), dp(6), dp(2), dp(6)); isClickable = true; foreground = Ui.toque(); setOnClickListener { abrirAjustes() }
+        })
     })
     page.addView(chart)
-    page.addView(TextView(this).apply {
-        text = "Candles & volume from Binance (USD); MA/EMA, RSI and MACD computed on-device."
-        textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.body(context); setPadding(0, dp(6), 0, dp(18))
-    })
     cargar()
 
     // ── Top 10 (sin stablecoins) ──
