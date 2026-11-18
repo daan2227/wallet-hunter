@@ -28,7 +28,17 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val tvPar = TextView(this).apply { textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, 0) }
     val tvPrecio = TextView(this).apply { textSize = 28f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…" }
     val tvCambio = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(0, dp(2), 0, dp(8)) }
-    page.addView(tvPar); page.addView(tvPrecio); page.addView(tvCambio)
+    val btnInfo = TextView(this).apply {
+        text = "ⓘ  Info"; textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); setTextColor(AppTheme.ACCENT2)
+        background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(12), dp(6), dp(12), dp(6))
+        isClickable = true; foreground = Ui.toque()
+    }
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
+        tvPar.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        addView(tvPar); addView(btnInfo)
+    })
+    page.addView(tvPrecio); page.addView(tvCambio)
 
     // ── Gráfico (config, dibujos e intervalo se guardan) ──
     val prefsG = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
@@ -39,6 +49,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
     var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
     tvPar.text = activo.par
+    btnInfo.setOnClickListener { abrirInfoActivo(activo) }
     fun claveDib(a: Mercado.Activo) = "dibujos_" + a.clave
     val chart = GraficoTA(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -465,4 +476,89 @@ internal fun MainActivity.abrirAjustesTA(chart: GraficoTA, alCambiar: () -> Unit
         .setPositiveButton("Done", null)
         .setNeutralButton("Reset") { _, _ -> c.deJson(GraficoTA.Config().aJson()); alCambiar() }
         .show()
+}
+
+/**
+ * Ficha completa del activo abierto en el gráfico: descarga [Mercado.info] en segundo
+ * plano y la muestra por secciones (etiqueta → valor), con descripción y enlaces.
+ */
+internal fun MainActivity.abrirInfoActivo(a: Mercado.Activo) {
+    val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(4), dp(20), dp(12)) }
+    val estado = TextView(this).apply {
+        text = "Loading…"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC); setPadding(0, dp(12), 0, dp(12))
+    }
+    caja.addView(estado)
+    val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle(a.nombre)
+        .setView(ScrollView(this).apply { addView(caja) })
+        .setPositiveButton("Close", null).show()
+
+    fun seccion(t: String) = caja.addView(TextView(this).apply {
+        text = t.uppercase(); textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context)
+        letterSpacing = 0.08f; setPadding(0, dp(16), 0, dp(4))
+    })
+    fun fila(k: String, v: String) = caja.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(3), 0, dp(3))
+        addView(TextView(context).apply {
+            text = k; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+        })
+        addView(TextView(context).apply {
+            text = v; textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); gravity = Gravity.END
+            setTextIsSelectable(true)
+            setTextColor(when { v.startsWith("+") -> AppTheme.OK; v.startsWith("-") -> AppTheme.RED; else -> AppTheme.TXT_PRI })
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.2f)
+        })
+    })
+
+    Thread {
+        val info = try { Mercado.info(a) } catch (e: Throwable) { null }
+        runOnUiThread {
+            if (!dlg.isShowing) return@runOnUiThread
+            caja.removeAllViews()
+            if (info == null) { estado.text = "Details unavailable (data source unreachable)"; caja.addView(estado); return@runOnUiThread }
+            dlg.setTitle(info.titulo)
+            for ((titulo, filas) in info.secciones) {
+                if (filas.isEmpty()) continue
+                seccion(titulo); filas.forEach { (k, v) -> fila(k, v) }
+            }
+            if (info.descripcion.isNotBlank()) {
+                seccion("About")
+                val largo = info.descripcion.length > 700
+                val tv = TextView(this).apply {
+                    textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI); setLineSpacing(0f, 1.2f); setTextIsSelectable(true)
+                    text = if (largo) info.descripcion.take(700).substringBeforeLast(' ') + "…" else info.descripcion
+                }
+                caja.addView(tv)
+                if (largo) caja.addView(TextView(this).apply {
+                    text = "Read more"; textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); setTextColor(AppTheme.ACCENT2)
+                    setPadding(0, dp(6), 0, 0); isClickable = true
+                    setOnClickListener { tv.text = info.descripcion; visibility = View.GONE }
+                })
+                if (info.fuenteDesc.isNotEmpty()) caja.addView(TextView(this).apply {
+                    text = "Source: ${info.fuenteDesc}"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(0, dp(4), 0, 0)
+                })
+            }
+            if (info.enlaces.isNotEmpty()) {
+                seccion("Links")
+                info.enlaces.forEach { (t, url) ->
+                    caja.addView(TextView(this).apply {
+                        text = "↗  $t"; textSize = AppTheme.SP_BODY - 1f; typeface = AppTheme.bold(context); setTextColor(AppTheme.ACCENT2)
+                        setPadding(0, dp(7), 0, dp(7)); isClickable = true; foreground = Ui.toque()
+                        setOnClickListener {
+                            try { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))) }
+                            catch (e: Throwable) { Toast.makeText(this@abrirInfoActivo, url, Toast.LENGTH_LONG).show() }
+                        }
+                    })
+                }
+                caja.addView(TextView(this).apply {
+                    text = "Links open in your browser, outside the app's Tor setting."
+                    textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(0, dp(4), 0, 0)
+                })
+            }
+            caja.addView(TextView(this).apply {
+                text = "Market data: CoinGecko / Yahoo Finance. Computed metrics use daily closes of the last year. Not financial advice."
+                textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(0, dp(14), 0, 0)
+            })
+        }
+    }.start()
 }

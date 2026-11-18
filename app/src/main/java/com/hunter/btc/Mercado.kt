@@ -229,4 +229,173 @@ object Mercado {
             Moneda(a, precio, cambio, FloatArray(cierres.size) { cierres[it].toFloat() })
         }
     } catch (e: Throwable) { null }
+
+    // ── Ficha completa de un activo ──
+    /** Secciones de filas (etiqueta, valor), descripción, su fuente y enlaces (texto, url). */
+    data class Info(val titulo: String, val secciones: List<Pair<String, List<Pair<String, String>>>>,
+                    val descripcion: String, val fuenteDesc: String, val enlaces: List<Pair<String, String>>)
+
+    private fun usd(x: Double?): String? = when {
+        x == null || x.isNaN() || x <= 0 -> null
+        x >= 1e12 -> "$%.2fT".format(x / 1e12); x >= 1e9 -> "$%.2fB".format(x / 1e9); x >= 1e6 -> "$%.2fM".format(x / 1e6)
+        x >= 1 -> "$%,.2f".format(x); else -> "$%.6g".format(x)
+    }
+    private fun num(x: Double?): String? = when {
+        x == null || x.isNaN() || x <= 0 -> null
+        x >= 1e12 -> "%.2fT".format(x / 1e12); x >= 1e9 -> "%.2fB".format(x / 1e9); x >= 1e6 -> "%.2fM".format(x / 1e6)
+        else -> "%,.0f".format(x)
+    }
+    private fun pct(x: Double?): String? = if (x == null || x.isNaN()) null else "%s%.2f%%".format(if (x >= 0) "+" else "", x)
+    private fun org.json.JSONObject.d(k: String): Double? = if (has(k) && !isNull(k)) optDouble(k).takeIf { !it.isNaN() } else null
+    private fun org.json.JSONObject.usdDe(k: String): Double? = optJSONObject(k)?.d("usd")
+    private fun org.json.JSONObject.raw(k: String): Double? = optJSONObject(k)?.d("raw")
+    private fun fecha(iso: String?): String? = iso?.takeIf { it.length >= 10 }?.substring(0, 10)
+    private fun MutableList<Pair<String, String>>.fila(k: String, v: String?) { if (!v.isNullOrBlank()) add(k to v) }
+
+    /** Rendimientos, volatilidad y caída máxima a partir de cierres diarios (más antiguo primero). */
+    private fun metricas(t: List<Long>, c: List<Double>, diasAnio: Int): List<Pair<String, String>> {
+        val out = mutableListOf<Pair<String, String>>(); if (c.size < 3) return out
+        val ult = c.last()
+        fun hace(dias: Int): Double? { val lim = t.last() - dias * 86_400L; val i = t.indexOfLast { it <= lim }; return if (i >= 0) c[i] else null }
+        fun ret(base: Double?) = if (base == null || base <= 0) null else (ult - base) / base * 100
+        out.fila("7 days", pct(ret(hace(7)))); out.fila("30 days", pct(ret(hace(30)))); out.fila("90 days", pct(ret(hace(90))))
+        out.fila("6 months", pct(ret(hace(182)))); out.fila("1 year", pct(ret(hace(365))))
+        val anio = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).get(java.util.Calendar.YEAR)
+        val iYtd = t.indexOfFirst { val cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")); cal.timeInMillis = it * 1000; cal.get(java.util.Calendar.YEAR) == anio }
+        if (iYtd > 0) out.fila("Year to date", pct(ret(c[iYtd - 1])))
+        val r = (1 until c.size).mapNotNull { if (c[it - 1] > 0 && c[it] > 0) Math.log(c[it] / c[it - 1]) else null }
+        if (r.size > 5) { val m = r.average(); val sd = Math.sqrt(r.sumOf { (it - m) * (it - m) } / (r.size - 1))
+            out.fila("Volatility (annualized)", "%.1f%%".format(sd * Math.sqrt(diasAnio.toDouble()) * 100)) }
+        var pico = c[0]; var dd = 0.0
+        for (x in c) { if (x > pico) pico = x; if (pico > 0) dd = minOf(dd, (x - pico) / pico) }
+        out.fila("Max drawdown (1y)", "%.1f%%".format(dd * 100))
+        val hi = c.maxOrNull() ?: 0.0; val lo = c.minOrNull() ?: 0.0
+        if (hi > 0) out.fila("From 1y high", pct((ult - hi) / hi * 100)); if (lo > 0) out.fila("From 1y low", pct((ult - lo) / lo * 100))
+        return out
+    }
+
+    private fun textoPlano(html: String): String =
+        android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY).toString().replace(Regex("\n{3,}"), "\n\n").trim()
+
+    /** Resumen de Wikipedia (inglés) buscando por [consulta]; vacío si no hay nada claro. */
+    private fun wikipedia(consulta: String): String = try {
+        val q = java.net.URLEncoder.encode(consulta, "UTF-8")
+        val bus = httpGet("https://en.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&srsearch=$q")
+        val titulo = bus?.let { org.json.JSONObject(it).getJSONObject("query").getJSONArray("search").optJSONObject(0)?.optString("title") }
+        if (titulo.isNullOrEmpty()) "" else {
+            val js = httpGet("https://en.wikipedia.org/api/rest_v1/page/summary/" + java.net.URLEncoder.encode(titulo.replace(' ', '_'), "UTF-8").replace("+", "%20"))
+            js?.let { org.json.JSONObject(it).optString("extract") } ?: ""
+        }
+    } catch (e: Throwable) { "" }
+
+    fun info(a: Activo): Info = if (a.tipo == Tipo.CRYPTO) infoCripto(a) else infoBolsa(a)
+
+    private fun infoCripto(a: Activo): Info {
+        val secs = mutableListOf<Pair<String, List<Pair<String, String>>>>()
+        var desc = ""; val enlaces = mutableListOf<Pair<String, String>>(); var titulo = a.nombre
+        val js = if (a.cgId.isNotEmpty()) httpGet("https://api.coingecko.com/api/v3/coins/${a.cgId}?localization=false&tickers=false" +
+                "&community_data=false&developer_data=false&sparkline=false") else null
+        if (js != null) try {
+            val o = org.json.JSONObject(js); val md = o.optJSONObject("market_data") ?: org.json.JSONObject()
+            titulo = "${o.optString("name", a.nombre)} (${o.optString("symbol", a.simbolo).uppercase()})"
+            val gen = mutableListOf<Pair<String, String>>()
+            gen.fila("Market cap rank", o.optInt("market_cap_rank", 0).takeIf { it > 0 }?.let { "#$it" })
+            gen.fila("Categories", o.optJSONArray("categories")?.let { ar -> (0 until ar.length()).mapNotNull { ar.optString(it).takeIf { s -> s.isNotBlank() } }.take(4).joinToString(", ") })
+            gen.fila("Hashing algorithm", o.optString("hashing_algorithm").takeIf { it != "null" })
+            gen.fila("Genesis date", fecha(o.optString("genesis_date").takeIf { it != "null" }))
+            secs.add("Overview" to gen)
+            val pr = mutableListOf<Pair<String, String>>()
+            pr.fila("Price", usd(md.usdDe("current_price"))); pr.fila("24h high", usd(md.usdDe("high_24h"))); pr.fila("24h low", usd(md.usdDe("low_24h")))
+            pr.fila("24h change", pct(md.d("price_change_percentage_24h"))); pr.fila("7d change", pct(md.d("price_change_percentage_7d")))
+            pr.fila("30d change", pct(md.d("price_change_percentage_30d"))); pr.fila("1y change", pct(md.d("price_change_percentage_1y")))
+            secs.add("Price" to pr)
+            val mk = mutableListOf<Pair<String, String>>()
+            mk.fila("Market cap", usd(md.usdDe("market_cap"))); mk.fila("Fully diluted valuation", usd(md.usdDe("fully_diluted_valuation")))
+            mk.fila("Volume 24h", usd(md.usdDe("total_volume")))
+            val mc = md.usdDe("market_cap"); val vol = md.usdDe("total_volume")
+            if (mc != null && vol != null && mc > 0) mk.fila("Volume / market cap", "%.2f%%".format(vol / mc * 100))
+            secs.add("Market" to mk)
+            val su = mutableListOf<Pair<String, String>>()
+            val circ = md.d("circulating_supply"); val tot = md.d("total_supply"); val max = md.d("max_supply")
+            su.fila("Circulating", num(circ)); su.fila("Total", num(tot)); su.fila("Max supply", num(max) ?: "unlimited / not set")
+            if (circ != null && max != null && max > 0) su.fila("Issued of max", "%.2f%%".format(circ / max * 100))
+            secs.add("Supply" to su)
+            val ex = mutableListOf<Pair<String, String>>()
+            ex.fila("All-time high", usd(md.usdDe("ath"))); ex.fila("ATH date", fecha(md.optJSONObject("ath_date")?.optString("usd")))
+            ex.fila("From ATH", pct(md.usdDe("ath_change_percentage")))
+            ex.fila("All-time low", usd(md.usdDe("atl"))); ex.fila("ATL date", fecha(md.optJSONObject("atl_date")?.optString("usd")))
+            ex.fila("From ATL", pct(md.usdDe("atl_change_percentage")))
+            secs.add("All-time" to ex)
+            desc = textoPlano(o.optJSONObject("description")?.optString("en") ?: "")
+            o.optJSONObject("links")?.let { l ->
+                l.optJSONArray("homepage")?.optString(0)?.takeIf { it.startsWith("http") }?.let { enlaces.add("Website" to it) }
+                l.optString("whitepaper").takeIf { it.startsWith("http") }?.let { enlaces.add("Whitepaper" to it) }
+                l.optJSONArray("blockchain_site")?.optString(0)?.takeIf { it.startsWith("http") }?.let { enlaces.add("Explorer" to it) }
+                l.optJSONObject("repos_url")?.optJSONArray("github")?.optString(0)?.takeIf { it.startsWith("http") }?.let { enlaces.add("Source code" to it) }
+                l.optString("subreddit_url").takeIf { it.startsWith("http") }?.let { enlaces.add("Reddit" to it) }
+            }
+            enlaces.add("CoinGecko" to "https://www.coingecko.com/en/coins/${a.cgId}")
+        } catch (e: Throwable) { }
+        val diarias = velas(a, "1d", 400)
+        if (diarias.size > 2) secs.add("Performance & risk (computed)" to metricas(diarias.map { it.t }, diarias.map { it.c.toDouble() }, 365))
+        if (secs.isEmpty()) secs.add("Info" to listOf("Status" to "Details unavailable (CoinGecko unreachable)"))
+        return Info(titulo, secs, desc, if (desc.isNotEmpty()) "CoinGecko" else "", enlaces)
+    }
+
+    private fun infoBolsa(a: Activo): Info {
+        val secs = mutableListOf<Pair<String, List<Pair<String, String>>>>()
+        var titulo = a.nombre; var desc = ""; var fuente = ""; val enlaces = mutableListOf<Pair<String, String>>()
+        val sym = java.net.URLEncoder.encode(a.yahoo, "UTF-8")
+        // 1) Gráfico de 1 año: meta + cierres diarios (sin "crumb", suele funcionar).
+        val js = httpGet("https://query1.finance.yahoo.com/v8/finance/chart/$sym?interval=1d&range=1y", UA_NAV)
+        var t = emptyList<Long>(); var c = emptyList<Double>()
+        if (js != null) try {
+            val r = org.json.JSONObject(js).getJSONObject("chart").getJSONArray("result").getJSONObject(0)
+            val m = r.getJSONObject("meta")
+            titulo = m.optString("longName").ifEmpty { m.optString("shortName").ifEmpty { a.nombre } } + " (${a.yahoo})"
+            val ts = r.optJSONArray("timestamp"); val cl = r.getJSONObject("indicators").getJSONArray("quote").getJSONObject(0).optJSONArray("close")
+            if (ts != null && cl != null) { val idx = (0 until minOf(ts.length(), cl.length())).filter { !cl.isNull(it) }
+                t = idx.map { ts.getLong(it) }; c = idx.map { cl.getDouble(it) } }
+            val cur = m.optString("currency")
+            fun px(x: Double?) = x?.takeIf { it > 0 }?.let { (if (a.sinDolar) "%,.4g" else "%,.2f").format(it) + if (cur.isNotEmpty() && !a.sinDolar) " $cur" else "" }
+            val gen = mutableListOf<Pair<String, String>>()
+            gen.fila("Exchange", m.optString("fullExchangeName").ifEmpty { m.optString("exchangeName") })
+            gen.fila("Type", m.optString("instrumentType").lowercase().replaceFirstChar { it.uppercase() })
+            gen.fila("Currency", cur); gen.fila("Time zone", m.optString("exchangeTimezoneName"))
+            gen.fila("Trading since", m.d("firstTradeDate")?.let { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.US).format(java.util.Date(it.toLong() * 1000)) })
+            secs.add("Overview" to gen)
+            val pr = mutableListOf<Pair<String, String>>()
+            pr.fila("Price", px(m.d("regularMarketPrice"))); pr.fila("Previous close", px(c.getOrNull(c.size - 2)))
+            pr.fila("Day high", px(m.d("regularMarketDayHigh"))); pr.fila("Day low", px(m.d("regularMarketDayLow")))
+            pr.fila("52-week high", px(m.d("fiftyTwoWeekHigh"))); pr.fila("52-week low", px(m.d("fiftyTwoWeekLow")))
+            pr.fila("Volume (today)", num(m.d("regularMarketVolume")))
+            secs.add("Price" to pr)
+        } catch (e: Throwable) { }
+        // 2) Perfil y fundamentales (puede pedir "crumb" y fallar: es opcional).
+        val qs = httpGet("https://query2.finance.yahoo.com/v10/finance/quoteSummary/$sym?modules=assetProfile,summaryDetail,defaultKeyStatistics", UA_NAV)
+        if (qs != null) try {
+            val r = org.json.JSONObject(qs).getJSONObject("quoteSummary").getJSONArray("result").getJSONObject(0)
+            r.optJSONObject("assetProfile")?.let { p ->
+                val co = mutableListOf<Pair<String, String>>()
+                co.fila("Sector", p.optString("sector")); co.fila("Industry", p.optString("industry"))
+                co.fila("Country", p.optString("country")); co.fila("Employees", p.optInt("fullTimeEmployees", 0).takeIf { it > 0 }?.let { "%,d".format(it) })
+                if (co.isNotEmpty()) secs.add("Company" to co)
+                p.optString("website").takeIf { it.startsWith("http") }?.let { enlaces.add("Website" to it) }
+                p.optString("longBusinessSummary").takeIf { it.isNotBlank() }?.let { desc = it; fuente = "Yahoo Finance" }
+            }
+            val sd = r.optJSONObject("summaryDetail"); val ks = r.optJSONObject("defaultKeyStatistics")
+            val fu = mutableListOf<Pair<String, String>>()
+            fu.fila("Market cap", usd(sd?.raw("marketCap"))); fu.fila("P/E (trailing)", sd?.raw("trailingPE")?.let { "%.2f".format(it) })
+            fu.fila("P/E (forward)", sd?.raw("forwardPE")?.let { "%.2f".format(it) }); fu.fila("Beta", sd?.raw("beta")?.let { "%.2f".format(it) })
+            fu.fila("Dividend yield", sd?.raw("dividendYield")?.let { "%.2f%%".format(it * 100) })
+            fu.fila("Avg volume", num(sd?.raw("averageVolume"))); fu.fila("Shares outstanding", num(ks?.raw("sharesOutstanding")))
+            fu.fila("Profit margin", ks?.raw("profitMargins")?.let { "%.2f%%".format(it * 100) })
+            if (fu.isNotEmpty()) secs.add("Fundamentals" to fu)
+        } catch (e: Throwable) { }
+        if (c.size > 2) secs.add("Performance & risk (computed)" to metricas(t, c, 252))
+        if (desc.isEmpty()) { desc = wikipedia(a.nombre + if (a.yahoo.startsWith("^") || a.yahoo.contains('=')) "" else " company"); if (desc.isNotEmpty()) fuente = "Wikipedia" }
+        enlaces.add("Yahoo Finance" to "https://finance.yahoo.com/quote/$sym")
+        if (secs.isEmpty()) secs.add("Info" to listOf("Status" to "Details unavailable (Yahoo Finance unreachable)"))
+        return Info(titulo, secs, desc, fuente, enlaces)
+    }
 }
