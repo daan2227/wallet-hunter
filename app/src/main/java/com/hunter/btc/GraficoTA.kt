@@ -197,7 +197,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private val pUltimo = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(3f * d, 3f * d), 0f) }
 
     private fun alfa(color: Int, a: Int) = (color and 0x00FFFFFF) or (a shl 24)
-    private fun fmtP(v: Float) = when { Math.abs(v) >= 1_000_000f -> "%.2fM".format(v / 1e6f); Math.abs(v) >= 1000f -> "%,.0f".format(v); Math.abs(v) >= 1f -> "%.2f".format(v); else -> "%.4f".format(v) }
+    private fun fmtP(v: Float) = when { Math.abs(v) >= 1_000_000f -> "%.2fM".format(v / 1e6f); Math.abs(v) >= 1000f -> "%,.0f".format(v); Math.abs(v) >= 1f -> "%.2f".format(v); Math.abs(v) >= 0.01f -> "%.4f".format(v); v == 0f -> "0"; else -> "%.3g".format(v) }
     private val sdfIntra = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
     private val sdfSeg = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
     private val sdfDia = java.text.SimpleDateFormat("dd/MM", java.util.Locale.US)

@@ -24,10 +24,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     page.addView(TextView(this).apply { text = "Hunter"; textSize = 26f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context) })
 
-    // ── Precio BTC ──
-    val tvPrecio = TextView(this).apply { textSize = 28f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…"; setPadding(0, dp(8), 0, 0) }
+    // ── Activo seleccionado (cripto o bolsa) ──
+    val tvPar = TextView(this).apply { textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, 0) }
+    val tvPrecio = TextView(this).apply { textSize = 28f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…" }
     val tvCambio = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(0, dp(2), 0, dp(8)) }
-    page.addView(tvPrecio); page.addView(tvCambio)
+    page.addView(tvPar); page.addView(tvPrecio); page.addView(tvCambio)
 
     // ── Gráfico (config, dibujos e intervalo se guardan) ──
     val prefsG = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
@@ -36,14 +37,17 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         Triple("4h", "4h", 14400L), Triple("12h", "12h", 43200L), Triple("1D", "1d", 86400L),
         Triple("3D", "3d", 259200L), Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
     var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
+    var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
+    tvPar.text = activo.par
+    fun claveDib(a: Mercado.Activo) = "dibujos_" + a.clave
     val chart = GraficoTA(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         intervaloSeg = intervalos.firstOrNull { it.second == intervalo }?.third ?: 3600L
         cfg.deJson(prefsG.getString("cfg", null))
-        cargarDibujos(prefsG.getString("dibujos", null))
+        cargarDibujos(prefsG.getString(claveDib(activo), if (activo.clave == Mercado.BTC.clave) prefsG.getString("dibujos", null) else null))
     }
     fun guardarCfg() { prefsG.edit().putString("cfg", chart.cfg.aJson()).apply(); chart.refrescarConfig() }
-    chart.alCambiarDibujos = { prefsG.edit().putString("dibujos", chart.dibujosJson()).apply() }
+    chart.alCambiarDibujos = { prefsG.edit().putString(claveDib(activo), chart.dibujosJson()).apply() }
     chart.alPedirNota = { t, p ->
         val et = Ui.input(this, "Note text")
         androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Add note")
@@ -52,10 +56,15 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             .setNegativeButton("Cancel", null).show()
     }
 
+    fun fmtPrecio(x: Float): String {
+        val num = when { x >= 1000f -> "%,.2f".format(x); x >= 1f -> (if (activo.sinDolar && x < 10f) "%.4f" else "%.2f").format(x)
+            x == 0f -> "0"; else -> "%.6g".format(x) }
+        return if (activo.sinDolar) num else "$num USD"
+    }
     fun mostrarPrecio(v: List<GraficoPrecio.Vela>, sufijo: String) {
         val fin = v.last().c; val ini = v.first().o
         val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
-        tvPrecio.text = "%,.2f USD".format(fin)
+        tvPrecio.text = fmtPrecio(fin)
         tvCambio.text = "%s%.2f%% · %s".format(if (pct >= 0) "+" else "", pct, sufijo)
         tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
     }
@@ -63,15 +72,25 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     fun cargar() {
         val myTok = tok.incrementAndGet()
         tvCambio.text = "Loading…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
-        val iv = intervalo
+        val iv = intervalo; val a = activo
         Thread {
-            val v = Mercado.velasBtc(iv, 500)
+            val v = Mercado.velas(a, iv, 500)
             runOnUiThread {
                 if (myTok != tok.get()) return@runOnUiThread
-                if (v.isEmpty()) { tvCambio.text = "Chart unavailable (exchange unreachable)"; return@runOnUiThread }
-                chart.poner(v); mostrarPrecio(v, "$iv candles")
+                if (v.isEmpty()) { tvCambio.text = "Chart unavailable (data source unreachable)"; return@runOnUiThread }
+                chart.poner(v)
+                mostrarPrecio(v, listOf("$iv candles", Mercado.avisoIntervalo(a, iv)).filter { it.isNotEmpty() }.joinToString(" · "))
             }
         }.start()
+    }
+    /** Cambia el gráfico a otro activo (desde la lista de mercados). */
+    fun seleccionar(a: Mercado.Activo) {
+        scroll.smoothScrollTo(0, 0)
+        if (a.clave == activo.clave) return
+        activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
+        tvPar.text = a.par; tvPrecio.text = "…"
+        chart.cargarDibujos(prefsG.getString(claveDib(a), null))
+        chart.poner(emptyList()); cargar()
     }
 
     // Fila de chips de selección única.
@@ -153,12 +172,12 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             if (!scroll.isAttachedToWindow) return
             if (refrescoMs <= 0L) { hVivo.postDelayed(this, 2_000); return }
             if (scroll.isShown && chart.velasActuales().size > 1 && enCurso.compareAndSet(false, true)) {
-                val iv = intervalo
+                val iv = intervalo; val a = activo
                 Thread {
-                    val nuevas = try { Mercado.velasBtc(iv, 3) } catch (e: Throwable) { emptyList() }
+                    val nuevas = try { Mercado.velas(a, iv, 3) } catch (e: Throwable) { emptyList() }
                     runOnUiThread {
                         enCurso.set(false)
-                        if (iv != intervalo || nuevas.isEmpty() || !scroll.isAttachedToWindow) return@runOnUiThread
+                        if (iv != intervalo || a.clave != activo.clave || nuevas.isEmpty() || !scroll.isAttachedToWindow) return@runOnUiThread
                         val out = ArrayList(chart.velasActuales()); var quitadas = 0
                         for (k in nuevas) {
                             val ult = out.last()
@@ -168,11 +187,12 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                                 else -> { val i = out.indexOfLast { it.t == k.t }; if (i >= 0) out[i] = k }
                             }
                         }
-                        chart.actualizar(out, quitadas); mostrarPrecio(out, "live")
+                        val minimo = Mercado.refrescoMinimoMs(a)
+                        chart.actualizar(out, quitadas); mostrarPrecio(out, if (refrescoMs < minimo) "live · every ${minimo / 1000}s for this source" else "live")
                     }
                 }.start()
             }
-            hVivo.postDelayed(this, refrescoMs.coerceAtLeast(1_000L))
+            hVivo.postDelayed(this, refrescoMs.coerceAtLeast(maxOf(1_000L, Mercado.refrescoMinimoMs(activo))))
         }
     }
     hVivo.postDelayed(vivo, refrescoMs.coerceAtLeast(1_000L))
@@ -252,65 +272,114 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }
     }.start()
 
-    // ── Top 10 (sin stablecoins) ──
+    // ── Mercados: cripto o tradicional; tocar una fila abre su gráfico; "Load more" de 10 en 10 ──
     page.addView(TextView(this).apply {
-        text = "TOP 10 · NO STABLECOINS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(10))
+        text = "MARKETS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(8))
     })
-    val cont10 = LinearLayout(this).apply {
+    var modoLista = prefsG.getInt("lista", 0).coerceIn(0, 1)
+    val tvNotaLista = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), dp(6), 0, dp(8)) }
+    val notasLista = listOf("By market cap · stablecoins hidden · tap a coin to chart it vs USD",
+        "Indices, commodities, FX and large caps (Yahoo Finance) · tap to chart")
+    val contLista = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
         setPadding(dp(4), dp(4), dp(4), dp(4))
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(18) }
-        addView(TextView(this@buildHomeTab).apply { text = "Loading market…"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(dp(12), dp(12), dp(12), dp(12)) })
     }
-    page.addView(cont10)
-    Thread {
-        val lista = Mercado.topMonedas(10)
-        runOnUiThread {
-            cont10.removeAllViews()
-            if (lista.isEmpty()) {
-                cont10.addView(TextView(this).apply { text = "Market list unavailable (CoinGecko unreachable)."; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(dp(12), dp(12), dp(12), dp(12)) })
-                return@runOnUiThread
+    val btnMas = TextView(this).apply {
+        text = "Load more"; textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.ACCENT); typeface = AppTheme.bold(context)
+        gravity = Gravity.CENTER; setPadding(0, dp(12), 0, dp(12)); isClickable = true; foreground = Ui.toque()
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(18) }
+    }
+    val cripto = ArrayList<Mercado.Moneda>(); var paginaCripto = 0
+    val bolsaCache = java.util.concurrent.ConcurrentHashMap<String, Mercado.Moneda>()
+    var cursor = 0; var numerados = 0
+    val tokLista = AtomicInteger(0)
+
+    fun mensajeLista(t: String) = contLista.addView(TextView(this).apply {
+        text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(dp(12), dp(12), dp(12), dp(12)) })
+    fun separador() = View(this).apply {
+        setBackgroundColor((AppTheme.TXT_MUTED and 0x00FFFFFF) or 0x22000000)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { leftMargin = dp(12); rightMargin = dp(12) }
+    }
+    fun filaMercado(num: Int, m: Mercado.Moneda) = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(12), dp(10), dp(12), dp(10)); isClickable = true; foreground = Ui.toque()
+        setOnClickListener { Ui.pulso(this); seleccionar(m.activo) }
+        addView(TextView(context).apply {
+            text = "$num"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.mono(context)
+            layoutParams = LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.WRAP_CONTENT)
+        })
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f)
+            addView(TextView(context).apply { text = m.simbolo; textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context); maxLines = 1 })
+            addView(TextView(context).apply { text = m.nombre; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+        })
+        addView(GraficoPrecio(context).apply {
+            poner(m.spark.toList())
+            layoutParams = LinearLayout.LayoutParams(dp(56), dp(30)).apply { marginEnd = dp(10) }
+        })
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; gravity = Gravity.END
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            val pre = if (m.activo.sinDolar) "" else "$"
+            addView(TextView(context).apply {
+                text = when { m.precio >= 1 -> "$pre%,.2f".format(m.precio); m.precio > 0 -> "$pre%.6g".format(m.precio); else -> "—" }
+                textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context); gravity = Gravity.END
+            })
+            addView(TextView(context).apply {
+                text = "%s%.2f%%".format(if (m.cambio24h >= 0) "+" else "", m.cambio24h)
+                textSize = AppTheme.SP_MICRO; setTextColor(if (m.cambio24h >= 0) AppTheme.OK else AppTheme.RED); gravity = Gravity.END
+            })
+        })
+    }
+
+    fun mostrarMas(reset: Boolean) {
+        val myTok = tokLista.incrementAndGet()
+        if (reset) { contLista.removeAllViews(); mensajeLista("Loading market…"); cursor = 0; numerados = 0 }
+        val desde = cursor; val modo = modoLista
+        btnMas.text = "Loading…"; btnMas.isEnabled = false
+        Thread {
+            val items: List<Mercado.Moneda>; val avance: Int
+            if (modo == 0) {
+                items = synchronized(cripto) {
+                    while (cripto.size < desde + 10) {
+                        val pg = Mercado.topCripto(paginaCripto + 1, 100); if (pg.isEmpty()) break
+                        cripto.addAll(pg.filter { n -> cripto.none { it.activo.clave == n.activo.clave } }); paginaCripto++
+                    }
+                    cripto.drop(desde).take(10)
+                }
+                avance = items.size
+            } else {
+                val lote = Mercado.BOLSA.drop(desde).take(10)
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
+                val futs = lote.map { a -> pool.submit<Mercado.Moneda?> { bolsaCache[a.clave] ?: Mercado.cotizacion(a)?.also { bolsaCache[a.clave] = it } } }
+                items = futs.mapNotNull { try { it.get(25, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { null } }
+                pool.shutdown(); avance = lote.size
             }
-            for ((idx, m) in lista.withIndex()) {
-                cont10.addView(LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-                    setPadding(dp(12), dp(10), dp(12), dp(10))
-                    addView(TextView(context).apply {
-                        text = "${idx + 1}"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.mono(context)
-                        layoutParams = LinearLayout.LayoutParams(dp(22), ViewGroup.LayoutParams.WRAP_CONTENT)
-                    })
-                    addView(LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1.3f)
-                        addView(TextView(context).apply { text = m.simbolo; textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context) })
-                        addView(TextView(context).apply { text = m.nombre; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                    })
-                    addView(GraficoPrecio(context).apply {
-                        poner(m.spark.toList())
-                        layoutParams = LinearLayout.LayoutParams(dp(56), dp(30)).apply { marginEnd = dp(10) }
-                    })
-                    addView(LinearLayout(context).apply {
-                        orientation = LinearLayout.VERTICAL; gravity = Gravity.END
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                        addView(TextView(context).apply {
-                            text = if (m.precio >= 1) "$%,.2f".format(m.precio) else "$%.4f".format(m.precio)
-                            textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.medium(context); gravity = Gravity.END
-                        })
-                        addView(TextView(context).apply {
-                            text = "%s%.2f%%".format(if (m.cambio24h >= 0) "+" else "", m.cambio24h)
-                            textSize = AppTheme.SP_MICRO; setTextColor(if (m.cambio24h >= 0) AppTheme.OK else AppTheme.RED); gravity = Gravity.END
-                        })
-                    })
-                })
-                if (idx < lista.size - 1) cont10.addView(View(this).apply {
-                    setBackgroundColor((AppTheme.TXT_MUTED and 0x00FFFFFF) or 0x22000000)
-                    layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { leftMargin = dp(12); rightMargin = dp(12) }
-                })
+            runOnUiThread {
+                if (myTok != tokLista.get()) return@runOnUiThread
+                if (desde == 0) contLista.removeAllViews()
+                if (items.isEmpty() && desde == 0)
+                    mensajeLista(if (modo == 0) "Market list unavailable (CoinGecko unreachable)." else "Quotes unavailable (Yahoo Finance unreachable).")
+                for (m in items) { if (numerados > 0) contLista.addView(separador()); numerados++; contLista.addView(filaMercado(numerados, m)) }
+                cursor = desde + avance
+                val fin = if (modo == 0) items.isEmpty() else cursor >= Mercado.BOLSA.size
+                btnMas.isEnabled = true; btnMas.text = "Load more"
+                btnMas.visibility = if (fin) View.GONE else View.VISIBLE
             }
-        }
-    }.start()
+        }.start()
+    }
+
+    page.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks & markets" to null), initial = modoLista) { k ->
+        if (k == modoLista) return@segmented
+        modoLista = k; prefsG.edit().putInt("lista", k).apply(); tvNotaLista.text = notasLista[k]; mostrarMas(true)
+    })
+    tvNotaLista.text = notasLista[modoLista]
+    page.addView(tvNotaLista); page.addView(contLista); page.addView(btnMas)
+    btnMas.setOnClickListener { mostrarMas(false) }
+    mostrarMas(true)
 
     return scroll
 }
