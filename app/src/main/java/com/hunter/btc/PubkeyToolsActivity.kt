@@ -783,31 +783,50 @@ class PubkeyToolsActivity : Activity() {
     }
 
     // ── Precio de BTC (gráfico nativo) ────────────────────────────────────
-    private var precioSerie: List<Pair<Long, Float>> = emptyList()   // (time unix, precio)
+    private var precioSerie: List<Pair<Long, Float>> = emptyList()   // (time unix, precio) — línea
+    @Volatile private var velasToken = 0
     private fun construirPrecio() {
         val cod = Fiat.codigo(this)
-        desc("The current BTC price and its trend, in $cod, from mempool.space (the same source the app uses for " +
-             "fiat values). Drawn natively on this phone — no TradingView/WebView and no third-party trackers.")
+        desc("The current BTC price with a native chart. Line is mempool.space in $cod; candles are exchange OHLC " +
+             "(Binance, fallback Bitstamp) in USD, at 1-minute, hourly or daily. Drawn on this phone — no " +
+             "TradingView/WebView and no third-party trackers.")
         val tvPrecio = TextView(this).apply {
             textSize = 30f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…"
         }
         root.addView(tvPrecio)
         val tvCambio = TextView(this).apply {
             textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context)
-            setPadding(0, dp(2), 0, dp(12))
+            setPadding(0, dp(2), 0, dp(10))
         }
         root.addView(tvCambio)
         val chart = GraficoPrecio(this).apply {
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(190))
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(200))
         }
+
+        var modoVelas = false
         var dias = 90
-        root.addView(Ui.segmented(this, listOf("30D" to null, "90D" to null, "1Y" to null, "All" to null), initial = 1) { i ->
-            dias = when (i) { 0 -> 30; 1 -> 90; 2 -> 365; else -> 0 }
-            redibujarPrecio(chart, tvCambio, dias, cod)
+        var intervalo = "1h"
+        fun redibujar() { redibujarPrecio(chart, tvCambio, dias, cod) }
+
+        val selLinea = Ui.segmented(this, listOf("30D" to null, "90D" to null, "1Y" to null, "All" to null), initial = 1) { i ->
+            dias = when (i) { 0 -> 30; 1 -> 90; 2 -> 365; else -> 0 }; redibujar()
+        }
+        val selVelas = Ui.segmented(this, listOf("1m" to null, "1h" to null, "1D" to null), initial = 1) { i ->
+            intervalo = when (i) { 0 -> "1m"; 1 -> "1h"; else -> "1d" }; cargarVelas(chart, tvCambio, intervalo)
+        }.apply { visibility = android.view.View.GONE }
+
+        root.addView(Ui.segmented(this, listOf("Line" to null, "Candles" to null), initial = 0) { i ->
+            modoVelas = i == 1
+            selLinea.visibility = if (modoVelas) android.view.View.GONE else android.view.View.VISIBLE
+            selVelas.visibility = if (modoVelas) android.view.View.VISIBLE else android.view.View.GONE
+            if (modoVelas) cargarVelas(chart, tvCambio, intervalo) else redibujar()
         })
+        root.addView(selLinea)
+        root.addView(selVelas)
         root.addView(chart)
-        nota(AppTheme.TXT_MUTED, "History is mempool.space's periodic price series; the last point is the live price. " +
-             "A dropped reading just shortens the line — nothing is sent anywhere.")
+        nota(AppTheme.TXT_MUTED, "Line history is mempool.space's periodic series (the last point is live). Candles are " +
+             "exchange OHLC in USD. Nothing is sent anywhere; a failed request just shows a short notice.")
+
         Thread {
             val actualJs = try { ChainApi.get("/v1/prices") } catch (e: Throwable) { null }
             val actual = if (actualJs != null) try { org.json.JSONObject(actualJs).optDouble(cod, 0.0) } catch (e: Exception) { 0.0 } else 0.0
@@ -828,7 +847,7 @@ class PubkeyToolsActivity : Activity() {
                 tvPrecio.text = if (actual > 0) "%,.2f %s".format(actual, cod)
                                 else if (serie.isNotEmpty()) "%,.2f %s".format(serie.last().second, cod)
                                 else "price unavailable"
-                redibujarPrecio(chart, tvCambio, dias, cod)
+                if (!modoVelas) redibujar()
             }
         }.start()
     }
@@ -844,6 +863,71 @@ class PubkeyToolsActivity : Activity() {
             tvCambio.text = "%s%.1f%% · min %,.0f · max %,.0f %s".format(if (pct >= 0) "+" else "", pct, sub.min(), sub.max(), cod)
             tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
         } else { tvCambio.text = "Not enough history for this range."; tvCambio.setTextColor(AppTheme.TXT_SEC) }
+    }
+
+    /** Carga velas OHLC del intervalo dado en un hilo de fondo y las dibuja. Un token evita que
+     *  una respuesta vieja pise a una más nueva al cambiar de intervalo rápido. */
+    private fun cargarVelas(chart: GraficoPrecio, tvCambio: TextView, intervalo: String) {
+        val token = ++velasToken
+        tvCambio.text = "Loading candles…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
+        Thread {
+            val v = velasExchange(intervalo)
+            runOnUiThread {
+                if (token != velasToken) return@runOnUiThread
+                if (v.isEmpty()) { tvCambio.text = "Candles unavailable (exchange unreachable)."; tvCambio.setTextColor(AppTheme.TXT_SEC); return@runOnUiThread }
+                chart.ponerVelas(v)
+                val ini = v.first().o; val fin = v.last().c
+                val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
+                tvCambio.text = "%s%.1f%% · min %,.0f · max %,.0f USD · %d candles".format(
+                    if (pct >= 0) "+" else "", pct, v.minOf { it.l }, v.maxOf { it.h }, v.size)
+                tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
+            }
+        }.start()
+    }
+
+    /** GET simple por el proxy de la app, acotado. null si falla o no es 200. */
+    private fun httpGet(url: String): String? = try {
+        val conn = RedPrivada.abrir(url)
+        conn.connectTimeout = 4000; conn.readTimeout = 9000
+        conn.setRequestProperty("User-Agent", "hunter")
+        try {
+            if (conn.responseCode != 200) null
+            else {
+                val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(16 * 1024)
+                conn.inputStream.use { while (true) { val n = it.read(buf); if (n < 0) break; if (out.size() + n > 4 * 1024 * 1024) break; out.write(buf, 0, n) } }
+                out.toString("UTF-8")
+            }
+        } finally { conn.disconnect() }
+    } catch (e: Throwable) { null }
+
+    /** Velas OHLC en USD: Binance (klines) y, si falla, Bitstamp. intervalo: "1m"/"1h"/"1d". */
+    private fun velasExchange(intervalo: String): List<GraficoPrecio.Vela> {
+        // Binance
+        try {
+            val js = httpGet("https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=$intervalo&limit=180")
+            if (js != null && js.trimStart().startsWith("[")) {
+                val arr = org.json.JSONArray(js); val out = ArrayList<GraficoPrecio.Vela>()
+                for (i in 0 until arr.length()) {
+                    val k = arr.getJSONArray(i)
+                    out.add(GraficoPrecio.Vela(k.getLong(0) / 1000, k.getString(1).toFloat(), k.getString(2).toFloat(), k.getString(3).toFloat(), k.getString(4).toFloat()))
+                }
+                if (out.isNotEmpty()) return out
+            }
+        } catch (e: Throwable) { }
+        // Bitstamp (step en segundos)
+        try {
+            val step = when (intervalo) { "1m" -> 60; "1h" -> 3600; else -> 86400 }
+            val js = httpGet("https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=$step&limit=180")
+            if (js != null) {
+                val ohlc = org.json.JSONObject(js).getJSONObject("data").getJSONArray("ohlc"); val out = ArrayList<GraficoPrecio.Vela>()
+                for (i in 0 until ohlc.length()) {
+                    val o = ohlc.getJSONObject(i)
+                    out.add(GraficoPrecio.Vela(o.getString("timestamp").toLong(), o.getString("open").toFloat(), o.getString("high").toFloat(), o.getString("low").toFloat(), o.getString("close").toFloat()))
+                }
+                if (out.isNotEmpty()) return out
+            }
+        } catch (e: Throwable) { }
+        return emptyList()
     }
 
     // ── Sign & verify message ─────────────────────────────────────────────
