@@ -83,6 +83,8 @@ class GraficoTA(ctx: Context) : View(ctx) {
     // ── Datos y ventana visible ──
     private var velas: List<GraficoPrecio.Vela> = emptyList()
     var intervaloSeg = 3600L
+    /** Cuenta atrás hasta el cierre de la vela actual (mercados 24/7). */
+    var mostrarCuenta = true
     private val d = resources.displayMetrics.density
     private val padLpx = 2f * d
     private val padRpx = 56f * d
@@ -94,6 +96,9 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private var desde = 0f
     private var cuantas = 90f
 
+    // Cruz (puntero): posición en px; < 0 = oculta.
+    private var cruzX = -1f; private var cruzY = -1f
+
     // Mapeo del último frame (para convertir un toque en tiempo/precio).
     private var mapPTop = 0f; private var mapPBot = 0f; private var mapMin = 0f; private var mapMax = 1f
 
@@ -101,7 +106,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
         velas = v
         cuantas = minOf(90f, v.size.toFloat()).coerceAtLeast(2f)
         desde = (v.size - cuantas).coerceAtLeast(0f)
-        pendiente = null
+        pendiente = null; cruzX = -1f
         requestLayout(); invalidate()
     }
 
@@ -150,11 +155,20 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private val gd = GestureDetector(ctx, object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent) = true
         override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+            if (cruzX >= 0f) return true                      // con la cruz visible, arrastrar la mueve
             val gw = width - padLpx - padRpx; if (velas.size < 2 || gw <= 0) return false
             desde += dx / (gw / cuantas); clamp(); invalidate(); return true
         }
+        override fun onLongPress(e: MotionEvent) {
+            if (herramienta != 0 || velas.size < 2) return
+            cruzX = e.x; cruzY = e.y; performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); invalidate()
+        }
         override fun onSingleTapUp(e: MotionEvent): Boolean {
-            if (herramienta == 0 || velas.size < 2) return false
+            if (velas.size < 2) return false
+            if (herramienta == 0) {                            // tocar: muestra / oculta la cruz
+                if (cruzX >= 0f) cruzX = -1f else { cruzX = e.x; cruzY = e.y }
+                invalidate(); return true
+            }
             if (e.y < mapPTop || e.y > mapPBot) return false
             val gw = width - padLpx - padRpx
             val idx = desde + cuantas * (e.x - padLpx) / gw
@@ -181,7 +195,9 @@ class GraficoTA(ctx: Context) : View(ctx) {
     })
     override fun onTouchEvent(e: MotionEvent): Boolean {
         parent?.requestDisallowInterceptTouchEvent(true)
-        sd.onTouchEvent(e); gd.onTouchEvent(e); return true
+        sd.onTouchEvent(e); gd.onTouchEvent(e)
+        if (cruzX >= 0f && e.actionMasked == MotionEvent.ACTION_MOVE && e.pointerCount == 1) { cruzX = e.x; cruzY = e.y; invalidate() }
+        return true
     }
 
     // ── Pinceles ──
@@ -194,17 +210,57 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private val pDib = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.ACCENT; strokeWidth = 1.6f * d; style = Paint.Style.STROKE }
     private val pNota = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_PRI; textSize = 10.5f * d; typeface = AppTheme.bold(ctx) }
     private val pNotaBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val pCruz = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_SEC; strokeWidth = 0.9f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 3f * d), 0f) }
+    private val pTip = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_PRI; textSize = 10.5f * d; typeface = AppTheme.mono(ctx) }
+    private val pTag = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0B0E11.toInt(); textSize = 9.5f * d; typeface = AppTheme.mono(ctx) }
     private val pUltimo = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(3f * d, 3f * d), 0f) }
 
     private fun alfa(color: Int, a: Int) = (color and 0x00FFFFFF) or (a shl 24)
     private fun fmtP(v: Float) = when { Math.abs(v) >= 1_000_000f -> "%.2fM".format(v / 1e6f); Math.abs(v) >= 1000f -> "%,.0f".format(v); Math.abs(v) >= 1f -> "%.2f".format(v); Math.abs(v) >= 0.01f -> "%.4f".format(v); v == 0f -> "0"; else -> "%.3g".format(v) }
-    private val sdfIntra = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US)
-    private val sdfSeg = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
-    private val sdfDia = java.text.SimpleDateFormat("dd/MM", java.util.Locale.US)
-    private val sdfMes = java.text.SimpleDateFormat("MM/yy", java.util.Locale.US)
-    private fun fmtT(t: Long): String {
-        val dt = java.util.Date(t * 1000)
-        return when { intervaloSeg < 60L -> sdfSeg.format(dt); intervaloSeg < 86_400L -> sdfIntra.format(dt); intervaloSeg < 2_592_000L -> sdfDia.format(dt); else -> sdfMes.format(dt) }
+    private fun fmtFull(v: Float) = when { v == 0f -> "0"; Math.abs(v) >= 1f -> "%,.2f".format(v); else -> "%.6g".format(v) }
+    private fun sdf(p: String) = java.text.SimpleDateFormat(p, java.util.Locale.US)
+    private val sdfAnio = sdf("yyyy"); private val sdfMesC = sdf("MMM"); private val sdfDiaM = sdf("d MMM")
+    private val sdfHora = sdf("HH:mm"); private val sdfSeg = sdf("HH:mm:ss")
+    private val sdfCruzD = sdf("yyyy-MM-dd"); private val sdfCruzH = sdf("yyyy-MM-dd HH:mm"); private val sdfCruzS = sdf("yyyy-MM-dd HH:mm:ss")
+    private fun fmtCruz(t: Long): String { val dt = java.util.Date(t * 1000)
+        return when { intervaloSeg < 60L -> sdfCruzS.format(dt); intervaloSeg < 86_400L -> sdfCruzH.format(dt); else -> sdfCruzD.format(dt) } }
+
+    /*
+     * Eje de tiempo por calendario: cada vela recibe el nivel más grueso en el que
+     * empieza un periodo nuevo (año, semestre, trimestre, mes, tercio de mes, día,
+     * 12h … 1s). Se elige el nivel más fino que quepa sin amontonarse, y cada marca
+     * se rotula según su propio nivel: "2026", "Nov", "18 Nov", "14:00".
+     */
+    private val cal = java.util.Calendar.getInstance()
+    private val NIVELES = 19
+    private fun claves(t: Long, out: LongArray) {
+        cal.timeInMillis = t * 1000
+        val y = cal.get(java.util.Calendar.YEAR).toLong(); val m = cal.get(java.util.Calendar.MONTH).toLong()
+        val dom = cal.get(java.util.Calendar.DAY_OF_MONTH).toLong(); val doy = cal.get(java.util.Calendar.DAY_OF_YEAR).toLong()
+        val h = cal.get(java.util.Calendar.HOUR_OF_DAY).toLong(); val mi = cal.get(java.util.Calendar.MINUTE).toLong(); val se = cal.get(java.util.Calendar.SECOND).toLong()
+        val mes = y * 12 + m; val dia = y * 400 + doy; val hora = dia * 24 + h; val minuto = hora * 60 + mi; val seg = minuto * 60 + se
+        out[0] = y; out[1] = y * 2 + m / 6; out[2] = y * 4 + m / 3; out[3] = mes; out[4] = mes * 3 + minOf((dom - 1) / 10, 2)
+        out[5] = dia; out[6] = dia * 2 + h / 12; out[7] = dia * 4 + h / 6; out[8] = dia * 8 + h / 3; out[9] = hora
+        out[10] = minuto / 30; out[11] = minuto / 15; out[12] = minuto / 5; out[13] = minuto
+        out[14] = seg / 30; out[15] = seg / 15; out[16] = seg / 5; out[17] = seg; out[18] = t
+    }
+    private fun rotuloNivel(t: Long, nivel: Int): String { val dt = java.util.Date(t * 1000)
+        return when { nivel == 0 -> sdfAnio.format(dt); nivel <= 3 -> sdfMesC.format(dt); nivel <= 5 -> sdfDiaM.format(dt)
+            nivel <= 13 -> sdfHora.format(dt); else -> sdfSeg.format(dt) } }
+    /** Marcas visibles: (índice de vela, nivel). */
+    private fun marcasTiempo(v: List<GraficoPrecio.Vela>, i0: Int, i1: Int, gw: Float): List<Pair<Int, Int>> {
+        val a = LongArray(NIVELES); val b = LongArray(NIVELES)
+        val niv = IntArray(i1 - i0 + 1) { NIVELES }
+        if (i0 > 0) claves(v[i0 - 1].t, a)
+        for (i in i0..i1) {
+            claves(v[i].t, b)
+            if (i > 0) { var k = 0; while (k < NIVELES && a[k] == b[k]) k++; niv[i - i0] = k }
+            System.arraycopy(b, 0, a, 0, NIVELES)
+        }
+        val cabe = (gw / (64f * d)).toInt().coerceAtLeast(2)
+        var nivel = 0
+        for (L in 0 until NIVELES) { if (niv.count { it <= L } <= cabe) nivel = L else break }
+        return niv.indices.filter { niv[it] <= nivel }.map { (it + i0) to niv[it] }
     }
     private val coloresMedia = intArrayOf(0xFFF5A524.toInt(), 0xFF38BDF8.toInt(), 0xFFC084FC.toInt())
 
@@ -266,8 +322,10 @@ class GraficoTA(ctx: Context) : View(ctx) {
         mapPTop = pTop; mapPBot = pBot; mapMin = minL; mapMax = maxH
         val yP = { p: Float -> pBot - (pBot - pTop) * (p - minL) / (maxH - minL) }
 
+        val marcas = marcasTiempo(v, i0, i1, gw)
         c.save(); c.clipRect(0f, pTop, w - padRpx, pBot)
         for (g in 0..4) { val p = minL + (maxH - minL) * g / 4; c.drawLine(padLpx, yP(p), w - padRpx, yP(p), pGrid) }
+        for ((i, _) in marcas) c.drawLine(xf(i), pTop, xf(i), pBot, pGrid)
         for (i in i0..i1) {
             val up = cl[i] >= op[i]; val col = if (up) AppTheme.OK else AppTheme.RED
             val x = xf(i); pWick.color = col; c.drawLine(x, yP(hi[i]), x, yP(lo[i]), pWick)
@@ -295,6 +353,18 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 c.drawText(dj.texto, x + 1f * d, y, pNota) }
         }
         pendiente?.let { (t, p) -> pFill.color = AppTheme.ACCENT; c.drawCircle(xfF(idxDeT(t)), yP(p), 4f * d, pFill) }
+        // máximo y mínimo de lo visible
+        run {
+            var iH = i0; var iL = i0; for (i in i0..i1) { if (hi[i] > hi[iH]) iH = i; if (lo[i] < lo[iL]) iL = i }
+            fun marca(i: Int, p: Float, arriba: Boolean) {
+                val x = xf(i); val y = yP(p) + if (arriba) -2f * d else 9f * d; val txt = fmtFull(p); val tw = lbl.measureText(txt)
+                lbl.color = AppTheme.TXT_SEC
+                if (x > padLpx + gw / 2) { c.drawLine(x - 10f * d, yP(p), x - 2f * d, yP(p), pWick.apply { color = AppTheme.TXT_SEC }); c.drawText(txt, x - 12f * d - tw, y + if (arriba) 2f * d else -6f * d, lbl) }
+                else { c.drawLine(x + 2f * d, yP(p), x + 10f * d, yP(p), pWick.apply { color = AppTheme.TXT_SEC }); c.drawText(txt, x + 12f * d, y + if (arriba) 2f * d else -6f * d, lbl) }
+                lbl.color = AppTheme.TXT_MUTED
+            }
+            marca(iH, hi[iH], true); marca(iL, lo[iL], false)
+        }
         c.restore()
 
         // eje de precio + línea del último precio + valores de dibujos horizontales
@@ -303,8 +373,17 @@ class GraficoTA(ctx: Context) : View(ctx) {
             val col = if (cl[n - 1] >= op[n - 1]) AppTheme.OK else AppTheme.RED
             pUltimo.color = col; c.drawLine(padLpx, yP(ult), w - padRpx, yP(ult), pUltimo)
             pFill.color = col; val ty = yP(ult)
-            c.drawRect(w - padRpx + 1f * d, ty - 7f * d, w - 1f * d, ty + 6f * d, pFill)
-            lbl.color = 0xFFFFFFFF.toInt(); c.drawText(fmtP(ult), w - padRpx + 3f * d, ty + 3f * d, lbl); lbl.color = AppTheme.TXT_MUTED
+            val cierre = if (intervaloSeg >= 2_419_200L) java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).run {
+                timeInMillis = v[n - 1].t * 1000; add(java.util.Calendar.MONTH, 1); timeInMillis / 1000 } else v[n - 1].t + intervaloSeg
+            val resta = cierre - System.currentTimeMillis() / 1000
+            val cuenta = if (mostrarCuenta && resta in 1..(cierre - v[n - 1].t + 5)) when {
+                resta >= 86_400 -> "%dd %02d:%02d".format(resta / 86_400, resta % 86_400 / 3600, resta % 3600 / 60)
+                resta >= 3600 -> "%02d:%02d:%02d".format(resta / 3600, resta % 3600 / 60, resta % 60)
+                else -> "%02d:%02d".format(resta / 60, resta % 60) } else null
+            c.drawRect(w - padRpx + 1f * d, ty - 7f * d, w - 1f * d, ty + if (cuenta != null) 16f * d else 6f * d, pFill)
+            lbl.color = 0xFFFFFFFF.toInt(); c.drawText(fmtP(ult), w - padRpx + 3f * d, ty + 3f * d, lbl)
+            if (cuenta != null) { c.drawText(cuenta, w - padRpx + 3f * d, ty + 13f * d, lbl); postInvalidateDelayed(1000) }
+            lbl.color = AppTheme.TXT_MUTED
         }
         for (dj in dibujos) if (dj.tipo == 0 && dj.p1 in minL..maxH) { lbl.color = AppTheme.ACCENT; c.drawText(fmtP(dj.p1), padLpx + 2f * d, yP(dj.p1) - 3f * d, lbl); lbl.color = AppTheme.TXT_MUTED }
         if (etiquetas.isNotEmpty()) c.drawText(etiquetas.toString().trim(), padLpx + 2f * d, pTop + 10f * d, lbl)
@@ -327,12 +406,57 @@ class GraficoTA(ctx: Context) : View(ctx) {
         if (cfg.cci) { val (t, b) = sig(); panel(c, t, b, "CCI ${cfg.cciN}", i0, i1, xf, w, listOf(Indicadores.cci(hi, lo, cl, cfg.cciN) to AppTheme.WARN), guias = listOf(-100f, 100f)) }
         if (cfg.wr) { val (t, b) = sig(); panel(c, t, b, "Williams %R ${cfg.wrN}", i0, i1, xf, w, listOf(Indicadores.williams(hi, lo, cl, cfg.wrN) to AppTheme.WARN), -100f to 0f, listOf(-80f, -20f)) }
 
-        // ── Eje de tiempo ──
-        val yT = y0 + 10f * d
-        for (g in 0..4) {
-            val idx = (desde + cuantas * g / 4).toInt().coerceIn(0, n - 1)
-            val txt = fmtT(v[idx].t); val tw = lbl.measureText(txt)
-            c.drawText(txt, xf(idx).coerceIn(padLpx, w - padRpx - tw), yT, lbl)
+        // ── Eje de tiempo (calendario) ──
+        val yT = y0 + 10f * d; var ultX = -1e9f
+        for ((i, niv) in marcas) {
+            val txt = rotuloNivel(v[i].t, niv); val tw = lbl.measureText(txt)
+            val x = (xf(i) - tw / 2).coerceIn(padLpx, w - padRpx - tw)
+            if (x < ultX + 6f * d) continue
+            val fuerte = niv <= 3
+            lbl.color = if (fuerte) AppTheme.TXT_PRI else AppTheme.TXT_MUTED; lbl.isFakeBoldText = niv == 0
+            c.drawText(txt, x, yT, lbl); ultX = x + tw
+            if (cfg.paneles() > 0) c.drawLine(xf(i), pBot + gapPx, xf(i), y0 - gapPx, pGrid)
+        }
+        lbl.color = AppTheme.TXT_MUTED; lbl.isFakeBoldText = false
+
+        // ── Cruz con el detalle de la vela ──
+        if (cruzX >= 0f) {
+            val i = Math.round(desde + cuantas * (cruzX - padLpx) / gw).coerceIn(i0, i1)
+            val x = xf(i); val yFin = y0 - gapPx; val cy = cruzY.coerceIn(pTop, yFin)
+            c.drawLine(x, pTop, x, yFin, pCruz); c.drawLine(padLpx, cy, w - padRpx, cy, pCruz)
+            pFill.color = AppTheme.TXT_PRI; c.drawCircle(x, cy, 3.5f * d, pFill)
+            pFill.color = 0xFFF1F5F9.toInt()
+            if (cy <= pBot) {           // precio en la cruz y % frente al último
+                val p = minL + (maxH - minL) * (pBot - cy) / (pBot - pTop)
+                val pc = if (ult != 0f) (p - ult) / ult * 100f else 0f
+                c.drawRoundRect(w - padRpx + 1f * d, cy - 10f * d, w - 1f * d, cy + 12f * d, 3f * d, 3f * d, pFill)
+                pTag.textSize = 9f * d
+                c.drawText(fmtP(p), w - padRpx + 3f * d, cy - 1f * d, pTag)
+                c.drawText("%s%.2f%%".format(if (pc >= 0) "+" else "", pc), w - padRpx + 3f * d, cy + 9f * d, pTag)
+            }
+            val ft = fmtCruz(v[i].t); pTag.textSize = 9.5f * d; val fw = pTag.measureText(ft)
+            val fx = (x - fw / 2 - 4f * d).coerceIn(0f, w - fw - 8f * d)
+            c.drawRoundRect(fx, y0, fx + fw + 8f * d, y0 + 14f * d, 3f * d, 3f * d, pFill)
+            c.drawText(ft, fx + 4f * d, y0 + 10.5f * d, pTag)
+
+            // ficha de la vela
+            val k = v[i]; val cambio = k.c - k.o; val pctC = if (k.o != 0f) cambio / k.o * 100f else 0f
+            val filas = arrayListOf("Time" to (fmtCruz(k.t) to AppTheme.TXT_PRI), "Open" to (fmtFull(k.o) to AppTheme.TXT_PRI),
+                "High" to (fmtFull(k.h) to AppTheme.TXT_PRI), "Low" to (fmtFull(k.l) to AppTheme.TXT_PRI), "Close" to (fmtFull(k.c) to AppTheme.TXT_PRI),
+                "Change" to ("%s%s (%s%.2f%%)".format(if (cambio >= 0) "+" else "", fmtFull(cambio), if (pctC >= 0) "+" else "", pctC) to (if (cambio >= 0) AppTheme.OK else AppTheme.RED)),
+                "Range" to ("%.2f%%".format(if (k.o != 0f) (k.h - k.l) / k.o * 100f else 0f) to AppTheme.TXT_PRI))
+            if (k.vol > 0f) filas.add("Volume" to (fmtP(k.vol) to AppTheme.TXT_PRI))
+            val lh = 15f * d; val pad = 8f * d
+            val anchoL = filas.maxOf { pTip.measureText(it.first) }; val anchoV = filas.maxOf { pTip.measureText(it.second.first) }
+            val bw = anchoL + anchoV + 3 * pad; val bh = filas.size * lh + pad * 1.5f
+            val bx = if (x > padLpx + gw / 2) padLpx + 4f * d else w - padRpx - bw - 4f * d
+            val by = pTop + 16f * d
+            pNotaBg.color = alfa(AppTheme.BG_ELEV, 0xEE); c.drawRoundRect(bx, by, bx + bw, by + bh, 8f * d, 8f * d, pNotaBg)
+            filas.forEachIndexed { r, (lab, vc) ->
+                val yy = by + pad + lh * r + 10f * d
+                pTip.color = AppTheme.TXT_SEC; c.drawText(lab, bx + pad, yy, pTip)
+                pTip.color = vc.second; c.drawText(vc.first, bx + bw - pad - pTip.measureText(vc.first), yy, pTip)
+            }
         }
     }
 }

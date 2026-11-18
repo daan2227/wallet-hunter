@@ -33,19 +33,29 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(12), dp(6), dp(12), dp(6))
         isClickable = true; foreground = Ui.toque()
     }
+    val btnVivo = TextView(this).apply {
+        textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context)
+        background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(12), dp(6), dp(12), dp(6))
+        isClickable = true; foreground = Ui.toque()
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
+    }
     page.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
         tvPar.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        addView(tvPar); addView(btnInfo)
+        addView(tvPar); addView(btnVivo); addView(btnInfo)
     })
     page.addView(tvPrecio); page.addView(tvCambio)
 
     // ── Gráfico (config, dibujos e intervalo se guardan) ──
     val prefsG = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
+    // Los 5 primeros van a la vista; el resto en el desplegable "More".
     val intervalos = listOf(
-        Triple("1s", "1s", 1L), Triple("1m", "1m", 60L), Triple("1h", "1h", 3600L),
-        Triple("4h", "4h", 14400L), Triple("12h", "12h", 43200L), Triple("1D", "1d", 86400L),
-        Triple("3D", "3d", 259200L), Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
+        Triple("1m", "1m", 60L), Triple("15m", "15m", 900L), Triple("1h", "1h", 3600L), Triple("4h", "4h", 14400L),
+        Triple("1D", "1d", 86400L),
+        Triple("1s", "1s", 1L), Triple("5m", "5m", 300L), Triple("30m", "30m", 1800L), Triple("2h", "2h", 7200L),
+        Triple("6h", "6h", 21600L), Triple("12h", "12h", 43200L), Triple("3D", "3d", 259200L),
+        Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
+    val visibles = 5
     var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
     var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
     tvPar.text = activo.par
@@ -54,6 +64,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val chart = GraficoTA(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         intervaloSeg = intervalos.firstOrNull { it.second == intervalo }?.third ?: 3600L
+        mostrarCuenta = activo.tipo == Mercado.Tipo.CRYPTO
         cfg.deJson(prefsG.getString("cfg", null))
         cargarDibujos(prefsG.getString(claveDib(activo), if (activo.clave == Mercado.BTC.clave) prefsG.getString("dibujos", null) else null))
     }
@@ -99,7 +110,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         scroll.smoothScrollTo(0, 0)
         if (a.clave == activo.clave) return
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
-        tvPar.text = a.par; tvPrecio.text = "…"
+        tvPar.text = a.par; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
         chart.poner(emptyList()); cargar()
     }
@@ -130,38 +141,81 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }
         return hsv to { s: Int -> pintar(s) }
     }
-    fun rotuloFila(t: String) = page.addView(TextView(this).apply {
-        text = t; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), dp(2), 0, dp(4))
+
+    // ── Intervalo (como en los exchanges: los habituales a la vista + "More ▾") y ajustes ──
+    fun tabIv(t: String) = TextView(this).apply {
+        text = t; textSize = AppTheme.SP_BODY - 1f; gravity = Gravity.CENTER
+        setPadding(dp(11), dp(6), dp(11), dp(6)); isClickable = true; foreground = Ui.toque()
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(2) }
+    }
+    val tabsIv = intervalos.take(visibles).map { tabIv(it.first) }
+    val tabMas = tabIv("More ▾")
+    fun pintarIv() {
+        val k = intervalos.indexOfFirst { it.second == intervalo }
+        fun marca(tv: TextView, on: Boolean) {
+            tv.background = if (on) Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, this) else null
+            tv.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC); tv.typeface = if (on) AppTheme.bold(this) else AppTheme.medium(this)
+        }
+        tabsIv.forEachIndexed { n, tv -> marca(tv, n == k) }
+        marca(tabMas, k >= visibles); tabMas.text = if (k >= visibles) intervalos[k].first + " ▾" else "More ▾"
+    }
+    fun elegirIv(k: Int) {
+        intervalo = intervalos[k].second; chart.intervaloSeg = intervalos[k].third
+        prefsG.edit().putString("intervalo", intervalo).apply(); pintarIv(); cargar()
+    }
+    tabsIv.forEachIndexed { n, tv -> tv.setOnClickListener { elegirIv(n) } }
+    tabMas.setOnClickListener {
+        val pm = androidx.appcompat.widget.PopupMenu(this, tabMas)
+        for (n in visibles until intervalos.size) pm.menu.add(0, n, n, intervalos[n].first)
+        pm.setOnMenuItemClickListener { elegirIv(it.itemId); true }; pm.show()
+    }
+    pintarIv()
+    val btnAjustes = TextView(this).apply {
+        text = "⚙"; textSize = 18f; setTextColor(AppTheme.TXT_SEC); gravity = Gravity.CENTER
+        setPadding(dp(10), dp(4), dp(6), dp(4)); isClickable = true; foreground = Ui.toque()
+        setOnClickListener { abrirAjustesTA(chart) { guardarCfg() } }
+    }
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
+        addView(HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; tabsIv.forEach { addView(it) }; addView(tabMas) })
+        })
+        addView(btnAjustes)
     })
 
-    // ── Intervalo de velas ──
-    rotuloFila("Candle interval")
-    page.addView(filaChips(intervalos.map { it.first }, intervalos.indexOfFirst { it.second == intervalo }.coerceAtLeast(0)) { k ->
-        intervalo = intervalos[k].second; chart.intervaloSeg = intervalos[k].third
-        prefsG.edit().putString("intervalo", intervalo).apply(); cargar()
-    }.first)
-
-    // ── Frecuencia de actualización ──
+    // ── Actualización en vivo: desplegable junto al par ──
     val refrescos = listOf("Off" to 0L, "1s" to 1_000L, "5s" to 5_000L, "10s" to 10_000L, "30s" to 30_000L,
         "1m" to 60_000L, "5m" to 300_000L, "10m" to 600_000L)
     var refrescoMs = prefsG.getLong("refresco", 10_000L)
     val hVivo = android.os.Handler(android.os.Looper.getMainLooper())
     val enCurso = java.util.concurrent.atomic.AtomicBoolean(false)
     lateinit var vivo: Runnable
-    rotuloFila("Live update")
-    page.addView(filaChips(refrescos.map { it.first }, refrescos.indexOfFirst { it.second == refrescoMs }.coerceAtLeast(0)) { k ->
-        refrescoMs = refrescos[k].second; prefsG.edit().putLong("refresco", refrescoMs).apply()
-        hVivo.removeCallbacks(vivo); hVivo.post(vivo)
-    }.first)
+    fun pintarVivo() {
+        val on = refrescoMs > 0
+        btnVivo.text = if (on) "● Live " + (refrescos.firstOrNull { it.second == refrescoMs }?.first ?: "") + " ▾" else "○ Live off ▾"
+        btnVivo.setTextColor(if (on) AppTheme.OK else AppTheme.TXT_SEC)
+    }
+    btnVivo.setOnClickListener {
+        val pm = androidx.appcompat.widget.PopupMenu(this, btnVivo)
+        refrescos.forEachIndexed { n, (t, ms) -> pm.menu.add(0, n, n, if (ms == 0L) "Off" else "Every $t") }
+        pm.setOnMenuItemClickListener {
+            refrescoMs = refrescos[it.itemId].second; prefsG.edit().putLong("refresco", refrescoMs).apply()
+            pintarVivo(); hVivo.removeCallbacks(vivo); hVivo.post(vivo); true
+        }
+        pm.show()
+    }
+    pintarVivo()
 
     // ── Herramientas de dibujo ──
     val tvAyuda = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), 0, 0, dp(6)) }
-    val ayudas = listOf("Drag to pan · pinch to zoom", "Tap the chart to place a horizontal line",
-        "Tap two points for a trend line", "Tap the chart where the note goes")
+    val ayudas = listOf("Drag to pan · pinch to zoom · tap or long-press for crosshair + candle details",
+        "Tap the chart to place a horizontal line", "Tap two points for a trend line", "Tap the chart where the note goes")
     tvAyuda.text = ayudas[0]
-    rotuloFila("Draw")
     var marcarHerr: (Int) -> Unit = {}
-    val (filaHerr, marcar) = filaChips(listOf("✋ Move", "— Line", "╱ Trend", "✎ Note", "↶ Undo", "✕ Clear", "⚙ Indicators"), 0) { k ->
+    val (filaHerr, marcar) = filaChips(listOf("✋ Move", "— Line", "╱ Trend", "✎ Note", "↶ Undo", "✕ Clear"), 0) { k ->
         when (k) {
             in 0..3 -> { chart.herramienta = k; tvAyuda.text = ayudas[k] }
             4 -> { chart.deshacer(); marcarHerr(chart.herramienta) }
@@ -169,12 +223,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                 if (chart.dibujos.isNotEmpty()) androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Clear drawings")
                     .setMessage("Remove all ${chart.dibujos.size} lines and notes?")
                     .setPositiveButton("Clear") { _, _ -> chart.borrarTodo() }.setNegativeButton("Cancel", null).show() }
-            6 -> { marcarHerr(chart.herramienta); abrirAjustesTA(chart) { guardarCfg() } }
         }
     }
     marcarHerr = marcar
-    page.addView(filaHerr); page.addView(tvAyuda)
     page.addView(chart)
+    page.addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); page.addView(filaHerr)
     cargar()
 
     // ── En vivo: pide solo las últimas velas y las fusiona (barato aunque sea cada segundo) ──

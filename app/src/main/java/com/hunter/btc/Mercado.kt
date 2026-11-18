@@ -78,7 +78,8 @@ object Mercado {
 
     private fun bitstampBtc(intervalo: String, lim: Int): List<GraficoPrecio.Vela> = try {
         val step = when (intervalo) {
-            "1s", "1m" -> 60; "1h" -> 3600; "4h" -> 14400; "12h" -> 43200; "3d", "1w", "1M" -> 259200; else -> 86400
+            "1s", "1m" -> 60; "5m" -> 300; "15m" -> 900; "30m" -> 1800; "1h" -> 3600; "2h" -> 7200; "4h" -> 14400
+            "6h" -> 21600; "12h" -> 43200; "3d", "1w", "1M" -> 259200; else -> 86400
         }
         val js = httpGet("https://www.bitstamp.net/api/v2/ohlc/btcusd/?step=$step&limit=${lim.coerceAtMost(1000)}")
         if (js == null) emptyList() else {
@@ -91,7 +92,7 @@ object Mercado {
 
     /** OHLC de CoinGecko (sin volumen). Resolución según días: ≤2 → 30 min, ≤30 → 4 h, más → 4 días. */
     private fun coingeckoOhlc(id: String, intervalo: String): List<GraficoPrecio.Vela> = try {
-        val dias = when (intervalo) { "1s", "1m", "1h" -> 1; "4h", "12h" -> 30; else -> 365 }
+        val dias = when (intervalo) { "1s", "1m", "5m", "15m", "30m", "1h" -> 1; "2h", "4h", "6h", "12h" -> 30; else -> 365 }
         val js = httpGet("https://api.coingecko.com/api/v3/coins/$id/ohlc?vs_currency=usd&days=$dias")
         if (js == null || !js.trimStart().startsWith("[")) emptyList() else {
             val arr = org.json.JSONArray(js)
@@ -109,7 +110,9 @@ object Mercado {
     /** Equivalencia del intervalo pedido en Yahoo: (intervalo, rango, agrupar, aviso). */
     private fun yahooMapa(iv: String): Array<Any> = when (iv) {
         "1s", "1m" -> arrayOf<Any>("1m", "5d", 1, if (iv == "1s") "1s n/a → 1m" else "")
-        "1h" -> arrayOf<Any>("60m", "60d", 1, ""); "4h" -> arrayOf<Any>("60m", "730d", 4, "4h built from 1h")
+        "5m", "15m", "30m" -> arrayOf<Any>(iv, "60d", 1, "")
+        "1h" -> arrayOf<Any>("60m", "60d", 1, ""); "2h" -> arrayOf<Any>("60m", "730d", 2, "2h built from 1h")
+        "4h" -> arrayOf<Any>("60m", "730d", 4, "4h built from 1h"); "6h" -> arrayOf<Any>("60m", "730d", 6, "6h built from 1h")
         "12h" -> arrayOf<Any>("1d", "2y", 1, "12h → daily"); "1d" -> arrayOf<Any>("1d", "2y", 1, "")
         "3d" -> arrayOf<Any>("1d", "10y", 3, ""); "1w" -> arrayOf<Any>("1wk", "10y", 1, ""); "1M" -> arrayOf<Any>("1mo", "max", 1, "")
         else -> arrayOf<Any>("1d", "2y", 1, "")
