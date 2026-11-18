@@ -29,122 +29,153 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val tvCambio = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(0, dp(2), 0, dp(8)) }
     page.addView(tvPrecio); page.addView(tvCambio)
 
-    // ── Controles del gráfico ──
-    var intervalo = "1h"
-    val chart = GraficoTA(this).apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(360)); intervaloSeg = 3600L }
-    val tok = AtomicInteger(0)
-    fun cargar() {
-        val myTok = tok.incrementAndGet()
-        tvCambio.text = "Loading…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
-        Thread {
-            val v = Mercado.velasBtc(intervalo, 500)
-            runOnUiThread {
-                if (myTok != tok.get()) return@runOnUiThread
-                if (v.isEmpty()) { tvCambio.text = "Chart unavailable (exchange unreachable)"; return@runOnUiThread }
-                chart.poner(v)
-                val fin = v.last().c; val ini = v.first().o
-                val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
-                tvPrecio.text = "%,.2f USD".format(fin)
-                tvCambio.text = "%s%.2f%% · drag to pan, pinch to zoom".format(if (pct >= 0) "+" else "", pct)
-                tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
-            }
-        }.start()
-    }
-
-    // ── Intervalos (fila desplazable) ──
+    // ── Gráfico (config, dibujos e intervalo se guardan) ──
+    val prefsG = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
     val intervalos = listOf(
         Triple("1s", "1s", 1L), Triple("1m", "1m", 60L), Triple("1h", "1h", 3600L),
         Triple("4h", "4h", 14400L), Triple("12h", "12h", 43200L), Triple("1D", "1d", 86400L),
         Triple("3D", "3d", 259200L), Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
-    val chipsInt = ArrayList<TextView>()
-    fun pintarInt(sel: Int) {
-        for ((k, c) in chipsInt.withIndex()) {
-            val on = k == sel
+    var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
+    val chart = GraficoTA(this).apply {
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        intervaloSeg = intervalos.firstOrNull { it.second == intervalo }?.third ?: 3600L
+        cfg.deJson(prefsG.getString("cfg", null))
+        cargarDibujos(prefsG.getString("dibujos", null))
+    }
+    fun guardarCfg() { prefsG.edit().putString("cfg", chart.cfg.aJson()).apply(); chart.refrescarConfig() }
+    chart.alCambiarDibujos = { prefsG.edit().putString("dibujos", chart.dibujosJson()).apply() }
+    chart.alPedirNota = { t, p ->
+        val et = Ui.input(this, "Note text")
+        androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Add note")
+            .setView(LinearLayout(this).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(et) })
+            .setPositiveButton("Add") { _, _ -> chart.agregarNota(t, p, et.text.toString()) }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    fun mostrarPrecio(v: List<GraficoPrecio.Vela>, sufijo: String) {
+        val fin = v.last().c; val ini = v.first().o
+        val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
+        tvPrecio.text = "%,.2f USD".format(fin)
+        tvCambio.text = "%s%.2f%% · %s".format(if (pct >= 0) "+" else "", pct, sufijo)
+        tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
+    }
+    val tok = AtomicInteger(0)
+    fun cargar() {
+        val myTok = tok.incrementAndGet()
+        tvCambio.text = "Loading…"; tvCambio.setTextColor(AppTheme.TXT_SEC)
+        val iv = intervalo
+        Thread {
+            val v = Mercado.velasBtc(iv, 500)
+            runOnUiThread {
+                if (myTok != tok.get()) return@runOnUiThread
+                if (v.isEmpty()) { tvCambio.text = "Chart unavailable (exchange unreachable)"; return@runOnUiThread }
+                chart.poner(v); mostrarPrecio(v, "$iv candles")
+            }
+        }.start()
+    }
+
+    // Fila de chips de selección única.
+    fun filaChips(etiquetas: List<String>, sel: Int, alElegir: (Int) -> Unit): Pair<HorizontalScrollView, (Int) -> Unit> {
+        val chips = ArrayList<TextView>()
+        fun pintar(s: Int) = chips.forEachIndexed { k, c ->
+            val on = k == s
             c.background = Ui.cardBg(AppTheme.R_CHIP, if (on) AppTheme.BG_KEY else AppTheme.BG_CARD, this)
             c.setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
             c.typeface = if (on) AppTheme.bold(this) else AppTheme.medium(this)
         }
-    }
-    val filaInt = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-    for ((idx, tr) in intervalos.withIndex()) {
-        val (lab, code, seg) = tr
-        val c = TextView(this).apply {
-            text = lab; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
-            setPadding(dp(14), dp(7), dp(14), dp(7)); isClickable = true; foreground = Ui.toque()
-            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
-            setOnClickListener { intervalo = code; chart.intervaloSeg = seg; pintarInt(idx); cargar() }
+        val fila = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        etiquetas.forEachIndexed { k, t ->
+            val c = TextView(this).apply {
+                text = t; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
+                setPadding(dp(13), dp(7), dp(13), dp(7)); isClickable = true; foreground = Ui.toque()
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(7) }
+                setOnClickListener { pintar(k); alElegir(k) }
+            }
+            chips.add(c); fila.addView(c)
         }
-        chipsInt.add(c); filaInt.addView(c)
+        pintar(sel)
+        val hsv = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false; addView(fila)
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+        }
+        return hsv to { s: Int -> pintar(s) }
     }
-    page.addView(HorizontalScrollView(this).apply {
-        isHorizontalScrollBarEnabled = false; addView(filaInt)
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+    fun rotuloFila(t: String) = page.addView(TextView(this).apply {
+        text = t; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), dp(2), 0, dp(4))
     })
-    pintarInt(2)   // 1h por defecto
 
-    // ── Ajustes de indicadores (modificar / añadir) ──
-    fun abrirAjustes() {
-        val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(10), dp(20), dp(4)) }
-        fun titulo(t: String) = caja.addView(TextView(this).apply { text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, dp(6)) })
-        fun check(t: String, ini: Boolean, set: (Boolean) -> Unit) = caja.addView(android.widget.CheckBox(this).apply { text = t; isChecked = ini; setTextColor(AppTheme.TXT_PRI); setOnCheckedChangeListener { _, b -> set(b) } })
-        titulo("Moving average")
-        caja.addView(Ui.segmented(this, listOf("Off" to null, "MA" to null, "EMA" to null), initial = chart.modoMedia) { chart.modoMedia = it })
-        val filaP = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0) }
-        val e1 = EditText(this).apply { setText(chart.maP1.toString()); hint = "fast"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(AppTheme.TXT_PRI); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-        val e2 = EditText(this).apply { setText(chart.maP2.toString()); hint = "slow"; inputType = android.text.InputType.TYPE_CLASS_NUMBER; setTextColor(AppTheme.TXT_PRI); layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) }
-        filaP.addView(e1); filaP.addView(e2); caja.addView(filaP)
-        titulo("Overlays & panels")
-        check("Bollinger Bands (20, 2)", chart.showBB) { chart.showBB = it }
-        check("Volume", chart.showVol) { chart.showVol = it }
-        check("RSI (14)", chart.showRsi) { chart.showRsi = it }
-        check("MACD (12, 26, 9)", chart.showMacd) { chart.showMacd = it }
-        android.app.AlertDialog.Builder(this).setTitle("Chart settings").setView(caja)
-            .setPositiveButton("Apply") { _, _ ->
-                chart.maP1 = e1.text.toString().toIntOrNull()?.coerceIn(2, 400) ?: chart.maP1
-                chart.maP2 = e2.text.toString().toIntOrNull()?.coerceIn(2, 400) ?: chart.maP2
-                chart.invalidate()
-            }.setNegativeButton("Close", null).show()
+    // ── Intervalo de velas ──
+    rotuloFila("Candle interval")
+    page.addView(filaChips(intervalos.map { it.first }, intervalos.indexOfFirst { it.second == intervalo }.coerceAtLeast(0)) { k ->
+        intervalo = intervalos[k].second; chart.intervaloSeg = intervalos[k].third
+        prefsG.edit().putString("intervalo", intervalo).apply(); cargar()
+    }.first)
+
+    // ── Frecuencia de actualización ──
+    val refrescos = listOf("Off" to 0L, "1s" to 1_000L, "5s" to 5_000L, "10s" to 10_000L, "30s" to 30_000L,
+        "1m" to 60_000L, "5m" to 300_000L, "10m" to 600_000L)
+    var refrescoMs = prefsG.getLong("refresco", 10_000L)
+    val hVivo = android.os.Handler(android.os.Looper.getMainLooper())
+    val enCurso = java.util.concurrent.atomic.AtomicBoolean(false)
+    lateinit var vivo: Runnable
+    rotuloFila("Live update")
+    page.addView(filaChips(refrescos.map { it.first }, refrescos.indexOfFirst { it.second == refrescoMs }.coerceAtLeast(0)) { k ->
+        refrescoMs = refrescos[k].second; prefsG.edit().putLong("refresco", refrescoMs).apply()
+        hVivo.removeCallbacks(vivo); hVivo.post(vivo)
+    }.first)
+
+    // ── Herramientas de dibujo ──
+    val tvAyuda = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), 0, 0, dp(6)) }
+    val ayudas = listOf("Drag to pan · pinch to zoom", "Tap the chart to place a horizontal line",
+        "Tap two points for a trend line", "Tap the chart where the note goes")
+    tvAyuda.text = ayudas[0]
+    rotuloFila("Draw")
+    var marcarHerr: (Int) -> Unit = {}
+    val (filaHerr, marcar) = filaChips(listOf("✋ Move", "— Line", "╱ Trend", "✎ Note", "↶ Undo", "✕ Clear", "⚙ Indicators"), 0) { k ->
+        when (k) {
+            in 0..3 -> { chart.herramienta = k; tvAyuda.text = ayudas[k] }
+            4 -> { chart.deshacer(); marcarHerr(chart.herramienta) }
+            5 -> { marcarHerr(chart.herramienta)
+                if (chart.dibujos.isNotEmpty()) androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Clear drawings")
+                    .setMessage("Remove all ${chart.dibujos.size} lines and notes?")
+                    .setPositiveButton("Clear") { _, _ -> chart.borrarTodo() }.setNegativeButton("Cancel", null).show() }
+            6 -> { marcarHerr(chart.herramienta); abrirAjustesTA(chart) { guardarCfg() } }
+        }
     }
-    page.addView(LinearLayout(this).apply {
-        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, 0, 0, dp(8))
-        addView(TextView(this@buildHomeTab).apply {
-            text = "drag to pan · pinch to zoom"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
-            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        })
-        addView(TextView(this@buildHomeTab).apply {
-            text = "⚙ Indicators"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.ACCENT); typeface = AppTheme.bold(context)
-            setPadding(dp(10), dp(6), dp(2), dp(6)); isClickable = true; foreground = Ui.toque(); setOnClickListener { abrirAjustes() }
-        })
-    })
+    marcarHerr = marcar
+    page.addView(filaHerr); page.addView(tvAyuda)
     page.addView(chart)
     cargar()
 
-    // ── En vivo: refresca las velas cada 15 s mientras el Home está a la vista ──
-    // Usa actualizar() (no resetea el zoom/desplazamiento). Se para solo cuando la
-    // vista se destruye; si el Home no se ve, no pide nada.
-    val hVivo = android.os.Handler(android.os.Looper.getMainLooper())
-    hVivo.postDelayed(object : Runnable {
+    // ── En vivo: pide solo las últimas velas y las fusiona (barato aunque sea cada segundo) ──
+    vivo = object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.isShown) {
+            if (refrescoMs <= 0L) { hVivo.postDelayed(this, 2_000); return }
+            if (scroll.isShown && chart.velasActuales().size > 1 && enCurso.compareAndSet(false, true)) {
                 val iv = intervalo
                 Thread {
-                    val v = Mercado.velasBtc(iv, 500)
-                    if (v.isNotEmpty()) runOnUiThread {
-                        if (iv == intervalo && scroll.isAttachedToWindow) {
-                            chart.actualizar(v)
-                            val fin = v.last().c; val ini = v.first().o
-                            val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
-                            tvPrecio.text = "%,.2f USD".format(fin)
-                            tvCambio.text = "%s%.2f%% · live".format(if (pct >= 0) "+" else "", pct)
-                            tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
+                    val nuevas = try { Mercado.velasBtc(iv, 3) } catch (e: Throwable) { emptyList() }
+                    runOnUiThread {
+                        enCurso.set(false)
+                        if (iv != intervalo || nuevas.isEmpty() || !scroll.isAttachedToWindow) return@runOnUiThread
+                        val out = ArrayList(chart.velasActuales()); var quitadas = 0
+                        for (k in nuevas) {
+                            val ult = out.last()
+                            when {
+                                k.t == ult.t -> out[out.size - 1] = k
+                                k.t > ult.t -> { out.add(k); if (out.size > 500) { out.removeAt(0); quitadas++ } }
+                                else -> { val i = out.indexOfLast { it.t == k.t }; if (i >= 0) out[i] = k }
+                            }
                         }
+                        chart.actualizar(out, quitadas); mostrarPrecio(out, "live")
                     }
                 }.start()
             }
-            hVivo.postDelayed(this, 15_000)
+            hVivo.postDelayed(this, refrescoMs.coerceAtLeast(1_000L))
         }
-    }, 15_000)
+    }
+    hVivo.postDelayed(vivo, refrescoMs.coerceAtLeast(1_000L))
 
     // ── Mercado general + Fear & Greed ──
     fun abrev(x: Double) = when {
@@ -282,4 +313,87 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }.start()
 
     return scroll
+}
+
+/**
+ * Ajustes del gráfico técnico. Cada interruptor y cada periodo se aplica y se guarda
+ * al momento (no hay "Apply" que olvidar); un periodo fuera de rango se marca en el
+ * campo y no se aplica. Usa el AlertDialog de AppCompat para heredar el tema oscuro.
+ */
+internal fun MainActivity.abrirAjustesTA(chart: GraficoTA, alCambiar: () -> Unit) {
+    val c = chart.cfg
+    val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(4), dp(20), dp(8)) }
+    fun seccion(t: String) = caja.addView(TextView(this).apply {
+        text = t.uppercase(); textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context)
+        letterSpacing = 0.08f; setPadding(0, dp(14), 0, dp(2))
+    })
+    fun fmtR(x: Float) = if (x == Math.floor(x.toDouble()).toFloat()) x.toInt().toString() else x.toString()
+    fun num(ini: Float, rango: ClosedFloatingPointRange<Float>, entero: Boolean = true,
+            valida: (Float) -> String? = { null }, set: (Float) -> Unit): EditText = Ui.input(this, "").apply {
+        setText(if (entero) ini.toInt().toString() else ini.toString())
+        inputType = if (entero) android.text.InputType.TYPE_CLASS_NUMBER
+                    else android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        gravity = Gravity.CENTER; textSize = AppTheme.SP_CAPTION; setSingleLine()
+        layoutParams = LinearLayout.LayoutParams(dp(56), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
+        addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) {
+                val x = e.toString().replace(',', '.').toFloatOrNull()
+                val err = when { x == null -> "number"; x !in rango -> "${fmtR(rango.start)}–${fmtR(rango.endInclusive)}"; else -> valida(x) }
+                if (err != null) error = err else { error = null; set(if (entero) x!!.toInt().toFloat() else x!!); alCambiar() }
+            }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, d: Int) {}
+        })
+    }
+    fun fila(titulo: String, on: Boolean, setOn: (Boolean) -> Unit, vararg extras: View) {
+        val sw = android.widget.Switch(this).apply {
+            text = titulo; isChecked = on; setTextColor(AppTheme.TXT_PRI); textSize = AppTheme.SP_BODY - 1f
+            Ui.tintarInterruptor(this)
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            setOnCheckedChangeListener { _, b -> setOn(b); alCambiar() }
+        }
+        caja.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(3), 0, dp(3))
+            addView(sw); extras.forEach { addView(it) }
+        })
+    }
+    fun tipoMedia(m: GraficoTA.Media) = TextView(this).apply {
+        fun pintar() { text = if (m.ema) "EMA" else "SMA"; setTextColor(if (m.ema) AppTheme.ACCENT2 else AppTheme.WARN) }
+        textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); gravity = Gravity.CENTER
+        background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(10), dp(6), dp(10), dp(6))
+        isClickable = true; foreground = Ui.toque(); pintar()
+        setOnClickListener { m.ema = !m.ema; pintar(); alCambiar() }
+    }
+
+    seccion("Moving averages (tap SMA/EMA to switch)")
+    c.medias.forEachIndexed { k, m ->
+        fila("MA ${k + 1}", m.on, { m.on = it }, tipoMedia(m), num(m.n.toFloat(), 2f..400f) { m.n = it.toInt() })
+    }
+    seccion("Overlays")
+    fila("Bollinger (period, σ)", c.bb, { c.bb = it }, num(c.bbN.toFloat(), 5f..100f) { c.bbN = it.toInt() },
+        num(c.bbK, 0.5f..4f, entero = false) { c.bbK = it })
+    fila("VWAP", c.vwap, { c.vwap = it })
+    fila("Parabolic SAR", c.sar, { c.sar = it })
+    seccion("Panels")
+    fila("Volume", c.vol, { c.vol = it })
+    fila("RSI", c.rsi, { c.rsi = it }, num(c.rsiN.toFloat(), 2f..100f) { c.rsiN = it.toInt() })
+    fila("MACD", c.macd, { c.macd = it },
+        num(c.mF.toFloat(), 2f..100f, valida = { if (it >= c.mS) "< slow" else null }) { c.mF = it.toInt() },
+        num(c.mS.toFloat(), 3f..200f, valida = { if (it <= c.mF) "> fast" else null }) { c.mS = it.toInt() },
+        num(c.mSig.toFloat(), 2f..50f) { c.mSig = it.toInt() })
+    fila("Stochastic", c.stoch, { c.stoch = it }, num(c.stK.toFloat(), 2f..100f) { c.stK = it.toInt() }, num(c.stD.toFloat(), 1f..20f) { c.stD = it.toInt() })
+    fila("ATR", c.atr, { c.atr = it }, num(c.atrN.toFloat(), 2f..100f) { c.atrN = it.toInt() })
+    fila("OBV", c.obv, { c.obv = it })
+    fila("CCI", c.cci, { c.cci = it }, num(c.cciN.toFloat(), 5f..100f) { c.cciN = it.toInt() })
+    fila("Williams %R", c.wr, { c.wr = it }, num(c.wrN.toFloat(), 2f..100f) { c.wrN = it.toInt() })
+    caja.addView(TextView(this).apply {
+        text = "Changes apply and save instantly. Periods longer than the loaded candles (500) aren't drawn."
+        textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(0, dp(12), 0, 0)
+    })
+
+    androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Chart settings")
+        .setView(ScrollView(this).apply { addView(caja) })
+        .setPositiveButton("Done", null)
+        .setNeutralButton("Reset") { _, _ -> c.deJson(GraficoTA.Config().aJson()); alCambiar() }
+        .show()
 }
