@@ -36,6 +36,8 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
         const val MINER    = 7
         /** La pestaña Hunt de la barra: quien la recibe abre la última de sus cuatro herramientas. */
         const val HUNT     = 8
+        /** Home: el panel de inicio (precio + accesos), primer item de la barra. */
+        const val HOME     = 9
 
         /** Qué pestaña pedir al volver a MainActivity desde otra pantalla. */
         const val EXTRA_TAB = "com.hunter.btc.TAB"
@@ -48,6 +50,7 @@ class BottomBar(private val ctx: Context, seleccion: Int, private val alTocar: (
     // Cinco, no siete (rediseño "Security print"): Material pide 3–5 en la barra, y con siete los
     // rótulos se quedaban en 12 sp apretados y las píldoras a 40 dp.
     private val items = listOf(
+        Item(R.drawable.ic_home,     "Home",   HOME),
         Item(R.drawable.ic_search,   "Hunt",   HUNT),
         Item(R.drawable.ic_wallet,   "Wallet", WALLET),
         Item(R.drawable.ic_chip,     "Miner",  MINER),

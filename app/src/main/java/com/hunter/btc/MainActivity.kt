@@ -51,6 +51,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
     internal val PAG_WEAK     = 4
     internal val PAG_CORE     = 5
     internal val PAG_MORE     = 6
+    internal val PAG_HOME     = 7
     internal var tabPages: List<android.view.View?> = emptyList()
     internal var barra: BottomBar? = null
     // El estado del Weak-key vive en el singleton WeakController (sobrevive a
@@ -126,6 +127,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         // Recovery ya tiene su propia pestaña en la barra; Weak-key no es una
         // página (abre su Activity), así que no aparece aquí.
         barra?.seleccionar(when (idx) {
+            PAG_HOME     -> BottomBar.HOME
             PAG_PUZZLE   -> BottomBar.PUZZLE
             PAG_WALLET   -> BottomBar.WALLET
             PAG_RECOVERY -> BottomBar.RECOVERY
@@ -144,6 +146,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
      */
     internal fun pestana(tab: Int) {
         when (tab) {
+            BottomBar.HOME    -> goTab(PAG_HOME)
             BottomBar.HUNT    -> goTab(prefs.getInt("ultima_hunt", PAG_SCANNER).takeIf { it in paginasHunt } ?: PAG_SCANNER)
             BottomBar.MINER   -> { startActivity(Intent(this, MineroActivity::class.java)); overridePendingTransition(0, 0) }
             BottomBar.SCANNER -> goTab(PAG_SCANNER)
@@ -717,6 +720,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         }
 
         var scanScroll: ScrollView? = null
+        var homeScroll: ScrollView? = null
         var puzzleScroll: ScrollView? = null
         var walletScroll: ScrollView? = null
         var recoveryScroll: ScrollView? = null
@@ -758,6 +762,11 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
             }
             fase = "more"
             moreScroll = buildMoreTab()
+            fase = "home"
+            // Si el panel de inicio falla (red, etc.) no se lleva por delante lo demás.
+            try { homeScroll = buildHomeTab() } catch (e: Throwable) {
+                RegistroFallos.anotar(applicationContext, "\nHOME_BUILD: ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString()}\n")
+            }
 
         // Throwable y no Exception. Esto no es puntillismo: un
         // UnsatisfiedLinkError —la librería nativa que no carga— es un Error, no
@@ -785,6 +794,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         weakScroll?.let { cf.addView(it) }
         coreScroll?.let { cf.addView(it) }
         moreScroll?.let { cf.addView(it) }
+        homeScroll?.let { cf.addView(it) }
 
         // ── Contenido y barra de pestañas ─────────────────────────────────────
         //
@@ -803,7 +813,7 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
         root.addView(cf, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
         ))
-        val bb = BottomBar(this, BottomBar.SCANNER) { tab -> pestana(tab) }
+        val bb = BottomBar(this, BottomBar.HOME) { tab -> pestana(tab) }
         barra = bb
         root.addView(bb.vista, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
@@ -812,8 +822,8 @@ class MainActivity : androidx.appcompat.app.AppCompatActivity() {
 
         setContentView(root)
 
-        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll, weakScroll, coreScroll, moreScroll)
-        goTab(savedState?.getInt("pagina", PAG_SCANNER) ?: PAG_SCANNER)
+        tabPages = listOf(scanScroll, puzzleScroll, walletScroll, recoveryScroll, weakScroll, coreScroll, moreScroll, homeScroll)
+        goTab(savedState?.getInt("pagina", PAG_HOME) ?: PAG_HOME)
         abrirPestanaPedida(intent)
 
         // El motor entrega cada hallazgo al baúl cifrado en el momento; esto le
