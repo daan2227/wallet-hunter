@@ -4,12 +4,14 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Simulador de trading (spot y futuros perpetuos) con saldo virtual en USDT y
- * precios reales. No hay dinero ni exchange de por medio: todo vive en este objeto
- * y se guarda como JSON.
+ * Exchange de pruebas (spot y futuros perpetuos) con una moneda virtual, VUSD
+ * (1 VUSD = 1 USD de referencia), y precios reales. VUSD no tiene valor, no sale
+ * del teléfono y no se puede convertir en nada real: vive en este objeto y se
+ * guarda como JSON en las preferencias privadas de la app (sin copia en la nube).
  *
- * Reglas, como en un exchange típico:
- *  - Spot: comisión 0,1 % (maker y taker). Comprar descuenta USDT; vender los devuelve.
+ * Como un exchange: dos cuentas (Spot y Futuros) con transferencias entre ellas,
+ * depósitos y retiros de prueba, libro de movimientos, orden mínima de 5 VUSD.
+ *  - Spot: comisión 0,1 % (maker y taker). Comprar descuenta VUSD; vender los devuelve.
  *  - Futuros: margen aislado, apalancamiento 1–125x, taker 0,05 %, maker 0,02 %,
  *    margen de mantenimiento 0,5 % y funding de 0,01 % cada 8 h (00/08/16 UTC;
  *    los long pagan, los short cobran). Liquidación: se pierde el margen.
@@ -22,16 +24,17 @@ class Simulador {
     enum class Mercado { SPOT, FUT }
 
     class Posicion(val id: Long, val clave: String, val activo: String, val simbolo: String, val long: Boolean,
-                   val entrada: Double, val qty: Double, val margen: Double, val apal: Int,
+                   val entrada: Double, var qty: Double, var margen: Double, val apal: Int,
                    var tp: Double, var sl: Double, val abierta: Long, var funding: Double = 0.0, var ultFunding: Long = abierta) {
         val nocional get() = entrada * qty
         fun pnl(precio: Double) = (precio - entrada) * qty * (if (long) 1 else -1)
-        val liquidacion: Double get() = liquidacionDe(entrada, apal, long)
+        /** Margen aislado: se liquida cuando la pérdida deja el margen en el de mantenimiento. */
+        val liquidacion: Double get() = (margen - MANT * nocional) / qty.coerceAtLeast(1e-18) * (if (long) -1 else 1) + entrada
     }
 
     class Tenencia(val clave: String, val activo: String, val simbolo: String, var qty: Double, var coste: Double)
 
-    /** Orden límite pendiente. Spot: compra con [importe] USDT o venta de [qty]. Futuros: [importe] = margen. */
+    /** Orden límite pendiente. Spot: compra con [importe] VUSD o venta de [qty]. Futuros: [importe] = margen. */
     class Orden(val id: Long, val mercado: Mercado, val clave: String, val activo: String, val simbolo: String,
                 val compra: Boolean, val precio: Double, val importe: Double, val qty: Double, val apal: Int,
                 val tp: Double, val sl: Double, val creada: Long, val reservado: Double)
@@ -39,7 +42,15 @@ class Simulador {
     class Operacion(val t: Long, val mercado: Mercado, val simbolo: String, val lado: String, val entrada: Double,
                     val salida: Double, val qty: Double, val pnl: Double, val comision: Double, val motivo: String)
 
-    var saldo = SALDO_INICIAL; private set
+    /** Movimiento de la cuenta: Deposit, Withdraw, Transfer, Funding. [importe] con signo para [cuenta]. */
+    class Movimiento(val t: Long, val tipo: String, val cuenta: Mercado, val importe: Double, val nota: String)
+
+    /** VUSD libres en cada cuenta. */
+    var spot = BIENVENIDA; private set
+    var fut = BIENVENIDA; private set
+    /** Depósitos menos retiros: base para medir el rendimiento. */
+    var netoDepositado = 2 * BIENVENIDA; private set
+    val movimientos = ArrayList<Movimiento>()
     val posiciones = ArrayList<Posicion>()
     val tenencias = ArrayList<Tenencia>()
     val ordenes = ArrayList<Orden>()
@@ -54,7 +65,11 @@ class Simulador {
     val eventos = ArrayList<String>()
 
     companion object {
-        const val SALDO_INICIAL = 10_000.0
+        const val MONEDA = "VUSD"
+        /** Depósito de bienvenida en cada cuenta al abrir o reiniciar. */
+        const val BIENVENIDA = 10_000.0
+        const val MIN_ORDEN = 5.0
+        const val MAX_DEPOSITO = 1_000_000.0
         const val COM_SPOT = 0.001
         const val COM_TAKER = 0.0005
         const val COM_MAKER = 0.0002
@@ -75,15 +90,46 @@ class Simulador {
     fun pnlNoRealizado() = posiciones.sumOf { p -> precios[p.clave]?.let { p.pnl(it) } ?: 0.0 }
     fun valorSpot() = tenencias.sumOf { it.qty * (precios[it.clave] ?: (it.coste / it.qty.coerceAtLeast(1e-18))) }
     /** Patrimonio: saldo libre + reservado en órdenes + márgenes + PnL abierto + valor spot. */
-    fun patrimonio() = saldo + ordenes.sumOf { if (it.mercado == Mercado.SPOT && !it.compra) 0.0 else it.reservado } +
+    fun patrimonio() = spot + fut + ordenes.sumOf { if (it.mercado == Mercado.SPOT && !it.compra) 0.0 else it.reservado } +
             posiciones.sumOf { it.margen } + pnlNoRealizado() + valorSpot() +
             ordenes.filter { it.mercado == Mercado.SPOT && !it.compra }.sumOf { it.qty * (precios[it.clave] ?: it.precio) }
+
+    fun rendimiento() = patrimonio() - netoDepositado
+    fun reservado(m: Mercado) = ordenes.filter { it.mercado == m && (m == Mercado.FUT || it.compra) }.sumOf { it.reservado }
+
+    // ── Cuenta: depósitos, retiros y transferencias de prueba ──
+    fun depositar(cuenta: Mercado, x: Double, t: Long = ahora()): String? {
+        if (x <= 0 || x.isNaN()) return "Enter an amount"
+        if (x > MAX_DEPOSITO) return "Max ${fmtSim(MAX_DEPOSITO)} $MONEDA per deposit"
+        if (cuenta == Mercado.SPOT) spot += x else fut += x
+        netoDepositado += x; movimientos.add(Movimiento(t, "Deposit", cuenta, x, "Test funds")); return null
+    }
+    fun retirar(cuenta: Mercado, x: Double, t: Long = ahora()): String? {
+        val libre = if (cuenta == Mercado.SPOT) spot else fut
+        if (x <= 0 || x.isNaN()) return "Enter an amount"
+        if (x > libre + 1e-9) return "Only ${fmtSim(libre)} $MONEDA available"
+        val q = minOf(x, libre)
+        if (cuenta == Mercado.SPOT) spot -= q else fut -= q
+        netoDepositado -= q; movimientos.add(Movimiento(t, "Withdraw", cuenta, -q, "Removed from the test account")); return null
+    }
+    fun transferir(desde: Mercado, x: Double, t: Long = ahora()): String? {
+        val libre = if (desde == Mercado.SPOT) spot else fut
+        if (x <= 0 || x.isNaN()) return "Enter an amount"
+        if (x > libre + 1e-9) return "Only ${fmtSim(libre)} $MONEDA available"
+        val q = minOf(x, libre)
+        if (desde == Mercado.SPOT) { spot -= q; fut += q } else { fut -= q; spot += q }
+        val hacia = if (desde == Mercado.SPOT) Mercado.FUT else Mercado.SPOT
+        movimientos.add(Movimiento(t, "Transfer", desde, -q, "To ${nombre(hacia)}"))
+        movimientos.add(Movimiento(t, "Transfer", hacia, q, "From ${nombre(desde)}")); return null
+    }
+    fun nombre(m: Mercado) = if (m == Mercado.SPOT) "Spot" else "Futures"
 
     // ── Spot ──
     fun comprarSpot(clave: String, activo: String, simbolo: String, usdt: Double, precio: Double, maker: Boolean = false, t: Long = ahora()): String? {
         if (usdt <= 0 || precio <= 0) return "Enter an amount"
-        if (!maker && usdt > saldo + 1e-9) return "Not enough USDT"
-        if (!maker) saldo -= usdt
+        if (!maker && usdt < MIN_ORDEN) return "Minimum order is ${fmtSim(MIN_ORDEN)} $MONEDA"
+        if (!maker && usdt > spot + 1e-9) return "Not enough $MONEDA in Spot"
+        if (!maker) spot -= usdt
         val qty = usdt / precio * (1 - COM_SPOT)
         val h = tenencias.firstOrNull { it.clave == clave }
         if (h == null) tenencias.add(Tenencia(clave, activo, simbolo, qty, usdt)) else { h.qty += qty; h.coste += usdt }
@@ -98,13 +144,14 @@ class Simulador {
         val h = tenencias.firstOrNull { it.clave == clave } ?: return "Nothing to sell"
         if (qty <= 0 || precio <= 0) return "Enter an amount"
         if (!yaReservado && qty > h.qty * (1 + 1e-9)) return "Not enough ${h.simbolo}"
+        if (!yaReservado && qty * precio < MIN_ORDEN && qty < h.qty * (1 - 1e-9)) return "Minimum order is ${fmtSim(MIN_ORDEN)} $MONEDA"
         val q = if (yaReservado) qty else minOf(qty, h.qty)
         val bruto = q * precio; val com = bruto * COM_SPOT
         // coste medio de lo vendido (la parte reservada ya se descontó de la tenencia)
         val costeMedio = costeReservado ?: (h.coste / h.qty)
         val coste = costeMedio * q
         if (!yaReservado) { h.coste -= coste; h.qty -= q }
-        saldo += bruto - com
+        spot += bruto - com
         historial.add(Operacion(t, Mercado.SPOT, h.simbolo, "Sell", costeMedio, precio, q, bruto - com - coste, com, motivo))
         if (h.qty <= 1e-12 && ordenes.none { it.clave == clave && it.mercado == Mercado.SPOT && !it.compra }) tenencias.remove(h)
         return null
@@ -117,29 +164,49 @@ class Simulador {
         if (margen <= 0 || precio <= 0) return "Enter a margin amount"
         if (apal !in 1..125) return "Leverage must be 1–125x"
         val nocional = margen * apal; val com = nocional * (if (maker) COM_MAKER else COM_TAKER)
-        if (!maker && margen + com > saldo + 1e-9) return "Not enough USDT (margin + fee)"
+        if (!maker && nocional < MIN_ORDEN) return "Minimum position is ${fmtSim(MIN_ORDEN)} $MONEDA notional"
+        if (!maker && margen + com > fut + 1e-9) return "Not enough $MONEDA in Futures (margin + fee)"
         val liq = liquidacionDe(precio, apal, long)
         if (tp > 0 && (if (long) tp <= precio else tp >= precio)) return "Take-profit must be ${if (long) "above" else "below"} entry"
         if (sl > 0 && (if (long) sl >= precio else sl <= precio)) return "Stop-loss must be ${if (long) "below" else "above"} entry"
         if (sl > 0 && (if (long) sl <= liq else sl >= liq)) return "Stop-loss is beyond the liquidation price"
-        if (!maker) saldo -= margen + com
+        if (!maker) fut -= margen + com
         posiciones.add(Posicion(nuevoId(), clave, activo, simbolo, long, precio, nocional / precio, margen, apal, tp, sl, t))
         historial.add(Operacion(t, Mercado.FUT, simbolo, if (long) "Open long ${apal}x" else "Open short ${apal}x", precio, 0.0, nocional / precio, 0.0, com, if (maker) "Limit" else "Market"))
         precios[clave] = precios[clave] ?: precio
         return null
     }
 
-    fun cerrarFuturo(id: Long, precio: Double, motivo: String = "Close", t: Long = ahora()) {
+    /** Cierra la posición entera o una [fraccion] (0–1) a mercado. */
+    fun cerrarFuturo(id: Long, precio: Double, motivo: String = "Close", t: Long = ahora(), fraccion: Double = 1.0) {
         val p = posiciones.firstOrNull { it.id == id } ?: return
-        posiciones.remove(p)
         val lado = if (p.long) "Long" else "Short"
+        if (fraccion < 0.999 && motivo != "Liquidated") {
+            val f = fraccion.coerceIn(0.01, 0.99); val q = p.qty * f; val m = p.margen * f
+            val pnl = (precio - p.entrada) * q * (if (p.long) 1 else -1); val com = precio * q * COM_TAKER
+            fut += (m + pnl - com).coerceAtLeast(0.0)
+            p.qty -= q; p.margen -= m
+            historial.add(Operacion(t, Mercado.FUT, p.simbolo, "$lado ${p.apal}x", p.entrada, precio, q, pnl - com, com, "Close ${Math.round(f * 100)}%"))
+            return
+        }
+        posiciones.remove(p)
         if (motivo == "Liquidated") {
             historial.add(Operacion(t, Mercado.FUT, p.simbolo, "$lado ${p.apal}x", p.entrada, precio, p.qty, -p.margen + p.funding, 0.0, motivo))
             return
         }
         val pnl = p.pnl(precio); val com = precio * p.qty * COM_TAKER
-        saldo += (p.margen + pnl - com).coerceAtLeast(0.0)
+        fut += (p.margen + pnl - com).coerceAtLeast(0.0)
         historial.add(Operacion(t, Mercado.FUT, p.simbolo, "$lado ${p.apal}x", p.entrada, precio, p.qty, pnl - com + p.funding, com, motivo))
+    }
+
+    /** Añade margen aislado desde la cuenta de Futuros (aleja la liquidación). */
+    fun agregarMargen(id: Long, x: Double, t: Long = ahora()): String? {
+        val p = posiciones.firstOrNull { it.id == id } ?: return "Position closed"
+        if (x <= 0) return "Enter an amount"; if (x > fut + 1e-9) return "Only ${fmtSim(fut)} $MONEDA in Futures"
+        val q = minOf(x, fut); fut -= q; p.margen += q
+        if (p.sl > 0 && (if (p.long) p.sl <= p.liquidacion else p.sl >= p.liquidacion)) p.sl = 0.0
+        movimientos.add(Movimiento(t, "Margin", Mercado.FUT, -q, "Added to ${if (p.long) "long" else "short"} ${p.simbolo} #${p.id}"))
+        return null
     }
 
     fun ponerTpSl(id: Long, tp: Double, sl: Double): String? {
@@ -158,23 +225,26 @@ class Simulador {
         val reservado: Double
         when (mercado) {
             Mercado.SPOT -> if (compra) {
-                if (importe <= 0) return "Enter an amount"; if (importe > saldo + 1e-9) return "Not enough USDT"
-                saldo -= importe; reservado = importe
+                if (importe <= 0) return "Enter an amount"; if (importe < MIN_ORDEN) return "Minimum order is ${fmtSim(MIN_ORDEN)} $MONEDA"
+                if (importe > spot + 1e-9) return "Not enough $MONEDA in Spot"
+                spot -= importe; reservado = importe
             } else {
                 val h = tenencias.firstOrNull { it.clave == clave } ?: return "Nothing to sell"
                 if (qty <= 0) return "Enter an amount"; if (qty > h.qty * (1 + 1e-9)) return "Not enough ${h.simbolo}"
+                if (qty * precio < MIN_ORDEN) return "Minimum order is ${fmtSim(MIN_ORDEN)} $MONEDA"
                 val q = minOf(qty, h.qty); val cm = h.coste / h.qty
                 h.qty -= q; h.coste -= cm * q; costeRes[sigId] = cm; reservado = q
             }
             Mercado.FUT -> {
                 if (importe <= 0) return "Enter a margin amount"; if (apal !in 1..125) return "Leverage must be 1–125x"
+                if (importe * apal < MIN_ORDEN) return "Minimum position is ${fmtSim(MIN_ORDEN)} $MONEDA notional"
                 val liq = liquidacionDe(precio, apal, compra)
                 if (tp > 0 && (if (compra) tp <= precio else tp >= precio)) return "Take-profit must be ${if (compra) "above" else "below"} the limit price"
                 if (sl > 0 && (if (compra) sl >= precio else sl <= precio)) return "Stop-loss must be ${if (compra) "below" else "above"} the limit price"
                 if (sl > 0 && (if (compra) sl <= liq else sl >= liq)) return "Stop-loss is beyond the liquidation price"
                 val res = importe + importe * apal * COM_MAKER
-                if (res > saldo + 1e-9) return "Not enough USDT (margin + fee)"
-                saldo -= res; reservado = res
+                if (res > fut + 1e-9) return "Not enough $MONEDA in Futures (margin + fee)"
+                fut -= res; reservado = res
             }
         }
         ordenes.add(Orden(nuevoId(), mercado, clave, activo, simbolo, compra, precio, importe, qty, apal, tp, sl, t, reservado))
@@ -189,7 +259,7 @@ class Simulador {
             val h = tenencias.firstOrNull { it.clave == o.clave }
             if (h == null) tenencias.add(Tenencia(o.clave, o.activo, o.simbolo, o.reservado, cm * o.reservado))
             else { h.qty += o.reservado; h.coste += cm * o.reservado }
-        } else saldo += o.reservado
+        } else if (o.mercado == Mercado.SPOT) spot += o.reservado else fut += o.reservado
     }
 
     private fun llenar(o: Orden, t: Long) {
@@ -222,7 +292,8 @@ class Simulador {
         for (p in posiciones.filter { it.clave == clave && it.abierta <= inicio }) {
             // funding en cada frontera de 8 h cruzada
             var f = (p.ultFunding / FUNDING_SEG + 1) * FUNDING_SEG
-            while (f <= t) { val pago = p.nocional * FUNDING * (if (p.long) -1 else 1); p.funding += pago; saldo += pago; p.ultFunding = f; f += FUNDING_SEG }
+            while (f <= t) { val pago = p.nocional * FUNDING * (if (p.long) -1 else 1); p.funding += pago; fut += pago; p.ultFunding = f; f += FUNDING_SEG
+                movimientos.add(Movimiento(f - FUNDING_SEG, "Funding", Mercado.FUT, pago, "${if (p.long) "Long" else "Short"} ${p.simbolo} #${p.id}")) }
             val liq = p.liquidacion
             val slToca = p.sl > 0 && (if (p.long) lo <= p.sl else hi >= p.sl)
             val liqToca = if (p.long) lo <= liq else hi >= liq
@@ -245,7 +316,14 @@ class Simulador {
     fun activoDe(clave: String): String? = posiciones.firstOrNull { it.clave == clave }?.activo ?: ordenes.firstOrNull { it.clave == clave }?.activo
         ?: tenencias.firstOrNull { it.clave == clave }?.activo
 
-    fun reiniciar() { saldo = SALDO_INICIAL; posiciones.clear(); tenencias.clear(); ordenes.clear(); historial.clear(); costeRes.clear(); eventos.clear(); revisado.clear() }
+    /** Cuenta nueva: borra todo y vuelve a dar el depósito de bienvenida en Spot y Futuros. */
+    fun reiniciar(t: Long = ahora()) {
+        posiciones.clear(); tenencias.clear(); ordenes.clear(); historial.clear(); costeRes.clear(); eventos.clear(); revisado.clear(); movimientos.clear()
+        spot = BIENVENIDA; fut = BIENVENIDA; netoDepositado = 2 * BIENVENIDA
+        movimientos.add(Movimiento(t, "Deposit", Mercado.SPOT, BIENVENIDA, "Welcome test funds"))
+        movimientos.add(Movimiento(t, "Deposit", Mercado.FUT, BIENVENIDA, "Welcome test funds"))
+    }
+    init { reiniciar() }
 
     // ── Estadísticas ──
     class Stats(val operaciones: Int, val ganadoras: Int, val pnl: Double, val comisiones: Double, val mejor: Double, val peor: Double)
@@ -255,16 +333,18 @@ class Simulador {
         return Stats(c.size, c.count { it.pnl > 0 }, c.sumOf { it.pnl }, historial.sumOf { it.comision },
             c.maxOfOrNull { it.pnl } ?: 0.0, c.minOfOrNull { it.pnl } ?: 0.0)
     }
-    /** Curva de capital realizada: (t, saldo inicial + PnL acumulado). */
+    /** PnL realizado acumulado en el tiempo (t, VUSD). */
     fun curva(): List<Pair<Long, Double>> {
-        var acc = SALDO_INICIAL; val out = arrayListOf((historial.firstOrNull()?.t ?: ahora()) to acc)
+        var acc = 0.0; val out = arrayListOf((historial.firstOrNull()?.t ?: ahora()) to acc)
         for (o in historial) if (o.salida > 0) { acc += o.pnl; out.add(o.t to acc) }
         return out
     }
 
     // ── Persistencia ──
     fun aJson(): String = JSONObject().apply {
-        put("saldo", saldo); put("sig", sigId)
+        put("spot", spot); put("fut", fut); put("neto", netoDepositado); put("sig", sigId)
+        put("mov", JSONArray().apply { movimientos.takeLast(500).forEach { m -> put(JSONObject().put("t", m.t).put("ti", m.tipo).put("c", m.cuenta.name)
+            .put("i", m.importe).put("n", m.nota)) } })
         put("pos", JSONArray().apply { posiciones.forEach { p -> put(JSONObject().put("id", p.id).put("c", p.clave).put("a", p.activo).put("s", p.simbolo)
             .put("l", p.long).put("e", p.entrada).put("q", p.qty).put("m", p.margen).put("x", p.apal).put("tp", p.tp).put("sl", p.sl)
             .put("t", p.abierta).put("f", p.funding).put("uf", p.ultFunding)) } })
@@ -282,7 +362,15 @@ class Simulador {
         reiniciar(); if (s.isNullOrEmpty()) return
         try {
             val o = JSONObject(s)
-            saldo = o.optDouble("saldo", SALDO_INICIAL); sigId = o.optLong("sig", 1)
+            movimientos.clear()
+            if (o.has("fut")) { spot = o.getDouble("spot"); fut = o.getDouble("fut"); netoDepositado = o.optDouble("neto", 2 * BIENVENIDA) }
+            else {   // versión anterior: un solo saldo → cuenta de Futuros
+                spot = 0.0; fut = o.optDouble("saldo", BIENVENIDA); netoDepositado = BIENVENIDA
+                movimientos.add(Movimiento(ahora(), "Deposit", Mercado.FUT, BIENVENIDA, "Migrated test balance"))
+            }
+            sigId = o.optLong("sig", 1)
+            o.optJSONArray("mov")?.let { a -> for (i in 0 until a.length()) { val m = a.getJSONObject(i)
+                movimientos.add(Movimiento(m.getLong("t"), m.getString("ti"), Mercado.valueOf(m.getString("c")), m.getDouble("i"), m.optString("n"))) } }
             o.optJSONArray("pos")?.let { a -> for (i in 0 until a.length()) { val p = a.getJSONObject(i)
                 posiciones.add(Posicion(p.getLong("id"), p.getString("c"), p.optString("a"), p.getString("s"), p.getBoolean("l"), p.getDouble("e"),
                     p.getDouble("q"), p.getDouble("m"), p.getInt("x"), p.optDouble("tp", 0.0), p.optDouble("sl", 0.0), p.getLong("t"),

@@ -8,7 +8,7 @@ import android.view.ViewGroup
 import android.widget.*
 
 /**
- * Simulador de trading bajo el gráfico del Home: Spot y Futuros con saldo virtual
+ * Simulador de trading bajo el gráfico del Home: Spot y Futuros con VUSD (moneda virtual de pruebas)
  * y el precio real del activo abierto. Toda la lógica está en [Simulador]; aquí
  * solo la interfaz, el guardado y la vigilancia de precios de los activos con
  * posiciones u órdenes abiertas (aunque no estén en el gráfico).
@@ -99,8 +99,18 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             orientation = LinearLayout.VERTICAL; background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, act)
             setPadding(dp(14), dp(10), dp(14), dp(10))
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
-            addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_SEC).apply { text = "Virtual equity (USDT) · paper trading with real prices, no real money" })
+            addView(texto(AppTheme.SP_MICRO, AppTheme.WARN, true).apply {
+                text = "TEST MODE · VUSD is a virtual test currency: no value, not real money, never leaves this phone"
+                setPadding(0, 0, 0, dp(6))
+            })
+            addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_SEC).apply { text = "Total equity" })
             addView(tvPatrimonio); addView(tvCuenta)
+            addView(LinearLayout(act).apply {
+                orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0)
+                addView(botonPeq("Deposit", AppTheme.OK) { dialogoFondos(0) }.apply { (layoutParams as LinearLayout.LayoutParams).marginStart = 0 })
+                addView(botonPeq("Withdraw", AppTheme.TXT_PRI) { dialogoFondos(1) })
+                addView(botonPeq("Transfer", AppTheme.ACCENT2) { dialogoFondos(2) })
+            })
         })
 
         vista.addView(Ui.segmented(act, listOf("Spot" to null, "Futures" to null), if (futuros) 1 else 0) { k ->
@@ -146,6 +156,48 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         refrescarFormulario()
     }
 
+    /** 0 depositar, 1 retirar, 2 transferir (VUSD de prueba). */
+    private fun dialogoFondos(tipo: Int) {
+        var cuenta = if (futuros) Simulador.Mercado.FUT else Simulador.Mercado.SPOT
+        val et = Ui.input(act, "Amount (VUSD)", true).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }
+        val tvInfo = texto(AppTheme.SP_MICRO, AppTheme.TXT_SEC).apply { setPadding(0, dp(6), 0, 0) }
+        fun info() { tvInfo.text = when (tipo) {
+            0 -> "Adds test VUSD to ${sim.nombre(cuenta)} (max ${fmtSim(Simulador.MAX_DEPOSITO)} per deposit). It is counted as a deposit, not as profit."
+            1 -> "Removes VUSD from ${sim.nombre(cuenta)}: ${fmtSim(if (cuenta == Simulador.Mercado.SPOT) sim.spot else sim.fut)} available. Nothing is sent anywhere."
+            else -> "From ${sim.nombre(cuenta)} (${fmtSim(if (cuenta == Simulador.Mercado.SPOT) sim.spot else sim.fut)} available) to " +
+                    sim.nombre(if (cuenta == Simulador.Mercado.SPOT) Simulador.Mercado.FUT else Simulador.Mercado.SPOT)
+        } }
+        val caja = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0) }
+        caja.addView(Ui.segmented(act, if (tipo == 2) listOf("Spot → Futures" to null, "Futures → Spot" to null) else listOf("Spot" to null, "Futures" to null),
+            if (cuenta == Simulador.Mercado.SPOT) 0 else 1) { k -> cuenta = if (k == 0) Simulador.Mercado.SPOT else Simulador.Mercado.FUT; info() }
+            .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) } })
+        caja.addView(et)
+        val rapidos = if (tipo == 0) listOf("1,000" to 1_000.0, "10,000" to 10_000.0, "100,000" to 100_000.0) else listOf("25%" to -25.0, "50%" to -50.0, "Max" to -100.0)
+        caja.addView(fila(*rapidos.map { (t, v) -> chip(t) {
+            val x = if (v >= 0) v else (if (cuenta == Simulador.Mercado.SPOT) sim.spot else sim.fut) * -v / 100
+            et.setText("%.2f".format(java.util.Locale.US, Math.floor(x * 100) / 100))
+        }.apply { marcarChip(this, false) } }.toTypedArray()).apply { setPadding(0, dp(4), 0, 0) })
+        caja.addView(tvInfo); info()
+        androidx.appcompat.app.AlertDialog.Builder(act).setTitle(listOf("Deposit test VUSD", "Withdraw VUSD", "Transfer VUSD")[tipo])
+            .setView(caja)
+            .setPositiveButton(listOf("Deposit", "Withdraw", "Transfer")[tipo]) { _, _ ->
+                val x = et.num()
+                val err = when (tipo) { 0 -> sim.depositar(cuenta, x); 1 -> sim.retirar(cuenta, x); else -> sim.transferir(cuenta, x) }
+                if (err != null) aviso(err) else { guardar(); refrescar(); aviso("Done") }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
+    private fun pedirMargen(p: Simulador.Posicion) {
+        val et = Ui.input(act, "VUSD from Futures (${fmtSim(sim.fut)} available)", true).apply { inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL }
+        androidx.appcompat.app.AlertDialog.Builder(act).setTitle("Add margin · #${p.id}")
+            .setView(LinearLayout(act).apply {
+                orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0); addView(et)
+                addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_MUTED).apply { text = "Current liquidation: ${fmtSim(p.liquidacion)}. More margin moves it further away."; setPadding(0, dp(6), 0, 0) })
+            })
+            .setPositiveButton("Add") { _, _ -> val err = sim.agregarMargen(p.id, et.num()); if (err != null) aviso(err) else { guardar(); refrescar(); aviso("New liquidation: ${fmtSim(p.liquidacion)}") } }
+            .setNegativeButton("Cancel", null).show()
+    }
+
     /** El gráfico cambió de activo: rótulos del formulario y líneas. */
     fun alCambiarActivo() { refrescarFormulario(); refrescar() }
 
@@ -162,8 +214,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private fun porcentaje(p: Int) {
         val a = activo()
         val v = when {
-            futuros -> sim.saldo / (1 + apal * Simulador.COM_TAKER) * p / 100
-            compra -> sim.saldo * p / 100
+            futuros -> sim.fut / (1 + apal * Simulador.COM_TAKER) * p / 100
+            compra -> sim.spot * p / 100
             else -> (sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0) * p / 100
         }
         etImporte.setText(if (!futuros && !compra) "%.8f".format(java.util.Locale.US, v).trimEnd('0').trimEnd('.') else "%.2f".format(java.util.Locale.US, Math.floor(v * 100) / 100))
@@ -181,7 +233,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         etPrecio.visibility = if (limite) View.VISIBLE else View.GONE
         contApal.visibility = if (futuros) View.VISIBLE else View.GONE
         chipsApal.forEach { (x, c) -> marcarChip(c, x == apal) }
-        etImporte.hint = when { futuros -> "Margin (USDT) · ${apal}x"; compra -> "Amount (USDT)"; else -> "Quantity (${a.simbolo})" }
+        etImporte.hint = when { futuros -> "Margin (VUSD) · ${apal}x"; compra -> "Amount (VUSD)"; else -> "Quantity (${a.simbolo})" }
         swTpSl.visibility = if (futuros) View.VISIBLE else View.GONE
         val tpsl = futuros && conTpSl
         etTp.visibility = if (tpsl) View.VISIBLE else View.GONE; etSl.visibility = if (tpsl) View.VISIBLE else View.GONE
@@ -200,17 +252,18 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val p = if (limite) etPrecio.num() else (precioActual() ?: 0.0)
         val imp = etImporte.num()
         if (p <= 0 || imp <= 0) {
-            tvResumen.text = if (futuros) "Fees: taker 0.05% · maker 0.02% · funding 0.01% / 8h · isolated margin" else "Fee: 0.1%"
+            tvResumen.text = (if (futuros) "Available %s VUSD in Futures\nFees: taker 0.05%% · maker 0.02%% · funding 0.01%% / 8h · isolated margin · min 5 VUSD"
+                else "Available %s VUSD in Spot\nFee: 0.1%% · min order 5 VUSD").format(fmtSim(if (futuros) sim.fut else sim.spot))
             return
         }
         tvResumen.text = when {
             futuros -> {
                 val noc = imp * apal; val com = noc * if (limite) Simulador.COM_MAKER else Simulador.COM_TAKER
-                "Size ≈ %s %s · notional %s USDT\nFee ≈ %s USDT · liquidation ≈ %s".format(fmtCant(noc / p), a.simbolo, usd(noc), usd(com),
+                "Size ≈ %s %s · notional %s VUSD\nFee ≈ %s VUSD · liquidation ≈ %s".format(fmtCant(noc / p), a.simbolo, usd(noc), usd(com),
                     usd(Simulador.liquidacionDe(p, apal, compra)))
             }
-            compra -> "You get ≈ %s %s · fee %s USDT".format(fmtCant(imp / p * (1 - Simulador.COM_SPOT)), a.simbolo, usd(imp * Simulador.COM_SPOT))
-            else -> "You get ≈ %s USDT · fee %s USDT".format(usd(imp * p * (1 - Simulador.COM_SPOT)), usd(imp * p * Simulador.COM_SPOT))
+            compra -> "You get ≈ %s %s · fee %s VUSD".format(fmtCant(imp / p * (1 - Simulador.COM_SPOT)), a.simbolo, usd(imp * Simulador.COM_SPOT))
+            else -> "You get ≈ %s VUSD · fee %s VUSD".format(usd(imp * p * (1 - Simulador.COM_SPOT)), usd(imp * p * Simulador.COM_SPOT))
         }
     }
     private fun fmtCant(x: Double) = if (x >= 1000) "%,.2f".format(x) else "%.6g".format(x)
@@ -271,8 +324,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     fun refrescar() {
         val a = activo()
         val noReal = sim.pnlNoRealizado()
-        tvPatrimonio.text = "%s USDT".format(fmtSim(sim.patrimonio()))
-        tvCuenta.text = "Available %s USDT · unrealized %s".format(fmtSim(sim.saldo), signo(noReal))
+        tvPatrimonio.text = "%s VUSD".format(fmtSim(sim.patrimonio()))
+        tvCuenta.text = "Spot %s · Futures %s VUSD available\nUnrealized PnL %s · total return %s".format(
+            fmtSim(sim.spot), fmtSim(sim.fut), signo(noReal), signo(sim.rendimiento()))
         tvCuenta.setTextColor(if (noReal >= 0) AppTheme.TXT_SEC else AppTheme.RED)
         contPos.removeAllViews()
 
@@ -284,13 +338,19 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 card.addView(cabeceraTarjeta("${if (p.long) "Long" else "Short"} ${p.apal}x · ${p.simbolo}", if (p.long) AppTheme.OK else AppTheme.RED,
                     "%s (%s%.2f%%)".format(signo(pnl), if (pnl >= 0) "+" else "", pnl / p.margen * 100), if (pnl >= 0) AppTheme.OK else AppTheme.RED))
                 card.addView(dato("Entry / mark", "${fmtSim(p.entrada)} / ${m?.let { fmtSim(it) } ?: "—"}"))
-                card.addView(dato("Size · margin", "${fmtCant(p.qty)} ${p.simbolo} · ${fmtSim(p.margen)} USDT"))
+                card.addView(dato("Size · margin", "${fmtCant(p.qty)} ${p.simbolo} · ${fmtSim(p.margen)} VUSD"))
+                card.addView(dato("Position ID", "#${p.id} · isolated"))
                 card.addView(dato("Liquidation", fmtSim(p.liquidacion), AppTheme.WARN))
                 card.addView(dato("TP / SL", "${if (p.tp > 0) fmtSim(p.tp) else "—"} / ${if (p.sl > 0) fmtSim(p.sl) else "—"}"))
                 if (p.funding != 0.0) card.addView(dato("Funding", signo(p.funding), if (p.funding >= 0) AppTheme.OK else AppTheme.RED))
                 card.addView(LinearLayout(act).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
                     addView(botonPeq("TP/SL", AppTheme.TXT_PRI) { editarTpSl(p) })
+                    addView(botonPeq("+ Margin", AppTheme.TXT_PRI) { pedirMargen(p) })
+                    addView(botonPeq("50%", AppTheme.RED) {
+                        val px = precioDe(p.clave); if (px == null) { aviso("No price for ${p.simbolo} yet"); return@botonPeq }
+                        sim.cerrarFuturo(p.id, px, fraccion = 0.5); guardar(); refrescar(); aviso("Closed 50% at ${fmtSim(px)}")
+                    })
                     addView(botonPeq("Close", AppTheme.RED) {
                         val px = precioDe(p.clave); if (px == null) { aviso("No price for ${p.simbolo} yet"); return@botonPeq }
                         sim.cerrarFuturo(p.id, px); guardar(); refrescar(); aviso("Closed at ${fmtSim(px)}")
@@ -307,7 +367,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 card.addView(cabeceraTarjeta("${fmtCant(h.qty)} ${h.simbolo}", AppTheme.TXT_PRI,
                     "%s (%s%.2f%%)".format(signo(pnl), if (pnl >= 0) "+" else "", if (h.coste > 0) pnl / h.coste * 100 else 0.0), if (pnl >= 0) AppTheme.OK else AppTheme.RED))
                 card.addView(dato("Avg cost / price", "${fmtSim(h.coste / h.qty)} / ${m?.let { fmtSim(it) } ?: "—"}"))
-                card.addView(dato("Value", valor?.let { fmtSim(it) + " USDT" } ?: "—"))
+                card.addView(dato("Value", valor?.let { fmtSim(it) + " VUSD" } ?: "—"))
                 card.addView(LinearLayout(act).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
                     addView(botonPeq("Sell all", AppTheme.RED) {
@@ -325,7 +385,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 val lado = if (o.mercado == Simulador.Mercado.FUT) (if (o.compra) "Limit long ${o.apal}x" else "Limit short ${o.apal}x") else (if (o.compra) "Limit buy" else "Limit sell")
                 card.addView(cabeceraTarjeta("$lado · ${o.simbolo}", if (o.compra) AppTheme.OK else AppTheme.RED, "@ ${fmtSim(o.precio)}", AppTheme.TXT_PRI))
                 card.addView(dato(if (o.mercado == Simulador.Mercado.FUT) "Margin" else if (o.compra) "Amount" else "Quantity",
-                    if (o.mercado == Simulador.Mercado.SPOT && !o.compra) "${fmtCant(o.reservado)} ${o.simbolo}" else "${fmtSim(o.importe)} USDT"))
+                    if (o.mercado == Simulador.Mercado.SPOT && !o.compra) "${fmtCant(o.reservado)} ${o.simbolo}" else "${fmtSim(o.importe)} VUSD"))
+                card.addView(dato("Order ID", "#${o.id} · " + java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(o.creada * 1000))))
                 if (o.tp > 0 || o.sl > 0) card.addView(dato("TP / SL", "${if (o.tp > 0) fmtSim(o.tp) else "—"} / ${if (o.sl > 0) fmtSim(o.sl) else "—"}"))
                 card.addView(LinearLayout(act).apply {
                     orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
@@ -418,25 +479,29 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val caja = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(4), dp(20), dp(12)) }
         fun sec(t: String) = caja.addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_SEC, true).apply { text = t.uppercase(); letterSpacing = 0.08f; setPadding(0, dp(14), 0, dp(4)) })
         sec("Account")
-        caja.addView(dato("Equity", fmtSim(sim.patrimonio()) + " USDT"))
-        val total = sim.patrimonio() - Simulador.SALDO_INICIAL
-        caja.addView(dato("Total return", "%s (%s%.2f%%)".format(signo(total), if (total >= 0) "+" else "", total / Simulador.SALDO_INICIAL * 100), if (total >= 0) AppTheme.OK else AppTheme.RED))
-        caja.addView(dato("Starting balance", fmtSim(Simulador.SALDO_INICIAL) + " USDT"))
+        caja.addView(texto(AppTheme.SP_MICRO, AppTheme.WARN, true).apply { text = "Test account · VUSD has no value and is not real money" })
+        caja.addView(dato("Equity", fmtSim(sim.patrimonio()) + " VUSD"))
+        caja.addView(dato("Spot available / in orders", "${fmtSim(sim.spot)} / ${fmtSim(sim.reservado(Simulador.Mercado.SPOT))}"))
+        caja.addView(dato("Futures available / in orders", "${fmtSim(sim.fut)} / ${fmtSim(sim.reservado(Simulador.Mercado.FUT))}"))
+        caja.addView(dato("Futures margin in use", fmtSim(sim.posiciones.sumOf { it.margen })))
+        caja.addView(dato("Net deposits", fmtSim(sim.netoDepositado) + " VUSD"))
+        val total = sim.rendimiento()
+        caja.addView(dato("Total return", "%s (%s%.2f%%)".format(signo(total), if (total >= 0) "+" else "", if (sim.netoDepositado > 0) total / sim.netoDepositado * 100 else 0.0), if (total >= 0) AppTheme.OK else AppTheme.RED))
         sec("Closed trades")
         caja.addView(dato("Trades", st.operaciones.toString()))
         caja.addView(dato("Win rate", if (st.operaciones > 0) "%.1f%% (%d / %d)".format(st.ganadoras * 100.0 / st.operaciones, st.ganadoras, st.operaciones) else "—"))
         caja.addView(dato("Realized PnL", signo(st.pnl), if (st.pnl >= 0) AppTheme.OK else AppTheme.RED))
         caja.addView(dato("Best / worst", "${signo(st.mejor)} / ${signo(st.peor)}"))
-        caja.addView(dato("Fees paid", fmtSim(st.comisiones) + " USDT"))
+        caja.addView(dato("Fees paid", fmtSim(st.comisiones) + " VUSD"))
         val curva = sim.curva()
         if (curva.size > 1) {
-            sec("Equity curve (realized)")
+            sec("Realized PnL over time")
             caja.addView(GraficoPrecio(act).apply {
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(130))
                 poner(curva.map { it.second.toFloat() })
             })
         }
-        sec("History")
+        sec("Trade history")
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
         if (sim.historial.isEmpty()) caja.addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_MUTED).apply { text = "No trades yet." })
         for (h in sim.historial.asReversed().take(150)) {
@@ -458,12 +523,22 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 })
             })
         }
-        androidx.appcompat.app.AlertDialog.Builder(act).setTitle("Simulator history")
+        sec("Account movements")
+        if (sim.movimientos.isEmpty()) caja.addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_MUTED).apply { text = "None." })
+        for (m in sim.movimientos.asReversed().take(100)) caja.addView(LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(4), 0, dp(4))
+            addView(texto(AppTheme.SP_MICRO, AppTheme.TXT_SEC).apply {
+                text = "${sdf.format(java.util.Date(m.t * 1000))} · ${m.tipo} · ${sim.nombre(m.cuenta)}\n${m.nota}"
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            addView(texto(AppTheme.SP_CAPTION, if (m.importe >= 0) AppTheme.OK else AppTheme.RED, true).apply { text = signo(m.importe) })
+        })
+        androidx.appcompat.app.AlertDialog.Builder(act).setTitle("Test exchange · VUSD")
             .setView(ScrollView(act).apply { addView(caja) })
             .setPositiveButton("Close", null)
             .setNeutralButton("Reset account") { _, _ ->
                 androidx.appcompat.app.AlertDialog.Builder(act).setTitle("Reset simulator")
-                    .setMessage("Close everything and start again with ${fmtSim(Simulador.SALDO_INICIAL)} USDT? History is deleted.")
+                    .setMessage("Close everything and start again with ${fmtSim(Simulador.BIENVENIDA)} VUSD in Spot and in Futures? History is deleted.")
                     .setPositiveButton("Reset") { _, _ -> sim.reiniciar(); guardar(); refrescar() }
                     .setNegativeButton("Cancel", null).show()
             }.show()
