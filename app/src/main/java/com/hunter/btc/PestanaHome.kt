@@ -90,6 +90,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         tvCambio.text = "%s%.2f%% · %s".format(if (pct >= 0) "+" else "", pct, sufijo)
         tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
     }
+    var panel: PanelTrading? = null
     val tok = AtomicInteger(0)
     fun cargar() {
         val myTok = tok.incrementAndGet()
@@ -100,7 +101,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             runOnUiThread {
                 if (myTok != tok.get()) return@runOnUiThread
                 if (v.isEmpty()) { tvCambio.text = "Chart unavailable (data source unreachable)"; return@runOnUiThread }
-                chart.poner(v)
+                chart.poner(v); panel?.tick(a.clave, v.last().c.toDouble())
                 mostrarPrecio(v, listOf("$iv candles", Mercado.avisoIntervalo(a, iv)).filter { it.isNotEmpty() }.joinToString(" · "))
             }
         }.start()
@@ -112,7 +113,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
         tvPar.text = a.par; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
-        chart.poner(emptyList()); cargar()
+        chart.poner(emptyList()); panel?.alCambiarActivo(); cargar()
     }
 
     // Fila de chips de selección única.
@@ -228,6 +229,19 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     marcarHerr = marcar
     page.addView(chart)
     page.addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); page.addView(filaHerr)
+
+    // ── Simulador de trading (Spot / Futuros) ──
+    val pt = PanelTrading(this, { activo }, { chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
+    panel = pt
+    page.addView(pt.vista)
+    val hVigia = android.os.Handler(android.os.Looper.getMainLooper())
+    hVigia.postDelayed(object : Runnable {
+        override fun run() {
+            if (!scroll.isAttachedToWindow) return
+            if (scroll.isShown) pt.vigilar()
+            hVigia.postDelayed(this, 20_000)
+        }
+    }, 1_500)
     cargar()
 
     // ── En vivo: pide solo las últimas velas y las fusiona (barato aunque sea cada segundo) ──
@@ -252,7 +266,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                             }
                         }
                         val minimo = Mercado.refrescoMinimoMs(a)
-                        chart.actualizar(out, quitadas); mostrarPrecio(out, if (refrescoMs < minimo) "live · every ${minimo / 1000}s for this source" else "live")
+                        chart.actualizar(out, quitadas); panel?.tick(a.clave, out.last().c.toDouble()); mostrarPrecio(out, if (refrescoMs < minimo) "live · every ${minimo / 1000}s for this source" else "live")
                     }
                 }.start()
             }

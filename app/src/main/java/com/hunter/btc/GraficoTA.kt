@@ -80,6 +80,11 @@ class GraficoTA(ctx: Context) : View(ctx) {
     fun deshacer() { if (dibujos.isNotEmpty()) { dibujos.removeAt(dibujos.size - 1); alCambiarDibujos?.invoke(); invalidate() } }
     fun borrarTodo() { dibujos.clear(); pendiente = null; alCambiarDibujos?.invoke(); invalidate() }
 
+    // ── Líneas de precio del simulador (entrada, TP, SL, liquidación, órdenes) ──
+    class LineaPrecio(val precio: Float, val color: Int, val texto: String)
+    var lineasPrecio: List<LineaPrecio> = emptyList()
+        set(v) { field = v; invalidate() }
+
     // ── Datos y ventana visible ──
     private var velas: List<GraficoPrecio.Vela> = emptyList()
     var intervaloSeg = 3600L
@@ -353,6 +358,12 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 c.drawText(dj.texto, x + 1f * d, y, pNota) }
         }
         pendiente?.let { (t, p) -> pFill.color = AppTheme.ACCENT; c.drawCircle(xfF(idxDeT(t)), yP(p), 4f * d, pFill) }
+        for (lp in lineasPrecio) if (lp.precio in minL..maxH) {
+            val y = yP(lp.precio); pUltimo.color = lp.color; c.drawLine(padLpx, y, w - padRpx, y, pUltimo)
+            val tw = lbl.measureText(lp.texto); pFill.color = alfa(lp.color, 0xDD)
+            c.drawRoundRect(padLpx + 2f * d, y - 7f * d, padLpx + tw + 8f * d, y + 6f * d, 3f * d, 3f * d, pFill)
+            lbl.color = 0xFF0B0E11.toInt(); c.drawText(lp.texto, padLpx + 5f * d, y + 3f * d, lbl); lbl.color = AppTheme.TXT_MUTED
+        }
         // máximo y mínimo de lo visible
         run {
             var iH = i0; var iL = i0; for (i in i0..i1) { if (hi[i] > hi[iH]) iH = i; if (lo[i] < lo[iL]) iL = i }
