@@ -64,6 +64,29 @@ object Mercado {
         return emptyList()
     }
 
+    data class Global(val mcap: Double, val vol24h: Double, val btcDom: Double, val cambio24h: Double)
+    /** Mercado general: capitalización total, volumen 24h, dominancia BTC y cambio 24h. */
+    fun global(): Global? {
+        val js = httpGet("https://api.coingecko.com/api/v3/global") ?: return null
+        return try {
+            val d = org.json.JSONObject(js).getJSONObject("data")
+            Global(d.getJSONObject("total_market_cap").optDouble("usd", 0.0),
+                   d.getJSONObject("total_volume").optDouble("usd", 0.0),
+                   d.getJSONObject("market_cap_percentage").optDouble("btc", 0.0),
+                   d.optDouble("market_cap_change_percentage_24h_usd", 0.0))
+        } catch (e: Throwable) { null }
+    }
+
+    data class Miedo(val valor: Int, val clasif: String)
+    /** Índice Fear & Greed (0..100) de alternative.me. */
+    fun fearGreed(): Miedo? {
+        val js = httpGet("https://api.alternative.me/fng/?limit=1") ?: return null
+        return try {
+            val o = org.json.JSONObject(js).getJSONArray("data").getJSONObject(0)
+            Miedo(o.optString("value", "0").toIntOrNull() ?: 0, o.optString("value_classification", ""))
+        } catch (e: Throwable) { null }
+    }
+
     /** Top [n] monedas por capitalización, SIN stablecoins, de CoinGecko. */
     fun topMonedas(n: Int = 10): List<Moneda> {
         val js = httpGet("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc" +

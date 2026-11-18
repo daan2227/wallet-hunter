@@ -41,6 +41,15 @@ class GraficoTA(ctx: Context) : View(ctx) {
         postInvalidate()
     }
 
+    /** Refresco en vivo: cambia los datos SIN resetear el zoom/desplazamiento. Si se
+     *  estaba viendo lo último, la ventana sigue pegada al presente. */
+    fun actualizar(v: List<GraficoPrecio.Vela>) {
+        val alFinal = velas.isEmpty() || desde >= velas.size - cuantas - 0.5f
+        velas = v
+        if (alFinal) desde = (v.size - cuantas).coerceAtLeast(0f)
+        clamp(); postInvalidate()
+    }
+
     private fun clamp() {
         val n = velas.size.toFloat()
         cuantas = cuantas.coerceIn(8f, n.coerceAtLeast(8f))

@@ -1,6 +1,5 @@
 package com.hunter.btc
 
-import android.content.Intent
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -120,6 +119,108 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     page.addView(chart)
     cargar()
 
+    // ── En vivo: refresca las velas cada 15 s mientras el Home está a la vista ──
+    // Usa actualizar() (no resetea el zoom/desplazamiento). Se para solo cuando la
+    // vista se destruye; si el Home no se ve, no pide nada.
+    val hVivo = android.os.Handler(android.os.Looper.getMainLooper())
+    hVivo.postDelayed(object : Runnable {
+        override fun run() {
+            if (!scroll.isAttachedToWindow) return
+            if (scroll.isShown) {
+                val iv = intervalo
+                Thread {
+                    val v = Mercado.velasBtc(iv, 500)
+                    if (v.isNotEmpty()) runOnUiThread {
+                        if (iv == intervalo && scroll.isAttachedToWindow) {
+                            chart.actualizar(v)
+                            val fin = v.last().c; val ini = v.first().o
+                            val pct = if (ini > 0) (fin - ini) / ini * 100f else 0f
+                            tvPrecio.text = "%,.2f USD".format(fin)
+                            tvCambio.text = "%s%.2f%% · live".format(if (pct >= 0) "+" else "", pct)
+                            tvCambio.setTextColor(if (pct >= 0) AppTheme.OK else AppTheme.RED)
+                        }
+                    }
+                }.start()
+            }
+            hVivo.postDelayed(this, 15_000)
+        }
+    }, 15_000)
+
+    // ── Mercado general + Fear & Greed ──
+    fun abrev(x: Double) = when {
+        x >= 1e12 -> "$%.2fT".format(x / 1e12); x >= 1e9 -> "$%.1fB".format(x / 1e9)
+        x >= 1e6 -> "$%.1fM".format(x / 1e6); else -> "$%,.0f".format(x)
+    }
+    page.addView(TextView(this).apply {
+        text = "CRYPTO MARKET"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
+        typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), dp(18), 0, dp(10))
+    })
+    fun stat(titulo: String): Pair<LinearLayout, Pair<TextView, TextView>> {
+        val v1 = TextView(this).apply { text = "…"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context); setPadding(0, dp(4), 0, 0) }
+        val v2 = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC) }
+        val card = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
+            setPadding(dp(12), dp(10), dp(12), dp(10))
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(4), 0, dp(4), 0) }
+            addView(TextView(context).apply { text = titulo; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC) })
+            addView(v1); addView(v2)
+        }
+        return card to (v1 to v2)
+    }
+    val (cMcap, tMcap) = stat("Market cap")
+    val (cVol, tVol) = stat("Volume 24h")
+    val (cDom, tDom) = stat("BTC dominance")
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
+        addView(cMcap); addView(cVol); addView(cDom)
+    })
+
+    // Fear & Greed: número de color por zona + barra rojo→verde con marcador.
+    val tvFng = TextView(this).apply { text = "…"; textSize = 30f; typeface = AppTheme.title(context); setTextColor(AppTheme.TXT_PRI) }
+    val tvFngC = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(dp(10), 0, 0, 0) }
+    val izq = View(this); val der = View(this)
+    val marca = View(this).apply { setBackgroundColor(AppTheme.TXT_PRI); layoutParams = LinearLayout.LayoutParams(dp(3), dp(14)) }
+    val barra = LinearLayout(this).apply {
+        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+        background = android.graphics.drawable.GradientDrawable(android.graphics.drawable.GradientDrawable.Orientation.LEFT_RIGHT,
+            intArrayOf(0xFFE5484D.toInt(), 0xFFF5A524.toInt(), 0xFFF5D90A.toInt(), 0xFF8BD64A.toInt(), 0xFF2EBD6B.toInt())).apply { cornerRadius = dp(4).toFloat() }
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(8)).apply { topMargin = dp(10) }
+        izq.layoutParams = LinearLayout.LayoutParams(0, dp(8), 50f); der.layoutParams = LinearLayout.LayoutParams(0, dp(8), 50f)
+        addView(izq); addView(marca); addView(der)
+    }
+    page.addView(LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
+        setPadding(dp(16), dp(14), dp(16), dp(16))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(18) }
+        addView(TextView(context).apply { text = "Fear & Greed index"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC) })
+        addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; addView(tvFng); addView(tvFngC) })
+        addView(barra)
+    })
+
+    Thread {
+        val g = Mercado.global(); val f = Mercado.fearGreed()
+        runOnUiThread {
+            if (g != null) {
+                tMcap.first.text = abrev(g.mcap)
+                tMcap.second.text = "%s%.2f%%".format(if (g.cambio24h >= 0) "+" else "", g.cambio24h)
+                tMcap.second.setTextColor(if (g.cambio24h >= 0) AppTheme.OK else AppTheme.RED)
+                tVol.first.text = abrev(g.vol24h); tVol.second.text = "all coins"
+                tDom.first.text = "%.1f%%".format(g.btcDom); tDom.second.text = "of total cap"
+            } else listOf(tMcap, tVol, tDom).forEach { it.first.text = "—" }
+            if (f != null) {
+                val val0 = f.valor.coerceIn(0, 100)
+                tvFng.text = "$val0"; tvFngC.text = f.clasif
+                tvFng.setTextColor(when { val0 < 25 -> 0xFFE5484D.toInt(); val0 < 45 -> 0xFFF5A524.toInt(); val0 < 55 -> 0xFFF5D90A.toInt(); val0 < 75 -> 0xFF8BD64A.toInt(); else -> 0xFF2EBD6B.toInt() })
+                (izq.layoutParams as LinearLayout.LayoutParams).weight = val0.toFloat().coerceAtLeast(0.01f)
+                (der.layoutParams as LinearLayout.LayoutParams).weight = (100 - val0).toFloat().coerceAtLeast(0.01f)
+                barra.requestLayout()
+            } else { tvFng.text = "—"; tvFngC.text = "unavailable" }
+        }
+    }.start()
+
     // ── Top 10 (sin stablecoins) ──
     page.addView(TextView(this).apply {
         text = "TOP 10 · NO STABLECOINS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
@@ -179,44 +280,6 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             }
         }
     }.start()
-
-    // ── Funciones ──
-    page.addView(TextView(this).apply {
-        text = "FUNCTIONS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
-        typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(10))
-    })
-    data class Fn(val icono: Int, val titulo: String, val sub: String, val ir: () -> Unit)
-    val fns = listOf(
-        Fn(R.drawable.ic_search,   "Scanner",  "Scan addresses & keys")  { pestana(BottomBar.SCANNER) },
-        Fn(R.drawable.ic_puzzle,   "Puzzle",   "Bitcoin puzzle hunt")    { pestana(BottomBar.PUZZLE) },
-        Fn(R.drawable.ic_warning,  "Weak",     "Weak-key audit")         { pestana(BottomBar.WEAK) },
-        Fn(R.drawable.ic_recovery, "Recovery", "Recover a seed phrase")  { pestana(BottomBar.RECOVERY) },
-        Fn(R.drawable.ic_copy,     "Tools",    "Keys, tx, sign, audits") { startActivity(Intent(this, PubkeyToolsActivity::class.java)); overridePendingTransition(0, 0) },
-        Fn(R.drawable.ic_chip,     "Miner",    "Mine / solo lottery")    { pestana(BottomBar.MINER) },
-        Fn(R.drawable.ic_wallet,   "Wallet",   "Your keys & balance")    { pestana(BottomBar.WALLET) },
-        Fn(R.drawable.ic_core,     "Core",     "Engine & local node")    { pestana(BottomBar.CORE) }
-    )
-    fun tarjeta(f: Fn) = LinearLayout(this).apply {
-        orientation = LinearLayout.VERTICAL
-        background = Ui.cardBg(AppTheme.R_INNER, AppTheme.BG_CARD, context)
-        setPadding(dp(14), dp(14), dp(14), dp(14)); minimumHeight = dp(98)
-        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) }
-        isClickable = true; isFocusable = true; foreground = Ui.toque(); contentDescription = f.titulo
-        addView(FrameLayout(context).apply {
-            background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_ELEV, context)
-            layoutParams = LinearLayout.LayoutParams(dp(38), dp(38))
-            addView(Ui.icon(this@buildHomeTab, f.icono, 20, AppTheme.TXT_PRI).apply { layoutParams = FrameLayout.LayoutParams(dp(20), dp(20), Gravity.CENTER) })
-        })
-        addView(TextView(context).apply { text = f.titulo; textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, dp(2)) })
-        addView(TextView(context).apply { text = f.sub; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-        setOnClickListener { Ui.pulso(this); f.ir() }
-    }
-    for (par in fns.chunked(2)) {
-        val fila = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        for (f in par) fila.addView(tarjeta(f))
-        if (par.size == 1) { fila.minimumHeight = dp(108); fila.addView(View(this), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f).apply { setMargins(dp(5), dp(5), dp(5), dp(5)) }) }
-        page.addView(fila)
-    }
 
     return scroll
 }
