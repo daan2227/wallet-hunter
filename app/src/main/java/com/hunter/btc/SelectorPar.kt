@@ -49,6 +49,12 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
     fun pintar() {
         lista.removeAllViews()
         val q = et.text.toString().trim().lowercase()
+        if (modo == 2) {
+            val r = Favoritos.lista(this).filter { q.isEmpty() || it.simbolo.lowercase().contains(q) || it.nombre.lowercase().contains(q) }
+            if (r.isEmpty()) nota("Watchlist empty: open a pair and tap ☆ next to its name.")
+            else r.forEach { a -> val m = cacheTop.firstOrNull { it.activo.clave == a.clave }; fila(a, m?.precio, m?.cambio24h) }
+            return
+        }
         if (modo == 1) {
             val r = Mercado.BOLSA.filter { q.isEmpty() || it.simbolo.lowercase().contains(q) || it.nombre.lowercase().contains(q) }
             if (r.isEmpty()) nota("No match in the markets list.") else r.forEach { fila(it, null, null) }
@@ -79,7 +85,7 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
         } else if (r.isEmpty()) nota("No match.")
     }
 
-    caja.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks & markets" to null), 0) { k -> modo = k; pintar() }
+    caja.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks" to null, "★" to null), 0) { k -> modo = k; pintar() }
         .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
     caja.addView(et); caja.addView(scrollLista)
     caja.addView(TextView(this).apply {

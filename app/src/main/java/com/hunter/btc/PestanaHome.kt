@@ -51,10 +51,16 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val tvPrecio = TextView(this).apply { textSize = 28f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…" }
     val tvCambio = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(0, dp(2), 0, dp(8)) }
     val btnInfo = TextView(this).apply {
-        text = "ⓘ  Info"; textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); setTextColor(AppTheme.ACCENT2)
+        text = "ⓘ"; textSize = AppTheme.SP_BODY; typeface = AppTheme.bold(context); setTextColor(AppTheme.ACCENT2)
         background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(12), dp(6), dp(12), dp(6))
         isClickable = true; foreground = Ui.toque()
     }
+    fun iconoCab(t: String) = TextView(this).apply {
+        text = t; textSize = AppTheme.SP_BODY + 2f; gravity = Gravity.CENTER; setTextColor(AppTheme.TXT_SEC)
+        setPadding(dp(8), dp(4), dp(8), dp(4)); isClickable = true; foreground = Ui.toque()
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(2) }
+    }
+    val btnFav = iconoCab("☆"); val btnAlerta = iconoCab("🔔")
     val btnVivo = TextView(this).apply {
         textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context)
         background = Ui.cardBg(AppTheme.R_CHIP, AppTheme.BG_KEY, context); setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -64,7 +70,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     pagTrade.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
         tvPar.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-        addView(tvPar); addView(btnVivo); addView(btnInfo)
+        addView(tvPar); addView(btnFav); addView(btnAlerta); addView(btnVivo); addView(btnInfo)
     })
     pagTrade.addView(tvPrecio); pagTrade.addView(tvCambio)
 
@@ -82,6 +88,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
     tvPar.text = activo.par + "  ▾"
     btnInfo.setOnClickListener { abrirInfoActivo(activo) }
+    fun pintarFav() { val f = Favoritos.es(this, activo.clave); btnFav.text = if (f) "★" else "☆"; btnFav.setTextColor(if (f) AppTheme.WARN else AppTheme.TXT_SEC) }
+    pintarFav()
+    btnFav.setOnClickListener { val f = Favoritos.alternar(this, activo); pintarFav()
+        Toast.makeText(this, if (f) "${activo.simbolo} added to watchlist" else "${activo.simbolo} removed from watchlist", Toast.LENGTH_SHORT).show() }
+    btnAlerta.setOnClickListener { abrirAlertas(activo, chart.velasActuales().lastOrNull()?.c?.toDouble() ?: 0.0) }
     fun claveDib(a: Mercado.Activo) = "dibujos_" + a.clave
     val chart = GraficoTA(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -124,7 +135,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             runOnUiThread {
                 if (myTok != tok.get()) return@runOnUiThread
                 if (v.isEmpty()) { tvCambio.text = "Chart unavailable (data source unreachable)"; return@runOnUiThread }
-                chart.poner(v); panel?.tick(a.clave, v.last().c.toDouble())
+                chart.poner(v); panel?.tick(a.clave, v.last().c.toDouble()); comprobarAlertas(a.clave, v.last().c.toDouble())
                 mostrarPrecio(v, listOf("$iv candles", Mercado.avisoIntervalo(a, iv)).filter { it.isNotEmpty() }.joinToString(" · "))
             }
         }.start()
@@ -134,7 +145,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         scroll.smoothScrollTo(0, 0)
         if (a.clave == activo.clave) return
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
-        tvPar.text = a.par + "  ▾"; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
+        tvPar.text = a.par + "  ▾"; tvPrecio.text = "…"; pintarFav(); chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
         chart.poner(emptyList()); panel?.alCambiarActivo(); libroPanel?.alCambiarActivo(); cargar()
     }
@@ -265,7 +276,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     hVigia.postDelayed(object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.isShown) pt.vigilar()
+            if (scroll.isShown) { pt.vigilar(); vigilarAlertas(activo.clave) }
             hVigia.postDelayed(this, 20_000)
         }
     }, 1_500)
@@ -293,7 +304,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                             }
                         }
                         val minimo = Mercado.refrescoMinimoMs(a)
-                        chart.actualizar(out, quitadas); panel?.tick(a.clave, out.last().c.toDouble()); mostrarPrecio(out, if (refrescoMs < minimo) "live · every ${minimo / 1000}s for this source" else "live")
+                        chart.actualizar(out, quitadas); panel?.tick(a.clave, out.last().c.toDouble()); comprobarAlertas(a.clave, out.last().c.toDouble()); mostrarPrecio(out, if (refrescoMs < minimo) "live · every ${minimo / 1000}s for this source" else "live")
                     }
                 }.start()
             }
@@ -382,10 +393,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         text = "MARKETS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(8))
     })
-    var modoLista = prefsG.getInt("lista", 0).coerceIn(0, 1)
+    var modoLista = prefsG.getInt("lista", 0).coerceIn(0, 2)
     val tvNotaLista = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), dp(6), 0, dp(8)) }
     val notasLista = listOf("By market cap · stablecoins hidden · tap a coin to chart it vs USD",
-        "Indices, commodities, FX and large caps (Yahoo Finance) · tap to chart")
+        "Indices, commodities, FX and large caps (Yahoo Finance) · tap to chart",
+        "Your watchlist · add or remove pairs with ☆ next to the pair name")
     val contLista = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
@@ -447,7 +459,17 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         btnMas.text = "Loading…"; btnMas.isEnabled = false
         Thread {
             val items: List<Mercado.Moneda>; val avance: Int
-            if (modo == 0) {
+            if (modo == 2) {
+                val favs = if (desde == 0) Favoritos.lista(this) else emptyList()
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
+                val futs = favs.map { a -> pool.submit<Mercado.Moneda?> {
+                    if (a.tipo == Mercado.Tipo.BOLSA) bolsaCache[a.clave] ?: Mercado.cotizacion(a)?.also { bolsaCache[a.clave] = it }
+                    else synchronized(cripto) { cripto.firstOrNull { it.activo.clave == a.clave } } ?: Mercado.velas(a, "1h", 25).takeIf { it.size > 1 }?.let { v ->
+                        Mercado.Moneda(a, v.last().c.toDouble(), (v.last().c - v.first().o) / v.first().o * 100.0, FloatArray(v.size) { v[it].c }) }
+                } }
+                items = futs.mapNotNull { try { it.get(25, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { null } }
+                pool.shutdown(); avance = favs.size
+            } else if (modo == 0) {
                 items = synchronized(cripto) {
                     while (cripto.size < desde + 10) {
                         val pg = Mercado.topCripto(paginaCripto + 1, 100); if (pg.isEmpty()) break
@@ -467,17 +489,18 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                 if (myTok != tokLista.get()) return@runOnUiThread
                 if (desde == 0) contLista.removeAllViews()
                 if (items.isEmpty() && desde == 0)
-                    mensajeLista(if (modo == 0) "Market list unavailable (CoinGecko unreachable)." else "Quotes unavailable (Yahoo Finance unreachable).")
+                    mensajeLista(when (modo) { 0 -> "Market list unavailable (CoinGecko unreachable)."; 1 -> "Quotes unavailable (Yahoo Finance unreachable)."
+                        else -> if (Favoritos.lista(this).isEmpty()) "No pairs in your watchlist yet: open a pair and tap ☆ next to its name." else "Quotes unavailable right now." })
                 for (m in items) { if (numerados > 0) contLista.addView(separador()); numerados++; contLista.addView(filaMercado(numerados, m)) }
                 cursor = desde + avance
-                val fin = if (modo == 0) items.isEmpty() else cursor >= Mercado.BOLSA.size
+                val fin = when (modo) { 0 -> items.isEmpty(); 1 -> cursor >= Mercado.BOLSA.size; else -> true }
                 btnMas.isEnabled = true; btnMas.text = "Load more"
                 btnMas.visibility = if (fin) View.GONE else View.VISIBLE
             }
         }.start()
     }
 
-    pagMercado.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks & markets" to null), initial = modoLista) { k ->
+    pagMercado.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks" to null, "★ Watchlist" to null), initial = modoLista) { k ->
         if (k == modoLista) return@segmented
         modoLista = k; prefsG.edit().putInt("lista", k).apply(); tvNotaLista.text = notasLista[k]; mostrarMas(true)
     })
@@ -660,4 +683,64 @@ internal fun MainActivity.abrirInfoActivo(a: Mercado.Activo) {
             })
         }
     }.start()
+}
+
+/** Comprueba las alertas de un par con su precio en vivo; las cumplidas se avisan aquí también. */
+internal fun MainActivity.comprobarAlertas(clave: String, precio: Double) {
+    val t = Alertas.comprobar(this, clave, precio)
+    if (t.isNotEmpty()) Toast.makeText(this, t.joinToString("\n"), Toast.LENGTH_LONG).show()
+}
+
+/** Cada 20 s: precio de 1 min de los pares con alertas que no están en el gráfico. */
+internal fun MainActivity.vigilarAlertas(actual: String) {
+    val pares = Alertas.claves(this).filterKeys { it != actual }
+    if (pares.isEmpty()) return
+    Thread {
+        val precios = pares.mapNotNull { (clave, js) -> Mercado.Activo.deJson(js)?.let { a ->
+            Mercado.velas(a, "1m", 2).lastOrNull()?.let { clave to it.c.toDouble() } } }
+        runOnUiThread { precios.forEach { (c, p) -> comprobarAlertas(c, p) } }
+    }.start()
+}
+
+/** Alertas de precio: crear para el par abierto y ver / borrar todas. */
+internal fun MainActivity.abrirAlertas(a: Mercado.Activo, precio: Double) {
+    val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(4)) }
+    var tipo = 0
+    val et = Ui.input(this, "Price (USD)", true).apply {
+        inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL; setSingleLine() }
+    caja.addView(TextView(this).apply { text = "${a.par} · now ${if (precio > 0) fmtSim(precio) else "—"}"; textSize = AppTheme.SP_BODY
+        setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context); setPadding(0, 0, 0, dp(8)) })
+    caja.addView(Ui.segmented(this, listOf("Above" to null, "Below" to null, "Move %" to null), 0) { k -> tipo = k
+        et.hint = if (k == 2) "Move in % (e.g. 5)" else "Price (USD)" }
+        .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
+    caja.addView(et)
+    caja.addView(TextView(this).apply {
+        text = "Checked while the app is open: live for this pair, every 20 s for the others. Fires once, then it's removed."
+        textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(0, dp(4), 0, dp(10))
+    })
+    val lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    fun pintar() {
+        lista.removeAllViews()
+        val l = Alertas.lista(this)
+        lista.addView(TextView(this).apply { text = "ACTIVE ALERTS (${l.size})"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_SEC)
+            typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(0, dp(4), 0, dp(4)) })
+        if (l.isEmpty()) lista.addView(TextView(this).apply { text = "None."; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED) })
+        for (x in l) lista.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(4))
+            addView(TextView(context).apply { text = x.texto(); textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI)
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+            addView(TextView(context).apply { text = "✕"; textSize = AppTheme.SP_BODY; setTextColor(AppTheme.RED); setPadding(dp(10), dp(4), dp(6), dp(4))
+                isClickable = true; foreground = Ui.toque(); setOnClickListener { Alertas.borrar(this@abrirAlertas, x.id); pintar() } })
+        })
+    }
+    caja.addView(lista); pintar()
+    val dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Price alerts").setView(ScrollView(this).apply { addView(caja) })
+        .setPositiveButton("Add alert", null).setNegativeButton("Close", null).show()
+    dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+        val v = et.text.toString().replace(",", "").toDoubleOrNull() ?: 0.0
+        val err = Alertas.agregar(this, a, tipo, v, precio)
+        if (err != null) Toast.makeText(this, err, Toast.LENGTH_SHORT).show() else { et.setText(""); pintar() }
+    }
+    if (android.os.Build.VERSION.SDK_INT >= 33 && !Avisos.permitidos(this))
+        requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 7311)
 }
