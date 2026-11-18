@@ -22,7 +22,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
     scroll.addView(page)
 
-    page.addView(TextView(this).apply { text = "Hunter"; textSize = 26f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context) })
+    page.addView(TextView(this).apply { text = "DEx"; textSize = 26f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context) })
 
     // ── Pestañas de arriba: Spot · Futures · Markets ──
     val pagTrade = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
