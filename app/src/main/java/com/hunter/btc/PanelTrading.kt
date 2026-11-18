@@ -113,9 +113,6 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             })
         })
 
-        vista.addView(Ui.segmented(act, listOf("Spot" to null, "Futures" to null), if (futuros) 1 else 0) { k ->
-            futuros = k == 1; prefs.edit().putBoolean("futuros", futuros).apply(); refrescarFormulario()
-        }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) } })
 
         for ((b, esCompra) in listOf(btnCompra to true, btnVenta to false)) b.apply {
             textSize = AppTheme.SP_BODY; typeface = AppTheme.bold(act); gravity = Gravity.CENTER; setPadding(0, dp(10), 0, dp(10))
@@ -196,6 +193,12 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             })
             .setPositiveButton("Add") { _, _ -> val err = sim.agregarMargen(p.id, et.num()); if (err != null) aviso(err) else { guardar(); refrescar(); aviso("New liquidation: ${fmtSim(p.liquidacion)}") } }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Spot o Futuros: lo eligen las pestañas de arriba del Home. */
+    fun ponerModo(f: Boolean) {
+        if (f == futuros) return
+        futuros = f; prefs.edit().putBoolean("futuros", f).apply(); refrescarFormulario()
     }
 
     /** Precio elegido en el libro de órdenes: pasa a orden límite con ese precio. */

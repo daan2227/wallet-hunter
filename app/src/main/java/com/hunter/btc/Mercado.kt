@@ -238,7 +238,8 @@ object Mercado {
             for (i in 0 until arr.length()) {
                 val o = arr.getJSONObject(i)
                 val sim = o.optString("symbol", "").lowercase()
-                if (sim.isEmpty() || sim in STABLES) continue
+                // fuera stablecoins y tokens que no son pares negociables (p. ej. "FIGR_HELOC", préstamos tokenizados)
+                if (sim.isEmpty() || sim in STABLES || sim.contains('_')) continue
                 val sparkArr = o.optJSONObject("sparkline_in_7d")?.optJSONArray("price")
                 val spark = if (sparkArr != null) FloatArray(sparkArr.length()) { sparkArr.optDouble(it, 0.0).toFloat() } else FloatArray(0)
                 out.add(Moneda(Activo(Tipo.CRYPTO, sim.uppercase(), o.optString("name", sim.uppercase()), o.optString("id", "")),
@@ -247,6 +248,18 @@ object Mercado {
             out
         } catch (e: Throwable) { emptyList() }
     }
+    /** Búsqueda de criptos por nombre o símbolo (CoinGecko), más allá del top. */
+    fun buscarCripto(q: String): List<Activo> {
+        val js = httpGet("https://api.coingecko.com/api/v3/search?query=" + java.net.URLEncoder.encode(q, "UTF-8")) ?: return emptyList()
+        return try {
+            val arr = org.json.JSONObject(js).getJSONArray("coins")
+            (0 until minOf(arr.length(), 30)).mapNotNull { i -> val o = arr.getJSONObject(i)
+                val sim = o.optString("symbol").lowercase()
+                if (sim.isEmpty() || sim in STABLES || sim.contains('_')) null
+                else Activo(Tipo.CRYPTO, sim.uppercase(), o.optString("name", sim.uppercase()), o.optString("id")) }
+        } catch (e: Throwable) { emptyList() }
+    }
+
     /** Compatibilidad: primeras [n] del top cripto. */
     fun topMonedas(n: Int = 10): List<Moneda> = topCripto(1, 50).take(n)
 

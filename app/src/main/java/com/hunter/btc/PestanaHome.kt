@@ -24,8 +24,30 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     page.addView(TextView(this).apply { text = "Hunter"; textSize = 26f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context) })
 
+    // ── Pestañas de arriba: Spot · Futures · Markets ──
+    val pagTrade = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val pagMercado = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val prefsTab = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
+    var tabHome = prefsTab.getInt("tab", 0).coerceIn(0, 2)
+    var alCambiarTab: (Int) -> Unit = {}
+    val segTop = Ui.segmented(this, listOf("Spot" to null, "Futures" to null, "Markets" to null), tabHome) { k ->
+        tabHome = k; prefsTab.edit().putInt("tab", k).apply()
+        if (k < 2) prefsTab.edit().putInt("ultimo_trade", k).apply()
+        pagTrade.visibility = if (k < 2) View.VISIBLE else View.GONE
+        pagMercado.visibility = if (k == 2) View.VISIBLE else View.GONE
+        alCambiarTab(k)
+    }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10); bottomMargin = dp(4) } }
+    page.addView(segTop); page.addView(pagTrade); page.addView(pagMercado)
+    pagTrade.visibility = if (tabHome < 2) View.VISIBLE else View.GONE
+    pagMercado.visibility = if (tabHome == 2) View.VISIBLE else View.GONE
+    /** Desde Markets: abrir el par en la última pestaña de trading usada. */
+    fun irATrade() { val k = prefsTab.getInt("ultimo_trade", 0).coerceIn(0, 1); segTop.getChildAt(k).performClick() }
+
     // ── Activo seleccionado (cripto o bolsa) ──
-    val tvPar = TextView(this).apply { textSize = AppTheme.SP_BODY; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(context); setPadding(0, dp(10), 0, 0) }
+    val tvPar = TextView(this).apply {
+        textSize = 20f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context); setPadding(0, dp(12), 0, 0)
+        isClickable = true; foreground = Ui.toque()
+    }
     val tvPrecio = TextView(this).apply { textSize = 28f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.title(context); text = "…" }
     val tvCambio = TextView(this).apply { textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.body(context); setPadding(0, dp(2), 0, dp(8)) }
     val btnInfo = TextView(this).apply {
@@ -39,12 +61,12 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         isClickable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
     }
-    page.addView(LinearLayout(this).apply {
+    pagTrade.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM
         tvPar.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         addView(tvPar); addView(btnVivo); addView(btnInfo)
     })
-    page.addView(tvPrecio); page.addView(tvCambio)
+    pagTrade.addView(tvPrecio); pagTrade.addView(tvCambio)
 
     // ── Gráfico (config, dibujos e intervalo se guardan) ──
     val prefsG = getSharedPreferences("home_chart", android.content.Context.MODE_PRIVATE)
@@ -58,7 +80,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val visibles = 5
     var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
     var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
-    tvPar.text = activo.par
+    tvPar.text = activo.par + "  ▾"
     btnInfo.setOnClickListener { abrirInfoActivo(activo) }
     fun claveDib(a: Mercado.Activo) = "dibujos_" + a.clave
     val chart = GraficoTA(this).apply {
@@ -112,7 +134,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         scroll.smoothScrollTo(0, 0)
         if (a.clave == activo.clave) return
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
-        tvPar.text = a.par; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
+        tvPar.text = a.par + "  ▾"; tvPrecio.text = "…"; chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
         chart.poner(emptyList()); panel?.alCambiarActivo(); libroPanel?.alCambiarActivo(); cargar()
     }
@@ -177,7 +199,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         setPadding(dp(10), dp(4), dp(6), dp(4)); isClickable = true; foreground = Ui.toque()
         setOnClickListener { abrirAjustesTA(chart) { guardarCfg() } }
     }
-    page.addView(LinearLayout(this).apply {
+    pagTrade.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
         addView(HorizontalScrollView(context).apply {
@@ -228,8 +250,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }
     }
     marcarHerr = marcar
-    page.addView(chart)
-    page.addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); page.addView(filaHerr)
+    pagTrade.addView(chart)
+    pagTrade.addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); pagTrade.addView(filaHerr)
 
     // ── Simulador de trading (Spot / Futuros) ──
     val pt = PanelTrading(this, { activo }, { chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
@@ -237,8 +259,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Libro de órdenes y trades en vivo (tocar un precio → precio límite del simulador) ──
     val pl = PanelLibro(this, { activo }) { p -> pt.ponerPrecioLimite(p) }
     libroPanel = pl
-    page.addView(pl.vista)
-    page.addView(pt.vista)
+    pagTrade.addView(pl.vista)
+    pagTrade.addView(pt.vista)
     val hVigia = android.os.Handler(android.os.Looper.getMainLooper())
     hVigia.postDelayed(object : Runnable {
         override fun run() {
@@ -285,7 +307,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         x >= 1e12 -> "$%.2fT".format(x / 1e12); x >= 1e9 -> "$%.1fB".format(x / 1e9)
         x >= 1e6 -> "$%.1fM".format(x / 1e6); else -> "$%,.0f".format(x)
     }
-    page.addView(TextView(this).apply {
+    pagMercado.addView(TextView(this).apply {
         text = "CRYPTO MARKET"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), dp(18), 0, dp(10))
     })
@@ -305,7 +327,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val (cMcap, tMcap) = stat("Market cap")
     val (cVol, tVol) = stat("Volume 24h")
     val (cDom, tDom) = stat("BTC dominance")
-    page.addView(LinearLayout(this).apply {
+    pagMercado.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) }
         addView(cMcap); addView(cVol); addView(cDom)
@@ -324,7 +346,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         izq.layoutParams = LinearLayout.LayoutParams(0, dp(8), 50f); der.layoutParams = LinearLayout.LayoutParams(0, dp(8), 50f)
         addView(izq); addView(marca); addView(der)
     }
-    page.addView(LinearLayout(this).apply {
+    pagMercado.addView(LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = Ui.cardBg(AppTheme.R_CARD, AppTheme.BG_CARD, context)
         setPadding(dp(16), dp(14), dp(16), dp(16))
@@ -356,7 +378,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }.start()
 
     // ── Mercados: cripto o tradicional; tocar una fila abre su gráfico; "Load more" de 10 en 10 ──
-    page.addView(TextView(this).apply {
+    pagMercado.addView(TextView(this).apply {
         text = "MARKETS"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC)
         typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(8))
     })
@@ -388,7 +410,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     fun filaMercado(num: Int, m: Mercado.Moneda) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(10), dp(12), dp(10)); isClickable = true; foreground = Ui.toque()
-        setOnClickListener { Ui.pulso(this); seleccionar(m.activo) }
+        setOnClickListener { Ui.pulso(this); seleccionar(m.activo); irATrade() }
         addView(TextView(context).apply {
             text = "$num"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_MUTED); typeface = AppTheme.mono(context)
             layoutParams = LinearLayout.LayoutParams(dp(26), ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -455,14 +477,19 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }.start()
     }
 
-    page.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks & markets" to null), initial = modoLista) { k ->
+    pagMercado.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks & markets" to null), initial = modoLista) { k ->
         if (k == modoLista) return@segmented
         modoLista = k; prefsG.edit().putInt("lista", k).apply(); tvNotaLista.text = notasLista[k]; mostrarMas(true)
     })
     tvNotaLista.text = notasLista[modoLista]
-    page.addView(tvNotaLista); page.addView(contLista); page.addView(btnMas)
+    pagMercado.addView(tvNotaLista); pagMercado.addView(contLista); pagMercado.addView(btnMas)
     btnMas.setOnClickListener { mostrarMas(false) }
     mostrarMas(true)
+
+    // ── Selector de par (tocar el nombre del par) y modo Spot/Futures del simulador ──
+    tvPar.setOnClickListener { abrirSelectorPar { seleccionar(it) } }
+    alCambiarTab = { k -> if (k < 2) pt.ponerModo(k == 1) }
+    if (tabHome < 2) pt.ponerModo(tabHome == 1)
 
     return scroll
 }
