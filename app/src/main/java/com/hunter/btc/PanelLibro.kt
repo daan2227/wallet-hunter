@@ -26,11 +26,13 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     private var nivelTick = prefs.getInt("libro_tick", 0)
 
     val vista = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(16), 0, 0) }
-    private val tvEstado = TextView(act).apply { textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), dp(6), 0, 0) }
+    private val tvEstado = TextView(act).apply { textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(dp(2), dp(6), 0, 0) }
     private val libroV = VistaLibro(act)
     private val tradesV = VistaTrades(act)
     private val filaTick = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
 
+    /** Mejor compra y mejor venta del último libro (para pintarlas en el gráfico). */
+    var alMejores: ((Double?, Double?) -> Unit)? = null
     private var libro: Mercado.Libro? = null
     private var trades: List<Mercado.Trade> = emptyList()
     private var claveDatos = ""
@@ -39,10 +41,10 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
 
     init {
         vista.addView(TextView(act).apply {
-            text = "MARKET DEPTH"; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); typeface = AppTheme.bold(act)
-            letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(8))
+            text = "Market depth"; textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(act)
+            letterSpacing = 0f; setPadding(dp(2), 0, 0, dp(8))
         })
-        vista.addView(Ui.segmented(act, listOf("Order book" to null, "Trades" to null), if (pestanaTrades) 1 else 0) { k ->
+        vista.addView(DexTema.pestanas(act, listOf("Order book" to null, "Trades" to null), if (pestanaTrades) 1 else 0) { k ->
             pestanaTrades = k == 1; prefs.edit().putBoolean("libro_trades", pestanaTrades).apply(); mostrar(); pedir()
         }.apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
         vista.addView(HorizontalScrollView(act).apply { isHorizontalScrollBarEnabled = false; addView(filaTick)
@@ -78,15 +80,15 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
         if (filaTick.childCount == ts.size && filaTick.tag == fmtTick(ts[0])) return
         filaTick.removeAllViews(); filaTick.tag = fmtTick(ts[0])
         nivelTick = nivelTick.coerceIn(0, ts.size - 1)
-        filaTick.addView(TextView(act).apply { text = "Group"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(2), 0, dp(8), 0) })
+        filaTick.addView(TextView(act).apply { text = "Group"; textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(dp(2), 0, dp(8), 0) })
         ts.forEachIndexed { k, t ->
             filaTick.addView(TextView(act).apply {
                 text = fmtTick(t); textSize = AppTheme.SP_MICRO; gravity = Gravity.CENTER; typeface = AppTheme.mono(act)
                 setPadding(dp(9), dp(4), dp(9), dp(4)); isClickable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(5) }
                 val on = k == nivelTick
-                background = Ui.cardBg(AppTheme.R_CHIP, if (on) AppTheme.BG_KEY else AppTheme.BG_CARD, act)
-                setTextColor(if (on) AppTheme.TXT_PRI else AppTheme.TXT_SEC)
+                background = Ui.cardBg(AppTheme.R_CHIP, if (on) DexTema.CHIP else DexTema.SURFACE, act)
+                setTextColor(if (on) DexTema.TXT else DexTema.TXT2)
                 setOnClickListener { nivelTick = k; prefs.edit().putInt("libro_tick", k).apply(); filaTick.tag = null; pintarTicks(precio); aplicar() }
             })
         }
@@ -132,6 +134,7 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
             pintarTicks(ref)
             val tick = ticks(ref)[nivelTick.coerceIn(0, 4)]
             libroV.poner(Mercado.Libro(agrupar(l.bids, tick, false), agrupar(l.asks, tick, true), l.fuente), ultimo, previo)
+            alMejores?.invoke(l.bids.firstOrNull()?.first, l.asks.firstOrNull()?.first)
         }
         tradesV.poner(trades)
     }
@@ -160,7 +163,7 @@ class VistaLibro(ctx: Context) : View(ctx) {
     private val zonas = ArrayList<Triple<Float, Float, Double>>()
 
     private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d; typeface = AppTheme.mono(ctx) }
-    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10f * d; color = AppTheme.TXT_MUTED; typeface = AppTheme.body(ctx) }
+    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
     private val pBarra = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pGrande = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 17f * d; typeface = AppTheme.bold(ctx) }
 
@@ -188,17 +191,17 @@ class VistaLibro(ctx: Context) : View(ctx) {
             pBarra.color = alfa(color, 0x26); c.drawRect(w - (w * (ac / max)).toFloat(), y + 1f * d, w, y + altoFila - 1f * d, pBarra)
             val yt = y + altoFila * 0.7f
             pTxt.color = color; pTxt.textAlign = Paint.Align.LEFT; c.drawText(fmtLibroPrecio(p), 0f, yt, pTxt)
-            pTxt.color = AppTheme.TXT_PRI; pTxt.textAlign = Paint.Align.RIGHT; c.drawText(fmtLibroQty(q), w * 0.66f, yt, pTxt)
-            pTxt.color = AppTheme.TXT_SEC; c.drawText(fmtLibroQty(ac), w, yt, pTxt)
+            pTxt.color = DexTema.TXT; pTxt.textAlign = Paint.Align.RIGHT; c.drawText(fmtLibroQty(q), w * 0.66f, yt, pTxt)
+            pTxt.color = DexTema.TXT2; c.drawText(fmtLibroQty(ac), w, yt, pTxt)
             zonas.add(Triple(y, y + altoFila, p)); y += altoFila
         }
         // asks de más caro a más barato (el mejor justo encima del precio)
         val vacias = filas - asks.size; y += vacias * altoFila
-        for (i in asks.indices.reversed()) fila(asks[i].first, asks[i].second, acA[i], AppTheme.RED)
+        for (i in asks.indices.reversed()) fila(asks[i].first, asks[i].second, acA[i], DexTema.DOWN)
         // precio y spread
         val mejorA = asks.firstOrNull()?.first; val mejorB = bids.firstOrNull()?.first
         val ref = if (ultimo > 0) ultimo else if (mejorA != null && mejorB != null) (mejorA + mejorB) / 2 else 0.0
-        pGrande.color = if (ultimo >= previo) AppTheme.OK else AppTheme.RED; pGrande.textAlign = Paint.Align.LEFT
+        pGrande.color = if (ultimo >= previo) DexTema.UP else DexTema.DOWN; pGrande.textAlign = Paint.Align.LEFT
         val ym = y + 34f * d * 0.62f
         c.drawText(fmtLibroPrecio(ref) + if (ultimo > 0) (if (ultimo >= previo) " ↑" else " ↓") else "", 0f, ym, pGrande)
         if (mejorA != null && mejorB != null) {
@@ -207,17 +210,17 @@ class VistaLibro(ctx: Context) : View(ctx) {
             c.drawText("Spread %s (%.3f%%)".format(fmtLibroPrecio(sp), if (mejorB > 0) sp / mejorB * 100 else 0.0), w, ym, pCab)
         }
         y += 34f * d
-        for (i in bids.indices) fila(bids[i].first, bids[i].second, acB[i], AppTheme.OK)
+        for (i in bids.indices) fila(bids[i].first, bids[i].second, acB[i], DexTema.UP)
         y += (filas - bids.size) * altoFila
         // proporción compra/venta en lo visible
         val sb = acB.lastOrNull() ?: 0.0; val sa = acA.lastOrNull() ?: 0.0
         if (sa + sb > 0) {
             val fb = (sb / (sa + sb)).toFloat(); val yb = y + 8f * d; val alto = 14f * d
-            pBarra.color = alfa(AppTheme.OK, 0x55); c.drawRect(0f, yb, w * fb, yb + alto, pBarra)
-            pBarra.color = alfa(AppTheme.RED, 0x55); c.drawRect(w * fb, yb, w, yb + alto, pBarra)
+            pBarra.color = alfa(DexTema.UP, 0x55); c.drawRect(0f, yb, w * fb, yb + alto, pBarra)
+            pBarra.color = alfa(DexTema.DOWN, 0x55); c.drawRect(w * fb, yb, w, yb + alto, pBarra)
             pTxt.textSize = 10f * d
-            pTxt.color = AppTheme.OK; pTxt.textAlign = Paint.Align.LEFT; c.drawText("B %.0f%%".format(fb * 100), 4f * d, yb + alto * 0.75f, pTxt)
-            pTxt.color = AppTheme.RED; pTxt.textAlign = Paint.Align.RIGHT; c.drawText("%.0f%% S".format((1 - fb) * 100), w - 4f * d, yb + alto * 0.75f, pTxt)
+            pTxt.color = DexTema.UP; pTxt.textAlign = Paint.Align.LEFT; c.drawText("B %.0f%%".format(fb * 100), 4f * d, yb + alto * 0.75f, pTxt)
+            pTxt.color = DexTema.DOWN; pTxt.textAlign = Paint.Align.RIGHT; c.drawText("%.0f%% S".format((1 - fb) * 100), w - 4f * d, yb + alto * 0.75f, pTxt)
             pTxt.textSize = 11f * d
         }
     }
@@ -238,7 +241,7 @@ class VistaTrades(ctx: Context) : View(ctx) {
     private val altoFila = 18f * d
     private var datos: List<Mercado.Trade> = emptyList()
     private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11f * d; typeface = AppTheme.mono(ctx) }
-    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10f * d; color = AppTheme.TXT_MUTED; typeface = AppTheme.body(ctx) }
+    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 10f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
     private val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
 
     fun poner(t: List<Mercado.Trade>) { datos = t; invalidate() }
@@ -252,9 +255,9 @@ class VistaTrades(ctx: Context) : View(ctx) {
         var y = 18f * d
         for (t in datos.take(filas)) {
             val yt = y + altoFila * 0.7f
-            pTxt.color = AppTheme.TXT_SEC; pTxt.textAlign = Paint.Align.LEFT; c.drawText(sdf.format(java.util.Date(t.t)), 0f, yt, pTxt)
-            pTxt.color = if (t.compra) AppTheme.OK else AppTheme.RED; pTxt.textAlign = Paint.Align.RIGHT; c.drawText(fmtLibroPrecio(t.precio), w * 0.62f, yt, pTxt)
-            pTxt.color = AppTheme.TXT_PRI; c.drawText(fmtLibroQty(t.qty), w, yt, pTxt)
+            pTxt.color = DexTema.TXT2; pTxt.textAlign = Paint.Align.LEFT; c.drawText(sdf.format(java.util.Date(t.t)), 0f, yt, pTxt)
+            pTxt.color = if (t.compra) DexTema.UP else DexTema.DOWN; pTxt.textAlign = Paint.Align.RIGHT; c.drawText(fmtLibroPrecio(t.precio), w * 0.62f, yt, pTxt)
+            pTxt.color = DexTema.TXT; c.drawText(fmtLibroQty(t.qty), w, yt, pTxt)
             y += altoFila
         }
     }

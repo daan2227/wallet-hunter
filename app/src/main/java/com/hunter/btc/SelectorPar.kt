@@ -17,7 +17,7 @@ private var cacheTopT = 0L
 internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
     var modo = 0
     val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(6), dp(16), 0) }
-    val et = Ui.input(this, "Search coin or symbol (e.g. BTC, Solana)").apply { setSingleLine() }
+    val et = DexTema.campo(this, "Search coin or symbol (e.g. BTC, Solana)").apply { setSingleLine() }
     val lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     val scrollLista = ScrollView(this).apply {
         addView(lista)
@@ -26,7 +26,7 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
     var dlg: androidx.appcompat.app.AlertDialog? = null
     val tokBusqueda = java.util.concurrent.atomic.AtomicInteger(0)
 
-    fun nota(t: String) = lista.addView(TextView(this).apply { text = t; textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_SEC); setPadding(dp(4), dp(12), dp(4), dp(12)) })
+    fun nota(t: String) = lista.addView(TextView(this).apply { text = t; textSize = AppTheme.SP_CAPTION; setTextColor(DexTema.TXT2); setPadding(dp(4), dp(12), dp(4), dp(12)) })
     fun fila(a: Mercado.Activo, precio: Double?, cambio: Double?) = lista.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(4), dp(10), dp(4), dp(10)); isClickable = true; foreground = Ui.toque()
@@ -34,15 +34,15 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
         addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(TextView(context).apply { text = if (a.tipo == Mercado.Tipo.CRYPTO) "${a.simbolo} / USD" else a.simbolo
-                textSize = AppTheme.SP_BODY - 1f; setTextColor(AppTheme.TXT_PRI); typeface = AppTheme.bold(context) })
-            addView(TextView(context).apply { text = a.nombre; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); maxLines = 1 })
+                textSize = AppTheme.SP_BODY - 1f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context) })
+            addView(TextView(context).apply { text = a.nombre; textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); maxLines = 1 })
         })
         if (precio != null && precio > 0) addView(LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL; gravity = Gravity.END
             addView(TextView(context).apply { text = if (precio >= 1) "$%,.2f".format(precio) else "$%.6g".format(precio)
-                textSize = AppTheme.SP_CAPTION; setTextColor(AppTheme.TXT_PRI); gravity = Gravity.END })
+                textSize = AppTheme.SP_CAPTION; setTextColor(DexTema.TXT); gravity = Gravity.END })
             if (cambio != null) addView(TextView(context).apply { text = "%s%.2f%%".format(if (cambio >= 0) "+" else "", cambio)
-                textSize = AppTheme.SP_MICRO; setTextColor(if (cambio >= 0) AppTheme.OK else AppTheme.RED); gravity = Gravity.END })
+                textSize = AppTheme.SP_MICRO; setTextColor(if (cambio >= 0) DexTema.UP else DexTema.DOWN); gravity = Gravity.END })
         })
     })
 
@@ -75,7 +75,7 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
                         if (mio != tokBusqueda.get() || modo != 0) return@runOnUiThread
                         if (r.isEmpty()) lista.removeAllViews()
                         if (extra.isNotEmpty()) {
-                            lista.addView(TextView(this).apply { text = "MORE RESULTS"; textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED)
+                            lista.addView(TextView(this).apply { text = "MORE RESULTS"; textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2)
                                 typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(4), dp(12), 0, dp(2)) })
                             extra.forEach { fila(it, null, null) }
                         } else if (r.isEmpty()) nota("No coin found for \"$q\".")
@@ -85,19 +85,19 @@ internal fun MainActivity.abrirSelectorPar(alElegir: (Mercado.Activo) -> Unit) {
         } else if (r.isEmpty()) nota("No match.")
     }
 
-    caja.addView(Ui.segmented(this, listOf("Crypto" to null, "Stocks" to null, "★" to null), 0) { k -> modo = k; pintar() }
+    caja.addView(DexTema.pestanas(this, listOf("Crypto" to null, "Stocks" to null, "★" to null), 0) { k -> modo = k; pintar() }
         .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
     caja.addView(et); caja.addView(scrollLista)
     caja.addView(TextView(this).apply {
         text = "Crypto pairs trade against USD (Binance USDT books). The chart, order book and simulator switch to the chosen pair."
-        textSize = AppTheme.SP_MICRO; setTextColor(AppTheme.TXT_MUTED); setPadding(dp(4), dp(6), 0, 0)
+        textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(dp(4), dp(6), 0, 0)
     })
     et.addTextChangedListener(object : android.text.TextWatcher {
         override fun afterTextChanged(e: android.text.Editable?) = pintar()
         override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
     })
-    dlg = androidx.appcompat.app.AlertDialog.Builder(this).setTitle("Select pair").setView(caja)
+    dlg = DexTema.dialogo(this).setTitle("Select pair").setView(caja)
         .setNegativeButton("Close", null).show()
     pintar()
 

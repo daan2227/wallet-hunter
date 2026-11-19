@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Libro (guía de velas). Trazo 1.8 en rejilla de 24, como el resto de iconos; se tiñe desde el código. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="#F2F2F2">
+    <path android:pathData="M5 4.5h11a2 2 0 0 1 2 2V20H7a2 2 0 0 1-2-2z" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M5 18a2 2 0 0 1 2-2h11M9.5 4.5v6l2-1.5 2 1.5v-6" android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="1.8" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

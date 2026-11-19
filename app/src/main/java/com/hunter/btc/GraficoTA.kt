@@ -92,10 +92,22 @@ class GraficoTA(ctx: Context) : View(ctx) {
     var mostrarCuenta = true
     private val d = resources.displayMetrics.density
     private val padLpx = 2f * d
-    private val padRpx = 56f * d
+    private val padRpx = 66f * d
     private val padTpx = 6f * d
     private val padBpx = 16f * d
-    private val alturaPrecio = 240f * d
+    /** Alto del panel de precio en dp (ajuste "Height": 180 / 240 / 340). */
+    var alturaPrecioDp = 240f
+        set(v) { field = v; requestLayout(); invalidate() }
+    private val alturaPrecio get() = alturaPrecioDp * d
+    /** Colores y estilo de velas (ajuste "Interface"). */
+    var cUp = DexTema.UP; var cDown = DexTema.DOWN
+    var huecaAlcista = false; var huecaBajista = false
+    /** Zona horaria de las etiquetas de tiempo. */
+    var zona: java.util.TimeZone = java.util.TimeZone.getDefault()
+        set(v) { field = v; cal.timeZone = v; listOf(sdfAnio, sdfMesC, sdfDiaM, sdfHora, sdfSeg, sdfCruzD, sdfCruzH, sdfCruzS).forEach { it.timeZone = v }; invalidate() }
+    /** Líneas extra (mejor compra / venta del libro). */
+    var lineasExtra: List<LineaPrecio> = emptyList()
+        set(v) { field = v; invalidate() }
     private val alturaPanel = 78f * d
     private val gapPx = 8f * d
     private var desde = 0f
@@ -209,14 +221,14 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private val pFill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pWick = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1f * d; style = Paint.Style.STROKE }
     private val pLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.4f * d; style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
-    private val pGuide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_MUTED; strokeWidth = 0.8f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f) }
-    private val pGrid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = (AppTheme.TXT_MUTED and 0x00FFFFFF) or 0x24000000; strokeWidth = 1f * d }
-    private val lbl = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_MUTED; textSize = 9f * d; typeface = AppTheme.mono(ctx) }
+    private val pGuide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; strokeWidth = 0.8f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f) }
+    private val pGrid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.GRID; strokeWidth = 1f * d }
+    private val lbl = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; textSize = 10.5f * d; typeface = AppTheme.mono(ctx) }
     private val pDib = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.ACCENT; strokeWidth = 1.6f * d; style = Paint.Style.STROKE }
-    private val pNota = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_PRI; textSize = 10.5f * d; typeface = AppTheme.bold(ctx) }
+    private val pNota = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT; textSize = 10.5f * d; typeface = AppTheme.bold(ctx) }
     private val pNotaBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
-    private val pCruz = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_SEC; strokeWidth = 0.9f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 3f * d), 0f) }
-    private val pTip = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.TXT_PRI; textSize = 10.5f * d; typeface = AppTheme.mono(ctx) }
+    private val pCruz = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; strokeWidth = 0.9f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 3f * d), 0f) }
+    private val pTip = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT; textSize = 10.5f * d; typeface = AppTheme.mono(ctx) }
     private val pTag = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF0B0E11.toInt(); textSize = 9.5f * d; typeface = AppTheme.mono(ctx) }
     private val pUltimo = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(3f * d, 3f * d), 0f) }
 
@@ -294,7 +306,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
         if (histo != null) {
             val zy = y(0f.coerceIn(lo, hi)); val medio = ((w - padLpx - padRpx) / cuantas * 0.34f).coerceIn(0.5f * d, 7f * d)
             for (i in i0..i1) { val hv = histo[i]; if (hv.isNaN()) continue
-                pFill.color = alfa(if (hv >= 0) AppTheme.OK else AppTheme.RED, 0x88)
+                pFill.color = alfa(if (hv >= 0) cUp else cDown, 0x88)
                 c.drawRect(xf(i) - medio, minOf(zy, y(hv)), xf(i) + medio, maxOf(zy, y(hv)), pFill) }
         }
         for ((s, col) in series) linea(c, s, col, i0, i1, xf, y)
@@ -305,7 +317,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
 
     override fun onDraw(c: Canvas) {
         val v = velas
-        if (v.size < 2) { lbl.textSize = 12f * d; c.drawText("Loading candles…", padLpx + 8f * d, 40f * d, lbl); lbl.textSize = 9f * d; return }
+        if (v.size < 2) { lbl.textSize = 12f * d; c.drawText("Loading candles…", padLpx + 8f * d, 40f * d, lbl); lbl.textSize = 10.5f * d; return }
         clamp()
         val n = v.size
         val op = FloatArray(n) { v[it].o }; val hi = FloatArray(n) { v[it].h }; val lo = FloatArray(n) { v[it].l }
@@ -332,10 +344,13 @@ class GraficoTA(ctx: Context) : View(ctx) {
         for (g in 0..4) { val p = minL + (maxH - minL) * g / 4; c.drawLine(padLpx, yP(p), w - padRpx, yP(p), pGrid) }
         for ((i, _) in marcas) c.drawLine(xf(i), pTop, xf(i), pBot, pGrid)
         for (i in i0..i1) {
-            val up = cl[i] >= op[i]; val col = if (up) AppTheme.OK else AppTheme.RED
+            val up = cl[i] >= op[i]; val col = if (up) cUp else cDown
             val x = xf(i); pWick.color = col; c.drawLine(x, yP(hi[i]), x, yP(lo[i]), pWick)
-            pFill.color = col; var t = yP(maxOf(op[i], cl[i])); var b = yP(minOf(op[i], cl[i])); if (b - t < 1f * d) { t -= 0.5f * d; b += 0.5f * d }
-            c.drawRect(x - medio, t, x + medio, b, pFill)
+            var t = yP(maxOf(op[i], cl[i])); var b = yP(minOf(op[i], cl[i])); if (b - t < 1f * d) { t -= 0.5f * d; b += 0.5f * d }
+            if (if (up) huecaAlcista else huecaBajista) {
+                pFill.color = DexTema.BG; c.drawRect(x - medio, t, x + medio, b, pFill)       // tapa la mecha dentro del cuerpo
+                pWick.color = col; c.drawRect(x - medio, t, x + medio, b, pWick)
+            } else { pFill.color = col; c.drawRect(x - medio, t, x + medio, b, pFill) }
         }
         if (cfg.bb) { val bb = Indicadores.bollinger(cl, cfg.bbN, cfg.bbK)
             linea(c, bb.alta, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true); linea(c, bb.media, alfa(AppTheme.BLUE, 0x88), i0, i1, xf, yP)
@@ -352,27 +367,27 @@ class GraficoTA(ctx: Context) : View(ctx) {
             0 -> { val y = yP(dj.p1); c.drawLine(padLpx, y, w - padRpx, y, pDib) }
             1 -> c.drawLine(xfF(idxDeT(dj.t1)), yP(dj.p1), xfF(idxDeT(dj.t2)), yP(dj.p2), pDib)
             2 -> { val x = xfF(idxDeT(dj.t1)); val y = yP(dj.p1); val tw = pNota.measureText(dj.texto)
-                pNotaBg.color = alfa(AppTheme.BG_ELEV, 0xE6)
+                pNotaBg.color = alfa(DexTema.CHIP, 0xE6)
                 c.drawRoundRect(x - 3f * d, y - 13f * d, x + tw + 5f * d, y + 4f * d, 4f * d, 4f * d, pNotaBg)
                 pFill.color = AppTheme.ACCENT; c.drawCircle(x - 3f * d, y, 2.5f * d, pFill)
                 c.drawText(dj.texto, x + 1f * d, y, pNota) }
         }
         pendiente?.let { (t, p) -> pFill.color = AppTheme.ACCENT; c.drawCircle(xfF(idxDeT(t)), yP(p), 4f * d, pFill) }
-        for (lp in lineasPrecio) if (lp.precio in minL..maxH) {
+        for (lp in lineasPrecio + lineasExtra) if (lp.precio in minL..maxH) {
             val y = yP(lp.precio); pUltimo.color = lp.color; c.drawLine(padLpx, y, w - padRpx, y, pUltimo)
             val tw = lbl.measureText(lp.texto); pFill.color = alfa(lp.color, 0xDD)
             c.drawRoundRect(padLpx + 2f * d, y - 7f * d, padLpx + tw + 8f * d, y + 6f * d, 3f * d, 3f * d, pFill)
-            lbl.color = 0xFF0B0E11.toInt(); c.drawText(lp.texto, padLpx + 5f * d, y + 3f * d, lbl); lbl.color = AppTheme.TXT_MUTED
+            lbl.color = 0xFF0B0E11.toInt(); c.drawText(lp.texto, padLpx + 5f * d, y + 3f * d, lbl); lbl.color = DexTema.TXT2
         }
         // máximo y mínimo de lo visible
         run {
             var iH = i0; var iL = i0; for (i in i0..i1) { if (hi[i] > hi[iH]) iH = i; if (lo[i] < lo[iL]) iL = i }
             fun marca(i: Int, p: Float, arriba: Boolean) {
                 val x = xf(i); val y = yP(p) + if (arriba) -2f * d else 9f * d; val txt = fmtFull(p); val tw = lbl.measureText(txt)
-                lbl.color = AppTheme.TXT_SEC
-                if (x > padLpx + gw / 2) { c.drawLine(x - 10f * d, yP(p), x - 2f * d, yP(p), pWick.apply { color = AppTheme.TXT_SEC }); c.drawText(txt, x - 12f * d - tw, y + if (arriba) 2f * d else -6f * d, lbl) }
-                else { c.drawLine(x + 2f * d, yP(p), x + 10f * d, yP(p), pWick.apply { color = AppTheme.TXT_SEC }); c.drawText(txt, x + 12f * d, y + if (arriba) 2f * d else -6f * d, lbl) }
-                lbl.color = AppTheme.TXT_MUTED
+                lbl.color = DexTema.TXT2
+                if (x > padLpx + gw / 2) { c.drawLine(x - 10f * d, yP(p), x - 2f * d, yP(p), pWick.apply { color = DexTema.TXT2 }); c.drawText(txt, x - 12f * d - tw, y + if (arriba) 2f * d else -6f * d, lbl) }
+                else { c.drawLine(x + 2f * d, yP(p), x + 10f * d, yP(p), pWick.apply { color = DexTema.TXT2 }); c.drawText(txt, x + 12f * d, y + if (arriba) 2f * d else -6f * d, lbl) }
+                lbl.color = DexTema.TXT2
             }
             marca(iH, hi[iH], true); marca(iL, lo[iL], false)
         }
@@ -381,22 +396,25 @@ class GraficoTA(ctx: Context) : View(ctx) {
         // eje de precio + línea del último precio + valores de dibujos horizontales
         for (g in 0..4) { val p = minL + (maxH - minL) * g / 4; c.drawText(fmtP(p), w - padRpx + 3f * d, yP(p) + 3f * d, lbl) }
         val ult = cl[n - 1]; if (ult in minL..maxH) {
-            val col = if (cl[n - 1] >= op[n - 1]) AppTheme.OK else AppTheme.RED
+            val col = if (cl[n - 1] >= op[n - 1]) cUp else cDown
             pUltimo.color = col; c.drawLine(padLpx, yP(ult), w - padRpx, yP(ult), pUltimo)
             pFill.color = col; val ty = yP(ult)
             val cierre = if (intervaloSeg >= 2_419_200L) java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).run {
                 timeInMillis = v[n - 1].t * 1000; add(java.util.Calendar.MONTH, 1); timeInMillis / 1000 } else v[n - 1].t + intervaloSeg
             val resta = cierre - System.currentTimeMillis() / 1000
             val cuenta = if (mostrarCuenta && resta in 1..(cierre - v[n - 1].t + 5)) when {
-                resta >= 86_400 -> "%dd %02d:%02d".format(resta / 86_400, resta % 86_400 / 3600, resta % 3600 / 60)
+                resta >= 86_400 -> "%dD:%02dH".format(resta / 86_400, resta % 86_400 / 3600)
                 resta >= 3600 -> "%02d:%02d:%02d".format(resta / 3600, resta % 3600 / 60, resta % 60)
                 else -> "%02d:%02d".format(resta / 60, resta % 60) } else null
-            c.drawRect(w - padRpx + 1f * d, ty - 7f * d, w - 1f * d, ty + if (cuenta != null) 16f * d else 6f * d, pFill)
-            lbl.color = 0xFFFFFFFF.toInt(); c.drawText(fmtP(ult), w - padRpx + 3f * d, ty + 3f * d, lbl)
+            // etiqueta como en los exchanges: caja negra con borde claro, precio y cuenta atrás
+            val abajo = ty + if (cuenta != null) 17f * d else 7f * d
+            pFill.color = DexTema.BG; c.drawRoundRect(w - padRpx + 1f * d, ty - 8f * d, w - 1f * d, abajo, 2f * d, 2f * d, pFill)
+            pWick.color = DexTema.TXT; c.drawRoundRect(w - padRpx + 1f * d, ty - 8f * d, w - 1f * d, abajo, 2f * d, 2f * d, pWick)
+            lbl.color = DexTema.TXT; c.drawText(fmtP(ult), w - padRpx + 3f * d, ty + 3f * d, lbl)
             if (cuenta != null) { c.drawText(cuenta, w - padRpx + 3f * d, ty + 13f * d, lbl); postInvalidateDelayed(1000) }
-            lbl.color = AppTheme.TXT_MUTED
+            lbl.color = DexTema.TXT2
         }
-        for (dj in dibujos) if (dj.tipo == 0 && dj.p1 in minL..maxH) { lbl.color = AppTheme.ACCENT; c.drawText(fmtP(dj.p1), padLpx + 2f * d, yP(dj.p1) - 3f * d, lbl); lbl.color = AppTheme.TXT_MUTED }
+        for (dj in dibujos) if (dj.tipo == 0 && dj.p1 in minL..maxH) { lbl.color = AppTheme.ACCENT; c.drawText(fmtP(dj.p1), padLpx + 2f * d, yP(dj.p1) - 3f * d, lbl); lbl.color = DexTema.TXT2 }
         if (etiquetas.isNotEmpty()) c.drawText(etiquetas.toString().trim(), padLpx + 2f * d, pTop + 10f * d, lbl)
 
         // ── PANELES ──
@@ -404,7 +422,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
         fun sig(): Pair<Float, Float> { val t = y0; val b = y0 + alturaPanel; y0 = b + gapPx; return t to b }
         if (cfg.vol) { val (t, b) = sig()
             var mv = 0f; for (i in i0..i1) if (vo[i] > mv) mv = vo[i]; if (mv <= 0f) mv = 1f
-            for (i in i0..i1) { pFill.color = alfa(if (cl[i] >= op[i]) AppTheme.OK else AppTheme.RED, 0x66)
+            for (i in i0..i1) { pFill.color = alfa(if (cl[i] >= op[i]) cUp else cDown, 0x66)
                 val bh = (b - t) * (vo[i] / mv); c.drawRect(xf(i) - medio, b - bh, xf(i) + medio, b, pFill) }
             c.drawText("Volume", padLpx, t + 9f * d, lbl); c.drawText(fmtP(mv), w - padRpx + 3f * d, t + 8f * d, lbl); c.drawLine(padLpx, b, w - padRpx, b, pGrid) }
         if (cfg.rsi) { val (t, b) = sig(); panel(c, t, b, "RSI ${cfg.rsiN}", i0, i1, xf, w, listOf(Indicadores.rsi(cl, cfg.rsiN) to AppTheme.WARN), 0f to 100f, listOf(30f, 70f)) }
@@ -424,18 +442,18 @@ class GraficoTA(ctx: Context) : View(ctx) {
             val x = (xf(i) - tw / 2).coerceIn(padLpx, w - padRpx - tw)
             if (x < ultX + 6f * d) continue
             val fuerte = niv <= 3
-            lbl.color = if (fuerte) AppTheme.TXT_PRI else AppTheme.TXT_MUTED; lbl.isFakeBoldText = niv == 0
+            lbl.color = if (fuerte) DexTema.TXT else DexTema.TXT2; lbl.isFakeBoldText = niv == 0
             c.drawText(txt, x, yT, lbl); ultX = x + tw
             if (cfg.paneles() > 0) c.drawLine(xf(i), pBot + gapPx, xf(i), y0 - gapPx, pGrid)
         }
-        lbl.color = AppTheme.TXT_MUTED; lbl.isFakeBoldText = false
+        lbl.color = DexTema.TXT2; lbl.isFakeBoldText = false
 
         // ── Cruz con el detalle de la vela ──
         if (cruzX >= 0f) {
             val i = Math.round(desde + cuantas * (cruzX - padLpx) / gw).coerceIn(i0, i1)
             val x = xf(i); val yFin = y0 - gapPx; val cy = cruzY.coerceIn(pTop, yFin)
             c.drawLine(x, pTop, x, yFin, pCruz); c.drawLine(padLpx, cy, w - padRpx, cy, pCruz)
-            pFill.color = AppTheme.TXT_PRI; c.drawCircle(x, cy, 3.5f * d, pFill)
+            pFill.color = DexTema.TXT; c.drawCircle(x, cy, 3.5f * d, pFill)
             pFill.color = 0xFFF1F5F9.toInt()
             if (cy <= pBot) {           // precio en la cruz y % frente al último
                 val p = minL + (maxH - minL) * (pBot - cy) / (pBot - pTop)
@@ -452,20 +470,20 @@ class GraficoTA(ctx: Context) : View(ctx) {
 
             // ficha de la vela
             val k = v[i]; val cambio = k.c - k.o; val pctC = if (k.o != 0f) cambio / k.o * 100f else 0f
-            val filas = arrayListOf("Time" to (fmtCruz(k.t) to AppTheme.TXT_PRI), "Open" to (fmtFull(k.o) to AppTheme.TXT_PRI),
-                "High" to (fmtFull(k.h) to AppTheme.TXT_PRI), "Low" to (fmtFull(k.l) to AppTheme.TXT_PRI), "Close" to (fmtFull(k.c) to AppTheme.TXT_PRI),
-                "Change" to ("%s%s (%s%.2f%%)".format(if (cambio >= 0) "+" else "", fmtFull(cambio), if (pctC >= 0) "+" else "", pctC) to (if (cambio >= 0) AppTheme.OK else AppTheme.RED)),
-                "Range" to ("%.2f%%".format(if (k.o != 0f) (k.h - k.l) / k.o * 100f else 0f) to AppTheme.TXT_PRI))
-            if (k.vol > 0f) filas.add("Volume" to (fmtP(k.vol) to AppTheme.TXT_PRI))
+            val filas = arrayListOf("Time" to (fmtCruz(k.t) to DexTema.TXT), "Open" to (fmtFull(k.o) to DexTema.TXT),
+                "High" to (fmtFull(k.h) to DexTema.TXT), "Low" to (fmtFull(k.l) to DexTema.TXT), "Close" to (fmtFull(k.c) to DexTema.TXT),
+                "Change" to ("%s%s (%s%.2f%%)".format(if (cambio >= 0) "+" else "", fmtFull(cambio), if (pctC >= 0) "+" else "", pctC) to (if (cambio >= 0) cUp else cDown)),
+                "Range" to ("%.2f%%".format(if (k.o != 0f) (k.h - k.l) / k.o * 100f else 0f) to DexTema.TXT))
+            if (k.vol > 0f) filas.add("Volume" to (fmtP(k.vol) to DexTema.TXT))
             val lh = 15f * d; val pad = 8f * d
             val anchoL = filas.maxOf { pTip.measureText(it.first) }; val anchoV = filas.maxOf { pTip.measureText(it.second.first) }
             val bw = anchoL + anchoV + 3 * pad; val bh = filas.size * lh + pad * 1.5f
             val bx = if (x > padLpx + gw / 2) padLpx + 4f * d else w - padRpx - bw - 4f * d
             val by = pTop + 16f * d
-            pNotaBg.color = alfa(AppTheme.BG_ELEV, 0xEE); c.drawRoundRect(bx, by, bx + bw, by + bh, 8f * d, 8f * d, pNotaBg)
+            pNotaBg.color = alfa(DexTema.CHIP, 0xEE); c.drawRoundRect(bx, by, bx + bw, by + bh, 8f * d, 8f * d, pNotaBg)
             filas.forEachIndexed { r, (lab, vc) ->
                 val yy = by + pad + lh * r + 10f * d
-                pTip.color = AppTheme.TXT_SEC; c.drawText(lab, bx + pad, yy, pTip)
+                pTip.color = DexTema.TXT2; c.drawText(lab, bx + pad, yy, pTip)
                 pTip.color = vc.second; c.drawText(vc.first, bx + bw - pad - pTip.measureText(vc.first), yy, pTip)
             }
         }
