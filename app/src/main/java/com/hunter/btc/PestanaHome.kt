@@ -92,7 +92,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     pintarFav()
     btnFav.setOnClickListener { val f = Favoritos.alternar(this, activo); pintarFav()
         Toast.makeText(this, if (f) "${activo.simbolo} added to watchlist" else "${activo.simbolo} removed from watchlist", Toast.LENGTH_SHORT).show() }
-    btnAlerta.setOnClickListener { abrirAlertas(activo, chart.velasActuales().lastOrNull()?.c?.toDouble() ?: 0.0) }
+
     fun claveDib(a: Mercado.Activo) = "dibujos_" + a.clave
     val chart = GraficoTA(this).apply {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -511,6 +511,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     // ── Selector de par (tocar el nombre del par) y modo Spot/Futures del simulador ──
     tvPar.setOnClickListener { abrirSelectorPar { seleccionar(it) } }
+    btnAlerta.setOnClickListener { abrirAlertas(activo, chart.velasActuales().lastOrNull()?.c?.toDouble() ?: 0.0) }
     alCambiarTab = { k -> if (k < 2) pt.ponerModo(k == 1) }
     if (tabHome < 2) pt.ponerModo(tabHome == 1)
 
