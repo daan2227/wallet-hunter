@@ -99,22 +99,22 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         })
         addView(btnVerGrafico); addView(btnFav); addView(btnMasCab)
     })
-    // columnas: formulario | libro; debajo pestañas; al final el gráfico plegable
+    // orden de arriba abajo: gráfico plegable · formulario | libro · pestañas
+    val cajaGrafico = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val tvCabGrafico = TextView(this).apply {
+        textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
+        isClickable = true; foreground = Ui.toque()
+    }
+    pagTrade.addView(tvCabGrafico); pagTrade.addView(cajaGrafico)
+    pagTrade.addView(View(this).apply { setBackgroundColor(DexTema.STROKE)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { topMargin = dp(8) } })
     val colIzq = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.57f).apply { marginEnd = dp(12) } }
     val colDer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.43f) }
-    pagTrade.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(8)); addView(colIzq); addView(colDer) })
+    pagTrade.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(12), 0, dp(8)); addView(colIzq); addView(colDer) })
     val cajaListas = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     pagTrade.addView(cajaListas)
-    val cajaGrafico = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-    val tvCabGrafico = TextView(this).apply {
-        textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(52)
-        isClickable = true; foreground = Ui.toque()
-    }
-    pagTrade.addView(View(this).apply { setBackgroundColor(DexTema.STROKE)
-        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { topMargin = dp(16) } })
-    pagTrade.addView(tvCabGrafico); pagTrade.addView(cajaGrafico)
     // precio grande en color + cambio a su lado; debajo una nota y (opcional) cambios por periodo
     val tvPrecio = TextView(this).apply { textSize = 30f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); text = "…"; includeFontPadding = false }
     val tvCambio = TextView(this).apply { textSize = 15f; setTextColor(DexTema.TXT2); typeface = AppTheme.medium(context); setPadding(dp(10), 0, 0, dp(3)) }
@@ -339,10 +339,10 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             setTint(DexTema.TXT2); setBounds(0, 0, dp(20), dp(20)) }, null)
         tvCabGrafico.contentDescription = "${activo.par} chart, ${if (abierto) "expanded" else "collapsed"}"
     }
-    cajaGrafico.visibility = if (prefsG.getBoolean("graf_abierto", true)) View.VISIBLE else View.GONE
+    cajaGrafico.visibility = if (prefsG.getBoolean("graf_abierto_arriba", true)) View.VISIBLE else View.GONE
     tvCabGrafico.setOnClickListener {
         val abrir = cajaGrafico.visibility != View.VISIBLE
-        cajaGrafico.visibility = if (abrir) View.VISIBLE else View.GONE; prefsG.edit().putBoolean("graf_abierto", abrir).apply(); pintarCabGrafico()
+        cajaGrafico.visibility = if (abrir) View.VISIBLE else View.GONE; prefsG.edit().putBoolean("graf_abierto_arriba", abrir).apply(); pintarCabGrafico()
         if (abrir) scroll.post { scroll.smoothScrollTo(0, tvCabGrafico.top + pagTrade.top) }
     }
     btnVerGrafico.setOnClickListener {
