@@ -124,7 +124,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
         cuantas = minOf(90f, v.size.toFloat()).coerceAtLeast(2f)
         desde = (v.size - cuantas).coerceAtLeast(0f)
         pendiente = null; cruzX = -1f
-        requestLayout(); invalidate()
+        describir(); requestLayout(); invalidate()
     }
 
     /** Refresco en vivo: cambia los datos SIN resetear el zoom/desplazamiento. */
@@ -133,9 +133,15 @@ class GraficoTA(ctx: Context) : View(ctx) {
         velas = v
         if (alFinal) desde = (v.size - cuantas).coerceAtLeast(0f)
         else desde -= quitadasAlInicio      // mantener las mismas velas a la vista
-        clamp(); invalidate()
+        describir(); clamp(); invalidate()
     }
     fun velasActuales(): List<GraficoPrecio.Vela> = velas
+    /** Resumen hablado para el lector de pantalla (la información no depende del dibujo ni del color). */
+    private fun describir() {
+        val v = velas.lastOrNull() ?: run { contentDescription = "Candlestick chart, loading"; return }
+        val dir = if (v.c >= v.o) "up" else "down"
+        contentDescription = "Candlestick chart. Last candle $dir: open ${fmtFull(v.o)}, high ${fmtFull(v.h)}, low ${fmtFull(v.l)}, close ${fmtFull(v.c)}. Drag to pan, pinch to zoom, tap for details."
+    }
     fun refrescarConfig() { requestLayout(); invalidate() }
 
     private fun clamp() {
@@ -223,7 +229,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
     private val pLine = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.4f * d; style = Paint.Style.STROKE; strokeJoin = Paint.Join.ROUND; strokeCap = Paint.Cap.ROUND }
     private val pGuide = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; strokeWidth = 0.8f * d; style = Paint.Style.STROKE; pathEffect = DashPathEffect(floatArrayOf(4f * d, 4f * d), 0f) }
     private val pGrid = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.GRID; strokeWidth = 1f * d }
-    private val lbl = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; textSize = 10.5f * d; typeface = AppTheme.mono(ctx) }
+    private val lbl = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT2; textSize = 11f * d; typeface = AppTheme.mono(ctx) }
     private val pDib = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = AppTheme.ACCENT; strokeWidth = 1.6f * d; style = Paint.Style.STROKE }
     private val pNota = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = DexTema.TXT; textSize = 10.5f * d; typeface = AppTheme.bold(ctx) }
     private val pNotaBg = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }

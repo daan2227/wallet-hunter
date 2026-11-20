@@ -37,6 +37,7 @@ object DexTema {
     const val LINK = 0xFFF0B90B.toInt()         // acento (pestaña activa, enlaces)
     const val ACCENT = 0xFFF0B90B.toInt()
     const val WARN = 0xFFF0B90B.toInt()
+    const val LIQ = 0xFFFF8A3D.toInt()          // línea de liquidación (naranja, distinta del amarillo de órdenes)
     const val ON_UP = 0xFF0B0E11.toInt()        // texto sobre verde (8,4:1; blanco no llega a 3:1)
 
     fun dp(ctx: Context, v: Float) = v * ctx.resources.displayMetrics.density
@@ -67,7 +68,7 @@ object DexTema {
         opciones.forEachIndexed { i, (txt, _) ->
             val t = TextView(ctx).apply {
                 text = txt; textSize = 14f; gravity = Gravity.CENTER; maxLines = 1
-                minHeight = dp(ctx, 40f).toInt(); setPadding(dp(ctx, 14f).toInt(), 0, dp(ctx, 14f).toInt(), 0)
+                minHeight = dp(ctx, 48f).toInt(); setPadding(dp(ctx, 14f).toInt(), 0, dp(ctx, 14f).toInt(), 0)
                 isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (i > 0) marginStart = dp(ctx, 8f).toInt() }
                 setOnClickListener { pintar(i); alElegir(i) }
@@ -167,6 +168,13 @@ object DexTema {
         pintar()
         return fila to { nuevos: List<String> -> nuevos.forEachIndexed { i, r -> if (i < tvs.size && tvs[i].text != r) tvs[i].text = r } }
     }
+
+    /**
+     * Fondo de control compacto con zona táctil de 48 dp: se dibuja con [altoVisualDp]
+     * de alto centrado y el resto queda como margen tocable (regla de 48 dp de Android).
+     */
+    fun fondoTactil(ctx: Context, color: Int, radioDp: Float, altoVisualDp: Float, borde: Int = 0) =
+        android.graphics.drawable.InsetDrawable(fondo(ctx, color, radioDp, borde), 0, dp(ctx, (48f - altoVisualDp) / 2).toInt(), 0, dp(ctx, (48f - altoVisualDp) / 2).toInt())
 
     /** Texto de sección, gris y pequeño. */
     fun seccion(ctx: Context, t: String) = TextView(ctx).apply {

@@ -35,13 +35,13 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     private val libroV = VistaLibro(act)
     private val tradesV = VistaTrades(act)
     private val tvTick = TextView(act).apply {
-        textSize = 13f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(36)
-        background = DexTema.fondo(act, DexTema.CHIP, 6f); setPadding(dp(10), 0, dp(8), 0); isClickable = true; foreground = Ui.toque()
+        textSize = 14f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
+        background = DexTema.fondoTactil(act, DexTema.CHIP, 6f, 36f); setPadding(dp(10), 0, dp(8), 0); isClickable = true; foreground = Ui.toque()
         compoundDrawablePadding = dp(4); contentDescription = "Price grouping"
     }
     private val btnModo = android.widget.ImageView(act).apply {
         setImageResource(R.drawable.ic_clock); setColorFilter(DexTema.TXT); scaleType = android.widget.ImageView.ScaleType.CENTER
-        isClickable = true; foreground = Ui.toque(); layoutParams = LinearLayout.LayoutParams(dp(40), dp(40)).apply { marginStart = dp(6) }
+        isClickable = true; foreground = Ui.toque(); layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply { marginStart = dp(2) }
     }
 
     /** Mejor compra y mejor venta del último libro (para pintarlas en el gráfico y el botón BBO). */
@@ -180,14 +180,16 @@ class VistaLibro(ctx: Context) : View(ctx) {
     var alTocar: ((Double) -> Unit)? = null
     private val zonas = ArrayList<Triple<Float, Float, Double>>()
 
-    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13f * d; typeface = AppTheme.medium(ctx) }
-    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11.5f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
+    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 14f * d; typeface = AppTheme.medium(ctx) }
+    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
     private val pBarra = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val pGrande = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 20f * d; typeface = AppTheme.bold(ctx); textAlign = Paint.Align.CENTER }
 
     init { contentDescription = "Order book. Tap a price to use it as the limit price." }
 
-    fun poner(l: Mercado.Libro?, ult: Double, prev: Double) { libro = l; ultimo = ult; previo = prev; invalidate() }
+    fun poner(l: Mercado.Libro?, ult: Double, prev: Double) { libro = l; ultimo = ult; previo = prev; invalidate()
+        contentDescription = if (l == null) "Order book loading" else "Order book. Best ask ${l.asks.firstOrNull()?.first?.let { fmtLibroPrecio(it) } ?: "none"}, " +
+            "best bid ${l.bids.firstOrNull()?.first?.let { fmtLibroPrecio(it) } ?: "none"}. Tap a price to use it as the limit price." }
 
     override fun onMeasure(w: Int, h: Int) =
         setMeasuredDimension(MeasureSpec.getSize(w), (altoCab + altoFila * 2 * filas + altoMedio + altoBarra).toInt())
@@ -235,7 +237,7 @@ class VistaLibro(ctx: Context) : View(ctx) {
             val x0 = anB; val x1 = w - anS; val xm = x0 + (x1 - x0) * fb
             pBarra.color = DexTema.UP; c.drawRoundRect(x0, yb - 2f * d, xm - 2f * d, yb + 2f * d, 2f * d, 2f * d, pBarra)
             pBarra.color = DexTema.DOWN; c.drawRoundRect(xm + 2f * d, yb - 2f * d, x1, yb + 2f * d, 2f * d, 2f * d, pBarra)
-            pTxt.textSize = 13f * d
+            pTxt.textSize = 14f * d
         }
     }
 
@@ -252,11 +254,13 @@ class VistaTrades(ctx: Context) : View(ctx) {
     private val filas = 15
     private val altoFila = 24f * d
     private var datos: List<Mercado.Trade> = emptyList()
-    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12.5f * d; typeface = AppTheme.medium(ctx) }
-    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 11.5f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
+    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 13.5f * d; typeface = AppTheme.medium(ctx) }
+    private val pCab = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
+    private val pFlecha = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val sdf = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.US)
 
-    fun poner(t: List<Mercado.Trade>) { datos = t; invalidate() }
+    fun poner(t: List<Mercado.Trade>) { datos = t; invalidate()
+        contentDescription = t.firstOrNull()?.let { "Recent trades. Last: ${if (it.compra) "buy" else "sell"} ${fmtLibroQty(it.qty)} at ${fmtLibroPrecio(it.precio)}" } ?: "Recent trades" }
     override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (altoFila * filas + 34f * d).toInt())
 
     override fun onDraw(c: Canvas) {
@@ -267,7 +271,12 @@ class VistaTrades(ctx: Context) : View(ctx) {
         var y = 34f * d
         for (t in datos.take(filas)) {
             val yt = y + altoFila * 0.68f
-            pTxt.color = if (t.compra) DexTema.UP else DexTema.DOWN; pTxt.textAlign = Paint.Align.LEFT; c.drawText(fmtLibroPrecio(t.precio), 0f, yt, pTxt)
+            // ▲ compra / ▼ venta: la dirección no depende solo del color
+            val col = if (t.compra) DexTema.UP else DexTema.DOWN; val cy = y + altoFila / 2; val r = 4f * d
+            pFlecha.color = col
+            c.drawPath(android.graphics.Path().apply { if (t.compra) { moveTo(r, cy - r); lineTo(2 * r, cy + r * 0.8f); lineTo(0f, cy + r * 0.8f) }
+                else { moveTo(0f, cy - r * 0.8f); lineTo(2 * r, cy - r * 0.8f); lineTo(r, cy + r) }; close() }, pFlecha)
+            pTxt.color = col; pTxt.textAlign = Paint.Align.LEFT; c.drawText(fmtLibroPrecio(t.precio), 2 * r + 5f * d, yt, pTxt)
             pTxt.color = DexTema.TXT; pTxt.textAlign = Paint.Align.RIGHT
             c.drawText(fmtLibroQty(t.qty) + "  " + sdf.format(java.util.Date(t.t)).substring(3), w, yt, pTxt)
             y += altoFila

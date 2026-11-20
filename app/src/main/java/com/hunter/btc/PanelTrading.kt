@@ -37,7 +37,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         textSize = sp; setTextColor(color); typeface = if (negrita) AppTheme.bold(act) else AppTheme.body(act)
     }
     private fun chip(t: String, alPulsar: () -> Unit) = TextView(act).apply {
-        text = t; textSize = 14f; gravity = Gravity.CENTER; typeface = AppTheme.medium(act); minHeight = dp(40)
+        text = t; textSize = 14f; gravity = Gravity.CENTER; typeface = AppTheme.medium(act); minHeight = dp(48)
         setPadding(dp(14), 0, dp(14), 0); isClickable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(6) }
         setOnClickListener { alPulsar() }
@@ -64,22 +64,25 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private fun signo(x: Double) = (if (x >= 0) "+" else "") + fmtSim(x)
     private fun aviso(t: String) = Toast.makeText(act, t, Toast.LENGTH_SHORT).show()
     private fun guardar() = prefs.edit().putString("estado", sim.aJson()).apply()
+    /** Confirmación antes de acciones que no se deshacen (cerrar, vender todo, parar un bot). */
+    private fun confirmar(titulo: String, msg: String, ok: String, accion: () -> Unit) =
+        DexTema.dialogo(act).setTitle(titulo).setMessage(msg).setPositiveButton(ok) { _, _ -> accion() }.setNegativeButton("Cancel", null).show()
 
     // ── formulario (columna izquierda) ──
     private val segLS = SegmentoLargoCorto(act).apply { diagonal = false }
     private fun botonCaja(t: String) = TextView(act).apply {
         text = t; textSize = 13f; setTextColor(DexTema.TXT); typeface = AppTheme.medium(act); gravity = Gravity.CENTER; maxLines = 1
-        minHeight = dp(40); background = DexTema.fondo(act, DexTema.CHIP, 6f); isClickable = true; foreground = Ui.toque()
+        minHeight = dp(48); background = DexTema.fondo(act, DexTema.CHIP, 6f); isClickable = true; foreground = Ui.toque()
     }
     private val btnMargen = botonCaja("Isolated"); private val btnApal = botonCaja("10x"); private val btnPos = botonCaja("One-way")
     private val filaModo = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
     private val tvTipo = TextView(act).apply {
-        textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.medium(act); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(44)
+        textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.medium(act); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
         isClickable = true; foreground = Ui.toque(); contentDescription = "Order type"
     }
     private val btnBbo = TextView(act).apply {
         text = "BBO"; textSize = 15f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(act); gravity = Gravity.CENTER
-        minHeight = dp(44); minWidth = dp(52); isClickable = true; foreground = Ui.toque(); contentDescription = "Best bid or offer"
+        minHeight = dp(48); minWidth = dp(52); isClickable = true; foreground = Ui.toque(); contentDescription = "Best bid or offer"
     }
     private val parPrecio = DexTema.campoEtiquetado(act, "Price (USD)", btnBbo)
     private val etPrecio = parPrecio.second
@@ -158,7 +161,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             addView(android.widget.ImageView(act).apply {
                 setImageResource(R.drawable.ic_info); setColorFilter(DexTema.TXT2); scaleType = android.widget.ImageView.ScaleType.CENTER
                 contentDescription = "About order types"; isClickable = true; foreground = Ui.toque()
-                layoutParams = LinearLayout.LayoutParams(dp(40), dp(44)); setOnClickListener { infoTipos() }
+                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)); setOnClickListener { infoTipos() }
             })
         })
         vista.addView(parDisparo.first); vista.addView(parPrecio.first); vista.addView(parCallback.first)
@@ -188,7 +191,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         vista.addView(btnAccion)
         vista.addView(tvResumen)
         val vigila = object : android.text.TextWatcher {
-            override fun afterTextChanged(e: android.text.Editable?) = resumen()
+            override fun afterTextChanged(e: android.text.Editable?) { listOf(etPrecio, etImporte, etTp, etSl, etDisparo, etCallback).forEach { it.error = null }; resumen() }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
             override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
         }
@@ -224,7 +227,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         for (f in filas) caja.addView(LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(8), 0, 0)
             f.forEachIndexed { k, x -> addView(TextView(act).apply {
-                text = "${x}x"; textSize = 14f; gravity = Gravity.CENTER; minHeight = dp(40); setTextColor(DexTema.TXT)
+                text = "${x}x"; textSize = 14f; gravity = Gravity.CENTER; minHeight = dp(48); setTextColor(DexTema.TXT)
                 background = DexTema.fondo(act, DexTema.CHIP, 6f); isClickable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(6) }
                 setOnClickListener { et.setText(x.toString()) } }) }
@@ -434,7 +437,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             addView(botonPeq("Stop", DexTema.DOWN) {
                 val p = precioDe(b.clave)
                 if (b.tipo == "GRID" && p == null) { aviso("No price for ${b.simbolo} yet"); return@botonPeq }
-                sim.pararBot(b.id, p ?: 0.0); guardar(); refrescar(); aviso(if (b.tipo == "GRID") "Grid stopped, funds back in Spot" else "DCA bot stopped")
+                confirmar("Stop ${if (b.tipo == "GRID") "grid" else "DCA"} bot", if (b.tipo == "GRID") "The bot sells its ${b.simbolo} at market and returns everything to Spot." else "No more periodic buys. Coins already bought stay in Spot.", "Stop") {
+                    sim.pararBot(b.id, precioDe(b.clave) ?: p ?: 0.0); guardar(); refrescar(); aviso(if (b.tipo == "GRID") "Grid stopped, funds back in Spot" else "DCA bot stopped")
+                }
             })
         })
     }
@@ -590,6 +595,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private fun resumen() {
         val a = activo()
         val act0 = precioActual() ?: 0.0
+        // sin precio no se puede operar: botón desactivado y dicho, no un botón que no hace nada
+        btnAccion.isEnabled = act0 > 0; btnAccion.alpha = if (act0 > 0) 1f else 0.45f
+        btnAccion.contentDescription = if (act0 > 0) btnAccion.text else "${btnAccion.text}, unavailable until the price loads"
         val disp = if (futuros) sim.fut else if (compra) sim.spot else (sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0)
         tvDisponible.text = if (!futuros && !compra) "${fmtCant(disp)} ${a.simbolo}" else "${fmtSim(disp)} VUSD"
         val impV = etImporte.num()
@@ -624,6 +632,19 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         }
     }
     private fun fmtCant(x: Double) = if (x >= 1000) "%,.2f".format(x) else "%.6g".format(x)
+
+    /** El error va en el campo que lo causa (y se anuncia); si no es de un campo, aviso. */
+    private fun mostrarError(err: String) {
+        val e = err.lowercase()
+        val et = when {
+            "take-profit" in e -> etTp; "stop-loss" in e -> etSl; "trigger" in e || " stop must" in e -> etDisparo
+            "callback" in e -> etCallback; "limit price" in e || "limit buy" in e || "limit sell" in e -> etPrecio
+            "amount" in e || "margin" in e || "minimum" in e || "not enough" in e || "quantity" in e -> etImporte
+            else -> null
+        }
+        if (et != null && (et.parent?.parent as? View)?.visibility == View.VISIBLE) { et.error = err; et.requestFocus(); et.announceForAccessibility(err) }
+        else aviso(err)
+    }
 
     private fun ejecutar() {
         val a = activo(); val js = a.aJson()
@@ -667,7 +688,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 else -> sim.venderSpot(a.clave, imp, actual)
             }
         }
-        if (err != null) { aviso(err); guardar(); refrescar(); return }
+        if (err != null) { mostrarError(err); guardar(); refrescar(); return }
         aviso(if (tipoUi != 0) "Order placed" else "Order filled at ${fmtSim(actual)}")
         etImporte.setText(""); etTp.setText(""); etSl.setText(""); slider.poner(0f)
         guardar(); refrescar()
@@ -686,7 +707,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     }
     private fun botonPeq(t: String, color: Int, alPulsar: () -> Unit) = TextView(act).apply {
         text = t; textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(act); setTextColor(color); gravity = Gravity.CENTER
-        background = Ui.cardBg(AppTheme.R_CHIP, DexTema.CHIP, act); setPadding(dp(12), dp(6), dp(12), dp(6))
+        background = DexTema.fondoTactil(act, DexTema.CHIP, 6f, 34f); setPadding(dp(14), 0, dp(14), 0); minHeight = dp(48)
         isClickable = true; foreground = Ui.toque(); setOnClickListener { alPulsar() }
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(6) }
     }
@@ -717,8 +738,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val vLiq = g.getBoolean("o_liq", true); val vBe = g.getBoolean("o_be", false)
         val lineas = ArrayList<GraficoTA.LineaPrecio>()
         for (p in sim.posiciones.filter { it.clave == a.clave }) {
-            if (vPos) lineas.add(GraficoTA.LineaPrecio(p.entrada.toFloat(), DexTema.LINK, "${if (p.long) "Long" else "Short"} ${p.apal}x"))
-            if (vLiq) sim.liquidacion(p).takeIf { it > 0 }?.let { lineas.add(GraficoTA.LineaPrecio(it.toFloat(), DexTema.WARN, "Liq")) }
+            if (vPos) lineas.add(GraficoTA.LineaPrecio(p.entrada.toFloat(), DexTema.TXT, "${if (p.long) "Long" else "Short"} ${p.apal}x"))
+            if (vLiq) sim.liquidacion(p).takeIf { it > 0 }?.let { lineas.add(GraficoTA.LineaPrecio(it.toFloat(), DexTema.LIQ, "Liq")) }
             if (vTpSl && p.tp > 0) lineas.add(GraficoTA.LineaPrecio(p.tp.toFloat(), DexTema.UP, "TP"))
             if (vTpSl && p.sl > 0) lineas.add(GraficoTA.LineaPrecio(p.sl.toFloat(), DexTema.DOWN, "SL"))
             // precio de equilibrio: entrada más las dos comisiones taker (apertura y cierre)
@@ -731,7 +752,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 Simulador.TipoOrden.STOP_LIMIT -> o.disparo to "Stop-limit"
                 Simulador.TipoOrden.TRAIL -> (if (o.compra) o.extremo * (1 + o.callback) else o.extremo * (1 - o.callback)) to "Trailing"
             }
-            lineas.add(GraficoTA.LineaPrecio(px.toFloat(), DexTema.LINK, t))
+            lineas.add(GraficoTA.LineaPrecio(px.toFloat(), DexTema.ACCENT, t))
         }
         if (vTrig) for (b in sim.bots.filter { it.clave == a.clave && it.tipo == "GRID" }) {
             lineas.add(GraficoTA.LineaPrecio(b.hi.toFloat(), DexTema.TXT2, "Grid high"))
@@ -749,7 +770,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         addView(texto(17f, DexTema.TXT, true).apply { text = titulo; gravity = Gravity.CENTER; setPadding(0, dp(14), 0, dp(6)) })
         addView(texto(14f, DexTema.TXT2).apply { text = sub; gravity = Gravity.CENTER })
         if (boton != null) addView(TextView(act).apply {
-            text = boton; textSize = 15f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER; minHeight = dp(44)
+            text = boton; textSize = 15f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER; minHeight = dp(48)
             background = DexTema.fondo(act, 0, 8f, DexTema.TXT2); setPadding(dp(28), 0, dp(28), 0); isClickable = true; foreground = Ui.toque()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(16) }
             setOnClickListener { accion() } })
@@ -766,20 +787,22 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             card.addView(dato("Size · margin", "${fmtCant(p.qty)} ${p.simbolo} · ${fmtSim(p.margen)} VUSD"))
             card.addView(dato("Position ID", "#${p.id} · ${if (p.cruzado) "cross" else "isolated"} · ${if (sim.hedge) "hedge" else "one-way"}"))
             val liqP = sim.liquidacion(p)
-            card.addView(dato("Liquidation", if (liqP <= 0) "none (cross balance covers it)" else fmtSim(liqP), DexTema.WARN))
+            card.addView(dato("Liquidation", if (liqP <= 0) "none (cross balance covers it)" else fmtSim(liqP), DexTema.LIQ))
             card.addView(dato("TP / SL", "${if (p.tp > 0) fmtSim(p.tp) else "—"} / ${if (p.sl > 0) fmtSim(p.sl) else "—"}"))
             if (p.funding != 0.0) card.addView(dato("Funding", signo(p.funding), if (p.funding >= 0) DexTema.UP else DexTema.DOWN))
             card.addView(LinearLayout(act).apply {
                 orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(8), 0, 0)
                 addView(botonPeq("TP/SL", DexTema.TXT) { editarTpSl(p) })
                 if (!p.cruzado) addView(botonPeq("+ Margin", DexTema.TXT) { pedirMargen(p) })
-                addView(botonPeq("50%", DexTema.TXT) {
+                for ((txt, f) in listOf("50%" to 0.5, "Close" to 1.0)) addView(botonPeq(txt, DexTema.TXT) {
                     val px = precioDe(p.clave); if (px == null) { aviso("No price for ${p.simbolo} yet"); return@botonPeq }
-                    sim.cerrarFuturo(p.id, px, fraccion = 0.5); guardar(); refrescar(); aviso("Closed 50% at ${fmtSim(px)}")
-                })
-                addView(botonPeq("Close", DexTema.TXT) {
-                    val px = precioDe(p.clave); if (px == null) { aviso("No price for ${p.simbolo} yet"); return@botonPeq }
-                    sim.cerrarFuturo(p.id, px); guardar(); refrescar(); aviso("Closed at ${fmtSim(px)}")
+                    val est = p.pnl(px) * f - px * p.qty * f * Simulador.COM_TAKER
+                    confirmar(if (f < 1) "Close 50%" else "Close position",
+                        "${if (p.long) "Long" else "Short"} ${p.apal}x ${p.simbolo}: close ${fmtCant(p.qty * f)} at market (≈ ${fmtSim(px)}).\nEstimated PnL after fee: ${signo(est)} VUSD.",
+                        if (f < 1) "Close 50%" else "Close") {
+                        val px2 = precioDe(p.clave) ?: px
+                        sim.cerrarFuturo(p.id, px2, fraccion = f); guardar(); refrescar(); aviso("Closed at ${fmtSim(px2)}")
+                    }
                 })
             })
             contPos.addView(card)
@@ -801,7 +824,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 addView(botonPeq("TP/SL", DexTema.TXT) { ocoTenencia(h) })
                 addView(botonPeq("Sell all", DexTema.TXT) {
                     val px = precioDe(h.clave); if (px == null) { aviso("No price for ${h.simbolo} yet"); return@botonPeq }
-                    sim.venderSpot(h.clave, h.qty, px)?.let { aviso(it) }; guardar(); refrescar()
+                    confirmar("Sell all ${h.simbolo}", "Sell ${fmtCant(h.qty)} ${h.simbolo} at market (≈ ${fmtSim(px)}).\nYou get ≈ ${fmtSim(h.qty * px * (1 - Simulador.COM_SPOT))} VUSD.", "Sell") {
+                        sim.venderSpot(h.clave, h.qty, precioDe(h.clave) ?: px)?.let { aviso(it) }; guardar(); refrescar()
+                    }
                 })
             })
             contPos.addView(card)

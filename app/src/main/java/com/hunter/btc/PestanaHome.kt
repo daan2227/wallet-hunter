@@ -65,14 +65,14 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     fun icono(res: Int, desc: String) = android.widget.ImageView(this).apply {
         setImageResource(res); setColorFilter(DexTema.TXT); contentDescription = desc
         scaleType = android.widget.ImageView.ScaleType.CENTER; isClickable = true; foreground = Ui.toque()
-        layoutParams = LinearLayout.LayoutParams(dp(44), dp(48))
+        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
     }
     val btnFav = icono(R.drawable.ic_star, "Add to watchlist")
     val btnAlerta = icono(R.drawable.ic_bell, "Price alerts")
     val btnInfo = icono(R.drawable.ic_info, "Asset information")
     val btnVivo = TextView(this).apply {
-        textSize = 12f; typeface = AppTheme.medium(context); gravity = Gravity.CENTER; minHeight = dp(32)
-        background = DexTema.fondo(context, DexTema.CHIP, 100f); setPadding(dp(10), 0, dp(10), 0)
+        textSize = 13f; typeface = AppTheme.medium(context); gravity = Gravity.CENTER; minHeight = dp(48)
+        background = DexTema.fondoTactil(context, DexTema.CHIP, 100f, 32f); setPadding(dp(10), 0, dp(10), 0)
         isClickable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(2) }
     }
@@ -220,7 +220,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         etiquetas.forEachIndexed { k, t ->
             val c = TextView(this).apply {
                 text = t; textSize = AppTheme.SP_CAPTION; gravity = Gravity.CENTER
-                setPadding(dp(13), dp(7), dp(13), dp(7)); isClickable = true; foreground = Ui.toque()
+                setPadding(dp(13), 0, dp(13), 0); minHeight = dp(48); isClickable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(7) }
                 setOnClickListener { pintar(k); alElegir(k) }
             }
@@ -236,7 +236,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     // ── Intervalo (como en los exchanges: los habituales a la vista + "More ▾") y ajustes ──
     fun tabIv(t: String) = TextView(this).apply {
-        text = t; textSize = 15f; gravity = Gravity.CENTER; minHeight = dp(40)
+        text = t; textSize = 15f; gravity = Gravity.CENTER; minHeight = dp(48)
         setPadding(dp(12), 0, dp(12), 0); isClickable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(2) }
     }
@@ -793,9 +793,9 @@ internal fun MainActivity.abrirAjustesTA(chart: GraficoTA, alCambiar: () -> Unit
         })
     }
     fun tipoMedia(m: GraficoTA.Media) = TextView(this).apply {
-        fun pintar() { text = if (m.ema) "EMA" else "SMA"; setTextColor(if (m.ema) DexTema.LINK else DexTema.WARN) }
-        textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); gravity = Gravity.CENTER
-        background = Ui.cardBg(AppTheme.R_CHIP, DexTema.CHIP, context); setPadding(dp(10), dp(6), dp(10), dp(6))
+        fun pintar() { text = if (m.ema) "EMA" else "SMA"; setTextColor(if (m.ema) DexTema.ACCENT else DexTema.TXT); contentDescription = "Average type: $text" }
+        textSize = AppTheme.SP_CAPTION; typeface = AppTheme.bold(context); gravity = Gravity.CENTER; minHeight = dp(48)
+        background = DexTema.fondoTactil(context, DexTema.CHIP, 6f, 32f); setPadding(dp(10), 0, dp(10), 0)
         isClickable = true; foreground = Ui.toque(); pintar()
         setOnClickListener { m.ema = !m.ema; pintar(); alCambiar() }
     }
