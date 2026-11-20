@@ -17,28 +17,37 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * Tokens del DEx: estética de exchange (pizarra oscura #181A20 / #1E2329, campos
- * #2B3139, acento amarillo, verde y rojo de mercado). El DEx es siempre oscuro,
- * como las apps de trading. Contraste medido sobre #181A20: TXT 15,4:1,
- * TXT2 5,3:1, UP 7,4:1, DOWN 5,1:1, ACCENT 10,7:1 (texto normal ≥ 4,5:1).
+ * Tokens del DEx. La apariencia (disposición, formas, tamaños) es siempre la de un
+ * exchange, pero los colores salen del tema de la app (Vault Gold, claro o Spatial):
+ * fondos, superficies, bordes, texto y acento son los del tema activo. Verde y rojo
+ * de mercado: en los temas oscuros los de exchange (#2EBD85 / #F6465D, ≥ 5:1 sobre
+ * el fondo); en el claro los semánticos del tema, oscurecidos para leerse sobre blanco.
+ * Al cambiar de tema la app se recrea, así que las vistas toman los colores nuevos.
  */
 object DexTema {
-    const val BG = 0xFF181A20.toInt()           // fondo de la pantalla
-    const val SURFACE = 0xFF1E2329.toInt()      // hojas, tarjetas
-    const val CHIP = 0xFF2B3139.toInt()         // campos, botones, chips
-    const val STROKE = 0xFF2B3139.toInt()       // bordes y separadores
-    const val GRID = 0xFF22262C.toInt()         // rejilla del gráfico
-    const val TXT = 0xFFEAECEF.toInt()
-    const val TXT2 = 0xFF848E9C.toInt()
-    const val UP = 0xFF2EBD85.toInt()
-    const val DOWN = 0xFFF6465D.toInt()
-    const val UP_BG = 0xFF2EBD85.toInt()        // lado elegido de Comprar (relleno)
-    const val DOWN_BG = 0xFFF6465D.toInt()
-    const val LINK = 0xFFF0B90B.toInt()         // acento (pestaña activa, enlaces)
-    const val ACCENT = 0xFFF0B90B.toInt()
-    const val WARN = 0xFFF0B90B.toInt()
-    const val LIQ = 0xFFFF8A3D.toInt()          // línea de liquidación (naranja, distinta del amarillo de órdenes)
-    const val ON_UP = 0xFF0B0E11.toInt()        // texto sobre verde (8,4:1; blanco no llega a 3:1)
+    val BG get() = AppTheme.BG_DEEP             // fondo de la pantalla
+    val SURFACE get() = AppTheme.BG_CARD        // hojas, tarjetas
+    val CHIP get() = AppTheme.BG_ELEV           // campos, botones, chips
+    val STROKE get() = AppTheme.BORDER_C        // bordes y separadores
+    val GRID get() = (AppTheme.BORDER_C and 0x00FFFFFF) or (0x66 shl 24)   // rejilla del gráfico
+    val TXT get() = AppTheme.TXT_PRI
+    val TXT2 get() = AppTheme.TXT_MUTED         // ≥ 4,5:1 en los tres temas
+    val UP get() = if (AppTheme.isDark) 0xFF2EBD85.toInt() else AppTheme.OK
+    val DOWN get() = if (AppTheme.isDark) 0xFFF6465D.toInt() else AppTheme.RED
+    val UP_BG get() = UP                        // lado elegido de Comprar (relleno)
+    val DOWN_BG get() = DOWN
+    val ACCENT get() = AppTheme.ACCENT          // pestaña activa, órdenes, enlaces
+    val LINK get() = AppTheme.ACCENT
+    val WARN get() = AppTheme.ACCENT            // estrella de favorito
+    val LIQ get() = AppTheme.WARN               // línea de liquidación (naranja del tema)
+    /** Texto sobre el botón verde: oscuro en los temas oscuros (el blanco no llega a 3:1), blanco en el claro. */
+    val ON_UP get() = if (AppTheme.isDark) 0xFF0B0E11.toInt() else 0xFFFFFFFF.toInt()
+    /** Texto legible sobre un color de relleno cualquiera (etiquetas de líneas del gráfico). */
+    fun sobre(c: Int): Int {
+        fun ch(v: Int): Double { val x = v / 255.0; return if (x <= 0.03928) x / 12.92 else Math.pow((x + 0.055) / 1.055, 2.4) }
+        val l = 0.2126 * ch((c shr 16) and 0xFF) + 0.7152 * ch((c shr 8) and 0xFF) + 0.0722 * ch(c and 0xFF)
+        return if (l > 0.35) 0xFF0B0E11.toInt() else 0xFFFFFFFF.toInt()
+    }
 
     fun dp(ctx: Context, v: Float) = v * ctx.resources.displayMetrics.density
 
@@ -87,12 +96,13 @@ object DexTema {
     }
 
     /**
-     * Diálogo del DEx: siempre oscuro (aunque la app esté en tema claro), sobre
+     * Diálogo del DEx: oscuro o claro según el tema, sobre
      * #121212 con esquinas redondeadas y botones blanco / gris, para que el texto
      * en tokens del DEx se lea igual que en la pantalla.
      */
     fun dialogo(ctx: Context): androidx.appcompat.app.AlertDialog.Builder =
-        object : androidx.appcompat.app.AlertDialog.Builder(ctx, androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert) {
+        object : androidx.appcompat.app.AlertDialog.Builder(ctx, if (AppTheme.isDark) androidx.appcompat.R.style.Theme_AppCompat_Dialog_Alert
+            else androidx.appcompat.R.style.Theme_AppCompat_Light_Dialog_Alert) {
             override fun show(): androidx.appcompat.app.AlertDialog {
                 val d = super.show()
                 d.window?.setBackgroundDrawable(android.graphics.drawable.InsetDrawable(fondo(ctx, SURFACE, 20f), dp(ctx, 16f).toInt()))

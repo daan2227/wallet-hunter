@@ -285,7 +285,9 @@ class GraficoTA(ctx: Context) : View(ctx) {
         for (L in 0 until NIVELES) { if (niv.count { it <= L } <= cabe) nivel = L else break }
         return niv.indices.filter { niv[it] <= nivel }.map { (it + i0) to niv[it] }
     }
-    private val coloresMedia = intArrayOf(0xFFF5A524.toInt(), 0xFF38BDF8.toInt(), 0xFFC084FC.toInt())
+    // medias: ámbar, celeste y violeta; en el tema claro, tonos oscuros para que se vean sobre blanco
+    private val coloresMedia = if (AppTheme.isDark) intArrayOf(0xFFF5A524.toInt(), 0xFF38BDF8.toInt(), 0xFFC084FC.toInt())
+        else intArrayOf(0xFFB45309.toInt(), 0xFF0369A1.toInt(), 0xFF7C3AED.toInt())
 
     private fun linea(c: Canvas, s: FloatArray, color: Int, i0: Int, i1: Int, xf: (Int) -> Float, yf: (Float) -> Float, dash: Boolean = false) {
         pLine.color = color; pLine.pathEffect = if (dash) DashPathEffect(floatArrayOf(5f * d, 4f * d), 0f) else null
@@ -361,12 +363,12 @@ class GraficoTA(ctx: Context) : View(ctx) {
         if (cfg.bb) { val bb = Indicadores.bollinger(cl, cfg.bbN, cfg.bbK)
             linea(c, bb.alta, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true); linea(c, bb.media, alfa(AppTheme.BLUE, 0x88), i0, i1, xf, yP)
             linea(c, bb.baja, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true) }
-        if (cfg.vwap) linea(c, Indicadores.vwap(hi, lo, cl, vo), 0xFFE879F9.toInt(), i0, i1, xf, yP)
+        if (cfg.vwap) linea(c, Indicadores.vwap(hi, lo, cl, vo), if (AppTheme.isDark) 0xFFE879F9.toInt() else 0xFFA21CAF.toInt(), i0, i1, xf, yP)
         val etiquetas = StringBuilder()
         cfg.medias.forEachIndexed { k, m -> if (m.on && m.n in 2..n) {
             linea(c, if (m.ema) Indicadores.ema(cl, m.n) else Indicadores.sma(cl, m.n), coloresMedia[k], i0, i1, xf, yP)
             etiquetas.append(if (m.ema) "EMA" else "MA").append(m.n).append("  ") } }
-        if (cfg.sar) { val s = Indicadores.sar(hi, lo); pFill.color = 0xFFE2E8F0.toInt()
+        if (cfg.sar) { val s = Indicadores.sar(hi, lo); pFill.color = DexTema.TXT
             for (i in i0..i1) if (!s[i].isNaN()) c.drawCircle(xf(i), yP(s[i]), 1.6f * d, pFill) }
         // dibujos
         for (dj in dibujos) when (dj.tipo) {
@@ -383,7 +385,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
             val y = yP(lp.precio); pUltimo.color = lp.color; c.drawLine(padLpx, y, w - padRpx, y, pUltimo)
             val tw = lbl.measureText(lp.texto); pFill.color = alfa(lp.color, 0xDD)
             c.drawRoundRect(padLpx + 2f * d, y - 7f * d, padLpx + tw + 8f * d, y + 6f * d, 3f * d, 3f * d, pFill)
-            lbl.color = 0xFF0B0E11.toInt(); c.drawText(lp.texto, padLpx + 5f * d, y + 3f * d, lbl); lbl.color = DexTema.TXT2
+            lbl.color = DexTema.sobre(lp.color); c.drawText(lp.texto, padLpx + 5f * d, y + 3f * d, lbl); lbl.color = DexTema.TXT2
         }
         // máximo y mínimo de lo visible
         run {
@@ -460,7 +462,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
             val x = xf(i); val yFin = y0 - gapPx; val cy = cruzY.coerceIn(pTop, yFin)
             c.drawLine(x, pTop, x, yFin, pCruz); c.drawLine(padLpx, cy, w - padRpx, cy, pCruz)
             pFill.color = DexTema.TXT; c.drawCircle(x, cy, 3.5f * d, pFill)
-            pFill.color = 0xFFF1F5F9.toInt()
+            pFill.color = DexTema.TXT; pTag.color = DexTema.BG     // caja invertida: se lee en cualquier tema
             if (cy <= pBot) {           // precio en la cruz y % frente al último
                 val p = minL + (maxH - minL) * (pBot - cy) / (pBot - pTop)
                 val pc = if (ult != 0f) (p - ult) / ult * 100f else 0f

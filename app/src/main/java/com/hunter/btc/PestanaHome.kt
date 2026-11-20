@@ -470,7 +470,9 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             if (f != null) {
                 val val0 = f.valor.coerceIn(0, 100)
                 tvFng.text = "$val0"; tvFngC.text = f.clasif
-                tvFng.setTextColor(when { val0 < 25 -> 0xFFE5484D.toInt(); val0 < 45 -> 0xFFF5A524.toInt(); val0 < 55 -> 0xFFF5D90A.toInt(); val0 < 75 -> 0xFF8BD64A.toInt(); else -> 0xFF2EBD6B.toInt() })
+                // en el tema claro, tonos que se leen sobre blanco (≥ 4,5:1)
+                tvFng.setTextColor(if (AppTheme.isDark) when { val0 < 25 -> 0xFFE5484D.toInt(); val0 < 45 -> 0xFFF5A524.toInt(); val0 < 55 -> 0xFFF5D90A.toInt(); val0 < 75 -> 0xFF8BD64A.toInt(); else -> 0xFF2EBD6B.toInt() }
+                    else when { val0 < 25 -> 0xFFB91C1C.toInt(); val0 < 45 -> 0xFFC2410C.toInt(); val0 < 55 -> 0xFF854D0E.toInt(); val0 < 75 -> 0xFF3F6212.toInt(); else -> 0xFF15803D.toInt() })
                 (izq.layoutParams as LinearLayout.LayoutParams).weight = val0.toFloat().coerceAtLeast(0.01f)
                 (der.layoutParams as LinearLayout.LayoutParams).weight = (100 - val0).toFloat().coerceAtLeast(0.01f)
                 barra.requestLayout()
