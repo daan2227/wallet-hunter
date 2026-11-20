@@ -17,26 +17,27 @@ import android.widget.ScrollView
 import android.widget.TextView
 
 /**
- * Tokens del DEx: estética de exchange (negro OLED, superficies #121212, verde y
- * rojo de mercado). El DEx es siempre oscuro, como las apps de trading, para que
- * velas y libro se lean igual de día que de noche. Contraste sobre negro:
- * TXT 21:1, TXT2 7,4:1, UP 7,6:1, DOWN 5,8:1, LINK 7,2:1 (texto normal ≥ 4,5:1).
+ * Tokens del DEx: estética de exchange (pizarra oscura #181A20 / #1E2329, campos
+ * #2B3139, acento amarillo, verde y rojo de mercado). El DEx es siempre oscuro,
+ * como las apps de trading. Contraste medido sobre #181A20: TXT 15,4:1,
+ * TXT2 5,3:1, UP 7,4:1, DOWN 5,1:1, ACCENT 10,7:1 (texto normal ≥ 4,5:1).
  */
 object DexTema {
-    const val BG = 0xFF000000.toInt()
-    const val SURFACE = 0xFF121212.toInt()      // hojas, campos
-    const val CHIP = 0xFF1E1E20.toInt()         // chips, píldoras rellenas
-    const val STROKE = 0xFF2E2E31.toInt()       // bordes y separadores
-    const val GRID = 0xFF17171A.toInt()         // rejilla del gráfico
-    const val TXT = 0xFFFFFFFF.toInt()
-    const val TXT2 = 0xFF9A9AA0.toInt()
-    const val UP = 0xFF20B26C.toInt()
-    const val DOWN = 0xFFF0454A.toInt()
-    const val UP_BG = 0xFF0E2A1D.toInt()
-    const val DOWN_BG = 0xFF33151A.toInt()
-    const val LINK = 0xFF3D9BF5.toInt()
+    const val BG = 0xFF181A20.toInt()           // fondo de la pantalla
+    const val SURFACE = 0xFF1E2329.toInt()      // hojas, tarjetas
+    const val CHIP = 0xFF2B3139.toInt()         // campos, botones, chips
+    const val STROKE = 0xFF2B3139.toInt()       // bordes y separadores
+    const val GRID = 0xFF22262C.toInt()         // rejilla del gráfico
+    const val TXT = 0xFFEAECEF.toInt()
+    const val TXT2 = 0xFF848E9C.toInt()
+    const val UP = 0xFF2EBD85.toInt()
+    const val DOWN = 0xFFF6465D.toInt()
+    const val UP_BG = 0xFF2EBD85.toInt()        // lado elegido de Comprar (relleno)
+    const val DOWN_BG = 0xFFF6465D.toInt()
+    const val LINK = 0xFFF0B90B.toInt()         // acento (pestaña activa, enlaces)
+    const val ACCENT = 0xFFF0B90B.toInt()
     const val WARN = 0xFFF0B90B.toInt()
-    const val ON_UP = 0xFF06140D.toInt()        // texto sobre botón verde
+    const val ON_UP = 0xFF0B0E11.toInt()        // texto sobre verde (8,4:1; blanco no llega a 3:1)
 
     fun dp(ctx: Context, v: Float) = v * ctx.resources.displayMetrics.density
 
@@ -111,6 +112,62 @@ object DexTema {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
     }
 
+    /**
+     * Campo con etiqueta dentro (como "Price (USDT)" sobre el valor), en caja #2B3139.
+     * Devuelve la caja y el EditText; [derecha] es una vista opcional al lado (p. ej. la unidad).
+     */
+    fun campoEtiquetado(ctx: Context, etiqueta: String, derecha: View? = null): Pair<LinearLayout, android.widget.EditText> {
+        val et = android.widget.EditText(ctx).apply {
+            textSize = 16f; setTextColor(TXT); setHintTextColor(TXT2); background = null; setPadding(0, 0, 0, 0); setSingleLine()
+            typeface = AppTheme.medium(ctx); hint = etiqueta
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL
+        }
+        val tvEt = TextView(ctx).apply { text = etiqueta; textSize = 12f; setTextColor(TXT2); visibility = View.GONE
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO }
+        et.addTextChangedListener(object : android.text.TextWatcher {
+            override fun afterTextChanged(e: android.text.Editable?) { tvEt.visibility = if (e.isNullOrEmpty()) View.GONE else View.VISIBLE }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+        val caja = LinearLayout(ctx).apply {
+            orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; background = fondo(ctx, CHIP, 8f)
+            minimumHeight = dp(ctx, 52f).toInt(); setPadding(dp(ctx, 12f).toInt(), dp(ctx, 6f).toInt(), dp(ctx, 12f).toInt(), dp(ctx, 6f).toInt())
+            addView(LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); addView(tvEt); addView(et) })
+            if (derecha != null) addView(derecha)
+            setOnClickListener { et.requestFocus() }
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(ctx, 8f).toInt() }
+        }
+        return caja to et
+    }
+
+    /**
+     * Pestañas con subrayado amarillo (Positions / Open orders / …). [alElegir] recibe
+     * el índice; devuelve la fila y una función para cambiar los rótulos (contadores).
+     */
+    fun pestanasSubrayado(ctx: Context, rotulos: List<String>, inicial: Int, alElegir: (Int) -> Unit): Pair<LinearLayout, (List<String>) -> Unit> {
+        var sel = inicial
+        val fila = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
+        val tvs = ArrayList<TextView>()
+        fun pintar() = tvs.forEachIndexed { i, t ->
+            val on = i == sel
+            t.setTextColor(if (on) TXT else TXT2); t.typeface = if (on) AppTheme.bold(ctx) else AppTheme.medium(ctx); t.isSelected = on
+            t.background = if (on) android.graphics.drawable.LayerDrawable(arrayOf(GradientDrawable().apply { setColor(ACCENT); cornerRadius = dp(ctx, 2f) })).apply {
+                setLayerGravity(0, Gravity.BOTTOM or Gravity.FILL_HORIZONTAL); setLayerHeight(0, dp(ctx, 3f).toInt()) } else null
+        }
+        rotulos.forEachIndexed { i, r ->
+            val t = TextView(ctx).apply {
+                text = r; textSize = 16f; gravity = Gravity.CENTER; minHeight = dp(ctx, 48f).toInt()
+                isClickable = true; foreground = Ui.toque()
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(ctx, 22f).toInt() }
+                setOnClickListener { sel = i; pintar(); alElegir(i) }
+            }
+            tvs.add(t); fila.addView(t)
+        }
+        pintar()
+        return fila to { nuevos: List<String> -> nuevos.forEachIndexed { i, r -> if (i < tvs.size && tvs[i].text != r) tvs[i].text = r } }
+    }
+
     /** Texto de sección, gris y pequeño. */
     fun seccion(ctx: Context, t: String) = TextView(ctx).apply {
         text = t; textSize = 14f; setTextColor(TXT2); typeface = AppTheme.bold(ctx)
@@ -155,29 +212,32 @@ object DexTema {
  */
 class SegmentoLargoCorto(ctx: Context) : View(ctx) {
     var largo = true; private set
+    /** false = dos mitades rectas: la elegida rellena (verde/rojo), la otra con contorno. */
+    var diagonal = false
     var textos = "Long" to "Short"
         set(v) { field = v; contentDescription = "${v.first} / ${v.second}"; invalidate() }
     var alCambiar: ((Boolean) -> Unit)? = null
     private val d = resources.displayMetrics.density
     private val pRelleno = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL; pathEffect = CornerPathEffect(8f * d) }
     private val pBorde = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.2f * d; color = DexTema.STROKE; pathEffect = CornerPathEffect(8f * d) }
-    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 16f * d; textAlign = Paint.Align.CENTER; typeface = AppTheme.medium(ctx) }
+    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 16f * d; textAlign = Paint.Align.CENTER; typeface = AppTheme.bold(ctx) }
 
     init { isClickable = true; contentDescription = "Long / Short"; minimumHeight = (48 * d).toInt() }
 
     fun poner(l: Boolean) { if (l != largo) { largo = l; invalidate() } }
 
-    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (48 * d).toInt())
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (44 * d).toInt())
 
     override fun onDraw(c: Canvas) {
-        val w = width.toFloat(); val h = height.toFloat(); val s = h * 0.32f; val gap = 4f * d; val m = 1f * d
+        val w = width.toFloat(); val h = height.toFloat(); val s = if (diagonal) h * 0.32f else 0f; val gap = if (diagonal) 4f * d else 0f; val m = 1f * d
         val izq = Path().apply { moveTo(m, m); lineTo(w / 2 + s / 2 - gap / 2, m); lineTo(w / 2 - s / 2 - gap / 2, h - m); lineTo(m, h - m); close() }
         val der = Path().apply { moveTo(w / 2 + s / 2 + gap / 2, m); lineTo(w - m, m); lineTo(w - m, h - m); lineTo(w / 2 - s / 2 + gap / 2, h - m); close() }
-        if (largo) { pRelleno.color = DexTema.UP_BG; c.drawPath(izq, pRelleno); c.drawPath(der, pBorde) }
-        else { pRelleno.color = DexTema.DOWN_BG; c.drawPath(der, pRelleno); c.drawPath(izq, pBorde) }
+        if (!diagonal) { pBorde.color = DexTema.STROKE; c.drawRoundRect(m, m, w - m, h - m, 6f * d, 6f * d, pBorde) }
+        if (largo) { pRelleno.color = DexTema.UP_BG; c.drawPath(izq, pRelleno); if (diagonal) c.drawPath(der, pBorde) }
+        else { pRelleno.color = DexTema.DOWN_BG; c.drawPath(der, pRelleno); if (diagonal) c.drawPath(izq, pBorde) }
         val yt = h / 2 - (pTxt.descent() + pTxt.ascent()) / 2
-        pTxt.color = if (largo) DexTema.UP else DexTema.TXT2; c.drawText(textos.first, w / 4, yt, pTxt)
-        pTxt.color = if (!largo) DexTema.DOWN else DexTema.TXT2; c.drawText(textos.second, w * 3 / 4, yt, pTxt)
+        pTxt.color = if (largo) DexTema.ON_UP else DexTema.TXT2; c.drawText(textos.first, w / 4, yt, pTxt)
+        pTxt.color = if (!largo) 0xFFFFFFFF.toInt() else DexTema.TXT2; c.drawText(textos.second, w * 3 / 4, yt, pTxt)
     }
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
@@ -185,4 +245,64 @@ class SegmentoLargoCorto(ctx: Context) : View(ctx) {
         return true
     }
     override fun performClick(): Boolean { super.performClick(); return true }
+}
+
+/**
+ * Deslizador de porcentaje con cinco rombos (0, 25, 50, 75, 100 %), como en los
+ * exchanges. Arrastrar o tocar lo mueve (se ajusta al rombo cercano si está a < 4 %).
+ * También se maneja con el lector de pantalla (acciones de subir y bajar).
+ */
+class SliderPorcentaje(ctx: Context) : View(ctx) {
+    private val d = resources.displayMetrics.density
+    var valor = 0f; private set
+    var alCambiar: ((Int) -> Unit)? = null
+    private val pLinea = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 2f * d; color = DexTema.CHIP }
+    private val pActiva = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 2f * d; color = DexTema.TXT }
+    private val pRombo = Paint(Paint.ANTI_ALIAS_FLAG).apply { strokeWidth = 1.6f * d; style = Paint.Style.STROKE }
+    private val pRelleno = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    init { isClickable = true; isFocusable = true; contentDescription = "Amount percentage" }
+
+    fun poner(v: Float) { valor = v.coerceIn(0f, 100f)
+        if (android.os.Build.VERSION.SDK_INT >= 30) stateDescription = "${valor.toInt()} percent"; invalidate() }
+
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (44 * d).toInt())
+
+    private fun rombo(c: Canvas, x: Float, y: Float, r: Float, lleno: Boolean, grande: Boolean) {
+        val p = Path().apply { moveTo(x, y - r); lineTo(x + r, y); lineTo(x, y + r); lineTo(x - r, y); close() }
+        pRelleno.color = if (grande) DexTema.BG else if (lleno) DexTema.TXT else DexTema.BG; c.drawPath(p, pRelleno)
+        pRombo.color = if (lleno || grande) DexTema.TXT else DexTema.TXT2; c.drawPath(p, pRombo)
+    }
+
+    override fun onDraw(c: Canvas) {
+        val m = 12f * d; val w = width - 2 * m; val y = height / 2f
+        val xv = m + w * valor / 100f
+        c.drawLine(m, y, m + w, y, pLinea); c.drawLine(m, y, xv, y, pActiva)
+        for (k in 0..4) { val x = m + w * k / 4f; rombo(c, x, y, 5f * d, k * 25f <= valor, false) }
+        rombo(c, xv, y, 9f * d, true, true)
+    }
+
+    override fun onTouchEvent(e: MotionEvent): Boolean {
+        val m = 12f * d; val w = width - 2 * m
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) parent?.requestDisallowInterceptTouchEvent(true)
+        if (e.actionMasked == MotionEvent.ACTION_DOWN || e.actionMasked == MotionEvent.ACTION_MOVE || e.actionMasked == MotionEvent.ACTION_UP) {
+            var v = ((e.x - m) / w * 100f).coerceIn(0f, 100f)
+            val cerca = (0..4).map { it * 25f }.minByOrNull { Math.abs(it - v) }!!
+            if (Math.abs(cerca - v) < 4f) v = cerca
+            if (v.toInt() != valor.toInt()) { poner(v); alCambiar?.invoke(v.toInt()) }
+            if (e.actionMasked == MotionEvent.ACTION_UP) performClick()
+        }
+        return true
+    }
+    override fun performClick(): Boolean { super.performClick(); return true }
+
+    override fun onInitializeAccessibilityNodeInfo(info: android.view.accessibility.AccessibilityNodeInfo) {
+        super.onInitializeAccessibilityNodeInfo(info)
+        info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_FORWARD)
+        info.addAction(android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_BACKWARD)
+    }
+    override fun performAccessibilityAction(action: Int, args: android.os.Bundle?): Boolean {
+        val paso = when (action) { android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> 25f
+            android.view.accessibility.AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> -25f; else -> return super.performAccessibilityAction(action, args) }
+        poner(valor + paso); alCambiar?.invoke(valor.toInt()); return true
+    }
 }

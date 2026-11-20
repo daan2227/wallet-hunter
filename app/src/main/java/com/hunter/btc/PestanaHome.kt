@@ -76,21 +76,55 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         isClickable = true; foreground = Ui.toque()
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(2) }
     }
+    // cabecera como en los exchanges: PAR [Perp] ▾ y el cambio debajo; a la derecha gráfico, estrella y "⋯"
+    val tvTipoPar = TextView(this).apply {
+        textSize = 12f; setTextColor(DexTema.TXT); background = DexTema.fondo(context, DexTema.CHIP, 4f); setPadding(dp(6), dp(2), dp(6), dp(2))
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(8); marginEnd = dp(4) }
+    }
+    tvPar.setCompoundDrawables(null, null, null, null)
+    val ivCaret = android.widget.ImageView(this).apply { setImageResource(R.drawable.ic_caret_down); setColorFilter(DexTema.TXT)
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO; layoutParams = LinearLayout.LayoutParams(dp(22), dp(22)) }
+    val tvCambioCab = TextView(this).apply { textSize = 14f; typeface = AppTheme.medium(context); setTextColor(DexTema.TXT2) }
+    val btnVerGrafico = icono(R.drawable.ic_chart, "Show chart")
+    val btnMasCab = icono(R.drawable.ic_more, "More options")
     pagTrade.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
-        addView(tvPar); addView(View(context).apply { layoutParams = LinearLayout.LayoutParams(0, 1, 1f) })
-        addView(btnVivo); addView(btnFav); addView(btnAlerta); addView(btnInfo)
+        addView(LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+                isClickable = true; foreground = Ui.toque(); contentDescription = "Select pair"; setOnClickListener { tvPar.performClick() }
+                tvPar.minHeight = 0; tvPar.isClickable = false; tvPar.foreground = null
+                addView(tvPar); addView(tvTipoPar); addView(ivCaret) })
+            addView(tvCambioCab)
+        })
+        addView(btnVerGrafico); addView(btnFav); addView(btnMasCab)
     })
+    // columnas: formulario | libro; debajo pestañas; al final el gráfico plegable
+    val colIzq = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.57f).apply { marginEnd = dp(12) } }
+    val colDer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
+        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.43f) }
+    pagTrade.addView(LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(8)); addView(colIzq); addView(colDer) })
+    val cajaListas = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    pagTrade.addView(cajaListas)
+    val cajaGrafico = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val tvCabGrafico = TextView(this).apply {
+        textSize = 16f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(52)
+        isClickable = true; foreground = Ui.toque()
+    }
+    pagTrade.addView(View(this).apply { setBackgroundColor(DexTema.STROKE)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { topMargin = dp(16) } })
+    pagTrade.addView(tvCabGrafico); pagTrade.addView(cajaGrafico)
     // precio grande en color + cambio a su lado; debajo una nota y (opcional) cambios por periodo
-    val tvPrecio = TextView(this).apply { textSize = 34f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); text = "…"; includeFontPadding = false }
-    val tvCambio = TextView(this).apply { textSize = 16f; setTextColor(DexTema.TXT2); typeface = AppTheme.medium(context); setPadding(dp(10), 0, 0, dp(3)) }
-    pagTrade.addView(LinearLayout(this).apply {
+    val tvPrecio = TextView(this).apply { textSize = 30f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); text = "…"; includeFontPadding = false }
+    val tvCambio = TextView(this).apply { textSize = 15f; setTextColor(DexTema.TXT2); typeface = AppTheme.medium(context); setPadding(dp(10), 0, 0, dp(3)) }
+    cajaGrafico.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.BOTTOM; setPadding(0, dp(2), 0, 0)
         addView(tvPrecio); addView(tvCambio)
     })
     val tvNota = TextView(this).apply { textSize = 12f; setTextColor(DexTema.TXT2); setPadding(0, dp(4), 0, dp(4)) }
     val tvMulti = TextView(this).apply { textSize = 13f; typeface = AppTheme.mono(context); setPadding(0, dp(2), 0, dp(6)) }
-    pagTrade.addView(tvNota); pagTrade.addView(tvMulti)
+    cajaGrafico.addView(tvNota); cajaGrafico.addView(tvMulti)
 
     // ── Gráfico (config, dibujos e intervalo se guardan) ──
     // Los 5 primeros van a la vista; el resto en el desplegable "More".
@@ -103,7 +137,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val visibles = 5
     var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
     var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
-    tvPar.text = activo.par + "  ▾"
+    tvPar.text = activo.par.replace(" ", "")
     btnInfo.setOnClickListener { abrirInfoActivo(activo) }
     fun pintarFav() { val f = Favoritos.es(this, activo.clave)
         btnFav.setImageResource(if (f) R.drawable.ic_star_filled else R.drawable.ic_star); btnFav.setColorFilter(if (f) DexTema.WARN else DexTema.TXT)
@@ -141,6 +175,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         val col = if (pct >= 0) chart.cUp else chart.cDown
         tvPrecio.text = fmtPrecio(fin).removeSuffix(" USD"); tvPrecio.setTextColor(col)
         tvCambio.text = "%s%.2f%%".format(if (pct >= 0) "+" else "", pct); tvCambio.setTextColor(col)
+        tvCambioCab.text = tvCambio.text; tvCambioCab.setTextColor(col)
         tvNota.text = (if (activo.sinDolar) "" else "USD · ") + sufijo
     }
     var panel: PanelTrading? = null
@@ -166,7 +201,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         scroll.smoothScrollTo(0, 0)
         if (a.clave == activo.clave) return
         activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
-        tvPar.text = a.par + "  ▾"; tvPrecio.text = "…"; pintarFav(); chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO && prefsG.getBoolean("c_cuenta", true)
+        tvPar.text = a.par.replace(" ", ""); tvCabGrafico.text = "${a.par} chart"; tvPrecio.text = "…"; pintarFav(); chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO && prefsG.getBoolean("c_cuenta", true)
         chart.lineasExtra = emptyList(); if (tvMulti.visibility == View.VISIBLE) { tvMulti.text = ""; cargarMulti?.invoke() }
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
         chart.poner(emptyList()); panel?.alCambiarActivo(); libroPanel?.alCambiarActivo(); cargar()
@@ -229,7 +264,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
     pintarIv()
     val btnAjustes = icono(R.drawable.ic_gear, "Chart settings").apply { layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)) }
-    pagTrade.addView(LinearLayout(this).apply {
+    cajaGrafico.addView(LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(6) }
         addView(HorizontalScrollView(context).apply {
@@ -237,7 +272,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; tabsIv.forEach { addView(it) }; addView(tabMas) })
         })
-        addView(btnAjustes)
+        addView(btnVivo); addView(btnAjustes)
     })
 
     // ── Actualización en vivo: desplegable junto al par ──
@@ -281,11 +316,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }
     }
     marcarHerr = marcar
-    pagTrade.addView(chart)
+    cajaGrafico.addView(chart)
     val cajaDibujo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); addView(filaHerr)
         visibility = if (prefsG.getBoolean("ver_dibujo", false)) View.VISIBLE else View.GONE }
-    pagTrade.addView(cajaDibujo)
+    cajaGrafico.addView(cajaDibujo)
 
     // ── Simulador de trading (Spot / Futuros) ──
     val pt = PanelTrading(this, { activo }, { chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
@@ -293,8 +328,34 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Libro de órdenes y trades en vivo (tocar un precio → precio límite del simulador) ──
     val pl = PanelLibro(this, { activo }) { p -> pt.ponerPrecioLimite(p) }
     libroPanel = pl
-    pagTrade.addView(pl.vista)
-    pagTrade.addView(pt.vista)
+    colIzq.addView(pt.vista); colDer.addView(pl.vista)
+    cajaListas.addView(pt.vistaListas)
+    pt.bbo = { pl.mejorBid to pl.mejorAsk }
+    // gráfico plegable (como "BTCUSDT Perp. Chart ▴")
+    fun pintarCabGrafico() {
+        val abierto = cajaGrafico.visibility == View.VISIBLE
+        tvCabGrafico.text = "${activo.par} chart"
+        tvCabGrafico.setCompoundDrawables(null, null, getDrawable(R.drawable.ic_caret_down)?.mutate()?.apply {
+            setTint(DexTema.TXT2); setBounds(0, 0, dp(20), dp(20)) }, null)
+        tvCabGrafico.contentDescription = "${activo.par} chart, ${if (abierto) "expanded" else "collapsed"}"
+    }
+    cajaGrafico.visibility = if (prefsG.getBoolean("graf_abierto", true)) View.VISIBLE else View.GONE
+    tvCabGrafico.setOnClickListener {
+        val abrir = cajaGrafico.visibility != View.VISIBLE
+        cajaGrafico.visibility = if (abrir) View.VISIBLE else View.GONE; prefsG.edit().putBoolean("graf_abierto", abrir).apply(); pintarCabGrafico()
+        if (abrir) scroll.post { scroll.smoothScrollTo(0, tvCabGrafico.top + pagTrade.top) }
+    }
+    btnVerGrafico.setOnClickListener {
+        if (cajaGrafico.visibility != View.VISIBLE) tvCabGrafico.performClick() else scroll.post { scroll.smoothScrollTo(0, tvCabGrafico.top + pagTrade.top) }
+    }
+    pintarCabGrafico()
+    btnMasCab.setOnClickListener {
+        val pm = androidx.appcompat.widget.PopupMenu(this, btnMasCab)
+        listOf("Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+        pm.setOnMenuItemClickListener { when (it.itemId) {
+            0 -> btnAlerta.performClick(); 1 -> btnInfo.performClick(); 2 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
+        pm.show()
+    }
     val hVigia = android.os.Handler(android.os.Looper.getMainLooper())
     hVigia.postDelayed(object : Runnable {
         override fun run() {
@@ -682,7 +743,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Selector de par (tocar el nombre del par) y modo Spot/Futures del simulador ──
     tvPar.setOnClickListener { abrirSelectorPar { seleccionar(it) } }
     btnAlerta.setOnClickListener { abrirAlertas(activo, chart.velasActuales().lastOrNull()?.c?.toDouble() ?: 0.0) }
-    alCambiarTab = { k -> if (k < 2) pt.ponerModo(k == 1) }
+    alCambiarTab = { k -> if (k < 2) { pt.ponerModo(k == 1); pl.futuros = k == 1; tvTipoPar.text = if (k == 1) "Perp" else "Spot" } }
+    pl.futuros = tabHome == 1; tvTipoPar.text = if (tabHome == 1) "Perp" else "Spot"
     if (tabHome < 2) pt.ponerModo(tabHome == 1)
 
     return scroll
