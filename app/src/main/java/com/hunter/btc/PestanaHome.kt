@@ -28,6 +28,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val pagMercado = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
     val prefsTab = prefsG
     var tabHome = prefsTab.getInt("tab", 0).coerceIn(0, 2)
+    /** Spot y Futuros tienen cada uno su par, intervalo e indicadores (Markets usa los de la última pestaña de trading). */
+    fun modoGraf() = if (tabHome == 2) prefsTab.getInt("ultimo_trade", 0).coerceIn(0, 1) else tabHome
+    fun clave(base: String) = base + if (modoGraf() == 1) "_fut" else "_spot"
+    /** Valor de la pestaña actual; si aún no tiene, el que compartían antes (migración). */
+    fun pref(base: String): String? = prefsTab.getString(clave(base), null) ?: prefsTab.getString(base, null)
     var alCambiarTab: (Int) -> Unit = {}
     val segTop = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
     val nombresTop = listOf("Spot", "Futures", "Markets")
@@ -135,8 +140,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         Triple("6h", "6h", 21600L), Triple("12h", "12h", 43200L), Triple("3D", "3d", 259200L),
         Triple("1W", "1w", 604800L), Triple("1M", "1M", 2592000L))
     val visibles = 5
-    var intervalo = prefsG.getString("intervalo", "1h") ?: "1h"
-    var activo = Mercado.Activo.deJson(prefsG.getString("activo", null)) ?: Mercado.BTC
+    var intervalo = pref("intervalo") ?: "1h"
+    var activo = Mercado.Activo.deJson(pref("activo")) ?: Mercado.BTC
     tvPar.text = activo.par.replace(" ", "")
     btnInfo.setOnClickListener { abrirInfoActivo(activo) }
     fun pintarFav() { val f = Favoritos.es(this, activo.clave)
@@ -151,10 +156,10 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         intervaloSeg = intervalos.firstOrNull { it.second == intervalo }?.third ?: 3600L
         mostrarCuenta = activo.tipo == Mercado.Tipo.CRYPTO && prefsG.getBoolean("c_cuenta", true)
-        cfg.deJson(prefsG.getString("cfg", null))
+        cfg.deJson(pref("cfg"))
         cargarDibujos(prefsG.getString(claveDib(activo), if (activo.clave == Mercado.BTC.clave) prefsG.getString("dibujos", null) else null))
     }
-    fun guardarCfg() { prefsG.edit().putString("cfg", chart.cfg.aJson()).apply(); chart.refrescarConfig() }
+    fun guardarCfg() { prefsG.edit().putString(clave("cfg"), chart.cfg.aJson()).apply(); chart.refrescarConfig() }
     chart.alCambiarDibujos = { prefsG.edit().putString(claveDib(activo), chart.dibujosJson()).apply() }
     chart.alPedirNota = { t, p ->
         val et = DexTema.campo(this, "Note text")
@@ -197,10 +202,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }.start()
     }
     /** Cambia el gráfico a otro activo (desde la lista de mercados). */
-    fun seleccionar(a: Mercado.Activo) {
+    fun seleccionar(a: Mercado.Activo, guardar: Boolean = true) {
         scroll.smoothScrollTo(0, 0)
+        if (guardar) prefsG.edit().putString(clave("activo"), a.aJson()).apply()
         if (a.clave == activo.clave) return
-        activo = a; prefsG.edit().putString("activo", a.aJson()).apply()
+        activo = a
         tvPar.text = a.par.replace(" ", ""); tvCabGrafico.text = "${a.par} chart"; tvPrecio.text = "…"; pintarFav(); chart.mostrarCuenta = a.tipo == Mercado.Tipo.CRYPTO && prefsG.getBoolean("c_cuenta", true)
         chart.lineasExtra = emptyList(); if (tvMulti.visibility == View.VISIBLE) { tvMulti.text = ""; cargarMulti?.invoke() }
         chart.cargarDibujos(prefsG.getString(claveDib(a), null))
@@ -254,7 +260,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
     fun elegirIv(k: Int) {
         intervalo = intervalos[k].second; chart.intervaloSeg = intervalos[k].third
-        prefsG.edit().putString("intervalo", intervalo).apply(); pintarIv(); cargar()
+        prefsG.edit().putString(clave("intervalo"), intervalo).apply(); pintarIv(); cargar()
     }
     tabsIv.forEachIndexed { n, tv -> tv.setOnClickListener { elegirIv(n) } }
     tabMas.setOnClickListener {
@@ -743,7 +749,16 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Selector de par (tocar el nombre del par) y modo Spot/Futures del simulador ──
     tvPar.setOnClickListener { abrirSelectorPar { seleccionar(it) } }
     btnAlerta.setOnClickListener { abrirAlertas(activo, chart.velasActuales().lastOrNull()?.c?.toDouble() ?: 0.0) }
-    alCambiarTab = { k -> if (k < 2) { pt.ponerModo(k == 1); pl.futuros = k == 1; tvTipoPar.text = if (k == 1) "Perp" else "Spot" } }
+    alCambiarTab = { k -> if (k < 2) {
+        pt.ponerModo(k == 1); pl.futuros = k == 1; tvTipoPar.text = if (k == 1) "Perp" else "Spot"
+        // cada pestaña recupera su propio gráfico: indicadores, intervalo y par
+        chart.cfg.deJson(pref("cfg") ?: GraficoTA.Config().aJson()); chart.refrescarConfig()
+        val iv = pref("intervalo") ?: "1h"
+        val nuevo = Mercado.Activo.deJson(pref("activo")) ?: Mercado.BTC
+        val cambiaIv = iv != intervalo
+        if (cambiaIv) { intervalo = iv; chart.intervaloSeg = intervalos.firstOrNull { it.second == iv }?.third ?: 3600L; pintarIv() }
+        if (nuevo.clave != activo.clave) seleccionar(nuevo, guardar = false) else if (cambiaIv) cargar()
+    } }
     pl.futuros = tabHome == 1; tvTipoPar.text = if (tabHome == 1) "Perp" else "Spot"
     if (tabHome < 2) pt.ponerModo(tabHome == 1)
 
