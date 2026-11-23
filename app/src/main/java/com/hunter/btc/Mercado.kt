@@ -49,11 +49,11 @@ object Mercado {
     private val STABLES = setOf("usdt", "usdc", "dai", "busd", "tusd", "usdd", "fdusd",
         "pyusd", "usde", "frax", "gusd", "usdp", "lusd", "usdl", "susds", "usdy", "usds", "usd1", "rlusd", "bsc-usd")
 
-    fun httpGet(url: String, ua: String = "hunter"): String? = try {
+    fun httpGet(url: String, ua: String = "hunter", accept: String = "application/json"): String? = try {
         val conn = RedPrivada.abrir(url)
         conn.connectTimeout = 5000; conn.readTimeout = 10000
         conn.setRequestProperty("User-Agent", ua)
-        conn.setRequestProperty("Accept", "application/json")
+        conn.setRequestProperty("Accept", accept)
         try {
             if (conn.responseCode != 200) null
             else {

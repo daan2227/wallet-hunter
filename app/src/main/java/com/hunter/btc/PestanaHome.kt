@@ -408,11 +408,12 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     pintarCabGrafico()
     btnMasCab.setOnClickListener {
         val pm = androidx.appcompat.widget.PopupMenu(this, btnMasCab)
-        listOf("AI analysis", "AI market scan", "Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+        listOf("AI analysis", "AI market scan", "News & calendar", "Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
         pm.setOnMenuItemClickListener { when (it.itemId) {
             0 -> abrirAnalisisIA(activo, intervalo, chart, panel)
             1 -> abrirEscanerIA(intervalo) { a -> seleccionar(a); if (tabHome == 2) irATrade() }
-            2 -> btnAlerta.performClick(); 3 -> btnInfo.performClick(); 4 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
+            2 -> abrirNoticias(activo)
+            3 -> btnAlerta.performClick(); 4 -> btnInfo.performClick(); 5 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
         pm.show()
     }
     var ultDatosFut = 0L; var claveDatosFut = ""
