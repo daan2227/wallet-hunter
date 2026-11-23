@@ -184,6 +184,9 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         tvNota.text = (if (activo.sinDolar) "" else "USD · ") + sufijo
     }
     var panel: PanelTrading? = null
+    /** Replay activo: el gráfico muestra el pasado; nada en vivo lo toca y la cuenta normal no opera. */
+    var enReplay = false
+    var replay: PanelReplay? = null
     var cargarMulti: (() -> Unit)? = null
     var libroPanel: PanelLibro? = null
     val tok = AtomicInteger(0)
@@ -204,6 +207,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     /** Cambia el gráfico a otro activo (desde la lista de mercados). */
     fun seleccionar(a: Mercado.Activo, guardar: Boolean = true) {
         scroll.smoothScrollTo(0, 0)
+        if (a.clave != activo.clave) { replay?.salir(); chart.marcadores = emptyList() }
         if (guardar) prefsG.edit().putString(clave("activo"), a.aJson()).apply()
         if (a.clave == activo.clave) return
         activo = a
@@ -259,6 +263,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         marca(tabMas, k >= visibles); tabMas.text = if (k >= visibles) intervalos[k].first + " ▾" else "More ▾"
     }
     fun elegirIv(k: Int) {
+        replay?.salir(); chart.marcadores = emptyList()
         intervalo = intervalos[k].second; chart.intervaloSeg = intervalos[k].third
         prefsG.edit().putString(clave("intervalo"), intervalo).apply(); pintarIv(); cargar()
     }
@@ -347,13 +352,18 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         addView(tvDatosFut); addView(barraLS)
     }
     cajaGrafico.addView(cajaDatosFut)
+    // ── Replay y backtesting ──
+    val pr = PanelReplay(this, chart, { activo }, { intervalo }) { on -> enReplay = on; panel?.alCambiarActivo(); if (!on) cargar() }
+    replay = pr
+    cajaGrafico.addView(pr.vistaControles, cajaGrafico.indexOfChild(chart))
+    cajaGrafico.addView(pr.vistaBotones, cajaGrafico.indexOfChild(chart) + 1)
     val cajaDibujo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); addView(filaHerr)
         visibility = if (prefsG.getBoolean("ver_dibujo", false)) View.VISIBLE else View.GONE }
     cajaGrafico.addView(cajaDibujo)
 
     // ── Simulador de trading (Spot / Futuros) ──
-    val pt = PanelTrading(this, { activo }, { chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
+    val pt = PanelTrading(this, { activo }, { if (enReplay) null else chart.velasActuales().lastOrNull()?.c?.toDouble() }, chart)
     panel = pt
     // ── Libro de órdenes y trades en vivo (tocar un precio → precio límite del simulador) ──
     val pl = PanelLibro(this, { activo }) { p -> pt.ponerPrecioLimite(p) }
@@ -456,6 +466,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                 st.endsWith("@aggTrade") -> libroPanel?.tradeStream(Mercado.Trade(d.optLong("T"), d.optString("p").toDoubleOrNull() ?: 0.0,
                     d.optString("q").toDoubleOrNull() ?: 0.0, !d.optBoolean("m")))
                 st.contains("@kline_") -> {
+                    if (enReplay) return@StreamBinance
                     val k = d.optJSONObject("k") ?: return@StreamBinance
                     fun f(n: String) = k.optString(n).toFloatOrNull() ?: 0f
                     val vela = GraficoPrecio.Vela(k.optLong("t") / 1000, f("o"), f("h"), f("l"), f("c"), f("v"))
@@ -485,7 +496,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             }
             enPrimerPlano = delante
             actualizarStream()
-            if (refrescoMs <= 0L || streamOk) { hVivo.postDelayed(this, 2_000); return }
+            if (refrescoMs <= 0L || streamOk || enReplay) { hVivo.postDelayed(this, 2_000); return }
             if (scroll.isShown && chart.velasActuales().size > 1 && enCurso.compareAndSet(false, true)) {
                 val iv = intervalo; val a = activo
                 Thread {

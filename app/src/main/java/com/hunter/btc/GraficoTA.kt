@@ -109,6 +109,10 @@ class GraficoTA(ctx: Context) : View(ctx) {
     /** Zona horaria de las etiquetas de tiempo. */
     var zona: java.util.TimeZone = java.util.TimeZone.getDefault()
         set(v) { field = v; cal.timeZone = v; listOf(sdfAnio, sdfMesC, sdfDiaM, sdfHora, sdfSeg, sdfCruzD, sdfCruzH, sdfCruzS).forEach { it.timeZone = v }; invalidate() }
+    /** Marcas de operaciones (backtest y replay): ▲ compra bajo la vela, ▼ venta sobre ella. */
+    class Marcador(val t: Long, val precio: Float, val compra: Boolean, val texto: String)
+    var marcadores: List<Marcador> = emptyList()
+        set(v) { field = v; invalidate() }
     /** Líneas extra (mejor compra / venta del libro). */
     var lineasExtra: List<LineaPrecio> = emptyList()
         set(v) { field = v; invalidate() }
@@ -431,6 +435,17 @@ class GraficoTA(ctx: Context) : View(ctx) {
             }
         }
         pendiente?.let { (t, p) -> pFill.color = AppTheme.ACCENT; c.drawCircle(xfF(idxDeT(t)), yP(p), 4f * d, pFill) }
+        // marcas de operaciones: forma y texto además del color (no depende solo del color)
+        for (m in marcadores) {
+            val fi = idxDeT(m.t); if (fi < i0 - 1 || fi > i1 + 1) continue
+            val iv = Math.round(fi).coerceIn(0, n - 1)
+            val x = xfF(fi); val r = 5f * d; val col = if (m.compra) cUp else cDown
+            val y = if (m.compra) yP(lo[iv]) + 4f * d + r else yP(hi[iv]) - 4f * d - r
+            pFill.color = col
+            c.drawPath(Path().apply { if (m.compra) { moveTo(x, y - r); lineTo(x + r, y + r); lineTo(x - r, y + r) }
+                else { moveTo(x - r, y - r); lineTo(x + r, y - r); lineTo(x, y + r) }; close() }, pFill)
+            if (m.texto.isNotEmpty()) { lbl.color = col; c.drawText(m.texto, x - lbl.measureText(m.texto) / 2, if (m.compra) y + r + 11f * d else y - r - 3f * d, lbl); lbl.color = DexTema.TXT2 }
+        }
         for (lp in lineasPrecio + lineasExtra) if (lp.precio in minL..maxH) {
             val y = yP(lp.precio); pUltimo.color = lp.color; c.drawLine(padLpx, y, w - padRpx, y, pUltimo)
             val tw = lbl.measureText(lp.texto); pFill.color = alfa(lp.color, 0xDD)
