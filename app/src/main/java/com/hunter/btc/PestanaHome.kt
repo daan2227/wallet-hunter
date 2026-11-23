@@ -288,9 +288,10 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     val hVivo = android.os.Handler(android.os.Looper.getMainLooper())
     val enCurso = java.util.concurrent.atomic.AtomicBoolean(false)
     lateinit var vivo: Runnable
+    var streamOk = false
     fun pintarVivo() {
         val on = refrescoMs > 0
-        btnVivo.text = if (on) "● " + (refrescos.firstOrNull { it.second == refrescoMs }?.first ?: "") else "○ Off"
+        btnVivo.text = if (on && streamOk) "● Live" else if (on) "● " + (refrescos.firstOrNull { it.second == refrescoMs }?.first ?: "") else "○ Off"
         btnVivo.setTextColor(if (on) DexTema.UP else DexTema.TXT2)
         btnVivo.contentDescription = "Live update: " + (if (on) refrescos.firstOrNull { it.second == refrescoMs }?.first else "off")
     }
@@ -372,11 +373,61 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }, 1_500)
     cargar()
 
-    // ── En vivo: pide solo las últimas velas y las fusiona (barato aunque sea cada segundo) ──
+    // ── Tiempo real por WebSocket (Binance): vela del intervalo, libro y operaciones al instante ──
+    var stream: StreamBinance? = null; var claveStream = ""
+    fun fusionar(nuevas: List<GraficoPrecio.Vela>): Pair<ArrayList<GraficoPrecio.Vela>, Int>? {
+        val out = ArrayList(chart.velasActuales()); if (out.isEmpty()) return null; var quitadas = 0
+        for (k in nuevas) {
+            val ult = out.last()
+            when {
+                k.t == ult.t -> out[out.size - 1] = k
+                k.t > ult.t -> { out.add(k); if (out.size > 500) { out.removeAt(0); quitadas++ } }
+                else -> { val i = out.indexOfLast { it.t == k.t }; if (i >= 0) out[i] = k }
+            }
+        }
+        return out to quitadas
+    }
+    var ultUiStream = 0L
+    /** Abre, cambia o cierra el stream según el par, el intervalo y si el DEx se ve. Con "Off" no hay stream. */
+    fun actualizarStream() {
+        val a = activo
+        // solo con la app delante: en segundo plano el stream se cierra (datos y batería)
+        val visible = scroll.isAttachedToWindow && scroll.isShown && pagTrade.visibility == View.VISIBLE && refrescoMs > 0 &&
+            lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+        val sym = a.simbolo.lowercase() + "usdt"
+        val desea = if (visible && a.tipo == Mercado.Tipo.CRYPTO && Mercado.fuente(a) == "binance") "$sym|$intervalo" else ""
+        if (desea == claveStream) return
+        stream?.cerrar(); stream = null; streamOk = false; libroPanel?.enStream = false; claveStream = desea; pintarVivo()
+        if (desea.isEmpty()) return
+        val iv = intervalo; val clave = a.clave
+        stream = StreamBinance(listOf("$sym@kline_$iv", "$sym@depth20", "$sym@aggTrade"), { st, d ->
+            if (claveStream != desea || clave != activo.clave) return@StreamBinance
+            when {
+                st.endsWith("@depth20") -> libroPanel?.libroStream(Mercado.niveles(d.optJSONArray("bids"), 100), Mercado.niveles(d.optJSONArray("asks"), 100))
+                st.endsWith("@aggTrade") -> libroPanel?.tradeStream(Mercado.Trade(d.optLong("T"), d.optString("p").toDoubleOrNull() ?: 0.0,
+                    d.optString("q").toDoubleOrNull() ?: 0.0, !d.optBoolean("m")))
+                st.contains("@kline_") -> {
+                    val k = d.optJSONObject("k") ?: return@StreamBinance
+                    fun f(n: String) = k.optString(n).toFloatOrNull() ?: 0f
+                    val vela = GraficoPrecio.Vela(k.optLong("t") / 1000, f("o"), f("h"), f("l"), f("c"), f("v"))
+                    val (out, quitadas) = fusionar(listOf(vela)) ?: return@StreamBinance
+                    chart.actualizar(out, quitadas)
+                    val ahora = System.currentTimeMillis()
+                    if (ahora - ultUiStream > 1_000) {       // precio, simulador y alertas, como mucho una vez por segundo
+                        ultUiStream = ahora
+                        mostrarPrecio(out, "live stream"); panel?.tick(clave, vela.c.toDouble()); comprobarAlertas(clave, vela.c.toDouble())
+                    }
+                }
+            }
+        }, { ok -> if (claveStream == desea) { streamOk = ok; libroPanel?.enStream = ok; pintarVivo() } })
+    }
+
+    // ── En vivo por sondeo (si no hay stream): pide solo las últimas velas y las fusiona ──
     vivo = object : Runnable {
         override fun run() {
-            if (!scroll.isAttachedToWindow) return
-            if (refrescoMs <= 0L) { hVivo.postDelayed(this, 2_000); return }
+            if (!scroll.isAttachedToWindow) { stream?.cerrar(); stream = null; claveStream = ""; return }
+            actualizarStream()
+            if (refrescoMs <= 0L || streamOk) { hVivo.postDelayed(this, 2_000); return }
             if (scroll.isShown && chart.velasActuales().size > 1 && enCurso.compareAndSet(false, true)) {
                 val iv = intervalo; val a = activo
                 Thread {

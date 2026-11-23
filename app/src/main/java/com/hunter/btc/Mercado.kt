@@ -162,7 +162,7 @@ object Mercado {
     /** Operación ejecutada: [t] en ms, [compra] = el que tomó liquidez compró. */
     class Trade(val t: Long, val precio: Double, val qty: Double, val compra: Boolean)
 
-    private fun niveles(a: org.json.JSONArray?, max: Int): List<Pair<Double, Double>> {
+    fun niveles(a: org.json.JSONArray?, max: Int): List<Pair<Double, Double>> {
         if (a == null) return emptyList()
         val out = ArrayList<Pair<Double, Double>>()
         for (i in 0 until minOf(a.length(), max)) { val l = a.getJSONArray(i)

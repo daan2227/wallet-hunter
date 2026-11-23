@@ -48,6 +48,10 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     var alMejores: ((Double?, Double?) -> Unit)? = null
     var mejorBid: Double? = null; private set
     var mejorAsk: Double? = null; private set
+    /** Con el stream abierto, el libro y las operaciones llegan solos: no se sondea. */
+    var enStream = false
+    private var ultAplicar = 0L
+    private var aplicarPendiente = false
     private var libro: Mercado.Libro? = null
     private var trades: List<Mercado.Trade> = emptyList()
     private var claveDatos = ""
@@ -111,7 +115,24 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     fun alCambiarActivo() { libro = null; trades = emptyList(); claveDatos = ""; mejorBid = null; mejorAsk = null
         libroV.poner(null, 0.0, 0.0); tradesV.poner(emptyList()); pedir() }
 
+    /** Libro del stream (20 niveles por lado, cada segundo). */
+    fun libroStream(bids: List<Pair<Double, Double>>, asks: List<Pair<Double, Double>>) {
+        libro = Mercado.Libro(bids, asks, "Binance stream"); claveDatos = activo().clave
+        tvEstado.text = "Live stream · Binance"; aplicarSuave()
+    }
+    /** Operación del stream: se añaden al principio y se repinta como mucho 5 veces por segundo. */
+    fun tradeStream(t: Mercado.Trade) {
+        if (t.precio <= 0) return
+        trades = (listOf(t) + trades).take(40); aplicarSuave()
+    }
+    private fun aplicarSuave() {
+        val ahora = System.currentTimeMillis()
+        if (ahora - ultAplicar >= 200) { ultAplicar = ahora; aplicar() }
+        else if (!aplicarPendiente) { aplicarPendiente = true; h.postDelayed({ aplicarPendiente = false; ultAplicar = System.currentTimeMillis(); aplicar() }, 200) }
+    }
+
     fun pedir() {
+        if (enStream) return
         val a = activo()
         if (a.tipo != Mercado.Tipo.CRYPTO) {
             tvEstado.text = "No order book for stocks and markets (not published for free)."
