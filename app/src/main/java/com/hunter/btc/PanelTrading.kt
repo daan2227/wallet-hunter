@@ -1043,6 +1043,32 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     }
 
     // ── historial y estadísticas ──
+    private fun notaVista(h: Simulador.Operacion) = texto(13f, DexTema.TXT).apply { text = "✎ " + h.nota; tag = "nota"; setPadding(0, dp(2), 0, 0) }
+
+    /** Nota del diario para una operación (las #etiquetas quedan en el texto y en el CSV). */
+    private fun notaOperacion(h: Simulador.Operacion, alGuardar: () -> Unit) {
+        val et = DexTema.campo(act, "Why did you take it? What did you learn? #tags", false).apply { setText(h.nota); minLines = 2 }
+        DexTema.dialogo(act).setTitle("Trade note · ${h.lado} ${h.simbolo}")
+            .setView(LinearLayout(act).apply { setPadding(dp(20), dp(8), dp(20), 0); addView(et) })
+            .setPositiveButton("Save") { _, _ -> h.nota = et.text.toString().trim().take(500); guardar(); alGuardar(); aviso("Note saved") }
+            .setNegativeButton("Cancel", null).show()
+    }
+
+    /** Restaurar una copia: se pega el contenido del archivo .json de "Backup". */
+    private fun restaurarCopia() {
+        val et = DexTema.campo(act, "Paste the backup JSON here", true).apply { minLines = 4; maxLines = 8 }
+        DexTema.dialogo(act).setTitle("Restore backup")
+            .setView(LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), 0); addView(et)
+                addView(texto(12f, DexTema.TXT2).apply { text = "Replaces the whole test account (balances, positions, orders, bots, history)."; setPadding(0, dp(6), 0, 0) }) })
+            .setPositiveButton("Restore") { _, _ ->
+                val txt = et.text.toString().trim()
+                val ok = try { val o = org.json.JSONObject(txt); o.has("spot") || o.has("saldo") } catch (e: Exception) { false }
+                if (!ok) { aviso("That is not a DEx backup"); return@setPositiveButton }
+                confirmar("Replace test account", "Your current test account will be replaced by the backup.", "Replace") {
+                    sim.cargar(txt); guardar(); refrescar(); aviso("Backup restored") }
+            }.setNegativeButton("Cancel", null).show()
+    }
+
     private fun abrirHistorial() {
         val st = sim.stats()
         val caja = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(4), dp(20), dp(12)) }
@@ -1056,12 +1082,30 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         caja.addView(dato("Net deposits", fmtSim(sim.netoDepositado) + " VUSD"))
         val total = sim.rendimiento()
         caja.addView(dato("Total return", "%s (%s%.2f%%)".format(signo(total), if (total >= 0) "+" else "", if (sim.netoDepositado > 0) total / sim.netoDepositado * 100 else 0.0), if (total >= 0) DexTema.UP else DexTema.DOWN))
+        // exportar y copia de seguridad
+        val hoy = java.text.SimpleDateFormat("yyyyMMdd-HHmm", java.util.Locale.US).format(java.util.Date())
+        caja.addView(HorizontalScrollView(act).apply { isHorizontalScrollBarEnabled = false; setPadding(0, dp(8), 0, 0)
+            addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
+                addView(botonPeq("Export CSV", DexTema.TXT) { Diario.compartir(act, "dex-trades-$hoy.csv", "text/csv", Diario.csv(sim)) }
+                    .apply { (layoutParams as LinearLayout.LayoutParams).marginStart = 0 })
+                addView(botonPeq("Backup", DexTema.TXT) { Diario.compartir(act, "dex-backup-$hoy.json", "application/json", sim.aJson()) })
+                addView(botonPeq("Restore", DexTema.TXT) { restaurarCopia() })
+            }) })
         sec("Closed trades")
-        caja.addView(dato("Trades", st.operaciones.toString()))
-        caja.addView(dato("Win rate", if (st.operaciones > 0) "%.1f%% (%d / %d)".format(st.ganadoras * 100.0 / st.operaciones, st.ganadoras, st.operaciones) else "—"))
+        val mt = Diario.metricas(sim.historial)
+        caja.addView(dato("Trades", mt.operaciones.toString()))
+        caja.addView(dato("Win rate", if (mt.operaciones > 0) "%.1f%% (%d won / %d lost)".format(mt.tasaAcierto, mt.ganadoras, mt.perdedoras) else "—"))
         caja.addView(dato("Realized PnL", signo(st.pnl), if (st.pnl >= 0) DexTema.UP else DexTema.DOWN))
+        caja.addView(dato("Profit factor", when { mt.factorBeneficio.isInfinite() -> "∞ (no losses)"; mt.operaciones == 0 -> "—"; else -> "%.2f".format(mt.factorBeneficio) }))
+        caja.addView(dato("Avg win / avg loss", "${signo(mt.mediaGanadora)} / ${signo(mt.mediaPerdedora)}"))
+        caja.addView(dato("Expectancy per trade", signo(mt.esperanza), if (mt.esperanza >= 0) DexTema.UP else DexTema.DOWN))
+        caja.addView(dato("Max drawdown (realized)", "−" + fmtSim(mt.maxDrawdown), if (mt.maxDrawdown > 0) DexTema.DOWN else DexTema.TXT))
+        caja.addView(dato("Longest win / loss streak", "${mt.rachaGanadora} / ${mt.rachaPerdedora}"))
         caja.addView(dato("Best / worst", "${signo(st.mejor)} / ${signo(st.peor)}"))
         caja.addView(dato("Fees paid", fmtSim(st.comisiones) + " VUSD"))
+        sec("PnL calendar")
+        caja.addView(VistaCalendario(act, Diario.pnlPorDia(sim.historial)).apply {
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) })
         val curva = sim.curva()
         if (curva.size > 1) {
             sec("Realized PnL over time")
@@ -1070,12 +1114,14 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 poner(curva.map { it.second.toFloat() })
             })
         }
-        sec("Trade history")
+        sec("Trade history · tap a trade to add a note")
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
         if (sim.historial.isEmpty()) caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "No trades yet." })
         for (h in sim.historial.asReversed().take(150)) {
             caja.addView(LinearLayout(act).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6))
+                orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6)); minimumHeight = dp(48)
+                isClickable = true; foreground = Ui.toque()
+                setOnClickListener { notaOperacion(h) { val v = findViewWithTag<TextView>("nota"); if (v != null) v.text = "✎ " + h.nota else addView(notaVista(h)) } }
                 val cerrada = h.salida > 0
                 addView(LinearLayout(act).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -1090,6 +1136,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                         (if (cerrada) "${fmtSim(h.entrada)} → ${fmtSim(h.salida)}" else "@ ${fmtSim(h.entrada)}") +
                         " · ${fmtCant(h.qty)} · fee ${fmtSim(h.comision)}"
                 })
+                if (h.nota.isNotBlank()) addView(notaVista(h))
             })
         }
         sec("Account movements")

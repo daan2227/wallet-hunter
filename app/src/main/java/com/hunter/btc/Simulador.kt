@@ -53,7 +53,8 @@ class Simulador {
                 val grupo: Long = 0, val reduce: Boolean = false, val cruzado: Boolean = false)
 
     class Operacion(val t: Long, val mercado: Mercado, val simbolo: String, val lado: String, val entrada: Double,
-                    val salida: Double, val qty: Double, val pnl: Double, val comision: Double, val motivo: String)
+                    val salida: Double, val qty: Double, val pnl: Double, val comision: Double, val motivo: String,
+                    /** Nota del diario (texto libre; las #etiquetas sirven para agrupar). */ var nota: String = "")
 
     /** Movimiento de la cuenta: Deposit, Withdraw, Transfer, Funding, Margin, Earn… [importe] con signo para [cuenta]. */
     class Movimiento(val t: Long, val tipo: String, val cuenta: Mercado, val importe: Double, val nota: String)
@@ -686,7 +687,7 @@ class Simulador {
             .put("cb", JSONArray().apply { b.conBase.forEach { put(it) } }).put("qc", JSONArray().apply { b.qtyCelda.forEach { put(it) } })
             .put("ben", b.beneficio).put("ops", b.operaciones)) } })
         put("his", JSONArray().apply { historial.takeLast(500).forEach { h -> put(JSONObject().put("t", h.t).put("mk", h.mercado.name).put("s", h.simbolo)
-            .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo)) } })
+            .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo).put("nt", h.nota)) } })
         put("pre", JSONObject().apply { precios.forEach { (k, v) -> put(k, v) } })
         put("rev", JSONObject().apply { revisado.forEach { (k, v) -> put(k, v) } })
         put("fr", JSONObject().apply { tasaFunding.forEach { (k, v) -> put(k, v) } })
@@ -727,7 +728,7 @@ class Simulador {
                     b.optDouble("ben", 0.0), b.optInt("ops", 0))) } }
             o.optJSONArray("his")?.let { a -> for (i in 0 until a.length()) { val h = a.getJSONObject(i)
                 historial.add(Operacion(h.getLong("t"), Mercado.valueOf(h.getString("mk")), h.getString("s"), h.getString("ld"), h.getDouble("e"),
-                    h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"))) } }
+                    h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"), h.optString("nt"))) } }
             o.optJSONObject("pre")?.let { p -> p.keys().forEach { k -> precios[k] = p.getDouble(k) } }
             o.optJSONObject("rev")?.let { p -> p.keys().forEach { k -> revisado[k] = p.getLong(k) } }
             o.optJSONObject("fr")?.let { p -> p.keys().forEach { k -> tasaFunding[k] = p.getDouble(k) } }
