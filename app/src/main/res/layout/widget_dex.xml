@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/w_raiz" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:background="@drawable/widget_fondo" android:padding="12dp">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+        <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="DEx · test VUSD" android:textColor="#FF848E9C" android:textSize="12sp" android:maxLines="1" />
+        <TextView android:id="@+id/w_hora" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FF848E9C" android:textSize="12sp" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal"
+        android:paddingTop="2dp" android:paddingBottom="4dp" android:gravity="bottom">
+        <TextView android:id="@+id/w_patrimonio" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFEAECEF" android:textSize="18sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/w_pnl" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textSize="13sp" android:textStyle="bold" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_fila1" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:paddingTop="5dp" android:visibility="gone">
+        <TextView android:id="@+id/w_sim1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/w_px1" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:maxLines="1" android:paddingEnd="10dp" />
+        <TextView android:id="@+id/w_ch1" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end"
+            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_fila2" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:paddingTop="5dp" android:visibility="gone">
+        <TextView android:id="@+id/w_sim2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/w_px2" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:maxLines="1" android:paddingEnd="10dp" />
+        <TextView android:id="@+id/w_ch2" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end"
+            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_fila3" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:paddingTop="5dp" android:visibility="gone">
+        <TextView android:id="@+id/w_sim3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/w_px3" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:maxLines="1" android:paddingEnd="10dp" />
+        <TextView android:id="@+id/w_ch3" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end"
+            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_fila4" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="horizontal" android:paddingTop="5dp" android:visibility="gone">
+        <TextView android:id="@+id/w_sim4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+        <TextView android:id="@+id/w_px4" android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:textColor="#FFEAECEF" android:textSize="14sp" android:maxLines="1" android:paddingEnd="10dp" />
+        <TextView android:id="@+id/w_ch4" android:layout_width="64dp" android:layout_height="wrap_content" android:gravity="end"
+            android:textSize="14sp" android:textStyle="bold" android:maxLines="1" />
+    </LinearLayout>
+    <TextView android:id="@+id/w_vacio" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:paddingTop="6dp" android:textColor="#FF848E9C" android:textSize="12sp"
+        android:text="Star pairs in the DEx to show them here" android:visibility="gone" />
+</LinearLayout>

@@ -74,6 +74,7 @@ class DexJob : JobService() {
     override fun onStartJob(params: JobParameters): Boolean {
         Thread {
             try { VigilanciaDex.revisar(this) } catch (e: Exception) { RegistroFallos.anotar("DexJob", e) }
+            try { WidgetDex.actualizar(this) } catch (e: Throwable) { RegistroFallos.anotar("DexJob widget", e) }
             jobFinished(params, false)
         }.start()
         return true
