@@ -81,6 +81,12 @@ android {
         jniLibs {
             useLegacyPackaging = true
         }
+        // SDK de Claude (Jackson, OkHttp, OpenTelemetry…): varios jars traen los mismos
+        // ficheros de metadatos; no hacen falta en el APK.
+        resources {
+            excludes += ['META-INF/versions/9/OSGI-INF/MANIFEST.MF', 'META-INF/DEPENDENCIES', 'META-INF/INDEX.LIST',
+                         'META-INF/LICENSE*', 'META-INF/NOTICE*', 'META-INF/*.md']
+        }
     }
     buildTypes {
         release {
@@ -109,6 +115,8 @@ dependencies {
     testImplementation 'org.json:json:20231013'
     implementation 'androidx.core:core-ktx:1.12.0'
     implementation 'androidx.appcompat:appcompat:1.6.1'
+    // Modo IA del DEx: informe escrito con la API de Claude (clave del propio usuario).
+    implementation 'com.anthropic:anthropic-java:3.6.0'
     // Sólo se genera el QR (QRCodeWriter); la matriz se pinta a mano en
     // WalletActivity. zxing-android-embedded traía además toda la interfaz de
     // escaneo por cámara, sin un solo uso en la app.

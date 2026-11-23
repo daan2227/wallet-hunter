@@ -587,6 +587,17 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     }
 
     /** Precio elegido en el libro de órdenes: pasa a orden límite con ese precio. */
+    /** Rellena el formulario con el plan del modo IA (lado, apalancamiento, TP y SL); el importe lo pone el usuario. */
+    fun aplicarPlan(largo: Boolean, stop: Double, objetivo: Double, apalancamiento: Int) {
+        fun f(x: Double) = if (x >= 1) "%.2f".format(java.util.Locale.US, x) else "%.8f".format(java.util.Locale.US, x).trimEnd('0').trimEnd('.')
+        compra = largo; tipoUi = 0
+        if (futuros) { apal = apalancamiento.coerceIn(1, 125); prefs.edit().putInt("apal", apal).apply() }
+        swTpSl.isChecked = true; conTpSl = true
+        etTp.setText(f(objetivo)); etSl.setText(f(stop))
+        refrescarFormulario(); etImporte.requestFocus()
+        aviso("Plan loaded: set the amount and review before sending")
+    }
+
     fun ponerPrecioLimite(p: Double) {
         if (tipoUi != 1 && tipoUi != 3) tipoUi = 1
         etPrecio.setText(if (p >= 1) "%.2f".format(java.util.Locale.US, p) else "%.8f".format(java.util.Locale.US, p).trimEnd('0').trimEnd('.'))

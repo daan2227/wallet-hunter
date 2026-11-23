@@ -16,3 +16,10 @@
 -keep class * implements com.sun.jna.** { *; }
 -dontwarn java.awt.**
 -dontwarn org.slf4j.**
+
+# SDK de Claude (modo IA del DEx): trae sus propias reglas (META-INF/proguard). Estas solo
+# silencian clases opcionales que referencia y que Android no tiene.
+-dontwarn java.beans.**
+-dontwarn javax.annotation.**
+-dontwarn com.google.errorprone.annotations.**
+-dontwarn io.swagger.v3.oas.annotations.**

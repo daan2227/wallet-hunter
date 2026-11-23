@@ -113,6 +113,9 @@ class GraficoTA(ctx: Context) : View(ctx) {
     class Marcador(val t: Long, val precio: Float, val compra: Boolean, val texto: String)
     var marcadores: List<Marcador> = emptyList()
         set(v) { field = v; invalidate() }
+    /** Líneas del análisis IA (soportes, resistencias y plan). */
+    var lineasAnalisis: List<LineaPrecio> = emptyList()
+        set(v) { field = v; invalidate() }
     /** Líneas extra (mejor compra / venta del libro). */
     var lineasExtra: List<LineaPrecio> = emptyList()
         set(v) { field = v; invalidate() }
@@ -446,7 +449,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 else { moveTo(x - r, y - r); lineTo(x + r, y - r); lineTo(x, y + r) }; close() }, pFill)
             if (m.texto.isNotEmpty()) { lbl.color = col; c.drawText(m.texto, x - lbl.measureText(m.texto) / 2, if (m.compra) y + r + 11f * d else y - r - 3f * d, lbl); lbl.color = DexTema.TXT2 }
         }
-        for (lp in lineasPrecio + lineasExtra) if (lp.precio in minL..maxH) {
+        for (lp in lineasPrecio + lineasExtra + lineasAnalisis) if (lp.precio in minL..maxH) {
             val y = yP(lp.precio); pUltimo.color = lp.color; c.drawLine(padLpx, y, w - padRpx, y, pUltimo)
             val tw = lbl.measureText(lp.texto); pFill.color = alfa(lp.color, 0xDD)
             c.drawRoundRect(padLpx + 2f * d, y - 7f * d, padLpx + tw + 8f * d, y + 6f * d, 3f * d, 3f * d, pFill)

@@ -207,7 +207,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     /** Cambia el gráfico a otro activo (desde la lista de mercados). */
     fun seleccionar(a: Mercado.Activo, guardar: Boolean = true) {
         scroll.smoothScrollTo(0, 0)
-        if (a.clave != activo.clave) { replay?.salir(); chart.marcadores = emptyList() }
+        if (a.clave != activo.clave) { replay?.salir(); chart.marcadores = emptyList(); chart.lineasAnalisis = emptyList() }
         if (guardar) prefsG.edit().putString(clave("activo"), a.aJson()).apply()
         if (a.clave == activo.clave) return
         activo = a
@@ -357,6 +357,14 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     replay = pr
     cajaGrafico.addView(pr.vistaControles, cajaGrafico.indexOfChild(chart))
     cajaGrafico.addView(pr.vistaBotones, cajaGrafico.indexOfChild(chart) + 1)
+    // ── Modo IA: análisis de mercado, gráfico y social (y, con clave propia, informe de Claude) ──
+    pr.vistaBotones.addView(TextView(this).apply {
+        text = "AI analysis"; textSize = 14f; setTextColor(AppTheme.ON_ACCENT); typeface = AppTheme.bold(context); gravity = Gravity.CENTER; minHeight = dp(48)
+        background = DexTema.fondoTactil(context, DexTema.ACCENT, 8f, 36f); setPadding(dp(14), 0, dp(14), 0); isClickable = true; foreground = Ui.toque()
+        contentDescription = "AI analysis: market, chart and social signals for this pair"
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
+        setOnClickListener { abrirAnalisisIA(activo, intervalo, chart, panel) }
+    }, 0)
     val cajaDibujo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); addView(filaHerr)
         visibility = if (prefsG.getBoolean("ver_dibujo", false)) View.VISIBLE else View.GONE }
@@ -393,9 +401,10 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     pintarCabGrafico()
     btnMasCab.setOnClickListener {
         val pm = androidx.appcompat.widget.PopupMenu(this, btnMasCab)
-        listOf("Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+        listOf("AI analysis", "Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
         pm.setOnMenuItemClickListener { when (it.itemId) {
-            0 -> btnAlerta.performClick(); 1 -> btnInfo.performClick(); 2 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
+            0 -> abrirAnalisisIA(activo, intervalo, chart, panel)
+            1 -> btnAlerta.performClick(); 2 -> btnInfo.performClick(); 3 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
         pm.show()
     }
     var ultDatosFut = 0L; var claveDatosFut = ""
