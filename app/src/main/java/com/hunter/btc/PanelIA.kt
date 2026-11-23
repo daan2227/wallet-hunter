@@ -145,21 +145,21 @@ internal fun MainActivity.abrirEscanerIA(intervaloInicial: String, alElegir: (Me
         val mio = tok.incrementAndGet(); lista.removeAllViews(); estado.text = "Loading the top coins…"
         val ivAhora = iv
         Thread {
-            val top = try { Mercado.topCripto(1, 70).map { it.activo } } catch (e: Throwable) { emptyList() }
-            val universo = top.take(50)
+            val universo = universoEscaner()
             val hechos = java.util.concurrent.atomic.AtomicInteger(0)
             val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
             val futuros = universo.map { a -> pool.submit<Pair<Mercado.Activo, AnalisisIA.Resultado>?> {
                 val v = try { Mercado.velas(a, ivAhora, 250) } catch (e: Throwable) { emptyList() }
                 val n = hechos.incrementAndGet()
                 runOnUiThread { if (mio == tok.get()) estado.text = "Scanning $n / ${universo.size} on $ivAhora…" }
-                if (v.size < 60 || Mercado.fuente(a) != "binance") null else a to AnalisisIA.evaluar(AnalisisIA.Datos(v))
+                if (v.size < 60) null else a to AnalisisIA.evaluar(AnalisisIA.Datos(v))
             } }
             val res = futuros.mapNotNull { try { it.get(60, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { null } }
             pool.shutdown()
             runOnUiThread {
                 if (mio != tok.get() || dlg?.isShowing != true) return@runOnUiThread
-                if (res.isEmpty()) { estado.text = "No data (CoinGecko or Binance unreachable)."; return@runOnUiThread }
+                if (res.isEmpty()) { estado.text = if (universo.isEmpty()) "Could not load the coin list from Binance. Check your connection and tap a timeframe to retry."
+                    else "Could not load candles from Binance. Pick a timeframe or reopen the scan to retry."; return@runOnUiThread }
                 val orden = res.sortedWith(compareBy<Pair<Mercado.Activo, AnalisisIA.Resultado>> {
                     when (it.second.veredicto) { AnalisisIA.Veredicto.LONG, AnalisisIA.Veredicto.SHORT -> 0; AnalisisIA.Veredicto.SPOT -> 1; else -> 2 } }
                     .thenByDescending { Math.abs(it.second.puntuacion) })
@@ -190,4 +190,15 @@ internal fun MainActivity.abrirEscanerIA(intervaloInicial: String, alElegir: (Me
         text = "Ranks the clearest chart setups among the top ~50 coins on Binance. Open a pair and run AI analysis for market and social factors. Not financial advice." })
     dlg = DexTema.hoja(this, "AI market scan", caja).also { it.show() }
     escanear()
+}
+
+/**
+ * Las ~50 criptos a escanear: pares USDT de Binance (la misma fuente que el gráfico)
+ * ordenados por volumen de 24 h; si Binance no responde, el top de CoinGecko.
+ */
+private fun universoEscaner(): List<Mercado.Activo> {
+    val bin = try { Mercado.movimientos() } catch (e: Throwable) { emptyList() }
+    if (bin.isNotEmpty()) return bin.sortedByDescending { it.volumenUsd }.take(50)
+        .map { Mercado.Activo(Mercado.Tipo.CRYPTO, it.simbolo, it.simbolo) }
+    return try { Mercado.topCripto(1, 70).map { it.activo }.take(50) } catch (e: Throwable) { emptyList() }
 }
