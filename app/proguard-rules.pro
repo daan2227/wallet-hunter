@@ -23,3 +23,5 @@
 -dontwarn javax.annotation.**
 -dontwarn com.google.errorprone.annotations.**
 -dontwarn io.swagger.v3.oas.annotations.**
+# OpenTelemetry (dependencia del SDK) anota clases con AutoValue, que solo se usa al compilar.
+-dontwarn com.google.auto.value.**
