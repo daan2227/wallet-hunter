@@ -365,6 +365,13 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
         setOnClickListener { abrirAnalisisIA(activo, intervalo, chart, panel) }
     }, 0)
+    pr.vistaBotones.addView(TextView(this).apply {
+        text = "AI scan"; textSize = 14f; setTextColor(DexTema.TXT); typeface = AppTheme.medium(context); gravity = Gravity.CENTER; minHeight = dp(48)
+        background = DexTema.fondoTactil(context, DexTema.CHIP, 8f, 36f); setPadding(dp(14), 0, dp(14), 0); isClickable = true; foreground = Ui.toque()
+        contentDescription = "AI market scan: best chart setups among the top coins"
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
+        setOnClickListener { abrirEscanerIA(intervalo) { a -> seleccionar(a) } }
+    }, 1)
     val cajaDibujo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); addView(filaHerr)
         visibility = if (prefsG.getBoolean("ver_dibujo", false)) View.VISIBLE else View.GONE }
@@ -401,10 +408,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     pintarCabGrafico()
     btnMasCab.setOnClickListener {
         val pm = androidx.appcompat.widget.PopupMenu(this, btnMasCab)
-        listOf("AI analysis", "Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+        listOf("AI analysis", "AI market scan", "Price alerts", "Asset information", "Chart settings", "Test account…").forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
         pm.setOnMenuItemClickListener { when (it.itemId) {
             0 -> abrirAnalisisIA(activo, intervalo, chart, panel)
-            1 -> btnAlerta.performClick(); 2 -> btnInfo.performClick(); 3 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
+            1 -> abrirEscanerIA(intervalo) { a -> seleccionar(a); if (tabHome == 2) irATrade() }
+            2 -> btnAlerta.performClick(); 3 -> btnInfo.performClick(); 4 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
         pm.show()
     }
     var ultDatosFut = 0L; var claveDatosFut = ""

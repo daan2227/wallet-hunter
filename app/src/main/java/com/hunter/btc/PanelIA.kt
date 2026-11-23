@@ -47,6 +47,10 @@ internal fun MainActivity.abrirAnalisisIA(a: Mercado.Activo, intervalo: String, 
                     contentDescription = "Confidence ${r.confianza} percent"
                     layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10)).apply { topMargin = dp(8) } })
             })
+            // ── temporalidades ──
+            if (d.tendencias.isNotEmpty()) caja.addView(t(14f, DexTema.TXT, true).apply {
+                text = d.tendencias.entries.joinToString("    ") { (k, x) -> "$k ${when (x) { 1 -> "▲ up"; -1 -> "▼ down"; else -> "■ flat" }}" }
+                setPadding(0, dp(10), 0, 0); contentDescription = "Trend by timeframe: " + d.tendencias.entries.joinToString(", ") { (k, x) -> "$k ${when (x) { 1 -> "up"; -1 -> "down"; else -> "flat" }}" } })
             // ── plan ──
             r.plan?.let { p ->
                 caja.addView(DexTema.seccion(this, "Plan"))
@@ -122,4 +126,68 @@ internal fun MainActivity.abrirAnalisisIA(a: Mercado.Activo, intervalo: String, 
                 text = "Educational tool for the VUSD test exchange. Patterns and scores are probabilistic, not signals; this is not financial advice." })
         }
     }.start()
+}
+
+/**
+ * Escáner IA: pasa el motor local (solo gráfico: rápido y sin cuentas) por las ~50
+ * primeras criptos de Binance en la temporalidad elegida y ordena las oportunidades
+ * más claras. Tocar una abre el par en el DEx.
+ */
+internal fun MainActivity.abrirEscanerIA(intervaloInicial: String, alElegir: (Mercado.Activo) -> Unit) {
+    val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+    val estado = TextView(this).apply { textSize = 14f; setTextColor(DexTema.TXT2); setPadding(0, dp(8), 0, dp(8)) }
+    var iv = if (intervaloInicial in listOf("15m", "1h", "4h", "1d")) intervaloInicial else "1h"
+    val tok = java.util.concurrent.atomic.AtomicInteger(0)
+    var dlg: android.app.Dialog? = null
+    fun t(sp: Float, color: Int, negrita: Boolean = false) = TextView(this).apply { textSize = sp; setTextColor(color); typeface = if (negrita) AppTheme.bold(context) else AppTheme.body(context) }
+    fun escanear() {
+        val mio = tok.incrementAndGet(); lista.removeAllViews(); estado.text = "Loading the top coins…"
+        val ivAhora = iv
+        Thread {
+            val top = try { Mercado.topCripto(1, 70).map { it.activo } } catch (e: Throwable) { emptyList() }
+            val universo = top.take(50)
+            val hechos = java.util.concurrent.atomic.AtomicInteger(0)
+            val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
+            val futuros = universo.map { a -> pool.submit<Pair<Mercado.Activo, AnalisisIA.Resultado>?> {
+                val v = try { Mercado.velas(a, ivAhora, 250) } catch (e: Throwable) { emptyList() }
+                val n = hechos.incrementAndGet()
+                runOnUiThread { if (mio == tok.get()) estado.text = "Scanning $n / ${universo.size} on $ivAhora…" }
+                if (v.size < 60 || Mercado.fuente(a) != "binance") null else a to AnalisisIA.evaluar(AnalisisIA.Datos(v))
+            } }
+            val res = futuros.mapNotNull { try { it.get(60, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Exception) { null } }
+            pool.shutdown()
+            runOnUiThread {
+                if (mio != tok.get() || dlg?.isShowing != true) return@runOnUiThread
+                if (res.isEmpty()) { estado.text = "No data (CoinGecko or Binance unreachable)."; return@runOnUiThread }
+                val orden = res.sortedWith(compareBy<Pair<Mercado.Activo, AnalisisIA.Resultado>> {
+                    when (it.second.veredicto) { AnalisisIA.Veredicto.LONG, AnalisisIA.Veredicto.SHORT -> 0; AnalisisIA.Veredicto.SPOT -> 1; else -> 2 } }
+                    .thenByDescending { Math.abs(it.second.puntuacion) })
+                estado.text = "${res.size} pairs scanned on $ivAhora · chart signals only · tap one to open it"
+                for ((a, r) in orden.take(25)) {
+                    val col = when (r.veredicto) { AnalisisIA.Veredicto.LONG, AnalisisIA.Veredicto.SPOT -> DexTema.UP; AnalisisIA.Veredicto.SHORT -> DexTema.DOWN; else -> DexTema.TXT2 }
+                    lista.addView(LinearLayout(this).apply {
+                        orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(52); setPadding(0, dp(4), 0, dp(4))
+                        isClickable = true; foreground = Ui.toque()
+                        contentDescription = "${a.simbolo}: ${r.veredicto.nombre}, score %+.1f, confidence ${r.confianza} percent".format(r.puntuacion)
+                        setOnClickListener { dlg?.dismiss(); alElegir(a) }
+                        addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                            addView(t(15f, DexTema.TXT, true).apply { text = a.simbolo })
+                            addView(t(12f, DexTema.TXT2).apply { text = "${fmtSim(r.plan?.entrada ?: 0.0).takeIf { r.plan != null } ?: ""}${if (r.plan != null) " · " else ""}ATR %.2f%% · ${r.patrones.firstOrNull { it.alcista != null }?.nombre ?: "no pattern"}".format(r.atrPct) }) })
+                        addView(LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END
+                            addView(t(15f, col, true).apply { gravity = Gravity.END; text = when (r.veredicto) {
+                                AnalisisIA.Veredicto.LONG -> "▲ LONG"; AnalisisIA.Veredicto.SHORT -> "▼ SHORT"; AnalisisIA.Veredicto.SPOT -> "▲ SPOT"; else -> "■ WAIT" } })
+                            addView(t(12f, DexTema.TXT2).apply { gravity = Gravity.END; text = "%+.1f · %d%%".format(r.puntuacion, r.confianza) }) })
+                    })
+                }
+            }
+        }.start()
+    }
+    caja.addView(DexTema.pestanas(this, listOf("15m" to null, "1h" to null, "4h" to null, "1d" to null), listOf("15m", "1h", "4h", "1d").indexOf(iv)) { k ->
+        iv = listOf("15m", "1h", "4h", "1d")[k]; escanear() })
+    caja.addView(estado); caja.addView(lista)
+    caja.addView(t(12f, DexTema.TXT2).apply { setPadding(0, dp(12), 0, 0)
+        text = "Ranks the clearest chart setups among the top ~50 coins on Binance. Open a pair and run AI analysis for market and social factors. Not financial advice." })
+    dlg = DexTema.hoja(this, "AI market scan", caja).also { it.show() }
+    escanear()
 }

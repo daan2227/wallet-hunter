@@ -25,6 +25,8 @@ object AnalisisIA {
         val miedoCodicia: Int? = null, val enTendencia: Boolean? = null, val votosPositivos: Double? = null,
         val tonoReddit: Double? = null, val titularesReddit: List<Pair<String, Int>> = emptyList(),
         val esCripto: Boolean = true,
+        /** Tendencia por temporalidad (p. ej. "15m" → +1 alcista, −1 bajista, 0 lateral). */
+        val tendencias: Map<String, Int> = emptyMap(),
     )
 
     class Plan(val largo: Boolean, val entrada: Double, val stop: Double, val objetivo1: Double, val objetivo2: Double, val apalancamientoMax: Int)
@@ -76,6 +78,14 @@ object AnalisisIA {
             return o }
         val todos = agrupar(maximos + minimos)
         return todos.filter { it < precio }.sortedDescending().take(3) to todos.filter { it > precio }.sorted().take(3)
+    }
+
+    /** Tendencia de una temporalidad: +1 si precio > EMA20 > EMA50, −1 si al revés, 0 si no está claro. */
+    fun tendenciaTF(v: List<GraficoPrecio.Vela>): Int {
+        if (v.size < 55) return 0
+        val c = FloatArray(v.size) { v[it].c }
+        val e20 = ultimo(Indicadores.ema(c, 20)); val e50 = ultimo(Indicadores.ema(c, 50)); val p = c.last()
+        return when { p > e20 && e20 > e50 -> 1; p < e20 && e20 < e50 -> -1; else -> 0 }
     }
 
     private fun ultimo(a: FloatArray, desde: Int = 0): Float { for (i in a.size - 1 - desde downTo 0) if (!a[i].isNaN()) return a[i]; return Float.NaN }
@@ -153,6 +163,14 @@ object AnalisisIA {
             val cd = FloatArray(d.diarias.size) { d.diarias[it].c }
             val d50 = ultimo(Indicadores.ema(cd, 50)); val pd = cd.last()
             if (!d50.isNaN()) f.add(Factor(Grupo.MERCADO, "Daily trend", if (pd > d50) 1.0 else -1.0, if (pd > d50) "Daily close above its EMA 50" else "Daily close below its EMA 50"))
+        }
+        // ── GRÁFICO: alineación de temporalidades (15m, 1h, 4h, 1d) ──
+        if (d.tendencias.size >= 2) {
+            val vals = d.tendencias.values; val suma = vals.sum()
+            val pts = when { vals.all { it == 1 } -> 1.5; vals.all { it == -1 } -> -1.5; else -> suma * 0.25 }
+            val txt = d.tendencias.entries.joinToString("  ") { (k, x) -> "$k ${when (x) { 1 -> "up"; -1 -> "down"; else -> "flat" }}" }
+            f.add(Factor(Grupo.GRAFICO, if (vals.all { it == vals.first() } && vals.first() != 0) "Timeframes aligned" else "Timeframes mixed", pts,
+                txt + if (vals.all { it == vals.first() } && vals.first() != 0) " — all agree, a stronger signal" else " — they disagree, a weaker signal"))
         }
         // ── MERCADO: derivados ──
         d.funding?.let { fr ->

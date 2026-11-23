@@ -13,6 +13,12 @@ object RecolectorIA {
         val velas = try { Mercado.velas(a, intervalo, 300) } catch (e: Throwable) { emptyList() }
         val diarias = if (intervalo == "1d") velas else try { Mercado.velas(a, "1d", 120) } catch (e: Throwable) { emptyList() }
         val cripto = a.tipo == Mercado.Tipo.CRYPTO
+        // multi-temporalidad: la tendencia de 15m, 1h, 4h y 1d (reutiliza las velas que ya hay)
+        val tendencias = LinkedHashMap<String, Int>()
+        for (tf in listOf("15m", "1h", "4h", "1d")) {
+            val vs = when (tf) { intervalo -> velas; "1d" -> diarias; else -> try { Mercado.velas(a, tf, 120) } catch (e: Throwable) { emptyList() } }
+            if (vs.size >= 55) tendencias[tf] = AnalisisIA.tendenciaTF(vs)
+        }
         val prem = if (cripto) Mercado.premium(a) else null
         val fut = if (cripto) Mercado.datosFut(a) else null
         val fg = if (cripto) try { Mercado.fearGreed()?.valor } catch (e: Throwable) { null } else null
@@ -48,7 +54,7 @@ object RecolectorIA {
         } catch (e: Throwable) { }
         val tono = if (titulares.size >= 5) titulares.map { AnalisisIA.tono(it.first) }.average() else null
         return AnalisisIA.Datos(velas, diarias, prem?.tasa, fut?.ratioCuentas, fut?.pctLong, fut?.ratioTaker, fg, tendencia, votos, tono,
-            titulares.sortedByDescending { it.second }.take(8), cripto)
+            titulares.sortedByDescending { it.second }.take(8), cripto, tendencias)
     }
 
     /** Resumen compacto (texto) de datos y resultado para el informe de Claude. */

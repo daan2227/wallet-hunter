@@ -68,4 +68,21 @@ class AnalisisIATest {
         assertEquals(-1, AnalisisIA.tono("Exchange hack leads to crash"))
         assertEquals(0, AnalisisIA.tono("Weekly discussion thread"))
     }
+
+    @Test fun tendenciaPorTemporalidad() {
+        val sube = alcista()
+        val baja = sube.map { k -> vela((k.t / 3600).toInt(), 20000f / k.o, 20000f / k.l, 20000f / k.h, 20000f / k.c) }
+        assertEquals(1, AnalisisIA.tendenciaTF(sube))
+        assertEquals(-1, AnalisisIA.tendenciaTF(baja))
+        assertEquals(0, AnalisisIA.tendenciaTF(sube.take(40)))                       // pocas velas: sin opinión
+    }
+
+    @Test fun temporalidadesAlineadasSuman() {
+        val base = AnalisisIA.evaluar(AnalisisIA.Datos(alcista()))
+        val alineado = AnalisisIA.evaluar(AnalisisIA.Datos(alcista(), tendencias = mapOf("15m" to 1, "1h" to 1, "4h" to 1, "1d" to 1)))
+        val contra = AnalisisIA.evaluar(AnalisisIA.Datos(alcista(), tendencias = mapOf("15m" to -1, "1h" to -1, "4h" to -1, "1d" to -1)))
+        assertEquals(base.puntuacion + 1.5, alineado.puntuacion, 1e-6)
+        assertEquals(base.puntuacion - 1.5, contra.puntuacion, 1e-6)
+        assertTrue(alineado.factores.any { it.nombre == "Timeframes aligned" })
+    }
 }
