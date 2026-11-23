@@ -1023,7 +1023,70 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             })
         })
         contPos.addView(card)
+        contPos.addView(tarjetaRiesgo())
         if (futuros) listaTenencias()
+    }
+
+    // ── Cartera y riesgo ──
+    private fun tarjetaRiesgo() = tarjeta().apply {
+        val total = sim.patrimonio().coerceAtLeast(1e-9)
+        addView(texto(15f, DexTema.TXT, true).apply { text = "Portfolio & risk"; setPadding(0, 0, 0, dp(8)) })
+        val partes = Riesgo.reparto(sim)
+        val colores = listOf(DexTema.ACCENT, DexTema.UP, DexTema.LIQ, DexTema.DOWN, DexTema.TXT, DexTema.TXT2, DexTema.STROKE)
+        val sumaPartes = partes.sumOf { it.valor }.coerceAtLeast(1e-9)
+        addView(LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(10))
+            clipToOutline = true; background = DexTema.fondo(act, DexTema.CHIP, 5f)
+            partes.forEachIndexed { i, p -> addView(View(act).apply {
+                setBackgroundColor(colores[i % colores.size])
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, (p.valor / sumaPartes).toFloat()).apply { if (i > 0) marginStart = dp(2) }
+            }) }
+        })
+        partes.forEachIndexed { i, p ->
+            addView(LinearLayout(act).apply {
+                orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(6), 0, 0)
+                contentDescription = "%s: %s VUSD, %.1f percent".format(p.nombre, fmtSim(p.valor), p.valor / sumaPartes * 100)
+                addView(View(act).apply { background = DexTema.fondo(act, colores[i % colores.size], 3f)
+                    layoutParams = LinearLayout.LayoutParams(dp(10), dp(10)).apply { marginEnd = dp(8) } })
+                addView(texto(13f, DexTema.TXT).apply { text = p.nombre; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+                addView(texto(13f, DexTema.TXT2).apply { text = "%s · %.1f%%".format(fmtSim(p.valor), p.valor / sumaPartes * 100) })
+            })
+        }
+        val e = Riesgo.exposicion(sim)
+        addView(View(act).apply { layoutParams = LinearLayout.LayoutParams(1, dp(10)) })
+        addView(dato("Long exposure", "${fmtSim(e.larga)} VUSD · %.0f%%".format(e.larga / total * 100), DexTema.UP))
+        addView(dato("Short exposure", "${fmtSim(e.corta)} VUSD · %.0f%%".format(e.corta / total * 100), DexTema.DOWN))
+        addView(dato("Net · gross leverage", "${signo(e.neta)} · %.2fx".format(e.bruta / total), if (e.neta >= 0) DexTema.TXT else DexTema.DOWN))
+        val pc = Riesgo.peorCaso(sim)
+        if (sim.posiciones.isNotEmpty()) {
+            addView(dato("If every stop is hit", "${signo(pc.perdida)} VUSD · %.1f%% of equity".format(pc.perdida / total * 100), if (pc.perdida >= 0) DexTema.UP else DexTema.DOWN))
+            if (pc.sinStop > 0) addView(dato("Without stop-loss", "${pc.sinStop} position${if (pc.sinStop > 1) "s" else ""}: counted as liquidated", DexTema.LIQ))
+        }
+        if (pc.spotSinProteger > 0) addView(dato("Spot holdings (no stop)", "${fmtSim(pc.spotSinProteger)} VUSD at market risk", DexTema.TXT2))
+        val act0 = Riesgo.activos(sim)
+        if (act0.size >= 2) {
+            val tvCor = texto(13f, DexTema.TXT).apply { setPadding(0, dp(8), 0, 0); setLineSpacing(0f, 1.3f) }
+            addView(tvCor)
+            addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
+                addView(botonPeq("30-day correlation", DexTema.TXT) {
+                    tvCor.text = "Loading daily candles…"
+                    val lista = act0.entries.take(8).mapNotNull { (k, js) -> Mercado.Activo.deJson(js)?.let { k to it } }
+                    Thread {
+                        val cierres = lista.mapNotNull { (_, a) -> try { Mercado.velas(a, "1d", 31).map { it.c.toDouble() }.toDoubleArray().takeIf { it.size >= 6 }?.let { a.simbolo to it } } catch (e: Throwable) { null } }
+                        val filas = ArrayList<String>()
+                        for (i in cierres.indices) for (j in i + 1 until cierres.size) {
+                            val c = Riesgo.correlacion(cierres[i].second, cierres[j].second) ?: continue
+                            val txt = when { c >= 0.7 -> "move together"; c >= 0.3 -> "related"; c > -0.3 -> "little relation"; else -> "move opposite" }
+                            filas.add("${cierres[i].first} / ${cierres[j].first}  %+.2f  $txt".format(c))
+                        }
+                        act.runOnUiThread { tvCor.text = if (filas.isEmpty()) "Not enough daily data." else
+                            filas.joinToString("\n") + "\nHigh correlation means less diversification: they tend to fall together." }
+                    }.start()
+                })
+            })
+        }
     }
 
     private fun editarTpSl(p: Simulador.Posicion) {
