@@ -50,6 +50,7 @@ object VigilanciaDex {
             for (c in v) if (c.t >= desde) sim.procesar(k, c.l.toDouble(), c.h.toDouble(), c.c.toDouble(), c.t + 60, c.t)
             val u = v.last().c.toDouble(); sim.procesar(k, u, u, u, ahora)
         }
+        try { BotIA.aplicar(sim, BotIA.calcular(BotIA.tareas(sim, ahora))) } catch (e: Exception) { }
         sim.devengar(ahora)
         val avisos = ArrayList(sim.eventos); sim.eventos.clear()
         // si mientras tanto se abrió la app, no se pisa lo que ella guardó (ella misma lo revisará)

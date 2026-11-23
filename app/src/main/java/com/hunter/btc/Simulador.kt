@@ -21,7 +21,8 @@ import org.json.JSONObject
  *  - TP/SL salen al precio fijado (taker); si en el mismo tramo se tocan TP y SL se
  *    asume SL (criterio conservador). Stop y trailing se ejecutan al disparo (taker).
  *  - Earn flexible: 5 % TAE sobre VUSD, abonado cada día a las 00:00 UTC.
- *  - Bots: DCA (compra periódica) y grid (compra/venta entre dos precios).
+ *  - Bots: DCA (compra periódica), grid (compra/venta entre dos precios) e IA (futuros
+ *    con las señales del motor local de AnalisisIA, una decisión por vela cerrada).
  */
 class Simulador {
 
@@ -64,7 +65,10 @@ class Simulador {
               val importe: Double = 0.0, val cadaSeg: Long = 0, var proximo: Long = 0, var compras: Int = 0, var gastado: Double = 0.0,
               val lo: Double = 0.0, val hi: Double = 0.0, val n: Int = 0, val inversion: Double = 0.0,
               var caja: Double = 0.0, var base: Double = 0.0, val conBase: BooleanArray = BooleanArray(0), val qtyCelda: DoubleArray = DoubleArray(0),
-              var beneficio: Double = 0.0, var operaciones: Int = 0) {
+              var beneficio: Double = 0.0, var operaciones: Int = 0,
+              /** Bot IA: temporalidad, confianza mínima (%), apalancamiento máximo, posición abierta y última vela decidida. */
+              val iv: String = "", val umbral: Int = 0, val apalMax: Int = 0, var posId: Long = 0, var ultVela: Long = 0,
+              var ganadas: Int = 0) {
         fun nivel(i: Int) = lo + (hi - lo) * i / n
         fun valor(precio: Double) = caja + base * precio
     }
@@ -315,11 +319,13 @@ class Simulador {
         posiciones.remove(p)
         if (motivo == "Liquidated") {
             historial.add(Operacion(t, Mercado.FUT, p.simbolo, lado, p.entrada, precio, p.qty, -p.margen + p.funding, 0.0, motivo))
+            cuentaBot(p.id, -p.margen + p.funding)
             return
         }
         val pnl = p.pnl(precio); val com = precio * p.qty * COM_TAKER
         fut += (p.margen + pnl - com).coerceAtLeast(0.0)
         historial.add(Operacion(t, Mercado.FUT, p.simbolo, lado, p.entrada, precio, p.qty, pnl - com + p.funding, com, motivo))
+        cuentaBot(p.id, pnl - com + p.funding)
     }
 
     /** Liquidación cruzada: se cierran todas las posiciones cruzadas y se pierde el saldo de Futuros. */
@@ -522,6 +528,60 @@ class Simulador {
     fun earnHoy(t: Long = ahora()) = earn * APR_EARN / 365 * ((t % 86_400) / 86_400.0)
 
     // ── Bots ──
+    /** Bot IA: abre futuros aislados de [margen] VUSD con el plan del motor IA cuando la confianza llega a [umbral]. */
+    fun crearBotIA(clave: String, activo: String, simbolo: String, iv: String, margen: Double, apalMax: Int, umbral: Int, t: Long = ahora()): String? {
+        if (iv !in listOf("15m", "1h", "4h", "1d")) return "Choose a timeframe"
+        if (margen < MIN_ORDEN) return "Minimum ${fmtSim(MIN_ORDEN)} $MONEDA margin per trade"
+        if (apalMax !in 1..20) return "Max leverage must be 1–20x"
+        if (umbral !in 30..95) return "Minimum confidence must be 30–95%"
+        if (bots.any { it.tipo == "IA" && it.clave == clave }) return "There is already an AI bot on $simbolo"
+        if (margen * (1 + apalMax * COM_TAKER) > fut + 1e-9) return "Not enough $MONEDA in Futures for one trade"
+        bots.add(Bot(nuevoId(), "IA", clave, activo, simbolo, t, importe = margen, iv = iv, umbral = umbral, apalMax = apalMax)); return null
+    }
+
+    /** Apunta el resultado de una posición del bot IA al cerrarse del todo (TP, SL, liquidación, cierre a mano). */
+    private fun cuentaBot(posId: Long, resultado: Double) {
+        val b = bots.firstOrNull { it.tipo == "IA" && it.posId == posId } ?: return
+        b.beneficio += resultado; b.operaciones++; if (resultado > 0) b.ganadas++; b.posId = 0
+    }
+
+    /**
+     * Decisión del bot IA [id] al cierre de la vela [velaT]: [dir] +1 largo, −1 corto,
+     * 0 sin señal, con su [confianza] (%) y el plan ([stop], [objetivo], [apalPlan]).
+     * Si la señal contraria pasa el umbral, cierra y gira; sin posición, abre. Una
+     * sola decisión por vela. Devuelve true si cambió algo.
+     */
+    fun senalIA(id: Long, dir: Int, confianza: Int, stop: Double, objetivo: Double, apalPlan: Int,
+                precio: Double, velaT: Long, t: Long = ahora()): Boolean {
+        val b = bots.firstOrNull { it.id == id && it.tipo == "IA" } ?: return false
+        if (velaT <= b.ultVela || precio <= 0) return false
+        b.ultVela = velaT
+        val pos = posiciones.firstOrNull { it.id == b.posId }
+        if (pos == null) b.posId = 0
+        val fuerte = dir != 0 && confianza >= b.umbral
+        if (!fuerte) return true
+        val largo = dir > 0
+        if (pos != null) {
+            if (pos.long == largo) return true
+            cerrarFuturo(pos.id, precio, "AI bot: opposite signal", t)
+            eventos.add("AI bot ${b.simbolo}: closed ${if (pos.long) "long" else "short"} on an opposite signal")
+        }
+        // en one-way no se mezcla con posiciones del usuario en el mismo par
+        if (!hedge && posiciones.any { it.clave == b.clave }) { eventos.add("AI bot ${b.simbolo}: you have a position on this pair, signal skipped"); return true }
+        if (fut + 1e-9 < b.importe * (1 + b.apalMax * COM_TAKER)) { eventos.add("AI bot ${b.simbolo}: not enough $MONEDA in Futures, signal skipped"); return true }
+        val sl = if (stop > 0 && (if (largo) stop < precio else stop > precio)) stop else 0.0
+        val tp = if (objetivo > 0 && (if (largo) objetivo > precio else objetivo < precio)) objetivo else 0.0
+        var x = apalPlan.coerceIn(1, b.apalMax)
+        // el stop tiene que quedar antes de la liquidación
+        while (x > 1 && sl > 0 && (if (largo) sl <= liquidacionDe(precio, x, true) else sl >= liquidacionDe(precio, x, false))) x--
+        val err = abrirFuturo(b.clave, b.activo, b.simbolo, largo, b.importe, x, precio, tp, sl, t = t)
+        if (err != null) { eventos.add("AI bot ${b.simbolo}: $err"); return true }
+        b.posId = posiciones.lastOrNull { it.clave == b.clave && it.long == largo }?.id ?: 0
+        historial.lastOrNull()?.let { if (it.motivo == "Market") historial[historial.size - 1] = Operacion(it.t, it.mercado, it.simbolo, it.lado, it.entrada, it.salida, it.qty, it.pnl, it.comision, "AI bot", "confidence $confianza%") }
+        eventos.add("AI bot ${b.simbolo}: opened ${if (largo) "long" else "short"} ${x}x at ${fmtSim(precio)} (confidence $confianza%)")
+        return true
+    }
+
     fun crearDca(clave: String, activo: String, simbolo: String, importe: Double, cadaSeg: Long, t: Long = ahora()): String? {
         if (importe < MIN_ORDEN) return "Minimum ${fmtSim(MIN_ORDEN)} $MONEDA per buy"
         if (cadaSeg < 3600) return "Interval must be at least 1 hour"
@@ -550,6 +610,7 @@ class Simulador {
     fun pararBot(id: Long, precio: Double, t: Long = ahora()) {
         val b = bots.firstOrNull { it.id == id } ?: return
         bots.remove(b)
+        if (b.tipo == "IA") { if (b.posId != 0L && precio > 0) cerrarFuturo(b.posId, precio, "AI bot stopped", t); return }
         if (b.tipo == "GRID") {
             val venta = b.base * precio * (1 - COM_SPOT); val total = b.caja + venta
             spot += total
@@ -560,6 +621,7 @@ class Simulador {
     private fun procesarBots(clave: String, lo: Double, hi: Double, ultimo: Double, t: Long, inicio: Long): Boolean {
         var cambio = false
         for (b in bots.filter { it.clave == clave && it.creado <= inicio }) {
+            if (b.tipo == "IA") continue                     // decide con velas cerradas fuera (BotIA)
             if (b.tipo == "DCA") {
                 if (t < b.proximo) continue
                 if (spot + 1e-9 >= b.importe) {
@@ -685,7 +747,8 @@ class Simulador {
             .put("s", b.simbolo).put("t", b.creado).put("i", b.importe).put("cada", b.cadaSeg).put("prox", b.proximo).put("nc", b.compras)
             .put("gas", b.gastado).put("lo", b.lo).put("hi", b.hi).put("n", b.n).put("inv", b.inversion).put("caja", b.caja).put("base", b.base)
             .put("cb", JSONArray().apply { b.conBase.forEach { put(it) } }).put("qc", JSONArray().apply { b.qtyCelda.forEach { put(it) } })
-            .put("ben", b.beneficio).put("ops", b.operaciones)) } })
+            .put("ben", b.beneficio).put("ops", b.operaciones).put("iv", b.iv).put("um", b.umbral).put("am", b.apalMax)
+            .put("pid", b.posId).put("uv", b.ultVela).put("gan", b.ganadas)) } })
         put("his", JSONArray().apply { historial.takeLast(500).forEach { h -> put(JSONObject().put("t", h.t).put("mk", h.mercado.name).put("s", h.simbolo)
             .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo).put("nt", h.nota)) } })
         put("pre", JSONObject().apply { precios.forEach { (k, v) -> put(k, v) } })
@@ -725,7 +788,8 @@ class Simulador {
                     b.optDouble("i", 0.0), b.optLong("cada", 0), b.optLong("prox", 0), b.optInt("nc", 0), b.optDouble("gas", 0.0),
                     b.optDouble("lo", 0.0), b.optDouble("hi", 0.0), b.optInt("n", 0), b.optDouble("inv", 0.0), b.optDouble("caja", 0.0), b.optDouble("base", 0.0),
                     BooleanArray(cb?.length() ?: 0) { cb!!.getBoolean(it) }, DoubleArray(qc?.length() ?: 0) { qc!!.getDouble(it) },
-                    b.optDouble("ben", 0.0), b.optInt("ops", 0))) } }
+                    b.optDouble("ben", 0.0), b.optInt("ops", 0), b.optString("iv"), b.optInt("um", 0), b.optInt("am", 0),
+                    b.optLong("pid", 0), b.optLong("uv", 0), b.optInt("gan", 0))) } }
             o.optJSONArray("his")?.let { a -> for (i in 0 until a.length()) { val h = a.getJSONObject(i)
                 historial.add(Operacion(h.getLong("t"), Mercado.valueOf(h.getString("mk")), h.getString("s"), h.getString("ld"), h.getDouble("e"),
                     h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"), h.optString("nt"))) } }

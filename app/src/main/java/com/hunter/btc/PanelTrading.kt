@@ -471,7 +471,17 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     // ── Bots ──
     private fun tarjetaBot(b: Simulador.Bot) = tarjeta().apply {
         val px = precioDe(b.clave)
-        if (b.tipo == "DCA") {
+        if (b.tipo == "IA") {
+            val pos = sim.posiciones.firstOrNull { it.id == b.posId }
+            val vivo = pos?.let { p -> px?.let { p.pnl(it) } } ?: 0.0
+            val total = b.beneficio + vivo
+            addView(cabeceraTarjeta("AI bot · ${b.simbolo} · ${b.iv}", DexTema.LINK, signo(total), if (total >= 0) DexTema.UP else DexTema.DOWN))
+            addView(dato("Margin · max leverage · min confidence", "${fmtSim(b.importe)} VUSD · ${b.apalMax}x · ${b.umbral}%"))
+            addView(dato("Closed trades · win rate", if (b.operaciones == 0) "0" else "${b.operaciones} · ${b.ganadas * 100 / b.operaciones}%"))
+            addView(dato("Realized PnL", signo(b.beneficio), if (b.beneficio >= 0) DexTema.UP else DexTema.DOWN))
+            addView(dato("Now", if (pos == null) (if (b.ultVela == 0L) "waiting for the first closed candle" else "flat, waiting for a signal")
+                else "${if (pos.long) "Long" else "Short"} ${pos.apal}x from ${fmtSim(pos.entrada)} · ${signo(vivo)}", if (pos == null) DexTema.TXT2 else if (vivo >= 0) DexTema.UP else DexTema.DOWN))
+        } else if (b.tipo == "DCA") {
             addView(cabeceraTarjeta("DCA bot · ${b.simbolo}", DexTema.LINK, "${fmtSim(b.importe)} VUSD / ${intervaloTxt(b.cadaSeg)}", DexTema.TXT))
             addView(dato("Buys done · invested", "${b.compras} · ${fmtSim(b.gastado)} VUSD"))
             addView(dato("Next buy", java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US).format(java.util.Date(b.proximo * 1000))))
@@ -487,9 +497,15 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
             addView(botonPeq("Stop", DexTema.DOWN) {
                 val p = precioDe(b.clave)
-                if (b.tipo == "GRID" && p == null) { aviso("No price for ${b.simbolo} yet"); return@botonPeq }
-                confirmar("Stop ${if (b.tipo == "GRID") "grid" else "DCA"} bot", if (b.tipo == "GRID") "The bot sells its ${b.simbolo} at market and returns everything to Spot." else "No more periodic buys. Coins already bought stay in Spot.", "Stop") {
-                    sim.pararBot(b.id, precioDe(b.clave) ?: p ?: 0.0); guardar(); refrescar(); aviso(if (b.tipo == "GRID") "Grid stopped, funds back in Spot" else "DCA bot stopped")
+                if ((b.tipo == "GRID" || (b.tipo == "IA" && b.posId != 0L)) && p == null) { aviso("No price for ${b.simbolo} yet"); return@botonPeq }
+                val nombre = when (b.tipo) { "GRID" -> "grid"; "IA" -> "AI"; else -> "DCA" }
+                val detalle = when (b.tipo) {
+                    "GRID" -> "The bot sells its ${b.simbolo} at market and returns everything to Spot."
+                    "IA" -> "No more AI trades. An open bot position is closed at market."
+                    else -> "No more periodic buys. Coins already bought stay in Spot." }
+                confirmar("Stop $nombre bot", detalle, "Stop") {
+                    sim.pararBot(b.id, precioDe(b.clave) ?: p ?: 0.0); notificar(); guardar(); refrescar()
+                    aviso(when (b.tipo) { "GRID" -> "Grid stopped, funds back in Spot"; "IA" -> "AI bot stopped"; else -> "DCA bot stopped" })
                 }
             })
         })
@@ -500,14 +516,18 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val a = activo()
         val caja = cajaDialogo()
         caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply {
-            text = "Test bots run on Spot with real prices for ${a.simbolo}, while the DEx tab is open (missed periods are caught up with 1-minute candles)."
+            text = "Test bots trade ${a.simbolo} with real prices: DCA and Grid on Spot, AI on Futures. They keep running in the background about every 15 minutes."
             setPadding(0, 0, 0, dp(10))
         })
         var tipo = 0
         val pDca = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL }
         val pGrid = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
-        caja.addView(DexTema.pestanas(act, listOf("DCA" to null, "Grid" to null), 0) { k -> tipo = k
-            pDca.visibility = if (k == 0) View.VISIBLE else View.GONE; pGrid.visibility = if (k == 1) View.VISIBLE else View.GONE }
+        val pIA = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE }
+        val tvSaldo = texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "Available in Spot: ${fmtSim(sim.spot)} VUSD"; setPadding(0, dp(8), 0, 0) }
+        caja.addView(DexTema.pestanas(act, listOf("DCA" to null, "Grid" to null, "AI" to null), 0) { k -> tipo = k
+            pDca.visibility = if (k == 0) View.VISIBLE else View.GONE; pGrid.visibility = if (k == 1) View.VISIBLE else View.GONE
+            pIA.visibility = if (k == 2) View.VISIBLE else View.GONE
+            tvSaldo.text = if (k == 2) "Available in Futures: ${fmtSim(sim.fut)} VUSD" else "Available in Spot: ${fmtSim(sim.spot)} VUSD" }
             .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(10) } })
         // DCA
         val etDca = numero("VUSD per buy")
@@ -528,15 +548,26 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         }
         pGrid.addView(etLo); pGrid.addView(etHi); pGrid.addView(etN); pGrid.addView(etInv); pGrid.addView(tvG)
         alCambiar(etLo, etHi, etN) { infoGrid() }; infoGrid()
-        caja.addView(pDca); caja.addView(pGrid)
-        caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "Available in Spot: ${fmtSim(sim.spot)} VUSD"; setPadding(0, dp(8), 0, 0) })
+        // IA
+        var ivIA = "1h"
+        val etMarIA = numero("Margin per trade (VUSD)")
+        val etApIA = numero("Max leverage (1–20)").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("3") }
+        val etUmIA = numero("Min confidence % (30–95)").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("60") }
+        pIA.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "At each closed candle the on-device AI engine scores ${a.simbolo}. On a Long or Short signal with enough confidence it opens an isolated futures position with the plan's stop and first target, and flips on a strong opposite signal. It only uses chart data. Paper trading, not advice." })
+        pIA.addView(DexTema.pestanas(act, listOf("15m" to null, "1h" to null, "4h" to null, "1d" to null), 1) { k -> ivIA = listOf("15m", "1h", "4h", "1d")[k] })
+        pIA.addView(etMarIA); pIA.addView(etApIA); pIA.addView(etUmIA)
+        caja.addView(pDca); caja.addView(pGrid); caja.addView(pIA)
+        caja.addView(tvSaldo)
         DexTema.dialogo(act).setTitle("New bot · ${a.simbolo}").setView(ScrollView(act).apply { addView(caja) })
             .setPositiveButton("Start") { _, _ ->
                 val err = if (tipo == 0) sim.crearDca(a.clave, a.aJson(), a.simbolo, etDca.num(), cada)
+                    else if (tipo == 2) sim.crearBotIA(a.clave, a.aJson(), a.simbolo, ivIA, etMarIA.num(),
+                        etApIA.text.toString().toIntOrNull() ?: 0, etUmIA.text.toString().toIntOrNull() ?: 0)
                     else sim.crearGrid(a.clave, a.aJson(), a.simbolo, etLo.num(), etHi.num(), etN.text.toString().toIntOrNull() ?: 0, etInv.num(), px)
                 if (err != null) aviso(err) else {
                     if (tipo == 0) sim.procesar(a.clave, px, px, px)       // primera compra ya
                     notificar(); guardar(); refrescar(); aviso("Bot started")
+                    if (tipo == 2) vigilar()                               // primera decisión ya
                 }
             }.setNegativeButton("Cancel", null).show()
     }
@@ -1035,7 +1066,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val trabajos = sim.clavesActivas().mapNotNull { k -> Mercado.Activo.deJson(sim.activoDe(k))?.let { it to (sim.revisado[k] ?: ahora) } }
         if (trabajos.isEmpty()) return
         vigilando = true
+        val tareasIA = BotIA.tareas(sim, ahora)
         Thread {
+            val senales = try { BotIA.calcular(tareasIA) } catch (e: Throwable) { emptyList() }
             val res = trabajos.map { (a, desde) ->
                 val n = ((ahora - desde) / 60 + 3).toInt().coerceIn(3, 1000)
                 Triple(a, desde, try { Mercado.velas(a, "1m", n) } catch (e: Throwable) { emptyList() })
@@ -1048,6 +1081,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                     for (k in v) if (k.t >= desde) cambio = sim.procesar(a.clave, k.l.toDouble(), k.h.toDouble(), k.c.toDouble(), k.t + 60, k.t) or cambio
                     val u = v.last().c.toDouble(); cambio = sim.procesar(a.clave, u, u, u, ahora) or cambio
                 }
+                cambio = BotIA.aplicar(sim, senales) or cambio
                 notificar(); guardar(); if (vista.isAttachedToWindow) refrescar()
             }
         }.start()

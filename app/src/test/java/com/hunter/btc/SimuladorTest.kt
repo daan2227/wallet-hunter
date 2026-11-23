@@ -310,4 +310,59 @@ class SimuladorTest {
         assertTrue(r.hedge); assertTrue(r.posiciones[0].cruzado); assertEquals(1, r.bots.size)
         assertEquals(s.bots[0].conBase.toList(), r.bots[0].conBase.toList())
     }
+
+    // ── Bot IA ──
+    private fun conBotIA(apalMax: Int = 3): Simulador = nuevo().apply {
+        assertNull(crearBotIA("B", "", "BTC", "1h", 100.0, apalMax, 60, T0))
+    }
+
+    @Test fun botIAAbreConPlanYCuentaElTP() {
+        val s = conBotIA(); val b = s.bots[0]
+        assertTrue(s.senalIA(b.id, 1, 70, 95.0, 110.0, 5, 100.0, T0, T0))
+        val p = s.posiciones.single()
+        assertTrue(p.long); assertEquals(3, p.apal); assertEquals(95.0, p.sl, eps); assertEquals(110.0, p.tp, eps)
+        assertEquals(p.id, b.posId); assertEquals("AI bot", s.historial.last().motivo)
+        assertTrue(!s.senalIA(b.id, -1, 90, 0.0, 0.0, 1, 100.0, T0, T0 + 10))       // misma vela: no decide otra vez
+        s.procesar("B", 99.0, 111.0, 109.0, T0 + 60)
+        assertTrue(s.posiciones.isEmpty())
+        assertEquals(1, b.operaciones); assertEquals(1, b.ganadas); assertEquals(0L, b.posId)
+        assertEquals(s.historial.last().pnl, b.beneficio, eps); assertTrue(b.beneficio > 0)
+    }
+
+    @Test fun botIAGiraConSenalContraria() {
+        val s = conBotIA(); val b = s.bots[0]
+        s.senalIA(b.id, 1, 70, 95.0, 110.0, 3, 100.0, T0, T0)
+        s.senalIA(b.id, -1, 75, 104.0, 92.0, 3, 98.0, T0 + 3600, T0 + 3600)
+        val p = s.posiciones.single()
+        assertTrue(!p.long); assertEquals(p.id, b.posId)
+        assertEquals(1, b.operaciones); assertEquals(0, b.ganadas); assertTrue(b.beneficio < 0)
+    }
+
+    @Test fun botIARespetaUmbralYPosicionesDelUsuario() {
+        val s = conBotIA(); val b = s.bots[0]
+        s.senalIA(b.id, 1, 50, 95.0, 110.0, 3, 100.0, T0, T0)                          // por debajo del 60 %
+        assertTrue(s.posiciones.isEmpty())
+        assertNull(s.abrirFuturo("B", "", "BTC", false, 50.0, 2, 100.0, t = T0))
+        s.senalIA(b.id, 1, 80, 95.0, 110.0, 3, 100.0, T0 + 3600, T0 + 3600)
+        assertEquals(1, s.posiciones.size); assertTrue(!s.posiciones[0].long)          // no toca la del usuario
+        assertEquals(0L, b.posId)
+    }
+
+    @Test fun botIABajaApalancamientoSiElStopQuedaTrasLaLiquidacion() {
+        val s = conBotIA(apalMax = 20); val b = s.bots[0]
+        s.senalIA(b.id, 1, 80, 94.0, 110.0, 20, 100.0, T0, T0)
+        assertEquals(15, s.posiciones.single().apal)
+    }
+
+    @Test fun botIAPararCierraYSeGuarda() {
+        val s = conBotIA(); val b = s.bots[0]
+        s.senalIA(b.id, 1, 70, 95.0, 110.0, 3, 100.0, T0, T0)
+        val r = Simulador.deJson(s.aJson()); val rb = r.bots.single()
+        assertEquals("IA", rb.tipo); assertEquals("1h", rb.iv); assertEquals(60, rb.umbral); assertEquals(3, rb.apalMax)
+        assertEquals(b.posId, rb.posId); assertEquals(T0, rb.ultVela)
+        r.pararBot(rb.id, 102.0, T0 + 60)
+        assertTrue(r.bots.isEmpty()); assertTrue(r.posiciones.isEmpty())
+        assertEquals("AI bot stopped", r.historial.last().motivo)
+        assertTrue(s.crearBotIA("B", "", "BTC", "1h", 100.0, 3, 60, T0) != null)        // uno por par
+    }
 }
