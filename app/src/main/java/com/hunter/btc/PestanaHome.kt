@@ -402,6 +402,19 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
     pintarScalp(pt.scalpOn); pt.alCambiarScalp = { on -> pintarScalp(on); if (on && tabHome == 2) irATrade() }
     pr.vistaBotones.addView(btnScalp, 2)
+    // botones en filas de 3 con el mismo ancho (antes se apretaban en una sola fila y se cortaban)
+    run {
+        val bs = (0 until pr.vistaBotones.childCount).map { pr.vistaBotones.getChildAt(it) }
+        pr.vistaBotones.removeAllViews(); pr.vistaBotones.orientation = LinearLayout.VERTICAL
+        bs.chunked(3).forEachIndexed { r, fila -> pr.vistaBotones.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (r > 0) topMargin = dp(8) }
+            fila.forEachIndexed { k, b ->
+                (b as? TextView)?.apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(6), 0, dp(6), 0) }
+                addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8) })
+            }
+        }) }
+    }
     pl.alPremium = { clave, p -> pt.sim.tasaFunding[clave] = p.tasa }
     // gráfico plegable (como "BTCUSDT Perp. Chart ▴")
     fun pintarCabGrafico() {

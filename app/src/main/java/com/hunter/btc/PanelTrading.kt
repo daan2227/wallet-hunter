@@ -1285,9 +1285,11 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     /** Lo llama el Home cuando cambia el modo para que el botón muestre el estado. */
     var alCambiarScalp: ((Boolean) -> Unit)? = null
     private val cajaScalp = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, 0, 0, dp(12)) }
-    private val etMarS = numero("Margin VUSD"); private val etApS = numero("Leverage").apply { inputType = InputType.TYPE_CLASS_NUMBER }
-    private val etTpS = numero("TP %"); private val etSlS = numero("SL %")
-    private val etLimS = numero("Daily loss limit VUSD (0 = off)")
+    private val cMarS = DexTema.campoEtiquetado(act, "Margin VUSD"); private val etMarS = cMarS.second
+    private val cApS = DexTema.campoEtiquetado(act, "Leverage x"); private val etApS = cApS.second.apply { inputType = InputType.TYPE_CLASS_NUMBER }
+    private val cTpS = DexTema.campoEtiquetado(act, "Take-profit %"); private val etTpS = cTpS.second
+    private val cSlS = DexTema.campoEtiquetado(act, "Stop-loss %"); private val etSlS = cSlS.second
+    private val cLimS = DexTema.campoEtiquetado(act, "Daily loss limit VUSD"); private val etLimS = cLimS.second
     private val vBid = View(act); private val vAsk = View(act)
     private val tvFlujo = texto(12f, DexTema.TXT2)
     private val tvSesion = texto(12f, DexTema.TXT2).apply { setLineSpacing(0f, 1.25f) }
@@ -1312,26 +1314,29 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         alCambiar(etMarS, etApS, etTpS, etSlS) { guardarCfg() }
         alCambiar(etLimS) { sim.limiteDia = etLimS.num().coerceAtLeast(0.0); guardar(); pintarSesion() }
         fun fila(vararg vs: View) = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
-            vs.forEachIndexed { k, v -> addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8) }) } }
+            vs.forEachIndexed { k, v -> addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8); bottomMargin = dp(8) }) } }
+        fun corto(t: String, color: Int, f: () -> Unit) = botonPeq(t, color, f).apply { isSingleLine = true; setPadding(dp(6), 0, dp(6), 0) }
         cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(texto(15f, DexTema.TXT, true).apply { text = "⚡ Quick scalp"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
             addView(botonPeq("Hide", DexTema.TXT2) { alternarScalp() }) })
-        cajaScalp.addView(fila(etMarS, etApS)); cajaScalp.addView(fila(etTpS, etSlS))
+        cajaScalp.addView(fila(cMarS.first, cApS.first)); cajaScalp.addView(fila(cTpS.first, cSlS.first))
         fun grande(t: String, fondo: Int, largo: Boolean) = TextView(act).apply {
             text = t; textSize = 17f; typeface = AppTheme.bold(act); gravity = Gravity.CENTER; minHeight = dp(52)
             setTextColor(if (largo) DexTema.ON_UP else 0xFFFFFFFF.toInt()); background = DexTema.fondo(act, fondo, 8f); isClickable = true; foreground = Ui.toque()
             contentDescription = "Market ${if (largo) "long" else "short"} with the quick scalp settings"
             setOnClickListener { scalpAbrir(largo) } }
-        cajaScalp.addView(fila(grande("Long ▲", DexTema.UP, true), grande("Short ▼", DexTema.DOWN, false)).apply { setPadding(0, dp(8), 0, 0) })
-        cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
-            addView(botonPeq("Reverse", DexTema.TXT) { scalpInvertir() })
-            addView(botonPeq("Close pair", DexTema.DOWN) { scalpCerrarPar() })
-            addView(botonPeq("New session", DexTema.TXT2) { prefsScalp.edit().putLong("sesion", System.currentTimeMillis() / 1000).apply(); pintarSesion(); aviso("New scalp session") }) })
+        cajaScalp.addView(fila(grande("Long ▲", DexTema.UP, true), grande("Short ▼", DexTema.DOWN, false)))
+        cajaScalp.addView(fila(corto("Reverse", DexTema.TXT) { scalpInvertir() }, corto("Close pair", DexTema.DOWN) { scalpCerrarPar() }))
         // flujo de órdenes
         cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(4))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
             addView(vBid, LinearLayout.LayoutParams(0, dp(6), 1f)); addView(vAsk, LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2) }) })
-        cajaScalp.addView(tvFlujo); cajaScalp.addView(tvSesion); cajaScalp.addView(etLimS)
+        cajaScalp.addView(tvFlujo); cajaScalp.addView(tvSesion)
+        cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(6), 0, dp(8))
+            addView(corto("New session", DexTema.TXT) { prefsScalp.edit().putLong("sesion", System.currentTimeMillis() / 1000).apply(); pintarSesion(); aviso("New scalp session") }
+                .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }) })
+        cajaScalp.addView(cLimS.first)
+        cajaScalp.addView(texto(11f, DexTema.TXT2).apply { text = "Empty or 0 = no limit. When today's futures loss reaches it, new positions are blocked until 00:00 UTC." })
         cajaScalp.addView(View(act).apply { setBackgroundColor(DexTema.STROKE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { topMargin = dp(10) } })
         if (scalpOn) hScalp.post(tickScalp)
     }
@@ -1360,8 +1365,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val hoy = sim.resultadoHoy(ahora)
         val lim = sim.limiteDia
         val bloq = sim.bloqueadoHoy(ahora)
-        tvSesion.text = "Session %d min · %d trades · %.0f%% wins · %s VUSD (%s/min) · fees %s\nToday %s VUSD%s".format(
-            s.minutos.toInt(), s.operaciones, s.acierto, signo(s.resultado), signo(s.porMinuto), fmtSim(s.comisiones), signo(hoy),
+        tvSesion.text = "Session %d min · %d trades · %.0f%% wins\nResult %s VUSD (%+.2f/min) · fees %s\nToday %s VUSD%s".format(
+            s.minutos.toInt(), s.operaciones, s.acierto, usd2(s.resultado), s.porMinuto, usd2(s.comisiones).removePrefix("+"), usd2(hoy),
             if (lim > 0) " of −${fmtSim(lim)} limit" + (if (bloq) " · BLOCKED until 00:00 UTC" else "") else "")
         tvSesion.setTextColor(if (bloq) DexTema.DOWN else DexTema.TXT2)
     }
@@ -1401,4 +1406,5 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
 
     // al final: así todas las propiedades ya están inicializadas al construir la vista
     init { construir(); refrescar() }
+    private fun usd2(x: Double) = "%+,.2f".format(x)
 }
