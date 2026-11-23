@@ -387,6 +387,21 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     cajaListas.addView(pt.vistaListas)
     pt.bbo = { pl.mejorBid to pl.mejorAsk }
     pt.libroActual = { pl.libroCrudo }
+    pt.tradesActual = { pl.tradesRecientes }
+    val btnScalp = TextView(this).apply {
+        textSize = 14f; typeface = AppTheme.medium(context); gravity = Gravity.CENTER; minHeight = dp(48)
+        setPadding(dp(14), 0, dp(14), 0); isClickable = true; foreground = Ui.toque()
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginEnd = dp(8) }
+        setOnClickListener { pt.alternarScalp() }
+    }
+    fun pintarScalp(on: Boolean) {
+        btnScalp.text = if (on) "⚡ Scalp on" else "⚡ Scalp"
+        btnScalp.setTextColor(if (on) DexTema.ON_UP else DexTema.TXT)
+        btnScalp.background = DexTema.fondoTactil(this, if (on) DexTema.ACCENT else DexTema.CHIP, 8f, 36f)
+        btnScalp.contentDescription = "Quick scalp panel, ${if (on) "on" else "off"}"
+    }
+    pintarScalp(pt.scalpOn); pt.alCambiarScalp = { on -> pintarScalp(on); if (on && tabHome == 2) irATrade() }
+    pr.vistaBotones.addView(btnScalp, 2)
     pl.alPremium = { clave, p -> pt.sim.tasaFunding[clave] = p.tasa }
     // gráfico plegable (como "BTCUSDT Perp. Chart ▴")
     fun pintarCabGrafico() {
@@ -995,7 +1010,8 @@ internal fun MainActivity.abrirAjustesTA(chart: GraficoTA, alCambiar: () -> Unit
     seccion("Overlays")
     fila("Bollinger (period, σ)", c.bb, { c.bb = it }, num(c.bbN.toFloat(), 5f..100f) { c.bbN = it.toInt() },
         num(c.bbK, 0.5f..4f, entero = false) { c.bbK = it })
-    fila("VWAP", c.vwap, { c.vwap = it })
+    fila("VWAP (session on intraday charts)", c.vwap, { c.vwap = it })
+    fila("VWAP bands ±1σ ±2σ", c.vwapB, { c.vwapB = it; if (it) c.vwap = true })
     fila("Parabolic SAR", c.sar, { c.sar = it })
     seccion("Panels")
     fila("Volume", c.vol, { c.vol = it })

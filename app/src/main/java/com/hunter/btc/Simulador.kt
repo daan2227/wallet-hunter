@@ -101,6 +101,11 @@ class Simulador {
     /** Avisos de lo que ha pasado (llenados, TP, SL, liquidaciones, bots); la UI los vacía. */
     val eventos = ArrayList<String>()
 
+    /** Límite de pérdida diaria en futuros (VUSD, 0 = sin límite): al llegar no se abren posiciones hasta las 00:00 UTC. */
+    var limiteDia = 0.0
+    fun resultadoHoy(t: Long = ahora()) = resultadoFut(historial.filter { it.t >= t - t % 86_400 })
+    fun bloqueadoHoy(t: Long = ahora()) = limiteDia > 0 && resultadoHoy(t) <= -limiteDia
+
     companion object {
         const val MONEDA = "VUSD"
         /** Depósito de bienvenida en cada cuenta al abrir o reiniciar. */
@@ -120,6 +125,9 @@ class Simulador {
             if (long) entrada * (1 - 1.0 / apal + MANT) else entrada * (1 + 1.0 / apal - MANT)
 
         fun deJson(s: String?): Simulador = Simulador().apply { cargar(s) }
+
+        /** Resultado neto de operaciones de futuros: PnL de los cierres menos comisiones de apertura. */
+        fun resultadoFut(ops: List<Operacion>) = ops.filter { it.mercado == Mercado.FUT }.sumOf { if (it.lado.startsWith("Open")) -it.comision else it.pnl }
     }
 
     private fun nuevoId() = sigId++
@@ -269,6 +277,8 @@ class Simulador {
                     prefinanciado: Boolean = maker, cruzado: Boolean = false): String? {
         if (margen <= 0 || precio <= 0) return "Enter a margin amount"
         if (apal !in 1..125) return "Leverage must be 1–125x"
+        if (!prefinanciado && bloqueadoHoy(t) && (hedge || posiciones.none { it.clave == clave && it.long != long }))
+            return "Daily loss limit reached (${fmtSim(resultadoHoy(t))} of −${fmtSim(limiteDia)} $MONEDA): new positions are blocked until 00:00 UTC"
         val nocional = margen * apal; val com = nocional * (if (maker) COM_MAKER else COM_TAKER)
         if (!prefinanciado && nocional < MIN_ORDEN) return "Minimum position is ${fmtSim(MIN_ORDEN)} $MONEDA notional"
         if (!prefinanciado && margen + com > fut + 1e-9) return "Not enough $MONEDA in Futures (margin + fee)"
@@ -530,7 +540,7 @@ class Simulador {
     // ── Bots ──
     /** Bot IA: abre futuros aislados de [margen] VUSD con el plan del motor IA cuando la confianza llega a [umbral]. */
     fun crearBotIA(clave: String, activo: String, simbolo: String, iv: String, margen: Double, apalMax: Int, umbral: Int, t: Long = ahora()): String? {
-        if (iv !in listOf("15m", "1h", "4h", "1d")) return "Choose a timeframe"
+        if (iv !in listOf("1m", "5m", "15m", "1h", "4h", "1d")) return "Choose a timeframe"
         if (margen < MIN_ORDEN) return "Minimum ${fmtSim(MIN_ORDEN)} $MONEDA margin per trade"
         if (apalMax !in 1..20) return "Max leverage must be 1–20x"
         if (umbral !in 30..95) return "Minimum confidence must be 30–95%"
@@ -621,7 +631,19 @@ class Simulador {
     private fun procesarBots(clave: String, lo: Double, hi: Double, ultimo: Double, t: Long, inicio: Long): Boolean {
         var cambio = false
         for (b in bots.filter { it.clave == clave && it.creado <= inicio }) {
-            if (b.tipo == "IA") continue                     // decide con velas cerradas fuera (BotIA)
+            if (b.tipo == "IA") {                             // decide con velas cerradas fuera (BotIA); aquí solo el break-even del scalping
+                if (b.iv != "1m" && b.iv != "5m") continue
+                val p = posiciones.firstOrNull { it.id == b.posId } ?: continue
+                if (p.sl <= 0) continue
+                val r = Math.abs(p.entrada - p.sl)
+                val enContra = if (p.long) p.sl < p.entrada else p.sl > p.entrada
+                if (!enContra || r < p.entrada * 0.002) continue
+                if (if (p.long) hi >= p.entrada + r else lo <= p.entrada - r) {
+                    p.sl = p.entrada * (1 + (if (p.long) 1 else -1) * 2 * COM_TAKER)        // cubre las comisiones
+                    eventos.add("AI scalp bot ${b.simbolo}: stop moved to break-even"); cambio = true
+                }
+                continue
+            }
             if (b.tipo == "DCA") {
                 if (t < b.proximo) continue
                 if (spot + 1e-9 >= b.importe) {
@@ -754,6 +776,7 @@ class Simulador {
         put("pre", JSONObject().apply { precios.forEach { (k, v) -> put(k, v) } })
         put("rev", JSONObject().apply { revisado.forEach { (k, v) -> put(k, v) } })
         put("fr", JSONObject().apply { tasaFunding.forEach { (k, v) -> put(k, v) } })
+        put("lpd", limiteDia)
     }.toString()
 
     fun cargar(s: String?) {
@@ -796,6 +819,7 @@ class Simulador {
             o.optJSONObject("pre")?.let { p -> p.keys().forEach { k -> precios[k] = p.getDouble(k) } }
             o.optJSONObject("rev")?.let { p -> p.keys().forEach { k -> revisado[k] = p.getLong(k) } }
             o.optJSONObject("fr")?.let { p -> p.keys().forEach { k -> tasaFunding[k] = p.getDouble(k) } }
+            limiteDia = o.optDouble("lpd", 0.0)
         } catch (e: Exception) { reiniciar() }
     }
 

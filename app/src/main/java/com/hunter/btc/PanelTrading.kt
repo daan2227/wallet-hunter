@@ -162,7 +162,6 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     /** Mejor bid/ask del libro para el botón BBO (lo pone el Home). */
     var bbo: (() -> Pair<Double?, Double?>)? = null
 
-    init { construir(); refrescar() }
 
     private fun filaDato(k: String, v: TextView) = LinearLayout(act).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(28)
@@ -241,6 +240,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         btnAccion.setOnClickListener { ejecutar() }
         vista.addView(btnAccion)
         vista.addView(tvResumen)
+        construirScalp(); vista.addView(cajaScalp, 0)
         val vigila = object : android.text.TextWatcher {
             override fun afterTextChanged(e: android.text.Editable?) { listOf(etPrecio, etImporte, etTp, etSl, etDisparo, etCallback).forEach { it.error = null }; resumen() }
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -295,11 +295,12 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     /** Menú de la cuenta de prueba (lo abre el "⋯" de la cabecera). */
     fun menuCuenta(ancla: View) {
         val pm = androidx.appcompat.widget.PopupMenu(act, ancla)
-        listOf("Deposit test VUSD", "Withdraw", "Transfer Spot ⇄ Futures", "Earn", "Convert", "Bots", "Futures calculator", "History & stats")
+        listOf("Deposit test VUSD", "Withdraw", "Transfer Spot ⇄ Futures", "Earn", "Convert", "Bots", "Futures calculator", "History & stats",
+            if (scalpOn) "Scalp mode: on" else "Scalp mode: off")
             .forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
         pm.setOnMenuItemClickListener {
             when (it.itemId) { 0 -> dialogoFondos(0); 1 -> dialogoFondos(1); 2 -> dialogoFondos(2); 3 -> dialogoEarn(); 4 -> dialogoConvert()
-                5 -> dialogoBots(); 6 -> dialogoCalculadora(); else -> abrirHistorial() }; true }
+                5 -> dialogoBots(); 6 -> dialogoCalculadora(); 7 -> abrirHistorial(); else -> alternarScalp() }; true }
         pm.show()
     }
 
@@ -554,7 +555,12 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val etApIA = numero("Max leverage (1–20)").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("3") }
         val etUmIA = numero("Min confidence % (30–95)").apply { inputType = InputType.TYPE_CLASS_NUMBER; setText("60") }
         pIA.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "At each closed candle the on-device AI engine scores ${a.simbolo}. On a Long or Short signal with enough confidence it opens an isolated futures position with the plan's stop and first target, and flips on a strong opposite signal. It only uses chart data. Paper trading, not advice." })
-        pIA.addView(DexTema.pestanas(act, listOf("15m" to null, "1h" to null, "4h" to null, "1d" to null), 1) { k -> ivIA = listOf("15m", "1h", "4h", "1d")[k] })
+        val tvModoIA = texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { setPadding(0, dp(4), 0, 0) }
+        fun modoIA() { tvModoIA.text = if (BotIA.esScalp(ivIA)) "Scalping mode: EMA 9/21, session VWAP, 3-candle momentum and order-book imbalance; stop 1.2 ATR, target 1.5× the stop, stop moves to break-even at +1R. Decides every 20 s while the DEx is open."
+            else "Swing mode: full on-device chart engine (trend, structure, RSI, MACD, patterns, levels)." }
+        pIA.addView(DexTema.pestanas(act, listOf("1m" to null, "5m" to null, "15m" to null, "1h" to null, "4h" to null, "1d" to null), 3, padH = 10f) { k ->
+            ivIA = listOf("1m", "5m", "15m", "1h", "4h", "1d")[k]; modoIA() })
+        pIA.addView(tvModoIA); modoIA()
         pIA.addView(etMarIA); pIA.addView(etApIA); pIA.addView(etUmIA)
         caja.addView(pDca); caja.addView(pGrid); caja.addView(pIA)
         caja.addView(tvSaldo)
@@ -659,6 +665,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     }
 
     private fun refrescarFormulario() {
+        pintarScalp()
         val a = activo()
         segLS.textos = "Buy" to "Sell"; segLS.poner(compra)
         btnMargen.text = if (cruzado) "Cross" else "Isolated"; btnApal.text = "${apal}x"; btnPos.text = if (sim.hedge) "Hedge" else "One-way"
@@ -992,7 +999,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     }
 
     private fun listaBots() {
-        if (sim.bots.isEmpty()) { vacio("No bots running", "DCA and grid bots trade the open pair on Spot", "Create bot") { dialogoBots() }; return }
+        if (sim.bots.isEmpty()) { vacio("No bots running", "DCA and Grid trade the open pair on Spot; the AI bot trades it on Futures with test VUSD", "Create bot") { dialogoBots() }; return }
+        contPos.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, 0, 0, dp(8))
+            addView(botonPeq("+ New bot", DexTema.TXT) { dialogoBots() }) })
         for (b in sim.bots) contPos.addView(tarjetaBot(b))
     }
 
@@ -1267,4 +1276,129 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                     .setNegativeButton("Cancel", null).show()
             }.show()
     }
+
+    // ── Scalping (botones rápidos, flujo de órdenes, sesión y límite diario) ──
+    private val prefsScalp = act.getSharedPreferences("dex_scalp", Context.MODE_PRIVATE)
+    var scalpOn = prefsScalp.getBoolean("on", false); private set
+    /** Últimas operaciones del mercado (las pone el Home desde el panel del libro). */
+    var tradesActual: (() -> List<Mercado.Trade>)? = null
+    /** Lo llama el Home cuando cambia el modo para que el botón muestre el estado. */
+    var alCambiarScalp: ((Boolean) -> Unit)? = null
+    private val cajaScalp = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; visibility = View.GONE; setPadding(0, 0, 0, dp(12)) }
+    private val etMarS = numero("Margin VUSD"); private val etApS = numero("Leverage").apply { inputType = InputType.TYPE_CLASS_NUMBER }
+    private val etTpS = numero("TP %"); private val etSlS = numero("SL %")
+    private val etLimS = numero("Daily loss limit VUSD (0 = off)")
+    private val vBid = View(act); private val vAsk = View(act)
+    private val tvFlujo = texto(12f, DexTema.TXT2)
+    private val tvSesion = texto(12f, DexTema.TXT2).apply { setLineSpacing(0f, 1.25f) }
+    private val hScalp = android.os.Handler(android.os.Looper.getMainLooper())
+    private val tickScalp = object : Runnable { override fun run() {
+        if (scalpOn && futuros && cajaScalp.isAttachedToWindow) { pintarFlujo(); pintarSesion() }
+        if (scalpOn) hScalp.postDelayed(this, 2_000) } }
+
+    fun alternarScalp() {
+        scalpOn = !scalpOn; prefsScalp.edit().putBoolean("on", scalpOn).apply()
+        if (scalpOn && !futuros) aviso("Scalp mode works on Futures: switch to the Futures tab")
+        hScalp.removeCallbacks(tickScalp); if (scalpOn) hScalp.post(tickScalp)
+        alCambiarScalp?.invoke(scalpOn); refrescarFormulario()
+    }
+
+    private fun construirScalp() {
+        etMarS.setText(prefsScalp.getString("m", "100")); etApS.setText(prefsScalp.getString("x", "20"))
+        etTpS.setText(prefsScalp.getString("tp", "0.4")); etSlS.setText(prefsScalp.getString("sl", "0.25"))
+        val lim = sim.limiteDia; etLimS.setText(if (lim > 0) "%.0f".format(java.util.Locale.US, lim) else "")
+        fun guardarCfg() = prefsScalp.edit().putString("m", etMarS.text.toString()).putString("x", etApS.text.toString())
+            .putString("tp", etTpS.text.toString()).putString("sl", etSlS.text.toString()).apply()
+        alCambiar(etMarS, etApS, etTpS, etSlS) { guardarCfg() }
+        alCambiar(etLimS) { sim.limiteDia = etLimS.num().coerceAtLeast(0.0); guardar(); pintarSesion() }
+        fun fila(vararg vs: View) = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
+            vs.forEachIndexed { k, v -> addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8) }) } }
+        cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
+            addView(texto(15f, DexTema.TXT, true).apply { text = "⚡ Quick scalp"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
+            addView(botonPeq("Hide", DexTema.TXT2) { alternarScalp() }) })
+        cajaScalp.addView(fila(etMarS, etApS)); cajaScalp.addView(fila(etTpS, etSlS))
+        fun grande(t: String, fondo: Int, largo: Boolean) = TextView(act).apply {
+            text = t; textSize = 17f; typeface = AppTheme.bold(act); gravity = Gravity.CENTER; minHeight = dp(52)
+            setTextColor(if (largo) DexTema.ON_UP else 0xFFFFFFFF.toInt()); background = DexTema.fondo(act, fondo, 8f); isClickable = true; foreground = Ui.toque()
+            contentDescription = "Market ${if (largo) "long" else "short"} with the quick scalp settings"
+            setOnClickListener { scalpAbrir(largo) } }
+        cajaScalp.addView(fila(grande("Long ▲", DexTema.UP, true), grande("Short ▼", DexTema.DOWN, false)).apply { setPadding(0, dp(8), 0, 0) })
+        cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.END; setPadding(0, dp(6), 0, 0)
+            addView(botonPeq("Reverse", DexTema.TXT) { scalpInvertir() })
+            addView(botonPeq("Close pair", DexTema.DOWN) { scalpCerrarPar() })
+            addView(botonPeq("New session", DexTema.TXT2) { prefsScalp.edit().putLong("sesion", System.currentTimeMillis() / 1000).apply(); pintarSesion(); aviso("New scalp session") }) })
+        // flujo de órdenes
+        cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(4))
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+            addView(vBid, LinearLayout.LayoutParams(0, dp(6), 1f)); addView(vAsk, LinearLayout.LayoutParams(0, dp(6), 1f).apply { marginStart = dp(2) }) })
+        cajaScalp.addView(tvFlujo); cajaScalp.addView(tvSesion); cajaScalp.addView(etLimS)
+        cajaScalp.addView(View(act).apply { setBackgroundColor(DexTema.STROKE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { topMargin = dp(10) } })
+        if (scalpOn) hScalp.post(tickScalp)
+    }
+
+    private fun pintarScalp() {
+        cajaScalp.visibility = if (scalpOn && futuros) View.VISIBLE else View.GONE
+        if (cajaScalp.visibility == View.VISIBLE) { pintarFlujo(); pintarSesion() }
+    }
+
+    private fun pintarFlujo() {
+        val d = Scalping.desequilibrio(libroActual?.invoke())
+        val t = tradesActual?.invoke().orEmpty(); val dl = Scalping.delta(t)
+        val pb = (((d ?: 0.0) + 1) / 2).toFloat().coerceIn(0.02f, 0.98f)
+        vBid.background = DexTema.fondo(act, DexTema.UP, 3f); vAsk.background = DexTema.fondo(act, DexTema.DOWN, 3f)
+        (vBid.layoutParams as? LinearLayout.LayoutParams)?.let { it.weight = pb; vBid.layoutParams = it }
+        (vAsk.layoutParams as? LinearLayout.LayoutParams)?.let { it.weight = 1 - pb; vAsk.layoutParams = it }
+        tvFlujo.text = (if (d == null) "Book: —" else "Book ±0.5%%: %.0f%% bids · %.0f%% asks".format((d + 1) * 50, (1 - d) * 50)) +
+            (if (dl == null) "" else "  ·  Delta last ${t.size} trades: %+.0f%% %s".format(dl * 100, if (dl >= 0) "buyers" else "sellers"))
+        tvFlujo.contentDescription = tvFlujo.text
+    }
+
+    private fun pintarSesion() {
+        val ahora = System.currentTimeMillis() / 1000
+        val desde = prefsScalp.getLong("sesion", 0L).takeIf { it > 0 } ?: (ahora - ahora % 86_400)
+        val s = Scalping.sesion(sim.historial, desde, ahora)
+        val hoy = sim.resultadoHoy(ahora)
+        val lim = sim.limiteDia
+        val bloq = sim.bloqueadoHoy(ahora)
+        tvSesion.text = "Session %d min · %d trades · %.0f%% wins · %s VUSD (%s/min) · fees %s\nToday %s VUSD%s".format(
+            s.minutos.toInt(), s.operaciones, s.acierto, signo(s.resultado), signo(s.porMinuto), fmtSim(s.comisiones), signo(hoy),
+            if (lim > 0) " of −${fmtSim(lim)} limit" + (if (bloq) " · BLOCKED until 00:00 UTC" else "") else "")
+        tvSesion.setTextColor(if (bloq) DexTema.DOWN else DexTema.TXT2)
+    }
+
+    private fun scalpAbrir(largo: Boolean) {
+        val a = activo(); val p0 = precioActual()
+        if (p0 == null || p0 <= 0) { aviso("Price not loaded yet"); return }
+        val m = etMarS.num(); val x = etApS.text.toString().toIntOrNull() ?: 0
+        val tpP = etTpS.num(); val slP = etSlS.num()
+        if (x !in 1..125) { aviso("Leverage must be 1–125x"); return }
+        val px = recorrer(largo, m * x, true, null)?.first ?: p0
+        val d = if (largo) 1 else -1
+        val tp = if (tpP > 0) px * (1 + d * tpP / 100) else 0.0; val sl = if (slP > 0) px * (1 - d * slP / 100) else 0.0
+        val err = sim.abrirFuturo(a.clave, a.aJson(), a.simbolo, largo, m, x, px, tp, sl)
+        if (err != null) { aviso(err); return }
+        cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        notificar(); guardar(); refrescar()
+        aviso("${if (largo) "Long" else "Short"} ${x}x at ${fmtSim(px)}")
+    }
+
+    private fun scalpCerrarPar() {
+        val a = activo(); val px = precioActual() ?: run { aviso("Price not loaded yet"); return }
+        val ps = sim.posiciones.filter { it.clave == a.clave }
+        if (ps.isEmpty()) { aviso("No ${a.simbolo} positions"); return }
+        for (p in ps) sim.cerrarFuturo(p.id, recorrer(!p.long, p.qty, false, null)?.first ?: px, "Scalp close")
+        cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        notificar(); guardar(); refrescar(); aviso("Closed ${ps.size} ${a.simbolo} position${if (ps.size > 1) "s" else ""}")
+    }
+
+    /** Cierra lo abierto en el par y abre lo contrario con la configuración rápida. */
+    private fun scalpInvertir() {
+        val a = activo(); val ps = sim.posiciones.filter { it.clave == a.clave }
+        if (ps.isEmpty()) { aviso("No ${a.simbolo} position to reverse"); return }
+        val largo = !ps.maxByOrNull { it.nocional }!!.long
+        scalpCerrarPar(); scalpAbrir(largo)
+    }
+
+    // al final: así todas las propiedades ya están inicializadas al construir la vista
+    init { construir(); refrescar() }
 }

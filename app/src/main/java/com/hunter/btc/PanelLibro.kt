@@ -64,6 +64,8 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     var alPremium: ((String, Mercado.Premium) -> Unit)? = null
     private var ultPremium = 0L
     private var trades: List<Mercado.Trade> = emptyList()
+    /** Últimas operaciones del mercado (para el delta del scalping). */
+    val tradesRecientes get() = trades
     private var claveDatos = ""
     private val ocupado = java.util.concurrent.atomic.AtomicBoolean(false)
     private val h = android.os.Handler(android.os.Looper.getMainLooper())

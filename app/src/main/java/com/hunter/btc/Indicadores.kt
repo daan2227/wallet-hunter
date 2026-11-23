@@ -135,6 +135,21 @@ object Indicadores {
         return out
     }
 
+    /** VWAP de sesión: se reinicia cada día UTC; [desv] es la desviación típica del precio típico ponderada por volumen. */
+    class VwapSesion(val media: FloatArray, val desv: FloatArray)
+    fun vwapSesion(t: LongArray, h: FloatArray, l: FloatArray, c: FloatArray, vol: FloatArray): VwapSesion {
+        val n = c.size; val m = FloatArray(n) { Float.NaN }; val d = FloatArray(n) { Float.NaN }
+        var pv = 0.0; var vv = 0.0; var p2v = 0.0; var dia = Long.MIN_VALUE
+        for (i in 0 until n) {
+            val di = Math.floorDiv(t[i], 86_400L)
+            if (di != dia) { dia = di; pv = 0.0; vv = 0.0; p2v = 0.0 }
+            val tp = (h[i] + l[i] + c[i]) / 3.0; val w = vol[i].toDouble().coerceAtLeast(0.0)
+            pv += tp * w; vv += w; p2v += tp * tp * w
+            if (vv > 0) { val mu = pv / vv; m[i] = mu.toFloat(); d[i] = Math.sqrt((p2v / vv - mu * mu).coerceAtLeast(0.0)).toFloat() }
+        }
+        return VwapSesion(m, d)
+    }
+
     /** Parabolic SAR (paso [af], máximo [mx]). */
     fun sar(h: FloatArray, l: FloatArray, af0: Float = 0.02f, mx: Float = 0.2f): FloatArray {
         val n = h.size; val out = FloatArray(n) { Float.NaN }; if (n < 2) return out

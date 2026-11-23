@@ -25,6 +25,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
         val medias = arrayOf(Media(true, false, 7), Media(true, false, 25), Media(false, false, 99))
         var bb = false; var bbN = 20; var bbK = 2f
         var vwap = false; var sar = false
+        /** Bandas del VWAP de sesión (±1σ y ±2σ). */ var vwapB = false
         var vol = true; var rsi = true; var rsiN = 14
         var macd = true; var mF = 12; var mS = 26; var mSig = 9
         var stoch = false; var stK = 14; var stD = 3
@@ -33,7 +34,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
 
         fun aJson(): String = JSONObject().apply {
             put("medias", JSONArray().apply { medias.forEach { put(JSONObject().put("on", it.on).put("ema", it.ema).put("n", it.n)) } })
-            put("bb", bb); put("bbN", bbN); put("bbK", bbK.toDouble()); put("vwap", vwap); put("sar", sar)
+            put("bb", bb); put("bbN", bbN); put("bbK", bbK.toDouble()); put("vwap", vwap); put("vwapB", vwapB); put("sar", sar)
             put("vol", vol); put("rsi", rsi); put("rsiN", rsiN); put("macd", macd); put("mF", mF); put("mS", mS); put("mSig", mSig)
             put("stoch", stoch); put("stK", stK); put("stD", stD); put("atr", atr); put("atrN", atrN)
             put("obv", obv); put("cci", cci); put("cciN", cciN); put("wr", wr); put("wrN", wrN)
@@ -46,7 +47,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 o.optJSONArray("medias")?.let { a -> for (i in 0 until minOf(a.length(), medias.size)) { val m = a.getJSONObject(i)
                     medias[i].on = m.optBoolean("on", medias[i].on); medias[i].ema = m.optBoolean("ema", false); medias[i].n = m.optInt("n", medias[i].n) } }
                 bb = o.optBoolean("bb", bb); bbN = o.optInt("bbN", bbN); bbK = o.optDouble("bbK", bbK.toDouble()).toFloat()
-                vwap = o.optBoolean("vwap", vwap); sar = o.optBoolean("sar", sar)
+                vwap = o.optBoolean("vwap", vwap); vwapB = o.optBoolean("vwapB", vwapB); sar = o.optBoolean("sar", sar)
                 vol = o.optBoolean("vol", vol); rsi = o.optBoolean("rsi", rsi); rsiN = o.optInt("rsiN", rsiN)
                 macd = o.optBoolean("macd", macd); mF = o.optInt("mF", mF); mS = o.optInt("mS", mS); mSig = o.optInt("mSig", mSig)
                 stoch = o.optBoolean("stoch", stoch); stK = o.optInt("stK", stK); stD = o.optInt("stD", stD)
@@ -395,7 +396,20 @@ class GraficoTA(ctx: Context) : View(ctx) {
         if (cfg.bb) { val bb = Indicadores.bollinger(cl, cfg.bbN, cfg.bbK)
             linea(c, bb.alta, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true); linea(c, bb.media, alfa(AppTheme.BLUE, 0x88), i0, i1, xf, yP)
             linea(c, bb.baja, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true) }
-        if (cfg.vwap) linea(c, Indicadores.vwap(hi, lo, cl, vo), if (AppTheme.isDark) 0xFFE879F9.toInt() else 0xFFA21CAF.toInt(), i0, i1, xf, yP)
+        if (cfg.vwap) {
+            val colV = if (AppTheme.isDark) 0xFFE879F9.toInt() else 0xFFA21CAF.toInt()
+            // intradía: VWAP de sesión (se reinicia cada día UTC); diario o mayor: acumulado
+            val intradia = n >= 2 && v[1].t - v[0].t < 86_400
+            if (intradia) {
+                val vs = Indicadores.vwapSesion(LongArray(n) { v[it].t }, hi, lo, cl, vo)
+                linea(c, vs.media, colV, i0, i1, xf, yP)
+                if (cfg.vwapB) for (k in listOf(1f, 2f)) {
+                    val al = if (k == 1f) 0xAA else 0x66
+                    linea(c, FloatArray(n) { vs.media[it] + k * vs.desv[it] }, alfa(colV, al), i0, i1, xf, yP, true)
+                    linea(c, FloatArray(n) { vs.media[it] - k * vs.desv[it] }, alfa(colV, al), i0, i1, xf, yP, true)
+                }
+            } else linea(c, Indicadores.vwap(hi, lo, cl, vo), colV, i0, i1, xf, yP)
+        }
         val etiquetas = StringBuilder()
         cfg.medias.forEachIndexed { k, m -> if (m.on && m.n in 2..n) {
             linea(c, if (m.ema) Indicadores.ema(cl, m.n) else Indicadores.sma(cl, m.n), coloresMedia[k], i0, i1, xf, yP)

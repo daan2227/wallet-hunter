@@ -11,7 +11,8 @@ object BotIA {
     class Senal(val id: Long, val clave: String, val dir: Int, val confianza: Int, val stop: Double, val objetivo: Double,
                 val apal: Int, val precio: Double, val velaT: Long)
 
-    fun duracion(iv: String): Long = when (iv) { "15m" -> 900L; "1h" -> 3600L; "4h" -> 14_400L; "1d" -> 86_400L; else -> 3600L }
+    fun esScalp(iv: String) = iv == "1m" || iv == "5m"
+    fun duracion(iv: String): Long = when (iv) { "1m" -> 60L; "5m" -> 300L; "15m" -> 900L; "1h" -> 3600L; "4h" -> 14_400L; "1d" -> 86_400L; else -> 3600L }
 
     /** Qué bots IA toca revisar ahora (hilo de la UI: lee el simulador). */
     fun tareas(sim: Simulador, ahora: Long = System.currentTimeMillis() / 1000): List<Tarea> =
@@ -33,11 +34,20 @@ object BotIA {
 
     /** Red (hilo de fondo). */
     fun calcular(tareas: List<Tarea>): List<Senal> = tareas.mapNotNull { k ->
-        val v = try { Mercado.velas(k.activo, k.iv, 251) } catch (e: Throwable) { emptyList() }
+        val v = try { Mercado.velas(k.activo, k.iv, if (esScalp(k.iv)) 201 else 251) } catch (e: Throwable) { emptyList() }
         if (v.size < 2) return@mapNotNull null
         val cerradas = v.dropLast(1)
         if (cerradas.last().t <= k.ultVela) return@mapNotNull null
-        senalDe(k.id, k.clave, cerradas, k.activo.tipo == Mercado.Tipo.CRYPTO)
+        if (esScalp(k.iv)) {
+            val libro = try { Scalping.desequilibrio(Mercado.libro(k.activo, 50)) } catch (e: Throwable) { null }
+            senalScalp(k.id, k.clave, cerradas, libro)
+        } else senalDe(k.id, k.clave, cerradas, k.activo.tipo == Mercado.Tipo.CRYPTO)
+    }
+
+    /** Modo scalping (1m/5m): señal rápida de [Scalping] con el desequilibrio del libro. */
+    fun senalScalp(id: Long, clave: String, cerradas: List<GraficoPrecio.Vela>, libro: Double?): Senal? {
+        val s = Scalping.senal(cerradas, libro) ?: return null
+        return Senal(id, clave, s.dir, s.confianza, s.stop, s.objetivo, s.apal, cerradas.last().c.toDouble(), cerradas.last().t)
     }
 
     /** Aplica las señales (mismo hilo que el resto del simulador). */
