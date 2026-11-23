@@ -213,6 +213,49 @@ object Mercado {
         }
     } catch (e: Throwable) { null }
 
+    // ── Datos de futuros y del mercado (endpoints públicos de Binance) ──
+    class Ticker(val simbolo: String, val precio: Double, val cambio: Double, val volumenUsd: Double)
+    /** Pares contra USDT de Binance spot con su cambio de 24 h (sin stablecoins ni tokens apalancados). */
+    fun movimientos(): List<Ticker> = try {
+        val js = httpGet("https://api.binance.com/api/v3/ticker/24hr") ?: ""
+        val arr = org.json.JSONArray(js); val out = ArrayList<Ticker>()
+        for (i in 0 until arr.length()) { val o = arr.getJSONObject(i); val s = o.optString("symbol")
+            if (!s.endsWith("USDT")) continue
+            val base = s.removeSuffix("USDT")
+            if (base.lowercase() in STABLES || base.endsWith("DOWN") || base.endsWith("BULL") || base.endsWith("BEAR") || base.isEmpty()) continue
+            val vol = o.optString("quoteVolume").toDoubleOrNull() ?: 0.0
+            if (vol < 1_000_000) continue          // fuera los pares casi sin volumen
+            out.add(Ticker(base, o.optString("lastPrice").toDoubleOrNull() ?: 0.0, o.optString("priceChangePercent").toDoubleOrNull() ?: 0.0, vol)) }
+        out
+    } catch (e: Throwable) { emptyList() }
+
+    class Fund(val simbolo: String, val tasa: Double, val marca: Double, val proximo: Long)
+    /** Funding actual de todos los perpetuos USDT de Binance. */
+    fun fundings(): List<Fund> = try {
+        val arr = org.json.JSONArray(httpGet("https://fapi.binance.com/fapi/v1/premiumIndex") ?: "[]"); val out = ArrayList<Fund>()
+        for (i in 0 until arr.length()) { val o = arr.getJSONObject(i); val s = o.optString("symbol")
+            if (!s.endsWith("USDT")) continue
+            out.add(Fund(s.removeSuffix("USDT"), o.optString("lastFundingRate").toDoubleOrNull() ?: 0.0, o.optString("markPrice").toDoubleOrNull() ?: 0.0, o.optLong("nextFundingTime"))) }
+        out
+    } catch (e: Throwable) { emptyList() }
+
+    /** Interés abierto y ratios long/short del perpetuo (último dato de 5 min). */
+    class DatosFut(val oiCant: Double, val oiUsd: Double, val ratioCuentas: Double, val pctLong: Double, val ratioTop: Double, val ratioTaker: Double)
+    fun datosFut(a: Activo): DatosFut? {
+        if (a.tipo != Tipo.CRYPTO) return null
+        val sym = a.simbolo.uppercase() + "USDT"
+        return try {
+            val oi = org.json.JSONObject(httpGet("https://fapi.binance.com/fapi/v1/openInterest?symbol=$sym") ?: return null)
+            val cant = oi.optString("openInterest").toDoubleOrNull() ?: return null
+            fun ultimo(ruta: String) = try { org.json.JSONArray(httpGet("https://fapi.binance.com/futures/data/$ruta?symbol=$sym&period=5m&limit=1") ?: "[]").optJSONObject(0) } catch (e: Throwable) { null }
+            val cuentas = ultimo("globalLongShortAccountRatio"); val top = ultimo("topLongShortPositionRatio"); val taker = ultimo("takerlongshortRatio")
+            val marca = premium(a)?.marca ?: 0.0
+            DatosFut(cant, cant * marca, cuentas?.optString("longShortRatio")?.toDoubleOrNull() ?: 0.0,
+                (cuentas?.optString("longAccount")?.toDoubleOrNull() ?: 0.0) * 100,
+                top?.optString("longShortRatio")?.toDoubleOrNull() ?: 0.0, taker?.optString("buySellRatio")?.toDoubleOrNull() ?: 0.0)
+        } catch (e: Throwable) { null }
+    }
+
     /** Compatibilidad con el tool de precio: velas de BTC. */
     fun velasBtc(intervalo: String, limite: Int = 180): List<GraficoPrecio.Vela> = velas(BTC, intervalo, limite)
 

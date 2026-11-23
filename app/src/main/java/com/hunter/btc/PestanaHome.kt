@@ -324,6 +324,21 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
     marcarHerr = marcar
     cajaGrafico.addView(chart)
+    // ── Datos del perpetuo (solo Futures, cripto): interés abierto y ratios long/short ──
+    val tvDatosFut = TextView(this).apply { textSize = 13f; setTextColor(DexTema.TXT); setLineSpacing(0f, 1.35f) }
+    val barraLS = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(6)).apply { topMargin = dp(8) } }
+    val lsLong = View(this).apply { background = DexTema.fondo(context, DexTema.UP, 3f) }
+    val lsShort = View(this).apply { background = DexTema.fondo(context, DexTema.DOWN, 3f) }
+    barraLS.addView(lsLong); barraLS.addView(lsShort)
+    val cajaDatosFut = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL; background = DexTema.fondo(context, DexTema.SURFACE, 10f)
+        setPadding(dp(14), dp(12), dp(14), dp(12)); visibility = View.GONE
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) }
+        addView(TextView(context).apply { text = "Perpetual data (Binance, 5 min)"; textSize = 13f; setTextColor(DexTema.TXT2) ; setPadding(0, 0, 0, dp(6)) })
+        addView(tvDatosFut); addView(barraLS)
+    }
+    cajaGrafico.addView(cajaDatosFut)
     val cajaDibujo = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL
         addView(tvAyuda.apply { setPadding(dp(2), dp(6), 0, dp(6)) }); addView(filaHerr)
         visibility = if (prefsG.getBoolean("ver_dibujo", false)) View.VISIBLE else View.GONE }
@@ -365,11 +380,35 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             0 -> btnAlerta.performClick(); 1 -> btnInfo.performClick(); 2 -> btnAjustes.performClick(); else -> pt.menuCuenta(btnMasCab) }; true }
         pm.show()
     }
+    var ultDatosFut = 0L; var claveDatosFut = ""
+    fun cargarDatosFut() {
+        val a = activo
+        val ver = tabHome == 1 && a.tipo == Mercado.Tipo.CRYPTO && cajaGrafico.visibility == View.VISIBLE
+        if (!ver) { cajaDatosFut.visibility = View.GONE; return }
+        if (claveDatosFut == a.clave && System.currentTimeMillis() - ultDatosFut < 60_000) return
+        ultDatosFut = System.currentTimeMillis(); claveDatosFut = a.clave
+        Thread {
+            val d = Mercado.datosFut(a)
+            runOnUiThread {
+                if (a.clave != activo.clave) return@runOnUiThread
+                if (d == null) { cajaDatosFut.visibility = View.GONE; return@runOnUiThread }
+                fun usd(x: Double) = when { x >= 1e9 -> "$%.2fB".format(x / 1e9); x >= 1e6 -> "$%.1fM".format(x / 1e6); else -> "$%,.0f".format(x) }
+                tvDatosFut.text = "Open interest  ${if (d.oiUsd > 0) usd(d.oiUsd) + " · " else ""}${"%,.0f".format(d.oiCant)} ${a.simbolo}\n" +
+                    "Long/short accounts  %.2f (%.1f%% long)\nTop traders long/short  %.2f\nTaker buy/sell  %.2f".format(d.ratioCuentas, d.pctLong, d.ratioTop, d.ratioTaker)
+                (lsLong.layoutParams as? LinearLayout.LayoutParams ?: LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)).let {
+                    it.width = 0; it.height = ViewGroup.LayoutParams.MATCH_PARENT; it.weight = d.pctLong.toFloat().coerceIn(1f, 99f); it.marginEnd = dp(2); lsLong.layoutParams = it }
+                (lsShort.layoutParams as? LinearLayout.LayoutParams ?: LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT)).let {
+                    it.width = 0; it.height = ViewGroup.LayoutParams.MATCH_PARENT; it.weight = (100 - d.pctLong).toFloat().coerceIn(1f, 99f); lsShort.layoutParams = it }
+                barraLS.contentDescription = "%.1f percent of accounts long".format(d.pctLong)
+                cajaDatosFut.visibility = View.VISIBLE
+            }
+        }.start()
+    }
     val hVigia = android.os.Handler(android.os.Looper.getMainLooper())
     hVigia.postDelayed(object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) return
-            if (scroll.isShown) { pt.vigilar(); vigilarAlertas(activo.clave) }
+            if (scroll.isShown) { pt.vigilar(); vigilarAlertas(activo.clave); cargarDatosFut() }
             hVigia.postDelayed(this, 20_000)
         }
     }, 1_500)
@@ -543,11 +582,13 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         text = "MARKETS"; textSize = AppTheme.SP_CAPTION; setTextColor(DexTema.TXT2)
         typeface = AppTheme.bold(context); letterSpacing = 0.08f; setPadding(dp(2), 0, 0, dp(8))
     })
-    var modoLista = prefsG.getInt("lista", 0).coerceIn(0, 2)
+    var modoLista = prefsG.getInt("lista", 0).coerceIn(0, 4)
     val tvNotaLista = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(dp(2), dp(6), 0, dp(8)) }
     val notasLista = listOf("By market cap · stablecoins hidden · tap a coin to chart it vs USD",
         "Indices, commodities, FX and large caps (Yahoo Finance) · tap to chart",
-        "Your watchlist · add or remove pairs with ☆ next to the pair name")
+        "Your watchlist · add or remove pairs with ☆ next to the pair name",
+        "Biggest 24 h movers among Binance USDT pairs with > 1M USD volume · tap to chart",
+        "Perpetual funding every 8 h · positive: longs pay shorts · negative: shorts pay longs")
     val contLista = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
         background = Ui.cardBg(AppTheme.R_CARD, DexTema.SURFACE, context)
@@ -569,7 +610,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         setBackgroundColor((DexTema.TXT2 and 0x00FFFFFF) or 0x22000000)
         layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, Math.max(1, dp(1) / 2)).apply { leftMargin = dp(12); rightMargin = dp(12) }
     }
-    fun filaMercado(num: Int, m: Mercado.Moneda) = LinearLayout(this).apply {
+    fun filaMercado(num: Int, m: Mercado.Moneda, textoCambio: String? = null) = LinearLayout(this).apply {
         orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
         setPadding(dp(12), dp(10), dp(12), dp(10)); isClickable = true; foreground = Ui.toque()
         setOnClickListener { Ui.pulso(this); seleccionar(m.activo); irATrade() }
@@ -583,7 +624,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             addView(TextView(context).apply { text = m.simbolo; textSize = AppTheme.SP_BODY - 1f; setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); maxLines = 1 })
             addView(TextView(context).apply { text = m.nombre; textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
         })
-        addView(GraficoPrecio(context).apply {
+        if (m.spark.isNotEmpty()) addView(GraficoPrecio(context).apply {
             poner(m.spark.toList())
             layoutParams = LinearLayout.LayoutParams(dp(56), dp(30)).apply { marginEnd = dp(10) }
         })
@@ -596,7 +637,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
                 textSize = AppTheme.SP_BODY - 1f; setTextColor(DexTema.TXT); typeface = AppTheme.medium(context); gravity = Gravity.END
             })
             addView(TextView(context).apply {
-                text = "%s%.2f%%".format(if (m.cambio24h >= 0) "+" else "", m.cambio24h)
+                text = textoCambio ?: "%s%.2f%%".format(if (m.cambio24h >= 0) "+" else "", m.cambio24h)
                 textSize = AppTheme.SP_MICRO; setTextColor(if (m.cambio24h >= 0) DexTema.UP else DexTema.DOWN); gravity = Gravity.END
             })
         })
@@ -608,8 +649,23 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         val desde = cursor; val modo = modoLista
         btnMas.text = "Loading…"; btnMas.isEnabled = false
         Thread {
-            val items: List<Mercado.Moneda>; val avance: Int
-            if (modo == 2) {
+            var items: List<Mercado.Moneda>; val avance: Int
+            // Movers y Funding: listas completas de una vez, por secciones
+            var secciones: List<Pair<String, List<Pair<Mercado.Moneda, String?>>>>? = null
+            fun activoCripto(sym: String) = Mercado.Activo(Mercado.Tipo.CRYPTO, sym, sym, "")
+            if (modo == 3) {
+                val t = Mercado.movimientos()
+                fun m(x: Mercado.Ticker) = Mercado.Moneda(activoCripto(x.simbolo), x.precio, x.cambio, FloatArray(0)) to null
+                secciones = if (t.isEmpty()) emptyList() else listOf("Top gainers (24 h)" to t.sortedByDescending { it.cambio }.take(15).map { m(it) },
+                    "Top losers (24 h)" to t.sortedBy { it.cambio }.take(15).map { m(it) })
+                items = emptyList(); avance = 0
+            } else if (modo == 4) {
+                val f = Mercado.fundings()
+                fun m(x: Mercado.Fund) = Mercado.Moneda(activoCripto(x.simbolo), x.marca, x.tasa * 100, FloatArray(0)) to "%+.4f%%".format(x.tasa * 100)
+                secciones = if (f.isEmpty()) emptyList() else listOf("Highest funding (longs pay)" to f.sortedByDescending { it.tasa }.take(15).map { m(it) },
+                    "Lowest funding (shorts pay)" to f.sortedBy { it.tasa }.take(15).map { m(it) })
+                items = emptyList(); avance = 0
+            } else if (modo == 2) {
                 val favs = if (desde == 0) Favoritos.lista(this) else emptyList()
                 val pool = java.util.concurrent.Executors.newFixedThreadPool(5)
                 val futs = favs.map { a -> pool.submit<Mercado.Moneda?> {
@@ -638,6 +694,17 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             runOnUiThread {
                 if (myTok != tokLista.get()) return@runOnUiThread
                 if (desde == 0) contLista.removeAllViews()
+                val secs = secciones
+                if (secs != null) {
+                    if (secs.isEmpty()) mensajeLista("Data unavailable (Binance unreachable).")
+                    for ((tit, filas) in secs) {
+                        contLista.addView(TextView(this).apply { text = tit; textSize = 14f; setTextColor(DexTema.TXT2); typeface = AppTheme.bold(context)
+                            setPadding(dp(12), dp(14), dp(12), dp(6)) })
+                        filas.forEachIndexed { i, (mon, txt) -> if (i > 0) contLista.addView(separador()); contLista.addView(filaMercado(i + 1, mon, txt)) }
+                    }
+                    btnMas.visibility = View.GONE; btnMas.isEnabled = true; btnMas.text = "Load more"
+                    return@runOnUiThread
+                }
                 if (items.isEmpty() && desde == 0)
                     mensajeLista(when (modo) { 0 -> "Market list unavailable (CoinGecko unreachable)."; 1 -> "Quotes unavailable (Yahoo Finance unreachable)."
                         else -> if (Favoritos.lista(this).isEmpty()) "No pairs in your watchlist yet: open a pair and tap ☆ next to its name." else "Quotes unavailable right now." })
@@ -650,7 +717,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         }.start()
     }
 
-    pagMercado.addView(DexTema.pestanas(this, listOf("Crypto" to null, "Stocks" to null, "★ Watchlist" to null), inicial = modoLista) { k ->
+    pagMercado.addView(DexTema.pestanas(this, listOf("Crypto" to null, "Stocks" to null, "★" to null, "Movers" to null, "Funding" to null), inicial = modoLista, padH = 4f) { k ->
         if (k == modoLista) return@pestanas
         modoLista = k; prefsG.edit().putInt("lista", k).apply(); tvNotaLista.text = notasLista[k]; mostrarMas(true)
     })
@@ -819,6 +886,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         val cambiaIv = iv != intervalo
         if (cambiaIv) { intervalo = iv; chart.intervaloSeg = intervalos.firstOrNull { it.second == iv }?.third ?: 3600L; pintarIv() }
         if (nuevo.clave != activo.clave) seleccionar(nuevo, guardar = false) else if (cambiaIv) cargar()
+        ultDatosFut = 0; cargarDatosFut()
     } }
     pl.futuros = tabHome == 1; tvTipoPar.text = if (tabHome == 1) "Perp" else "Spot"
     if (tabHome < 2) pt.ponerModo(tabHome == 1)

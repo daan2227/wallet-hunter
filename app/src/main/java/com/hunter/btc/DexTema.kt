@@ -62,7 +62,7 @@ object DexTema {
      * elegida en píldora #1E1E20 y blanco; las demás en gris sin fondo. Misma firma
      * que Ui.segmented; cada hijo es pulsable (performClick selecciona).
      */
-    fun pestanas(ctx: Context, opciones: List<Pair<String, String?>>, inicial: Int = 0, alElegir: (Int) -> Unit): LinearLayout {
+    fun pestanas(ctx: Context, opciones: List<Pair<String, String?>>, inicial: Int = 0, padH: Float = 14f, alElegir: (Int) -> Unit): LinearLayout {
         val fila = LinearLayout(ctx).apply {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
@@ -77,7 +77,7 @@ object DexTema {
         opciones.forEachIndexed { i, (txt, _) ->
             val t = TextView(ctx).apply {
                 text = txt; textSize = 14f; gravity = Gravity.CENTER; maxLines = 1
-                minHeight = dp(ctx, 48f).toInt(); setPadding(dp(ctx, 14f).toInt(), 0, dp(ctx, 14f).toInt(), 0)
+                minHeight = dp(ctx, 48f).toInt(); setPadding(dp(ctx, padH).toInt(), 0, dp(ctx, padH).toInt(), 0)
                 isClickable = true; isFocusable = true; foreground = Ui.toque()
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (i > 0) marginStart = dp(ctx, 8f).toInt() }
                 setOnClickListener { pintar(i); alElegir(i) }
