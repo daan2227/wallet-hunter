@@ -61,7 +61,11 @@ class GraficoTA(ctx: Context) : View(ctx) {
 
     // ── Dibujos ──
     /** tipo: 0 línea horizontal, 1 línea de tendencia, 2 nota. */
+    /** tipo: 0 línea horizontal, 1 tendencia, 2 nota, 3 Fibonacci, 4 rectángulo, 5 regla (medición). */
     class Dibujo(val tipo: Int, val t1: Long, val p1: Float, val t2: Long = 0, val p2: Float = 0f, val texto: String = "")
+    /** 0 velas, 1 Heikin-Ashi, 2 línea, 3 área. */
+    var tipoGrafico = 0
+        set(v) { field = v; invalidate() }
     val dibujos = ArrayList<Dibujo>()
     /** 0 mover, 1 línea horizontal, 2 tendencia, 3 nota. */
     var herramienta = 0
@@ -199,9 +203,10 @@ class GraficoTA(ctx: Context) : View(ctx) {
             val p = mapMin + (mapMax - mapMin) * (mapPBot - e.y) / (mapPBot - mapPTop)
             when (herramienta) {
                 1 -> { dibujos.add(Dibujo(0, t, p)); alCambiarDibujos?.invoke() }
-                2 -> { val a = pendiente
+                2, 4, 5, 6 -> { val a = pendiente         // herramientas de dos toques
                     if (a == null) pendiente = t to p
-                    else { dibujos.add(Dibujo(1, a.first, a.second, t, p)); pendiente = null; alCambiarDibujos?.invoke() } }
+                    else { val tipo = when (herramienta) { 2 -> 1; 4 -> 3; 5 -> 4; else -> 5 }
+                        dibujos.add(Dibujo(tipo, a.first, a.second, t, p)); pendiente = null; alCambiarDibujos?.invoke() } }
                 3 -> alPedirNota?.invoke(t, p)
             }
             invalidate(); return true
@@ -351,14 +356,34 @@ class GraficoTA(ctx: Context) : View(ctx) {
         c.save(); c.clipRect(0f, pTop, w - padRpx, pBot)
         for (g in 0..4) { val p = minL + (maxH - minL) * g / 4; c.drawLine(padLpx, yP(p), w - padRpx, yP(p), pGrid) }
         for ((i, _) in marcas) c.drawLine(xf(i), pTop, xf(i), pBot, pGrid)
-        for (i in i0..i1) {
-            val up = cl[i] >= op[i]; val col = if (up) cUp else cDown
-            val x = xf(i); pWick.color = col; c.drawLine(x, yP(hi[i]), x, yP(lo[i]), pWick)
-            var t = yP(maxOf(op[i], cl[i])); var b = yP(minOf(op[i], cl[i])); if (b - t < 1f * d) { t -= 0.5f * d; b += 0.5f * d }
-            if (if (up) huecaAlcista else huecaBajista) {
-                pFill.color = DexTema.BG; c.drawRect(x - medio, t, x + medio, b, pFill)       // tapa la mecha dentro del cuerpo
-                pWick.color = col; c.drawRect(x - medio, t, x + medio, b, pWick)
-            } else { pFill.color = col; c.drawRect(x - medio, t, x + medio, b, pFill) }
+        if (tipoGrafico >= 2) {
+            // línea o área con los cierres
+            val camino = Path(); var empezado = false; var x0 = 0f; var xUlt = 0f
+            for (i in i0..i1) { val x = xf(i); val y = yP(cl[i]); if (!empezado) { camino.moveTo(x, y); x0 = x; empezado = true } else camino.lineTo(x, y); xUlt = x }
+            val sube = cl[i1] >= cl[i0]; val col = if (sube) cUp else cDown
+            if (tipoGrafico == 3) {
+                val area = Path(camino).apply { lineTo(xUlt, pBot); lineTo(x0, pBot); close() }
+                pFill.shader = LinearGradient(0f, pTop, 0f, pBot, alfa(col, 0x55), alfa(col, 0x00), Shader.TileMode.CLAMP)
+                c.drawPath(area, pFill); pFill.shader = null
+            }
+            pLine.color = col; pLine.strokeWidth = 1.8f * d; c.drawPath(camino, pLine); pLine.strokeWidth = 1.4f * d
+        } else {
+            // velas normales o Heikin-Ashi (solo cambia el dibujo; indicadores y ficha usan las reales)
+            var dO = op; var dH = hi; var dL = lo; var dC = cl
+            if (tipoGrafico == 1) {
+                val hc = FloatArray(n) { (op[it] + hi[it] + lo[it] + cl[it]) / 4f }; val ho = FloatArray(n)
+                ho[0] = (op[0] + cl[0]) / 2f; for (i in 1 until n) ho[i] = (ho[i - 1] + hc[i - 1]) / 2f
+                dO = ho; dC = hc; dH = FloatArray(n) { maxOf(hi[it], ho[it], hc[it]) }; dL = FloatArray(n) { minOf(lo[it], ho[it], hc[it]) }
+            }
+            for (i in i0..i1) {
+                val up = dC[i] >= dO[i]; val col = if (up) cUp else cDown
+                val x = xf(i); pWick.color = col; c.drawLine(x, yP(dH[i]), x, yP(dL[i]), pWick)
+                var t = yP(maxOf(dO[i], dC[i])); var b = yP(minOf(dO[i], dC[i])); if (b - t < 1f * d) { t -= 0.5f * d; b += 0.5f * d }
+                if (if (up) huecaAlcista else huecaBajista) {
+                    pFill.color = DexTema.BG; c.drawRect(x - medio, t, x + medio, b, pFill)       // tapa la mecha dentro del cuerpo
+                    pWick.color = col; c.drawRect(x - medio, t, x + medio, b, pWick)
+                } else { pFill.color = col; c.drawRect(x - medio, t, x + medio, b, pFill) }
+            }
         }
         if (cfg.bb) { val bb = Indicadores.bollinger(cl, cfg.bbN, cfg.bbK)
             linea(c, bb.alta, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true); linea(c, bb.media, alfa(AppTheme.BLUE, 0x88), i0, i1, xf, yP)
@@ -379,6 +404,31 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 c.drawRoundRect(x - 3f * d, y - 13f * d, x + tw + 5f * d, y + 4f * d, 4f * d, 4f * d, pNotaBg)
                 pFill.color = AppTheme.ACCENT; c.drawCircle(x - 3f * d, y, 2.5f * d, pFill)
                 c.drawText(dj.texto, x + 1f * d, y, pNota) }
+            3 -> {   // Fibonacci: de (t1,p1) a (t2,p2), niveles hacia la derecha
+                val xa = xfF(idxDeT(minOf(dj.t1, dj.t2))); val rango = dj.p2 - dj.p1
+                for (r in floatArrayOf(0f, 0.236f, 0.382f, 0.5f, 0.618f, 0.786f, 1f)) {
+                    val pr = dj.p2 - rango * r; val y = yP(pr)
+                    pDib.alpha = if (r == 0.5f || r == 0.618f) 255 else 170
+                    c.drawLine(xa, y, w - padRpx, y, pDib)
+                    lbl.color = AppTheme.ACCENT; c.drawText("%.3f  %s".format(r, fmtP(pr)), xa + 3f * d, y - 3f * d, lbl); lbl.color = DexTema.TXT2
+                }
+                pDib.alpha = 255
+            }
+            4 -> {   // rectángulo
+                val xa = xfF(idxDeT(dj.t1)); val xb = xfF(idxDeT(dj.t2)); val ya = yP(dj.p1); val yb = yP(dj.p2)
+                pNotaBg.color = alfa(AppTheme.ACCENT, 0x22); c.drawRect(minOf(xa, xb), minOf(ya, yb), maxOf(xa, xb), maxOf(ya, yb), pNotaBg)
+                c.drawRect(minOf(xa, xb), minOf(ya, yb), maxOf(xa, xb), maxOf(ya, yb), pDib)
+            }
+            5 -> {   // regla: variación de precio, % y velas entre dos puntos
+                val xa = xfF(idxDeT(dj.t1)); val xb = xfF(idxDeT(dj.t2)); val ya = yP(dj.p1); val yb = yP(dj.p2)
+                val sube = dj.p2 >= dj.p1; val col = if (sube) cUp else cDown
+                pNotaBg.color = alfa(col, 0x30); c.drawRect(minOf(xa, xb), minOf(ya, yb), maxOf(xa, xb), maxOf(ya, yb), pNotaBg)
+                val barras = Math.round(Math.abs(idxDeT(dj.t2) - idxDeT(dj.t1)))
+                val txt = "%s%s (%s%.2f%%) · %d bars".format(if (sube) "+" else "−", fmtP(Math.abs(dj.p2 - dj.p1)), if (sube) "+" else "", if (dj.p1 != 0f) (dj.p2 - dj.p1) / dj.p1 * 100 else 0f, barras)
+                val tw = pNota.measureText(txt); val xt = (minOf(xa, xb) + maxOf(xa, xb)) / 2 - tw / 2; val yt = if (sube) minOf(ya, yb) - 6f * d else maxOf(ya, yb) + 16f * d
+                pNotaBg.color = col; c.drawRoundRect(xt - 4f * d, yt - 12f * d, xt + tw + 4f * d, yt + 4f * d, 4f * d, 4f * d, pNotaBg)
+                pNota.color = DexTema.sobre(col); c.drawText(txt, xt, yt, pNota); pNota.color = DexTema.TXT
+            }
         }
         pendiente?.let { (t, p) -> pFill.color = AppTheme.ACCENT; c.drawCircle(xfF(idxDeT(t)), yP(p), 4f * d, pFill) }
         for (lp in lineasPrecio + lineasExtra) if (lp.precio in minL..maxH) {

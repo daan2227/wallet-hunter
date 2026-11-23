@@ -3,6 +3,7 @@ package com.hunter.btc
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
+import android.graphics.Path
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
@@ -22,7 +23,9 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
 
     private fun dp(v: Int) = act.dp(v)
     private val prefs = act.getSharedPreferences("home_chart", Context.MODE_PRIVATE)
-    private var pestanaTrades = prefs.getBoolean("libro_trades", false)
+    /** 0 libro, 1 operaciones, 2 profundidad. */
+    private var modo = prefs.getInt("libro_modo", if (prefs.getBoolean("libro_trades", false)) 1 else 0).coerceIn(0, 2)
+    private val pestanaTrades get() = modo == 1
     private var nivelTick = prefs.getInt("libro_tick", 0)
     /** En futuros se muestra el funding (8 h) con su cuenta atrás. */
     var futuros = true
@@ -34,6 +37,7 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     private val tvEstado = txt(11f, DexTema.TXT2).apply { setPadding(0, dp(6), 0, 0) }
     private val libroV = VistaLibro(act)
     private val tradesV = VistaTrades(act)
+    private val profV = VistaProfundidad(act)
     private val tvTick = TextView(act).apply {
         textSize = 14f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
         background = DexTema.fondoTactil(act, DexTema.CHIP, 6f, 36f); setPadding(dp(10), 0, dp(8), 0); isClickable = true; foreground = Ui.toque()
@@ -66,10 +70,10 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
 
     init {
         vista.addView(tvFunding)
-        vista.addView(libroV); vista.addView(tradesV)
+        vista.addView(libroV); vista.addView(tradesV); vista.addView(profV)
         tvTick.setCompoundDrawables(null, null, act.getDrawable(R.drawable.ic_caret_down)?.mutate()?.apply { setTint(DexTema.TXT2); setBounds(0, 0, dp(14), dp(14)) }, null)
         tvTick.setOnClickListener { menuTick() }
-        btnModo.setOnClickListener { pestanaTrades = !pestanaTrades; prefs.edit().putBoolean("libro_trades", pestanaTrades).apply(); mostrar(); pedir() }
+        btnModo.setOnClickListener { modo = (modo + 1) % 3; prefs.edit().putInt("libro_modo", modo).apply(); mostrar(); pedir() }
         vista.addView(LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, 0)
             tvTick.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); addView(tvTick); addView(btnModo)
@@ -100,11 +104,13 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     }
 
     private fun mostrar() {
-        libroV.visibility = if (pestanaTrades) View.GONE else View.VISIBLE
-        tradesV.visibility = if (pestanaTrades) View.VISIBLE else View.GONE
-        tvTick.visibility = if (pestanaTrades) View.INVISIBLE else View.VISIBLE
-        btnModo.setImageResource(if (pestanaTrades) R.drawable.ic_chart else R.drawable.ic_clock)
-        btnModo.contentDescription = if (pestanaTrades) "Show order book" else "Show recent trades"
+        libroV.visibility = if (modo == 0) View.VISIBLE else View.GONE
+        tradesV.visibility = if (modo == 1) View.VISIBLE else View.GONE
+        profV.visibility = if (modo == 2) View.VISIBLE else View.GONE
+        tvTick.visibility = if (modo == 0) View.VISIBLE else View.INVISIBLE
+        // el icono dice a qué vista se pasa al tocar
+        btnModo.setImageResource(when (modo) { 0 -> R.drawable.ic_clock; 1 -> R.drawable.ic_chart; else -> R.drawable.ic_scan })
+        btnModo.contentDescription = when (modo) { 0 -> "Show recent trades"; 1 -> "Show depth chart"; else -> "Show order book" }
     }
 
     /** Tamaños de agrupación según el precio (p. ej. BTC: 0.01, 0.1, 1, 10, 100). */
@@ -182,6 +188,7 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
             libroV.poner(Mercado.Libro(agrupar(l.bids, tick, false), agrupar(l.asks, tick, true), l.fuente), ultimo, previo)
             mejorBid = l.bids.firstOrNull()?.first; mejorAsk = l.asks.firstOrNull()?.first
             alMejores?.invoke(mejorBid, mejorAsk)
+            profV.poner(l)
         }
         tradesV.poner(trades)
     }
@@ -319,5 +326,53 @@ class VistaTrades(ctx: Context) : View(ctx) {
             c.drawText(fmtLibroQty(t.qty) + "  " + sdf.format(java.util.Date(t.t)).substring(3), w, yt, pTxt)
             y += altoFila
         }
+    }
+}
+
+/**
+ * Gráfico de profundidad: volumen acumulado de compras (verde, a la izquierda) y de
+ * ventas (rojo, a la derecha) según el precio, con el precio medio en el centro.
+ */
+class VistaProfundidad(ctx: Context) : View(ctx) {
+    private val d = resources.displayMetrics.density
+    private var libro: Mercado.Libro? = null
+    private val pArea = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val pLinea = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.6f * d }
+    private val pTxt = Paint(Paint.ANTI_ALIAS_FLAG).apply { textSize = 12f * d; color = DexTema.TXT2; typeface = AppTheme.body(ctx) }
+
+    fun poner(l: Mercado.Libro?) { libro = l; invalidate()
+        contentDescription = if (l == null) "Depth chart loading" else "Depth chart. Buy side %s, sell side %s within the visible book"
+            .format(fmtLibroQty(l.bids.sumOf { it.first * it.second }), fmtLibroQty(l.asks.sumOf { it.first * it.second })) }
+    override fun onMeasure(w: Int, h: Int) = setMeasuredDimension(MeasureSpec.getSize(w), (24f * d * 14 + 34f * d + 54f * d + 26f * d).toInt())
+
+    override fun onDraw(c: Canvas) {
+        val l = libro; val w = width.toFloat(); val h = height.toFloat()
+        val arriba = 20f * d; val abajo = h - 34f * d
+        if (l == null || l.bids.isEmpty() || l.asks.isEmpty()) { c.drawText("Loading…", 0f, 40f * d, pTxt); return }
+        val bids = l.bids.take(100); val asks = l.asks.take(100)
+        val pMin = bids.last().first; val pMax = asks.last().first
+        if (pMax <= pMin) return
+        val acB = bids.runningFold(0.0) { s, x -> s + x.first * x.second }.drop(1)
+        val acA = asks.runningFold(0.0) { s, x -> s + x.first * x.second }.drop(1)
+        val maxV = maxOf(acB.last(), acA.last()).coerceAtLeast(1e-9)
+        fun x(p: Double) = ((p - pMin) / (pMax - pMin) * w).toFloat()
+        fun y(v: Double) = (abajo - (abajo - arriba) * (v / maxV)).toFloat()
+        fun lado(niv: List<Pair<Double, Double>>, ac: List<Double>, col: Int) {
+            val linea = Path(); val area = Path()
+            linea.moveTo(x(niv[0].first), abajo); area.moveTo(x(niv[0].first), abajo)
+            for (i in niv.indices) { val xi = x(niv[i].first); val yi = y(ac[i])
+                if (i > 0) { linea.lineTo(xi, y(ac[i - 1])); area.lineTo(xi, y(ac[i - 1])) }
+                linea.lineTo(xi, yi); area.lineTo(xi, yi) }
+            area.lineTo(x(niv.last().first), abajo); area.close()
+            pArea.color = (col and 0x00FFFFFF) or (0x40 shl 24); c.drawPath(area, pArea)
+            pLinea.color = col; c.drawPath(linea, pLinea)
+        }
+        lado(bids, acB, DexTema.UP); lado(asks, acA, DexTema.DOWN)
+        val medio = (bids[0].first + asks[0].first) / 2
+        pTxt.textAlign = Paint.Align.CENTER; pTxt.color = DexTema.TXT; c.drawText(fmtLibroPrecio(medio), w / 2, 14f * d, pTxt)
+        pTxt.color = DexTema.TXT2
+        pTxt.textAlign = Paint.Align.LEFT; c.drawText(fmtLibroPrecio(pMin), 0f, h - 14f * d, pTxt)
+        pTxt.textAlign = Paint.Align.RIGHT; c.drawText(fmtLibroPrecio(pMax), w, h - 14f * d, pTxt)
+        c.drawText(fmtLibroQty(maxV), w, arriba + 12f * d, pTxt)
     }
 }

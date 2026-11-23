@@ -309,14 +309,16 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     // ── Herramientas de dibujo ──
     val tvAyuda = TextView(this).apply { textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(dp(2), 0, 0, dp(6)) }
     val ayudas = listOf("Drag to pan · pinch to zoom · tap or long-press for crosshair + candle details",
-        "Tap the chart to place a horizontal line", "Tap two points for a trend line", "Tap the chart where the note goes")
+        "Tap the chart to place a horizontal line", "Tap two points for a trend line", "Tap the chart where the note goes",
+        "Fibonacci: tap the swing start, then the swing end", "Rectangle: tap two opposite corners",
+        "Measure: tap two points to see the price change, % and number of candles")
     tvAyuda.text = ayudas[0]
     var marcarHerr: (Int) -> Unit = {}
-    val (filaHerr, marcar) = filaChips(listOf("Move", "Line", "Trend", "Note", "Undo", "Clear"), 0) { k ->
+    val (filaHerr, marcar) = filaChips(listOf("Move", "Line", "Trend", "Note", "Fib", "Rect", "Measure", "Undo", "Clear"), 0) { k ->
         when (k) {
-            in 0..3 -> { chart.herramienta = k; tvAyuda.text = ayudas[k] }
-            4 -> { chart.deshacer(); marcarHerr(chart.herramienta) }
-            5 -> { marcarHerr(chart.herramienta)
+            in 0..6 -> { chart.herramienta = k; tvAyuda.text = ayudas[k] }
+            7 -> { chart.deshacer(); marcarHerr(chart.herramienta) }
+            8 -> { marcarHerr(chart.herramienta)
                 if (chart.dibujos.isNotEmpty()) DexTema.dialogo(this).setTitle("Clear drawings")
                     .setMessage("Remove all ${chart.dibujos.size} lines and notes?")
                     .setPositiveButton("Clear") { _, _ -> chart.borrarTodo() }.setNegativeButton("Cancel", null).show() }
@@ -753,6 +755,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         val inv = on("i_inv", false)
         chart.cUp = if (inv) DexTema.DOWN else DexTema.UP; chart.cDown = if (inv) DexTema.UP else DexTema.DOWN
         chart.huecaAlcista = on("i_hueca_up", false); chart.huecaBajista = on("i_hueca_down", false)
+        chart.tipoGrafico = prefsG.getInt("i_tipo", 0).coerceIn(0, 3)
         chart.zona = if (on("i_utc", false)) java.util.TimeZone.getTimeZone("UTC") else java.util.TimeZone.getDefault()
         chart.alturaPrecioDp = listOf(180f, 240f, 340f)[prefsG.getInt("altura", 1).coerceIn(0, 2)]
         chart.mostrarCuenta = activo.tipo == Mercado.Tipo.CRYPTO && on("c_cuenta", true)
@@ -774,7 +777,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     fun opcion(titulo: String, opciones: List<String>, sel: Int, alElegir: (Int) -> Unit) = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(10))
         addView(TextView(context).apply { text = titulo; textSize = 16f; setTextColor(DexTema.TXT); setPadding(0, 0, 0, dp(8)) })
-        addView(DexTema.pestanas(context, opciones.map { it to null }, sel, alElegir))
+        addView(DexTema.pestanas(context, opciones.map { it to null }, sel, alElegir = alElegir))
     }
 
     fun abrirGuiaVelas() {
@@ -817,6 +820,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
 
     fun abrirInterfaz() {
         val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        caja.addView(opcion("Chart type", listOf("Candles", "Heikin-Ashi", "Line", "Area"), prefsG.getInt("i_tipo", 0).coerceIn(0, 3)) { k ->
+            prefsG.edit().putInt("i_tipo", k).apply(); aplicarAjustesGrafico() })
         caja.addView(opcion("Candlestick color", listOf("Green up · red down", "Red up · green down"), if (on("i_inv", false)) 1 else 0) { k ->
             prefsG.edit().putBoolean("i_inv", k == 1).apply(); aplicarAjustesGrafico(); cargar() })
         caja.addView(opcion("Bullish candlestick", listOf("Filled", "Hollow"), if (on("i_hueca_up", false)) 1 else 0) { k ->
