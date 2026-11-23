@@ -423,9 +423,14 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     }
 
     // ── En vivo por sondeo (si no hay stream): pide solo las últimas velas y las fusiona ──
+    var enPrimerPlano = true
     vivo = object : Runnable {
         override fun run() {
             if (!scroll.isAttachedToWindow) { stream?.cerrar(); stream = null; claveStream = ""; return }
+            // primer plano: la vigilancia de fondo no toca el simulador; al volver se recarga lo que hizo
+            val delante = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
+            if (delante) { if (!enPrimerPlano) panel?.recargar(); VigilanciaDex.primerPlanoMs = System.currentTimeMillis() }
+            enPrimerPlano = delante
             actualizarStream()
             if (refrescoMs <= 0L || streamOk) { hVivo.postDelayed(this, 2_000); return }
             if (scroll.isShown && chart.velasActuales().size > 1 && enCurso.compareAndSet(false, true)) {
@@ -797,6 +802,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
         dlg = DexTema.hoja(this, "Chart Settings", caja).also { it.show() }
     }
     btnAjustes.setOnClickListener { abrirAjustesGrafico() }
+    VigilanciaDex.programar(this)
     aplicarAjustesGrafico()
 
     // ── Selector de par (tocar el nombre del par) y modo Spot/Futures del simulador ──

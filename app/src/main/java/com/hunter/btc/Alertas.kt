@@ -69,7 +69,10 @@ object Alertas {
         return textos
     }
 
-    private fun notificar(ctx: Context, texto: String) {
+    /** Aviso con título propio (lo usa la vigilancia del simulador en segundo plano). */
+    fun notificarTexto(ctx: Context, titulo: String, texto: String) = notificar(ctx, texto, titulo)
+
+    private fun notificar(ctx: Context, texto: String, titulo: String = "Price alert") {
         try {
             if (!Avisos.permitidos(ctx)) return
             val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
@@ -78,7 +81,8 @@ object Alertas {
             val pi = PendingIntent.getActivity(ctx, 1, Intent(ctx, MainActivity::class.java),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
             nm.notify((System.nanoTime() % 100_000).toInt() + 20_000, NotificationCompat.Builder(ctx, CANAL)
-                .setSmallIcon(R.drawable.ic_notif).setContentTitle("Price alert").setContentText(texto)
+                .setSmallIcon(R.drawable.ic_notif).setContentTitle(titulo).setContentText(texto)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(texto))
                 .setPriority(NotificationCompat.PRIORITY_HIGH).setAutoCancel(true).setContentIntent(pi).build())
         } catch (e: Throwable) { }
     }

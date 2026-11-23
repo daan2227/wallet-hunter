@@ -526,6 +526,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             .setPositiveButton("Close", null).show()
     }
 
+    /** Al volver a la app: recoge lo que la vigilancia en segundo plano haya cambiado. */
+    fun recargar() { sim.cargar(prefs.getString("estado", null)); refrescar() }
+
     /** Spot o Futuros: lo eligen las pestañas de arriba del Home. */
     fun ponerModo(f: Boolean) {
         if (f == futuros) return
