@@ -338,6 +338,8 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
     colIzq.addView(pt.vista); colDer.addView(pl.vista)
     cajaListas.addView(pt.vistaListas)
     pt.bbo = { pl.mejorBid to pl.mejorAsk }
+    pt.libroActual = { pl.libroCrudo }
+    pl.alPremium = { clave, p -> pt.sim.tasaFunding[clave] = p.tasa }
     // gráfico plegable (como "BTCUSDT Perp. Chart ▴")
     fun pintarCabGrafico() {
         val abierto = cajaGrafico.visibility == View.VISIBLE

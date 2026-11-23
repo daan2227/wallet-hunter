@@ -203,6 +203,16 @@ object Mercado {
         return emptyList()
     }
 
+    /** Futuros perpetuos de Binance: precio marca, índice y funding (tasa y próxima hora, ms). */
+    class Premium(val marca: Double, val indice: Double, val tasa: Double, val proximo: Long)
+    fun premium(a: Activo): Premium? = try {
+        if (a.tipo != Tipo.CRYPTO) null else httpGet("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${a.simbolo.uppercase()}USDT")?.let { js ->
+            val o = org.json.JSONObject(js)
+            if (!o.has("markPrice")) null else Premium(o.optString("markPrice").toDoubleOrNull() ?: 0.0, o.optString("indexPrice").toDoubleOrNull() ?: 0.0,
+                o.optString("lastFundingRate").toDoubleOrNull() ?: 0.0, o.optLong("nextFundingTime"))
+        }
+    } catch (e: Throwable) { null }
+
     /** Compatibilidad con el tool de precio: velas de BTC. */
     fun velasBtc(intervalo: String, limite: Int = 180): List<GraficoPrecio.Vela> = velas(BTC, intervalo, limite)
 

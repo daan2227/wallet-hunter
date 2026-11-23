@@ -86,6 +86,8 @@ class Simulador {
     val bots = ArrayList<Bot>()
     /** Último precio visto por activo (clave → precio). */
     val precios = HashMap<String, Double>()
+    /** Tasa de funding real por par (Binance Futures); sin dato se usa [FUNDING]. */
+    val tasaFunding = HashMap<String, Double>()
     /** Último instante (s) procesado por activo, para no reprocesar velas. */
     val revisado = HashMap<String, Long>()
     private var sigId = 1L
@@ -613,7 +615,7 @@ class Simulador {
         for (p in posiciones.filter { it.clave == clave && it.abierta <= inicio }) {
             if (p !in posiciones) continue
             var f = (p.ultFunding / FUNDING_SEG + 1) * FUNDING_SEG
-            while (f <= t) { val pago = p.nocional * FUNDING * (if (p.long) -1 else 1); p.funding += pago; fut += pago; p.ultFunding = f
+            while (f <= t) { val pago = p.nocional * (tasaFunding[clave] ?: FUNDING) * (if (p.long) -1 else 1); p.funding += pago; fut += pago; p.ultFunding = f
                 movimientos.add(Movimiento(f, "Funding", Mercado.FUT, pago, "${if (p.long) "Long" else "Short"} ${p.simbolo} #${p.id}")); f += FUNDING_SEG }
             val liq = liquidacion(p)
             val slToca = p.sl > 0 && (if (p.long) lo <= p.sl else hi >= p.sl)
@@ -687,6 +689,7 @@ class Simulador {
             .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo)) } })
         put("pre", JSONObject().apply { precios.forEach { (k, v) -> put(k, v) } })
         put("rev", JSONObject().apply { revisado.forEach { (k, v) -> put(k, v) } })
+        put("fr", JSONObject().apply { tasaFunding.forEach { (k, v) -> put(k, v) } })
     }.toString()
 
     fun cargar(s: String?) {
@@ -727,6 +730,7 @@ class Simulador {
                     h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"))) } }
             o.optJSONObject("pre")?.let { p -> p.keys().forEach { k -> precios[k] = p.getDouble(k) } }
             o.optJSONObject("rev")?.let { p -> p.keys().forEach { k -> revisado[k] = p.getLong(k) } }
+            o.optJSONObject("fr")?.let { p -> p.keys().forEach { k -> tasaFunding[k] = p.getDouble(k) } }
         } catch (e: Exception) { reiniciar() }
     }
 

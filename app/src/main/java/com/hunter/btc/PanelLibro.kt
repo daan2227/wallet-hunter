@@ -53,6 +53,12 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     private var ultAplicar = 0L
     private var aplicarPendiente = false
     private var libro: Mercado.Libro? = null
+    /** Libro sin agrupar (para simular el llenado de órdenes a mercado). */
+    val libroCrudo get() = libro
+    /** Funding y precio marca reales del par (Binance Futures), cada 30 s. */
+    var premium: Mercado.Premium? = null; private set
+    var alPremium: ((String, Mercado.Premium) -> Unit)? = null
+    private var ultPremium = 0L
     private var trades: List<Mercado.Trade> = emptyList()
     private var claveDatos = ""
     private val ocupado = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -81,9 +87,16 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     }
 
     private fun pintarFunding() {
-        val ahora = System.currentTimeMillis() / 1000
-        val resta = Simulador.FUNDING_SEG - ahora % Simulador.FUNDING_SEG
-        tvFunding.text = "Funding (8h) / Countdown\n%.4f%% / %02d:%02d:%02d".format(Simulador.FUNDING * 100, resta / 3600, resta % 3600 / 60, resta % 60)
+        val ahora = System.currentTimeMillis()
+        val pr = premium
+        val resta = (if (pr != null && pr.proximo > ahora) (pr.proximo - ahora) / 1000 else Simulador.FUNDING_SEG - ahora / 1000 % Simulador.FUNDING_SEG)
+        tvFunding.text = "Funding (8h) / Countdown\n%.4f%% / %02d:%02d:%02d".format((pr?.tasa ?: Simulador.FUNDING) * 100, resta / 3600, resta % 3600 / 60, resta % 60)
+        // cada 30 s: tasa y precio marca reales (solo futuros, cripto)
+        val a = activo()
+        if (futuros && a.tipo == Mercado.Tipo.CRYPTO && ahora - ultPremium > 30_000) {
+            ultPremium = ahora
+            Thread { val p = Mercado.premium(a); act.runOnUiThread { if (p != null && a.clave == activo().clave) { premium = p; libroV.marca = p.marca; alPremium?.invoke(a.clave, p) } } }.start()
+        }
     }
 
     private fun mostrar() {
@@ -112,7 +125,7 @@ class PanelLibro(private val act: MainActivity, private val activo: () -> Mercad
     }
 
     /** El gráfico cambió de activo. */
-    fun alCambiarActivo() { libro = null; trades = emptyList(); claveDatos = ""; mejorBid = null; mejorAsk = null
+    fun alCambiarActivo() { libro = null; trades = emptyList(); claveDatos = ""; mejorBid = null; mejorAsk = null; premium = null; ultPremium = 0; libroV.marca = 0.0
         libroV.poner(null, 0.0, 0.0); tradesV.poner(emptyList()); pedir() }
 
     /** Libro del stream (20 niveles por lado, cada segundo). */
@@ -198,6 +211,8 @@ class VistaLibro(ctx: Context) : View(ctx) {
     private val altoBarra = 26f * d
     private var libro: Mercado.Libro? = null
     private var ultimo = 0.0; private var previo = 0.0
+    /** Precio marca (futuros); si se conoce se muestra bajo el último en lugar del medio. */
+    var marca = 0.0
     var alTocar: ((Double) -> Unit)? = null
     private val zonas = ArrayList<Triple<Float, Float, Double>>()
 
@@ -242,7 +257,9 @@ class VistaLibro(ctx: Context) : View(ctx) {
         val ref = if (ultimo > 0) ultimo else medio
         pGrande.color = if (ultimo >= previo) DexTema.UP else DexTema.DOWN
         c.drawText(fmtLibroPrecio(ref), w / 2, y + 26f * d, pGrande)
-        if (medio > 0) { pCab.textAlign = Paint.Align.CENTER; c.drawText(fmtLibroPrecio(medio), w / 2, y + 46f * d, pCab) }
+        pCab.textAlign = Paint.Align.CENTER
+        if (marca > 0) c.drawText("Mark " + fmtLibroPrecio(marca), w / 2, y + 46f * d, pCab)
+        else if (medio > 0) c.drawText(fmtLibroPrecio(medio), w / 2, y + 46f * d, pCab)
         y += altoMedio
         for (b in bids) fila(b.first, b.second, DexTema.UP)
         y += (filas - bids.size) * altoFila

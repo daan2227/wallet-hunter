@@ -115,6 +115,50 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private val contPos = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(0, dp(10), 0, 0) }
     private lateinit var rotularTabs: (List<String>) -> Unit
 
+    /** Libro completo sin agrupar (lo pone el Home): las órdenes a mercado lo recorren. */
+    var libroActual: (() -> Mercado.Libro?)? = null
+    /** Vigencia de las órdenes límite: 0 GTC, 1 Post-only, 2 IOC, 3 FOK. */
+    private var tif = 0
+    private val tvTif = TextView(act).apply {
+        textSize = 14f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48); isClickable = true; foreground = Ui.toque()
+        setPadding(dp(8), 0, 0, 0); compoundDrawablePadding = dp(2)
+    }
+
+    /**
+     * Simula el llenado contra el libro: [compra] consume asks (si no, bids) hasta
+     * [cantidad] (en VUSD de nocional o en unidades), sin pasar de [limite]. Devuelve
+     * (precio medio, fracción llenada). Sin libro, todo al precio actual. Si el libro
+     * visible se agota sin límite, el resto va al último nivel con un 0,1 % extra.
+     */
+    private fun recorrer(compra: Boolean, cantidad: Double, porNocional: Boolean, limite: Double?): Pair<Double, Double>? {
+        val ref = precioActual() ?: return null
+        if (cantidad <= 0) return null
+        val l = libroActual?.invoke()
+        val niveles = when { l == null || (if (compra) l.asks else l.bids).isEmpty() -> listOf(ref to Double.MAX_VALUE / 4); compra -> l.asks; else -> l.bids }
+        var resto = cantidad; var noc = 0.0; var qty = 0.0; var ultimoP = ref
+        for ((p, q) in niveles) {
+            if (limite != null && (if (compra) p > limite else p < limite)) break
+            val disp = if (porNocional) p * q else q
+            val toma = minOf(resto, disp)
+            if (porNocional) { noc += toma; qty += toma / p } else { qty += toma; noc += toma * p }
+            resto -= toma; ultimoP = p
+            if (resto <= cantidad * 1e-9) { resto = 0.0; break }
+        }
+        if (resto > 0 && limite == null) {
+            val p = ultimoP * (if (compra) 1.001 else 0.999)
+            if (porNocional) { noc += resto; qty += resto / p } else { qty += resto; noc += resto * p }
+            resto = 0.0
+        }
+        if (qty <= 0) return null
+        return noc / qty to (1 - resto / cantidad)
+    }
+    /** Cantidad que mueve la orden (nocional en VUSD o unidades para ventas spot). */
+    private fun cantidadOrden(imp: Double): Pair<Double, Boolean> = when {
+        futuros -> imp * apal to true
+        compra -> imp to true
+        else -> imp to false
+    }
+
     /** Mejor bid/ask del libro para el botón BBO (lo pone el Home). */
     var bbo: (() -> Pair<Double?, Double?>)? = null
 
@@ -165,6 +209,13 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             })
         })
         vista.addView(parDisparo.first); vista.addView(parPrecio.first); vista.addView(parCallback.first)
+        tvTif.setCompoundDrawables(null, null, act.getDrawable(R.drawable.ic_caret_down)?.mutate()?.apply { setTint(DexTema.TXT2); setBounds(0, 0, dp(16), dp(16)) }, null)
+        tvTif.setOnClickListener {
+            val pm = androidx.appcompat.widget.PopupMenu(act, tvTif)
+            listOf("GTC · good till cancelled", "Post-only · only adds liquidity", "IOC · fill what you can now, cancel the rest", "FOK · fill all now or nothing")
+                .forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+            pm.setOnMenuItemClickListener { tif = it.itemId; refrescarFormulario(); true }; pm.show()
+        }
         btnBbo.setOnClickListener {
             val (b, a) = bbo?.invoke() ?: (null to null)
             val p = if (compra) b else a
@@ -184,7 +235,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         vista.addView(LinearLayout(act).apply {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             swReducir.layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f); addView(swReducir)
-            addView(texto(14f, DexTema.TXT).apply { text = "GTC"; contentDescription = "Good till cancelled" })
+            addView(tvTif)
         })
         vista.addView(filaDato("Max", tvMax)); vista.addView(filaDato("Cost", tvCoste))
         btnAccion.setOnClickListener { ejecutar() }
@@ -576,8 +627,10 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         parCallback.first.visibility = if (tipoUi == 4) View.VISIBLE else View.GONE
         etDisparo.hint = "Trigger price (USD) · ${if (compra) "above" else "below"} market"
         val reducir = futuros && soloReducir && tipoUi != 0
-        swReducir.visibility = if (futuros && tipoUi != 0) View.VISIBLE else View.GONE
-        (swReducir.parent as? View)?.visibility = swReducir.visibility
+        swReducir.visibility = if (futuros && tipoUi != 0) View.VISIBLE else View.INVISIBLE
+        tvTif.text = listOf("GTC", "Post-only", "IOC", "FOK")[tif]; tvTif.contentDescription = "Time in force: ${tvTif.text}"
+        tvTif.visibility = if (tipoUi == 1) View.VISIBLE else View.GONE
+        (swReducir.parent as? View)?.visibility = if (swReducir.visibility == View.VISIBLE || tvTif.visibility == View.VISIBLE) View.VISIBLE else View.GONE
         tvUnidad.text = if (reducir || (!futuros && !compra)) a.simbolo else "VUSD"
         etImporte.hint = when { reducir -> "Quantity to close"; futuros -> "Margin"; compra -> "Amount"; else -> "Quantity" }
         // TP/SL: futuros al abrir; spot en compras a mercado (crea una OCO de venta)
@@ -623,7 +676,9 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             tvResumen.text = if (futuros) "Fees: taker 0.05% · maker 0.02% · funding 0.01% / 8h · min 5 VUSD" else "Fee: 0.1% · min order 5 VUSD"
             return
         }
-        tvResumen.text = when {
+        val desliz = if (tipoUi == 0 && act0 > 0) cantidadOrden(imp).let { (c, n) -> recorrer(compra, c, n, null)?.first }?.let { px ->
+            "Est. fill ≈ %s (slippage %.3f%%)\n".format(fmtSim(px), Math.abs(px - act0) / act0 * 100) } ?: "" else ""
+        tvResumen.text = desliz + when {
             futuros -> {
                 val noc = imp * apal; val com = noc * if (limite) Simulador.COM_MAKER else Simulador.COM_TAKER
                 if (soloReducir && tipoUi != 0) "Closes up to %s %s of the %s position".format(fmtCant(imp), a.simbolo, if (compra) "short" else "long")
@@ -635,6 +690,19 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         }
     }
     private fun fmtCant(x: Double) = if (x >= 1000) "%,.2f".format(x) else "%.6g".format(x)
+
+    /** Ejecuta ya (taker) [imp] al precio [px]: futuros, compra spot (con TP/SL en OCO) o venta spot. */
+    private fun ejecutarMercado(a: Mercado.Activo, js: String, imp: Double, px: Double, tp: Double, sl: Double): String? = when {
+        futuros -> sim.abrirFuturo(a.clave, js, a.simbolo, compra, imp, apal, px, tp, sl, cruzado = cruzado)
+        compra -> {
+            val antes = sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0
+            sim.comprarSpot(a.clave, js, a.simbolo, imp, px) ?: if (tp > 0 || sl > 0) {
+                val q = (sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0) - antes
+                sim.ocoSpot(a.clave, q, tp, sl)?.let { "Bought, but TP/SL not set: $it" }
+            } else null
+        }
+        else -> sim.venderSpot(a.clave, imp, px)
+    }
 
     /** El error va en el campo que lo causa (y se anuncia); si no es de un campo, aviso. */
     private fun mostrarError(err: String) {
@@ -665,12 +733,33 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val err: String? = when (tipoUi) {
             1 -> {
                 val lp = etPrecio.num()
+                val cruza = if (compra) lp >= actual else lp <= actual       // tomaría liquidez del libro
                 when {
                     lp <= 0 -> "Enter a limit price"
-                    compra && lp >= actual -> "A limit buy must be below the current price (use Market or Stop)"
-                    !compra && lp <= actual -> "A limit sell must be above the current price (use Market or Stop)"
-                    else -> sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.LIMIT, lp, 0.0, 0.0, importe, qty, apal,
+                    !cruza && tif >= 2 -> "${if (tif == 2) "IOC" else "FOK"} order expired: nothing to fill at your price right now"
+                    !cruza -> sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.LIMIT, lp, 0.0, 0.0, importe, qty, apal,
                         if (futuros) tp else 0.0, if (futuros) sl else 0.0, reducir, cruzado, actual)
+                    tif == 1 -> "Post-only order rejected: at that price it would fill immediately (take liquidity)"
+                    reducir -> "A reduce-only limit must not cross the market; use a price ${if (compra) "below" else "above"} it"
+                    else -> {
+                        // cruza: se llena ya contra el libro hasta el límite (taker). GTC deja el resto en el libro.
+                        val (cant, porNoc) = cantidadOrden(imp)
+                        val r = recorrer(compra, cant, porNoc, lp)
+                        val frac = r?.second ?: 0.0
+                        when {
+                            r == null || frac <= 0 -> if (tif == 0) sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.LIMIT, lp, 0.0, 0.0,
+                                importe, qty, apal, if (futuros) tp else 0.0, if (futuros) sl else 0.0, false, cruzado, actual) else "${if (tif == 2) "IOC" else "FOK"} order expired: no liquidity at your price"
+                            tif == 3 && frac < 0.999 -> "FOK order cancelled: only ${"%.1f".format(frac * 100)}% could fill at your price"
+                            else -> {
+                                val llena = if (frac >= 0.999) 1.0 else frac
+                                val e1 = ejecutarMercado(a, js, imp * llena, r!!.first, tp, sl)
+                                if (e1 == null && llena < 1.0 && tif == 0) sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.LIMIT, lp, 0.0, 0.0,
+                                    if (importe > 0) importe * (1 - llena) else 0.0, if (qty > 0) qty * (1 - llena) else 0.0, apal,
+                                    if (futuros) tp else 0.0, if (futuros) sl else 0.0, false, cruzado, actual)?.let { "Partly filled; the rest could not be placed: $it" }
+                                else e1
+                            }
+                        }
+                    }
                 }
             }
             2 -> sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.STOP, 0.0, etDisparo.num(), 0.0, importe, qty, apal,
@@ -679,20 +768,14 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 if (futuros) tp else 0.0, if (futuros) sl else 0.0, reducir, cruzado, actual)
             4 -> sim.nuevaOrden(m, a.clave, js, a.simbolo, compra, Simulador.TipoOrden.TRAIL, 0.0, 0.0, etCallback.num() / 100, importe, qty, apal,
                 if (futuros) tp else 0.0, if (futuros) sl else 0.0, reducir, cruzado, actual)
-            else -> when {
-                futuros -> sim.abrirFuturo(a.clave, js, a.simbolo, compra, imp, apal, actual, tp, sl, cruzado = cruzado)
-                compra -> {
-                    val antes = sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0
-                    sim.comprarSpot(a.clave, js, a.simbolo, imp, actual) ?: if (tp > 0 || sl > 0) {
-                        val q = (sim.tenencias.firstOrNull { it.clave == a.clave }?.qty ?: 0.0) - antes
-                        sim.ocoSpot(a.clave, q, tp, sl)?.let { "Bought, but TP/SL not set: $it" }
-                    } else null
-                }
-                else -> sim.venderSpot(a.clave, imp, actual)
+            else -> {
+                // a mercado: el precio es el medio de lo que se come del libro (deslizamiento real)
+                val (cant, porNoc) = cantidadOrden(imp)
+                ejecutarMercado(a, js, imp, recorrer(compra, cant, porNoc, null)?.first ?: actual, tp, sl)
             }
         }
         if (err != null) { mostrarError(err); guardar(); refrescar(); return }
-        aviso(if (tipoUi != 0) "Order placed" else "Order filled at ${fmtSim(actual)}")
+        aviso(if (tipoUi != 0) "Order placed" else "Order filled at ≈ ${fmtSim(sim.historial.lastOrNull()?.entrada?.takeIf { it > 0 } ?: actual)}")
         etImporte.setText(""); etTp.setText(""); etSl.setText(""); slider.poner(0f)
         guardar(); refrescar()
     }
