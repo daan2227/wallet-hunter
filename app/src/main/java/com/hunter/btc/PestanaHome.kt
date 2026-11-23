@@ -278,7 +278,13 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
             addView(LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; tabsIv.forEach { addView(it) }; addView(tabMas) })
         })
-        addView(btnVivo); addView(btnAjustes)
+        addView(btnVivo)
+        addView(icono(R.drawable.ic_expand, "Full screen chart").apply { setOnClickListener {
+            startActivity(android.content.Intent(this@buildHomeTab, GraficoCompletoActivity::class.java)
+                .putExtra("activo", activo.aJson()).putExtra("intervalo", intervalo).putExtra("intervaloSeg", chart.intervaloSeg)
+                .putExtra("cfg", chart.cfg.aJson()))
+        } })
+        addView(btnAjustes)
     })
 
     // ── Actualización en vivo: desplegable junto al par ──
@@ -472,7 +478,11 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             if (!scroll.isAttachedToWindow) { stream?.cerrar(); stream = null; claveStream = ""; return }
             // primer plano: la vigilancia de fondo no toca el simulador; al volver se recarga lo que hizo
             val delante = lifecycle.currentState.isAtLeast(androidx.lifecycle.Lifecycle.State.STARTED)
-            if (delante) { if (!enPrimerPlano) panel?.recargar(); VigilanciaDex.primerPlanoMs = System.currentTimeMillis() }
+            if (delante) {
+                // al volver (de la app cerrada o del gráfico a pantalla completa): estado del simulador y dibujos
+                if (!enPrimerPlano) { panel?.recargar(); chart.cargarDibujos(prefsG.getString(claveDib(activo), null)); chart.invalidate() }
+                VigilanciaDex.primerPlanoMs = System.currentTimeMillis()
+            }
             enPrimerPlano = delante
             actualizarStream()
             if (refrescoMs <= 0L || streamOk) { hVivo.postDelayed(this, 2_000); return }
@@ -1074,30 +1084,52 @@ internal fun MainActivity.comprobarAlertas(clave: String, precio: Double) {
 }
 
 /** Cada 20 s: precio de 1 min de los pares con alertas que no están en el gráfico. */
+private var ultIndicadores = 0L
 internal fun MainActivity.vigilarAlertas(actual: String) {
     val pares = Alertas.claves(this).filterKeys { it != actual }
-    if (pares.isEmpty()) return
+    // las de indicador (RSI, cruces de media) se revisan con velas cada minuto, también las del par abierto
+    val indicadores = System.currentTimeMillis() - ultIndicadores > 60_000 && Alertas.lista(this).any { it.tipo >= 3 }
+    if (pares.isEmpty() && !indicadores) return
+    if (indicadores) ultIndicadores = System.currentTimeMillis()
     Thread {
         val precios = pares.mapNotNull { (clave, js) -> Mercado.Activo.deJson(js)?.let { a ->
             Mercado.velas(a, "1m", 2).lastOrNull()?.let { clave to it.c.toDouble() } } }
-        runOnUiThread { precios.forEach { (c, p) -> comprobarAlertas(c, p) } }
+        val ind = if (indicadores) Alertas.revisarIndicadores(this) else emptyList()
+        runOnUiThread {
+            precios.forEach { (c, p) -> comprobarAlertas(c, p) }
+            if (ind.isNotEmpty()) Toast.makeText(this, ind.joinToString("\n"), Toast.LENGTH_LONG).show()
+        }
     }.start()
 }
 
 /** Alertas de precio: crear para el par abierto y ver / borrar todas. */
 internal fun MainActivity.abrirAlertas(a: Mercado.Activo, precio: Double) {
     val caja = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(8), dp(20), dp(4)) }
-    var tipo = 0
+    var tipo = 0; var ivAlerta = "1h"
     val et = DexTema.campo(this, "Price (USD)", true).apply {
         inputType = android.text.InputType.TYPE_CLASS_NUMBER or android.text.InputType.TYPE_NUMBER_FLAG_DECIMAL; setSingleLine() }
     caja.addView(TextView(this).apply { text = "${a.par} · now ${if (precio > 0) fmtSim(precio) else "—"}"; textSize = AppTheme.SP_BODY
         setTextColor(DexTema.TXT); typeface = AppTheme.bold(context); setPadding(0, 0, 0, dp(8)) })
-    caja.addView(DexTema.pestanas(this, listOf("Above" to null, "Below" to null, "Move %" to null), 0) { k -> tipo = k
-        et.hint = if (k == 2) "Move in % (e.g. 5)" else "Price (USD)" }
-        .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
-    caja.addView(et)
+    // tipo: precio o indicador (desplegable: caben siete)
+    val tipos = listOf("Price above", "Price below", "Price moves ±%", "RSI(14) at or below", "RSI(14) at or above", "Closes above moving average", "Closes below moving average")
+    val pistas = listOf("Price (USD)", "Price (USD)", "Move in % (e.g. 5)", "RSI level (e.g. 30)", "RSI level (e.g. 70)", "MA period (e.g. 50)", "MA period (e.g. 50)")
+    fun desplegableAlerta() = TextView(this).apply {
+        textSize = 15f; setTextColor(DexTema.TXT); gravity = Gravity.CENTER_VERTICAL; minHeight = dp(48)
+        background = DexTema.fondo(context, DexTema.CHIP, 8f); setPadding(dp(14), 0, dp(10), 0); isClickable = true; foreground = Ui.toque()
+        setCompoundDrawables(null, null, getDrawable(R.drawable.ic_caret_down)?.mutate()?.apply { setTint(DexTema.TXT2); setBounds(0, 0, dp(18), dp(18)) }, null)
+        layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) }
+    }
+    val ddTipo = desplegableAlerta(); val ddIv = desplegableAlerta()
+    fun pintarTipo() { ddTipo.text = tipos[tipo]; et.hint = pistas[tipo]; ddIv.text = "Candles: $ivAlerta"; ddIv.visibility = if (tipo >= 3) View.VISIBLE else View.GONE
+        ddTipo.contentDescription = "Alert type: ${tipos[tipo]}" }
+    ddTipo.setOnClickListener { val pm = androidx.appcompat.widget.PopupMenu(this, ddTipo)
+        tipos.forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }; pm.setOnMenuItemClickListener { tipo = it.itemId; pintarTipo(); true }; pm.show() }
+    ddIv.setOnClickListener { val pm = androidx.appcompat.widget.PopupMenu(this, ddIv)
+        val ivs = listOf("15m", "1h", "4h", "1d"); ivs.forEachIndexed { k, t -> pm.menu.add(0, k, k, t) }
+        pm.setOnMenuItemClickListener { ivAlerta = ivs[it.itemId]; pintarTipo(); true }; pm.show() }
+    caja.addView(ddTipo); caja.addView(ddIv); caja.addView(et); pintarTipo()
     caja.addView(TextView(this).apply {
-        text = "Checked while the app is open: live for this pair, every 20 s for the others. Fires once, then it's removed."
+        text = "Price alerts: live for this pair, every 20 s for the others; indicator alerts on each closed candle, checked every minute. With the app closed, every ~15 min. Each fires once, then it's removed."
         textSize = AppTheme.SP_MICRO; setTextColor(DexTema.TXT2); setPadding(0, dp(4), 0, dp(10))
     })
     val lista = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -1111,16 +1143,18 @@ internal fun MainActivity.abrirAlertas(a: Mercado.Activo, precio: Double) {
             orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(4), 0, dp(4))
             addView(TextView(context).apply { text = x.texto(); textSize = AppTheme.SP_CAPTION; setTextColor(DexTema.TXT)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
-            addView(TextView(context).apply { text = "✕"; textSize = AppTheme.SP_BODY; setTextColor(DexTema.DOWN); setPadding(dp(10), dp(4), dp(6), dp(4))
+            addView(android.widget.ImageView(context).apply { setImageResource(R.drawable.ic_x); setColorFilter(DexTema.DOWN)
+                scaleType = android.widget.ImageView.ScaleType.CENTER; contentDescription = "Delete alert: ${x.texto()}"
+                layoutParams = LinearLayout.LayoutParams(dp(48), dp(48))
                 isClickable = true; foreground = Ui.toque(); setOnClickListener { Alertas.borrar(this@abrirAlertas, x.id); pintar() } })
         })
     }
     caja.addView(lista); pintar()
-    val dlg = DexTema.dialogo(this).setTitle("Price alerts").setView(ScrollView(this).apply { addView(caja) })
+    val dlg = DexTema.dialogo(this).setTitle("Alerts").setView(ScrollView(this).apply { addView(caja) })
         .setPositiveButton("Add alert", null).setNegativeButton("Close", null).show()
     dlg.getButton(androidx.appcompat.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
         val v = et.text.toString().replace(",", "").toDoubleOrNull() ?: 0.0
-        val err = Alertas.agregar(this, a, tipo, v, precio)
+        val err = Alertas.agregar(this, a, tipo, v, precio, ivAlerta)
         if (err != null) Toast.makeText(this, err, Toast.LENGTH_SHORT).show() else { et.setText(""); pintar() }
     }
     if (android.os.Build.VERSION.SDK_INT >= 33 && !Avisos.permitidos(this))

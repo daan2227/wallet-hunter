@@ -86,6 +86,11 @@
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />
 
+        <!-- Gráfico del DEx a pantalla completa, en horizontal. -->
+        <activity android:name=".GraficoCompletoActivity"
+            android:theme="@style/AppThemeDark"
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden" />
         <activity android:name=".PubkeyToolsActivity"
             android:theme="@style/AppThemeDark"
             android:screenOrientation="portrait" />

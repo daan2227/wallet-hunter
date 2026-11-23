@@ -57,7 +57,8 @@ object VigilanciaDex {
             prefs.edit().putString("estado", sim.aJson()).apply()
             if (avisos.isNotEmpty()) Alertas.notificarTexto(ctx, "Test exchange (VUSD)", avisos.joinToString("\n"))
         } else avisos.clear()
-        // alertas de precio: último precio de 1 min de cada par
+        // alertas de indicador (RSI, cruces de media) y de precio
+        Alertas.revisarIndicadores(ctx)
         for ((clave, js) in Alertas.claves(ctx)) {
             val a = Mercado.Activo.deJson(js) ?: continue
             val p = try { Mercado.velas(a, "1m", 2).lastOrNull()?.c?.toDouble() } catch (e: Throwable) { null } ?: continue
