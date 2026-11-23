@@ -1315,7 +1315,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         alCambiar(etLimS) { sim.limiteDia = etLimS.num().coerceAtLeast(0.0); guardar(); pintarSesion() }
         fun fila(vararg vs: View) = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL
             vs.forEachIndexed { k, v -> addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8); bottomMargin = dp(8) }) } }
-        fun corto(t: String, color: Int, f: () -> Unit) = botonPeq(t, color, f).apply { isSingleLine = true; setPadding(dp(6), 0, dp(6), 0) }
+        fun corto(t: String, color: Int, f: () -> Unit) = botonPeq(t, color, f).apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; minHeight = dp(48); setPadding(dp(6), 0, dp(6), 0) }
         cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(texto(15f, DexTema.TXT, true).apply { text = "⚡ Quick scalp"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
             addView(botonPeq("Hide", DexTema.TXT2) { alternarScalp() }) })

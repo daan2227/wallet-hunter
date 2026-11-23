@@ -410,7 +410,7 @@ internal fun MainActivity.buildHomeTab(): ScrollView {
             orientation = LinearLayout.HORIZONTAL
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { if (r > 0) topMargin = dp(8) }
             fila.forEachIndexed { k, b ->
-                (b as? TextView)?.apply { isSingleLine = true; ellipsize = android.text.TextUtils.TruncateAt.END; setPadding(dp(6), 0, dp(6), 0) }
+                (b as? TextView)?.apply { maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END; minHeight = dp(48); setPadding(dp(6), 0, dp(6), 0) }
                 addView(b, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(8) })
             }
         }) }
