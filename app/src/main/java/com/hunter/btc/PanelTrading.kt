@@ -249,7 +249,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         listOf(etPrecio, etImporte, etTp, etSl, etDisparo, etCallback).forEach { it.addTextChangedListener(vigila) }
 
         // pestañas de listas
-        val (filaTabs, rot) = DexTema.pestanasSubrayado(act, listOf("Positions", "Open orders", "Assets", "Bots"), 0) { k -> tabLista = k; refrescar() }
+        val (filaTabs, rot) = DexTema.pestanasSubrayado(act, listOf("Positions", "Open orders", "Assets", "Bots", "History"), 0) { k -> tabLista = k; refrescar() }
         rotularTabs = rot
         vistaListas.addView(HorizontalScrollView(act).apply { isHorizontalScrollBarEnabled = false; addView(filaTabs) })
         vistaListas.addView(View(act).apply { setBackgroundColor(DexTema.STROKE)
@@ -858,13 +858,14 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val a = activo()
         val nPos = if (futuros) sim.posiciones.size else sim.tenencias.count { it.qty > 1e-12 }
         if (::rotularTabs.isInitialized) rotularTabs(listOf(if (futuros) "Positions ($nPos)" else "Holdings ($nPos)",
-            "Open orders (${sim.ordenes.size})", "Assets", "Bots (${sim.bots.size})"))
+            "Open orders (${sim.ordenes.size})", "Assets", "Bots (${sim.bots.size})", "History"))
         contPos.removeAllViews()
         when (tabLista) {
             0 -> if (futuros) listaPosiciones(a) else listaTenencias()
             1 -> listaOrdenes()
             2 -> listaActivos()
-            else -> listaBots()
+            3 -> listaBots()
+            else -> listaHistorial(a)
         }
         // líneas sobre el gráfico del activo abierto
         // qué se pinta lo decide "Chart Settings → Order display"
@@ -1186,6 +1187,53 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             }.setNegativeButton("Cancel", null).show()
     }
 
+    /** Una operación del historial (tocar = nota del diario). */
+    private fun filaOperacion(h: Simulador.Operacion, sdf: java.text.SimpleDateFormat) = LinearLayout(act).apply {
+        orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6)); minimumHeight = dp(48)
+        isClickable = true; foreground = Ui.toque()
+        setOnClickListener { notaOperacion(h) { val v = findViewWithTag<TextView>("nota"); if (v != null) v.text = "✎ " + h.nota else addView(notaVista(h)) } }
+        val cerrada = h.salida > 0
+        val lado = Diario.lado(h)
+        addView(LinearLayout(act).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(texto(AppTheme.SP_CAPTION, DexTema.TXT, true).apply {
+                text = "${if (h.mercado == Simulador.Mercado.FUT) "Futures" else "Spot"} · ${h.lado} ${h.simbolo}"
+                layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                setTextColor(when (lado) { Diario.Lado.LONG -> DexTema.UP; Diario.Lado.SHORT -> DexTema.DOWN; else -> DexTema.TXT })
+            })
+            if (cerrada) addView(texto(AppTheme.SP_CAPTION, if (h.pnl >= 0) DexTema.UP else DexTema.DOWN, true).apply { text = signo(h.pnl) })
+        })
+        addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply {
+            text = sdf.format(java.util.Date(h.t * 1000)) + " · " + h.motivo + " · " +
+                (if (cerrada) "${fmtSim(h.entrada)} → ${fmtSim(h.salida)}" else "@ ${fmtSim(h.entrada)}") +
+                " · ${fmtCant(h.qty)} · fee ${fmtSim(h.comision)}"
+        })
+        if (h.nota.isNotBlank()) addView(notaVista(h))
+    }
+
+    // ── pestaña History: todas las operaciones con filtro Long / Short / Spot ──
+    private var filtroHist = 0
+    private var soloPar = false
+    private fun listaHistorial(a: Mercado.Activo) {
+        val filtros = listOf(null, Diario.Lado.LONG, Diario.Lado.SHORT, Diario.Lado.SPOT)
+        contPos.addView(DexTema.pestanas(act, listOf("All" to null, "Long" to null, "Short" to null, "Spot" to null), filtroHist, padH = 10f) { k ->
+            filtroHist = k; refrescar() })
+        contPos.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL; setPadding(0, dp(8), 0, dp(4))
+            addView(botonPeq(if (soloPar) "✓ Only ${a.simbolo}" else "All pairs", if (soloPar) DexTema.ACCENT else DexTema.TXT) { soloPar = !soloPar; refrescar() }
+                .apply { (layoutParams as LinearLayout.LayoutParams).marginStart = 0; contentDescription = if (soloPar) "Showing only ${a.simbolo}. Tap to show all pairs" else "Showing all pairs. Tap to show only ${a.simbolo}" })
+            addView(View(act), LinearLayout.LayoutParams(0, 1, 1f))
+            addView(botonPeq("Stats & export", DexTema.TXT) { abrirHistorial() }) })
+        val l = Diario.filtrar(sim.historial, filtros[filtroHist], if (soloPar) a.simbolo else null)
+        if (l.isEmpty()) { vacio("No trades", "Trades you open and close with test VUSD show up here", null); return }
+        val cierres = l.filter { it.salida > 0 }
+        val pnl = cierres.sumOf { it.pnl }
+        contPos.addView(texto(AppTheme.SP_CAPTION, DexTema.TXT2).apply { setPadding(0, dp(4), 0, dp(4))
+            text = "${l.size} entries · ${cierres.size} closed · ${cierres.count { it.pnl > 0 }} won · PnL ${signo(pnl)} VUSD" })
+        val sdf = java.text.SimpleDateFormat("MM-dd HH:mm", java.util.Locale.US)
+        for (h in l.asReversed().take(100)) contPos.addView(filaOperacion(h, sdf))
+        if (l.size > 100) contPos.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "Showing the latest 100. Export CSV in Stats & export for all." })
+    }
+
     private fun abrirHistorial() {
         val st = sim.stats()
         val caja = LinearLayout(act).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(20), dp(4), dp(20), dp(12)) }
@@ -1234,28 +1282,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         sec("Trade history · tap a trade to add a note")
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.US)
         if (sim.historial.isEmpty()) caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "No trades yet." })
-        for (h in sim.historial.asReversed().take(150)) {
-            caja.addView(LinearLayout(act).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(0, dp(6), 0, dp(6)); minimumHeight = dp(48)
-                isClickable = true; foreground = Ui.toque()
-                setOnClickListener { notaOperacion(h) { val v = findViewWithTag<TextView>("nota"); if (v != null) v.text = "✎ " + h.nota else addView(notaVista(h)) } }
-                val cerrada = h.salida > 0
-                addView(LinearLayout(act).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    addView(texto(AppTheme.SP_CAPTION, DexTema.TXT, true).apply {
-                        text = "${if (h.mercado == Simulador.Mercado.FUT) "Futures" else "Spot"} · ${h.lado} ${h.simbolo}"
-                        layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
-                    })
-                    if (cerrada) addView(texto(AppTheme.SP_CAPTION, if (h.pnl >= 0) DexTema.UP else DexTema.DOWN, true).apply { text = signo(h.pnl) })
-                })
-                addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply {
-                    text = sdf.format(java.util.Date(h.t * 1000)) + " · " + h.motivo + " · " +
-                        (if (cerrada) "${fmtSim(h.entrada)} → ${fmtSim(h.salida)}" else "@ ${fmtSim(h.entrada)}") +
-                        " · ${fmtCant(h.qty)} · fee ${fmtSim(h.comision)}"
-                })
-                if (h.nota.isNotBlank()) addView(notaVista(h))
-            })
-        }
+        for (h in sim.historial.asReversed().take(150)) caja.addView(filaOperacion(h, sdf))
         sec("Account movements")
         if (sim.movimientos.isEmpty()) caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "None." })
         for (m in sim.movimientos.asReversed().take(100)) caja.addView(LinearLayout(act).apply {

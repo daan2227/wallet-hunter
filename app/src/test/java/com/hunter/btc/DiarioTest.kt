@@ -50,4 +50,16 @@ class DiarioTest {
         s.historial.last().nota = "#dca"
         assertEquals("#dca", Simulador.deJson(s.aJson()).historial.last().nota)
     }
+
+    @Test fun filtroLargoCortoSpot() {
+        val s = Simulador(); val t = 1_700_000_000L
+        s.abrirFuturo("B", "", "BTC", true, 100.0, 10, 100.0, t = t); s.cerrarFuturo(s.posiciones[0].id, 101.0, t = t + 60)
+        s.abrirFuturo("E", "", "ETH", false, 100.0, 5, 10.0, t = t)
+        s.comprarSpot("S", "", "SOL", 50.0, 20.0, t = t)
+        assertEquals(2, Diario.filtrar(s.historial, Diario.Lado.LONG, null).size)       // apertura + cierre
+        assertEquals(1, Diario.filtrar(s.historial, Diario.Lado.SHORT, null).size)
+        assertEquals(1, Diario.filtrar(s.historial, Diario.Lado.SPOT, null).size)
+        assertEquals(s.historial.size, Diario.filtrar(s.historial, null, null).size)
+        assertEquals(1, Diario.filtrar(s.historial, null, "eth").size)
+    }
 }

@@ -12,6 +12,18 @@ import android.view.View
  * vistas) para poder probarlo en la JVM.
  */
 object Diario {
+    enum class Lado { LONG, SHORT, SPOT }
+    /** Long/Short en futuros (apertura, cierre o liquidación) o Spot. */
+    fun lado(h: Simulador.Operacion): Lado? = when {
+        h.mercado == Simulador.Mercado.SPOT -> Lado.SPOT
+        h.lado.contains("long", ignoreCase = true) -> Lado.LONG
+        h.lado.contains("short", ignoreCase = true) -> Lado.SHORT
+        else -> null
+    }
+    /** Historial filtrado por lado (null = todo) y por símbolo (null = todos). */
+    fun filtrar(h: List<Simulador.Operacion>, lado: Lado?, simbolo: String?): List<Simulador.Operacion> =
+        h.filter { (lado == null || lado(it) == lado) && (simbolo == null || it.simbolo.equals(simbolo, ignoreCase = true)) }
+
 
     class Metricas(
         val operaciones: Int, val ganadoras: Int, val perdedoras: Int,
