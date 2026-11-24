@@ -128,4 +128,88 @@ class ScalpingTest {
         assertTrue(s.posiciones.isEmpty())
         assertEquals("Take-profit", s.historial.last().motivo)
     }
+
+    // ── escalones, trailing, límites, riesgo, reglas y métricas ──
+    @Test fun tpEscalonadoYBreakEven() {
+        val s = Simulador(); val t = T0 + 600
+        val plan = Simulador.Plan(0.6, 0.3, tp1Pct = 0.2, tp1Frac = 0.5, tp2Pct = 0.4, tp2Frac = 0.3, be = true)
+        assertNull(s.abrirConPlan("B", "", "BTC", true, 100.0, 20, 100.0, plan, t))       // 20 unidades
+        val p = s.posiciones.single()
+        assertEquals(2, p.escalones.size); assertEquals(100.2, p.escalones[0][0], eps); assertEquals(10.0, p.escalones[0][1], eps)
+        s.procesar("B", 100.0, 100.25, 100.2, t + 10)                                        // TP1: cierra la mitad
+        assertEquals(10.0, p.qty, eps); assertEquals("TP partial", s.historial.last().motivo)
+        assertEquals(100.0 * (1 + 2 * Simulador.COM_TAKER), p.sl, eps)                       // stop a break-even
+        s.procesar("B", 100.2, 100.45, 100.4, t + 20)                                        // TP2: 6 más
+        assertEquals(4.0, p.qty, eps)
+        s.procesar("B", 100.3, 100.65, 100.6, t + 30)                                        // TP final: el resto
+        assertTrue(s.posiciones.isEmpty()); assertEquals("Take-profit", s.historial.last().motivo)
+    }
+
+    @Test fun trailingSigueAlPrecio() {
+        val s = Simulador(); val t = T0 + 600
+        s.abrirConPlan("B", "", "BTC", true, 100.0, 10, 100.0, Simulador.Plan(0.0, 1.0, trailPct = 0.5), t)
+        val p = s.posiciones.single(); assertEquals(99.0, p.sl, eps)
+        s.procesar("B", 100.0, 100.3, 100.2, t + 10); assertEquals(99.0, p.sl, eps)           // aún no se activa
+        s.procesar("B", 100.2, 101.0, 100.9, t + 20); assertEquals(101.0 * 0.995, p.sl, eps) // se activa y sube
+        s.procesar("B", 100.6, 100.9, 100.7, t + 30); assertEquals(101.0 * 0.995, p.sl, eps) // no baja
+        s.procesar("B", 100.4, 100.6, 100.4, t + 40)
+        assertTrue(s.posiciones.isEmpty())
+        assertEquals("Trailing stop", s.historial.last().motivo); assertEquals(100.495, s.historial.last().salida, eps)
+    }
+
+    @Test fun limiteConPlanCaducaOSeLlena() {
+        val s = Simulador(); val t = T0 + 600
+        assertNull(s.limiteConPlan("B", "", "BTC", true, 100.0, 20, 99.9, Simulador.Plan(0.4, 0.25, trailPct = 0.2), 30, t))
+        val reservado = s.ordenes.single().reservado
+        assertEquals(100.0 + 100.0 * 20 * Simulador.COM_MAKER, reservado, eps)
+        s.procesar("B", 99.95, 100.1, 100.0, t + 40)                                        // no llega y caduca
+        assertTrue(s.ordenes.isEmpty()); assertEquals(Simulador.BIENVENIDA, s.fut, eps)
+        s.limiteConPlan("B", "", "BTC", true, 100.0, 20, 99.9, Simulador.Plan(0.4, 0.25, trailPct = 0.2), 30, t + 50)
+        s.procesar("B", 99.85, 100.0, 99.9, t + 60)                                         // se llena: plan aplicado
+        val p = s.posiciones.single()
+        assertEquals(99.9 * 1.004, p.tp, eps); assertEquals(99.9 * 0.9975, p.sl, eps); assertEquals(0.2, p.trailPct, eps)
+    }
+
+    @Test fun tamanoPorRiesgo() {
+        val m = ScalpUtil.margenPorRiesgo(10.0, 0.25, 20)
+        val noc = m * 20
+        assertEquals(10.0, noc * 0.0025 + noc * 2 * Simulador.COM_TAKER, eps)               // pierde justo 10 en el SL
+        assertEquals(0.0, ScalpUtil.margenPorRiesgo(10.0, 0.0, 20), eps)
+    }
+
+    @Test fun reglasDeRiesgo() {
+        val t = T0 + 3600
+        val s = Simulador().apply { maxOpsDia = 2 }
+        s.abrirFuturo("B", "", "BTC", true, 10.0, 10, 100.0, t = t); s.abrirFuturo("E", "", "ETH", true, 10.0, 10, 100.0, t = t)
+        assertTrue(s.abrirFuturo("S", "", "SOL", true, 10.0, 10, 100.0, t = t)!!.startsWith("Max 2 trades"))
+        assertTrue(s.nuevaOrden(Simulador.Mercado.FUT, "S", "", "SOL", true, Simulador.TipoOrden.LIMIT, 99.0, 0.0, 0.0, 10.0, 0.0, 10, 0.0, 0.0, t = t)!!.startsWith("Max 2"))
+        val r = Simulador().apply { perdidasSeguidas = 2; pausaMin = 30 }
+        repeat(2) { r.abrirFuturo("B", "", "BTC", true, 10.0, 10, 100.0, t = t); r.cerrarFuturo(r.posiciones[0].id, 99.0, t = t + 60) }
+        assertTrue(r.motivoBloqueo(t + 120)!!.contains("losses in a row"))
+        assertNull(r.motivoBloqueo(t + 60 + 30 * 60 + 1))
+        val o = Simulador().apply { objetivoDia = 5.0 }
+        o.abrirFuturo("B", "", "BTC", true, 100.0, 10, 100.0, t = t); o.cerrarFuturo(o.posiciones[0].id, 101.0, t = t + 60)
+        assertTrue(o.motivoBloqueo(t + 120)!!.startsWith("Daily target"))
+        val j = Simulador.deJson(s.aJson()); assertEquals(2, j.maxOpsDia)
+    }
+
+    @Test fun maeMfeYDuracion() {
+        val s = Simulador(); val t = T0 + 600
+        s.abrirFuturo("B", "", "BTC", true, 100.0, 10, 100.0, t = t)
+        s.procesar("B", 99.0, 102.0, 101.0, t + 60)
+        s.cerrarFuturo(s.posiciones[0].id, 101.0, t = t + 300)
+        val h = s.historial.last()
+        assertEquals(300L, h.dur); assertEquals(-1.0, h.mae, 1e-6); assertEquals(2.0, h.mfe, 1e-6)
+        val r = Simulador.deJson(s.aJson()).historial.last(); assertEquals(2.0, r.mfe, 1e-6)
+        val an = ScalpUtil.analizar(s.historial, java.util.TimeZone.getTimeZone("UTC"))
+        assertEquals(1, an.porLado.single().operaciones); assertEquals("BTC", an.porPar.single().clave); assertEquals(300.0, an.duracionMedia, eps)
+    }
+
+    @Test fun murosYCvd() {
+        val l = Mercado.Libro(listOf(100.0 to 50.0, 99.9 to 1.0), listOf(100.1 to 2.0, 100.2 to 80.0), "t")
+        val m = ScalpUtil.muros(l, 2)
+        assertEquals(2, m.size); assertTrue(!m[0].compra); assertEquals(1f, m[0].fuerza, 1e-6f); assertTrue(m[1].compra)
+        val c = Indicadores.cvd(floatArrayOf(2f, 2f), floatArrayOf(1f, 1f), floatArrayOf(2f, 1f), floatArrayOf(10f, 10f), floatArrayOf(7f, Float.NaN))
+        assertEquals(4f, c[0], 1e-6f); assertEquals(-6f, c[1], 1e-6f)
+    }
 }

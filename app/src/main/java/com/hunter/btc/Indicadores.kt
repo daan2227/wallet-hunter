@@ -100,6 +100,21 @@ object Indicadores {
     }
 
     /** On-Balance Volume. */
+    /**
+     * Delta de volumen acumulado (CVD): compras − ventas de cada vela, con el volumen
+     * comprador real si existe ([compra], Binance) o estimado por dónde cierra la vela
+     * dentro de su rango.
+     */
+    fun cvd(h: FloatArray, l: FloatArray, c: FloatArray, vol: FloatArray, compra: FloatArray): FloatArray {
+        val out = FloatArray(c.size); var acc = 0.0
+        for (i in c.indices) {
+            val d = if (!compra[i].isNaN()) 2.0 * compra[i] - vol[i]
+                else { val r = (h[i] - l[i]).toDouble(); if (r > 0) vol[i] * ((c[i] - l[i]) - (h[i] - c[i])) / r else 0.0 }
+            acc += d; out[i] = acc.toFloat()
+        }
+        return out
+    }
+
     fun obv(c: FloatArray, vol: FloatArray): FloatArray {
         val out = FloatArray(c.size); if (c.isEmpty()) return out
         for (i in 1 until c.size) out[i] = out[i - 1] + when { c[i] > c[i - 1] -> vol[i]; c[i] < c[i - 1] -> -vol[i]; else -> 0f }

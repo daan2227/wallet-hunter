@@ -10,7 +10,8 @@ import android.view.View
  * en cero aplastaría la curva. Sin dependencias ni WebView: dibuja sobre Canvas.
  */
 class GraficoPrecio(ctx: Context) : View(ctx) {
-    data class Vela(val t: Long, val o: Float, val h: Float, val l: Float, val c: Float, val vol: Float = 0f)
+    data class Vela(val t: Long, val o: Float, val h: Float, val l: Float, val c: Float, val vol: Float = 0f,
+                    /** Volumen comprador (taker buy) si la fuente lo da (Binance); NaN si no. */ val compra: Float = Float.NaN)
 
     private var datos: List<Float> = emptyList()
     private var velas: List<Vela> = emptyList()

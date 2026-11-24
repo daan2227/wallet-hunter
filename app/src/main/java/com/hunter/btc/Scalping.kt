@@ -63,3 +63,60 @@ object Scalping {
             ((ahora - desde) / 60.0).coerceAtLeast(0.0))
     }
 }
+
+/** Utilidades de scalping para la UI (puras, probadas en la JVM). */
+object ScalpUtil {
+    /**
+     * Margen para arriesgar [riesgo] VUSD si salta un stop a [slPct] % con [apal]x:
+     * pérdida = nocional·(sl% + 2·comisión taker).
+     */
+    fun margenPorRiesgo(riesgo: Double, slPct: Double, apal: Int): Double {
+        if (riesgo <= 0 || slPct <= 0 || apal <= 0) return 0.0
+        return riesgo / (slPct / 100 + 2 * Simulador.COM_TAKER) / apal
+    }
+
+    /** Los [n] mayores muros del libro agrupado en tramos de [paso] (fracción del precio). */
+    fun muros(l: Mercado.Libro?, n: Int = 8, paso: Double = 0.0005): List<GraficoTA.Muro> {
+        if (l == null) return emptyList()
+        val mid = ((l.bids.firstOrNull()?.first ?: return emptyList()) + (l.asks.firstOrNull()?.first ?: return emptyList())) / 2
+        val tick = mid * paso
+        fun agrupar(x: List<Pair<Double, Double>>) = x.groupBy { Math.round(it.first / tick) }.map { (k, v) -> k * tick to v.sumOf { it.first * it.second } }
+        val todos = agrupar(l.bids).map { Triple(it.first, it.second, true) } + agrupar(l.asks).map { Triple(it.first, it.second, false) }
+        val max = todos.maxOfOrNull { it.second }?.takeIf { it > 0 } ?: return emptyList()
+        return todos.sortedByDescending { it.second }.take(n).map { GraficoTA.Muro(it.first.toFloat(), (it.second / max).toFloat(), it.third) }
+    }
+
+    enum class Alerta(val texto: String) { VWAP_ARRIBA("Price crossed above VWAP"), VWAP_ABAJO("Price crossed below VWAP"),
+        LIBRO_COMPRA("Order book: strong bids (>70%)"), LIBRO_VENTA("Order book: strong asks (>70%)"), VOLUMEN("Volume spike (3× average)") }
+
+    /** Alertas de scalping sobre las velas del gráfico (la última en curso) y el desequilibrio del libro. */
+    fun alertas(v: List<GraficoPrecio.Vela>, libro: Double?): List<Alerta> {
+        val out = ArrayList<Alerta>(); val n = v.size
+        if (n >= 3) {
+            val vw = Indicadores.vwapSesion(LongArray(n) { v[it].t }, FloatArray(n) { v[it].h }, FloatArray(n) { v[it].l },
+                FloatArray(n) { v[it].c }, FloatArray(n) { v[it].vol }).media
+            val a = v[n - 2].c - vw[n - 2]; val b = v[n - 1].c - vw[n - 1]
+            if (!a.isNaN() && !b.isNaN()) { if (a <= 0 && b > 0) out.add(Alerta.VWAP_ARRIBA) else if (a >= 0 && b < 0) out.add(Alerta.VWAP_ABAJO) }
+        }
+        if (n >= 21) { val media = (n - 21 until n - 1).map { v[it].vol }.average(); if (media > 0 && v[n - 1].vol > 3 * media) out.add(Alerta.VOLUMEN) }
+        if (libro != null) { if (libro > 0.4) out.add(Alerta.LIBRO_COMPRA) else if (libro < -0.4) out.add(Alerta.LIBRO_VENTA) }
+        return out
+    }
+
+    class Grupo(val clave: String, val operaciones: Int, val ganadas: Int, val resultado: Double)
+    class Analisis(val porHora: List<Grupo>, val porPar: List<Grupo>, val porLado: List<Grupo>,
+                   val duracionMedia: Double, val maeMedio: Double, val mfeMedio: Double)
+
+    /** Cierres de futuros agrupados por hora local ([zona]), par y lado, con duración y MAE/MFE medios. */
+    fun analizar(h: List<Simulador.Operacion>, zona: java.util.TimeZone = java.util.TimeZone.getDefault()): Analisis {
+        val c = h.filter { it.mercado == Simulador.Mercado.FUT && !it.lado.startsWith("Open") }
+        fun grupos(f: (Simulador.Operacion) -> String) = c.groupBy(f).map { (k, l) -> Grupo(k, l.size, l.count { it.pnl > 0 }, l.sumOf { it.pnl }) }
+        val cal = java.util.Calendar.getInstance(zona)
+        val hora = grupos { cal.timeInMillis = it.t * 1000; "%02d:00".format(cal.get(java.util.Calendar.HOUR_OF_DAY)) }.sortedBy { it.clave }
+        val conMet = c.filter { it.dur > 0 }
+        return Analisis(hora, grupos { it.simbolo }.sortedByDescending { it.resultado },
+            grupos { if (it.lado.contains("long", true)) "Long" else "Short" },
+            if (conMet.isEmpty()) 0.0 else conMet.map { it.dur.toDouble() }.average(),
+            if (conMet.isEmpty()) 0.0 else conMet.map { it.mae }.average(), if (conMet.isEmpty()) 0.0 else conMet.map { it.mfe }.average())
+    }
+}

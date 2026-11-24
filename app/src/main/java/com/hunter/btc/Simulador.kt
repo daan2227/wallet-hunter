@@ -33,6 +33,11 @@ class Simulador {
                    var entrada: Double, var qty: Double, var margen: Double, var apal: Int,
                    var tp: Double, var sl: Double, val abierta: Long, var funding: Double = 0.0, var ultFunding: Long = abierta,
                    val cruzado: Boolean = false) {
+        /** Scalping: TP escalonados [precio, cantidad], trailing (% del precio), break-even al tocar el TP1. */
+        val escalones = ArrayList<DoubleArray>()
+        var trailPct = 0.0; var extremo = 0.0; var beTp1 = false
+        /** Máximo y mínimo vistos con la posición abierta (MAE/MFE). */
+        var maxP = entrada; var minP = entrada
         val nocional get() = entrada * qty
         fun pnl(precio: Double) = (precio - entrada) * qty * (if (long) 1 else -1)
         /** Margen aislado: se liquida cuando la pérdida deja el margen en el de mantenimiento. */
@@ -51,11 +56,31 @@ class Simulador {
                 val compra: Boolean, var precio: Double, val importe: Double, val qty: Double, val apal: Int,
                 val tp: Double, val sl: Double, val creada: Long, var reservado: Double,
                 var tipo: TipoOrden = TipoOrden.LIMIT, val disparo: Double = 0.0, val callback: Double = 0.0, var extremo: Double = 0.0,
-                val grupo: Long = 0, val reduce: Boolean = false, val cruzado: Boolean = false)
+                val grupo: Long = 0, val reduce: Boolean = false, val cruzado: Boolean = false) {
+        /** Plan de scalping que se aplica al llenarse ([Plan.aTexto]) y caducidad (s, 0 = nunca). */
+        var plan: String = ""; var expira: Long = 0
+    }
 
     class Operacion(val t: Long, val mercado: Mercado, val simbolo: String, val lado: String, val entrada: Double,
                     val salida: Double, val qty: Double, val pnl: Double, val comision: Double, val motivo: String,
-                    /** Nota del diario (texto libre; las #etiquetas sirven para agrupar). */ var nota: String = "")
+                    /** Nota del diario (texto libre; las #etiquetas sirven para agrupar). */ var nota: String = "") {
+        /** Cierres de futuros: duración (s) y MAE/MFE (% del precio de entrada, en contra / a favor). */
+        var dur: Long = 0; var mae: Double = 0.0; var mfe: Double = 0.0
+    }
+
+    /**
+     * Plan de una entrada de scalping: TP y SL en % del precio; TP1/TP2 escalonados
+     * ([tp1Pct] % del precio cerrando [tp1Frac] de la posición…); trailing en %;
+     * break-even al tocar el TP1.
+     */
+    data class Plan(val tpPct: Double, val slPct: Double, val tp1Pct: Double = 0.0, val tp1Frac: Double = 0.0,
+                    val tp2Pct: Double = 0.0, val tp2Frac: Double = 0.0, val trailPct: Double = 0.0, val be: Boolean = false) {
+        fun aTexto() = listOf(tpPct, slPct, tp1Pct, tp1Frac, tp2Pct, tp2Frac, trailPct, if (be) 1.0 else 0.0).joinToString(",")
+        companion object {
+            fun de(s: String): Plan? = s.split(",").mapNotNull { it.toDoubleOrNull() }.takeIf { it.size == 8 }?.let {
+                Plan(it[0], it[1], it[2], it[3], it[4], it[5], it[6], it[7] > 0) }
+        }
+    }
 
     /** Movimiento de la cuenta: Deposit, Withdraw, Transfer, Funding, Margin, Earn… [importe] con signo para [cuenta]. */
     class Movimiento(val t: Long, val tipo: String, val cuenta: Mercado, val importe: Double, val nota: String)
@@ -104,7 +129,7 @@ class Simulador {
     /** Límite de pérdida diaria en futuros (VUSD, 0 = sin límite): al llegar no se abren posiciones hasta las 00:00 UTC. */
     var limiteDia = 0.0
     fun resultadoHoy(t: Long = ahora()) = resultadoFut(historial.filter { it.t >= t - t % 86_400 })
-    fun bloqueadoHoy(t: Long = ahora()) = limiteDia > 0 && resultadoHoy(t) <= -limiteDia
+    fun bloqueadoHoy(t: Long = ahora()) = motivoBloqueo(t) != null
 
     companion object {
         const val MONEDA = "VUSD"
@@ -277,8 +302,7 @@ class Simulador {
                     prefinanciado: Boolean = maker, cruzado: Boolean = false): String? {
         if (margen <= 0 || precio <= 0) return "Enter a margin amount"
         if (apal !in 1..125) return "Leverage must be 1–125x"
-        if (!prefinanciado && bloqueadoHoy(t) && (hedge || posiciones.none { it.clave == clave && it.long != long }))
-            return "Daily loss limit reached (${fmtSim(resultadoHoy(t))} of −${fmtSim(limiteDia)} $MONEDA): new positions are blocked until 00:00 UTC"
+        if (!prefinanciado && (hedge || posiciones.none { it.clave == clave && it.long != long })) motivoBloqueo(t)?.let { return it }
         val nocional = margen * apal; val com = nocional * (if (maker) COM_MAKER else COM_TAKER)
         if (!prefinanciado && nocional < MIN_ORDEN) return "Minimum position is ${fmtSim(MIN_ORDEN)} $MONEDA notional"
         if (!prefinanciado && margen + com > fut + 1e-9) return "Not enough $MONEDA in Futures (margin + fee)"
@@ -313,6 +337,15 @@ class Simulador {
         return null
     }
 
+    /** Duración y MAE/MFE del último cierre de [p]. */
+    private fun metricas(p: Posicion, t: Long) {
+        val h = historial.lastOrNull() ?: return
+        val e = p.entrada.coerceAtLeast(1e-18)
+        h.dur = (t - p.abierta).coerceAtLeast(0)
+        if (p.long) { h.mfe = (p.maxP / e - 1) * 100; h.mae = (p.minP / e - 1) * 100 }
+        else { h.mfe = (1 - p.minP / e) * 100; h.mae = (1 - p.maxP / e) * 100 }
+    }
+
     /** Cierra la posición entera o una [fraccion] (0–1) a mercado. */
     fun cerrarFuturo(id: Long, precio: Double, motivo: String = "Close", t: Long = ahora(), fraccion: Double = 1.0) {
         val p = posiciones.firstOrNull { it.id == id } ?: return
@@ -324,17 +357,20 @@ class Simulador {
             p.qty -= q; p.margen -= m
             historial.add(Operacion(t, Mercado.FUT, p.simbolo, lado, p.entrada, precio, q, pnl - com,
                 com, if (motivo == "Close") "Close ${Math.round(f * 100)}%" else motivo))
+            metricas(p, t)
             return
         }
         posiciones.remove(p)
         if (motivo == "Liquidated") {
             historial.add(Operacion(t, Mercado.FUT, p.simbolo, lado, p.entrada, precio, p.qty, -p.margen + p.funding, 0.0, motivo))
+            metricas(p, t)
             cuentaBot(p.id, -p.margen + p.funding)
             return
         }
         val pnl = p.pnl(precio); val com = precio * p.qty * COM_TAKER
         fut += (p.margen + pnl - com).coerceAtLeast(0.0)
         historial.add(Operacion(t, Mercado.FUT, p.simbolo, lado, p.entrada, precio, p.qty, pnl - com + p.funding, com, motivo))
+        metricas(p, t)
         cuentaBot(p.id, pnl - com + p.funding)
     }
 
@@ -428,6 +464,7 @@ class Simulador {
             }
             else -> {
                 if (importe <= 0) return "Enter a margin amount"; if (apal !in 1..125) return "Leverage must be 1–125x"
+                motivoBloqueo(t)?.let { return it }
                 if (importe * apal < MIN_ORDEN) return "Minimum position is ${fmtSim(MIN_ORDEN)} $MONEDA notional"
                 if (tipo == TipoOrden.LIMIT) {
                     val liq = liquidacionDe(precio, apal, compra)
@@ -504,6 +541,7 @@ class Simulador {
                 val com = o.importe * o.apal * (if (maker) COM_MAKER else COM_TAKER)
                 fut += (o.reservado - o.importe - com).coerceAtLeast(0.0)
                 abrirFuturo(o.clave, o.activo, o.simbolo, o.compra, o.importe, o.apal, px, o.tp, o.sl, maker, t, prefinanciado = true, cruzado = o.cruzado)
+                Plan.de(o.plan)?.let { pl -> posiciones.lastOrNull { it.clave == o.clave && it.long == o.compra && it.cruzado == o.cruzado }?.let { aplicarPlan(it, pl) } }
             }
         }
         eventos.add("${nombreOrden(o)} ${o.simbolo} filled at ${fmtSim(px)}")
@@ -684,6 +722,8 @@ class Simulador {
             if (o !in ordenes) continue
             when (o.tipo) {
                 TipoOrden.LIMIT -> if (if (o.compra) lo <= o.precio else hi >= o.precio) { llenar(o, o.precio, true, t); cambio = true }
+                    else if (o.expira in 1..t) { cancelarOrden(o.id); cambio = true
+                        eventos.add("Limit ${if (o.compra) "long" else "short"} ${o.simbolo} at ${fmtSim(o.precio)} not filled in time: cancelled") }
                 TipoOrden.STOP -> if (if (o.compra) hi >= o.disparo else lo <= o.disparo) { llenar(o, o.disparo, false, t); cambio = true }
                 TipoOrden.STOP_LIMIT -> if (if (o.compra) hi >= o.disparo else lo <= o.disparo) {
                     o.tipo = TipoOrden.LIMIT; cambio = true
@@ -705,16 +745,44 @@ class Simulador {
             val liq = liquidacion(p)
             val slToca = p.sl > 0 && (if (p.long) lo <= p.sl else hi >= p.sl)
             val liqToca = if (p.long) lo <= liq else hi >= liq
-            val tpToca = p.tp > 0 && (if (p.long) hi >= p.tp else lo <= p.tp)
             val lado = "${if (p.long) "Long" else "Short"} ${p.simbolo}"
-            when {
-                slToca && (if (p.long) p.sl > liq else p.sl < liq) -> { cerrarFuturo(p.id, p.sl, "Stop-loss", t); eventos.add("$lado: stop-loss hit at ${fmtSim(p.sl)}") }
-                liqToca && p.cruzado -> { liquidarCruzado(clave, liq, t); eventos.add("CROSS MARGIN LIQUIDATED ($lado at ${fmtSim(liq)}): all cross positions closed") }
-                liqToca -> { cerrarFuturo(p.id, liq, "Liquidated", t); eventos.add("$lado LIQUIDATED at ${fmtSim(liq)}") }
-                tpToca -> { cerrarFuturo(p.id, p.tp, "Take-profit", t); eventos.add("$lado: take-profit hit at ${fmtSim(p.tp)}") }
-                else -> continue
+            p.maxP = maxOf(p.maxP, hi); p.minP = minOf(p.minP, lo)
+            val cerrada = when {
+                slToca && (if (p.long) p.sl > liq else p.sl < liq) -> { cerrarFuturo(p.id, p.sl, if (p.trailPct > 0 && (if (p.long) p.sl > p.entrada else p.sl < p.entrada)) "Trailing stop" else "Stop-loss", t); eventos.add("$lado: stop hit at ${fmtSim(p.sl)}"); true }
+                liqToca && p.cruzado -> { liquidarCruzado(clave, liq, t); eventos.add("CROSS MARGIN LIQUIDATED ($lado at ${fmtSim(liq)}): all cross positions closed"); true }
+                liqToca -> { cerrarFuturo(p.id, liq, "Liquidated", t); eventos.add("$lado LIQUIDATED at ${fmtSim(liq)}"); true }
+                else -> false
             }
-            cambio = true
+            if (cerrada) { cambio = true; continue }
+            // TP escalonados (antes que el TP final: están más cerca)
+            val d = if (p.long) 1 else -1
+            var k = 0
+            while (k < p.escalones.size && p in posiciones) {
+                val (px, q) = p.escalones[k].let { it[0] to it[1] }
+                if (if (p.long) hi >= px else lo <= px) {
+                    p.escalones.removeAt(k)
+                    cerrarFuturo(p.id, px, if (q >= p.qty * 0.999) "Take-profit" else "TP partial", t, (q / p.qty).coerceAtMost(1.0))
+                    eventos.add("$lado: partial take-profit at ${fmtSim(px)}"); cambio = true
+                    if (p.beTp1 && p in posiciones) {
+                        val be = p.entrada * (1 + d * 2 * COM_TAKER)
+                        if (p.sl <= 0 || (if (p.long) be > p.sl else be < p.sl)) { p.sl = be; eventos.add("$lado: stop moved to break-even") }
+                        p.beTp1 = false
+                    }
+                } else k++
+            }
+            if (p !in posiciones) continue
+            if (p.tp > 0 && (if (p.long) hi >= p.tp else lo <= p.tp)) {
+                cerrarFuturo(p.id, p.tp, "Take-profit", t); eventos.add("$lado: take-profit hit at ${fmtSim(p.tp)}"); cambio = true; continue
+            }
+            // trailing: se mueve con el extremo a favor (después de comprobar el stop de esta vela: criterio prudente)
+            if (p.trailPct > 0) {
+                p.extremo = if (p.long) maxOf(p.extremo, hi) else minOf(p.extremo, lo)
+                val activo = if (p.long) p.extremo >= p.entrada * (1 + p.trailPct / 100) else p.extremo <= p.entrada * (1 - p.trailPct / 100)
+                if (activo) {
+                    val nsl = p.extremo * (1 - d * p.trailPct / 100)
+                    if (p.sl <= 0 || (if (p.long) nsl > p.sl else nsl < p.sl)) { p.sl = nsl; cambio = true }
+                }
+            }
         }
         if (procesarBots(clave, lo, hi, ultimo, t, inicio)) cambio = true
         revisado[clave] = maxOf(revisado[clave] ?: 0L, t)
@@ -744,20 +812,69 @@ class Simulador {
         return (if (tpPct > 0) entrada * (1 + d * tpPct / 100) else 0.0) to (if (slPct > 0) entrada * (1 - d * slPct / 100) else 0.0)
     }
 
-    /**
-     * Abre a mercado con TP/SL en % y, si se sumó a una posición del mismo lado
-     * (one-way), los recalcula sobre la entrada media. Devuelve error o null.
-     */
+    /** Abre a mercado con TP/SL en % (ver [abrirConPlan]). */
     fun abrirConPct(clave: String, activo: String, simbolo: String, largo: Boolean, margen: Double, apal: Int, precio: Double,
-                    tpPct: Double, slPct: Double, t: Long = ahora()): String? {
-        val (tp, sl) = nivelesPct(precio, largo, tpPct, slPct)
+                    tpPct: Double, slPct: Double, t: Long = ahora()): String? =
+        abrirConPlan(clave, activo, simbolo, largo, margen, apal, precio, Plan(tpPct, slPct), t)
+
+    /**
+     * Abre a mercado y aplica el [plan] sobre la entrada (la media, si se sumó a una
+     * posición del mismo lado en one-way). Devuelve error o null.
+     */
+    fun abrirConPlan(clave: String, activo: String, simbolo: String, largo: Boolean, margen: Double, apal: Int, precio: Double,
+                     plan: Plan, t: Long = ahora()): String? {
+        val (tp, sl) = nivelesPct(precio, largo, plan.tpPct, plan.slPct)
         abrirFuturo(clave, activo, simbolo, largo, margen, apal, precio, tp, sl, t = t)?.let { return it }
-        val p = posiciones.lastOrNull { it.clave == clave && it.long == largo && !it.cruzado } ?: return null
-        if (Math.abs(p.entrada - precio) > 1e-12) {
-            val (tp2, sl2) = nivelesPct(p.entrada, largo, tpPct, slPct)
-            val liq = liquidacion(p)
-            p.tp = tp2
-            p.sl = if (sl2 > 0 && (if (largo) sl2 > liq else sl2 < liq)) sl2 else p.sl
+        posiciones.lastOrNull { it.clave == clave && it.long == largo && !it.cruzado }?.let { aplicarPlan(it, plan) }
+        return null
+    }
+
+    /** Pone TP, SL, escalones, trailing y break-even del [plan] sobre la entrada actual de [p]. */
+    fun aplicarPlan(p: Posicion, plan: Plan) {
+        val (tp, sl) = nivelesPct(p.entrada, p.long, plan.tpPct, plan.slPct)
+        val liq = liquidacion(p)
+        p.tp = tp
+        if (sl > 0 && (p.cruzado || (if (p.long) sl > liq else sl < liq))) p.sl = sl
+        p.escalones.clear()
+        val d = if (p.long) 1 else -1
+        var resto = 1.0
+        for ((pct, fr) in listOf(plan.tp1Pct to plan.tp1Frac, plan.tp2Pct to plan.tp2Frac)) {
+            if (pct <= 0 || fr <= 0 || resto <= 1e-9) continue
+            val f = minOf(fr, resto); resto -= f
+            p.escalones.add(doubleArrayOf(p.entrada * (1 + d * pct / 100), p.qty * f))
+        }
+        p.escalones.sortBy { Math.abs(it[0] - p.entrada) }
+        p.trailPct = plan.trailPct.coerceAtLeast(0.0); p.extremo = p.entrada; p.beTp1 = plan.be
+    }
+
+    /** Orden límite de scalping (maker) con plan y caducidad en [caducaSeg] segundos (0 = no caduca). */
+    fun limiteConPlan(clave: String, activo: String, simbolo: String, largo: Boolean, margen: Double, apal: Int, precio: Double,
+                      plan: Plan, caducaSeg: Long, t: Long = ahora()): String? {
+        val (tp, sl) = nivelesPct(precio, largo, plan.tpPct, plan.slPct)
+        nuevaOrden(Mercado.FUT, clave, activo, simbolo, largo, TipoOrden.LIMIT, precio, 0.0, 0.0, margen, 0.0, apal, tp, sl, t = t)?.let { return it }
+        val txt = plan.aTexto(); val fin = if (caducaSeg > 0) t + caducaSeg else 0L
+        ordenes.last().apply { this.plan = txt; expira = fin }
+        return null
+    }
+
+    // ── Reglas de riesgo (scalping) ──
+    /** Máx. aperturas de futuros por día (0 = sin), pausa de [pausaMin] min tras [perdidasSeguidas] pérdidas, objetivo diario (VUSD). */
+    var maxOpsDia = 0; var perdidasSeguidas = 0; var pausaMin = 30; var objetivoDia = 0.0
+    fun aperturasHoy(t: Long = ahora()) = historial.count { it.mercado == Mercado.FUT && it.t >= t - t % 86_400 && it.lado.startsWith("Open") }
+
+    /** Por qué no se pueden abrir posiciones ahora (null = se puede). */
+    fun motivoBloqueo(t: Long = ahora()): String? {
+        val hoy = resultadoHoy(t)
+        if (limiteDia > 0 && hoy <= -limiteDia) return "Daily loss limit reached (${fmtSim(hoy)} of −${fmtSim(limiteDia)} $MONEDA): new positions are blocked until 00:00 UTC"
+        if (objetivoDia > 0 && hoy >= objetivoDia) return "Daily target reached (+${fmtSim(hoy)} $MONEDA): done for today, new positions are blocked until 00:00 UTC"
+        if (maxOpsDia > 0 && aperturasHoy(t) >= maxOpsDia) return "Max $maxOpsDia trades per day reached: new positions are blocked until 00:00 UTC"
+        if (perdidasSeguidas > 0) {
+            val cierres = historial.filter { it.mercado == Mercado.FUT && !it.lado.startsWith("Open") }
+            val ult = cierres.takeLast(perdidasSeguidas)
+            if (ult.size == perdidasSeguidas && ult.all { it.pnl < 0 }) {
+                val fin = ult.last().t + pausaMin * 60L
+                if (t < fin) return "$perdidasSeguidas losses in a row: paused until ${java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault()).format(java.util.Date(fin * 1000))}"
+            }
         }
         return null
     }
@@ -800,12 +917,14 @@ class Simulador {
             .put("i", m.importe).put("n", m.nota)) } })
         put("pos", JSONArray().apply { posiciones.forEach { p -> put(JSONObject().put("id", p.id).put("c", p.clave).put("a", p.activo).put("s", p.simbolo)
             .put("l", p.long).put("e", p.entrada).put("q", p.qty).put("m", p.margen).put("x", p.apal).put("tp", p.tp).put("sl", p.sl)
-            .put("t", p.abierta).put("f", p.funding).put("uf", p.ultFunding).put("cr", p.cruzado)) } })
+            .put("t", p.abierta).put("f", p.funding).put("uf", p.ultFunding).put("cr", p.cruzado)
+            .put("esc", JSONArray().apply { p.escalones.forEach { put(JSONArray().put(it[0]).put(it[1])) } })
+            .put("tr", p.trailPct).put("ext", p.extremo).put("be", p.beTp1).put("mx", p.maxP).put("mn", p.minP)) } })
         put("ten", JSONArray().apply { tenencias.forEach { h -> put(JSONObject().put("c", h.clave).put("a", h.activo).put("s", h.simbolo).put("q", h.qty).put("k", h.coste)) } })
         put("ord", JSONArray().apply { ordenes.forEach { o -> put(JSONObject().put("id", o.id).put("mk", o.mercado.name).put("c", o.clave).put("a", o.activo)
             .put("s", o.simbolo).put("b", o.compra).put("p", o.precio).put("i", o.importe).put("q", o.qty).put("x", o.apal).put("tp", o.tp)
             .put("sl", o.sl).put("t", o.creada).put("r", o.reservado).put("cm", costeRes[o.id] ?: JSONObject.NULL)
-            .put("ty", o.tipo.name).put("d", o.disparo).put("cb", o.callback).put("ex", o.extremo).put("g", o.grupo).put("ro", o.reduce).put("cr", o.cruzado)) } })
+            .put("ty", o.tipo.name).put("d", o.disparo).put("cb", o.callback).put("ex", o.extremo).put("g", o.grupo).put("ro", o.reduce).put("cr", o.cruzado).put("pl", o.plan).put("exp", o.expira)) } })
         put("bots", JSONArray().apply { bots.forEach { b -> put(JSONObject().put("id", b.id).put("ty", b.tipo).put("c", b.clave).put("a", b.activo)
             .put("s", b.simbolo).put("t", b.creado).put("i", b.importe).put("cada", b.cadaSeg).put("prox", b.proximo).put("nc", b.compras)
             .put("gas", b.gastado).put("lo", b.lo).put("hi", b.hi).put("n", b.n).put("inv", b.inversion).put("caja", b.caja).put("base", b.base)
@@ -813,11 +932,11 @@ class Simulador {
             .put("ben", b.beneficio).put("ops", b.operaciones).put("iv", b.iv).put("um", b.umbral).put("am", b.apalMax)
             .put("pid", b.posId).put("uv", b.ultVela).put("gan", b.ganadas)) } })
         put("his", JSONArray().apply { historial.takeLast(500).forEach { h -> put(JSONObject().put("t", h.t).put("mk", h.mercado.name).put("s", h.simbolo)
-            .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo).put("nt", h.nota)) } })
+            .put("ld", h.lado).put("e", h.entrada).put("x", h.salida).put("q", h.qty).put("p", h.pnl).put("c", h.comision).put("m", h.motivo).put("nt", h.nota).put("du", h.dur).put("ae", h.mae).put("fe", h.mfe)) } })
         put("pre", JSONObject().apply { precios.forEach { (k, v) -> put(k, v) } })
         put("rev", JSONObject().apply { revisado.forEach { (k, v) -> put(k, v) } })
         put("fr", JSONObject().apply { tasaFunding.forEach { (k, v) -> put(k, v) } })
-        put("lpd", limiteDia)
+        put("lpd", limiteDia); put("mo", maxOpsDia); put("ps", perdidasSeguidas); put("pm", pausaMin); put("od", objetivoDia)
     }.toString()
 
     fun cargar(s: String?) {
@@ -837,14 +956,17 @@ class Simulador {
             o.optJSONArray("pos")?.let { a -> for (i in 0 until a.length()) { val p = a.getJSONObject(i)
                 posiciones.add(Posicion(p.getLong("id"), p.getString("c"), p.optString("a"), p.getString("s"), p.getBoolean("l"), p.getDouble("e"),
                     p.getDouble("q"), p.getDouble("m"), p.getInt("x"), p.optDouble("tp", 0.0), p.optDouble("sl", 0.0), p.getLong("t"),
-                    p.optDouble("f", 0.0), p.optLong("uf", p.getLong("t")), p.optBoolean("cr", false))) } }
+                    p.optDouble("f", 0.0), p.optLong("uf", p.getLong("t")), p.optBoolean("cr", false)).apply {
+                    p.optJSONArray("esc")?.let { e -> for (k in 0 until e.length()) e.optJSONArray(k)?.let { x -> escalones.add(doubleArrayOf(x.getDouble(0), x.getDouble(1))) } }
+                    trailPct = p.optDouble("tr", 0.0); extremo = p.optDouble("ext", entrada); beTp1 = p.optBoolean("be", false)
+                    maxP = p.optDouble("mx", entrada); minP = p.optDouble("mn", entrada) }) } }
             o.optJSONArray("ten")?.let { a -> for (i in 0 until a.length()) { val h = a.getJSONObject(i)
                 tenencias.add(Tenencia(h.getString("c"), h.optString("a"), h.getString("s"), h.getDouble("q"), h.getDouble("k"))) } }
             o.optJSONArray("ord")?.let { a -> for (i in 0 until a.length()) { val r = a.getJSONObject(i)
                 val ord = Orden(r.getLong("id"), Mercado.valueOf(r.getString("mk")), r.getString("c"), r.optString("a"), r.getString("s"), r.getBoolean("b"),
                     r.getDouble("p"), r.getDouble("i"), r.getDouble("q"), r.getInt("x"), r.optDouble("tp", 0.0), r.optDouble("sl", 0.0), r.getLong("t"), r.getDouble("r"),
                     TipoOrden.valueOf(r.optString("ty", "LIMIT")), r.optDouble("d", 0.0), r.optDouble("cb", 0.0), r.optDouble("ex", 0.0),
-                    r.optLong("g", 0), r.optBoolean("ro", false), r.optBoolean("cr", false))
+                    r.optLong("g", 0), r.optBoolean("ro", false), r.optBoolean("cr", false)).apply { plan = r.optString("pl"); expira = r.optLong("exp", 0) }
                 ordenes.add(ord); if (ord.mercado == Mercado.SPOT && !ord.compra && r.has("cm") && !r.isNull("cm")) costeRes[ord.id] = r.optDouble("cm", 0.0) } }
             o.optJSONArray("bots")?.let { a -> for (i in 0 until a.length()) { val b = a.getJSONObject(i)
                 val cb = b.optJSONArray("cb"); val qc = b.optJSONArray("qc")
@@ -856,11 +978,13 @@ class Simulador {
                     b.optLong("pid", 0), b.optLong("uv", 0), b.optInt("gan", 0))) } }
             o.optJSONArray("his")?.let { a -> for (i in 0 until a.length()) { val h = a.getJSONObject(i)
                 historial.add(Operacion(h.getLong("t"), Mercado.valueOf(h.getString("mk")), h.getString("s"), h.getString("ld"), h.getDouble("e"),
-                    h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"), h.optString("nt"))) } }
+                    h.getDouble("x"), h.getDouble("q"), h.getDouble("p"), h.getDouble("c"), h.getString("m"), h.optString("nt")).apply {
+                    dur = h.optLong("du", 0); mae = h.optDouble("ae", 0.0); mfe = h.optDouble("fe", 0.0) }) } }
             o.optJSONObject("pre")?.let { p -> p.keys().forEach { k -> precios[k] = p.getDouble(k) } }
             o.optJSONObject("rev")?.let { p -> p.keys().forEach { k -> revisado[k] = p.getLong(k) } }
             o.optJSONObject("fr")?.let { p -> p.keys().forEach { k -> tasaFunding[k] = p.getDouble(k) } }
-            limiteDia = o.optDouble("lpd", 0.0)
+            limiteDia = o.optDouble("lpd", 0.0); maxOpsDia = o.optInt("mo", 0); perdidasSeguidas = o.optInt("ps", 0)
+            pausaMin = o.optInt("pm", 30); objetivoDia = o.optDouble("od", 0.0)
         } catch (e: Exception) { reiniciar() }
     }
 

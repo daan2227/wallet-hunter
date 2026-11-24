@@ -1267,6 +1267,23 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         caja.addView(dato("Longest win / loss streak", "${mt.rachaGanadora} / ${mt.rachaPerdedora}"))
         caja.addView(dato("Best / worst", "${signo(st.mejor)} / ${signo(st.peor)}"))
         caja.addView(dato("Fees paid", fmtSim(st.comisiones) + " VUSD"))
+        val an = ScalpUtil.analizar(sim.historial)
+        if (an.porLado.isNotEmpty()) {
+            sec("By side, pair and hour (Futures)")
+            fun filaG(g: ScalpUtil.Grupo) = caja.addView(dato("${g.clave} · ${g.operaciones} trades · ${if (g.operaciones > 0) g.ganadas * 100 / g.operaciones else 0}% won",
+                signo(g.resultado), if (g.resultado >= 0) DexTema.UP else DexTema.DOWN))
+            an.porLado.forEach { filaG(it) }
+            caja.addView(View(act).apply { layoutParams = LinearLayout.LayoutParams(1, dp(6)) })
+            an.porPar.take(8).forEach { filaG(it) }
+            caja.addView(View(act).apply { layoutParams = LinearLayout.LayoutParams(1, dp(6)) })
+            an.porHora.forEach { filaG(it) }
+            if (an.duracionMedia > 0) {
+                val d = an.duracionMedia.toLong()
+                caja.addView(dato("Average duration", if (d < 3600) "${d / 60} min ${d % 60} s" else "%.1f h".format(d / 3600.0)))
+                caja.addView(dato("Average MAE / MFE", "%.2f%% / +%.2f%%".format(an.maeMedio, an.mfeMedio)))
+                caja.addView(texto(AppTheme.SP_MICRO, DexTema.TXT2).apply { text = "MAE: how far trades went against you; MFE: how far in your favour (% of price). If MFE is much bigger than your result, targets may be too far or exits too late." })
+            }
+        }
         sec("PnL calendar")
         caja.addView(VistaCalendario(act, Diario.pnlPorDia(sim.historial)).apply {
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) })
@@ -1321,11 +1338,14 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private val tvSesion = texto(12f, DexTema.TXT2).apply { setLineSpacing(0f, 1.25f) }
     private val hScalp = android.os.Handler(android.os.Looper.getMainLooper())
     private val tickScalp = object : Runnable { override fun run() {
-        if (scalpOn && futuros && cajaScalp.isAttachedToWindow) { pintarFlujo(); pintarSesion() }
+        if (scalpOn && futuros && cajaScalp.isAttachedToWindow) { pintarFlujo(); pintarSesion(); pintarSenal(); revisarAlertasScalp()
+            chart.muros = if (prefsScalp.getBoolean("heat", true)) ScalpUtil.muros(libroActual?.invoke()) else emptyList() }
+        else if (chart.muros.isNotEmpty()) chart.muros = emptyList()
         if (scalpOn) hScalp.postDelayed(this, 2_000) } }
 
     fun alternarScalp() {
         scalpOn = !scalpOn; prefsScalp.edit().putBoolean("on", scalpOn).apply()
+        if (!scalpOn) chart.muros = emptyList()
         if (scalpOn && !futuros) aviso("Scalp mode works on Futures: switch to the Futures tab")
         hScalp.removeCallbacks(tickScalp); if (scalpOn) hScalp.post(tickScalp)
         alCambiarScalp?.invoke(scalpOn); refrescarFormulario()
@@ -1345,8 +1365,32 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL
             addView(texto(15f, DexTema.TXT, true).apply { text = "⚡ Quick scalp"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
             addView(botonPeq("Hide", DexTema.TXT2) { alternarScalp() }) })
+        // tamaño: margen fijo o por riesgo
+        cajaScalp.addView(DexTema.pestanas(act, listOf("Margin" to null, "Risk VUSD" to null, "Risk %" to null), modoTam, padH = 8f) { k ->
+            modoTam = k; prefsScalp.edit().putInt("tam", k).apply(); rotularTam(); pintarPrevia() }
+            .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) } })
         cajaScalp.addView(fila(cMarS.first, cApS.first)); cajaScalp.addView(fila(cTpS.first, cSlS.first))
+        // atajos de tamaño: % del saldo de Futuros como margen
+        cajaScalp.addView(fila(*listOf(25, 50, 100).map { pc -> corto("$pc%", DexTema.TXT) {
+            val x = etApS.text.toString().toIntOrNull()?.coerceIn(1, 125) ?: 1
+            val m = Math.floor(sim.fut * pc / 100 / (1 + x * Simulador.COM_TAKER) * 100) / 100
+            if (modoTam != 0) { modoTam = 0; prefsScalp.edit().putInt("tam", 0).apply(); rotularTam() }
+            etMarS.setText("%.2f".format(java.util.Locale.US, m)) }.apply { contentDescription = "Use $pc percent of Futures balance as margin" } }.toTypedArray()))
+        rotularTam()
+        // plan: escalado, trailing, break-even, límite + ajustes
+        val fChips = LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL }
+        fun chip(t: String, clave: String, def: Boolean): TextView = corto(t, DexTema.TXT) { }.apply {
+            fun pintar() { val on = prefsScalp.getBoolean(clave, def); setTextColor(if (on) DexTema.ACCENT else DexTema.TXT2)
+                text = (if (on) "✓ " else "") + t; contentDescription = "$t ${if (on) "on" else "off"}" }
+            setOnClickListener { prefsScalp.edit().putBoolean(clave, !prefsScalp.getBoolean(clave, def)).apply(); pintar(); pintarPrevia() }
+            pintar() }
+        listOf(chip("Scale", "esc", false), chip("Trail", "trail", false), chip("BE", "be", false), chip("Limit", "lim", false)).forEachIndexed { k, v ->
+            fChips.addView(v, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { if (k > 0) marginStart = dp(4) }) }
+        fChips.addView(corto("⚙", DexTema.TXT) { dialogoAjustesScalp() }.apply { contentDescription = "Scalp settings" },
+            LinearLayout.LayoutParams(dp(48), ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(4) })
+        cajaScalp.addView(fChips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { bottomMargin = dp(8) })
         cajaScalp.addView(tvPrevia)
+        cajaScalp.addView(tvSenal)
         alCambiar(etMarS, etApS, etTpS, etSlS) { pintarPrevia() }
         fun grande(t: String, fondo: Int, largo: Boolean) = TextView(act).apply {
             text = t; textSize = 17f; typeface = AppTheme.bold(act); gravity = Gravity.CENTER; minHeight = dp(52)
@@ -1354,7 +1398,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             contentDescription = "Market ${if (largo) "long" else "short"} with the quick scalp settings"
             setOnClickListener { scalpAbrir(largo) } }
         cajaScalp.addView(fila(grande("Long ▲", DexTema.UP, true), grande("Short ▼", DexTema.DOWN, false)))
-        cajaScalp.addView(fila(corto("Reverse", DexTema.TXT) { scalpInvertir() }, corto("Close pair", DexTema.DOWN) { scalpCerrarPar() }))
+        cajaScalp.addView(fila(corto("Reverse", DexTema.TXT) { scalpInvertir() }, corto("Close 50%", DexTema.DOWN) { scalpCerrarPar(0.5) },
+            corto("Close all", DexTema.DOWN) { scalpCerrarPar(1.0) }))
         // flujo de órdenes
         cajaScalp.addView(LinearLayout(act).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, dp(4))
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
@@ -1364,7 +1409,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             addView(corto("New session", DexTema.TXT) { prefsScalp.edit().putLong("sesion", System.currentTimeMillis() / 1000).apply(); pintarSesion(); aviso("New scalp session") }
                 .apply { layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT) }) })
         cajaScalp.addView(cLimS.first)
-        cajaScalp.addView(texto(11f, DexTema.TXT2).apply { text = "Empty or 0 = no limit. When today's futures loss reaches it, new positions are blocked until 00:00 UTC." })
+        cajaScalp.addView(texto(11f, DexTema.TXT2).apply { text = "Empty or 0 = no limit. When today's futures loss reaches it, new positions are blocked until 00:00 UTC. More rules (max trades, pause after losses, daily target) in ⚙." })
         cajaScalp.addView(View(act).apply { setBackgroundColor(DexTema.STROKE); layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 1).apply { topMargin = dp(10) } })
         if (scalpOn) hScalp.post(tickScalp)
     }
@@ -1372,7 +1417,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private val tvPrevia = texto(12f, DexTema.TXT2).apply { setLineSpacing(0f, 1.25f); setPadding(0, 0, 0, dp(6)) }
     /** Qué pasa con la configuración actual: TP/SL en precio, ROE y VUSD netos de comisiones. */
     private fun pintarPrevia() {
-        val p = precioActual() ?: 0.0; val m = etMarS.num(); val x = etApS.text.toString().toIntOrNull() ?: 0
+        val p = precioActual() ?: 0.0; val x = etApS.text.toString().toIntOrNull() ?: 0; val m = margenScalp(x.coerceAtLeast(1))
         val tpP = etTpS.num(); val slP = etSlS.num()
         if (p <= 0 || m <= 0 || x !in 1..125) { tvPrevia.text = "TP and SL are % of price from your fill (not ROE)."; return }
         val noc = m * x; val fees = noc * Simulador.COM_TAKER * 2
@@ -1382,10 +1427,102 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             append("TP and SL are % of price from your fill.\n")
             if (tpP > 0) append("TP %.2f%% = %+.1f%% ROE ≈ %s VUSD net · long at %s\n".format(tpP, tpP * x, usd2(neto(tpP)), fmtSim(tpL)))
             if (slP > 0) append("SL %.2f%% = −%.1f%% ROE ≈ %s VUSD net · long at %s\n".format(slP, slP * x, usd2(-noc * slP / 100 - fees), fmtSim(slL)))
+            val pl = planScalp()
+            if (pl.tp1Pct > 0) append("Scale: TP1 %.2f%% closes %.0f%%, TP2 %.2f%% closes %.0f%%%s\n".format(pl.tp1Pct, pl.tp1Frac * 100, pl.tp2Pct, pl.tp2Frac * 100, if (pl.be) ", then stop to break-even" else ""))
+            else if (pl.be) append("BE needs ‘Scale’ (moves the stop when TP1 fills)\n")
+            if (pl.trailPct > 0) append("Trailing %.2f%% once %.2f%% in profit\n".format(pl.trailPct, pl.trailPct))
+            if (modoTam != 0) append("Margin for this risk ≈ ${fmtSim(m)} VUSD\n")
             append("Fees open + close ≈ ${fmtSim(fees)} VUSD")
             if (slP > 0 && slP >= 100.0 / x * 0.95) append(" · ⚠ SL is beyond liquidation at ${x}x")
         }
         tvPrevia.setTextColor(if (slP > 0 && slP >= 100.0 / x * 0.95) DexTema.DOWN else DexTema.TXT2)
+    }
+
+    private var modoTam = prefsScalp.getInt("tam", 0)
+    private val tvSenal = texto(12f, DexTema.TXT2).apply { setPadding(0, 0, 0, dp(6)) }
+    private val ultimaAlerta = HashMap<ScalpUtil.Alerta, Long>()
+
+    private fun rotularTam() {
+        val (et, h) = when (modoTam) { 1 -> "Risk VUSD" to "VUSD lost if SL hits"; 2 -> "Risk % of Futures" to "% of Futures lost if SL hits"; else -> "Margin VUSD" to "Margin VUSD" }
+        ((cMarS.first.getChildAt(0) as? LinearLayout)?.getChildAt(0) as? TextView)?.text = et
+        etMarS.hint = h
+    }
+
+    /** Margen de la próxima entrada según el modo de tamaño. */
+    private fun margenScalp(x: Int): Double = when (modoTam) {
+        1 -> ScalpUtil.margenPorRiesgo(etMarS.num(), etSlS.num(), x)
+        2 -> ScalpUtil.margenPorRiesgo(sim.fut * etMarS.num() / 100, etSlS.num(), x)
+        else -> etMarS.num()
+    }
+
+    private fun numPref(k: String, def: Double) = prefsScalp.getString(k, null)?.toDoubleOrNull() ?: def
+
+    private fun planScalp(): Simulador.Plan {
+        val esc = prefsScalp.getBoolean("esc", false)
+        return Simulador.Plan(etTpS.num(), etSlS.num(),
+            if (esc) numPref("t1", 0.2) else 0.0, if (esc) numPref("f1", 50.0) / 100 else 0.0,
+            if (esc) numPref("t2", 0.3) else 0.0, if (esc) numPref("f2", 30.0) / 100 else 0.0,
+            if (prefsScalp.getBoolean("trail", false)) numPref("tr", 0.15) else 0.0, prefsScalp.getBoolean("be", false))
+    }
+
+    /** Ajustes del scalping: escalones, trailing, caducidad de límites, heatmap, alertas y reglas de riesgo. */
+    private fun dialogoAjustesScalp() {
+        val caja = cajaDialogo()
+        fun campo(et: String, k: String, def: String) = DexTema.campoEtiquetado(act, et).also { (c, e) ->
+            e.setText(prefsScalp.getString(k, def)); caja.addView(c)
+            alCambiar(e) { prefsScalp.edit().putString(k, e.text.toString()).apply() } }
+        fun titulo(t: String) = caja.addView(texto(13f, DexTema.TXT, true).apply { text = t; setPadding(0, dp(10), 0, dp(6)) })
+        titulo("Scale out (when ‘Scale’ is on)")
+        campo("TP1 % of price", "t1", "0.2"); campo("TP1 closes % of size", "f1", "50")
+        campo("TP2 % of price", "t2", "0.3"); campo("TP2 closes % of size", "f2", "30")
+        caja.addView(texto(11f, DexTema.TXT2).apply { text = "The rest closes at the main take-profit. With ‘BE’ on, the stop moves to break-even (covers fees) when TP1 fills." })
+        titulo("Trailing stop (when ‘Trail’ is on)")
+        campo("Trailing distance % of price", "tr", "0.15")
+        caja.addView(texto(11f, DexTema.TXT2).apply { text = "Starts once the price moves that % in your favour, then follows the best price." })
+        titulo("Limit entries (when ‘Limit’ is on)")
+        campo("Cancel if not filled after (seconds, 0 = never)", "cad", "30")
+        caja.addView(texto(11f, DexTema.TXT2).apply { text = "Long buys at the best bid, Short sells at the best ask: maker fee 0.02% instead of 0.05%." })
+        titulo("Chart and alerts")
+        caja.addView(DexTema.casilla(act, "Liquidity heatmap on the chart", prefsScalp.getBoolean("heat", true)) { prefsScalp.edit().putBoolean("heat", it).apply() })
+        caja.addView(DexTema.casilla(act, "Scalp alerts (VWAP cross, book imbalance, volume spike)", prefsScalp.getBoolean("alertas", true)) { prefsScalp.edit().putBoolean("alertas", it).apply() })
+        titulo("Risk rules (Futures)")
+        val (cMo, eMo) = DexTema.campoEtiquetado(act, "Max trades per day (0 = no limit)").also { it.second.inputType = InputType.TYPE_CLASS_NUMBER; it.second.setText(if (sim.maxOpsDia > 0) sim.maxOpsDia.toString() else "") }
+        val (cPs, ePs) = DexTema.campoEtiquetado(act, "Pause after N losses in a row (0 = off)").also { it.second.inputType = InputType.TYPE_CLASS_NUMBER; it.second.setText(if (sim.perdidasSeguidas > 0) sim.perdidasSeguidas.toString() else "") }
+        val (cPm, ePm) = DexTema.campoEtiquetado(act, "Pause minutes").also { it.second.inputType = InputType.TYPE_CLASS_NUMBER; it.second.setText(sim.pausaMin.toString()) }
+        val (cOd, eOd) = DexTema.campoEtiquetado(act, "Daily profit target VUSD (0 = off)").also { it.second.setText(if (sim.objetivoDia > 0) "%.0f".format(java.util.Locale.US, sim.objetivoDia) else "") }
+        listOf(cMo, cPs, cPm, cOd).forEach { caja.addView(it) }
+        caja.addView(texto(11f, DexTema.TXT2).apply { text = "When a rule triggers, new Futures positions and orders are blocked (closing is always allowed)." })
+        DexTema.dialogo(act).setTitle("Scalp settings").setView(ScrollView(act).apply { addView(caja) })
+            .setPositiveButton("Save") { _, _ ->
+                sim.maxOpsDia = eMo.text.toString().toIntOrNull()?.coerceIn(0, 1000) ?: 0
+                sim.perdidasSeguidas = ePs.text.toString().toIntOrNull()?.coerceIn(0, 50) ?: 0
+                sim.pausaMin = ePm.text.toString().toIntOrNull()?.coerceIn(1, 1440) ?: 30
+                sim.objetivoDia = eOd.num().coerceAtLeast(0.0)
+                guardar(); pintarSesion(); pintarPrevia()
+            }.setNegativeButton("Close", null).show()
+    }
+
+    /** Señal de scalping en vivo sobre las velas cerradas del gráfico. */
+    private fun pintarSenal() {
+        val v = chart.velasActuales()
+        if (v.size < 41) { tvSenal.text = "AI signal: waiting for candles"; return }
+        val s = Scalping.senal(v.dropLast(1), Scalping.desequilibrio(libroActual?.invoke()))
+        if (s == null) { tvSenal.text = "AI signal: —"; return }
+        tvSenal.text = "AI signal (chart TF): " + when (s.dir) { 1 -> "▲ LONG"; -1 -> "▼ SHORT"; else -> "■ wait" } +
+            " · ${s.confianza}% · " + s.motivos.joinToString(", ")
+        tvSenal.setTextColor(when (s.dir) { 1 -> DexTema.UP; -1 -> DexTema.DOWN; else -> DexTema.TXT2 })
+    }
+
+    /** Alertas de scalping con vibración (cada tipo como mucho una vez por minuto). */
+    private fun revisarAlertasScalp() {
+        if (!prefsScalp.getBoolean("alertas", true)) return
+        val ahora = System.currentTimeMillis()
+        val nuevas = ScalpUtil.alertas(chart.velasActuales(), Scalping.desequilibrio(libroActual?.invoke()))
+            .filter { ahora - (ultimaAlerta[it] ?: 0L) > 60_000 }
+        if (nuevas.isEmpty()) return
+        nuevas.forEach { ultimaAlerta[it] = ahora }
+        cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS)
+        aviso("⚡ ${activo().simbolo}: " + nuevas.joinToString(" · ") { it.texto })
     }
 
     private fun pintarScalp() {
@@ -1421,11 +1558,24 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
     private fun scalpAbrir(largo: Boolean) {
         val a = activo(); val p0 = precioActual()
         if (p0 == null || p0 <= 0) { aviso("Price not loaded yet"); return }
-        val m = etMarS.num(); val x = etApS.text.toString().toIntOrNull() ?: 0
-        val tpP = etTpS.num(); val slP = etSlS.num()
+        val x = etApS.text.toString().toIntOrNull() ?: 0
         if (x !in 1..125) { aviso("Leverage must be 1–125x"); return }
+        val m = margenScalp(x)
+        if (m <= 0) { aviso(if (modoTam == 0) "Enter a margin" else "Enter the risk and a stop-loss %"); return }
+        val plan = planScalp()
+        if (prefsScalp.getBoolean("lim", false)) {
+            val (bid, ask) = bbo?.invoke() ?: (null to null)
+            val pl = (if (largo) bid else ask) ?: p0
+            val cad = prefsScalp.getString("cad", "30")?.toLongOrNull()?.coerceIn(0, 3600) ?: 30
+            val err = sim.limiteConPlan(a.clave, a.aJson(), a.simbolo, largo, m, x, pl, plan, cad)
+            if (err != null) { aviso(err); return }
+            cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+            guardar(); refrescar()
+            aviso("Limit ${if (largo) "long" else "short"} ${x}x at ${fmtSim(pl)} (maker 0.02%)" + if (cad > 0) " · cancels in ${cad}s if not filled" else "")
+            return
+        }
         val px = recorrer(largo, m * x, true, null)?.first ?: p0
-        val err = sim.abrirConPct(a.clave, a.aJson(), a.simbolo, largo, m, x, px, tpP, slP)
+        val err = sim.abrirConPlan(a.clave, a.aJson(), a.simbolo, largo, m, x, px, plan)
         if (err != null) { aviso(err); return }
         cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         val pos = sim.posiciones.lastOrNull { it.clave == a.clave && it.long == largo && !it.cruzado }
@@ -1434,11 +1584,11 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             (pos?.let { p -> (if (p.tp > 0) " · TP ${fmtSim(p.tp)}" else "") + (if (p.sl > 0) " · SL ${fmtSim(p.sl)}" else "") } ?: ""))
     }
 
-    private fun scalpCerrarPar() {
+    private fun scalpCerrarPar(fraccion: Double = 1.0) {
         val a = activo(); val px = precioActual() ?: run { aviso("Price not loaded yet"); return }
         val ps = sim.posiciones.filter { it.clave == a.clave }
         if (ps.isEmpty()) { aviso("No ${a.simbolo} positions"); return }
-        for (p in ps) sim.cerrarFuturo(p.id, recorrer(!p.long, p.qty, false, null)?.first ?: px, "Scalp close")
+        for (p in ps) sim.cerrarFuturo(p.id, recorrer(!p.long, p.qty * fraccion, false, null)?.first ?: px, if (fraccion >= 0.999) "Scalp close" else "Close", fraccion = fraccion)
         cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
         notificar(); guardar(); refrescar(); aviso("Closed ${ps.size} ${a.simbolo} position${if (ps.size > 1) "s" else ""}")
     }
@@ -1448,7 +1598,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val a = activo(); val ps = sim.posiciones.filter { it.clave == a.clave }
         if (ps.isEmpty()) { aviso("No ${a.simbolo} position to reverse"); return }
         val largo = !ps.maxByOrNull { it.nocional }!!.long
-        scalpCerrarPar(); scalpAbrir(largo)
+        scalpCerrarPar(1.0); scalpAbrir(largo)
     }
 
     // al final: así todas las propiedades ya están inicializadas al construir la vista

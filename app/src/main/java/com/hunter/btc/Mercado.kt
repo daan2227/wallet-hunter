@@ -72,7 +72,8 @@ object Mercado {
         if (js == null || !js.trimStart().startsWith("[")) emptyList() else {
             val arr = org.json.JSONArray(js)
             List(arr.length()) { i -> val k = arr.getJSONArray(i)
-                GraficoPrecio.Vela(k.getLong(0) / 1000, f(k.getString(1)), f(k.getString(2)), f(k.getString(3)), f(k.getString(4)), f(k.optString(5, "0"))) }
+                GraficoPrecio.Vela(k.getLong(0) / 1000, f(k.getString(1)), f(k.getString(2)), f(k.getString(3)), f(k.getString(4)), f(k.optString(5, "0")),
+                    if (k.length() > 9) f(k.optString(9, "")) else Float.NaN) }
         }
     } catch (e: Throwable) { emptyList() }
 

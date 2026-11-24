@@ -21,6 +21,11 @@ class GraficoTA(ctx: Context) : View(ctx) {
 
     // ── Configuración (se guarda como JSON en preferencias) ──
     class Media(var on: Boolean, var ema: Boolean, var n: Int)
+    /** Muro del libro para el heatmap de liquidez: [fuerza] 0–1 respecto al mayor. */
+    class Muro(val precio: Float, val fuerza: Float, val compra: Boolean)
+    var muros: List<Muro> = emptyList()
+        set(v) { field = v; invalidate() }
+
     class Config {
         val medias = arrayOf(Media(true, false, 7), Media(true, false, 25), Media(false, false, 99))
         var bb = false; var bbN = 20; var bbK = 2f
@@ -30,14 +35,14 @@ class GraficoTA(ctx: Context) : View(ctx) {
         var macd = true; var mF = 12; var mS = 26; var mSig = 9
         var stoch = false; var stK = 14; var stD = 3
         var atr = false; var atrN = 14
-        var obv = false; var cci = false; var cciN = 20; var wr = false; var wrN = 14
+        var cvd = false; var obv = false; var cci = false; var cciN = 20; var wr = false; var wrN = 14
 
         fun aJson(): String = JSONObject().apply {
             put("medias", JSONArray().apply { medias.forEach { put(JSONObject().put("on", it.on).put("ema", it.ema).put("n", it.n)) } })
             put("bb", bb); put("bbN", bbN); put("bbK", bbK.toDouble()); put("vwap", vwap); put("vwapB", vwapB); put("sar", sar)
             put("vol", vol); put("rsi", rsi); put("rsiN", rsiN); put("macd", macd); put("mF", mF); put("mS", mS); put("mSig", mSig)
             put("stoch", stoch); put("stK", stK); put("stD", stD); put("atr", atr); put("atrN", atrN)
-            put("obv", obv); put("cci", cci); put("cciN", cciN); put("wr", wr); put("wrN", wrN)
+            put("obv", obv); put("cvd", cvd); put("cci", cci); put("cciN", cciN); put("wr", wr); put("wrN", wrN)
         }.toString()
 
         fun deJson(s: String?) {
@@ -52,11 +57,11 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 macd = o.optBoolean("macd", macd); mF = o.optInt("mF", mF); mS = o.optInt("mS", mS); mSig = o.optInt("mSig", mSig)
                 stoch = o.optBoolean("stoch", stoch); stK = o.optInt("stK", stK); stD = o.optInt("stD", stD)
                 atr = o.optBoolean("atr", atr); atrN = o.optInt("atrN", atrN)
-                obv = o.optBoolean("obv", obv); cci = o.optBoolean("cci", cci); cciN = o.optInt("cciN", cciN)
+                obv = o.optBoolean("obv", obv); cvd = o.optBoolean("cvd", cvd); cci = o.optBoolean("cci", cci); cciN = o.optInt("cciN", cciN)
                 wr = o.optBoolean("wr", wr); wrN = o.optInt("wrN", wrN)
             } catch (e: Exception) { }
         }
-        fun paneles(): Int = listOf(vol, rsi, macd, stoch, atr, obv, cci, wr).count { it }
+        fun paneles(): Int = listOf(vol, rsi, macd, stoch, atr, obv, cvd, cci, wr).count { it }
     }
     val cfg = Config()
 
@@ -393,6 +398,12 @@ class GraficoTA(ctx: Context) : View(ctx) {
                 } else { pFill.color = col; c.drawRect(x - medio, t, x + medio, b, pFill) }
             }
         }
+        // heatmap de liquidez: muros del libro como bandas (verde compras, rojo ventas)
+        for (m in muros) {
+            val y = yP(m.precio); if (y.isNaN() || y < pTop || y > pBot) continue
+            pFill.color = alfa(if (m.compra) DexTema.UP else DexTema.DOWN, (40 + 140 * m.fuerza).toInt().coerceIn(30, 190))
+            c.drawRect(padLpx, y - 1.5f * d, w - padRpx, y + 1.5f * d, pFill)
+        }
         if (cfg.bb) { val bb = Indicadores.bollinger(cl, cfg.bbN, cfg.bbK)
             linea(c, bb.alta, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true); linea(c, bb.media, alfa(AppTheme.BLUE, 0x88), i0, i1, xf, yP)
             linea(c, bb.baja, alfa(AppTheme.BLUE, 0xCC), i0, i1, xf, yP, true) }
@@ -522,6 +533,7 @@ class GraficoTA(ctx: Context) : View(ctx) {
             panel(c, t, b, "Stoch ${cfg.stK},${cfg.stD}", i0, i1, xf, w, listOf(s.k to AppTheme.WARN, s.d to AppTheme.ACCENT2), 0f to 100f, listOf(20f, 80f)) }
         if (cfg.atr) { val (t, b) = sig(); panel(c, t, b, "ATR ${cfg.atrN}", i0, i1, xf, w, listOf(Indicadores.atr(hi, lo, cl, cfg.atrN) to AppTheme.WARN)) }
         if (cfg.obv) { val (t, b) = sig(); panel(c, t, b, "OBV", i0, i1, xf, w, listOf(Indicadores.obv(cl, vo) to AppTheme.ACCENT2)) }
+        if (cfg.cvd) { val (t, b) = sig(); panel(c, t, b, "CVD", i0, i1, xf, w, listOf(Indicadores.cvd(hi, lo, cl, vo, FloatArray(n) { v[it].compra }) to AppTheme.ACCENT)) }
         if (cfg.cci) { val (t, b) = sig(); panel(c, t, b, "CCI ${cfg.cciN}", i0, i1, xf, w, listOf(Indicadores.cci(hi, lo, cl, cfg.cciN) to AppTheme.WARN), guias = listOf(-100f, 100f)) }
         if (cfg.wr) { val (t, b) = sig(); panel(c, t, b, "Williams %R ${cfg.wrN}", i0, i1, xf, w, listOf(Indicadores.williams(hi, lo, cl, cfg.wrN) to AppTheme.WARN), -100f to 0f, listOf(-80f, -20f)) }
 

@@ -1036,6 +1036,7 @@ internal fun MainActivity.abrirAjustesTA(chart: GraficoTA, alCambiar: () -> Unit
     fila("Stochastic", c.stoch, { c.stoch = it }, num(c.stK.toFloat(), 2f..100f) { c.stK = it.toInt() }, num(c.stD.toFloat(), 1f..20f) { c.stD = it.toInt() })
     fila("ATR", c.atr, { c.atr = it }, num(c.atrN.toFloat(), 2f..100f) { c.atrN = it.toInt() })
     fila("OBV", c.obv, { c.obv = it })
+    fila("CVD (cumulative volume delta)", c.cvd, { c.cvd = it })
     fila("CCI", c.cci, { c.cci = it }, num(c.cciN.toFloat(), 5f..100f) { c.cciN = it.toInt() })
     fila("Williams %R", c.wr, { c.wr = it }, num(c.wrN.toFloat(), 2f..100f) { c.wrN = it.toInt() })
     caja.addView(TextView(this).apply {
