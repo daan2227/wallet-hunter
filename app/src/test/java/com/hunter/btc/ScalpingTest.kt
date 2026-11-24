@@ -71,4 +71,61 @@ class ScalpingTest {
         assertEquals(100.0 * (1 + 2 * Simulador.COM_TAKER), p.sl, eps)
         assertTrue(s.posiciones.isNotEmpty())
     }
+
+    // ── TP/SL del scalping: cálculo y cierre ──
+    private fun vela(t: Long, o: Double, h: Double, l: Double, c: Double) = GraficoPrecio.Vela(t, o.toFloat(), h.toFloat(), l.toFloat(), c.toFloat(), 1f)
+
+    @Test fun tpYSlEnPorcentajeDelPrecio() {
+        val s = Simulador()
+        val (tpL, slL) = s.nivelesPct(100.0, true, 0.4, 0.25)
+        assertEquals(100.4, tpL, eps); assertEquals(99.75, slL, eps)
+        val (tpS, slS) = s.nivelesPct(100.0, false, 0.4, 0.25)
+        assertEquals(99.6, tpS, eps); assertEquals(100.25, slS, eps)
+        assertEquals(0.0 to 0.0, s.nivelesPct(100.0, true, 0.0, 0.0))
+    }
+
+    @Test fun cierraJustoEnElTp() {
+        val s = Simulador(); val t = T0 + 600
+        assertNull(s.abrirConPct("B", "", "BTC", true, 100.0, 20, 100.0, 0.4, 0.25, t))
+        val p = s.posiciones.single(); assertEquals(100.4, p.tp, eps); assertEquals(99.75, p.sl, eps)
+        s.procesar("B", 99.9, 100.39, 100.2, t + 10)                     // se queda a 0,01: sigue abierta
+        assertEquals(1, s.posiciones.size)
+        s.procesar("B", 100.1, 100.41, 100.3, t + 20)                    // toca el TP
+        assertTrue(s.posiciones.isEmpty())
+        val h = s.historial.last()
+        assertEquals("Take-profit", h.motivo); assertEquals(100.4, h.salida, eps)
+        // 20 unidades × 0,4 = +8 de PnL; comisión de cierre 100,4 × 20 × 0,05 %
+        assertEquals(8.0 - 100.4 * 20 * Simulador.COM_TAKER, h.pnl, eps)
+    }
+
+    @Test fun cortoCierraEnTpYLargoEnSl() {
+        val s = Simulador(); val t = T0 + 600
+        s.abrirConPct("B", "", "BTC", false, 100.0, 20, 100.0, 0.4, 0.25, t)
+        s.procesar("B", 99.59, 99.8, 99.7, t + 10)
+        assertEquals("Take-profit", s.historial.last().motivo); assertEquals(99.6, s.historial.last().salida, eps)
+        s.abrirConPct("E", "", "ETH", true, 100.0, 20, 100.0, 0.4, 0.25, t)
+        s.procesar("E", 99.7, 100.1, 99.9, t + 10)
+        assertEquals("Stop-loss", s.historial.last().motivo); assertEquals(99.75, s.historial.last().salida, eps)
+    }
+
+    @Test fun alSumarseRecalculaSobreLaEntradaMedia() {
+        val s = Simulador(); val t = T0 + 600
+        s.abrirConPct("B", "", "BTC", true, 100.0, 20, 100.0, 0.4, 0.25, t)
+        s.abrirConPct("B", "", "BTC", true, 100.0, 20, 102.0, 0.4, 0.25, t + 5)
+        val p = s.posiciones.single()
+        assertEquals(4000.0 / (20.0 + 2000.0 / 102.0), p.entrada, eps)           // entrada media
+        assertEquals(p.entrada * 1.004, p.tp, eps); assertEquals(p.entrada * 0.9975, p.sl, eps)
+    }
+
+    @Test fun noSePierdeUnToqueDentroDelMinutoEntreRevisiones() {
+        val s = Simulador(); val t = T0 + 600                             // 00:10:00
+        s.abrirConPct("B", "", "BTC", true, 100.0, 20, 100.0, 0.4, 0.25, t - 120)
+        // revisión a las 00:10:30 con la vela en curso aún tranquila
+        s.procesarVelas("B", listOf(vela(t, 100.0, 100.1, 99.9, 100.0)), t + 30)
+        assertEquals(1, s.posiciones.size)
+        // a las 00:10:40 sube al TP y vuelve; la siguiente revisión (00:10:50) ve el máximo de la vela
+        s.procesarVelas("B", listOf(vela(t, 100.0, 100.5, 99.9, 100.1)), t + 50)
+        assertTrue(s.posiciones.isEmpty())
+        assertEquals("Take-profit", s.historial.last().motivo)
+    }
 }

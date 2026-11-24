@@ -47,8 +47,7 @@ object VigilanciaDex {
             val n = ((ahora - desde) / 60 + 3).toInt().coerceIn(3, 1000)
             val v = try { Mercado.velas(a, "1m", n) } catch (e: Throwable) { emptyList() }
             if (v.isEmpty()) continue
-            for (c in v) if (c.t >= desde) sim.procesar(k, c.l.toDouble(), c.h.toDouble(), c.c.toDouble(), c.t + 60, c.t)
-            val u = v.last().c.toDouble(); sim.procesar(k, u, u, u, ahora)
+            sim.procesarVelas(k, v, ahora)
         }
         try { BotIA.aplicar(sim, BotIA.calcular(BotIA.tareas(sim, ahora))) } catch (e: Exception) { }
         sim.devengar(ahora)

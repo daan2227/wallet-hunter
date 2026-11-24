@@ -721,6 +721,47 @@ class Simulador {
         return cambio
     }
 
+    /**
+     * Revisa con velas de [paso] s (normalmente 1m) lo que no se haya revisado aún:
+     * incluye la vela en curso que ya se revisó a medias (antes se saltaba y un toque
+     * de TP/SL dentro de ese minuto entre dos revisiones se perdía). Lo abierto dentro
+     * de una vela no se evalúa con ella (no se sabe si el extremo fue antes o después).
+     */
+    fun procesarVelas(clave: String, v: List<GraficoPrecio.Vela>, ahora: Long = ahora(), paso: Long = 60): Boolean {
+        if (v.isEmpty()) return false
+        val desde = revisado[clave] ?: ahora
+        var cambio = false
+        // también la vela anterior: los ticks en vivo adelantan [revisado] y su final pudo quedar sin ver
+        for (k in v) if (k.t + 2 * paso > desde && k.t <= ahora)
+            cambio = procesar(clave, k.l.toDouble(), k.h.toDouble(), k.c.toDouble(), minOf(k.t + paso, ahora), k.t) or cambio
+        val u = v.last().c.toDouble()
+        return procesar(clave, u, u, u, ahora) or cambio
+    }
+
+    /** TP y SL a [tpPct]/[slPct] % del precio de entrada (0 = sin). */
+    fun nivelesPct(entrada: Double, largo: Boolean, tpPct: Double, slPct: Double): Pair<Double, Double> {
+        val d = if (largo) 1 else -1
+        return (if (tpPct > 0) entrada * (1 + d * tpPct / 100) else 0.0) to (if (slPct > 0) entrada * (1 - d * slPct / 100) else 0.0)
+    }
+
+    /**
+     * Abre a mercado con TP/SL en % y, si se sumó a una posición del mismo lado
+     * (one-way), los recalcula sobre la entrada media. Devuelve error o null.
+     */
+    fun abrirConPct(clave: String, activo: String, simbolo: String, largo: Boolean, margen: Double, apal: Int, precio: Double,
+                    tpPct: Double, slPct: Double, t: Long = ahora()): String? {
+        val (tp, sl) = nivelesPct(precio, largo, tpPct, slPct)
+        abrirFuturo(clave, activo, simbolo, largo, margen, apal, precio, tp, sl, t = t)?.let { return it }
+        val p = posiciones.lastOrNull { it.clave == clave && it.long == largo && !it.cruzado } ?: return null
+        if (Math.abs(p.entrada - precio) > 1e-12) {
+            val (tp2, sl2) = nivelesPct(p.entrada, largo, tpPct, slPct)
+            val liq = liquidacion(p)
+            p.tp = tp2
+            p.sl = if (sl2 > 0 && (if (largo) sl2 > liq else sl2 < liq)) sl2 else p.sl
+        }
+        return null
+    }
+
     fun clavesActivas(): Set<String> = (posiciones.map { it.clave } + ordenes.map { it.clave } + bots.map { it.clave }).toSet()
     /** JSON del Activo guardado para una clave (para pedir sus precios aunque no esté en el gráfico). */
     fun activoDe(clave: String): String? = posiciones.firstOrNull { it.clave == clave }?.activo ?: ordenes.firstOrNull { it.clave == clave }?.activo

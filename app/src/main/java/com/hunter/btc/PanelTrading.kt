@@ -1151,8 +1151,7 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
                 var cambio = false
                 for ((a, desde, v) in res) {
                     if (v.isEmpty()) continue
-                    for (k in v) if (k.t >= desde) cambio = sim.procesar(a.clave, k.l.toDouble(), k.h.toDouble(), k.c.toDouble(), k.t + 60, k.t) or cambio
-                    val u = v.last().c.toDouble(); cambio = sim.procesar(a.clave, u, u, u, ahora) or cambio
+                    cambio = sim.procesarVelas(a.clave, v, System.currentTimeMillis() / 1000) or cambio
                 }
                 cambio = BotIA.aplicar(sim, senales) or cambio
                 notificar(); guardar(); if (vista.isAttachedToWindow) refrescar()
@@ -1347,6 +1346,8 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
             addView(texto(15f, DexTema.TXT, true).apply { text = "⚡ Quick scalp"; layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f) })
             addView(botonPeq("Hide", DexTema.TXT2) { alternarScalp() }) })
         cajaScalp.addView(fila(cMarS.first, cApS.first)); cajaScalp.addView(fila(cTpS.first, cSlS.first))
+        cajaScalp.addView(tvPrevia)
+        alCambiar(etMarS, etApS, etTpS, etSlS) { pintarPrevia() }
         fun grande(t: String, fondo: Int, largo: Boolean) = TextView(act).apply {
             text = t; textSize = 17f; typeface = AppTheme.bold(act); gravity = Gravity.CENTER; minHeight = dp(52)
             setTextColor(if (largo) DexTema.ON_UP else 0xFFFFFFFF.toInt()); background = DexTema.fondo(act, fondo, 8f); isClickable = true; foreground = Ui.toque()
@@ -1368,9 +1369,28 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         if (scalpOn) hScalp.post(tickScalp)
     }
 
+    private val tvPrevia = texto(12f, DexTema.TXT2).apply { setLineSpacing(0f, 1.25f); setPadding(0, 0, 0, dp(6)) }
+    /** Qué pasa con la configuración actual: TP/SL en precio, ROE y VUSD netos de comisiones. */
+    private fun pintarPrevia() {
+        val p = precioActual() ?: 0.0; val m = etMarS.num(); val x = etApS.text.toString().toIntOrNull() ?: 0
+        val tpP = etTpS.num(); val slP = etSlS.num()
+        if (p <= 0 || m <= 0 || x !in 1..125) { tvPrevia.text = "TP and SL are % of price from your fill (not ROE)."; return }
+        val noc = m * x; val fees = noc * Simulador.COM_TAKER * 2
+        val (tpL, slL) = sim.nivelesPct(p, true, tpP, slP)
+        fun neto(pct: Double) = noc * pct / 100 - fees
+        tvPrevia.text = buildString {
+            append("TP and SL are % of price from your fill.\n")
+            if (tpP > 0) append("TP %.2f%% = %+.1f%% ROE ≈ %s VUSD net · long at %s\n".format(tpP, tpP * x, usd2(neto(tpP)), fmtSim(tpL)))
+            if (slP > 0) append("SL %.2f%% = −%.1f%% ROE ≈ %s VUSD net · long at %s\n".format(slP, slP * x, usd2(-noc * slP / 100 - fees), fmtSim(slL)))
+            append("Fees open + close ≈ ${fmtSim(fees)} VUSD")
+            if (slP > 0 && slP >= 100.0 / x * 0.95) append(" · ⚠ SL is beyond liquidation at ${x}x")
+        }
+        tvPrevia.setTextColor(if (slP > 0 && slP >= 100.0 / x * 0.95) DexTema.DOWN else DexTema.TXT2)
+    }
+
     private fun pintarScalp() {
         cajaScalp.visibility = if (scalpOn && futuros) View.VISIBLE else View.GONE
-        if (cajaScalp.visibility == View.VISIBLE) { pintarFlujo(); pintarSesion() }
+        if (cajaScalp.visibility == View.VISIBLE) { pintarFlujo(); pintarSesion(); pintarPrevia() }
     }
 
     private fun pintarFlujo() {
@@ -1405,13 +1425,13 @@ class PanelTrading(private val act: MainActivity, private val activo: () -> Merc
         val tpP = etTpS.num(); val slP = etSlS.num()
         if (x !in 1..125) { aviso("Leverage must be 1–125x"); return }
         val px = recorrer(largo, m * x, true, null)?.first ?: p0
-        val d = if (largo) 1 else -1
-        val tp = if (tpP > 0) px * (1 + d * tpP / 100) else 0.0; val sl = if (slP > 0) px * (1 - d * slP / 100) else 0.0
-        val err = sim.abrirFuturo(a.clave, a.aJson(), a.simbolo, largo, m, x, px, tp, sl)
+        val err = sim.abrirConPct(a.clave, a.aJson(), a.simbolo, largo, m, x, px, tpP, slP)
         if (err != null) { aviso(err); return }
         cajaScalp.performHapticFeedback(android.view.HapticFeedbackConstants.CONFIRM)
+        val pos = sim.posiciones.lastOrNull { it.clave == a.clave && it.long == largo && !it.cruzado }
         notificar(); guardar(); refrescar()
-        aviso("${if (largo) "Long" else "Short"} ${x}x at ${fmtSim(px)}")
+        aviso("${if (largo) "Long" else "Short"} ${x}x at ${fmtSim(px)}" +
+            (pos?.let { p -> (if (p.tp > 0) " · TP ${fmtSim(p.tp)}" else "") + (if (p.sl > 0) " · SL ${fmtSim(p.sl)}" else "") } ?: ""))
     }
 
     private fun scalpCerrarPar() {
